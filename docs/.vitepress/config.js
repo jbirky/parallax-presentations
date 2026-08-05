@@ -57,6 +57,9 @@ export default defineConfig({
             { text: 'HTML Embeds & p5.js', link: '/tutorials/html-embeds' },
             { text: 'Kinetic Text', link: '/tutorials/kinetic-text' },
             { text: 'Video & Audio', link: '/tutorials/media' },
+            { text: 'Citations & Bibliography', link: '/tutorials/citations' },
+            { text: 'Diagram Editor', link: '/tutorials/diagrams' },
+            { text: 'Equation Palette', link: '/tutorials/equation-palette' },
           ]
         },
         {

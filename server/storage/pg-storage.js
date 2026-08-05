@@ -4,6 +4,7 @@
 const { Pool } = require('pg')
 const { v4: uuidv4 } = require('uuid')
 const StorageInterface = require('./interface')
+const { encrypt, decrypt } = require('../utils/crypto')
 
 class PgStorage extends StorageInterface {
   constructor(connectionString) {
@@ -40,10 +41,11 @@ class PgStorage extends StorageInterface {
   }
 
   async getPresentation(id, userId) {
-    const { rows } = await this.query(
-      'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt" FROM presentations WHERE id = $1 AND is_template = false',
-      [id]
-    )
+    const sql = userId
+      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt" FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = false'
+      : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt" FROM presentations WHERE id = $1 AND is_template = false'
+    const params = userId ? [id, userId] : [id]
+    const { rows } = await this.query(sql, params)
     if (!rows.length) return null
     const r = rows[0]
     return { ...r.data, id: r.id, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt || null }
@@ -67,15 +69,22 @@ class PgStorage extends StorageInterface {
     if (!existing) return null
     const now = new Date().toISOString()
     const merged = { ...existing, ...data, id, updatedAt: now }
-    await this.query(
-      'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4',
-      [merged.title || 'Untitled', JSON.stringify(merged), now, id]
-    )
+    const sql = userId
+      ? 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4 AND user_id = $5'
+      : 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4'
+    const params = userId
+      ? [merged.title || 'Untitled', JSON.stringify(merged), now, id, userId]
+      : [merged.title || 'Untitled', JSON.stringify(merged), now, id]
+    await this.query(sql, params)
     return merged
   }
 
   async deletePresentation(id, userId) {
-    const { rowCount } = await this.query('DELETE FROM presentations WHERE id = $1', [id])
+    const sql = userId
+      ? 'DELETE FROM presentations WHERE id = $1 AND user_id = $2'
+      : 'DELETE FROM presentations WHERE id = $1'
+    const params = userId ? [id, userId] : [id]
+    const { rowCount } = await this.query(sql, params)
     return rowCount > 0
   }
 
@@ -92,6 +101,9 @@ class PgStorage extends StorageInterface {
   // --- Templates ---
 
   async listTemplates(userId) {
+    const conditions = ['is_template = true']
+    const params = []
+    if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`) }
     const { rows } = await this.query(`
       SELECT id, title,
         data->>'theme' as theme,
@@ -101,17 +113,18 @@ class PgStorage extends StorageInterface {
         created_at as "createdAt",
         data->'slides'->0->'background' as thumbnail
       FROM presentations
-      WHERE is_template = true
+      WHERE ${conditions.join(' AND ')}
       ORDER BY updated_at DESC
-    `)
+    `, params)
     return rows.map(r => ({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
   }
 
   async getTemplate(id, userId) {
-    const { rows } = await this.query(
-      'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND is_template = true',
-      [id]
-    )
+    const sql = userId
+      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true'
+      : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND is_template = true'
+    const params = userId ? [id, userId] : [id]
+    const { rows } = await this.query(sql, params)
     if (!rows.length) return null
     const r = rows[0]
     return { ...r.data, id: r.id, createdAt: r.createdAt, updatedAt: r.updatedAt }
@@ -134,15 +147,22 @@ class PgStorage extends StorageInterface {
     if (!existing) return null
     const now = new Date().toISOString()
     const merged = { ...existing, ...data, id, updatedAt: now }
-    await this.query(
-      'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4 AND is_template = true',
-      [merged.title || 'Untitled', JSON.stringify(merged), now, id]
-    )
+    const sql = userId
+      ? 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4 AND user_id = $5 AND is_template = true'
+      : 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4 AND is_template = true'
+    const params = userId
+      ? [merged.title || 'Untitled', JSON.stringify(merged), now, id, userId]
+      : [merged.title || 'Untitled', JSON.stringify(merged), now, id]
+    await this.query(sql, params)
     return merged
   }
 
   async deleteTemplate(id, userId) {
-    const { rowCount } = await this.query('DELETE FROM presentations WHERE id = $1 AND is_template = true', [id])
+    const sql = userId
+      ? 'DELETE FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true'
+      : 'DELETE FROM presentations WHERE id = $1 AND is_template = true'
+    const params = userId ? [id, userId] : [id]
+    const { rowCount } = await this.query(sql, params)
     return rowCount > 0
   }
 
@@ -159,22 +179,38 @@ class PgStorage extends StorageInterface {
   // --- Sharing ---
 
   async createShareToken(presentationId, userId) {
-    const { rows } = await this.query('SELECT id, share_token, share_enabled FROM presentations WHERE id = $1', [presentationId])
+    const sql = userId
+      ? 'SELECT id, share_token, share_enabled FROM presentations WHERE id = $1 AND user_id = $2'
+      : 'SELECT id, share_token, share_enabled FROM presentations WHERE id = $1'
+    const params = userId ? [presentationId, userId] : [presentationId]
+    const { rows } = await this.query(sql, params)
     if (!rows.length) return null
     const row = rows[0]
     if (row.share_enabled && row.share_token) return { token: row.share_token, shared: true }
     const token = row.share_token || uuidv4()
-    await this.query('UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2', [token, presentationId])
+    const updateSql = userId
+      ? 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2 AND user_id = $3'
+      : 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2'
+    const updateParams = userId ? [token, presentationId, userId] : [token, presentationId]
+    await this.query(updateSql, updateParams)
     return { token, shared: true }
   }
 
   async deleteShareToken(presentationId, userId) {
-    await this.query('UPDATE presentations SET share_enabled = false WHERE id = $1', [presentationId])
+    const sql = userId
+      ? 'UPDATE presentations SET share_enabled = false WHERE id = $1 AND user_id = $2'
+      : 'UPDATE presentations SET share_enabled = false WHERE id = $1'
+    const params = userId ? [presentationId, userId] : [presentationId]
+    await this.query(sql, params)
     return { shared: false }
   }
 
   async getShareStatus(presentationId, userId) {
-    const { rows } = await this.query('SELECT share_token, share_enabled FROM presentations WHERE id = $1', [presentationId])
+    const sql = userId
+      ? 'SELECT share_token, share_enabled FROM presentations WHERE id = $1 AND user_id = $2'
+      : 'SELECT share_token, share_enabled FROM presentations WHERE id = $1'
+    const params = userId ? [presentationId, userId] : [presentationId]
+    const { rows } = await this.query(sql, params)
     if (!rows.length) return { shared: false, token: null }
     return { shared: rows[0].share_enabled, token: rows[0].share_enabled ? rows[0].share_token : null }
   }
@@ -205,6 +241,10 @@ class PgStorage extends StorageInterface {
   }
 
   async listSnapshots(presentationId, userId) {
+    const ownerCheck = userId
+      ? await this.query('SELECT 1 FROM presentations WHERE id = $1 AND user_id = $2', [presentationId, userId])
+      : { rows: [1] }
+    if (!ownerCheck.rows.length) return []
     const { rows } = await this.query(
       `SELECT id, label as name, created_at as "createdAt",
         jsonb_array_length(COALESCE(data->'slides', '[]'::jsonb)) as "slideCount"
@@ -222,8 +262,22 @@ class PgStorage extends StorageInterface {
   }
 
   async deleteSnapshot(presentationId, snapshotId, userId) {
+    if (userId) {
+      const { rows } = await this.query('SELECT 1 FROM presentations WHERE id = $1 AND user_id = $2', [presentationId, userId])
+      if (!rows.length) return false
+    }
     await this.query('DELETE FROM snapshots WHERE id = $1 AND presentation_id = $2', [snapshotId, presentationId])
     return true
+  }
+
+  async getSnapshotData(presentationId, snapshotId, userId) {
+    if (userId) {
+      const { rows } = await this.query('SELECT 1 FROM presentations WHERE id = $1 AND user_id = $2', [presentationId, userId])
+      if (!rows.length) return null
+    }
+    const { rows } = await this.query('SELECT data FROM snapshots WHERE id = $1 AND presentation_id = $2', [snapshotId, presentationId])
+    if (!rows.length) return null
+    return typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data
   }
 
   // --- GitHub config ---
@@ -231,7 +285,8 @@ class PgStorage extends StorageInterface {
   async getGithubConfig(userId) {
     if (!userId) return { token: '', owner: '', repo: '', pagesUrl: '' }
     const { rows } = await this.query('SELECT token, owner, repo, pages_url as "pagesUrl" FROM github_configs WHERE user_id = $1', [userId])
-    return rows.length ? rows[0] : { token: '', owner: '', repo: '', pagesUrl: '' }
+    if (!rows.length) return { token: '', owner: '', repo: '', pagesUrl: '' }
+    return { ...rows[0], token: decrypt(rows[0].token || '') }
   }
 
   async setGithubConfig(config, userId) {
@@ -243,10 +298,56 @@ class PgStorage extends StorageInterface {
       repo: config.repo !== undefined ? config.repo : existing.repo,
       pagesUrl: config.pagesUrl !== undefined ? config.pagesUrl : (existing.pagesUrl || ''),
     }
+    const encryptedToken = encrypt(updated.token)
     await this.query(
       `INSERT INTO github_configs (user_id, token, owner, repo, pages_url) VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id) DO UPDATE SET token = $2, owner = $3, repo = $4, pages_url = $5`,
-      [userId, updated.token, updated.owner, updated.repo, updated.pagesUrl]
+      [userId, encryptedToken, updated.owner, updated.repo, updated.pagesUrl]
+    )
+    return updated
+  }
+
+  // --- Zotero ---
+
+  async getZoteroConfig(userId) {
+    if (!userId) return { zoteroUserId: '', apiKey: '' }
+    const { rows } = await this.query('SELECT zotero_user_id as "zoteroUserId", api_key as "apiKey" FROM zotero_configs WHERE user_id = $1', [userId])
+    if (!rows.length) return { zoteroUserId: '', apiKey: '' }
+    return { zoteroUserId: rows[0].zoteroUserId || '', apiKey: decrypt(rows[0].apiKey || '') }
+  }
+
+  async setZoteroConfig(config, userId) {
+    if (!userId) return config
+    const encryptedKey = encrypt(config.apiKey || '')
+    await this.query(
+      `INSERT INTO zotero_configs (user_id, zotero_user_id, api_key) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET zotero_user_id = $2, api_key = $3`,
+      [userId, config.zoteroUserId || '', encryptedKey]
+    )
+    return { zoteroUserId: config.zoteroUserId || '', apiKey: config.apiKey || '' }
+  }
+
+  // --- Zenodo ---
+
+  async getZenodoConfig(userId) {
+    if (!userId) return { token: '', sandbox: false }
+    const { rows } = await this.query('SELECT token, sandbox FROM zenodo_configs WHERE user_id = $1', [userId])
+    if (!rows.length) return { token: '', sandbox: false }
+    return { token: decrypt(rows[0].token || ''), sandbox: rows[0].sandbox || false }
+  }
+
+  async setZenodoConfig(config, userId) {
+    if (!userId) return config
+    const existing = await this.getZenodoConfig(userId)
+    const updated = {
+      token: config.token !== undefined ? config.token : existing.token,
+      sandbox: config.sandbox !== undefined ? config.sandbox : existing.sandbox,
+    }
+    const encryptedToken = encrypt(updated.token)
+    await this.query(
+      `INSERT INTO zenodo_configs (user_id, token, sandbox) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET token = $2, sandbox = $3`,
+      [userId, encryptedToken, updated.sandbox]
     )
     return updated
   }
@@ -332,6 +433,93 @@ class PgStorage extends StorageInterface {
 
   async deletePluginStorage(userId, pluginId, key) {
     await this.query(`DELETE FROM plugin_storage WHERE user_id = $1 AND plugin_id = $2 AND key = $3`, [userId, pluginId, key])
+  }
+
+  // --- Datasets ---
+
+  async createDataset(data, userId) {
+    const id = uuidv4()
+    const now = new Date().toISOString()
+    await this.query(
+      `INSERT INTO datasets (id, user_id, name, filename, format, storage_key, columns, row_count, byte_size, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+       ON CONFLICT (user_id, name) DO UPDATE SET
+         filename = EXCLUDED.filename, format = EXCLUDED.format, storage_key = EXCLUDED.storage_key,
+         columns = EXCLUDED.columns, row_count = EXCLUDED.row_count, byte_size = EXCLUDED.byte_size, updated_at = EXCLUDED.updated_at`,
+      [id, userId, data.name, data.filename, data.format, data.storageKey, JSON.stringify(data.columns), data.rowCount, data.byteSize, now]
+    )
+    const { rows } = await this.query('SELECT * FROM datasets WHERE user_id = $1 AND name = $2', [userId, data.name])
+    const r = rows[0]
+    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+  }
+
+  async listDatasets(userId) {
+    const { rows } = await this.query(
+      'SELECT id, name, filename, format, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE user_id = $1 ORDER BY updated_at DESC',
+      [userId]
+    )
+    return rows.map(r => ({ id: r.id, name: r.name, filename: r.filename, format: r.format, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }))
+  }
+
+  async getDataset(id, userId) {
+    const { rows } = await this.query(
+      'SELECT id, name, filename, format, storage_key, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    )
+    if (!rows.length) return null
+    const r = rows[0]
+    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+  }
+
+  async getDatasetByName(name, userId) {
+    const { rows } = await this.query(
+      'SELECT id, name, filename, format, storage_key, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE name = $1 AND user_id = $2',
+      [name, userId]
+    )
+    if (!rows.length) return null
+    const r = rows[0]
+    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+  }
+
+  async updateDataset(id, data, userId) {
+    const sets = []
+    const params = []
+    let i = 1
+    if (data.name) { sets.push(`name = $${i++}`); params.push(data.name) }
+    if (!sets.length) return this.getDataset(id, userId)
+    sets.push(`updated_at = NOW()`)
+    params.push(id, userId)
+    await this.query(`UPDATE datasets SET ${sets.join(', ')} WHERE id = $${i++} AND user_id = $${i}`, params)
+    return this.getDataset(id, userId)
+  }
+
+  async deleteDataset(id, userId) {
+    const ds = await this.getDataset(id, userId)
+    if (!ds) return null
+    await this.query('DELETE FROM datasets WHERE id = $1 AND user_id = $2', [id, userId])
+    return ds
+  }
+
+  async linkDatasetToPresentation(presentationId, datasetId, alias) {
+    await this.query(
+      `INSERT INTO presentation_datasets (presentation_id, dataset_id, alias) VALUES ($1, $2, $3)
+       ON CONFLICT (presentation_id, dataset_id) DO UPDATE SET alias = $3`,
+      [presentationId, datasetId, alias || null]
+    )
+  }
+
+  async unlinkDatasetFromPresentation(presentationId, datasetId) {
+    await this.query('DELETE FROM presentation_datasets WHERE presentation_id = $1 AND dataset_id = $2', [presentationId, datasetId])
+  }
+
+  async getPresentationDatasets(presentationId) {
+    const { rows } = await this.query(
+      `SELECT d.id, d.name, d.filename, d.format, d.storage_key, d.columns, d.row_count, d.byte_size, d.created_at, d.updated_at, pd.alias
+       FROM datasets d INNER JOIN presentation_datasets pd ON pd.dataset_id = d.id
+       WHERE pd.presentation_id = $1 ORDER BY d.name`,
+      [presentationId]
+    )
+    return rows.map(r => ({ id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at, alias: r.alias }))
   }
 }
 

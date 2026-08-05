@@ -18,8 +18,15 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
-const { isR2Enabled, streamFromR2 } = require('./services/r2')
+const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deleteUploadsForPresentation } = require('./services/upload-service')
+const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const {
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
+  requireValidId, requireValidSlug, requireValidSHA, validateUpload,
+  sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
+  safeErrorMessage,
+} = require('./middleware/security')
 
 const DATA_DIR = process.env.SLIDES_DATA_DIR || path.join(__dirname, 'data')
 const UPLOADS_BASE = process.env.SLIDES_UPLOADS_DIR || path.join(__dirname, 'uploads')
@@ -50,7 +57,8 @@ const multerStorage = multer.diskStorage({
 })
 const upload = multer({ storage: multerStorage, limits: { fileSize: 500 * 1024 * 1024 } }) // 500MB limit for video
 
-app.use(cors())
+app.use(helmetConfig())
+app.use(cors(corsConfig()))
 
 // Stripe webhook — must be before express.json() to get raw body
 const stripeService = require('./services/stripe')
@@ -66,10 +74,11 @@ if (stripeService.isEnabled()) {
   })
 }
 
-app.use(express.json({ limit: '50mb' }))
+app.use(express.json({ limit: '10mb' }))
 if (isR2Enabled()) {
   app.get('/uploads/*', async (req, res) => {
     const urlPath = req.path.replace(/^\/uploads\//, '')
+    if (urlPath.includes('..') || urlPath.startsWith('/')) return res.status(400).send('Invalid path')
     try {
       const { rows } = await storage.query(
         'SELECT storage_key, content_type FROM uploads WHERE filename = $1',
@@ -87,7 +96,16 @@ if (isR2Enabled()) {
     }
   })
 } else {
-  app.use('/uploads', express.static(UPLOADS_DIR))
+  app.use('/uploads', express.static(UPLOADS_DIR, {
+    setHeaders(res, filePath) {
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      const ext = path.extname(filePath).toLowerCase()
+      if (ext === '.html' || ext === '.htm' || ext === '.svg') {
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.setHeader('Content-Disposition', 'attachment')
+      }
+    }
+  }))
 }
 
 // ---- Docs API (public, before auth) ----
@@ -101,30 +119,32 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Introduction', link: 'guide/getting-started' },
       { text: 'Installation', link: 'guide/installation' },
       { text: 'Keyboard Shortcuts', link: 'guide/keyboard-shortcuts' },
+      { text: 'Your First Presentation', link: 'tutorials/first-presentation' },
     ],
     features: [
-      { text: 'Overview', link: 'features/overview' },
-      { text: 'Text & Formatting', link: 'features/text-formatting' },
-      { text: 'Shapes & Elements', link: 'features/shapes' },
-      { text: 'LaTeX & Math', link: 'features/latex' },
-      { text: 'Charts', link: 'features/charts' },
-      { text: 'Export & Sharing', link: 'features/export' },
-    ],
-    tutorials: [
-      { text: 'Your First Presentation', link: 'tutorials/first-presentation' },
-      { text: 'Academic Slides', link: 'tutorials/academic-slides' },
-      { text: 'Text & Typography', link: 'tutorials/text-typography' },
-      { text: 'Images', link: 'tutorials/images' },
-      { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
-      { text: 'Code, LaTeX & Markdown', link: 'tutorials/code-math' },
-      { text: 'Charts & Tables', link: 'tutorials/charts-tables' },
-      { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
-      { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
-      { text: 'Video & Audio', link: 'tutorials/media' },
       { text: 'Animations & Fragments', link: 'tutorials/animations' },
-      { text: 'Transitions', link: 'tutorials/transitions' },
+      { text: 'Charts', link: 'features/charts' },
+      { text: 'Charts & Tables', link: 'tutorials/charts-tables' },
+      { text: 'Citations & Bibliography', link: 'tutorials/citations' },
+      { text: 'Code, LaTeX & Markdown', link: 'tutorials/code-math' },
+      { text: 'Diagram Editor', link: 'tutorials/diagrams' },
+      { text: 'Equation Palette', link: 'tutorials/equation-palette' },
+      { text: 'Export & Sharing', link: 'features/export' },
+      { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
+      { text: 'Images', link: 'tutorials/images' },
+      { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
+      { text: 'LaTeX & Math', link: 'features/latex' },
+      { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
+      { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
+      { text: 'Shapes & Elements', link: 'features/shapes' },
+      { text: 'Text & Formatting', link: 'features/text-formatting' },
+      { text: 'Text & Typography', link: 'tutorials/text-typography' },
+      { text: 'Transitions', link: 'tutorials/transitions' },
       { text: 'Using LaTeX & Math', link: 'tutorials/using-latex' },
+      { text: 'Version Diff', link: 'features/version-diff' },
+      { text: 'Video & Audio', link: 'tutorials/media' },
+      { text: 'Zenodo Integration', link: 'features/zenodo' },
     ],
   }
   res.json(sidebar)
@@ -147,10 +167,10 @@ if (fs.existsSync(docsPublic)) {
 const userPluginsDir = path.join(DATA_DIR, 'plugins')
 const bundledPluginsDir = path.join(__dirname, '..', 'plugins')
 fs.ensureDirSync(userPluginsDir)
-app.use('/api/plugins/:slug/assets', (req, res, next) => {
-  const safePath = path.normalize(req.params.slug).replace(/\.\./g, '')
-  const userDir = path.join(userPluginsDir, safePath, 'dist')
-  const bundledDir = path.join(bundledPluginsDir, safePath, 'dist')
+app.use('/api/plugins/:slug/assets', requireValidSlug(), (req, res, next) => {
+  const slug = req.params.slug
+  const userDir = path.join(userPluginsDir, slug, 'dist')
+  const bundledDir = path.join(bundledPluginsDir, slug, 'dist')
   if (fs.existsSync(userDir)) {
     express.static(userDir)(req, res, next)
   } else if (fs.existsSync(bundledDir)) {
@@ -246,6 +266,7 @@ if (IS_CLOUD) {
 
 // Protect all /api routes in cloud mode
 app.use('/api', requireUser)
+app.use('/api', apiLimiter)
 
 // Plan quota check helper
 async function checkPresentationQuota(req, res) {
@@ -279,7 +300,7 @@ app.get('/api/me', async (req, res) => {
       [req.userId]
     )
     const { rows: storageRows } = await storage.query(
-      'SELECT COALESCE(storage_used_bytes, 0)::bigint as used FROM users WHERE id = $1', [req.userId]
+      'SELECT COALESCE(SUM(size_bytes), 0)::bigint as used FROM uploads WHERE user_id = $1', [req.userId]
     )
     res.json({
       plan,
@@ -297,7 +318,7 @@ app.get('/api/me', async (req, res) => {
 
 // ---- Billing API ----
 if (IS_CLOUD && stripeService.isEnabled()) {
-  app.post('/api/billing/checkout', requireUser, async (req, res) => {
+  app.post('/api/billing/checkout', authLimiter, requireUser, async (req, res) => {
     try {
       const { rows } = await storage.query('SELECT email, name FROM users WHERE id = $1', [req.userId])
       if (!rows[0]) return res.status(404).json({ error: 'User not found' })
@@ -377,8 +398,8 @@ function transcodeVideoIfNeeded(filePath) {
 // Shape SVG rendering helper (mirrors client/src/utils/shapeUtils.js)
 function shapeSvgString(el) {
   const w = el.width, h = el.height
-  const fill = el.fill || '#6366f1'
-  const stroke = el.stroke || 'none'
+  const fill = sanitizeCSSValue(el.fill) || '#6366f1'
+  const stroke = sanitizeCSSValue(el.stroke) || 'none'
   const sw = el.strokeWidth || 0
   const shape = el.shape || 'rect'
   let inner = ''
@@ -406,8 +427,8 @@ function shapeSvgString(el) {
   let textEl = ''
   if (el.text) {
     const fs = el.fontSize || 16
-    const tc = el.textColor || '#ffffff'
-    textEl = `<text x="${w/2}" y="${h/2}" dominant-baseline="middle" text-anchor="middle" font-size="${fs}" fill="${tc}">${el.text}</text>`
+    const tc = sanitizeCSSValue(el.textColor) || '#ffffff'
+    textEl = `<text x="${w/2}" y="${h/2}" dominant-baseline="middle" text-anchor="middle" font-size="${fs}" fill="${tc}">${escapeHtml(el.text)}</text>`
   }
   return `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="position:absolute;inset:0;overflow:visible;">${inner}${textEl}</svg>`
 }
@@ -426,7 +447,8 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
 }
 
 // Generate reveal.js HTML
-function generateRevealHTML(presentation) {
+function generateRevealHTML(presentation, opts = {}) {
+  const customFonts = opts.customFonts || []
   const theme = presentation.theme || 'black'
   const transition = presentation.transition || 'slide'
   const slideW = presentation.slideWidth || 960
@@ -435,10 +457,10 @@ function generateRevealHTML(presentation) {
   const showPageNumbers = presentation.showPageNumbers || false
   const pageNumberFormat = presentation.pageNumberFormat || 'c/t'
   const footerFontSize = presentation.footerFontSize || 14
-  const footerFontFamily = presentation.footerFontFamily || '-apple-system,sans-serif'
+  const footerFontFamily = sanitizeCSSValue(presentation.footerFontFamily) || '-apple-system,sans-serif'
   const footerMode = presentation.footerMode || 'basic'
   const sequenceSections = presentation.sequenceSections || []
-  const footerInactiveColor = presentation.footerInactiveColor || 'rgba(255,255,255,0.25)'
+  const footerInactiveColor = sanitizeCSSValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
   const _seenGroups = new Set()
   const totalNumberedSlides = (presentation.slides || []).filter(s => {
     if (s.showPageNumber === false) return false
@@ -450,15 +472,18 @@ function generateRevealHTML(presentation) {
   }).length
   let pageCounter = 0
   const pageGroupSeen = new Set()
-  const footerColor = presentation.footerColor || 'rgba(255,255,255,0.65)'
+  const footerColor = sanitizeCSSValue(presentation.footerColor) || 'rgba(255,255,255,0.65)'
   const showPresentGrid = presentation.showPresentGrid || false
   const presentGridSize = presentation.gridSize || 40
   const codeTheme = presentation.codeTheme || 'monokai'
   const footerTimeMode = presentation.footerTimeMode || 'none'
   const timerDuration = presentation.timerDuration ?? 20
   const showTimeWidget = footerTimeMode !== 'none'
+  const laserPointer = presentation.laserPointer || 'off'
+  const bibliography = presentation.bibliography || []
+  const citationStyle = presentation.citationStyle || 'numbered'
 
-  const slidesHtml = (presentation.slides || []).map((slide, slideIndex) => {
+  const slideEntries = (presentation.slides || []).map((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background)
     const notes = slide.notes ? `<aside class="notes">${slide.notes}</aside>` : ''
 
@@ -471,12 +496,12 @@ function generateRevealHTML(presentation) {
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
       .map(el => {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
-          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};` : ''
+          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${sanitizeCSSValue(el.shadowColor)||'rgba(0,0,0,0.5)'};` : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
         const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
-        const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
-        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${el.fragmentIndex}"` : ''
+        const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
+        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
         if (el.type === 'text') {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex||1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
@@ -510,13 +535,15 @@ function generateRevealHTML(presentation) {
           const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
           const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : ''
           const clipClose = citeCaption ? '</div>' : ''
+          const safeSrc = sanitizeUrl(el.src)
+          const safeAlt = sanitizeAttr(el.alt || '')
           if (el.imageW != null) {
             const offX = el.imageOffsetX ?? 0
             const offY = el.imageOffsetY ?? 0
             const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
-            return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${el.src}" alt="${el.alt||''}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+            return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
           }
-          return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${el.src}" alt="${el.alt||''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+          return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
@@ -612,13 +639,13 @@ function generateRevealHTML(presentation) {
           return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'callout') {
-          const bg = el.calloutColor || '#ef4444'
-          const tc = el.calloutTextColor || '#ffffff'
+          const bg = sanitizeCSSValue(el.calloutColor) || '#ef4444'
+          const tc = sanitizeCSSValue(el.calloutTextColor) || '#ffffff'
           const fs = el.fontSize || 16
           return `<div${fragClass}${fragIdx} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
         }
         if (el.type === 'icon') {
-          const color = el.iconColor || '#ffffff'
+          const color = sanitizeCSSValue(el.iconColor) || '#ffffff'
           const sw = el.iconStrokeWidth || 2
           const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
           const path = iconPaths[el.iconName] || iconPaths['Star']
@@ -651,7 +678,8 @@ function generateRevealHTML(presentation) {
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
           if (el.muted) attrs.push('muted')
-          const posterAttr = el.poster ? ` poster="${el.poster}"` : ''
+          const safeVideoSrc = sanitizeUrl(el.src)
+          const posterAttr = el.poster ? ` poster="${sanitizeUrl(el.poster)}"` : ''
           const videoMime = /\.webm$/i.test(el.src) ? 'video/webm' : /\.og[gv]$/i.test(el.src) ? 'video/ogg' : 'video/mp4'
           const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
           const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
@@ -668,22 +696,22 @@ function generateRevealHTML(presentation) {
             vidScript = `<script>${parts.join(';')}</script>`
           }
           if (hasClip && el.loop) { const li = attrs.indexOf('loop'); if (li >= 0) attrs.splice(li, 1) }
-          return `<div${fragClass}${fragIdx} style="${style}"><video ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${el.objectFit||'contain'};display:block;"><source src="${el.src}" type="${videoMime}"></video>${vidScript}</div>`
+          return `<div${fragClass}${fragIdx} style="${style}"><video ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${el.objectFit||'contain'};display:block;"><source src="${safeVideoSrc}" type="${videoMime}"></video>${vidScript}</div>`
         }
         if (el.type === 'audio') {
           const attrs = ['controls']
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
           if (el.muted) attrs.push('muted')
-          return `<div${fragClass}${fragIdx} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${el.src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
+          return `<div${fragClass}${fragIdx} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${sanitizeUrl(el.src)}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
         }
         if (el.type === 'table') {
           const data = el.data || [['']]
-          const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
-          const cellBg = el.cellBgColor || 'transparent'
-          const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
+          const headerBg = sanitizeCSSValue(el.headerBgColor) || 'rgba(99,102,241,0.3)'
+          const cellBg = sanitizeCSSValue(el.cellBgColor) || 'transparent'
+          const borderColor = sanitizeCSSValue(el.borderColor) || 'rgba(255,255,255,0.2)'
           const borderWidth = el.borderWidth ?? 1
-          const textColor = el.textColor || '#ffffff'
+          const textColor = sanitizeCSSValue(el.textColor) || '#ffffff'
           const fontSize = el.fontSize || 14
           const cellPadding = el.cellPadding || 8
           const rows = data.map((row, ri) => {
@@ -736,7 +764,7 @@ function generateRevealHTML(presentation) {
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : (footerColor || 'rgba(255,255,255,0.9)')
+          const secActiveColor = typeof sec === 'object' && sec?.color ? sanitizeCSSValue(sec.color) : (footerColor || 'rgba(255,255,255,0.9)')
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
           return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
@@ -760,8 +788,96 @@ function generateRevealHTML(presentation) {
     const perSlideTransition = slide.transition ? ` data-transition="${_isCustom ? 'none' : slide.transition}"` : ''
     const customTransAttr = _isCustom ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    return `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`
+    return { slideIndex, html: `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
+  })
+
+  // Group slides into 2D columns (section-based or column-based)
+  const allSlides = presentation.slides || []
+  let columns
+  const hasColumns = allSlides.some(s => s.column !== undefined)
+  if (hasColumns) {
+    const colMap = {}
+    allSlides.forEach((s, i) => { const c = s.column ?? 0; if (!colMap[c]) colMap[c] = []; colMap[c].push(i) })
+    columns = Object.keys(colMap).map(Number).sort((a, b) => a - b).map(k => colMap[k])
+  } else if (presentation.sectionNav) {
+    const groups = []; const keyToGroup = {}
+    allSlides.forEach((s, i) => {
+      const key = s.activeSection !== undefined ? String(s.activeSection) : (s.section || '')
+      if (!key) { groups.push([i]) }
+      else if (keyToGroup[key]) { keyToGroup[key].push(i) }
+      else { const g = [i]; keyToGroup[key] = g; groups.push(g) }
+    })
+    columns = groups
+  } else {
+    columns = allSlides.map((_, i) => [i])
+  }
+
+  let slidesHtml = columns.map(idxs => {
+    const sections = idxs.map(i => slideEntries[i]?.html || '').join('\n')
+    if (idxs.length === 1) return sections
+    return `    <section>\n${sections}\n    </section>`
   }).join('\n')
+
+  if (bibliography.length > 0) {
+    const allText = (presentation.slides || []).flatMap(s => (s.elements || []).flatMap(el => {
+      const parts = []
+      if (el.content) parts.push(el.content)
+      if (el.citationText) parts.push(el.citationText)
+      return parts
+    })).join(' ')
+
+    function shortAuthor(authorStr) {
+      if (!authorStr) return ''
+      const authors = authorStr.split(/\s+and\s+/i).map(a => {
+        a = a.trim()
+        if (a.includes(',')) return a.split(',')[0].trim()
+        const parts = a.split(/\s+/)
+        return parts[parts.length - 1]
+      })
+      if (authors.length === 1) return authors[0]
+      if (authors.length === 2) return `${authors[0]} & ${authors[1]}`
+      return `${authors[0]} et al.`
+    }
+
+    const referencedEntries = bibliography.filter((entry, i) => {
+      if (allText.includes(`[${i + 1}]`)) return true
+      const short = shortAuthor(entry.author)
+      if (short && allText.includes(short)) return true
+      if (entry.key && allText.includes(entry.key)) return true
+      return false
+    })
+
+    if (referencedEntries.length > 0) {
+      const refItems = referencedEntries.map((entry, i) => {
+        const authors = entry.author || ''
+        const year = entry.year || ''
+        const title = escapeHtml(entry.title || '')
+        const journal = entry.journal || entry.booktitle || ''
+        const vol = entry.volume || ''
+        const pages = entry.pages || ''
+        const doi = entry.doi || ''
+        let line = `<span style="color:${sanitizeCSSValue(footerColor)};font-weight:700;margin-right:6px">[${i + 1}]</span>`
+        line += `${escapeHtml(authors)}`
+        if (year) line += ` (${escapeHtml(year)})`
+        line += `. ${title}.`
+        if (journal) line += ` <em>${escapeHtml(journal)}</em>`
+        if (vol) line += `, ${escapeHtml(vol)}`
+        if (pages) line += `, ${escapeHtml(pages)}`
+        line += '.'
+        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
+        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
+      }).join('\n          ')
+      const refSlide = `    <section>
+      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
+        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
+          ${refItems}
+        </div>
+      </div>
+    </section>`
+      slidesHtml += '\n' + refSlide
+    }
+  }
 
   return `<!doctype html>
 <html>
@@ -780,8 +896,8 @@ function generateRevealHTML(presentation) {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts.css">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
-  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">
-  <style>
+  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFonts.filter(f => f.source === 'google' && f.url).map(f => `\n  <link rel="stylesheet" href="${f.url}">`).join('')}
+  <style>${customFonts.filter(f => f.source === 'upload' && f.url).map(f => `\n    @font-face { font-family: '${f.familyName}'; src: url('${f.url}'); }`).join('')}
     @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-regular.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-regular.woff') format('woff'); }
     @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-bold.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-bold.woff') format('woff'); }
     @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-italic.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-italic.woff') format('woff'); }
@@ -847,7 +963,26 @@ function generateRevealHTML(presentation) {
     .fragment.flip-up { transform:perspective(600px) rotateX(90deg); opacity:0; transition:transform 0.6s ease, opacity 0.3s ease; }
     .fragment.flip-down { transform:perspective(600px) rotateX(-90deg); opacity:0; transition:transform 0.6s ease, opacity 0.3s ease; }
     .fragment.flip-up.visible,.fragment.flip-down.visible { transform:none; opacity:1; }
-  </style>${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
+    /* Laser pointer / spotlight */
+    #laser-dot { position:fixed;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle,#ff0000 0%,#ff0000 60%,rgba(255,0,0,0.4) 100%);box-shadow:0 0 8px 2px rgba(255,0,0,0.6);pointer-events:none;z-index:99999;display:none;transform:translate(-50%,-50%); }
+    #spotlight-overlay { position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;display:none; }
+    /* Slide overview panel */
+    #overview-toggle { position:fixed;top:16px;left:16px;z-index:9999;background:rgba(0,0,0,0.5);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;backdrop-filter:blur(4px);transition:background 0.15s; }
+    #overview-toggle:hover { background:rgba(0,0,0,0.75); }
+    :fullscreen #overview-toggle, :-webkit-full-screen #overview-toggle { display:none; }
+    #overview-panel { position:fixed;top:0;left:0;bottom:0;z-index:9998;background:rgba(15,15,25,0.95);backdrop-filter:blur(8px);border-right:1px solid rgba(255,255,255,0.1);transform:translateX(-100%);transition:transform 0.25s ease;overflow:hidden;display:flex;flex-direction:column; }
+    #overview-panel.open { transform:translateX(0); }
+    #overview-panel .ov-header { padding:12px 16px;font-size:12px;color:rgba(255,255,255,0.5);font-family:-apple-system,sans-serif;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;display:flex;align-items:center;justify-content:space-between; }
+    #overview-panel .ov-body { flex:1;overflow:auto;padding:10px; }
+    #overview-panel .ov-body.linear { display:flex;flex-direction:column;gap:8px;width:180px; }
+    #overview-panel .ov-body.sections { display:flex;flex-direction:row;gap:16px;min-width:min-content;padding:10px 14px; }
+    #overview-panel .ov-section-col { display:flex;flex-direction:column;gap:8px;min-width:140px; }
+    #overview-panel .ov-section-label { font-size:10px;color:rgba(255,255,255,0.45);font-family:-apple-system,sans-serif;text-transform:uppercase;letter-spacing:0.04em;padding:0 4px 4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px;white-space:nowrap; }
+    #overview-panel .ov-thumb { position:relative;border-radius:4px;overflow:hidden;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s,box-shadow 0.15s;flex-shrink:0; }
+    #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
+    #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
+    #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
+  </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 </head>
 <body>
   <div class="reveal">
@@ -856,6 +991,10 @@ ${slidesHtml}
     </div>
   </div>
   <button id="fs-btn" title="Enter fullscreen (F)" onclick="document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()">&#x26F6; Fullscreen</button>
+  <button id="overview-toggle" title="Slide overview (G)">&#x25A6; Overview</button>
+  <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${presentation.overviewLayout || 'linear'}" id="ov-body"></div></div>
+  <div id="laser-dot"></div>
+  <canvas id="spotlight-overlay"></canvas>
   <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
@@ -1019,6 +1158,168 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
+${(() => {
+  const overviewLayout = presentation.overviewLayout || 'linear'
+  const slideCoords = {}
+  columns.forEach((idxs, h) => { idxs.forEach((i, v) => { slideCoords[i] = { h, v } }) })
+  const flatSlides = (presentation.slides || []).map((s, i) => ({ h: slideCoords[i]?.h ?? i, v: slideCoords[i]?.v ?? 0, flatIdx: i, section: s.section || '' }))
+  return `
+    // ── Slide overview panel ──────────────────────────────────────────
+    (function() {
+      var LAYOUT = '${overviewLayout}';
+      var SLIDES = ${JSON.stringify(flatSlides)};
+      var panel = document.getElementById('overview-panel');
+      var body = document.getElementById('ov-body');
+      var toggle = document.getElementById('overview-toggle');
+      var countEl = document.getElementById('ov-count');
+      var thumbs = [];
+      var THUMB_W = LAYOUT === 'sections' ? 130 : 150;
+      var slideW = ${slideW}, slideH = ${slideH};
+      var thumbH = Math.round(THUMB_W * slideH / slideW);
+      var isOpen = false;
+
+      countEl.textContent = SLIDES.length;
+
+      function buildThumbnails() {
+        var allSections = document.querySelectorAll('.reveal .slides > section');
+        var slideEls = [];
+        allSections.forEach(function(sec) {
+          var nested = sec.querySelectorAll(':scope > section');
+          if (nested.length > 0) {
+            nested.forEach(function(s) { slideEls.push(s); });
+          } else {
+            slideEls.push(sec);
+          }
+        });
+
+        if (LAYOUT === 'sections') {
+          var groups = {};
+          var order = [];
+          SLIDES.forEach(function(s, i) {
+            var key = s.section || '(No Section)';
+            if (!groups[key]) { groups[key] = []; order.push(key); }
+            groups[key].push({ meta: s, idx: i, el: slideEls[i] });
+          });
+          order.forEach(function(key) {
+            var col = document.createElement('div');
+            col.className = 'ov-section-col';
+            var label = document.createElement('div');
+            label.className = 'ov-section-label';
+            label.textContent = key;
+            col.appendChild(label);
+            groups[key].forEach(function(item) {
+              col.appendChild(makeThumb(item.meta, item.idx, item.el));
+            });
+            body.appendChild(col);
+          });
+        } else {
+          SLIDES.forEach(function(s, i) {
+            body.appendChild(makeThumb(s, i, slideEls[i]));
+          });
+        }
+      }
+
+      function makeThumb(meta, idx, srcEl) {
+        var wrap = document.createElement('div');
+        wrap.className = 'ov-thumb';
+        wrap.style.width = THUMB_W + 'px';
+        wrap.style.height = thumbH + 'px';
+        var num = document.createElement('div');
+        num.className = 'ov-thumb-num';
+        num.textContent = idx + 1;
+        wrap.appendChild(num);
+        if (srcEl) {
+          var clone = srcEl.cloneNode(true);
+          clone.style.cssText = 'position:absolute;top:0;left:0;width:' + slideW + 'px;height:' + slideH + 'px;transform:scale(' + (THUMB_W/slideW) + ');transform-origin:top left;pointer-events:none;overflow:hidden;';
+          clone.querySelectorAll('.reveal-footer').forEach(function(f) { f.remove(); });
+          clone.querySelectorAll('iframe').forEach(function(f) { f.remove(); });
+          clone.querySelectorAll('video').forEach(function(v) { v.pause(); v.removeAttribute('autoplay'); });
+          wrap.appendChild(clone);
+        } else {
+          wrap.style.background = 'rgba(30,30,46,0.8)';
+        }
+        wrap.onclick = function() { Reveal.slide(meta.h, meta.v); updateActive(); };
+        thumbs.push({ el: wrap, h: meta.h, v: meta.v });
+        return wrap;
+      }
+
+      function updateActive() {
+        var state = Reveal.getIndices();
+        thumbs.forEach(function(t) {
+          if (t.h === state.h && t.v === state.v) t.el.classList.add('active');
+          else t.el.classList.remove('active');
+        });
+        var active = body.querySelector('.ov-thumb.active');
+        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      }
+
+      function togglePanel() {
+        isOpen = !isOpen;
+        if (isOpen) panel.classList.add('open');
+        else panel.classList.remove('open');
+      }
+
+      toggle.onclick = togglePanel;
+      document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'g' || e.key === 'G') { e.preventDefault(); togglePanel(); }
+      });
+
+      Reveal.on('ready', function() { buildThumbnails(); updateActive(); });
+      Reveal.on('slidechanged', function() { updateActive(); });
+    })();
+`
+})()}
+${laserPointer !== 'off' ? `
+    // ── Laser pointer / spotlight ────────────────────────────────────
+    (function() {
+      var mode = '${laserPointer}';
+      var active = false;
+      var dot = document.getElementById('laser-dot');
+      var canvas = document.getElementById('spotlight-overlay');
+      var ctx = canvas.getContext('2d');
+      var mx = 0, my = 0;
+
+      function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if (active && mode === 'spotlight') drawSpotlight(); }
+      window.addEventListener('resize', resize);
+      resize();
+
+      function drawSpotlight() {
+        var w = canvas.width, h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        var grad = ctx.createRadialGradient(mx, my, 0, mx, my, 120);
+        grad.addColorStop(0, 'rgba(0,0,0,1)');
+        grad.addColorStop(0.7, 'rgba(0,0,0,0.9)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(mx, my, 120, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      document.addEventListener('mousemove', function(e) {
+        mx = e.clientX; my = e.clientY;
+        if (!active) return;
+        if (mode === 'dot') { dot.style.left = mx + 'px'; dot.style.top = my + 'px'; }
+        else { drawSpotlight(); }
+      });
+
+      document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'l' || e.key === 'L') {
+          e.preventDefault();
+          active = !active;
+          if (mode === 'dot') { dot.style.display = active ? 'block' : 'none'; }
+          else { canvas.style.display = active ? 'block' : 'none'; if (active) drawSpotlight(); }
+        }
+      });
+    })();
+` : ''}
 ${showTimeWidget ? `
     (function() {
       var mode = '${footerTimeMode}';
@@ -1045,9 +1346,9 @@ ${showTimeWidget ? `
 
 function getBackgroundAttrs(bg) {
   if (!bg) return ''
-  if (bg.type === 'color' && bg.color) return ` data-background-color="${bg.color}"`
-  if (bg.type === 'image' && bg.image) return ` data-background-image="${bg.image}" data-background-size="${bg.size || 'cover'}" data-background-position="${bg.position || 'center'}"`
-  if (bg.type === 'gradient' && bg.gradient) return ` data-background-gradient="${bg.gradient}"`
+  if (bg.type === 'color' && bg.color) return ` data-background-color="${sanitizeAttr(bg.color)}"`
+  if (bg.type === 'image' && bg.image) return ` data-background-image="${sanitizeUrl(bg.image)}" data-background-size="${sanitizeAttr(bg.size || 'cover')}" data-background-position="${sanitizeAttr(bg.position || 'center')}"`
+  if (bg.type === 'gradient' && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`
   return ''
 }
 
@@ -1176,7 +1477,7 @@ app.post('/api/templates', async (req, res) => {
 })
 
 // GET /api/templates/:id
-app.get('/api/templates/:id', async (req, res) => {
+app.get('/api/templates/:id', requireValidId(), async (req, res) => {
   try {
     const template = await storage.getTemplate(req.params.id, req.userId)
     if (!template) return res.status(404).json({ error: 'Not found' })
@@ -1187,7 +1488,7 @@ app.get('/api/templates/:id', async (req, res) => {
 })
 
 // PUT /api/templates/:id
-app.put('/api/templates/:id', async (req, res) => {
+app.put('/api/templates/:id', requireValidId(), async (req, res) => {
   try {
     const updated = await storage.updateTemplate(req.params.id, req.body, req.userId)
     if (!updated) return res.status(404).json({ error: 'Not found' })
@@ -1198,7 +1499,7 @@ app.put('/api/templates/:id', async (req, res) => {
 })
 
 // DELETE /api/templates/:id
-app.delete('/api/templates/:id', async (req, res) => {
+app.delete('/api/templates/:id', requireValidId(), async (req, res) => {
   try {
     const deleted = await storage.deleteTemplate(req.params.id, req.userId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
@@ -1209,7 +1510,7 @@ app.delete('/api/templates/:id', async (req, res) => {
 })
 
 // POST /api/presentations/:id/save-as-template
-app.post('/api/presentations/:id/save-as-template', async (req, res) => {
+app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req, res) => {
   try {
     const template = await storage.saveAsTemplate(req.params.id, req.body.title, req.userId)
     if (!template) return res.status(404).json({ error: 'Not found' })
@@ -1220,7 +1521,7 @@ app.post('/api/presentations/:id/save-as-template', async (req, res) => {
 })
 
 // GET /api/presentations/:id - get full presentation
-app.get('/api/presentations/:id', async (req, res) => {
+app.get('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
     const presentation = await storage.getPresentation(req.params.id, req.userId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
@@ -1231,7 +1532,7 @@ app.get('/api/presentations/:id', async (req, res) => {
 })
 
 // PUT /api/presentations/:id - update
-app.put('/api/presentations/:id', async (req, res) => {
+app.put('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
     const updated = await storage.updatePresentation(req.params.id, req.body, req.userId)
     if (!updated) return res.status(404).json({ error: 'Not found' })
@@ -1244,6 +1545,8 @@ app.put('/api/presentations/:id', async (req, res) => {
 // GET /api/presentations/:id/uploads - list uploaded files
 app.get('/api/presentations/:id/uploads', async (req, res) => {
   try {
+    const pres = await storage.getPresentation(req.params.id, req.userId)
+    if (!pres) return res.status(404).json({ error: 'Not found' })
     const { rows } = await storage.query(
       'SELECT id, filename, content_type, size_bytes, created_at FROM uploads WHERE presentation_id = $1 ORDER BY created_at DESC',
       [req.params.id]
@@ -1261,8 +1564,290 @@ app.get('/api/presentations/:id/uploads', async (req, res) => {
   }
 })
 
+// GET /api/uploads - list all uploaded files for the current user
+app.get('/api/uploads', async (req, res) => {
+  try {
+    const { rows } = await storage.query(
+      `SELECT u.id, u.filename, u.content_type, u.size_bytes, u.created_at, u.presentation_id,
+              p.title as presentation_title
+       FROM uploads u
+       LEFT JOIN presentations p ON p.id = u.presentation_id
+       WHERE u.user_id = $1
+       ORDER BY u.created_at DESC`,
+      [req.userId]
+    )
+    res.json(rows.map(r => ({
+      id: r.id,
+      url: `/uploads/${r.filename}`,
+      name: r.filename.split('/').pop(),
+      contentType: r.content_type,
+      size: Number(r.size_bytes || 0),
+      createdAt: r.created_at,
+      presentationId: r.presentation_id,
+      presentationTitle: r.presentation_title || null,
+    })))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/uploads/:id - delete a single uploaded file
+app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
+  try {
+    const { rows } = await storage.query(
+      'SELECT id, storage_key, size_bytes FROM uploads WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.userId]
+    )
+    if (!rows.length) return res.status(404).json({ error: 'File not found' })
+
+    if (isR2Enabled()) {
+      try { await deleteFromR2(rows[0].storage_key) } catch (e) {
+        console.error('R2 delete failed:', e.message)
+      }
+    } else {
+      const localPath = path.join(UPLOADS_DIR, rows[0].storage_key.replace(/^anonymous\//, ''))
+      if (fs.existsSync(localPath)) fs.removeSync(localPath)
+    }
+
+    await storage.query('DELETE FROM uploads WHERE id = $1', [req.params.id])
+    res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Datasets ---
+
+// POST /api/datasets — upload a dataset (CSV, JSON, TSV)
+app.post('/api/datasets', uploadLimiter, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+  try {
+    const name = req.body.name || undefined
+    const result = await ingestDataset(req.file.path, req.file.originalname, {
+      userId: req.userId, storage, localDir: DATA_DIR,
+    })
+    if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+    const ds = await storage.createDataset(result, req.userId)
+    res.status(201).json(ds)
+  } catch (err) {
+    if (req.file && req.file.path) fs.removeSync(req.file.path)
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// GET /api/datasets — list user's datasets
+app.get('/api/datasets', async (req, res) => {
+  try {
+    res.json(await storage.listDatasets(req.userId))
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/datasets/:id — get dataset metadata
+app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    res.json(ds)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
+app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
+    const opts = {}
+    if (req.query.columns) opts.columns = req.query.columns.split(',')
+    if (req.query.limit) opts.limit = parseInt(req.query.limit)
+    if (req.query.offset) opts.offset = parseInt(req.query.offset)
+    if (req.query.orderBy) opts.orderBy = req.query.orderBy
+    if (req.query.where) {
+      try { opts.where = JSON.parse(req.query.where) } catch {}
+    }
+    const result = applyQuery(rows, ds.columns, opts)
+    res.json(result)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// PATCH /api/datasets/:id — rename a dataset
+app.patch('/api/datasets/:id', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.updateDataset(req.params.id, { name: req.body.name }, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    res.json(ds)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /api/datasets/:id — delete a dataset and its stored file
+app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.deleteDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    try { await deleteDatasetFile(ds.storageKey, DATA_DIR) } catch (e) {
+      console.error('Dataset file cleanup failed:', e.message)
+    }
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST /api/presentations/:pid/datasets — link a dataset to a presentation
+app.post('/api/presentations/:pid/datasets', async (req, res) => {
+  const { pid } = req.params
+  const { datasetId, alias } = req.body
+  if (!datasetId) return res.status(400).json({ error: 'datasetId is required' })
+  try {
+    const pres = await storage.getPresentation(pid, req.userId)
+    if (!pres) return res.status(404).json({ error: 'Presentation not found' })
+    const ds = await storage.getDataset(datasetId, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    await storage.linkDatasetToPresentation(pid, datasetId, alias)
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
+app.delete('/api/presentations/:pid/datasets/:did', async (req, res) => {
+  try {
+    await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/presentations/:pid/datasets — list datasets linked to a presentation
+app.get('/api/presentations/:pid/datasets', async (req, res) => {
+  try {
+    res.json(await storage.getPresentationDatasets(req.params.pid))
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
+app.get('/api/presentations/:pid/datasets/:did/data', async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.did, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
+    const opts = {}
+    if (req.query.columns) opts.columns = req.query.columns.split(',')
+    if (req.query.limit) opts.limit = parseInt(req.query.limit)
+    if (req.query.offset) opts.offset = parseInt(req.query.offset)
+    if (req.query.orderBy) opts.orderBy = req.query.orderBy
+    if (req.query.where) {
+      try { opts.where = JSON.parse(req.query.where) } catch {}
+    }
+    const result = applyQuery(rows, ds.columns, opts)
+    res.json(result)
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// --- Custom Fonts ---
+
+// GET /api/fonts - list user's custom fonts
+app.get('/api/fonts', async (req, res) => {
+  try {
+    const { rows } = await storage.query(
+      'SELECT id, family_name, source, url, created_at FROM user_fonts WHERE user_id = $1 ORDER BY family_name',
+      [req.userId]
+    )
+    res.json(rows.map(r => ({ id: r.id, familyName: r.family_name, source: r.source, url: r.url, createdAt: r.created_at })))
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
+app.post('/api/fonts/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const ext = path.extname(req.file.originalname).toLowerCase()
+    if (!['.ttf', '.otf', '.woff', '.woff2'].includes(ext)) {
+      fs.removeSync(req.file.path)
+      return res.status(400).json({ error: 'Only TTF, OTF, WOFF, and WOFF2 files are supported' })
+    }
+    const familyName = req.body.familyName || path.basename(req.file.originalname, ext)
+
+    let fontUrl
+    if (isR2Enabled()) {
+      const filename = `${uuidv4()}${ext}`
+      const storageKey = `fonts/${req.userId}/${filename}`
+      const contentType = {
+        '.ttf': 'font/ttf', '.otf': 'font/otf', '.woff': 'font/woff', '.woff2': 'font/woff2',
+      }[ext] || 'application/octet-stream'
+      const buffer = fs.readFileSync(req.file.path)
+      await putBufferToR2(storageKey, buffer, contentType)
+      fs.removeSync(req.file.path)
+      fontUrl = `/api/fonts/file/${filename}`
+      await storage.query(
+        'INSERT INTO uploads (presentation_id, user_id, filename, storage_key, content_type, size_bytes) VALUES ($1, $2, $3, $4, $5, $6)',
+        [null, req.userId, `fonts/${filename}`, storageKey, contentType, buffer.length]
+      )
+    } else {
+      const fontsDir = path.join(UPLOADS_DIR, 'fonts')
+      fs.ensureDirSync(fontsDir)
+      const filename = `${uuidv4()}${ext}`
+      fs.moveSync(req.file.path, path.join(fontsDir, filename))
+      fontUrl = `/uploads/fonts/${filename}`
+    }
+
+    const id = uuidv4()
+    await storage.query(
+      'INSERT INTO user_fonts (id, user_id, family_name, source, url) VALUES ($1, $2, $3, $4, $5)',
+      [id, req.userId, familyName, 'upload', fontUrl]
+    )
+    res.json({ id, familyName, source: 'upload', url: fontUrl })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/fonts/file/:filename - serve uploaded font files from R2
+app.get('/api/fonts/file/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename
+    if (filename.includes('..') || filename.includes('/')) return res.status(400).send('Invalid')
+    if (isR2Enabled()) {
+      const { rows } = await storage.query(
+        "SELECT storage_key, content_type FROM uploads WHERE filename = $1",
+        [`fonts/${filename}`]
+      )
+      if (!rows.length) return res.status(404).send('Not found')
+      const { body, contentType } = await streamFromR2(rows[0].storage_key)
+      res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      body.pipe(res)
+    } else {
+      const filePath = path.join(UPLOADS_DIR, 'fonts', filename)
+      if (!fs.existsSync(filePath)) return res.status(404).send('Not found')
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      res.sendFile(filePath)
+    }
+  } catch (err) { res.status(500).send('Error') }
+})
+
+// POST /api/fonts/google - add a Google Font by family name
+app.post('/api/fonts/google', async (req, res) => {
+  try {
+    const { familyName } = req.body
+    if (!familyName || typeof familyName !== 'string') return res.status(400).json({ error: 'familyName is required' })
+    const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(familyName)}:wght@100;200;300;400;500;600;700;800;900&display=swap`
+    const id = uuidv4()
+    await storage.query(
+      'INSERT INTO user_fonts (id, user_id, family_name, source, url) VALUES ($1, $2, $3, $4, $5)',
+      [id, req.userId, familyName, 'google', url]
+    )
+    res.json({ id, familyName, source: 'google', url })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /api/fonts/:id - remove a custom font
+app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
+  try {
+    const { rowCount } = await storage.query(
+      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]
+    )
+    if (!rowCount) return res.status(404).json({ error: 'Font not found' })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
 // DELETE /api/presentations/:id
-app.delete('/api/presentations/:id', async (req, res) => {
+app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
     if (isR2Enabled()) {
       await deleteUploadsForPresentation(req.params.id, storage)
@@ -1276,7 +1861,7 @@ app.delete('/api/presentations/:id', async (req, res) => {
 })
 
 // POST /api/presentations/:id/duplicate
-app.post('/api/presentations/:id/duplicate', async (req, res) => {
+app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) => {
   try {
     if (!(await checkPresentationQuota(req, res))) return
     const copy = await storage.duplicatePresentation(req.params.id, req.userId)
@@ -1288,7 +1873,7 @@ app.post('/api/presentations/:id/duplicate', async (req, res) => {
 })
 
 // POST /api/upload (legacy global upload)
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     let filePath = req.file.path
@@ -1308,9 +1893,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
+    const pres = await storage.getPresentation(req.params.id, req.userId)
+    if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
       filePath = transcodeVideoIfNeeded(filePath)
@@ -1328,8 +1915,10 @@ app.post('/api/presentations/:id/upload', upload.single('file'), async (req, res
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+  const pres = await storage.getPresentation(req.params.id, req.userId)
+  if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
   const tmpDir = path.join(os.tmpdir(), uuidv4())
   try {
     fs.ensureDirSync(tmpDir)
@@ -1409,7 +1998,7 @@ app.post('/api/render-manim', express.json(), async (req, res) => {
 })
 
 // GET /api/presentations/:id/export - download HTML
-app.get('/api/presentations/:id/export', async (req, res) => {
+app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
   try {
     const presentation = await storage.getPresentation(req.params.id, req.userId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
@@ -1424,7 +2013,7 @@ app.get('/api/presentations/:id/export', async (req, res) => {
 })
 
 // GET /api/presentations/:id/present - serve in browser
-app.get('/api/presentations/:id/present', async (req, res) => {
+app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => {
   try {
     const presentation = await storage.getPresentation(req.params.id, req.userId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
@@ -1442,7 +2031,7 @@ app.get('/api/presentations/:id/present', async (req, res) => {
 
 
 // POST /api/presentations/:id/share - enable sharing, return token
-app.post('/api/presentations/:id/share', async (req, res) => {
+app.post('/api/presentations/:id/share', requireValidId(), async (req, res) => {
   try {
     const result = await storage.createShareToken(req.params.id, req.userId)
     if (!result) return res.status(404).json({ error: 'Not found' })
@@ -1453,7 +2042,7 @@ app.post('/api/presentations/:id/share', async (req, res) => {
 })
 
 // DELETE /api/presentations/:id/share - disable sharing
-app.delete('/api/presentations/:id/share', async (req, res) => {
+app.delete('/api/presentations/:id/share', requireValidId(), async (req, res) => {
   try {
     res.json(await storage.deleteShareToken(req.params.id, req.userId))
   } catch (err) {
@@ -1462,7 +2051,7 @@ app.delete('/api/presentations/:id/share', async (req, res) => {
 })
 
 // GET /api/presentations/:id/share - get share status
-app.get('/api/presentations/:id/share', async (req, res) => {
+app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
   try {
     res.json(await storage.getShareStatus(req.params.id, req.userId))
   } catch (err) {
@@ -1471,7 +2060,7 @@ app.get('/api/presentations/:id/share', async (req, res) => {
 })
 
 // GET /share/:token - public view of shared presentation
-app.get('/share/:token', async (req, res) => {
+app.get('/share/:token', requireValidId('token'), async (req, res) => {
   try {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
@@ -1484,10 +2073,209 @@ app.get('/share/:token', async (req, res) => {
   }
 })
 
+// --- Live Sessions ---
+
+const liveSessions = new Map()
+
+function generateSessionCode() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789'
+  let code = ''
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
+  return code
+}
+
+// POST /api/presentations/:id/live/start
+app.post('/api/presentations/:id/live/start', requireValidId(), async (req, res) => {
+  try {
+    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    if (!presentation) return res.status(404).json({ error: 'Not found' })
+
+    let sessionId
+    do { sessionId = generateSessionCode() } while (liveSessions.has(sessionId))
+
+    liveSessions.set(sessionId, {
+      presentationId: req.params.id,
+      userId: req.userId,
+      currentSlide: 0,
+      unlockedSlides: new Set([0]),
+      viewers: new Set(),
+      startedAt: Date.now(),
+    })
+
+    res.json({ sessionId, url: `/live/${sessionId}` })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/presentations/:id/live/stop
+app.post('/api/presentations/:id/live/stop', requireValidId(), async (req, res) => {
+  const { sessionId } = req.body
+  const session = liveSessions.get(sessionId)
+  if (!session || session.userId !== req.userId) return res.status(404).json({ error: 'Session not found' })
+
+  for (const viewer of session.viewers) {
+    viewer.write(`data: ${JSON.stringify({ type: 'ended' })}\n\n`)
+    viewer.end()
+  }
+  liveSessions.delete(sessionId)
+  res.json({ ok: true })
+})
+
+// POST /api/live/:sessionId/slide — presenter updates current slide
+app.post('/api/live/:sessionId/slide', async (req, res) => {
+  const session = liveSessions.get(req.params.sessionId)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+
+  const { flatIndex } = req.body
+  if (typeof flatIndex !== 'number') return res.status(400).json({ error: 'flatIndex required' })
+
+  session.currentSlide = flatIndex
+  session.unlockedSlides.add(flatIndex)
+
+  const msg = JSON.stringify({
+    type: 'slide',
+    currentSlide: flatIndex,
+    unlocked: [...session.unlockedSlides].sort((a, b) => a - b),
+  })
+  for (const viewer of session.viewers) {
+    viewer.write(`data: ${msg}\n\n`)
+  }
+
+  res.json({ ok: true, viewers: session.viewers.size })
+})
+
+// GET /api/live/:sessionId/stream — SSE for viewers
+app.get('/api/live/:sessionId/stream', (req, res) => {
+  const session = liveSessions.get(req.params.sessionId)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  session.viewers.add(res)
+
+  const initMsg = JSON.stringify({
+    type: 'init',
+    currentSlide: session.currentSlide,
+    unlocked: [...session.unlockedSlides].sort((a, b) => a - b),
+    viewers: session.viewers.size,
+  })
+  res.write(`data: ${initMsg}\n\n`)
+
+  // Broadcast updated viewer count
+  const countMsg = JSON.stringify({ type: 'viewers', count: session.viewers.size })
+  for (const v of session.viewers) { if (v !== res) v.write(`data: ${countMsg}\n\n`) }
+
+  req.on('close', () => {
+    session.viewers.delete(res)
+    const dcMsg = JSON.stringify({ type: 'viewers', count: session.viewers.size })
+    for (const v of session.viewers) v.write(`data: ${dcMsg}\n\n`)
+  })
+})
+
+// GET /api/live/:sessionId/status — check if session exists
+app.get('/api/live/:sessionId/status', (req, res) => {
+  const session = liveSessions.get(req.params.sessionId)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  res.json({ viewers: session.viewers.size, currentSlide: session.currentSlide })
+})
+
+// GET /live/:sessionId — serve viewer page (public, no auth)
+app.get('/live/:id', async (req, res) => {
+  const session = liveSessions.get(req.params.id)
+  if (!session) return res.status(404).send('Live session not found or has ended.')
+
+  try {
+    const presentation = await storage.getPresentation(session.presentationId, session.userId)
+    if (!presentation) return res.status(404).send('Presentation not found')
+
+    const baseHtml = generateRevealHTML(presentation)
+    const liveScript = `
+    <script>
+    // ── Live session viewer ──────────────────────────────────
+    (function() {
+      var sessionId = '${req.params.id}';
+      var unlocked = new Set([0]);
+      var maxUnlocked = 0;
+      var badge = document.createElement('div');
+      badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(34,197,94,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;transition:background 0.3s;';
+      badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;display:inline-block"></span> LIVE';
+      document.body.appendChild(badge);
+
+      var es = new EventSource('/api/live/' + sessionId + '/stream');
+
+      es.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.type === 'init' || data.type === 'slide') {
+          data.unlocked.forEach(function(i) { unlocked.add(i); });
+          maxUnlocked = Math.max.apply(null, Array.from(unlocked));
+          if (data.type === 'init') {
+            Reveal.slide(flatToHV(data.currentSlide));
+          }
+        }
+        if (data.type === 'ended') {
+          badge.style.background = 'rgba(100,100,100,0.8)';
+          badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#999;display:inline-block"></span> ENDED';
+          es.close();
+        }
+      };
+
+      es.onerror = function() {
+        badge.style.background = 'rgba(239,68,68,0.9)';
+        badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;display:inline-block"></span> RECONNECTING';
+      };
+
+      // Build flat→(h,v) map after Reveal is ready
+      var flatMap = [];
+      Reveal.on('ready', function() {
+        var slides = Reveal.getSlides();
+        slides.forEach(function(s) {
+          flatMap.push(Reveal.getIndices(s));
+        });
+      });
+
+      function flatToHV(fi) {
+        if (flatMap[fi]) return flatMap[fi];
+        return { h: fi, v: 0 };
+      }
+
+      function currentFlat() {
+        var idx = Reveal.getIndices();
+        for (var i = 0; i < flatMap.length; i++) {
+          if (flatMap[i].h === idx.h && flatMap[i].v === idx.v) return i;
+        }
+        return 0;
+      }
+
+      // Intercept navigation — block forward past unlocked
+      Reveal.on('slidechanged', function(e) {
+        var fi = currentFlat();
+        if (fi > maxUnlocked) {
+          var target = flatMap[maxUnlocked] || { h: 0, v: 0 };
+          Reveal.slide(target.h, target.v);
+        }
+      });
+    })();
+    <\/script>`
+
+    const lastBodyIdx = baseHtml.lastIndexOf('</body>')
+    const html = lastBodyIdx >= 0
+      ? baseHtml.slice(0, lastBodyIdx) + liveScript + '\n</body>' + baseHtml.slice(lastBodyIdx + 7)
+      : baseHtml + liveScript
+    res.setHeader('Content-Type', 'text/html')
+    res.send(html)
+  } catch (err) {
+    res.status(500).send('Error loading presentation')
+  }
+})
+
 // --- Version History ---
 
 // POST /api/presentations/:id/snapshot
-app.post('/api/presentations/:id/snapshot', async (req, res) => {
+app.post('/api/presentations/:id/snapshot', requireValidId(), async (req, res) => {
   try {
     const result = await storage.createSnapshot(req.params.id, req.body.name, req.userId)
     if (!result) return res.status(404).json({ error: 'Not found' })
@@ -1496,14 +2284,14 @@ app.post('/api/presentations/:id/snapshot', async (req, res) => {
 })
 
 // GET /api/presentations/:id/snapshots - list snapshots
-app.get('/api/presentations/:id/snapshots', async (req, res) => {
+app.get('/api/presentations/:id/snapshots', requireValidId(), async (req, res) => {
   try {
     res.json(await storage.listSnapshots(req.params.id, req.userId))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
-app.post('/api/presentations/:id/restore/:snapshotId', async (req, res) => {
+app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
   try {
     const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.userId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
@@ -1512,10 +2300,19 @@ app.post('/api/presentations/:id/restore/:snapshotId', async (req, res) => {
 })
 
 // DELETE /api/presentations/:id/snapshots/:snapshotId
-app.delete('/api/presentations/:id/snapshots/:snapshotId', async (req, res) => {
+app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
   try {
     await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.userId)
     res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/presentations/:id/snapshots/:snapshotId/data - get snapshot data without restoring
+app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+  try {
+    const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.userId)
+    if (!data) return res.status(404).json({ error: 'Snapshot not found' })
+    res.json(data)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
@@ -1561,12 +2358,10 @@ app.post('/api/rclone/config', async (req, res) => {
   try {
     const { username, password, remoteName } = req.body
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' })
-    const name = remoteName || 'protondrive'
-    const configContent = `[${name}]
-type = protondrive
-username = ${username}
-password = ${password}
-`
+    const stripNewlines = (s) => String(s).replace(/[\r\n]/g, '')
+    const name = stripNewlines(remoteName || 'protondrive').replace(/[[\]]/g, '')
+    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) return res.status(400).json({ error: 'Invalid remote name' })
+    const configContent = `[${name}]\ntype = protondrive\nusername = ${stripNewlines(username)}\npassword = ${stripNewlines(password)}\n`
     await fs.writeFile(RCLONE_CONFIG_FILE, configContent)
     // Verify connection
     try {
@@ -1584,8 +2379,8 @@ password = ${password}
 app.post('/api/rclone/sync', async (req, res) => {
   try {
     const { remote, remotePath } = req.body
-    if (!remote) return res.status(400).json({ error: 'Remote name required' })
-    const dest = remotePath || '/slides-backup'
+    if (!remote || !/^[a-zA-Z0-9_-]+$/.test(remote)) return res.status(400).json({ error: 'Invalid remote name' })
+    const dest = String(remotePath || '/slides-backup').replace(/[\r\n]/g, '')
 
     // Export all presentations as HTML + JSON into sync dir
     fs.ensureDirSync(SYNC_DIR)
@@ -1633,8 +2428,9 @@ app.post('/api/rclone/sync', async (req, res) => {
 app.post('/api/rclone/sync-single', async (req, res) => {
   try {
     const { remote, remotePath, presentationId } = req.body
-    if (!remote || !presentationId) return res.status(400).json({ error: 'Remote and presentationId required' })
-    const dest = remotePath || '/slides-backup'
+    if (!remote || !/^[a-zA-Z0-9_-]+$/.test(remote)) return res.status(400).json({ error: 'Invalid remote name' })
+    if (!presentationId) return res.status(400).json({ error: 'presentationId required' })
+    const dest = String(remotePath || '/slides-backup').replace(/[\r\n]/g, '')
 
     const pres = await storage.getPresentation(presentationId, req.userId)
     if (!pres) return res.status(404).json({ error: 'Presentation not found' })
@@ -1681,6 +2477,345 @@ app.post('/api/github/config', async (req, res) => {
   }
 })
 
+// GET /api/zotero/config - get saved Zotero config (key is masked)
+app.get('/api/zotero/config', async (req, res) => {
+  try {
+    const config = await storage.getZoteroConfig(req.userId)
+    res.json({ zoteroUserId: config.zoteroUserId || '', hasApiKey: !!config.apiKey })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/zotero/config - save Zotero credentials
+app.post('/api/zotero/config', async (req, res) => {
+  try {
+    await storage.setZoteroConfig(req.body, req.userId)
+    res.json({ zoteroUserId: req.body.zoteroUserId || '', hasApiKey: !!req.body.apiKey })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/zotero/config - disconnect Zotero
+app.delete('/api/zotero/config', async (req, res) => {
+  try {
+    await storage.setZoteroConfig({ zoteroUserId: '', apiKey: '' }, req.userId)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/zotero/proxy/* - proxy requests to Zotero API with stored credentials
+app.get('/api/zotero/proxy/*', async (req, res) => {
+  try {
+    const config = await storage.getZoteroConfig(req.userId)
+    if (!config.apiKey || !config.zoteroUserId) {
+      return res.status(400).json({ error: 'Zotero not configured' })
+    }
+    const zoteroPath = req.params[0]
+    const qs = new URL(req.url, 'http://localhost').search
+    const url = `https://api.zotero.org/users/${config.zoteroUserId}/${zoteroPath}${qs}`
+    const zRes = await fetch(url, {
+      headers: { 'Zotero-API-Version': '3', 'Zotero-API-Key': config.apiKey }
+    })
+    const body = await zRes.text()
+    res.status(zRes.status)
+      .set('Content-Type', zRes.headers.get('content-type') || 'application/json')
+      .set('Total-Results', zRes.headers.get('total-results') || '0')
+      .send(body)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// --- Zenodo Integration ---
+
+// GET /api/zenodo/config
+app.get('/api/zenodo/config', async (req, res) => {
+  try {
+    const config = await storage.getZenodoConfig(req.userId)
+    res.json({ hasToken: !!config.token, sandbox: config.sandbox })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST /api/zenodo/config
+app.post('/api/zenodo/config', async (req, res) => {
+  try {
+    const updated = await storage.setZenodoConfig(req.body, req.userId)
+    res.json({ hasToken: !!updated.token, sandbox: updated.sandbox })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /api/zenodo/config
+app.delete('/api/zenodo/config', async (req, res) => {
+  try {
+    await storage.setZenodoConfig({ token: '', sandbox: false }, req.userId)
+    res.json({ ok: true })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/presentations/:id/zenodo/status - check if this presentation has been published
+app.get('/api/presentations/:id/zenodo/status', requireValidId(), async (req, res) => {
+  try {
+    const { rows } = await storage.query(
+      'SELECT deposition_id, doi, zenodo_url, sandbox, published_at, concept_recid FROM zenodo_publications WHERE presentation_id = $1 AND user_id = $2 ORDER BY published_at DESC LIMIT 1',
+      [req.params.id, req.userId]
+    )
+    if (!rows.length) return res.json({ published: false })
+    const { rows: allVersions } = await storage.query(
+      'SELECT doi, zenodo_url, published_at FROM zenodo_publications WHERE presentation_id = $1 AND user_id = $2 ORDER BY published_at DESC',
+      [req.params.id, req.userId]
+    )
+    res.json({
+      published: true,
+      depositionId: rows[0].deposition_id,
+      conceptRecid: rows[0].concept_recid,
+      doi: rows[0].doi,
+      url: rows[0].zenodo_url,
+      sandbox: rows[0].sandbox,
+      publishedAt: rows[0].published_at,
+      versionCount: allVersions.length,
+      versions: allVersions,
+    })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// POST /api/presentations/:id/zenodo/publish - publish presentation to Zenodo
+app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, res) => {
+  try {
+    const config = await storage.getZenodoConfig(req.userId)
+    if (!config.token) return res.status(400).json({ error: 'Zenodo not configured. Save your API token first.' })
+
+    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
+
+    const { creators, description, keywords, license } = req.body
+    if (!creators || !creators.length) return res.status(400).json({ error: 'At least one creator is required' })
+
+    const baseUrl = config.sandbox ? 'https://sandbox.zenodo.org' : 'https://zenodo.org'
+    const token = config.token
+    const zen = async (endpoint, opts = {}) => {
+      const r = await fetch(`${baseUrl}/api${endpoint}`, {
+        ...opts,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...opts.headers,
+        },
+      })
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        let msg = body.message || ''
+        if (body.errors) msg += (msg ? ': ' : '') + body.errors.map(e => `${e.field}: ${e.message || e.messages?.join(', ')}`).join('; ')
+        throw new Error(msg || JSON.stringify(body) || `Zenodo API ${r.status}`)
+      }
+      return body
+    }
+
+    // 1. Create deposition — new version if previously published, fresh otherwise
+    const { rows: prevPubs } = await storage.query(
+      'SELECT deposition_id, concept_recid FROM zenodo_publications WHERE presentation_id = $1 AND user_id = $2 AND sandbox = $3 ORDER BY published_at DESC LIMIT 1',
+      [req.params.id, req.userId, config.sandbox]
+    )
+    let deposition, isNewVersion = false
+    if (prevPubs.length && prevPubs[0].deposition_id) {
+      const prevId = prevPubs[0].deposition_id
+      const nvRes = await zen(`/deposit/depositions/${prevId}/actions/newversion`, { method: 'POST' })
+      const draftUrl = nvRes.links?.latest_draft
+      if (!draftUrl) throw new Error('Zenodo did not return a draft URL for the new version')
+      const draftRes = await fetch(draftUrl, { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } })
+      if (!draftRes.ok) throw new Error(`Failed to fetch new version draft: ${draftRes.status}`)
+      deposition = await draftRes.json()
+      isNewVersion = true
+      // Delete old files from the draft so we can upload fresh ones
+      const filesRes = await zen(`/deposit/depositions/${deposition.id}/files`)
+      for (const f of (Array.isArray(filesRes) ? filesRes : [])) {
+        await fetch(`${baseUrl}/api/deposit/depositions/${deposition.id}/files/${f.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+      }
+    } else {
+      deposition = await zen('/deposit/depositions', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+    }
+    const depositionId = deposition.id
+    const bucketUrl = deposition.links?.bucket
+
+    // Helper: upload a file to the deposition (bucket API with fallback to files API)
+    const zenUploadFile = async (filename, buffer, contentType) => {
+      if (bucketUrl) {
+        const r = await fetch(`${bucketUrl}/${filename}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/octet-stream' },
+          body: buffer,
+        })
+        if (r.ok) return
+        console.error(`Zenodo bucket upload failed for ${filename}: ${r.status} ${await r.text().catch(() => '')}`)
+      }
+      // Fallback: old files API (multipart form upload)
+      const form = new FormData()
+      form.set('file', new Blob([buffer], { type: contentType }), filename)
+      const r = await fetch(`${baseUrl}/api/deposit/depositions/${depositionId}/files`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: form,
+      })
+      if (!r.ok) {
+        const body = await r.text().catch(() => '')
+        throw new Error(`File upload failed for ${filename}: ${r.status} ${body}`)
+      }
+    }
+
+    // 2. Prepare export: rewrite asset paths for self-contained HTML
+    const exportPres = JSON.parse(JSON.stringify(presentation))
+    const uploadPaths = new Set()
+    const collectUploads = (str) => { for (const m of str.matchAll(/\/uploads\/[^\s"'<>)]+/g)) uploadPaths.add(m[0]) }
+    for (const slide of presentation.slides || []) {
+      for (const el of slide.elements || []) {
+        if (el.src && el.src.startsWith('/uploads/')) uploadPaths.add(el.src)
+        if (el.poster && el.poster.startsWith('/uploads/')) uploadPaths.add(el.poster)
+        if (el.content) collectUploads(el.content)
+      }
+      if (slide.background?.image?.startsWith('/uploads/')) uploadPaths.add(slide.background.image)
+    }
+
+    const assetName = (p) => path.basename(p)
+    const rewriteUploads = (str) => str.replace(/\/uploads\/[^\s"'<>)]+/g, m => `./assets/${assetName(m)}`)
+    for (const slide of exportPres.slides || []) {
+      for (const el of slide.elements || []) {
+        if (el.src && el.src.startsWith('/uploads/')) el.src = `./assets/${assetName(el.src)}`
+        if (el.poster && el.poster.startsWith('/uploads/')) el.poster = `./assets/${assetName(el.poster)}`
+        if (el.content && el.content.includes('/uploads/')) el.content = rewriteUploads(el.content)
+      }
+      if (slide.background?.image?.startsWith('/uploads/')) slide.background.image = `./assets/${assetName(slide.background.image)}`
+    }
+
+    const { rows: userFontRows } = await storage.query(
+      'SELECT family_name, source, url FROM user_fonts WHERE user_id = $1', [req.userId]
+    ).catch(() => ({ rows: [] }))
+    const userFonts = userFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
+
+    let htmlContent = generateRevealHTML(exportPres, { customFonts: userFonts })
+    const jsonContent = JSON.stringify(presentation, null, 2)
+
+    // 2b. Inject citation slide with pre-reserved DOI
+    const preresDoi = deposition.metadata?.prereserve_doi?.doi || ''
+    if (preresDoi) {
+      const year = new Date().getFullYear()
+      const title = escapeHtml(presentation.title || 'Untitled Presentation')
+      const authorNames = creators.map(c => escapeHtml(c.name)).join(' and ')
+      const firstAuthorLast = (creators[0]?.name || 'Author').split(',')[0].trim().toLowerCase().replace(/\s+/g, '')
+      const bibKey = `${firstAuthorLast}${year}${(presentation.title || 'presentation').split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, '')}`
+      const doiUrl = `https://doi.org/${preresDoi}`
+
+      const bibtex = [
+        `@misc{${bibKey},`,
+        `  author    = {${creators.map(c => c.name).join(' and ')}},`,
+        `  title     = {${presentation.title || 'Untitled Presentation'}},`,
+        `  year      = {${year}},`,
+        `  publisher = {Zenodo},`,
+        `  doi       = {${preresDoi}},`,
+        `  url       = {${doiUrl}}`,
+        `}`,
+      ].join('\n')
+
+      const slideW = presentation.slideWidth || 960
+      const slideH = presentation.slideHeight || 540
+      const citationSlide = `
+    <section>
+      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
+        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">Cite this Presentation</h2>
+        <div style="margin-bottom:20px;">
+          <div style="font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:6px;">DOI</div>
+          <a href="${doiUrl}" target="_blank" rel="noopener" style="font-size:20px;color:#818cf8;text-decoration:underline;word-break:break-all;">${doiUrl}</a>
+        </div>
+        <div>
+          <div style="font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:6px;">BibTeX</div>
+          <pre style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:14px 18px;font-size:13px;line-height:1.6;color:rgba(255,255,255,0.85);font-family:'Fira Code','JetBrains Mono',monospace;overflow-x:auto;white-space:pre;margin:0;">${escapeHtml(bibtex)}</pre>
+        </div>
+      </div>
+    </section>`
+
+      htmlContent = htmlContent.replace(
+        '    </div>\n  </div>',
+        citationSlide + '\n    </div>\n  </div>'
+      )
+    }
+
+    // 3. Upload presentation files
+    await zenUploadFile('presentation.html', Buffer.from(htmlContent, 'utf8'), 'text/html')
+    await zenUploadFile('presentation.json', Buffer.from(jsonContent, 'utf8'), 'application/json')
+
+    // 4. Upload asset files
+    for (const uploadPath of uploadPaths) {
+      const relativePath = uploadPath.replace(/^\/uploads\//, '')
+      try {
+        let fileBuffer, contentType = 'application/octet-stream'
+        if (isR2Enabled()) {
+          const { rows } = await storage.query('SELECT storage_key, content_type FROM uploads WHERE filename = $1', [relativePath])
+          if (!rows.length) continue
+          contentType = rows[0].content_type || contentType
+          const { body } = await streamFromR2(rows[0].storage_key)
+          const chunks = []
+          for await (const chunk of body) chunks.push(chunk)
+          fileBuffer = Buffer.concat(chunks)
+        } else {
+          const filePath = path.join(UPLOADS_DIR, relativePath)
+          if (!fs.existsSync(filePath)) continue
+          fileBuffer = fs.readFileSync(filePath)
+        }
+        await zenUploadFile(`assets_${assetName(uploadPath)}`, fileBuffer, contentType)
+      } catch (e) { console.error(`Zenodo asset upload failed for ${uploadPath}:`, e.message) }
+    }
+
+    // 6. Set metadata
+    const metadata = {
+      title: presentation.title || 'Untitled Presentation',
+      upload_type: 'presentation',
+      description: description || `Presentation created with Parallax.`,
+      publication_date: new Date().toISOString().split('T')[0],
+      access_right: 'open',
+      creators: creators.map(c => {
+        const entry = { name: c.name }
+        if (c.affiliation) entry.affiliation = c.affiliation
+        if (c.orcid) entry.orcid = c.orcid
+        return entry
+      }),
+    }
+    if (keywords && keywords.length) metadata.keywords = keywords
+    if (license) metadata.license = license
+
+    await zen(`/deposit/depositions/${depositionId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ metadata }),
+    })
+
+    // 7. Publish
+    const published = await zen(`/deposit/depositions/${depositionId}/actions/publish`, {
+      method: 'POST',
+    })
+
+    const doi = published.doi || published.metadata?.doi || ''
+    const zenodoUrl = published.links?.html || published.links?.record_html || `${baseUrl}/records/${depositionId}`
+    const conceptRecid = published.conceptrecid || published.metadata?.relations?.version?.[0]?.parent?.pid_value || ''
+
+    // 8. Record in database
+    await storage.query(
+      'INSERT INTO zenodo_publications (presentation_id, user_id, deposition_id, doi, zenodo_url, sandbox, concept_recid) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [req.params.id, req.userId, depositionId, doi, zenodoUrl, config.sandbox, conceptRecid]
+    )
+
+    res.json({ doi, url: zenodoUrl, depositionId, isNewVersion, conceptRecid })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // POST /api/presentations/:id/github/push - push presentation to GitHub
 app.post('/api/presentations/:id/github/push', async (req, res) => {
   try {
@@ -1693,19 +2828,29 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
     if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
 
     const { token, owner, repo } = config
-    const gh = (endpoint, opts = {}) => fetch(`https://api.github.com${endpoint}`, {
-      ...opts,
-      headers: {
-        'Authorization': `token ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json',
-        ...opts.headers,
-      },
-    }).then(async r => {
-      const body = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(body.message || `GitHub API ${r.status}`)
-      return body
-    })
+    const gh = (endpoint, opts = {}) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 30000)
+      return fetch(`https://api.github.com${endpoint}`, {
+        ...opts,
+        signal: controller.signal,
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          ...opts.headers,
+        },
+      }).then(async r => {
+        clearTimeout(timer)
+        const body = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(body.message || `GitHub API ${r.status}`)
+        return body
+      }).catch(err => {
+        clearTimeout(timer)
+        if (err.name === 'AbortError') throw new Error(`GitHub API timeout on ${endpoint}`)
+        throw err
+      })
+    }
 
     // Folder name from presentation title
     const folderName = (presentation.title || 'untitled').replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
@@ -1734,7 +2879,12 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       }
       if (slide.background?.image?.startsWith('/uploads/')) slide.background.image = `./assets/${assetName(slide.background.image)}`
     }
-    const htmlContent = generateRevealHTML(exportPres)
+    const { rows: ghFontRows } = await storage.query(
+      'SELECT family_name, source, url FROM user_fonts WHERE user_id = $1', [req.userId]
+    ).catch(() => ({ rows: [] }))
+    const ghUserFonts = ghFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
+
+    const htmlContent = generateRevealHTML(exportPres, { customFonts: ghUserFonts })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // Get default branch
@@ -1785,45 +2935,52 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
     }
     const readmeContent = readmeLines.join('\n') + '\n'
 
-    // Upload asset files to GitHub as blobs
+    // Upload asset files to GitHub as blobs (parallel, batches of 5)
     const assetBlobs = []
-    for (const uploadPath of uploadPaths) {
+    const assetUploads = [...uploadPaths].map(uploadPath => async () => {
       const relativePath = uploadPath.replace(/^\/uploads\//, '')
       try {
         let fileBuffer
         if (isR2Enabled()) {
           const { rows } = await storage.query('SELECT storage_key FROM uploads WHERE filename = $1', [relativePath])
-          if (!rows.length) continue
+          if (!rows.length) return null
           const { body } = await streamFromR2(rows[0].storage_key)
           const chunks = []
           for await (const chunk of body) chunks.push(chunk)
           fileBuffer = Buffer.concat(chunks)
         } else {
           const filePath = path.join(UPLOADS_DIR, relativePath)
-          if (!fs.existsSync(filePath)) continue
+          if (!fs.existsSync(filePath)) return null
           fileBuffer = fs.readFileSync(filePath)
         }
         const blob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
           method: 'POST',
           body: JSON.stringify({ content: fileBuffer.toString('base64'), encoding: 'base64' }),
         })
-        assetBlobs.push({ path: `${folderName}/assets/${assetName(uploadPath)}`, mode: '100644', type: 'blob', sha: blob.sha })
-      } catch (e) { console.error(`Asset upload failed for ${uploadPath}:`, e.message) }
+        return { path: `${folderName}/assets/${assetName(uploadPath)}`, mode: '100644', type: 'blob', sha: blob.sha }
+      } catch (e) { console.error(`Asset upload failed for ${uploadPath}:`, e.message); return null }
+    })
+    for (let i = 0; i < assetUploads.length; i += 5) {
+      const batch = assetUploads.slice(i, i + 5).map(fn => fn())
+      const results = await Promise.all(batch)
+      assetBlobs.push(...results.filter(Boolean))
     }
 
-    // Create blobs for our files
-    const htmlBlob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
-      method: 'POST',
-      body: JSON.stringify({ content: Buffer.from(htmlContent).toString('base64'), encoding: 'base64' }),
-    })
-    const jsonBlob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
-      method: 'POST',
-      body: JSON.stringify({ content: Buffer.from(jsonContent).toString('base64'), encoding: 'base64' }),
-    })
-    const readmeBlob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
-      method: 'POST',
-      body: JSON.stringify({ content: Buffer.from(readmeContent).toString('base64'), encoding: 'base64' }),
-    })
+    // Create blobs for HTML, JSON, README (parallel)
+    const [htmlBlob, jsonBlob, readmeBlob] = await Promise.all([
+      gh(`/repos/${owner}/${repo}/git/blobs`, {
+        method: 'POST',
+        body: JSON.stringify({ content: Buffer.from(htmlContent).toString('base64'), encoding: 'base64' }),
+      }),
+      gh(`/repos/${owner}/${repo}/git/blobs`, {
+        method: 'POST',
+        body: JSON.stringify({ content: Buffer.from(jsonContent).toString('base64'), encoding: 'base64' }),
+      }),
+      gh(`/repos/${owner}/${repo}/git/blobs`, {
+        method: 'POST',
+        body: JSON.stringify({ content: Buffer.from(readmeContent).toString('base64'), encoding: 'base64' }),
+      }),
+    ])
 
     // Create a new tree with our files, assets, + README
     const treePayload = {
@@ -1913,7 +3070,7 @@ app.get('/api/presentations/:id/github/history', async (req, res) => {
 })
 
 // GET /api/presentations/:id/github/version/:sha - fetch presentation.json at a specific commit
-app.get('/api/presentations/:id/github/version/:sha', async (req, res) => {
+app.get('/api/presentations/:id/github/version/:sha', requireValidId(), requireValidSHA(), async (req, res) => {
   try {
     const config = await storage.getGithubConfig(req.userId)
     if (!config.token || !config.owner || !config.repo) {
@@ -1942,10 +3099,180 @@ app.get('/api/presentations/:id/github/version/:sha', async (req, res) => {
   }
 })
 
+// POST /api/github/browse-repo - scan a GitHub repo for Parallax presentations
+app.post('/api/github/browse-repo', async (req, res) => {
+  try {
+    const { url } = req.body
+    if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL is required' })
+
+    const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/)
+    if (!match) return res.status(400).json({ error: 'Invalid GitHub URL. Expected format: https://github.com/owner/repo' })
+    const [, owner, repo] = match
+
+    const config = await storage.getGithubConfig(req.userId)
+    const headers = { Accept: 'application/vnd.github.v3+json' }
+    if (config.token) headers.Authorization = `token ${config.token}`
+
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers })
+    if (!repoRes.ok) {
+      const body = await repoRes.json().catch(() => ({}))
+      return res.status(repoRes.status).json({ error: body.message || 'Repository not found or not accessible' })
+    }
+    const repoInfo = await repoRes.json()
+    const branch = repoInfo.default_branch || 'main'
+
+    const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers })
+    if (!treeRes.ok) {
+      return res.status(treeRes.status).json({ error: 'Failed to read repository contents' })
+    }
+    const tree = await treeRes.json()
+
+    const jsonFiles = (tree.tree || []).filter(
+      item => item.type === 'blob' && item.path.endsWith('/presentation.json')
+    )
+
+    const presentations = await Promise.all(jsonFiles.map(async (item) => {
+      const folder = item.path.replace(/\/presentation\.json$/, '')
+      let title = folder.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      let slideCount = 0
+      try {
+        const contentRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(item.path)}?ref=${branch}`,
+          { headers }
+        )
+        if (contentRes.ok) {
+          const file = await contentRes.json()
+          const data = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'))
+          if (data.title) title = data.title
+          slideCount = (data.slides || []).length
+        }
+      } catch {}
+      return { folder, title, slideCount }
+    }))
+
+    res.json({ owner, repo, branch, presentations })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/presentations/fork - fork a presentation from a GitHub repo
+app.post('/api/presentations/fork', async (req, res) => {
+  try {
+    if (!(await checkPresentationQuota(req, res))) return
+
+    const { owner, repo, folder, branch: reqBranch } = req.body
+    if (!owner || !repo || !folder) return res.status(400).json({ error: 'owner, repo, and folder are required' })
+    if (!/^[a-z0-9_-]+$/i.test(owner) || !/^[a-z0-9_.-]+$/i.test(repo)) {
+      return res.status(400).json({ error: 'Invalid owner or repo name' })
+    }
+    if (/[\/\\]|\.\./.test(folder)) return res.status(400).json({ error: 'Invalid folder name' })
+
+    const config = await storage.getGithubConfig(req.userId)
+    const headers = { Accept: 'application/vnd.github.v3+json' }
+    if (config.token) headers.Authorization = `token ${config.token}`
+
+    const branch = reqBranch || 'main'
+    const jsonPath = `${folder}/presentation.json`
+
+    const jsonRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(jsonPath)}?ref=${branch}`,
+      { headers }
+    )
+    if (!jsonRes.ok) return res.status(404).json({ error: 'presentation.json not found in that folder' })
+    const jsonFile = await jsonRes.json()
+    const presData = JSON.parse(Buffer.from(jsonFile.content, 'base64').toString('utf8'))
+
+    // Discover asset files in the folder's assets/ subdirectory
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+      { headers }
+    )
+    const tree = treeRes.ok ? await treeRes.json() : { tree: [] }
+    const assetPrefix = `${folder}/assets/`
+    const assetFiles = (tree.tree || []).filter(
+      item => item.type === 'blob' && item.path.startsWith(assetPrefix)
+    )
+
+    // Download and re-upload each asset, building a path rewrite map
+    const pathMap = {}
+    for (const asset of assetFiles) {
+      const filename = path.basename(asset.path)
+      try {
+        const blobRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/blobs/${asset.sha}`,
+          { headers: { ...headers, Accept: 'application/vnd.github.v3+json' } }
+        )
+        if (!blobRes.ok) continue
+        const blob = await blobRes.json()
+        const buffer = Buffer.from(blob.content, 'base64')
+
+        if (isR2Enabled()) {
+          const newFilename = `${uuidv4()}${path.extname(filename)}`
+          const contentType = {
+            '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+            '.mp4': 'video/mp4', '.webm': 'video/webm', '.pdf': 'application/pdf',
+          }[path.extname(filename).toLowerCase()] || 'application/octet-stream'
+          const storageKey = `uploads/${newFilename}`
+          await putBufferToR2(storageKey, buffer, contentType)
+          await storage.query(
+            'INSERT INTO uploads (filename, storage_key, content_type, size_bytes, presentation_id) VALUES ($1, $2, $3, $4, $5)',
+            [newFilename, storageKey, contentType, buffer.length, null]
+          )
+          pathMap[`./assets/${filename}`] = `/uploads/${newFilename}`
+        } else {
+          const destDir = path.join(UPLOADS_DIR, 'forked')
+          fs.ensureDirSync(destDir)
+          const newFilename = `${uuidv4()}${path.extname(filename)}`
+          fs.writeFileSync(path.join(destDir, newFilename), buffer)
+          pathMap[`./assets/${filename}`] = `/uploads/forked/${newFilename}`
+        }
+      } catch (e) { console.error(`Fork asset download failed for ${asset.path}:`, e.message) }
+    }
+
+    // Rewrite asset paths in the presentation data
+    const rewrite = (str) => {
+      let result = str
+      for (const [oldPath, newPath] of Object.entries(pathMap)) {
+        result = result.split(oldPath).join(newPath)
+      }
+      return result
+    }
+    const presStr = rewrite(JSON.stringify(presData))
+    const forkedPres = JSON.parse(presStr)
+
+    // Clean up and create as a new presentation
+    delete forkedPres.id
+    delete forkedPres.createdAt
+    delete forkedPres.updatedAt
+    delete forkedPres.expiresAt
+    forkedPres.title = (forkedPres.title || 'Untitled') + ' (fork)'
+    forkedPres.slides = (forkedPres.slides || []).map(s => ({
+      ...s,
+      id: uuidv4(),
+      elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
+    }))
+
+    const expiresAt = IS_CLOUD && req.userPlan === 'free'
+      ? new Date(Date.now() + (PLAN_LIMITS.free.expirationDays || 30) * 86400000).toISOString()
+      : null
+    const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
+
+    res.json({
+      ...created,
+      forkedFrom: { owner, repo, folder, branch },
+      assetsImported: Object.keys(pathMap).length,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ---- Plugin API (authenticated routes) ----
 
 if (IS_CLOUD) {
-  app.post('/api/plugins/:slug/install', requireUser, async (req, res) => {
+  app.post('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
     try {
       const plugin = await storage.getPlugin(req.params.slug)
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
@@ -1954,7 +3281,7 @@ if (IS_CLOUD) {
     } catch (err) { res.status(500).json({ error: err.message }) }
   })
 
-  app.delete('/api/plugins/:slug/install', requireUser, async (req, res) => {
+  app.delete('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
     try {
       const plugin = await storage.getPlugin(req.params.slug)
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
@@ -1973,6 +3300,8 @@ if (IS_CLOUD) {
 
 app.get('/api/presentations/:id/plugins', async (req, res) => {
   try {
+    const pres = await storage.getPresentation(req.params.id, req.userId)
+    if (!pres) return res.status(404).json({ error: 'Not found' })
     const plugins = await storage.getPresentationPlugins(req.params.id)
     res.json(plugins)
   } catch (err) { res.status(500).json({ error: err.message }) }
@@ -1980,6 +3309,8 @@ app.get('/api/presentations/:id/plugins', async (req, res) => {
 
 app.post('/api/presentations/:id/plugins', async (req, res) => {
   try {
+    const pres = await storage.getPresentation(req.params.id, req.userId)
+    if (!pres) return res.status(404).json({ error: 'Not found' })
     const { pluginId, config } = req.body
     await storage.enablePluginForPresentation(req.params.id, pluginId, config)
     res.json({ ok: true })
@@ -1988,6 +3319,8 @@ app.post('/api/presentations/:id/plugins', async (req, res) => {
 
 app.delete('/api/presentations/:id/plugins/:pluginId', async (req, res) => {
   try {
+    const pres = await storage.getPresentation(req.params.id, req.userId)
+    if (!pres) return res.status(404).json({ error: 'Not found' })
     await storage.disablePluginForPresentation(req.params.id, req.params.pluginId)
     res.json({ ok: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
@@ -2007,6 +3340,12 @@ if (process.env.NODE_ENV === 'production') {
     })
   }
 }
+
+// Global error handler — prevents stack traces and internal paths from leaking
+app.use((err, req, res, _next) => {
+  console.error('Unhandled error:', err.message)
+  res.status(err.status || 500).json({ error: safeErrorMessage(err) })
+})
 
 // When required as a module (Electron), export startServer. Otherwise start directly.
 function startServer(port) {

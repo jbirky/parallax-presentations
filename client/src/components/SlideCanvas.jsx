@@ -219,7 +219,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1018,6 +1018,7 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
               else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
               else if (element.type === 'manim' || element.type === 'plugin:manim') onOpenManimEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
+              else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
             }}
             onContextMenu={(e) => {
@@ -1663,15 +1664,21 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
         const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
           ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
           : null
+        const hasExternalEditor = element.type === 'plugin:dynamical-system'
         return (
-          <PluginSandbox
-            sandboxUrl={sandboxUrl}
-            pluginData={element.pluginData}
-            width={element.width}
-            height={element.height}
-            isSelected={isSelected}
-            onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
-          />
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <PluginSandbox
+              sandboxUrl={sandboxUrl}
+              pluginData={element.pluginData}
+              width={element.width}
+              height={element.height}
+              isSelected={isSelected && !hasExternalEditor}
+              onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
+            />
+            {hasExternalEditor && isSelected && (
+              <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
+            )}
+          </div>
         )
       })()}
 

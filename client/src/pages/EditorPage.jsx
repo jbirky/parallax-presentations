@@ -16,10 +16,11 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup } from 'lucide-react'
+import { ChevronLeft, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
 import { api } from '../utils/api'
+import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
-import { downloadHTML, downloadSlideHTML, presentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
+import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
@@ -34,6 +35,12 @@ import KineticTextModal from '../components/KineticTextModal'
 import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
+import BibliographyModal from '../components/BibliographyModal'
+import DiagramModal from '../components/DiagramModal'
+import DatasetPanel from '../components/DatasetPanel'
+import DynSysEditor from '../components/DynSysEditor'
+import EquationPalette from '../components/EquationPalette'
+import { formatCitation, getReferencedEntries, parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
 import { MathNode } from '../extensions/MathExtension'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
@@ -234,6 +241,19 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [githubStatus, setGithubStatus] = useState(null) // { type: 'success'|'error', message }
   const [githubCommitMsg, setGithubCommitMsg] = useState('')
 
+  const [showZenodoModal, setShowZenodoModal] = useState(false)
+  const [zenodoConfig, setZenodoConfig] = useState({ hasToken: false, sandbox: false })
+  const [zenodoToken, setZenodoToken] = useState('')
+  const [zenodoPublishing, setZenodoPublishing] = useState(false)
+  const [zenodoStatus, setZenodoStatus] = useState(null)
+  const [zenodoMeta, setZenodoMeta] = useState({
+    creators: [{ name: '', affiliation: '', orcid: '' }],
+    description: '',
+    keywords: '',
+    license: 'cc-by-4.0',
+  })
+  const [zenodoPubStatus, setZenodoPubStatus] = useState(null)
+
   // New feature state
   const [showFindReplace, setShowFindReplace] = useState(false)
   const [showTransitionPreview, setShowTransitionPreview] = useState(false)
@@ -246,6 +266,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showSyncModal, setShowSyncModal] = useState(false)
   const [showSyncDropdown, setShowSyncDropdown] = useState(false)
   const [showDefaultSettings, setShowDefaultSettings] = useState(false)
+  const [showPresentDropdown, setShowPresentDropdown] = useState(false)
   const [showKineticModal, setShowKineticModal] = useState(false)
   const [showFileBrowser, setShowFileBrowser] = useState(false)
   const [fileBrowserFiles, setFileBrowserFiles] = useState([])
@@ -255,6 +276,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showMathGridModal, setShowMathGridModal] = useState(false)
   const [showAnimeModal, setShowAnimeModal] = useState(false)
   const [showThreeModal, setShowThreeModal] = useState(false)
+  const [showBibliographyModal, setShowBibliographyModal] = useState(false)
+  const [showDiagramModal, setShowDiagramModal] = useState(false)
+  const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
+  const [liveViewers, setLiveViewers] = useState(0)
   const [syncStatus, setSyncStatus] = useState(null) // { installed, remotes, hasConfig }
   const [syncConfig, setSyncConfig] = useState({ username: '', password: '', remoteName: 'protondrive' })
   const [syncResult, setSyncResult] = useState(null) // { type, message }
@@ -266,6 +291,15 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [gitCommits, setGitCommits] = useState([])
   const [gitLoading, setGitLoading] = useState(false)
   const [gitRestoring, setGitRestoring] = useState(null)
+  const [showDiffViewer, setShowDiffViewer] = useState(false)
+  const [showFontManager, setShowFontManager] = useState(false)
+  const [showDatasetPanel, setShowDatasetPanel] = useState(false)
+  const [dynSysEditorState, setDynSysEditorState] = useState(null)
+  const [customFonts, setCustomFonts] = useState([])
+  const [fontGoogleName, setFontGoogleName] = useState('')
+  const [fontUploading, setFontUploading] = useState(false)
+  const [diffOldData, setDiffOldData] = useState(null)
+  const [diffOldLabel, setDiffOldLabel] = useState('')
   const [lastSavedAt, setLastSavedAt] = useState(null)
   const [showRulers, setShowRulers] = useState(false)
   const [guides, setGuides] = useState([]) // persistent guide lines: [{ axis: 'x'|'y', position: number }]
@@ -355,9 +389,27 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }).then(() => setPluginsLoaded(true)).catch(() => setPluginsLoaded(true))
   }, [])
 
-  // Load GitHub config on mount
+  // Load GitHub + Zenodo config on mount
   useEffect(() => {
     api.getGithubConfig().then(setGithubConfig).catch(() => {})
+    api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+    api.getFonts().then(fonts => {
+      if (Array.isArray(fonts)) {
+        setCustomFonts(fonts)
+        fonts.forEach(f => {
+          if (f.source === 'google') {
+            const link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.href = f.url
+            document.head.appendChild(link)
+          } else if (f.source === 'upload' && f.url) {
+            const style = document.createElement('style')
+            style.textContent = `@font-face { font-family: '${f.familyName}'; src: url('${f.url}'); }`
+            document.head.appendChild(style)
+          }
+        })
+      }
+    }).catch(() => {})
   }, [])
 
   // Load share status
@@ -389,10 +441,49 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }
   }
 
+  const handleZenodoSaveConfig = async () => {
+    const data = { sandbox: zenodoConfig.sandbox }
+    if (zenodoToken) data.token = zenodoToken
+    try {
+      const result = await api.saveZenodoConfig(data)
+      setZenodoConfig(result)
+      setZenodoToken('')
+      setZenodoStatus({ type: 'success', message: 'Settings saved' })
+    } catch (err) {
+      setZenodoStatus({ type: 'error', message: err.message })
+    }
+  }
+
+  const handleZenodoPublish = async () => {
+    setZenodoPublishing(true)
+    setZenodoStatus(null)
+    try {
+      const meta = {
+        creators: zenodoMeta.creators.filter(c => c.name.trim()),
+        description: zenodoMeta.description.trim() || undefined,
+        keywords: zenodoMeta.keywords.trim() ? zenodoMeta.keywords.split(',').map(k => k.trim()).filter(Boolean) : undefined,
+        license: zenodoMeta.license || undefined,
+      }
+      if (!meta.creators.length) throw new Error('At least one creator name is required')
+      const result = await api.publishToZenodo(presentationId, meta)
+      const verb = result.isNewVersion ? 'New version published' : 'Published'
+      setZenodoStatus({ type: 'success', message: `${verb}! DOI: ${result.doi}`, url: result.url, doi: result.doi })
+      api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => {})
+    } catch (err) {
+      setZenodoStatus({ type: 'error', message: err.message })
+    } finally {
+      setZenodoPublishing(false)
+    }
+  }
+
   const currentSlide = presentation?.slides[currentSlideIndex]
 
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
+  const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
+  const hasReferencesSlide = referencedEntries.length > 0
+  const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
+  const isViewingReferences = currentSlideIndex === referencesSlideIndex && hasReferencesSlide
 
   // TipTap editor
   const editor = useEditor({
@@ -1782,24 +1873,25 @@ function draw() {
 
           <button
             className="btn btn-secondary"
-            onClick={async () => {
-              setShowFileBrowser(true)
-              setFileBrowserLoading(true)
-              try { const files = await api.getUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
-              catch { setFileBrowserFiles([]) }
-              setFileBrowserLoading(false)
-            }}
-            title="Browse uploaded files"
+            onClick={() => setShowBibliographyModal(true)}
+            title="Bibliography & Citations"
           >
-            <Layers size={14} />
-            Files
+            <FileText size={14} />
+            Citations
+            {(presentation.bibliography || []).length > 0 && (
+              <span style={{ fontSize: 9, background: 'var(--accent)', color: 'white', borderRadius: 8, padding: '0 4px', lineHeight: '14px', fontWeight: 700 }}>
+                {presentation.bibliography.length}
+              </span>
+            )}
           </button>
+
           <button
             className="btn btn-secondary"
             onClick={() => setShowFindReplace(v => !v)}
             title="Find & Replace (Ctrl+F)"
           >
             <Search size={14} />
+            Find
           </button>
 
           <button
@@ -1808,6 +1900,7 @@ function draw() {
             title="Animation Timeline"
           >
             <Clock size={14} />
+            Timeline
           </button>
 
           <div style={{ position: 'relative' }}>
@@ -1871,6 +1964,31 @@ function draw() {
             title="Version History"
           >
             <History size={14} />
+            History
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={async () => {
+              setShowFileBrowser(true)
+              setFileBrowserLoading(true)
+              try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
+              catch { setFileBrowserFiles([]) }
+              setFileBrowserLoading(false)
+            }}
+            title="Browse uploaded files"
+          >
+            <Layers size={14} />
+            Files
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowDatasetPanel(true)}
+            title="Manage datasets"
+          >
+            <Database size={14} />
+            Data
           </button>
 
           <div style={{ position: 'relative' }}>
@@ -1895,6 +2013,22 @@ function draw() {
                   >
                     <Github size={14} />
                     GitHub
+                  </button>
+                  <button
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={async () => {
+                      setShowSyncDropdown(false)
+                      setZenodoStatus(null)
+                      if (presentationId) {
+                        api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+                      }
+                      setShowZenodoModal(true)
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
+                    Zenodo
                   </button>
                   <button
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
@@ -1934,14 +2068,95 @@ function draw() {
             )}
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={() => presentInWindow(presentation)}
-            title="Present"
-          >
-            <Play size={14} />
-            Present
-          </button>
+          {liveSession && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite', flexShrink: 0 }} />
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>LIVE</span>
+              <input readOnly value={`${window.location.origin}${liveSession.url}`}
+                style={{ width: 180, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 11, padding: '2px 6px' }}
+                onClick={e => { e.target.select(); navigator.clipboard.writeText(e.target.value).catch(() => {}) }} />
+              <span style={{ color: 'var(--text-muted)' }}>{liveViewers} viewer{liveViewers !== 1 ? 's' : ''}</span>
+              <button onClick={async () => { await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {}); setLiveSession(null); setLiveViewers(0) }}
+                style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '2px 4px' }}>
+                Stop
+              </button>
+            </div>
+          )}
+
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => presentInWindow(presentation)}
+                title="Present"
+                style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+              >
+                <Play size={14} />
+                Present
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowPresentDropdown(v => !v)}
+                title="Present options"
+                style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: '1px solid rgba(255,255,255,0.2)', padding: '6px 5px' }}
+              >
+                <ChevronDown size={12} />
+              </button>
+            </div>
+            {showPresentDropdown && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowPresentDropdown(false)} />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 170, overflow: 'hidden' }}>
+                  <button
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowPresentDropdown(false); presentInWindow(presentation) }}
+                  >
+                    <Play size={14} />
+                    Present
+                  </button>
+                  <button
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={() => { setShowPresentDropdown(false); presenterInWindow(presentation) }}
+                  >
+                    <Monitor size={14} />
+                    Presenter Mode
+                  </button>
+                  <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                  <button
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: liveSession ? 'var(--danger)' : '#ef4444', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    onClick={async () => {
+                      setShowPresentDropdown(false)
+                      if (liveSession) {
+                        await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {})
+                        setLiveSession(null)
+                        setLiveViewers(0)
+                        return
+                      }
+                      try {
+                        const { sessionId, url } = await api.startLiveSession(presentationId)
+                        setLiveSession({ sessionId, url })
+                        setLiveViewers(0)
+                        livePresentInWindow(presentation, sessionId, (count) => setLiveViewers(count))
+                      } catch (e) {
+                        alert('Failed to start live session: ' + e.message)
+                      }
+                    }}
+                  >
+                    <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: liveSession ? '#ef4444' : '#ef4444', display: 'block', animation: liveSession ? 'none' : 'none' }} />
+                    </span>
+                    {liveSession ? 'Stop Live Session' : 'Live Present'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2094,6 +2309,39 @@ function draw() {
                     style={{ accentColor: 'var(--accent)' }} />
                   Show grid in present mode
                 </label>
+              </div>
+
+              {/* Laser Pointer */}
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Laser Pointer</div>
+                <select className="prop-input" value={presentation.laserPointer || 'off'}
+                  onChange={e => setPresentation(prev => ({ ...prev, laserPointer: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 8px' }}>
+                  <option value="off">Off</option>
+                  <option value="dot">Laser Dot</option>
+                  <option value="spotlight">Spotlight</option>
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Press L during presentation to toggle</div>
+              </div>
+
+              {/* Overview Panel */}
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Slide Overview (present mode)</div>
+                <select className="prop-input" value={presentation.overviewLayout || 'linear'}
+                  onChange={e => setPresentation(prev => ({ ...prev, overviewLayout: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 8px' }}>
+                  <option value="linear">Linear</option>
+                  <option value="sections">Group by Section</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={presentation.sectionNav || false}
+                    onChange={e => setPresentation(prev => ({ ...prev, sectionNav: e.target.checked }))}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  2D section navigation
+                </label>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Arrow left/right between sections, up/down within</div>
               </div>
 
               {/* Footer */}
@@ -2277,6 +2525,23 @@ function draw() {
                 </div>
               </div>
 
+              {/* Bibliography */}
+              <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>Bibliography</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {(presentation.bibliography || []).length} references
+                      {(presentation.bibliography || []).length > 0 && ' — auto-generated references slide'}
+                    </div>
+                  </div>
+                  <button onClick={() => { setShowDefaultSettings(false); setShowBibliographyModal(true) }}
+                    className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }}>
+                    Manage Bibliography
+                  </button>
+                </div>
+              </div>
+
               </div>
             </div>
           </div>
@@ -2325,6 +2590,9 @@ function draw() {
                   onChange={e => setGithubToken(e.target.value)}
                   placeholder={githubConfig.hasToken ? '••••••••  (leave blank to keep)' : 'ghp_...'}
                 />
+                <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                  Generate at github.com &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens &rarr; Fine-grained tokens. Required permissions: <strong style={{ color: '#888' }}>Contents</strong> (Read and write), <strong style={{ color: '#888' }}>Metadata</strong> (Read-only).
+                </div>
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>Pages URL <span style={{ color: '#666' }}>(optional)</span></label>
@@ -2378,6 +2646,218 @@ function draw() {
                   {githubStatus.url && (
                     <a href={githubStatus.url} target="_blank" rel="noopener noreferrer"
                       style={{ marginLeft: 'auto', color: 'inherit', textDecoration: 'underline' }}>View</a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zenodo Modal */}
+      {showZenodoModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowZenodoModal(false) }}>
+          <div style={{ background: '#1e1e2e', borderRadius: 12, padding: 24, width: 500, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: '#e0e0e0' }}>Publish to Zenodo</h3>
+              <button className="btn btn-ghost" onClick={() => setShowZenodoModal(false)} style={{ padding: 4 }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{
+              padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12,
+              background: zenodoConfig.hasToken ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+              border: `1px solid ${zenodoConfig.hasToken ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
+              color: zenodoConfig.hasToken ? '#86efac' : '#fca5a5',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              {zenodoConfig.hasToken ? <Check size={14} /> : <X size={14} />}
+              {zenodoConfig.hasToken
+                ? <>Connected to {zenodoConfig.sandbox ? 'Sandbox' : 'Zenodo'}</>
+                : <>No API token saved — add one below to publish</>
+              }
+            </div>
+
+            {zenodoPubStatus?.published && (
+              <div style={{ padding: '10px 14px', borderRadius: 6, fontSize: 13, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#86efac', marginBottom: 16, lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Published{zenodoPubStatus.versionCount > 1 ? ` (${zenodoPubStatus.versionCount} versions)` : ''}
+                </div>
+                <div>Latest DOI: <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 3, fontSize: 12 }}>{zenodoPubStatus.doi}</code></div>
+                <a href={zenodoPubStatus.url} target="_blank" rel="noopener noreferrer" style={{ color: '#86efac', fontSize: 12 }}>View on Zenodo</a>
+                {zenodoPubStatus.versions?.length > 1 && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 12, color: '#6ee7b7' }}>Version history</summary>
+                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {zenodoPubStatus.versions.map((v, i) => (
+                        <div key={i} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: '#6ee7b7', fontWeight: i === 0 ? 600 : 400 }}>v{zenodoPubStatus.versions.length - i}</span>
+                          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>{v.doi}</code>
+                          <span style={{ color: '#4ade80', opacity: 0.6 }}>{new Date(v.published_at).toLocaleDateString()}</span>
+                          {i === 0 && <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>latest</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>
+                  API Token {zenodoConfig.hasToken && <span style={{ color: '#22c55e' }}>(saved)</span>}
+                </label>
+                <input
+                  type="password"
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 14, boxSizing: 'border-box' }}
+                  value={zenodoToken}
+                  onChange={e => setZenodoToken(e.target.value)}
+                  placeholder={zenodoConfig.hasToken ? '••••••••  (leave blank to keep)' : 'Paste your Zenodo token'}
+                />
+                <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                  Generate at zenodo.org &rarr; Settings &rarr; Applications &rarr; Personal access tokens (scope: <code style={{ fontSize: 10 }}>deposit:write</code>)
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#a0a0b0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={zenodoConfig.sandbox}
+                    onChange={e => setZenodoConfig(prev => ({ ...prev, sandbox: e.target.checked }))}
+                    style={{ accentColor: '#6366f1' }}
+                  />
+                  Use Sandbox (sandbox.zenodo.org)
+                </label>
+              </div>
+
+              <button className="btn btn-secondary" onClick={handleZenodoSaveConfig} style={{ alignSelf: 'flex-start' }}>
+                <Settings size={14} />
+                Save Settings
+              </button>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #3a3a4e', margin: '4px 0' }} />
+
+              <div style={{ fontSize: 12, color: '#a0a0b0', fontWeight: 600, marginBottom: -4 }}>Metadata</div>
+
+              {zenodoMeta.creators.map((c, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    {i === 0 && <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Name *</label>}
+                    <input
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                      value={c.name}
+                      onChange={e => { const arr = [...zenodoMeta.creators]; arr[i] = { ...arr[i], name: e.target.value }; setZenodoMeta(m => ({ ...m, creators: arr })) }}
+                      placeholder="Last, First"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    {i === 0 && <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Affiliation</label>}
+                    <input
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                      value={c.affiliation}
+                      onChange={e => { const arr = [...zenodoMeta.creators]; arr[i] = { ...arr[i], affiliation: e.target.value }; setZenodoMeta(m => ({ ...m, creators: arr })) }}
+                      placeholder="University"
+                    />
+                  </div>
+                  <div style={{ width: 120 }}>
+                    {i === 0 && <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>ORCID</label>}
+                    <input
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                      value={c.orcid}
+                      onChange={e => { const arr = [...zenodoMeta.creators]; arr[i] = { ...arr[i], orcid: e.target.value }; setZenodoMeta(m => ({ ...m, creators: arr })) }}
+                      placeholder="0000-0000-..."
+                    />
+                  </div>
+                  {zenodoMeta.creators.length > 1 && (
+                    <button onClick={() => setZenodoMeta(m => ({ ...m, creators: m.creators.filter((_, j) => j !== i) }))}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '7px 4px', marginTop: i === 0 ? 18 : 0 }}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setZenodoMeta(m => ({ ...m, creators: [...m.creators, { name: '', affiliation: '', orcid: '' }] }))}
+                style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #3a3a4e', color: '#a0a0b0', borderRadius: 5, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+              >
+                + Add creator
+              </button>
+
+              <div>
+                <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Description</label>
+                <textarea
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box', minHeight: 60, resize: 'vertical', fontFamily: 'inherit' }}
+                  value={zenodoMeta.description}
+                  onChange={e => setZenodoMeta(m => ({ ...m, description: e.target.value }))}
+                  placeholder="Brief description of the presentation..."
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>Keywords (comma separated)</label>
+                  <input
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                    value={zenodoMeta.keywords}
+                    onChange={e => setZenodoMeta(m => ({ ...m, keywords: e.target.value }))}
+                    placeholder="astronomy, stellar evolution, ..."
+                  />
+                </div>
+                <div style={{ width: 160 }}>
+                  <label style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 3 }}>License</label>
+                  <select
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                    value={zenodoMeta.license}
+                    onChange={e => setZenodoMeta(m => ({ ...m, license: e.target.value }))}
+                  >
+                    <option value="cc-by-4.0">CC BY 4.0</option>
+                    <option value="cc-by-sa-4.0">CC BY-SA 4.0</option>
+                    <option value="cc-by-nc-4.0">CC BY-NC 4.0</option>
+                    <option value="cc0-1.0">CC0 (Public Domain)</option>
+                    <option value="MIT">MIT</option>
+                    <option value="Apache-2.0">Apache 2.0</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                className="btn btn-primary"
+                onClick={handleZenodoPublish}
+                disabled={zenodoPublishing || !zenodoConfig.hasToken || !zenodoMeta.creators.some(c => c.name.trim())}
+                style={{ width: '100%', justifyContent: 'center', opacity: (zenodoPublishing || !zenodoConfig.hasToken) ? 0.5 : 1 }}
+              >
+                {zenodoPublishing ? 'Publishing...' : zenodoPubStatus?.published ? 'Publish New Version' : 'Publish to Zenodo'}
+              </button>
+
+              {zenodoPublishing && (
+                <div style={{ fontSize: 12, color: '#a0a0b0', textAlign: 'center' }}>
+                  Uploading files and minting DOI... this may take a moment.
+                </div>
+              )}
+
+              {zenodoStatus && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 6, fontSize: 13,
+                  background: zenodoStatus.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                  color: zenodoStatus.type === 'success' ? '#22c55e' : '#ef4444',
+                  lineHeight: 1.6,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {zenodoStatus.type === 'success' ? <Check size={14} /> : <X size={14} />}
+                    <span>{zenodoStatus.message}</span>
+                  </div>
+                  {zenodoStatus.doi && (
+                    <div style={{ marginTop: 6, fontSize: 12 }}>
+                      Copy this DOI for citations: <code style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 3 }}>{zenodoStatus.doi}</code>
+                    </div>
+                  )}
+                  {zenodoStatus.url && (
+                    <a href={zenodoStatus.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'inline-block', marginTop: 4, color: 'inherit', textDecoration: 'underline', fontSize: 12 }}>View on Zenodo</a>
                   )}
                 </div>
               )}
@@ -2589,6 +3069,18 @@ function draw() {
                       className="btn btn-secondary"
                       style={{ fontSize: 11, padding: '3px 10px' }}
                       onClick={async () => {
+                        const data = await api.getSnapshotData(presentationId, snap.id)
+                        setDiffOldData(data)
+                        setDiffOldLabel(snap.name || new Date(snap.createdAt).toLocaleString())
+                        setShowDiffViewer(true)
+                      }}
+                    >
+                      Compare
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 11, padding: '3px 10px' }}
+                      onClick={async () => {
                         if (!confirm('Restore this snapshot? Current changes will be overwritten.')) return
                         const restored = await api.restoreSnapshot(presentationId, snap.id)
                         setPresentation({ ...restored, slides: (restored.slides || []).map(s => s) })
@@ -2648,6 +3140,18 @@ function draw() {
                     <button
                       className="btn btn-secondary"
                       style={{ fontSize: 11, padding: '3px 10px', flexShrink: 0 }}
+                      onClick={async () => {
+                        const data = await api.getGitVersion(presentationId, commit.sha)
+                        setDiffOldData(data)
+                        setDiffOldLabel(`${commit.message.split('\n')[0]} (${commit.sha.slice(0, 7)})`)
+                        setShowDiffViewer(true)
+                      }}
+                    >
+                      Compare
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: 11, padding: '3px 10px', flexShrink: 0 }}
                       disabled={gitRestoring === commit.sha}
                       onClick={async () => {
                         if (!confirm(`Restore from commit ${commit.sha.slice(0, 7)}? Current changes will be overwritten.`)) return
@@ -2671,6 +3175,208 @@ function draw() {
         </div>
       )}
 
+      {showDiffViewer && diffOldData && (
+        <DiffViewer
+          oldPresentation={diffOldData}
+          newPresentation={presentation}
+          oldLabel={diffOldLabel}
+          newLabel="Current"
+          onClose={() => { setShowDiffViewer(false); setDiffOldData(null) }}
+        />
+      )}
+
+      {/* Font Manager Modal */}
+      {showFontManager && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowFontManager(false) }}>
+          <div style={{ background: '#1e1e2e', borderRadius: 12, padding: 24, width: 480, maxWidth: '90vw', maxHeight: '80vh', boxShadow: '0 8px 32px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: '#e0e0e0' }}>Manage Fonts</h3>
+              <button className="btn btn-ghost" onClick={() => setShowFontManager(false)} style={{ padding: 4 }}><X size={16} /></button>
+            </div>
+
+            {/* Upload font */}
+            <div style={{ marginBottom: 16, padding: '12px 14px', background: '#2a2a3e', borderRadius: 8 }}>
+              <div style={{ fontSize: 12, color: '#a0a0b0', fontWeight: 600, marginBottom: 8 }}>Upload a font file</div>
+              <input
+                type="file"
+                accept=".ttf,.otf,.woff,.woff2"
+                disabled={fontUploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setFontUploading(true)
+                  try {
+                    const result = await api.uploadFont(file)
+                    setCustomFonts(prev => [...prev, result])
+                    const style = document.createElement('style')
+                    style.textContent = `@font-face { font-family: '${result.familyName}'; src: url('${result.url}'); }`
+                    document.head.appendChild(style)
+                  } catch (err) { alert('Upload failed: ' + err.message) }
+                  setFontUploading(false)
+                  e.target.value = ''
+                }}
+                style={{ fontSize: 12, color: '#c0c0d0' }}
+              />
+              <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>TTF, OTF, WOFF, or WOFF2</div>
+            </div>
+
+            {/* Add Google Font */}
+            <div style={{ marginBottom: 16, padding: '12px 14px', background: '#2a2a3e', borderRadius: 8 }}>
+              <div style={{ fontSize: 12, color: '#a0a0b0', fontWeight: 600, marginBottom: 8 }}>Add from Google Fonts</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  style={{ flex: 1, padding: '7px 10px', borderRadius: 5, border: '1px solid #3a3a4e', background: '#1e1e2e', color: '#e0e0e0', fontSize: 13, boxSizing: 'border-box' }}
+                  value={fontGoogleName}
+                  onChange={e => setFontGoogleName(e.target.value)}
+                  placeholder="Font name (e.g. Lato)"
+                  onKeyDown={async e => {
+                    if (e.key !== 'Enter' || !fontGoogleName.trim()) return
+                    try {
+                      const result = await api.addGoogleFont(fontGoogleName.trim())
+                      setCustomFonts(prev => [...prev, result])
+                      const link = document.createElement('link')
+                      link.rel = 'stylesheet'
+                      link.href = result.url
+                      document.head.appendChild(link)
+                      setFontGoogleName('')
+                    } catch (err) { alert('Failed: ' + err.message) }
+                  }}
+                />
+                <button
+                  className="btn btn-primary"
+                  style={{ fontSize: 12, padding: '6px 14px' }}
+                  onClick={async () => {
+                    if (!fontGoogleName.trim()) return
+                    try {
+                      const result = await api.addGoogleFont(fontGoogleName.trim())
+                      setCustomFonts(prev => [...prev, result])
+                      const link = document.createElement('link')
+                      link.rel = 'stylesheet'
+                      link.href = result.url
+                      document.head.appendChild(link)
+                      setFontGoogleName('')
+                    } catch (err) { alert('Failed: ' + err.message) }
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+                Browse at <a href="https://fonts.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#818cf8' }}>fonts.google.com</a>, then type the exact font name here.
+              </div>
+            </div>
+
+            {/* Font list */}
+            <div style={{ fontSize: 12, color: '#a0a0b0', fontWeight: 600, marginBottom: 8 }}>My Fonts ({customFonts.length})</div>
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              {customFonts.length === 0 ? (
+                <div style={{ color: '#666', fontSize: 13, textAlign: 'center', padding: 20 }}>No custom fonts added yet.</div>
+              ) : (
+                customFonts.map(f => (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid #2a2a3e' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, color: '#e0e0e0', fontFamily: `'${f.familyName}', sans-serif` }}>{f.familyName}</div>
+                      <div style={{ fontSize: 11, color: '#888' }}>{f.source === 'google' ? 'Google Fonts' : 'Uploaded file'}</div>
+                    </div>
+                    <span style={{ fontSize: 16, color: '#c0c0d0', fontFamily: `'${f.familyName}', sans-serif` }}>Aa</span>
+                    <button
+                      className="btn-icon"
+                      style={{ color: 'var(--danger)' }}
+                      title="Remove font"
+                      onClick={async () => {
+                        await api.deleteFont(f.id)
+                        setCustomFonts(prev => prev.filter(x => x.id !== f.id))
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Browser Modal */}
+      {showFileBrowser && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowFileBrowser(false); setFileBrowserCopied(null) } }}>
+          <div style={{ background: 'var(--bg-primary, #0f0f1a)', border: '1px solid var(--border)', borderRadius: 12, width: 700, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>Uploaded Files</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {['all', 'image', 'video', 'audio'].map(f => (
+                  <button key={f} onClick={() => setFileBrowserFilter(f)}
+                    style={{ padding: '3px 10px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer',
+                      background: fileBrowserFilter === f ? 'var(--accent)' : 'var(--bg-hover)', color: fileBrowserFilter === f ? '#fff' : 'var(--text-secondary)' }}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+                <button onClick={() => { setShowFileBrowser(false); setFileBrowserCopied(null) }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {fileBrowserLoading ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading...</div>
+              ) : fileBrowserFiles.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No files uploaded yet</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                  {fileBrowserFiles
+                    .filter(f => fileBrowserFilter === 'all' || (f.contentType && f.contentType.startsWith(fileBrowserFilter + '/')))
+                    .map(file => (
+                    <div key={file.id} style={{ background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
+                      onClick={() => { const url = `${window.location.origin}${file.url}`; navigator.clipboard.writeText(url); setFileBrowserCopied(file.id); setTimeout(() => setFileBrowserCopied(null), 1500) }}>
+                      <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+                        {file.contentType?.startsWith('image/') ? (
+                          <img src={file.url} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : file.contentType?.startsWith('video/') ? (
+                          <video src={file.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+                        ) : (
+                          <span style={{ fontSize: 28, opacity: 0.3 }}>{file.contentType?.startsWith('audio/') ? '🎵' : '📄'}</span>
+                        )}
+                      </div>
+                      <div style={{ padding: '6px 8px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {file.size ? `${(file.size / 1024).toFixed(0)} KB` : ''}
+                        </div>
+                      </div>
+                      {fileBrowserCopied === file.id && (
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(34,197,94,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600, fontSize: 12 }}>
+                          URL Copied!
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)' }}>
+              Click a file to copy its URL to clipboard
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDatasetPanel && (
+        <DatasetPanel presentationId={presentationId} onClose={() => setShowDatasetPanel(false)} />
+      )}
+
+      {dynSysEditorState && (
+        <DynSysEditor
+          initialData={dynSysEditorState.data}
+          onApply={(newData) => {
+            updateElement(dynSysEditorState.elementId, { pluginData: newData })
+            setDynSysEditorState(null)
+          }}
+          onCancel={() => setDynSysEditorState(null)}
+        />
+      )}
+
       {/* Editor Body */}
       <div className="editor-body">
         <SlidePanel
@@ -2686,6 +3392,8 @@ function draw() {
           onMoveToColumn={moveSlideToColumn}
           slideW={slideW}
           slideH={slideH}
+          referencesSlideIndex={hasReferencesSlide ? referencesSlideIndex : -1}
+          referencesCount={referencedEntries.length}
         />
 
         <div className="editor-main">
@@ -2716,6 +3424,7 @@ function draw() {
             onAddMathGrid={() => setShowMathGridModal(true)}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
+            onAddDiagram={() => setShowDiagramModal(true)}
             onAddP5={addP5Element}
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
@@ -2773,9 +3482,33 @@ function draw() {
             onRedo={doRedo}
             canUndo={historyRef.current.length >= 2}
             canRedo={redoStackRef.current.length > 0}
+            customFonts={customFonts}
+            onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
-            <SlideCanvas
+            {isViewingReferences ? (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
+                <div style={{ width: slideW * 0.75, height: slideH * 0.75, background: '#111122', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', padding: '24px 32px', position: 'relative', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                  <div style={{ position: 'absolute', top: 8, right: 10, fontSize: 10, color: 'var(--text-muted)', background: 'rgba(99,102,241,0.15)', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>Auto-generated</div>
+                  <h2 style={{ fontSize: 22, margin: '0 0 16px', color: 'rgba(255,255,255,0.95)', fontWeight: 700 }}>References</h2>
+                  <div style={{ columns: referencedEntries.length > 8 ? 2 : 1, columnGap: 24 }}>
+                    {referencedEntries.map((entry, i) => {
+                      const authors = parseAuthors(entry.author)
+                      const authorStr = formatAuthorsFull(authors)
+                      return (
+                        <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
+                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{i + 1}]</span>
+                          {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
+                          {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
+                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}.
+                          {entry.doi && <a href={`https://doi.org/${entry.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>DOI</a>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : <SlideCanvas
               editor={editor}
               slide={currentSlide}
               selectedElementIds={selectedElementIds}
@@ -2855,6 +3588,10 @@ function draw() {
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
               onOpenManimEditor={openManimEditor}
+              onOpenDynSysEditor={(elementId) => {
+                const el = currentSlide?.elements?.find(e => e.id === elementId)
+                if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
+              }}
               onAddImage={async (file, dropX, dropY) => {
                 const result = await api.uploadFile(file)
                 if (result.url) addImageElement(result.url, dropX, dropY)
@@ -2865,7 +3602,7 @@ function draw() {
               onAddDrawingStroke={addDrawingStroke}
               globalFont={presentation.globalFont || ''}
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
-            />
+            />}
           </div>
         </div>
 
@@ -3064,23 +3801,34 @@ function draw() {
               </div>
             </div>
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-              <textarea
-                value={latexEditorState.content}
-                onChange={e => setLatexEditorState(s => ({ ...s, content: e.target.value }))}
-                style={{ flex: 1, background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', lineHeight: 1.6, tabSize: 2, borderRight: '1px solid var(--border)' }}
-                spellCheck={false}
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Tab') {
-                    e.preventDefault()
-                    const { selectionStart: s, selectionEnd: end, value } = e.target
-                    const next = value.substring(0, s) + '  ' + value.substring(end)
-                    e.target.value = next
-                    setLatexEditorState(st => ({ ...st, content: next }))
-                    requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
-                  }
-                }}
-              />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
+                <textarea
+                  id="latex-editor-textarea"
+                  value={latexEditorState.content}
+                  onChange={e => setLatexEditorState(s => ({ ...s, content: e.target.value }))}
+                  style={{ flex: 1, background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', lineHeight: 1.6, tabSize: 2 }}
+                  spellCheck={false}
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Tab') {
+                      e.preventDefault()
+                      const { selectionStart: s, selectionEnd: end, value } = e.target
+                      const next = value.substring(0, s) + '  ' + value.substring(end)
+                      e.target.value = next
+                      setLatexEditorState(st => ({ ...st, content: next }))
+                      requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
+                    }
+                  }}
+                />
+                <EquationPalette onInsert={(latex) => {
+                  const ta = document.getElementById('latex-editor-textarea')
+                  if (!ta) return
+                  const { selectionStart: s, selectionEnd: end, value } = ta
+                  const next = value.substring(0, s) + latex + value.substring(end)
+                  setLatexEditorState(st => ({ ...st, content: next }))
+                  requestAnimationFrame(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = s + latex.length })
+                }} />
+              </div>
               <div style={{ flex: 1, background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: 16 }}>
                 <iframe
                   key={latexEditorState.content}
@@ -3236,68 +3984,6 @@ function draw() {
         />
       )}
 
-      {showFileBrowser && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
-          onClick={e => { if (e.target === e.currentTarget) { setShowFileBrowser(false); setFileBrowserCopied(null) } }}>
-          <div style={{ background: 'var(--bg-primary, #0f0f1a)', border: '1px solid var(--border)', borderRadius: 12, width: 700, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>Uploaded Files</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                {['all', 'image', 'video', 'audio'].map(f => (
-                  <button key={f} onClick={() => setFileBrowserFilter(f)}
-                    style={{ padding: '3px 10px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer',
-                      background: fileBrowserFilter === f ? 'var(--accent)' : 'var(--bg-hover)', color: fileBrowserFilter === f ? '#fff' : 'var(--text-secondary)' }}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
-                <button onClick={() => { setShowFileBrowser(false); setFileBrowserCopied(null) }}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
-              </div>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              {fileBrowserLoading ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading...</div>
-              ) : fileBrowserFiles.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No files uploaded yet</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                  {fileBrowserFiles
-                    .filter(f => fileBrowserFilter === 'all' || (f.contentType && f.contentType.startsWith(fileBrowserFilter + '/')))
-                    .map(file => (
-                    <div key={file.id} style={{ background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
-                      onClick={() => { const url = `${window.location.origin}${file.url}`; navigator.clipboard.writeText(url); setFileBrowserCopied(file.id); setTimeout(() => setFileBrowserCopied(null), 1500) }}>
-                      <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-                        {file.contentType?.startsWith('image/') ? (
-                          <img src={file.url} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : file.contentType?.startsWith('video/') ? (
-                          <video src={file.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
-                        ) : (
-                          <span style={{ fontSize: 28, opacity: 0.3 }}>{file.contentType?.startsWith('audio/') ? '🎵' : '📄'}</span>
-                        )}
-                      </div>
-                      <div style={{ padding: '6px 8px' }}>
-                        <div style={{ fontSize: 10, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</div>
-                        <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {file.size ? `${(file.size / 1024).toFixed(0)} KB` : ''}
-                        </div>
-                      </div>
-                      {fileBrowserCopied === file.id && (
-                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(34,197,94,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600, fontSize: 12 }}>
-                          URL Copied!
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)' }}>
-              Click a file to copy its URL to clipboard
-            </div>
-          </div>
-        </div>
-      )}
-
       {showKineticModal && (
         <KineticTextModal
           onInsert={insertKineticText}
@@ -3353,6 +4039,40 @@ function draw() {
           onClose={() => setShowThreeModal(false)}
           slideW={slideW}
           slideH={slideH}
+        />
+      )}
+
+      {/* Bibliography Modal */}
+      {showBibliographyModal && (
+        <BibliographyModal
+          bibliography={presentation.bibliography || []}
+          citationStyle={presentation.citationStyle || 'numbered'}
+          onUpdate={updates => setPresentation(prev => ({ ...prev, ...updates }))}
+          onInsertCitation={(entry, index) => {
+            const cite = formatCitation(entry, presentation.citationStyle || 'numbered', index)
+            if (editor && editingElementId) {
+              editor.chain().focus().insertContent(`<sup style="color:#6366f1;font-weight:700;cursor:default">${cite}</sup>`).run()
+            }
+          }}
+          onClose={() => setShowBibliographyModal(false)}
+        />
+      )}
+
+      {/* Diagram Modal */}
+      {showDiagramModal && (
+        <DiagramModal
+          slideW={slideW}
+          slideH={slideH}
+          onInsert={(svg) => {
+            const newEl = { id: crypto.randomUUID(), type: 'html', x: 80, y: 80, width: 600, height: 380, zIndex: 2, content: svg }
+            setPresentation(prev => {
+              if (!prev) return prev
+              return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndex ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+            })
+            setSelectedElementIds([newEl.id])
+            setShowDiagramModal(false)
+          }}
+          onClose={() => setShowDiagramModal(false)}
         />
       )}
 
