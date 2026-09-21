@@ -160,7 +160,7 @@ app.get('/api/docs/:section/:page', (req, res) => {
 
 const docsPublic = path.join(DOCS_DIR, 'public')
 if (fs.existsSync(docsPublic)) {
-  app.use('/revealjs_gui', express.static(docsPublic))
+  app.use('/parallax-presentations', express.static(docsPublic))
 }
 
 // Plugin assets (public, before auth — sandbox iframes need these)

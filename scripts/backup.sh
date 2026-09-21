@@ -11,8 +11,8 @@ mkdir -p "$BACKUP_DIR"
 # --user ensures the output file is owned by jbirky, not root.
 docker run --rm \
   --user 1000:1000 \
-  -v revealjs_gui_revealjs-data:/src/data:ro \
-  -v revealjs_gui_revealjs-uploads:/src/uploads:ro \
+  -v parallax-data:/src/data:ro \
+  -v parallax-uploads:/src/uploads:ro \
   -v "$BACKUP_DIR":/backup \
   alpine tar czf "/backup/$TIMESTAMP.tar.gz" -C /src data uploads
 

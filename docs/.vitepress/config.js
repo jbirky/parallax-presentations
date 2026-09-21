@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Parallax',
   description: 'A self-hostable WYSIWYG presentation editor powered by reveal.js',
-  base: '/revealjs_gui/',
+  base: '/parallax-presentations/',
   ignoreDeadLinks: true,
 
   themeConfig: {
@@ -11,7 +11,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Features', link: '/features/overview' },
       { text: 'Tutorials', link: '/tutorials/first-presentation' },
-      { text: 'GitHub', link: 'https://github.com/jbirky/revealjs_gui' }
+      { text: 'GitHub', link: 'https://github.com/jbirky/parallax-presentations' }
     ],
 
     sidebar: {
@@ -75,7 +75,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/jbirky/revealjs_gui' }
+      { icon: 'github', link: 'https://github.com/jbirky/parallax-presentations' }
     ],
 
     footer: {

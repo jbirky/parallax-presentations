@@ -1,15 +1,15 @@
 services:
   parallax-stable:
     build:
-      context: https://github.com/jbirky/revealjs_gui.git#main
+      context: https://github.com/jbirky/parallax-presentations.git#main
       args:
         - VITE_PARALLAX_MODE=cloud
         - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
     ports:
       - "127.0.0.1:3002:3002"
     volumes:
-      - revealjs-data:/app/server/data
-      - revealjs-uploads:/app/server/uploads
+      - parallax-data:/app/server/data
+      - parallax-uploads:/app/server/uploads
     env_file:
       - .env
     environment:
@@ -20,7 +20,7 @@ services:
 
   parallax-dev:
     build:
-      context: https://github.com/jbirky/revealjs_gui.git#dev
+      context: https://github.com/jbirky/parallax-presentations.git#dev
       args:
         - VITE_PARALLAX_MODE=cloud
         - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
@@ -75,12 +75,12 @@ services:
     restart: unless-stopped
 
 volumes:
-  revealjs-data:
+  parallax-data:
     external: true
-    name: revealjs_gui_revealjs-data
-  revealjs-uploads:
+    name: parallax-data
+  parallax-uploads:
     external: true
-    name: revealjs_gui_revealjs-uploads
+    name: parallax-uploads
   parallax-dev-data:
   parallax-dev-uploads:
   umami-db-data:

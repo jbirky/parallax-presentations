@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/jbirky/revealjs_gui
+      link: https://github.com/jbirky/parallax-presentations
 
 features:
   - title: WYSIWYG Editing

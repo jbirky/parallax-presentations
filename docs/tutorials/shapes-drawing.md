@@ -21,7 +21,7 @@ Select a shape to configure in the right panel:
 ### Example output
 
 <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-  <iframe src="/revealjs_gui/demos/shapes.html" style="width:100%;height:140px;border:none"></iframe>
+  <iframe src="/parallax-presentations/demos/shapes.html" style="width:100%;height:140px;border:none"></iframe>
 </div>
 
 ## Freehand drawing
