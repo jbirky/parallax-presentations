@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { pointsToPath } from '../utils/drawingUtils'
+import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 
 const THUMB_W = 150
 
@@ -107,11 +108,22 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />
                   : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'chart' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5') && (
-                <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                  { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'chart' ? '▦' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : 'MD' }
-                </div>
-              )}
+              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'chart' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5') && (() => {
+                // A still captured while this embed was live on the canvas, so the
+                // thumbnail costs nothing to draw. Placeholder tile until then.
+                const snap = (el.type === 'html' || el.type === 'p5')
+                  ? getSnapshot(snapshotKey(el.id, el.content))
+                  : null
+                if (snap) {
+                  return <img src={snap} alt="" draggable={false}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                }
+                return (
+                  <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
+                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'chart' ? '▦' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : 'MD' }
+                  </div>
+                )
+              })()}
             </div>
           ))
         }
@@ -145,6 +157,9 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
 
   const columns = useMemo(() => buildColumns(slides), [slides])
   const is2D = slides.some(s => s.column !== undefined)
+
+  // Redraw thumbnails as embed snapshots arrive
+  useSyncExternalStore(subscribeSnapshots, getSnapshotVersion, getSnapshotVersion)
 
   // The parent tracks the multi-selection by slide id; map it back to indices.
   const selectedIndices = useMemo(() => {
