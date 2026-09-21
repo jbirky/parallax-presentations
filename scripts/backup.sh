@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKUP_DIR="/home/jbirky/backups/revealjs"
+BACKUP_DIR="/home/jbirky/backups/parallax-presentations"
 KEEP=14   # number of daily backups to retain
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
 
