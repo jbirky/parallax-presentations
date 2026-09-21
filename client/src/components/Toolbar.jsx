@@ -213,6 +213,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   }
 
   const currentColor = editor ? (editor.getAttributes('textStyle').color || '#ffffff') : '#ffffff'
+  // Falls back to the first preset so the custom picker opens on a usable
+  // highlight rather than white when nothing is highlighted yet.
+  const currentHighlight = editor ? (editor.getAttributes('highlight').color || '#fef08a') : '#fef08a'
 
   return (
     <div className="toolbar">
@@ -1091,6 +1094,18 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                     }}
                   />
                 ))}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Custom</span>
+                  <div className="color-btn-wrapper" style={{ flex: 1 }}>
+                    <div style={{ width: '100%', height: 22, borderRadius: 4, background: currentHighlight, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer' }} />
+                    <input
+                      type="color"
+                      value={currentHighlight}
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                      onChange={e => editor.chain().focus().setHighlight({ color: e.target.value }).run()}
+                    />
+                  </div>
+                </div>
                 <button
                   title="Remove highlight"
                   style={{
