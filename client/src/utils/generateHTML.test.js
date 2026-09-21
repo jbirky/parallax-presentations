@@ -456,3 +456,57 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('[1]')
   })
 })
+
+describe('generateRevealHTML — HTML embeds', () => {
+  const JSX_EMBED = `<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.11.1/jsxgraphcore.js"></script>
+</head>
+<body>
+<div id="box" class="jxgbox" style="width:600px;height:400px"></div>
+<script>
+const B = JXG.JSXGraph.initBoard('box', { boundingbox: [-5, 5, 5, -5], axis: true });
+const a = B.create('slider', [[-4, 4], [0, 4], [0, 1, 3]]);
+B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
+</script>
+</body>
+</html>`
+
+  function embedPresentation(content) {
+    return makePresentation({
+      slides: [{
+        id: 's1',
+        elements: [{ id: 'e1', type: 'html', x: 0, y: 0, width: 600, height: 400, zIndex: 1, content }],
+      }],
+    })
+  }
+
+  // Embeds must render through srcdoc, like the editor canvas does. A data: URL
+  // gives the embed an opaque origin and a data: base URL, which breaks scripts
+  // that JSXGraph-style embeds rely on.
+  it('renders html embeds via srcdoc, not a data: URL', () => {
+    const html = generateRevealHTML(embedPresentation(JSX_EMBED))
+    expect(html).toContain('<iframe srcdoc="')
+    expect(html).not.toContain('data:text/html;charset=utf-8,%3C')
+  })
+
+  it('escapes ampersands and quotes so the srcdoc attribute stays intact', () => {
+    const html = generateRevealHTML(embedPresentation(JSX_EMBED))
+    const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
+    expect(srcdoc).not.toMatch(/(^|[^&])"/)
+    expect(srcdoc).toContain('&quot;https://cdnjs.cloudflare.com')
+    expect(srcdoc).toContain('&amp; 1')
+  })
+
+  it('injects the sizing script into the embed head', () => {
+    const html = generateRevealHTML(embedPresentation(JSX_EMBED))
+    expect(html).toContain('const EMBED_WIDTH=600,EMBED_HEIGHT=400')
+  })
+
+  it('never writes a zero-area viewBox onto an unsized svg', () => {
+    const html = generateRevealHTML(embedPresentation(JSX_EMBED))
+    const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
+    expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
+  })
+})

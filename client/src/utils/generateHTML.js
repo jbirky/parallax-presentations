@@ -6,7 +6,7 @@ import { pointsToPath } from './drawingUtils'
 import { getReferencedEntries } from './bibtexParser'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=s.getAttribute('width'),h=s.getAttribute('height');if(w&&h&&!s.getAttribute('viewBox')){s.setAttribute('viewBox','0 0 '+parseFloat(w)+' '+parseFloat(h));s.setAttribute('width','100%');s.setAttribute('height','100%');}s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle
   if (/<head[^>]*>/i.test(userHtml))
@@ -173,8 +173,8 @@ export function generateRevealHTML(presentation) {
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
-          const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(embedHtml)}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe src="${dataUrl}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script></head><body><script>${el.content || ''}<\/script></body></html>`
