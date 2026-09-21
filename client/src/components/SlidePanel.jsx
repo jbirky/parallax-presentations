@@ -137,7 +137,7 @@ function buildColumns(slides) {
   return sortedKeys.map(k => ({ colNum: k, items: colMap[k] }))
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -145,6 +145,48 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
 
   const columns = useMemo(() => buildColumns(slides), [slides])
   const is2D = slides.some(s => s.column !== undefined)
+
+  // The parent tracks the multi-selection by slide id; map it back to indices.
+  const selectedIndices = useMemo(() => {
+    if (!selectedIds.length) return []
+    const ids = new Set(selectedIds)
+    return slides.reduce((acc, s, i) => (ids.has(s.id) ? (acc.push(i), acc) : acc), [])
+  }, [slides, selectedIds])
+  const isMultiSelect = selectedIndices.length > 1
+
+  // Ctrl/Cmd+click toggles a slide in or out of the selection; a plain click
+  // collapses back to one.
+  function handleItemClick(e, index) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      onToggleSelect?.(index)
+    } else {
+      onSelect(index)
+    }
+  }
+
+  // Dragging a slide that is part of the selection drags the whole group;
+  // dragging anything else behaves as a plain single-slide drag.
+  function handleDragStart(index, colNum) {
+    const group = isMultiSelect && selectedIndices.includes(index) ? selectedIndices : null
+    dragSrcRef.current = { flatIndex: index, colNum, indices: group }
+  }
+
+  function handleDrop(index, colNum) {
+    const src = dragSrcRef.current
+    dragSrcRef.current = null
+    setDragOverInfo(null)
+    if (!src) return
+    if (src.indices) {
+      if (src.indices.includes(index)) return
+      if (colNum === undefined || src.colNum === colNum) onMoveMultiple?.(src.indices, index)
+      else src.indices.forEach(i => onMoveToColumn(i, colNum))
+      return
+    }
+    if (src.flatIndex === index) return
+    if (colNum === undefined || src.colNum === colNum) onMove(src.flatIndex, index)
+    else onMoveToColumn(src.flatIndex, colNum)
+  }
 
   useEffect(() => {
     itemRefs.current[currentIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -154,6 +196,11 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
   const currentColIdx = columns.findIndex(c => c.colNum === currentColNum)
 
   function handleKeyDown(e) {
+    if (e.key === 'Escape' && isMultiSelect) {
+      e.preventDefault()
+      onSelect(currentIndex)
+      return
+    }
     if (is2D) {
       const currentCol = columns[currentColIdx]
       const rowIdx = currentCol ? currentCol.items.findIndex(it => it.flatIndex === currentIndex) : -1
@@ -191,7 +238,9 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
       <div className="slide-panel">
         <div className="slide-panel-header">
           <span>Slides</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slides.length}</span>
+          <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
+            {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
+          </span>
         </div>
 
         <div
@@ -210,24 +259,23 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
             <div
               key={slide.id || index}
               ref={el => { itemRefs.current[index] = el }}
-              className={`slide-item ${index === currentIndex ? 'active' : ''}`}
+              className={`slide-item ${index === currentIndex ? 'active' : ''} ${selectedIndices.includes(index) && isMultiSelect ? 'multi-selected' : ''}`}
               style={{
                 ...(dragOverInfo?.flatIndex === index ? { outline: '2px solid var(--accent)', outlineOffset: '-2px' } : undefined),
                 ...(isGrouped ? { marginTop: prevSameGroup ? 1 : undefined, marginBottom: nextSameGroup ? 1 : undefined } : undefined),
               }}
               draggable
-              onDragStart={() => { dragSrcRef.current = { flatIndex: index } }}
-              onDragOver={e => { e.preventDefault(); setDragOverInfo({ flatIndex: index }) }}
-              onDragLeave={() => setDragOverInfo(null)}
-              onDrop={e => {
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={e => {
                 e.preventDefault()
-                setDragOverInfo(null)
-                const src = dragSrcRef.current
-                if (src && src.flatIndex !== index) onMove(src.flatIndex, index)
-                dragSrcRef.current = null
+                // No drop marker on the slides being dragged
+                if (dragSrcRef.current?.indices?.includes(index)) return
+                setDragOverInfo({ flatIndex: index })
               }}
+              onDragLeave={() => setDragOverInfo(null)}
+              onDrop={e => { e.preventDefault(); handleDrop(index) }}
               onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
-              onClick={() => { onSelect(index); listRef.current?.focus() }}
+              onClick={e => { handleItemClick(e, index); listRef.current?.focus() }}
             >
               {isGrouped && (
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
@@ -294,7 +342,9 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
     <div className="slide-panel" style={{ width: Math.min(columns.length * (THUMB_W + 28) + 20, 480), maxWidth: '45vw', minWidth: 200 }}>
       <div className="slide-panel-header">
         <span>Slides</span>
-        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{columns.length} col · {slides.length}</span>
+        <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
+          {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
+        </span>
       </div>
 
       <div
@@ -356,28 +406,20 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
                 <div
                   key={slide.id || flatIndex}
                   ref={el => { itemRefs.current[flatIndex] = el }}
-                  className={`slide-item ${flatIndex === currentIndex ? 'active' : ''}`}
+                  className={`slide-item ${flatIndex === currentIndex ? 'active' : ''} ${selectedIndices.includes(flatIndex) && isMultiSelect ? 'multi-selected' : ''}`}
                   style={dragOverInfo?.flatIndex === flatIndex ? { outline: '2px solid var(--accent)', outlineOffset: '-2px' } : undefined}
                   draggable
-                  onDragStart={() => { dragSrcRef.current = { flatIndex, colNum } }}
-                  onDragOver={e => { e.preventDefault(); setDragOverInfo({ flatIndex, colNum }) }}
-                  onDragLeave={() => setDragOverInfo(null)}
-                  onDrop={e => {
+                  onDragStart={() => handleDragStart(flatIndex, colNum)}
+                  onDragOver={e => {
                     e.preventDefault()
-                    setDragOverInfo(null)
-                    const src = dragSrcRef.current
-                    if (!src || src.flatIndex === flatIndex) { dragSrcRef.current = null; return }
-                    if (src.colNum === colNum) {
-                      // Same column: reorder rows
-                      onMove(src.flatIndex, flatIndex)
-                    } else {
-                      // Different column: move to this column
-                      onMoveToColumn(src.flatIndex, colNum)
-                    }
-                    dragSrcRef.current = null
+                    // No drop marker on the slides being dragged
+                    if (dragSrcRef.current?.indices?.includes(flatIndex)) return
+                    setDragOverInfo({ flatIndex, colNum })
                   }}
+                  onDragLeave={() => setDragOverInfo(null)}
+                  onDrop={e => { e.preventDefault(); handleDrop(flatIndex, colNum) }}
                   onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
-                  onClick={() => onSelect(flatIndex)}
+                  onClick={e => handleItemClick(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
                   <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />

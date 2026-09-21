@@ -21,6 +21,7 @@ import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
+import { reorderSlides } from '../utils/slideReorder'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
@@ -219,6 +220,7 @@ const migrateSlide = (slide) => {
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome }) {
   const [presentation, setPresentation] = useState(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState('') // '', 'saving', 'saved'
   const [loading, setLoading] = useState(true)
@@ -1824,6 +1826,49 @@ function draw() {
     setCurrentSlideIndex(toIndex)
   }
 
+  // Multi-slide selection, tracked by slide id so it survives reordering,
+  // adding and deleting without going stale.
+  const selectSlide = (index) => {
+    setCurrentSlideIndex(index)
+    setSelectedSlideIds([])
+  }
+
+  const toggleSlideSelection = (index) => {
+    if (!presentation) return
+    const slides = presentation.slides
+    const id = slides[index]?.id
+    if (!id) return
+    const currentId = slides[currentSlideIndex]?.id
+    // Drop ids for slides that have since been deleted. A selection that is no
+    // longer showing as a group restarts from the active slide, which is what
+    // the panel is displaying at that point.
+    const live = new Set(slides.map(s => s.id))
+    const kept = selectedSlideIds.filter(x => live.has(x))
+    const base = kept.length > 1 ? kept : (currentId ? [currentId] : [])
+    if (base.includes(id)) {
+      const next = base.filter(x => x !== id)
+      // One slide left is just a normal single selection
+      setSelectedSlideIds(next.length > 1 ? next : [])
+      if (id === currentId && next.length) {
+        const fallback = slides.findIndex(s => s.id === next[0])
+        if (fallback >= 0) setCurrentSlideIndex(fallback)
+      }
+    } else {
+      setSelectedSlideIds([...base, id])
+      setCurrentSlideIndex(index)
+    }
+  }
+
+  const moveSlides = (indices, toIndex) => {
+    if (!presentation) return
+    const currentId = presentation.slides[currentSlideIndex]?.id
+    const slides = reorderSlides(presentation.slides, indices, toIndex)
+    if (!slides) return
+    setPresentation(prev => ({ ...prev, slides }))
+    const nextCurrent = slides.findIndex(s => s.id === currentId)
+    if (nextCurrent >= 0) setCurrentSlideIndex(nextCurrent)
+  }
+
   if (loading) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -3401,7 +3446,10 @@ function draw() {
         <SlidePanel
           slides={presentation.slides}
           currentIndex={currentSlideIndex}
-          onSelect={setCurrentSlideIndex}
+          onSelect={selectSlide}
+          selectedIds={selectedSlideIds}
+          onToggleSelect={toggleSlideSelection}
+          onMoveMultiple={moveSlides}
           onAdd={(colNum) => { setPendingAddColumn(colNum ?? null); setShowTemplateModal(true) }}
           onAddColumn={addColumn}
           onImport={() => setShowImportSlideModal(true)}
