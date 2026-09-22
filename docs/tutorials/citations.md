@@ -77,51 +77,11 @@ The references slide includes:
 - Clickable DOI links where available
 - Automatic two-column layout when there are more than 8 references
 
-Only entries you actually cite are indexed. An entry sitting in the library
-uncited gets no number and stays off the slide — the Library tab shows a dash
-instead of a number for it, and the header counts how many of your entries are
-cited.
+The references slide appears when you:
 
-It appears as the last slide everywhere the deck does — in the slide panel (marked
-**REF**), on the editor canvas when you select it, in present mode, in an HTML
-export, in a PDF export and through the server-side present/export endpoints. All
-of them build it from the same place, so the editor shows what the export will
-contain.
-
-On the canvas it is marked **AUTO-GENERATED** and cannot be edited: change what it
-says by editing your bibliography, not the slide. The one export that leaves it out
-is PowerPoint, which has no way to carry a formatted, linked reference list.
-
-## Settings
-
-The **Settings** tab of the bibliography modal holds the two choices that decide
-how citations are numbered.
-
-**Citation style** — `[1]`-style numbers, or `(Author, Year)`.
-
-**Index order** — how the numbers are handed out:
-
-| Order | Numbering |
-|-------|-----------|
-| Presentation order | As citations first appear: slide by slide, and top to bottom, left to right within a slide |
-| Alphabetical order | By first author's surname, then year, then title |
-
-Below the two settings, the tab lists the index itself — every cited entry with
-the number it currently carries — so you can see the effect of a change at once.
-
-The order the entries sit in in the **Library** tab no longer affects numbering;
-it is just how your library is organised.
-
-### How markers stay in step
-
-A citation marker inserted with **Cite** remembers *which* entry it points at, not
-just the number it showed at the time. Change the style or the order and every
-marker follows, on the canvas and in every export.
-
-Markers written before this — and any `[1]` you typed by hand — carry only a
-number. The Settings tab notices them and offers **Link and renumber markers**,
-which attaches each one to the entry its number pointed at in the library and
-brings it into the index.
+- Click **Present** to enter presentation mode
+- Export the presentation as HTML
+- Use the server-side present/export endpoints
 
 ::: tip
 The order of references matches the order in your bibliography library. You can reorder entries using the arrow buttons in the Library tab.

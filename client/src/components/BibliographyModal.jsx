@@ -2,11 +2,11 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useRef, useEffect } from 'react'
-import { parseBibtex, parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
+import { parseBibtex, parseAuthors, formatAuthorsShort, formatCitation } from '../utils/bibtexParser'
 import { api } from '../utils/api'
 
-export default function BibliographyModal({ bibliography = [], citationStyle = 'numbered', citationOrder = 'presentation', citationIndex = null, markerCounts = { stale: 0, unlinked: 0 }, onUpdate, onInsertCitation, onRenumber, onClose }) {
-  const [tab, setTab] = useState('library') // library | import | zotero | settings
+export default function BibliographyModal({ bibliography = [], citationStyle = 'numbered', onUpdate, onInsertCitation, onClose }) {
+  const [tab, setTab] = useState('library') // library | import | zotero
   const [bibtexInput, setBibtexInput] = useState('')
   const [importError, setImportError] = useState(null)
   const fileRef = useRef(null)
@@ -197,10 +197,6 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
 
   const isInBib = (key) => bibliography.some(e => e.key === key)
 
-  // Cited entries and the label each one carries, keyed so the library list can
-  // show an entry's index — or that it has none yet.
-  const indexed = new Map((citationIndex?.entries || []).map(e => [e.key, citationIndex.labelByKey[e.key]]))
-
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -210,16 +206,19 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Bibliography</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {indexed.size} of {bibliography.length} cited
-            </span>
+            <select className="prop-input" value={citationStyle}
+              onChange={e => onUpdate({ citationStyle: e.target.value })}
+              style={{ fontSize: 12, padding: '4px 8px' }}>
+              <option value="numbered">[1], [2], [3]</option>
+              <option value="author-year">(Author, Year)</option>
+            </select>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
           </div>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          {[['library', 'Library'], ['import', 'Import BibTeX'], ['zotero', 'Zotero'], ['settings', 'Settings']].map(([id, label]) => (
+          {[['library', 'Library'], ['import', 'Import BibTeX'], ['zotero', 'Zotero']].map(([id, label]) => (
             <button key={id}
               onClick={() => setTab(id)}
               style={{ flex: 1, padding: '8px 0', fontSize: 13, border: 'none', cursor: 'pointer',
@@ -250,10 +249,8 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                     const authors = parseAuthors(entry.author)
                     return (
                       <div key={entry.key} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, minWidth: 34, textAlign: 'center', paddingTop: 2,
-                          color: indexed.has(entry.key) ? 'var(--accent)' : 'var(--text-muted)' }}
-                          title={indexed.has(entry.key) ? 'Cited in this presentation' : 'Not cited yet — it gets no index and stays off the references slide'}>
-                          {indexed.get(entry.key) || '—'}
+                        <div style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700, minWidth: 28, textAlign: 'center', paddingTop: 2 }}>
+                          {citationStyle === 'numbered' ? `[${i + 1}]` : ''}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -269,7 +266,7 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
                           {onInsertCitation && (
-                            <button onClick={() => onInsertCitation(entry)}
+                            <button onClick={() => onInsertCitation(entry, i)}
                               title="Insert citation at cursor"
                               style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 4, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
                               Cite
@@ -297,90 +294,10 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
               )}
               {bibliography.length > 0 && (
                 <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)', fontSize: 11, color: 'var(--text-muted)' }}>
-                  Only cited entries are indexed and listed on the auto-generated
-                  &ldquo;References&rdquo; slide. The arrows order the library itself —
-                  numbering follows <strong>{citationOrder === 'alphabetical' ? 'alphabetical order' : 'presentation order'}</strong>,
-                  set under Settings.
+                  A "References" slide will be auto-generated at the end of your presentation.
                 </div>
               )}
             </>
-          )}
-
-          {/* Settings tab */}
-          {tab === 'settings' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Citation style</div>
-                <select className="prop-input" value={citationStyle}
-                  onChange={e => onUpdate({ citationStyle: e.target.value })}
-                  style={{ fontSize: 12, padding: '5px 8px', width: '100%' }}>
-                  <option value="numbered">Numbered — [1], [2], [3]</option>
-                  <option value="author-year">Author &amp; year — (Smith et al., 2020)</option>
-                </select>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Index order</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {[
-                    ['presentation', 'Presentation order', 'Numbered as citations first appear, slide by slide and top to bottom within a slide.'],
-                    ['alphabetical', 'Alphabetical order', 'Numbered by first author, then year, then title.'],
-                  ].map(([value, label, help]) => (
-                    <label key={value} style={{ display: 'flex', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-                      background: citationOrder === value ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
-                      border: `1px solid ${citationOrder === value ? 'rgba(99,102,241,0.45)' : 'var(--border)'}` }}>
-                      <input type="radio" name="citation-order" value={value} checked={citationOrder === value}
-                        onChange={() => onUpdate({ citationOrder: value })}
-                        style={{ accentColor: 'var(--accent)', marginTop: 2, cursor: 'pointer' }} />
-                      <span>
-                        <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>{label}</span>
-                        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{help}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
-                  Index &middot; {indexed.size} cited of {bibliography.length} in the library
-                </div>
-                {indexed.size === 0 ? (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                    Nothing is cited yet, so nothing is indexed and no references slide is generated.
-                    Cite an entry from the Library tab to give it a number.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 200, overflowY: 'auto' }}>
-                    {(citationIndex?.entries || []).map(entry => (
-                      <div key={entry.key} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '4px 8px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 5 }}>
-                        <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0 }}>
-                          {citationIndex.labelByKey[entry.key]}
-                        </span>
-                        <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {formatAuthorsShort(parseAuthors(entry.author))}{entry.year ? `, ${entry.year}` : ''} — {entry.title || 'Untitled'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {onRenumber && (markerCounts.stale > 0 || markerCounts.unlinked > 0) && (
-                <div style={{ padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                    {markerCounts.stale > 0 && <>{markerCounts.stale} marker{markerCounts.stale === 1 ? '' : 's'} in your slides still show an older number. </>}
-                    {markerCounts.unlinked > 0 && <>{markerCounts.unlinked} marker{markerCounts.unlinked === 1 ? '' : 's'} were written before markers carried their entry, so they cannot follow the index. </>}
-                    Presenting and exporting always use the index above; this rewrites what is stored in the slides to match.
-                  </div>
-                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }}
-                    onClick={() => onRenumber({ linkLegacy: markerCounts.unlinked > 0 })}>
-                    {markerCounts.unlinked > 0 ? 'Link and renumber markers' : 'Renumber markers'}
-                  </button>
-                </div>
-              )}
-            </div>
           )}
 
           {/* Import BibTeX tab */}

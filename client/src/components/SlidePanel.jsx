@@ -161,7 +161,7 @@ function buildColumns(slides) {
   return sortedKeys.map(k => ({ colNum: k, items: colMap[k] }))
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesSlide = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -335,7 +335,13 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
               <div className="slide-thumb-number" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: 9, background: 'var(--accent)', color: 'white', borderRadius: 3, padding: '0 4px', lineHeight: '14px', fontWeight: 600 }}>REF</span>
               </div>
-              {referencesSlide && <SlideThumbnail slide={referencesSlide} slideW={slideW} slideH={slideH} />}
+              <div style={{ width: THUMB_W, height: Math.round(THUMB_W * slideH / slideW), background: '#111122', borderRadius: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '6px 8px' }}>
+                <div style={{ fontSize: 7, fontWeight: 700, color: 'rgba(255,255,255,0.8)', marginBottom: 3 }}>References</div>
+                {Array.from({ length: Math.min(referencesCount, 5) }, (_, i) => (
+                  <div key={i} style={{ height: 3, background: 'rgba(255,255,255,0.15)', borderRadius: 1, marginBottom: 2, width: `${80 - i * 8}%` }} />
+                ))}
+                {referencesCount > 5 && <div style={{ fontSize: 5, color: 'rgba(255,255,255,0.3)' }}>+{referencesCount - 5} more</div>}
+              </div>
             </div>
           )}
         </div>

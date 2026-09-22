@@ -4,14 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
-import { Window } from 'happy-dom'
-import { generateRevealHTML, generatePrintHTML, buildReferencesSlide, REFERENCES_SLIDE_ID } from './generateHTML'
-
-function parseHTML(html) {
-  const doc = new Window().document
-  doc.write(html)
-  return doc
-}
+import { generateRevealHTML } from './generateHTML'
 
 function makePresentation(overrides = {}) {
   return {
@@ -405,22 +398,15 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('columns:1')
   })
 
-  it('sizes the references elements to the slide', () => {
+  it('uses explicit width and height on references slide container', () => {
     const pres = makePresentation({
       slideWidth: 960, slideHeight: 540,
       slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 100, height: 50, zIndex: 1, content: '[1]' }] }],
       bibliography: [{ key: 'a', type: 'article', title: 'Test' }],
     })
-    const doc = parseHTML(generateRevealHTML(pres))
-    const sections = doc.querySelectorAll('.reveal .slides > section')
-    const refs = sections[sections.length - 1]
-    // Text elements carry 12px of horizontal padding, so a 904px box starting at
-    // x=28 puts the text itself 40px in from either edge, as it always has been.
-    const boxes = [...refs.querySelectorAll('div[style*="position:absolute"]')].map(d => d.getAttribute('style'))
-    expect(boxes[0]).toContain('left:28px')
-    expect(boxes[0]).toContain('width:904px')
-    expect(boxes[1]).toContain('height:436px')
-    expect(boxes[1]).toContain('overflow-y:auto')
+    const html = generateRevealHTML(pres)
+    expect(html).toContain('width:880px')
+    expect(html).toContain('height:480px')
   })
 
   it('escapes HTML in bibliography entry titles', () => {
@@ -522,200 +508,5 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
     const html = generateRevealHTML(embedPresentation(JSX_EMBED))
     const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
     expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
-  })
-})
-
-// ── The generated references slide as a slide object ──────────────────────
-
-describe('buildReferencesSlide', () => {
-  const cite = text => ({
-    id: 's1',
-    elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: text }],
-  })
-  const entry = (over = {}) => ({
-    key: 'smith2020', type: 'article', author: 'Smith, John', title: 'A Paper',
-    year: '2020', journal: 'Nature', volume: '42', pages: '100-110', ...over,
-  })
-
-  it('is nothing when there is no bibliography', () => {
-    expect(buildReferencesSlide({ slides: [cite('<p>text</p>')] })).toBeNull()
-    expect(buildReferencesSlide({ slides: [cite('<p>text</p>')], bibliography: [] })).toBeNull()
-    expect(buildReferencesSlide(undefined)).toBeNull()
-  })
-
-  it('is nothing when the bibliography is never cited', () => {
-    expect(buildReferencesSlide({ slides: [cite('<p>nothing cited</p>')], bibliography: [entry()] })).toBeNull()
-  })
-
-  it('builds a title and a list element spanning the slide', () => {
-    const slide = buildReferencesSlide({
-      slideWidth: 1280, slideHeight: 720, slides: [cite('<p>[1]</p>')], bibliography: [entry()],
-    })
-    expect(slide.id).toBe(REFERENCES_SLIDE_ID)
-    expect(slide.generated).toBe(true)
-    expect(slide.elements).toHaveLength(2)
-    const [title, list] = slide.elements
-    expect(title.content).toContain('>References<')
-    expect(title.width).toBe(1280 - 56)
-    expect(list.height).toBe(720 - 104)
-    expect(list.scrollable).toBe(true)
-  })
-
-  it('carries neither a page number nor a footer', () => {
-    const slide = buildReferencesSlide({ slides: [cite('<p>[1]</p>')], bibliography: [entry()] })
-    expect(slide.showPageNumber).toBe(false)
-    expect(slide.hideFooter).toBe(true)
-  })
-
-  it('lists only cited entries, renumbered from one', () => {
-    const slide = buildReferencesSlide({
-      slides: [cite('<p>[2]</p>')],
-      bibliography: [entry({ key: 'first', title: 'First' }), entry({ key: 'second', title: 'Second' })],
-    })
-    const list = slide.elements[1].content
-    expect(list).toContain('Second')
-    expect(list).not.toContain('First')
-    // Numbering runs over the cited entries, not over the whole library, which is
-    // how the exported slide has always numbered them.
-    expect(list).toContain('[1]')
-  })
-
-  it('formats an entry the way the citation list reads', () => {
-    const slide = buildReferencesSlide({
-      slides: [cite('<p>[1]</p>')], bibliography: [entry({ doi: '10.1234/x' })],
-    })
-    const list = slide.elements[1].content
-    expect(list).toContain('Smith, John (2020). A Paper.')
-    expect(list).toContain('<em>Nature</em>, 42, 100-110.')
-    expect(list).toContain('href="https://doi.org/10.1234/x"')
-  })
-
-  it('escapes entry fields', () => {
-    const slide = buildReferencesSlide({
-      slides: [cite('<p>[1]</p>')],
-      bibliography: [entry({ title: 'Tags <b>here</b>', journal: 'A & B' })],
-    })
-    const list = slide.elements[1].content
-    expect(list).toContain('Tags &lt;b&gt;here&lt;/b&gt;')
-    expect(list).toContain('A &amp; B')
-  })
-
-  it('takes the entry marker colour from the footer colour', () => {
-    const slide = buildReferencesSlide({
-      slides: [cite('<p>[1]</p>')], bibliography: [entry()], footerColor: '#ff8800',
-    })
-    expect(slide.elements[1].content).toContain('color:#ff8800')
-  })
-
-  it('switches to two columns past eight entries', () => {
-    const many = Array.from({ length: 9 }, (_, i) => entry({ key: `k${i}`, title: `T${i}` }))
-    const cited = cite(many.map((_, i) => `[${i + 1}]`).join(' '))
-    expect(buildReferencesSlide({ slides: [cited], bibliography: many }).elements[1].content).toContain('columns:2')
-    expect(buildReferencesSlide({ slides: [cite('<p>[1]</p>')], bibliography: [entry()] }).elements[1].content).toContain('columns:1')
-  })
-})
-
-describe('generated references slide — in the deck', () => {
-  const pres = (over = {}) => ({
-    title: 'Deck', slideWidth: 960, slideHeight: 540,
-    slides: [{ id: 's1', section: 'Intro', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: '<p>See [1]</p>' }] }],
-    bibliography: [{ key: 'a', type: 'article', author: 'Smith, John', title: 'A Paper', year: '2020' }],
-    ...over,
-  })
-
-  it('closes the deck', () => {
-    const doc = parseHTML(generateRevealHTML(pres()))
-    const sections = doc.querySelectorAll('.reveal .slides > section')
-    expect(sections).toHaveLength(2)
-    expect(sections[1].innerHTML).toContain('>References<')
-  })
-
-  it('shows no footer or page number of its own', () => {
-    const doc = parseHTML(generateRevealHTML(pres({ showFooter: true, showPageNumbers: true })))
-    const sections = doc.querySelectorAll('.reveal .slides > section')
-    expect(sections[0].innerHTML).toContain('reveal-footer')
-    expect(sections[1].innerHTML).not.toContain('reveal-footer')
-  })
-
-  it('is left out of the deck page count', () => {
-    const doc = parseHTML(generateRevealHTML(pres({ showPageNumbers: true })))
-    const sections = doc.querySelectorAll('.reveal .slides > section')
-    expect(sections[0].innerHTML).toContain('1 / 1')
-  })
-
-  it('prints as the last page', () => {
-    const html = generatePrintHTML(pres())
-    expect((html.match(/class="slide-page"/g) || []).length).toBe(2)
-    expect(html.lastIndexOf('>References<')).toBeGreaterThan(html.lastIndexOf('See [1]'))
-  })
-
-  it('is absent from the print pages when nothing is cited', () => {
-    const html = generatePrintHTML(pres({ bibliography: [] }))
-    expect((html.match(/class="slide-page"/g) || []).length).toBe(1)
-    expect(html).not.toContain('>References<')
-  })
-})
-
-// ── Citation index driving the deck ───────────────────────────────────────
-
-describe('citation numbering in the deck', () => {
-  const smith = { key: 'smith2020', type: 'article', author: 'Smith, John', title: 'Alpha', year: '2020' }
-  const ames = { key: 'ames2021', type: 'article', author: 'Ames, Ada', title: 'Gamma', year: '2021' }
-  const marker = (key, label) => `<sup data-cite="${key}" style="color:#6366f1">${label}</sup>`
-
-  // Smith is cited first, Ames second — the stored labels say the opposite.
-  const deck = (over = {}) => ({
-    slideWidth: 960, slideHeight: 540, bibliography: [smith, ames],
-    slides: [
-      { id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: `A ${marker('smith2020', '[9]')}` }] },
-      { id: 's2', elements: [{ id: 'e2', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: `B ${marker('ames2021', '[9]')}` }] },
-    ],
-    ...over,
-  })
-
-  it('numbers in-text markers from the index, not from what is stored', () => {
-    const html = generateRevealHTML(deck())
-    expect(html).toContain('data-cite="smith2020" style="color:#6366f1">[1]</sup>')
-    expect(html).toContain('data-cite="ames2021" style="color:#6366f1">[2]</sup>')
-    expect(html).not.toContain('>[9]</sup>')
-  })
-
-  it('orders the references slide by first appearance', () => {
-    const slide = buildReferencesSlide(deck())
-    const list = slide.elements[1].content
-    expect(list.indexOf('Alpha')).toBeLessThan(list.indexOf('Gamma'))
-    expect(list).toContain('>[1]</span>Smith, John')
-  })
-
-  it('orders the references slide alphabetically when asked', () => {
-    const slide = buildReferencesSlide(deck({ citationOrder: 'alphabetical' }))
-    const list = slide.elements[1].content
-    expect(list.indexOf('Gamma')).toBeLessThan(list.indexOf('Alpha'))
-    expect(list).toContain('>[1]</span>Ames, Ada')
-  })
-
-  it('keeps markers and the references list on the same numbers', () => {
-    const html = generateRevealHTML(deck({ citationOrder: 'alphabetical' }))
-    expect(html).toContain('data-cite="ames2021" style="color:#6366f1">[1]</sup>')
-    expect(html).toContain('>[1]</span>Ames, Ada')
-    expect(html).toContain('data-cite="smith2020" style="color:#6366f1">[2]</sup>')
-    expect(html).toContain('>[2]</span>Smith, John')
-  })
-
-  it('leaves an uncited library entry out of the index and the slide', () => {
-    const unused = { key: 'nobody1999', type: 'article', author: 'Nobody, N', title: 'Uncited', year: '1999' }
-    const html = generateRevealHTML(deck({ bibliography: [smith, unused, ames] }))
-    expect(html).not.toContain('Uncited')
-    expect(html).toContain('data-cite="ames2021" style="color:#6366f1">[2]</sup>')
-  })
-
-  it('resolves markers in author-year style too', () => {
-    const html = generateRevealHTML(deck({ citationStyle: 'author-year' }))
-    expect(html).toContain('data-cite="smith2020" style="color:#6366f1">(Smith, 2020)</sup>')
-  })
-
-  it('resolves markers on printed pages as well', () => {
-    const html = generatePrintHTML(deck())
-    expect(html).toContain('data-cite="smith2020" style="color:#6366f1">[1]</sup>')
   })
 })

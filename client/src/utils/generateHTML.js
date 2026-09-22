@@ -3,7 +3,7 @@
 
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
-import { buildCitationIndex, resolveCitationsInHtml } from './citationIndex'
+import { getReferencedEntries } from './bibtexParser'
 
 // Embeds live in iframes, which swallow the wheel. When the embed has nothing of
 // its own to scroll, it hands the delta back so a tall slide keeps moving.
@@ -94,63 +94,6 @@ export const SCROLL_PROGRESS_JS = `      function clamp01(v) { return v < 0 ? 0 
         return maxScroll > 0 ? clamp01(sc.scrollTop / maxScroll) : 0;
       }`
 
-// ─── Generated references slide ───────────────────────────────────────────────
-// The deck's last slide whenever something is cited. It is derived rather than
-// stored, so the editor canvas, the slide panel and every export build it from
-// here instead of each drawing their own version of it.
-export const REFERENCES_SLIDE_ID = '__references__'
-
-export function buildReferencesSlide(presentation) {
-  // Order and numbering come from the citation index, so the list agrees with the
-  // markers in the slides however the deck is set to order them.
-  const { entries, numberByKey } = buildCitationIndex(presentation)
-  if (!entries.length) return null
-
-  const slideW = presentation?.slideWidth || 960
-  const slideH = presentation?.slideHeight || 540
-  const markerColor = presentation?.footerColor || 'rgba(255,255,255,0.65)'
-
-  const items = entries.map(entry => {
-    const year = entry.year || ''
-    const journal = entry.journal || entry.booktitle || ''
-    const vol = entry.volume || ''
-    const pages = entry.pages || ''
-    const doi = entry.doi || ''
-    let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${numberByKey[entry.key]}]</span>`
-    line += escapeHtml(entry.author || '')
-    if (year) line += ` (${escapeHtml(year)})`
-    line += `. ${escapeHtml(entry.title || '')}.`
-    if (journal) line += ` <em>${escapeHtml(journal)}</em>`
-    if (vol) line += `, ${escapeHtml(vol)}`
-    if (pages) line += `, ${escapeHtml(pages)}`
-    line += '.'
-    if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
-    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85);break-inside:avoid">${line}</div>`
-  }).join('\n          ')
-
-  return {
-    id: REFERENCES_SLIDE_ID,
-    generated: true,
-    // It carries neither a number nor a footer, as it did when it was assembled
-    // straight into the exported markup.
-    showPageNumber: false,
-    hideFooter: true,
-    elements: [
-      {
-        id: `${REFERENCES_SLIDE_ID}-title`, type: 'text', zIndex: 1,
-        x: 28, y: 22, width: slideW - 56, height: 52,
-        content: '<h2 style="font-size:28px;margin:0;color:rgba(255,255,255,0.95)">References</h2>',
-      },
-      {
-        id: `${REFERENCES_SLIDE_ID}-list`, type: 'text', zIndex: 1,
-        x: 28, y: 74, width: slideW - 56, height: slideH - 104,
-        scrollable: true,
-        content: `<div style="columns:${entries.length > 8 ? 2 : 1};column-gap:30px">\n          ${items}\n        </div>`,
-      },
-    ],
-  }
-}
-
 // ─── Tall ("scrolling") slides ────────────────────────────────────────────────
 // A slide whose `scrollHeight` exceeds the deck height becomes a scroll viewport
 // onto a taller canvas: element x/y live in canvas coordinates, the section shows
@@ -171,9 +114,6 @@ function isPinnedEl(el) {
 }
 
 export function generateRevealHTML(presentation) {
-  // Stored markers carry the entry key and a cached label; the label is refreshed
-  // here so an export is never numbered by a stale one.
-  const citationLabels = buildCitationIndex(presentation).labelByKey
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
   const globalFont = presentation.globalFont || ''
@@ -209,10 +149,8 @@ export function generateRevealHTML(presentation) {
   const pageGroupSeen = new Set()
 
   // Build per-slide section HTML (preserving pageCounter increment order via flat array)
-  const referencesSlide = buildReferencesSlide(presentation)
-  const renderSlides = referencesSlide ? [...presentation.slides, referencesSlide] : presentation.slides
   const slideSectionHtmlByIndex = new Map()
-  renderSlides.forEach((slide, slideIndex) => {
+  presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background)
     const notes = slide.notes ? `<aside class="notes">${slide.notes}</aside>` : ''
 
@@ -229,8 +167,7 @@ export function generateRevealHTML(presentation) {
       : ''
     const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
     const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
-    const overflowStyle = el.scrollable ? 'overflow-y:auto;overflow-x:hidden;' : 'overflow:hidden;'
-    const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};${overflowStyle}box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
+    const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
     const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
     const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
     const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${el.fragmentIndex}"` : ''
@@ -252,7 +189,7 @@ export function generateRevealHTML(presentation) {
       : '') + scrollAttrs
     if (el.type === 'text') {
       const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citationLabels)}</div>`
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
     }
     if (el.type === 'image') {
       const src = absoluteSrc(el.src)
@@ -617,9 +554,39 @@ ${pinnedHtml}`
     return `    <section>\n${sections}\n    </section>`
   }).join('\n')
 
-  // The generated references slide closes the deck, outside the column grouping.
-  if (referencesSlide) {
-    slidesHtml += '\n' + slideSectionHtmlByIndex.get(renderSlides.length - 1)
+  if (bibliography.length > 0) {
+    const referencedEntries = getReferencedEntries(bibliography, presentation.slides)
+
+    if (referencedEntries.length > 0) {
+      const refItems = referencedEntries.map((entry, i) => {
+        const authors = entry.author || ''
+        const year = entry.year || ''
+        const title = escapeHtml(entry.title || '')
+        const journal = entry.journal || entry.booktitle || ''
+        const vol = entry.volume || ''
+        const pages = entry.pages || ''
+        const doi = entry.doi || ''
+        let line = `<span style="color:${footerColor};font-weight:700;margin-right:6px">[${i + 1}]</span>`
+        line += `${escapeHtml(authors)}`
+        if (year) line += ` (${escapeHtml(year)})`
+        line += `. ${title}.`
+        if (journal) line += ` <em>${escapeHtml(journal)}</em>`
+        if (vol) line += `, ${escapeHtml(vol)}`
+        if (pages) line += `, ${escapeHtml(pages)}`
+        line += '.'
+        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
+        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
+      }).join('\n          ')
+      const refSlide = `    <section>
+      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
+        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
+          ${refItems}
+        </div>
+      </div>
+    </section>`
+      slidesHtml += '\n' + refSlide
+    }
   }
 
   return `<!doctype html>
@@ -1401,7 +1368,6 @@ function getBgPrintStyle(bg) {
 }
 
 export function generatePrintHTML(presentation) {
-  const citationLabels = buildCitationIndex(presentation).labelByKey
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
   const globalFont = presentation.globalFont || ''
@@ -1431,9 +1397,7 @@ export function generatePrintHTML(presentation) {
   // replaces clicking there, so there are no intermediate states worth printing.
   const pages = []
   let printPageCounter = 0
-  const referencesSlide = buildReferencesSlide(presentation)
-  const printSlides = referencesSlide ? [...presentation.slides, referencesSlide] : presentation.slides
-  printSlides.forEach(slide => {
+  presentation.slides.forEach(slide => {
     const viewports = getScrollViewports(slide, slideH)
     if (viewports > 1) {
       for (let v = 0; v < viewports; v++) pages.push({ slide, maxIdx: Infinity, viewport: v, first: v === 0 })
@@ -1462,7 +1426,7 @@ export function generatePrintHTML(presentation) {
     const vis = isHidden ? 'visibility:hidden;' : ''
     if (el.type === 'text') {
       const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-      return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citationLabels)}</div>`
+      return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${el.content || ''}</div>`
     }
     if (el.type === 'image') {
       const src = absoluteSrc(el.src)
