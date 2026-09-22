@@ -179,21 +179,6 @@ describe('diffPresentations', () => {
     expect(result.slides[0].otherChanges.some(c => c.includes('fade') && c.includes('zoom'))).toBe(true)
   })
 
-  it('detects a slide becoming a scrolling one', () => {
-    const old = makePres([makeSlide('s1', [])])
-    const newP = makePres([makeSlide('s1', [], { scrollHeight: 1620 })])
-    const result = diffPresentations(old, newP)
-    expect(result.slides[0].otherChanges.some(c => c.includes('one screen') && c.includes('1620px'))).toBe(true)
-  })
-
-  it('detects an element being pinned while scrolling', () => {
-    const old = makePres([makeSlide('s1', [makeEl('e1', {})])])
-    const newP = makePres([makeSlide('s1', [makeEl('e1', { scrollBehavior: 'pin' })])])
-    const result = diffPresentations(old, newP)
-    expect(result.slides[0].elements[0].status).toBe('style-changed')
-    expect(result.slides[0].elements[0].changes.some(c => c.includes('pin'))).toBe(true)
-  })
-
   it('treats content change as higher priority than style change', () => {
     const old = makePres([makeSlide('s1', [makeEl('e1', { content: '<p>A</p>', opacity: 1 })])])
     const newP = makePres([makeSlide('s1', [makeEl('e1', { content: '<p>B</p>', opacity: 0.5 })])])

@@ -13,7 +13,7 @@ function describeChanges(oldEl, newEl) {
   const changes = []
   const posKeys = ['x', 'y']
   const sizeKeys = ['width', 'height']
-  const styleKeys = ['fill', 'stroke', 'strokeWidth', 'opacity', 'rotation', 'borderRadius', 'fontSize', 'objectFit', 'zIndex', 'scrollBehavior', 'scrollTrigger', 'scrollPreset']
+  const styleKeys = ['fill', 'stroke', 'strokeWidth', 'opacity', 'rotation', 'borderRadius', 'fontSize', 'objectFit', 'zIndex']
   const contentKeys = ['content', 'src', 'language', 'chartType', 'shape', 'iconName']
 
   for (const k of posKeys) {
@@ -51,7 +51,7 @@ function classifyElementChange(oldEl, newEl) {
   const contentKeys = ['content', 'src', 'language', 'chartType', 'shape', 'iconName']
   const contentChanged = contentKeys.some(k => oldEl[k] !== newEl[k])
   const chartChanged = JSON.stringify(oldEl.chartData) !== JSON.stringify(newEl.chartData)
-  const styleKeys = ['fill', 'stroke', 'strokeWidth', 'opacity', 'rotation', 'borderRadius', 'fontSize', 'objectFit', 'zIndex', 'scrollBehavior', 'scrollTrigger', 'scrollPreset']
+  const styleKeys = ['fill', 'stroke', 'strokeWidth', 'opacity', 'rotation', 'borderRadius', 'fontSize', 'objectFit', 'zIndex']
   const styleChanged = styleKeys.some(k => oldEl[k] !== newEl[k])
 
   if (contentChanged || chartChanged) return 'content-changed'
@@ -101,10 +101,6 @@ function diffSlideOtherChanges(oldSlide, newSlide) {
   }
   if ((oldSlide.section || '') !== (newSlide.section || '')) {
     changes.push(`Section: "${oldSlide.section || ''}" → "${newSlide.section || ''}"`)
-  }
-  if ((oldSlide.scrollHeight || 0) !== (newSlide.scrollHeight || 0)) {
-    const label = h => (h ? `${h}px` : 'one screen')
-    changes.push(`Canvas height: ${label(oldSlide.scrollHeight)} → ${label(newSlide.scrollHeight)}`)
   }
   return changes
 }

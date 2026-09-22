@@ -6,7 +6,6 @@ import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download
 import { shapeSvgString } from '../utils/shapeUtils'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
-import { getCanvasHeight } from '../utils/generateHTML'
 
 const THUMB_W = 150
 
@@ -21,8 +20,6 @@ function getBgStyle(bg) {
 function SlideThumbnail({ slide, slideW, slideH }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
-  // Tall slides are previewed by their first screen, with a badge for the rest.
-  const canvasH = getCanvasHeight(slide, slideH)
 
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', flexShrink: 0, borderRadius: 3 }}>
@@ -131,15 +128,6 @@ function SlideThumbnail({ slide, slideW, slideH }) {
           ))
         }
       </div>
-      {canvasH > slideH && (
-        <div style={{
-          position: 'absolute', bottom: 2, right: 2,
-          background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: 8, fontWeight: 600,
-          padding: '1px 4px', borderRadius: 2, letterSpacing: 0.2,
-        }}>
-          &#8597; {(canvasH / slideH).toFixed(canvasH % slideH ? 1 : 0)}&times;
-        </div>
-      )}
     </div>
   )
 }

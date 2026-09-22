@@ -66,7 +66,6 @@ export default defineConfig({
           text: 'Presentation',
           items: [
             { text: 'Animations & Fragments', link: '/tutorials/animations' },
-            { text: 'Scrolling Slides', link: '/tutorials/scrolling-slides' },
             { text: 'Transitions', link: '/tutorials/transitions' },
             { text: 'Presenting & Export', link: '/tutorials/presenting' },
             { text: 'Using LaTeX & Math', link: '/tutorials/using-latex' },
