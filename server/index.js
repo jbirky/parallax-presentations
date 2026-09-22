@@ -447,6 +447,128 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
 }
 
 // Generate reveal.js HTML
+// ── Citation index ────────────────────────────────────────────────────────────
+// Mirror of client/src/utils/citationIndex.js, which is the reference
+// implementation: a deck can be rendered from either side and the two must agree.
+// Only cited entries are indexed, ordered either by the order citations first
+// appear or alphabetically by first author, per presentation.citationOrder.
+const CITE_MARKER_RE = /<(sup|span)\b[^>]*\bdata-cite="([^"]*)"[^>]*>[\s\S]*?<\/\1>/gi
+const CITE_KEYED_RE = /(<(sup|span)\b[^>]*\bdata-cite="([^"]*)"[^>]*>)([\s\S]*?)(<\/\2>)/gi
+const CITE_BARE_RE = /\[(\d{1,3})\]/g
+const CITE_ENTITIES = { '&amp;': '&', '&nbsp;': ' ', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" }
+
+function citeAuthorList(authorStr) {
+  if (!authorStr) return []
+  return authorStr.split(/\s+and\s+/i).map(a => {
+    a = a.trim()
+    if (a.includes(',')) return a.split(',')[0].trim()
+    const parts = a.split(/\s+/)
+    return parts[parts.length - 1]
+  })
+}
+
+function citeShortAuthor(authorStr) {
+  const authors = citeAuthorList(authorStr)
+  if (authors.length === 0) return ''
+  if (authors.length === 1) return authors[0]
+  if (authors.length === 2) return `${authors[0]} & ${authors[1]}`
+  return `${authors[0]} et al.`
+}
+
+function citeLabel(entry, style, index) {
+  if (style === 'author-year') return `(${citeShortAuthor(entry.author)}, ${entry.year || ''})`
+  return `[${index + 1}]`
+}
+
+function citeBlank(len) { return ' '.repeat(len) }
+
+// Visible text, with markup and entities replaced by equal-length filler so that
+// positions still line up and nothing inside a marker is read a second time.
+function citeVisibleText(html, onMarker) {
+  let out = html.replace(CITE_MARKER_RE, (match, tag, key, offset) => {
+    onMarker(key, offset)
+    return citeBlank(match.length)
+  })
+  out = out.replace(/<[^>]*>/g, m => citeBlank(m.length))
+  out = out.replace(/&[a-z#0-9]+;/gi, m => {
+    const decoded = CITE_ENTITIES[m.toLowerCase()]
+    return decoded ? decoded + citeBlank(m.length - decoded.length) : citeBlank(m.length)
+  })
+  return out
+}
+
+function citeFindAll(text, bibliography) {
+  if (!text) return []
+  const keys = new Set(bibliography.map(e => e.key))
+  const hits = []
+  const visible = citeVisibleText(text, (key, pos) => { if (keys.has(key)) hits.push({ pos, key }) })
+
+  let m
+  CITE_BARE_RE.lastIndex = 0
+  while ((m = CITE_BARE_RE.exec(visible)) !== null) {
+    const entry = bibliography[parseInt(m[1], 10) - 1]
+    if (entry) hits.push({ pos: m.index, key: entry.key })
+  }
+  for (const entry of bibliography) {
+    for (const needle of [entry.key, citeShortAuthor(entry.author)]) {
+      if (!needle) continue
+      let from = visible.indexOf(needle)
+      while (from !== -1) {
+        hits.push({ pos: from, key: entry.key })
+        from = visible.indexOf(needle, from + needle.length)
+      }
+    }
+  }
+  return hits.sort((a, b) => a.pos - b.pos)
+}
+
+function buildCitationIndex(presentation) {
+  const bibliography = presentation?.bibliography || []
+  const order = presentation?.citationOrder === 'alphabetical' ? 'alphabetical' : 'presentation'
+  const style = presentation?.citationStyle || 'numbered'
+  const byKey = new Map(bibliography.map(e => [e.key, e]))
+
+  const seen = new Set()
+  const citedKeys = []
+  for (const slide of presentation?.slides || []) {
+    const elements = [...(slide.elements || [])]
+      .sort((a, b) => ((a.y || 0) - (b.y || 0)) || ((a.x || 0) - (b.x || 0)))
+    for (const el of elements) {
+      const text = [el.content, el.citationText].filter(Boolean).join('\n')
+      for (const hit of citeFindAll(text, bibliography)) {
+        if (!seen.has(hit.key)) { seen.add(hit.key); citedKeys.push(hit.key) }
+      }
+    }
+  }
+
+  let entries = citedKeys.map(k => byKey.get(k)).filter(Boolean)
+  if (order === 'alphabetical') {
+    entries = [...entries].sort((a, b) => {
+      const la = (citeAuthorList(a.author)[0] || a.author || a.title || '').toLowerCase()
+      const lb = (citeAuthorList(b.author)[0] || b.author || b.title || '').toLowerCase()
+      return la.localeCompare(lb)
+        || String(a.year || '').localeCompare(String(b.year || ''))
+        || String(a.title || '').toLowerCase().localeCompare(String(b.title || '').toLowerCase())
+    })
+  }
+
+  const numberByKey = {}
+  const labelByKey = {}
+  entries.forEach((entry, i) => {
+    numberByKey[entry.key] = i + 1
+    labelByKey[entry.key] = citeLabel(entry, style, i)
+  })
+  return { entries, numberByKey, labelByKey }
+}
+
+function resolveCitationsInHtml(html, labelByKey) {
+  if (!html || typeof html !== 'string' || html.indexOf('data-cite') === -1) return html
+  return html.replace(CITE_KEYED_RE, (match, open, tag, key, inner, close) => {
+    const label = labelByKey?.[key]
+    return label ? `${open}${label}${close}` : match
+  })
+}
+
 function generateRevealHTML(presentation, opts = {}) {
   const customFonts = opts.customFonts || []
   const theme = presentation.theme || 'black'
@@ -481,6 +603,9 @@ function generateRevealHTML(presentation, opts = {}) {
   const showTimeWidget = footerTimeMode !== 'none'
   const laserPointer = presentation.laserPointer || 'off'
   const bibliography = presentation.bibliography || []
+  // Only cited entries are indexed, and the index sets both the in-text marker
+  // labels and the order of the references slide.
+  const { entries: citationIndexEntries, numberByKey: citationNumbers, labelByKey: citationLabels } = buildCitationIndex(presentation)
   const citationStyle = presentation.citationStyle || 'numbered'
 
   const slideEntries = (presentation.slides || []).map((slide, slideIndex) => {
@@ -506,7 +631,7 @@ function generateRevealHTML(presentation, opts = {}) {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex||1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${fragClass}${fragIdx} style="${textStyle} padding:8px 12px; color:white;">${el.content || ''}</div>`
+          return `<div${fragClass}${fragIdx} style="${textStyle} padding:8px 12px; color:white;">${resolveCitationsInHtml(el.content || '', citationLabels)}</div>`
         }
         if (el.type === 'image') {
           const imgFilterParts = [
@@ -819,36 +944,10 @@ function generateRevealHTML(presentation, opts = {}) {
   }).join('\n')
 
   if (bibliography.length > 0) {
-    const allText = (presentation.slides || []).flatMap(s => (s.elements || []).flatMap(el => {
-      const parts = []
-      if (el.content) parts.push(el.content)
-      if (el.citationText) parts.push(el.citationText)
-      return parts
-    })).join(' ')
-
-    function shortAuthor(authorStr) {
-      if (!authorStr) return ''
-      const authors = authorStr.split(/\s+and\s+/i).map(a => {
-        a = a.trim()
-        if (a.includes(',')) return a.split(',')[0].trim()
-        const parts = a.split(/\s+/)
-        return parts[parts.length - 1]
-      })
-      if (authors.length === 1) return authors[0]
-      if (authors.length === 2) return `${authors[0]} & ${authors[1]}`
-      return `${authors[0]} et al.`
-    }
-
-    const referencedEntries = bibliography.filter((entry, i) => {
-      if (allText.includes(`[${i + 1}]`)) return true
-      const short = shortAuthor(entry.author)
-      if (short && allText.includes(short)) return true
-      if (entry.key && allText.includes(entry.key)) return true
-      return false
-    })
+    const referencedEntries = citationIndexEntries
 
     if (referencedEntries.length > 0) {
-      const refItems = referencedEntries.map((entry, i) => {
+      const refItems = referencedEntries.map(entry => {
         const authors = entry.author || ''
         const year = entry.year || ''
         const title = escapeHtml(entry.title || '')
@@ -856,7 +955,7 @@ function generateRevealHTML(presentation, opts = {}) {
         const vol = entry.volume || ''
         const pages = entry.pages || ''
         const doi = entry.doi || ''
-        let line = `<span style="color:${sanitizeCSSValue(footerColor)};font-weight:700;margin-right:6px">[${i + 1}]</span>`
+        let line = `<span style="color:${sanitizeCSSValue(footerColor)};font-weight:700;margin-right:6px">[${citationNumbers[entry.key]}]</span>`
         line += `${escapeHtml(authors)}`
         if (year) line += ` (${escapeHtml(year)})`
         line += `. ${title}.`

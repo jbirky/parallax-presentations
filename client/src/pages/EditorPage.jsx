@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -20,7 +20,7 @@ import { ChevronLeft, ChevronDown, Play, Download, Github, Settings, Check, X, S
 import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
-import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
+import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML, buildReferencesSlide } from '../utils/generateHTML'
 import { reorderSlides } from '../utils/slideReorder'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
@@ -42,7 +42,7 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
-import { formatCitation, getReferencedEntries, parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
+import { buildCitationIndex, nextCitationLabel, citationMarkerHtml, applyCitationNumbering, countStaleMarkers } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
@@ -484,8 +484,12 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
-  const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
-  const hasReferencesSlide = referencedEntries.length > 0
+  // The citation index and the references slide are both derived, not stored, so
+  // the panel, the canvas and the exports all show the same numbering.
+  const citationIndex = useMemo(() => buildCitationIndex(presentation), [presentation])
+  const markerCounts = useMemo(() => countStaleMarkers(presentation), [presentation])
+  const referencesSlide = useMemo(() => (presentation ? buildReferencesSlide(presentation) : null), [presentation])
+  const hasReferencesSlide = !!referencesSlide
   const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
   const isViewingReferences = currentSlideIndex === referencesSlideIndex && hasReferencesSlide
 
@@ -3461,7 +3465,7 @@ function draw() {
           slideW={slideW}
           slideH={slideH}
           referencesSlideIndex={hasReferencesSlide ? referencesSlideIndex : -1}
-          referencesCount={referencedEntries.length}
+          referencesSlide={referencesSlide}
         />
 
         <div className="editor-main">
@@ -3554,31 +3558,10 @@ function draw() {
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
-            {isViewingReferences ? (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-                <div style={{ width: slideW * 0.75, height: slideH * 0.75, background: '#111122', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', padding: '24px 32px', position: 'relative', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
-                  <div style={{ position: 'absolute', top: 8, right: 10, fontSize: 10, color: 'var(--text-muted)', background: 'rgba(99,102,241,0.15)', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>Auto-generated</div>
-                  <h2 style={{ fontSize: 22, margin: '0 0 16px', color: 'rgba(255,255,255,0.95)', fontWeight: 700 }}>References</h2>
-                  <div style={{ columns: referencedEntries.length > 8 ? 2 : 1, columnGap: 24 }}>
-                    {referencedEntries.map((entry, i) => {
-                      const authors = parseAuthors(entry.author)
-                      const authorStr = formatAuthorsFull(authors)
-                      return (
-                        <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
-                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{i + 1}]</span>
-                          {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
-                          {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
-                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}.
-                          {entry.doi && <a href={`https://doi.org/${entry.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>DOI</a>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : <SlideCanvas
+            <SlideCanvas
               editor={editor}
-              slide={currentSlide}
+              slide={isViewingReferences ? referencesSlide : currentSlide}
+              readOnly={isViewingReferences}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
               showGrid={showGrid}
@@ -3589,6 +3572,7 @@ function draw() {
               timerDuration={presentation.timerDuration ?? 20}
               pageNumberFormat={presentation.pageNumberFormat || 'c/t'}
               pageNumber={(() => {
+                if (isViewingReferences) return null
                 if (!presentation.showPageNumbers) return null
                 if (currentSlide?.showPageNumber === false) return null
                 let num = 0
@@ -3610,7 +3594,7 @@ function draw() {
                   return true
                 }).length
               })()}
-              sectionName={currentSlide?.section || ''}
+              sectionName={isViewingReferences ? '' : (currentSlide?.section || '')}
               footerFontSize={presentation.footerFontSize || 14}
               footerFontFamily={presentation.footerFontFamily || '-apple-system,sans-serif'}
               footerColor={presentation.footerColor || 'rgba(255,255,255,0.65)'}
@@ -3619,7 +3603,7 @@ function draw() {
               citationFontFamily={presentation.citationFontFamily || '-apple-system,sans-serif'}
               footerMode={presentation.footerMode || 'basic'}
               sequenceSections={presentation.sequenceSections || []}
-              activeSection={currentSlide?.activeSection ?? null}
+              activeSection={isViewingReferences ? null : (currentSlide?.activeSection ?? null)}
               smartGuidesEnabled={smartGuidesEnabled}
               showRulers={showRulers}
               persistentGuides={guides}
@@ -3669,8 +3653,9 @@ function draw() {
               drawTool={drawTool}
               onAddDrawingStroke={addDrawingStroke}
               globalFont={presentation.globalFont || ''}
+              citationLabels={citationIndex.labelByKey}
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
-            />}
+            />
           </div>
         </div>
 
@@ -4115,12 +4100,19 @@ function draw() {
         <BibliographyModal
           bibliography={presentation.bibliography || []}
           citationStyle={presentation.citationStyle || 'numbered'}
-          onUpdate={updates => setPresentation(prev => ({ ...prev, ...updates }))}
-          onInsertCitation={(entry, index) => {
-            const cite = formatCitation(entry, presentation.citationStyle || 'numbered', index)
-            if (editor && editingElementId) {
-              editor.chain().focus().insertContent(`<sup style="color:#6366f1;font-weight:700;cursor:default">${cite}</sup>`).run()
-            }
+          citationOrder={presentation.citationOrder || 'presentation'}
+          citationIndex={citationIndex}
+          markerCounts={markerCounts}
+          onUpdate={updates => setPresentation(prev => {
+            // A style, order or library change moves the index under the markers
+            // already in the slides, so bring their stored labels along with it.
+            return applyCitationNumbering({ ...prev, ...updates })
+          })}
+          onRenumber={opts => setPresentation(prev => applyCitationNumbering(prev, opts))}
+          onInsertCitation={entry => {
+            if (!editor || !editingElementId) return
+            const label = nextCitationLabel(presentation, entry)
+            editor.chain().focus().insertContent(citationMarkerHtml(entry, label)).run()
           }}
           onClose={() => setShowBibliographyModal(false)}
         />

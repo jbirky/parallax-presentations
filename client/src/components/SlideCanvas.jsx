@@ -4,6 +4,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import { getCanvasHeight } from '../utils/generateHTML'
+import { resolveCitationsInHtml } from '../utils/citationIndex'
 import registry from '../plugins/PluginRegistry'
 
 // Editor only: hand the slide panel a still of this embed once it has settled,
@@ -231,7 +232,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, readOnly = false, citationLabels = {}, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A tall slide scrolls in present mode: SLIDE_H is the viewport, CANVAS_H the
@@ -735,12 +736,14 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
 
   // File drop on canvas
   const onDragOver = (e) => {
+    if (readOnly) return
     if (!e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
     setDragOver(true)
   }
   const onDragLeave = () => setDragOver(false)
   const onDrop = async (e) => {
+    if (readOnly) return
     e.preventDefault()
     setDragOver(false)
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/'))
@@ -835,10 +838,11 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
           flexShrink: 0, position: 'relative', fontSize: '42px',
           outline: dragOver ? '3px dashed #6366f1' : 'none',
           cursor: drawTool ? 'crosshair' : undefined,
+          pointerEvents: readOnly ? 'none' : undefined,
           ...getBgStyle(slide?.background)
         }}
         onMouseDown={(e) => {
-          if (!drawToolRef.current || editingElementId || cropMode) return
+          if (readOnly || !drawToolRef.current || editingElementId || cropMode) return
           if (e.button !== 0) return
           const rect = canvasRef.current?.getBoundingClientRect()
           if (!rect) return
@@ -1103,10 +1107,20 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
             }}
             onCommitCrop={commitCrop}
             globalFont={globalFont}
+            citationLabels={citationLabels}
             citationFontSize={citationFontSize}
             citationFontFamily={citationFontFamily}
           />
         ))}
+
+        {/* Generated-slide badge */}
+        {readOnly && (
+          <div style={{
+            position: 'absolute', top: 6, right: 6, zIndex: 999, pointerEvents: 'none',
+            background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: Math.round(9 / scale), fontWeight: 600,
+            padding: `${Math.round(2 / scale)}px ${Math.round(6 / scale)}px`, borderRadius: 3, letterSpacing: 0.3,
+          }}>AUTO-GENERATED</div>
+        )}
 
         {/* Scrolling-slide badge */}
         {isTall && (
@@ -1326,7 +1340,7 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
   )
 }
 
-function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, citationLabels = {}, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1402,7 +1416,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
           }}
-          dangerouslySetInnerHTML={{ __html: element.content || '' }}
+          dangerouslySetInnerHTML={{ __html: resolveCitationsInHtml(element.content || '', citationLabels) }}
         />
       )}
       {element.type === 'text' && isEditing && (
