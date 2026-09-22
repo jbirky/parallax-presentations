@@ -1,4 +1,5 @@
 import pptxgen from 'pptxgenjs'
+import { getCanvasHeight } from './generateHTML'
 
 function stripHtml(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
@@ -24,7 +25,18 @@ export function exportToPptx(presentation) {
   pptx.layout = 'CUSTOM'
   pptx.title = presentation.title || 'Presentation'
 
+  // PowerPoint cannot scroll, so a tall slide is sliced into one deck slide per
+  // screen, the way the PDF export paginates it.
+  const pages = []
   for (const slide of (presentation.slides || [])) {
+    const viewportH = presentation.slideHeight || 540
+    const canvasH = getCanvasHeight(slide, viewportH)
+    for (let v = 0; v < Math.ceil(canvasH / viewportH); v++) {
+      pages.push({ slide, viewportH, yOffset: v * viewportH })
+    }
+  }
+
+  for (const { slide, viewportH, yOffset } of pages) {
     const pptSlide = pptx.addSlide()
 
     // Background
@@ -39,8 +51,11 @@ export function exportToPptx(presentation) {
     const elements = [...(slide.elements || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
 
     for (const el of elements) {
+      // Pinned elements repeat on every screen; the rest shift up by one screen.
+      const elY = el.scrollBehavior === 'pin' ? el.y : el.y - yOffset
+      if (elY + el.height <= 0 || elY >= viewportH) continue
       const x = el.x * SCALE_X
-      const y = el.y * SCALE_Y
+      const y = elY * SCALE_Y
       const w = el.width * SCALE_X
       const h = el.height * SCALE_Y
       const rotation = el.rotation || 0

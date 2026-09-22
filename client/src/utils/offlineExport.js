@@ -11,6 +11,7 @@ const CDN_RESOURCES = {
     'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js',
     'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js',
     'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
+    'https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js',
   ],
 }
 

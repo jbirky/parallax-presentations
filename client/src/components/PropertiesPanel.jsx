@@ -5,6 +5,7 @@ import { useState, useRef, useMemo } from 'react'
 import katex from 'katex'
 import { api } from '../utils/api'
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
+import { getCanvasHeight } from '../utils/generateHTML'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -32,6 +33,30 @@ const CODE_LANGUAGES = [
   { id: 'markdown', label: 'Markdown' },
   { id: 'latex', label: 'LaTeX' },
 ]
+
+// GSAP entry presets, shared by the slide-entry and scroll-entry selects.
+const ENTRY_ANIMATION_GROUPS = [
+  { label: 'Fade',  options: [['fadeIn', 'Fade In'], ['fadeUp', 'Fade Up ↑'], ['fadeDown', 'Fade Down ↓'], ['fadeLeft', 'Fade Left ←'], ['fadeRight', 'Fade Right →']] },
+  { label: 'Zoom',  options: [['zoomIn', 'Zoom In'], ['zoomOut', 'Zoom Out']] },
+  { label: 'Slide', options: [['slideUp', 'Slide Up ↑'], ['slideDown', 'Slide Down ↓'], ['slideLeft', 'Slide Left ←'], ['slideRight', 'Slide Right →']] },
+  { label: 'Flip',  options: [['flipX', 'Flip X'], ['flipY', 'Flip Y']] },
+]
+
+const SCROLL_SCRUB_PRESETS = [
+  ['parallax', 'Parallax drift'],
+  ['fade', 'Fade in & out'],
+  ['zoom', 'Zoom'],
+  ['rotate', 'Rotate'],
+  ['none', 'Progress only (custom CSS)'],
+]
+
+function entryAnimationOptions() {
+  return ENTRY_ANIMATION_GROUPS.map(g => (
+    <optgroup key={g.label} label={g.label}>
+      {g.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+    </optgroup>
+  ))
+}
 
 function CitationAutocomplete({ bibliography, citationText, citationLink, onUpdate }) {
   const [query, setQuery] = useState(citationText)
@@ -127,7 +152,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
 
 export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
   const [videoUploading, setVideoUploading] = useState(false)
-  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
+  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
     <h3 onClick={() => setCollapsed(p => ({ ...p, [k]: !p[k] }))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
       {children} <span style={{ fontSize: 10, opacity: 0.5 }}>{collapsed[k] ? '▸' : '▾'}</span>
@@ -1379,6 +1404,119 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </div>
           )}
 
+          {/* Scrolling behaviour (tall slides only) */}
+          {(() => {
+            const vh = presentation?.slideHeight || 540
+            if (getCanvasHeight(slide, vh) <= vh) return null
+            const pinned = selectedElement.scrollBehavior === 'pin'
+            // Pinning takes 'enter' off the table, and the export agrees, so do not
+            // leave the select showing a value it no longer offers.
+            const stored = selectedElement.scrollTrigger || 'none'
+            const trigger = pinned && stored === 'enter' ? 'none' : stored
+            const isFragment = !!selectedElement.fragment
+            return (<>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={pinned}
+                    onChange={e => {
+                      if (!e.target.checked) { onUpdateElement({ scrollBehavior: null }); return }
+                      // Pinned Y is a screen coordinate, so pull it into the first screen.
+                      const maxY = Math.max(0, vh - (selectedElement.height || 0))
+                      onUpdateElement({ scrollBehavior: 'pin', y: Math.min(selectedElement.y ?? 0, maxY) })
+                    }}
+                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Pin while scrolling</span>
+                </label>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  Stays put on screen while the rest of the canvas scrolls past — Y is measured from the
+                  top of the screen, not the top of the canvas.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Scroll Animation</div>
+                {isFragment ? (
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    This element is a fragment, so it is revealed by a click. Turn off <em>Fragment</em> below
+                    to drive it by scroll instead.
+                  </div>
+                ) : (<>
+                  <select
+                    className="prop-input"
+                    style={{ padding: '4px 6px', marginBottom: 6, width: '100%' }}
+                    value={trigger}
+                    onChange={e => onUpdateElement({ scrollTrigger: e.target.value === 'none' ? null : e.target.value })}
+                  >
+                    <option value="none">None</option>
+                    {!pinned && <option value="enter">Animate in when scrolled into view</option>}
+                    <option value="scrub">Scrub with scroll position</option>
+                  </select>
+
+                  {trigger === 'enter' && !pinned && (<>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Animation</div>
+                        <select className="prop-input" style={{ padding: '4px 6px' }}
+                          value={selectedElement.scrollPreset || 'fadeUp'}
+                          onChange={e => onUpdateElement({ scrollPreset: e.target.value })}
+                        >
+                          {entryAnimationOptions()}
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Duration (ms)</div>
+                        <input className="prop-input" type="number" min={100} max={5000} step={50}
+                          value={selectedElement.scrollDuration ?? 600}
+                          onChange={e => onUpdateElement({ scrollDuration: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}>
+                      <input type="checkbox"
+                        checked={selectedElement.scrollOnce === false}
+                        onChange={e => onUpdateElement({ scrollOnce: e.target.checked ? false : null })}
+                        style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Replay every time it scrolls in</span>
+                    </label>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      Replaces the slide entry animation above, and fires once the element is about
+                      15% up from the bottom of the screen.
+                    </div>
+                  </>)}
+
+                  {trigger === 'scrub' && (<>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Effect</div>
+                        <select className="prop-input" style={{ padding: '4px 6px' }}
+                          value={selectedElement.scrollPreset || 'parallax'}
+                          onChange={e => onUpdateElement({ scrollPreset: e.target.value })}
+                        >
+                          {SCROLL_SCRUB_PRESETS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Amount</div>
+                        <input className="prop-input" type="number" min={0} max={2} step={0.05}
+                          value={selectedElement.scrollSpeed ?? 0.2}
+                          onChange={e => onUpdateElement({ scrollSpeed: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      Runs off scroll position rather than time{pinned ? ', following the slide’s overall progress since the element is pinned' : ', as the element travels through the screen'}.
+                      A <code>--scroll-progress</code> variable (0–1) is published on the element for custom CSS.
+                    </div>
+                  </>)}
+                </>)}
+              </div>
+            </>)
+          })()}
+
           {/* Slide entry animation (GSAP) */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Slide Entry Animation</div>
@@ -1389,27 +1527,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               onChange={e => onUpdateElement({ animationEnter: e.target.value })}
             >
               <option value="none">None</option>
-              <optgroup label="Fade">
-                <option value="fadeIn">Fade In</option>
-                <option value="fadeUp">Fade Up ↑</option>
-                <option value="fadeDown">Fade Down ↓</option>
-                <option value="fadeLeft">Fade Left ←</option>
-                <option value="fadeRight">Fade Right →</option>
-              </optgroup>
-              <optgroup label="Zoom">
-                <option value="zoomIn">Zoom In</option>
-                <option value="zoomOut">Zoom Out</option>
-              </optgroup>
-              <optgroup label="Slide">
-                <option value="slideUp">Slide Up ↑</option>
-                <option value="slideDown">Slide Down ↓</option>
-                <option value="slideLeft">Slide Left ←</option>
-                <option value="slideRight">Slide Right →</option>
-              </optgroup>
-              <optgroup label="Flip">
-                <option value="flipX">Flip X</option>
-                <option value="flipY">Flip Y</option>
-              </optgroup>
+              {entryAnimationOptions()}
             </select>
             {selectedElement.animationEnter && selectedElement.animationEnter !== 'none' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1735,6 +1853,59 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </select>
           </div>
         </div>
+        </>)}
+      </div>
+
+      {/* Scrolling (tall canvas) */}
+      <div className="prop-section">
+        <SectionHead k="scroll">Scrolling</SectionHead>
+        {!collapsed.scroll && (<>
+        {(() => {
+          const vh = presentation?.slideHeight || 540
+          const canvasH = getCanvasHeight(slide, vh)
+          const factor = canvasH / vh
+          const setFactor = k => onUpdateSlide({ scrollHeight: k > 1 ? Math.round(vh * k) : null })
+          return (<>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas height</div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {[1, 1.5, 2, 3].map(k => (
+                <button
+                  key={k}
+                  className={`btn ${Math.abs(factor - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                  onClick={() => setFactor(k)}
+                >
+                  {k === 1 ? 'Off' : `${k}\u00d7`}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Height (px)</div>
+                {/* Committed on blur/Enter, not per keystroke — half-typed heights
+                    would otherwise snap back to one screen mid-edit. */}
+                <input className="prop-input" type="number" min={vh} max={vh * 8} step={20}
+                  key={`${slide.id}:${canvasH}`}
+                  defaultValue={canvasH}
+                  onBlur={e => {
+                    const v = Math.round(Number(e.target.value) || 0)
+                    onUpdateSlide({ scrollHeight: v > vh ? Math.min(v, vh * 8) : null })
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
+                <input className="prop-input" type="text" readOnly value={factor.toFixed(factor % 1 ? 2 : 0)} />
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {canvasH > vh
+                ? 'Presenting shows one screen at a time: \u2193 / space scrolls this slide to the bottom before moving on, and PDF export gives one page per screen.'
+                : 'Make the canvas taller than the screen to turn this slide into a scrolling one.'}
+            </div>
+          </>)
+        })()}
         </>)}
       </div>
 

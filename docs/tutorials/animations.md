@@ -44,6 +44,16 @@ Fragments let you reveal elements step-by-step within a single slide (advancing 
 
 In present mode, each click or arrow press reveals the next fragment before advancing to the next slide.
 
+## Triggers
+
+Every animation has one of three triggers, and an element uses one at a time:
+
+| Trigger | Fires when |
+|---------|-----------|
+| Slide entry | The slide becomes active |
+| Fragment | You click or press a key |
+| [Scroll](/tutorials/scrolling-slides#scroll-driven-animation) | The element scrolls into view, or continuously with scroll position — tall slides only |
+
 ::: tip
 Combine fragments with entry animations for maximum impact — the fragment controls *when* the element appears, and the entry animation controls *how* it appears.
 :::

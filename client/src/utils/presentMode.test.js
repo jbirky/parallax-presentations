@@ -4,7 +4,7 @@ import { Window } from 'happy-dom'
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
-import { generateRevealHTML, generatePresenterHTML } from './generateHTML'
+import { generateRevealHTML, generatePresenterHTML, generatePrintHTML, getCanvasHeight, getScrollViewports, SCROLL_PROGRESS_JS } from './generateHTML'
 
 function makePres(overrides = {}) {
   return {
@@ -1071,5 +1071,373 @@ describe('presenter mode — escaping', () => {
     })
     const html = generatePresenterHTML(pres)
     expect(html).toContain('Use <b>bold</b>')
+  })
+})
+
+// ── Tall (scrolling) slides ───────────────────────────────────────────────
+
+function makeTallPres(overrides = {}) {
+  return {
+    title: 'Tall Deck',
+    theme: 'black',
+    slideWidth: 960,
+    slideHeight: 540,
+    slides: [
+      {
+        id: 's1',
+        scrollHeight: 1620, // three screens
+        elements: [
+          { id: 'head', type: 'text', x: 60, y: 40, width: 400, height: 60, zIndex: 2, content: '<h2>Pinned title</h2>', scrollBehavior: 'pin' },
+          { id: 'body', type: 'text', x: 60, y: 900, width: 400, height: 60, zIndex: 1, content: '<p>Far down the canvas</p>' },
+        ],
+      },
+    ],
+    ...overrides,
+  }
+}
+
+describe('tall slides — canvas height', () => {
+  it('falls back to the viewport height when unset or shorter', () => {
+    expect(getCanvasHeight({}, 540)).toBe(540)
+    expect(getCanvasHeight({ scrollHeight: 0 }, 540)).toBe(540)
+    expect(getCanvasHeight({ scrollHeight: 300 }, 540)).toBe(540)
+    expect(getCanvasHeight(undefined, 540)).toBe(540)
+  })
+
+  it('rounds a taller canvas', () => {
+    expect(getCanvasHeight({ scrollHeight: 1620.4 }, 540)).toBe(1620)
+  })
+
+  it('counts the screens a canvas spans', () => {
+    expect(getScrollViewports({}, 540)).toBe(1)
+    expect(getScrollViewports({ scrollHeight: 1620 }, 540)).toBe(3)
+    expect(getScrollViewports({ scrollHeight: 800 }, 540)).toBe(2) // partial screen still prints
+  })
+})
+
+describe('tall slides — reveal output', () => {
+  it('leaves normal slides without a scroller', () => {
+    const doc = parseHTML(generateRevealHTML(makePres()))
+    expect(doc.querySelector('.slide-scroller')).toBeFalsy()
+    expect(doc.querySelector('section').getAttribute('data-scroll-height')).toBeFalsy()
+  })
+
+  it('wraps a tall slide in a viewport-sized scroller over a canvas-sized inner', () => {
+    const doc = parseHTML(generateRevealHTML(makeTallPres()))
+    const scroller = doc.querySelector('.slide-scroller')
+    expect(scroller).toBeTruthy()
+    expect(scroller.getAttribute('style')).toContain('height:540px')
+    expect(scroller.getAttribute('style')).toContain('overflow-y:auto')
+    expect(doc.querySelector('.slide-scroll-inner').getAttribute('style')).toContain('height:1620px')
+  })
+
+  it('marks the section with its canvas height', () => {
+    const doc = parseHTML(generateRevealHTML(makeTallPres()))
+    expect(doc.querySelector('section').getAttribute('data-scroll-height')).toBe('1620')
+  })
+
+  it('scrolls ordinary elements and leaves pinned ones in the viewport', () => {
+    const doc = parseHTML(generateRevealHTML(makeTallPres()))
+    const inner = doc.querySelector('.slide-scroll-inner').innerHTML
+    expect(inner).toContain('Far down the canvas')
+    expect(inner).not.toContain('Pinned title')
+    expect(doc.querySelector('section').innerHTML).toContain('Pinned title')
+  })
+
+  it('pins nothing when the slide is not tall', () => {
+    const pres = makeTallPres()
+    delete pres.slides[0].scrollHeight
+    const doc = parseHTML(generateRevealHTML(pres))
+    expect(doc.querySelector('.slide-scroller')).toBeFalsy()
+    expect(doc.querySelector('section').innerHTML).toContain('Pinned title')
+  })
+
+  it('opts the scroller out of reveal swipe navigation', () => {
+    const doc = parseHTML(generateRevealHTML(makeTallPres()))
+    expect(doc.querySelector('.slide-scroller').hasAttribute('data-prevent-swipe')).toBe(true)
+  })
+
+  it('renders a scroll progress track', () => {
+    const doc = parseHTML(generateRevealHTML(makeTallPres()))
+    expect(doc.querySelector('.slide-scroll-track')).toBeTruthy()
+    expect(doc.querySelector('.slide-scroll-thumb')).toBeTruthy()
+  })
+
+  it('scrolls before advancing, and only bothers when a deck has tall slides', () => {
+    const html = generateRevealHTML(makeTallPres())
+    expect(html).toContain("if (!document.querySelector('.slide-scroller')) return;")
+    expect(html).toContain('Reveal.configure({ keyboard: {')
+    expect(html).toContain('Reveal.getCurrentSlide()')
+  })
+
+  it('keeps the alt and shift modifiers working through the override', () => {
+    const html = generateRevealHTML(makeTallPres())
+    expect(html).toContain('skipFragments: !!(e && e.altKey)')
+    expect(html).toContain('var back = !!(e && e.shiftKey)')
+  })
+
+  it('lets embeds hand wheel deltas back to the deck', () => {
+    const pres = makeTallPres()
+    pres.slides[0].elements.push(
+      { id: 'emb', type: 'html', x: 0, y: 1100, width: 400, height: 300, zIndex: 1, content: '<svg width="10" height="10"></svg>' },
+      { id: 'sketch', type: 'p5', x: 400, y: 1100, width: 400, height: 300, zIndex: 1, content: 'function setup(){}' },
+    )
+    const html = generateRevealHTML(pres)
+    expect((html.match(/type:'wheel'/g) || []).length).toBe(2)  // one per embed
+    expect(html).toContain("msg.type !== 'wheel'")              // and the deck listens
+  })
+
+  it('stretches drawings over the whole canvas', () => {
+    const pres = makeTallPres()
+    pres.slides[0].elements.push({
+      id: 'd1', type: 'drawing', x: 0, y: 0, width: 960, height: 540, zIndex: 3,
+      paths: [{ points: [{ x: 0, y: 0 }, { x: 40, y: 900 }], color: '#fff', strokeWidth: 3 }],
+    })
+    const html = generateRevealHTML(pres)
+    expect(html).toContain('width:960px;height:1620px;overflow:visible;pointer-events:none')
+  })
+})
+
+describe('tall slides — print output', () => {
+  const pageCount = html => (html.match(/class="slide-page"/g) || []).length
+
+  it('emits one page per screen, shifting the canvas up each time', () => {
+    const html = generatePrintHTML(makeTallPres())
+    expect(pageCount(html)).toBe(3)
+    expect(html).toContain('top:0px;width:960px;height:1620px')
+    expect(html).toContain('top:-540px;width:960px;height:1620px')
+    expect(html).toContain('top:-1080px;width:960px;height:1620px')
+  })
+
+  it('repeats pinned elements on every page', () => {
+    const html = generatePrintHTML(makeTallPres())
+    expect((html.match(/Pinned title/g) || []).length).toBe(3)
+  })
+
+  it('shows every fragment on a tall slide, since scrolling replaced clicking', () => {
+    const pres = makeTallPres()
+    pres.slides[0].elements.push({
+      id: 'f1', type: 'text', x: 60, y: 1200, width: 300, height: 50, zIndex: 1,
+      content: '<p>Late reveal</p>', fragment: true, fragmentIndex: 2,
+    })
+    const html = generatePrintHTML(pres)
+    expect(pageCount(html)).toBe(3) // not 3 screens x 2 fragment states
+    expect(html).not.toContain('visibility:hidden')
+  })
+
+  it('still expands fragments on slides that do not scroll', () => {
+    const pres = makePres()
+    pres.slides = [pres.slides[0]]
+    pres.slides[0].elements = [
+      ...pres.slides[0].elements,
+      { id: 'f1', type: 'text', x: 0, y: 200, width: 300, height: 50, zIndex: 1, content: '<p>Step</p>', fragment: true, fragmentIndex: 1 },
+    ]
+    expect(pageCount(generatePrintHTML(pres))).toBe(2)
+  })
+
+  it('numbers a tall slide once, not once per screen', () => {
+    const html = generatePrintHTML(makeTallPres({ showPageNumbers: true }))
+    expect((html.match(/1 \/ 1/g) || []).length).toBe(3)
+    expect(html).not.toContain('2 / 1')
+  })
+})
+
+// ── Scroll-driven animation ───────────────────────────────────────────────
+
+function makeScrollAnimPres(elements, slideOverrides = {}) {
+  return {
+    title: 'Scrollytelling',
+    slideWidth: 960,
+    slideHeight: 540,
+    slides: [{ id: 's1', scrollHeight: 1620, ...slideOverrides, elements }],
+  }
+}
+
+const animEl = (over = {}) => ({
+  id: over.id || 'e1', type: 'text', x: 60, y: 800, width: 400, height: 80, zIndex: 1,
+  content: '<p>body</p>', ...over,
+})
+
+describe('scroll animation — emitted attributes', () => {
+  const attrs = (el, slideOverrides) => {
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([animEl(el)], slideOverrides)))
+    return doc.querySelector('[data-scroll-anim]')
+  }
+
+  it('emits an enter trigger with its preset, duration and replay flag', () => {
+    const el = attrs({ scrollTrigger: 'enter', scrollPreset: 'fadeLeft', scrollDuration: 900, scrollOnce: false })
+    expect(el.getAttribute('data-scroll-anim')).toBe('enter')
+    expect(el.getAttribute('data-scroll-preset')).toBe('fadeLeft')
+    expect(el.getAttribute('data-scroll-duration')).toBe('900')
+    expect(el.getAttribute('data-scroll-once')).toBe('false')
+  })
+
+  it('defaults an enter trigger to fadeUp, 600ms, once', () => {
+    const el = attrs({ scrollTrigger: 'enter' })
+    expect(el.getAttribute('data-scroll-preset')).toBe('fadeUp')
+    expect(el.getAttribute('data-scroll-duration')).toBe('600')
+    expect(el.getAttribute('data-scroll-once')).toBe('true')
+  })
+
+  it('emits a scrub trigger with its effect and amount', () => {
+    const el = attrs({ scrollTrigger: 'scrub', scrollPreset: 'zoom', scrollSpeed: 0.45 })
+    expect(el.getAttribute('data-scroll-anim')).toBe('scrub')
+    expect(el.getAttribute('data-scroll-preset')).toBe('zoom')
+    expect(el.getAttribute('data-scroll-speed')).toBe('0.45')
+  })
+
+  it('keeps a zero amount rather than substituting the default', () => {
+    expect(attrs({ scrollTrigger: 'scrub', scrollSpeed: 0 }).getAttribute('data-scroll-speed')).toBe('0')
+  })
+
+  it('ignores a scroll trigger on a slide that does not scroll', () => {
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([animEl({ y: 100, scrollTrigger: 'enter' })], { scrollHeight: null })))
+    expect(doc.querySelector('[data-scroll-anim]')).toBeFalsy()
+  })
+
+  it('leaves fragments to the clicker', () => {
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([
+      animEl({ scrollTrigger: 'enter', fragment: true, fragmentIndex: 1 }),
+    ])))
+    expect(doc.querySelector('[data-scroll-anim]')).toBeFalsy()
+    expect(doc.querySelector('.fragment')).toBeTruthy()
+  })
+
+  it('replaces the slide entry animation instead of stacking with it', () => {
+    const el = attrs({ animationEnter: 'zoomIn', scrollTrigger: 'enter', scrollPreset: 'fadeUp' })
+    expect(el.hasAttribute('data-gsap-enter')).toBe(false)
+    expect(el.getAttribute('data-scroll-preset')).toBe('fadeUp')
+  })
+
+  it('still emits a slide entry animation when no scroll trigger is set', () => {
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([animEl({ animationEnter: 'zoomIn' })])))
+    expect(doc.querySelector('[data-gsap-enter]').getAttribute('data-gsap-enter')).toBe('zoomIn')
+    expect(doc.querySelector('[data-scroll-anim]')).toBeFalsy()
+  })
+
+  it('lets a pinned element scrub but not animate in, since it never travels', () => {
+    const scrub = attrs({ scrollBehavior: 'pin', y: 40, scrollTrigger: 'scrub', scrollPreset: 'fade' })
+    expect(scrub.getAttribute('data-scroll-anim')).toBe('scrub')
+
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([
+      animEl({ scrollBehavior: 'pin', y: 40, scrollTrigger: 'enter' }),
+    ])))
+    expect(doc.querySelector('[data-scroll-anim]')).toBeFalsy()
+  })
+
+  it('puts a scrubbed pinned element outside the scroller', () => {
+    const doc = parseHTML(generateRevealHTML(makeScrollAnimPres([
+      animEl({ id: 'pin', scrollBehavior: 'pin', y: 40, scrollTrigger: 'scrub', content: '<h2>Sticky</h2>' }),
+      animEl({ id: 'body', y: 900 }),
+    ])))
+    expect(doc.querySelector('.slide-scroll-inner').innerHTML).not.toContain('Sticky')
+    expect(doc.querySelector('section [data-scroll-anim="scrub"]')).toBeTruthy()
+  })
+})
+
+describe('scroll animation — runtime', () => {
+  const html = () => generateRevealHTML(makeScrollAnimPres([
+    animEl({ scrollTrigger: 'enter' }),
+    animEl({ id: 'e2', y: 1200, scrollTrigger: 'scrub' }),
+  ]))
+
+  it('observes enter elements against the scroller, not the window', () => {
+    expect(html()).toContain('{ root: sc, rootMargin:')
+  })
+
+  it('hides enter elements from script so a JS failure still shows them', () => {
+    const out = html()
+    expect(out).toContain('.scroll-anim-hidden { opacity: 0 !important; }')
+    expect(out).toContain("el.classList.add('scroll-anim-hidden')")
+  })
+
+  it('reuses the existing GSAP presets for enter animations', () => {
+    expect(html()).toContain("GSAP_PRESETS[el.getAttribute('data-scroll-preset')] || GSAP_PRESETS.fadeUp")
+  })
+
+  it('scrubs on a rAF from the scroll listener', () => {
+    const out = html()
+    expect(out).toContain('requestAnimationFrame(updateScrub)')
+    expect(out).toContain('syncThumb(sc); requestScrubUpdate();')
+  })
+
+  it('publishes progress variables for custom CSS', () => {
+    const out = html()
+    expect(out).toContain("setProperty('--scroll-progress'")
+    expect(out).toContain("setProperty('--slide-scroll-progress'")
+  })
+
+  it('honours prefers-reduced-motion', () => {
+    const out = html()
+    expect(out).toContain("matchMedia('(prefers-reduced-motion: reduce)')")
+    expect(out).toContain('if (enters.length && !reduceMotion)')
+  })
+
+  it('emits the same progress maths the tests exercise', () => {
+    expect(html()).toContain(SCROLL_PROGRESS_JS.trim())
+  })
+
+  it('hands scroll progress to embeds', () => {
+    expect(html()).toContain("source: 'parallax-host', type: 'scroll-progress', payload: { slide: sp, element: ep }")
+  })
+
+  it('re-arms animations on each arrival', () => {
+    const out = html()
+    expect(out).toContain('wireAnimations(e.currentSlide)')
+    expect(out).toContain('slide._scrollIO.disconnect()')
+  })
+})
+
+describe('scroll animation — progress maths', () => {
+  // The deck runs this exact source; here it runs against plain stand-ins, since
+  // the maths only reads offsetTop/offsetHeight and the scroller's three numbers.
+  const { clamp01, elementProgress, scrollProgress } =
+    new Function(SCROLL_PROGRESS_JS + '; return { clamp01: clamp01, elementProgress: elementProgress, scrollProgress: scrollProgress }')()
+
+  // A 3-screen canvas: 1620 tall in a 540 viewport, so 1080px of scroll.
+  const scroller = scrollTop => ({ scrollTop, clientHeight: 540, scrollHeight: 1620 })
+  const box = (offsetTop, offsetHeight = 80) => ({ offsetTop, offsetHeight })
+  const at = (el, top) => elementProgress(el, scroller(top))
+
+  it('clamps to 0..1', () => {
+    expect(clamp01(-2)).toBe(0)
+    expect(clamp01(0.4)).toBe(0.4)
+    expect(clamp01(9)).toBe(1)
+  })
+
+  it('starts a first-screen element at 0 instead of part-way through', () => {
+    const first = box(40, 70)   // visible the moment the slide opens
+    expect(at(first, 0)).toBe(0)
+    expect(at(first, 55)).toBeCloseTo(0.5, 3)
+    expect(at(first, 110)).toBe(1)
+  })
+
+  it('runs a mid-canvas element from the bottom edge to the top edge', () => {
+    const mid = box(900, 80)    // enters at 900-540=360, leaves at 980
+    expect(at(mid, 200)).toBe(0)
+    expect(at(mid, 360)).toBe(0)
+    expect(at(mid, 670)).toBeCloseTo(0.5, 3)
+    expect(at(mid, 980)).toBe(1)
+    expect(at(mid, 1080)).toBe(1)
+  })
+
+  it('finishes a bottom-of-canvas element exactly at the end of the scroll', () => {
+    const last = box(1500, 70)  // could never leave the screen: 1570 > 1080 of scroll
+    expect(at(last, 960)).toBe(0)
+    expect(at(last, 1020)).toBeCloseTo(0.5, 3)
+    expect(at(last, 1080)).toBe(1)
+  })
+
+  it('reports 0 when there is nothing to scroll', () => {
+    const flat = { scrollTop: 0, clientHeight: 540, scrollHeight: 540 }
+    expect(elementProgress(box(100), flat)).toBe(0)
+    expect(scrollProgress(flat)).toBe(0)
+  })
+
+  it('tracks the slide progress that pinned elements scrub on', () => {
+    expect(scrollProgress(scroller(0))).toBe(0)
+    expect(scrollProgress(scroller(540))).toBeCloseTo(0.5, 3)
+    expect(scrollProgress(scroller(1080))).toBe(1)
+    expect(scrollProgress(scroller(5000))).toBe(1)
   })
 })

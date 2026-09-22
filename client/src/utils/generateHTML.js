@@ -5,10 +5,14 @@ import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
 import { getReferencedEntries } from './bibtexParser'
 
+// Embeds live in iframes, which swallow the wheel. When the embed has nothing of
+// its own to scroll, it hands the delta back so a tall slide keeps moving.
+const EMBED_WHEEL_SCRIPT = `<script>window.addEventListener('wheel',function(e){var d=document.scrollingElement||document.documentElement;if(d&&d.scrollHeight>d.clientHeight+2)return;try{parent.postMessage({source:'parallax-embed',type:'wheel',dy:e.deltaY},'*')}catch(err){}},{passive:true});<\/script>`
+
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle
+  const injection = initScript + resetStyle + EMBED_WHEEL_SCRIPT
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, m => m + injection)
   if (/<html[^>]*>/i.test(userHtml))
@@ -66,6 +70,49 @@ function getSlideColumns(slides, presentation = {}) {
 
 const CUSTOM_TRANSITIONS = ['differential-rotation']
 
+// Scroll-progress maths, emitted verbatim into a deck and unit tested through
+// `new Function` — one definition rather than one per consumer. Written as plain
+// ES5 for the deck, and free of backticks so it can live in a template literal.
+export const SCROLL_PROGRESS_JS = `      function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+      // How far an element has travelled through the viewport, 0 to 1, measured
+      // over the scroll positions that can actually be reached: something laid out
+      // on the first screen starts at 0 rather than part-way through, and something
+      // at the foot of the canvas finishes exactly at the bottom of the scroll.
+      // Layout pixels throughout, so reveal's display scaling does not enter in.
+      function elementProgress(el, sc) {
+        var maxScroll = sc.scrollHeight - sc.clientHeight;
+        if (maxScroll <= 0) return 0;
+        var enterAt = Math.max(0, Math.min(el.offsetTop - sc.clientHeight, maxScroll));
+        var leaveAt = Math.max(0, Math.min(el.offsetTop + el.offsetHeight, maxScroll));
+        if (leaveAt <= enterAt) return clamp01(sc.scrollTop / maxScroll);
+        return clamp01((sc.scrollTop - enterAt) / (leaveAt - enterAt));
+      }
+
+      function scrollProgress(sc) {
+        var maxScroll = sc.scrollHeight - sc.clientHeight;
+        return maxScroll > 0 ? clamp01(sc.scrollTop / maxScroll) : 0;
+      }`
+
+// ─── Tall ("scrolling") slides ────────────────────────────────────────────────
+// A slide whose `scrollHeight` exceeds the deck height becomes a scroll viewport
+// onto a taller canvas: element x/y live in canvas coordinates, the section shows
+// one slideH-high window onto them, and the presenter scrolls before advancing.
+// Elements marked `scrollBehavior:'pin'` stay put in the viewport while the rest
+// scrolls past — their y is a viewport coordinate, not a canvas one.
+export function getCanvasHeight(slide, slideH) {
+  const h = Math.round(Number(slide?.scrollHeight) || 0)
+  return h > slideH ? h : slideH
+}
+
+export function getScrollViewports(slide, slideH) {
+  return Math.max(1, Math.ceil(getCanvasHeight(slide, slideH) / slideH))
+}
+
+function isPinnedEl(el) {
+  return el?.scrollBehavior === 'pin'
+}
+
 export function generateRevealHTML(presentation) {
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
@@ -111,299 +158,319 @@ export function generateRevealHTML(presentation) {
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
-    const elementsHtml = (slide.elements || [])
+    const canvasH = getCanvasHeight(slide, slideH)
+    const isTall = canvasH > slideH
+
+    const renderElement = el => {
+    const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
+      ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
+      : ''
+    const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
+    const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+    const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
+    const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
+    const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
+    const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${el.fragmentIndex}"` : ''
+    // Scroll triggers only mean something inside a scroller, and they stand in for
+    // the other two triggers rather than stacking with them: a fragment is
+    // click-driven, and a pinned element never travels through the viewport, so it
+    // can only scrub — against the slide's own scroll progress.
+    const scrollMode = (isTall && !el.fragment && el.scrollTrigger && el.scrollTrigger !== 'none')
+      ? (isPinnedEl(el) ? (el.scrollTrigger === 'scrub' ? 'scrub' : '') : el.scrollTrigger)
+      : ''
+    const scrollAttrs = scrollMode
+      ? ` data-scroll-anim="${scrollMode}" data-scroll-preset="${el.scrollPreset || (scrollMode === 'enter' ? 'fadeUp' : 'parallax')}"`
+        + (scrollMode === 'enter'
+          ? ` data-scroll-duration="${el.scrollDuration || 600}" data-scroll-once="${el.scrollOnce === false ? 'false' : 'true'}"`
+          : ` data-scroll-speed="${el.scrollSpeed ?? 0.2}"`)
+      : ''
+    const animAttrs = ((el.animationEnter && el.animationEnter !== 'none' && !scrollMode)
+      ? ` data-gsap-enter="${el.animationEnter}" data-gsap-delay="${el.animationDelay || 0}" data-gsap-duration="${el.animationDuration || 600}"`
+      : '') + scrollAttrs
+    if (el.type === 'text') {
+      const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
+    }
+    if (el.type === 'image') {
+      const src = absoluteSrc(el.src)
+      const imgFilterParts = [
+        (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
+        (el.filterContrast != null && el.filterContrast !== 100) ? `contrast(${el.filterContrast}%)` : '',
+        el.filterGrayscale ? `grayscale(${el.filterGrayscale}%)` : '',
+      ].filter(Boolean).join(' ')
+      const filterStyle = imgFilterParts ? `filter:${imgFilterParts};` : ''
+      const expandAttr = el.clickToExpand ? ' data-expand="true"' : ''
+      const popupAttr = el.popupText ? ` data-popup="${el.popupText.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" data-popup-pos="${el.popupPosition || 'below'}" data-popup-fs="${el.popupFontSize || 15}"` : ''
+      const interactiveCursor = (el.clickToExpand || el.popupText) ? 'cursor:pointer;' : ''
+      const hasCite = el.citationText || el.citationLink
+      const citeCaption = hasCite && (el.citationMode || 'caption') === 'caption'
+      const citeSide = hasCite && el.citationMode === 'side'
+      const cStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
+      let capHtml = ''
+      if (citeCaption) {
+        const align = el.citationAlign || 'left'
+        const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        const cc = el.citationColor ? `color:${el.citationColor};` : ''
+        capHtml = el.citationLink
+          ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${el.citationLink.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
+          : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
+      }
+      const sIdx = citeSide ? sideCitations.findIndex(c => c.id === el.id) : -1
+      const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
+      const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : ''
+      const clipClose = citeCaption ? '</div>' : ''
+      if (el.imageW != null) {
+        const offX = el.imageOffsetX ?? 0
+        const offY = el.imageOffsetY ?? 0
+        const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
+        return `<div${dataId}${fragClass}${fragIdx}${animAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+      }
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+    }
+    if (el.type === 'shape') {
+      const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+    }
+    if (el.type === 'html') {
+      const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
+      const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+    }
+    if (el.type === 'p5') {
+      const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script>${EMBED_WHEEL_SCRIPT}</head><body><script>${el.content || ''}<\/script></body></html>`
+      const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+    }
+    if (el.type === 'code') {
+      const lang = el.language || 'plaintext'
+      const codeContent = escapeHtml(el.content || '')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
+    }
+    if (el.type === 'markdown') {
+      const md = (el.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style>${EMBED_WHEEL_SCRIPT}</head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\\/script></body></html>`
+      const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+    }
+    if (el.type === 'timeline') {
+      const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
+      const lc = el.lineColor || '#6366f1', dc = el.dotColor || lc, tc = el.textColor || '#fff', fs = el.fontSize || 11
+      const spacing = el.tickSpacing || 'auto'
+      const yearMode = ['year','10year','100year','1000year'].includes(spacing) || (spacing === 'auto' && String(el.startDate).match(/^-?\d+$/))
+      const ticks = []
+      let datePos, itemDateLabel
+      if (yearMode) {
+        const y0 = parseInt(el.startDate) || 0, y1 = parseInt(el.endDate) || 0, yr = y1 - y0 || 1
+        datePos = (d) => pad + ((parseInt(d) - y0) / yr) * (w - pad * 2)
+        itemDateLabel = (d) => String(parseInt(d) || d)
+        const step = spacing === '1000year' ? 1000 : spacing === '100year' ? 100 : spacing === '10year' ? 10 : Math.abs(yr) > 8 ? 2 : 1
+        const sY = Math.ceil(y0 / step) * step
+        for (let y = sY; y <= y1; y += step) ticks.push({ date: String(y), label: String(y) })
+      } else {
+        const t0 = new Date(el.startDate).getTime(), t1 = new Date(el.endDate).getTime(), range = t1 - t0 || 1
+        datePos = (d) => pad + ((new Date(d).getTime() - t0) / range) * (w - pad * 2)
+        itemDateLabel = (d) => d
+        const d0 = new Date(el.startDate), d1 = new Date(el.endDate)
+        if (spacing === 'day') { const step = 86400000; for (let t = d0.getTime(); t <= d1.getTime(); t += step) { const d = new Date(t); ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getMonth()+1}/${d.getDate()}` }) } }
+        else if (spacing === 'month') { for (let d = new Date(d0.getFullYear(), d0.getMonth(), 1); d <= d1; d.setMonth(d.getMonth() + 1)) ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }) }
+        else { const yearSpan = (t1 - t0) / (365.25 * 24 * 3600000); const step = yearSpan > 8 ? 2 : 1; for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) }) }
+      }
+      const esc = (s) => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+      svg += `<line x1="${pad}" y1="${lineY}" x2="${w-pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`
+      for (const t of ticks) { const x = datePos(t.date); svg += `<line x1="${x}" y1="${lineY-4}" x2="${x}" y2="${lineY+4}" stroke="${lc}" stroke-width="1.5"/><text x="${x}" y="${lineY+14}" text-anchor="end" fill="${tc}" font-size="${fs-1}" opacity="0.5" transform="rotate(-45,${x},${lineY+14})">${t.label}</text>` }
+      for (const item of el.items || []) {
+        const x = datePos(item.date), isTop = item.side !== 'bottom', cl = item.connectorLength ?? 0
+        const cardY = isTop ? 8 - cl : lineY + 28 + cl, cardH = isTop ? lineY - 36 : h - lineY - 36
+        const connY1 = isTop ? cardY + cardH : lineY, connY2 = isTop ? lineY : cardY
+        const imgH = item.image ? Math.min(cardH * 0.55, 60) : 0
+        const hasExpand = item.image || item.detailedDescription
+        svg += `<g${hasExpand ? ` class="tl-event" data-tl-id="${item.id}" style="cursor:pointer"` : ''}>`
+        svg += `<line x1="${x}" y1="${connY1}" x2="${x}" y2="${connY2}" stroke="${lc}" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>`
+        svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`
+        if (isTop) {
+          let ty = cardY + fs
+          svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
+          ty += fs + 2
+          if (item.description) { svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`; ty += fs }
+          svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
+          ty += 4
+          if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
+        } else {
+          if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
+          svg += `<text x="${x}" y="${cardY+imgH+fs+2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
+          if (item.description) svg += `<text x="${x}" y="${cardY+imgH+fs*2+4}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`
+          svg += `<text x="${x}" y="${cardY+imgH+fs*(item.description?3:2)+6}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
+        }
+        svg += '</g>'
+      }
+      svg += '</svg>'
+      const expandItems = (el.items || []).filter(i => i.image || i.detailedDescription)
+      let expandData = ''
+      if (expandItems.length) {
+        const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(i.image) : '' })))
+        expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\\/script>`
+      }
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
+    }
+    if (el.type === 'chart') {
+      const { chartType = 'bar', chartData = {} } = el
+      const labels = JSON.stringify(chartData.labels || [])
+      const datasets = JSON.stringify((chartData.datasets || []).map(ds => ({
+        label: ds.label || '', data: ds.data || [],
+        backgroundColor: ds.color || '#6366f1', borderColor: ds.color || '#6366f1',
+        borderWidth: chartType === 'line' ? 2 : 0, fill: chartType === 'line' ? false : undefined,
+      })))
+      const scalesOpt = chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`
+      const chartSrc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style>${EMBED_WHEEL_SCRIPT}</head><body><canvas id="c" style="width:100%;height:100%"></canvas><script>new Chart(document.getElementById('c'),{type:'${chartType}',data:{labels:${labels},datasets:${datasets}},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},scales:${scalesOpt}}});<\\/script></body></html>`
+      const escaped = chartSrc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+    }
+    if (el.type === 'callout') {
+      const bg = el.calloutColor || '#ef4444'
+      const tc = el.calloutTextColor || '#ffffff'
+      const fs = el.fontSize || 16
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
+    }
+    if (el.type === 'icon') {
+      const color = el.iconColor || '#ffffff'
+      const sw = el.iconStrokeWidth || 2
+      const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
+      const path = iconPaths[el.iconName] || iconPaths['Star']
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
+    }
+    if (el.type === 'latex') {
+      const content = el.content || ''
+      const lc = el.textColor || 'white'
+      const sc = el.fontSize ? (el.fontSize / 20) : 1
+      const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
+      const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
+      if (hasTikz) {
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style>${EMBED_WHEEL_SCRIPT}</head><body><script type="text/tikz">${content}<\\/script></body></html>`
+        const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+      }
+      if (hasTable) {
+        const wrapped = content.includes('\\begin{document}') ? content
+          : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/latex.js"><\\/script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/base.css"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style>${EMBED_WHEEL_SCRIPT}</head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`
+        const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+      }
+      const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
+    }
+    if (el.type === 'video' || (el.type === 'manim' && el.rendered)) {
+      const src = absoluteSrc(el.type === 'manim' ? el.rendered : el.src)
+      const attrs = []
+      if (el.type === 'manim') { if (el.controls) attrs.push('controls'); if (el.autoplay !== false) attrs.push('autoplay'); if (el.loop !== false) attrs.push('loop'); if (el.muted !== false) attrs.push('muted') }
+      else { if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted') }
+      const posterAttr = el.poster ? ` poster="${absoluteSrc(el.poster)}"` : ''
+      const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
+      const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
+      let vidScript = ''
+      if (rate || hasClip) {
+        const parts = []
+        parts.push('var v=document.currentScript.previousElementSibling')
+        if (rate) parts.push(`v.playbackRate=${rate}`)
+        if (hasClip) {
+          const s = el.startTime || 0
+          const looping = el.loop
+          if (s > 0) parts.push(`v.addEventListener('loadedmetadata',function(){v.currentTime=${s}})`)
+          if (el.endTime != null) parts.push(`v.addEventListener('timeupdate',function(){if(v.currentTime>=${el.endTime}){${looping ? `v.currentTime=${s};v.play()` : 'v.pause()'}}})`)
+          if (s > 0) parts.push(`v.addEventListener('play',function(){if(v.currentTime<${s})v.currentTime=${s}})`)
+        }
+        vidScript = `<script>${parts.join(';')}</script>`
+      }
+      if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video>${vidScript}</div>`
+    }
+    if (el.type === 'manim' && !el.rendered) return '' // not yet rendered — omit from export
+    if (el.type === 'audio') {
+      const src = absoluteSrc(el.src)
+      const attrs = ['controls']
+      if (el.autoplay) attrs.push('autoplay')
+      if (el.loop) attrs.push('loop')
+      if (el.muted) attrs.push('muted')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
+    }
+    if (el.type === 'table') {
+      const data = el.data || [['']]
+      const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
+      const cellBg = el.cellBgColor || 'transparent'
+      const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
+      const borderWidth = el.borderWidth ?? 1
+      const textColor = el.textColor || '#ffffff'
+      const fontSize = el.fontSize || 14
+      const cellPadding = el.cellPadding || 8
+      const rows = data.map((row, ri) => {
+        const cells = (row || []).map((cell, ci) => {
+          const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
+          return `<td style="padding:${cellPadding}px;border:${borderWidth}px solid ${borderColor};background:${bg};color:${textColor};font-size:${fontSize}px;">${escapeHtml(cell || '')}</td>`
+        }).join('')
+        return `<tr>${cells}</tr>`
+      }).join('')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+    }
+    if (el.type === 'textpath') {
+      const fontSize = el.fontSize || 64
+      const w = el.width
+      const pathSide = el.pathSide || 'bottom'
+      const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
+      const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
+      let svg, svgH
+      if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+        const pad = Math.ceil(fontSize * 0.6)
+        const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+        svgH = el.height || 300
+        const lineH = fontSize * (el.lineHeight ?? 1.35)
+        const tanA = Math.tan(((el.angle || 0) * Math.PI) / 180)
+        const lines = (el.content || '').split('\n')
+        const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+        const guideX2 = pathX0 + svgH * tanA
+        const tspans = lines.map((line, i) =>
+          `<tspan x="${lineXAt(i)}" dy="${i === 0 ? fontSize : lineH}">${escapeHtml(line || ' ')}</tspan>`
+        ).join('')
+        const guideLine = el.showPath !== false
+          ? `<line x1="${pathX0}" y1="0" x2="${guideX2}" y2="${svgH}" stroke="rgba(34,211,238,0.4)" stroke-width="1"/>`
+          : ''
+        const anchor = pathSide === 'leftedge' ? 'start' : 'end'
+        svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible">${guideLine}<text ${baseTextAttrs} text-anchor="${anchor}">${tspans}</text></svg>`
+      } else {
+        const angle = el.angle || 0
+        const angleRad = (angle * Math.PI) / 180
+        const dy = w * Math.tan(angleRad)
+        const pad = Math.ceil(fontSize * 1.2)
+        const minY = Math.min(0, dy)
+        svgH = Math.ceil(Math.abs(dy) + pad * 2)
+        const baselineY = pad - minY
+        const pathD = `M 0,${baselineY} L ${w},${baselineY + dy}`
+        const pathId = `tp-${el.id}`
+        const capHeight = Math.round(fontSize * 0.72)
+        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
+        const dyAttr = textDy ? ` dy="${textDy}"` : ''
+        svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
+      }
+      const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${elStyle}">${svg}</div>`
+    }
+    if (el.type === 'drawing') {
+      const svgPaths = (el.paths || []).map(path => {
+        const d = pointsToPath(path.points, el.smooth !== false)
+        return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
+      }).join('')
+      return `<svg${dataId}${fragClass}${fragIdx}${animAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+    }
+    return ''
+    }
+
+    const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
-      .map(el => {
-        const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
-          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
-          : ''
-        const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
-        const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
-        const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
-        const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
-        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${el.fragmentIndex}"` : ''
-        const gsapAttrs = (el.animationEnter && el.animationEnter !== 'none')
-          ? ` data-gsap-enter="${el.animationEnter}" data-gsap-delay="${el.animationDelay || 0}" data-gsap-duration="${el.animationDuration || 600}"`
-          : ''
-        if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
-        }
-        if (el.type === 'image') {
-          const src = absoluteSrc(el.src)
-          const imgFilterParts = [
-            (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
-            (el.filterContrast != null && el.filterContrast !== 100) ? `contrast(${el.filterContrast}%)` : '',
-            el.filterGrayscale ? `grayscale(${el.filterGrayscale}%)` : '',
-          ].filter(Boolean).join(' ')
-          const filterStyle = imgFilterParts ? `filter:${imgFilterParts};` : ''
-          const expandAttr = el.clickToExpand ? ' data-expand="true"' : ''
-          const popupAttr = el.popupText ? ` data-popup="${el.popupText.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" data-popup-pos="${el.popupPosition || 'below'}" data-popup-fs="${el.popupFontSize || 15}"` : ''
-          const interactiveCursor = (el.clickToExpand || el.popupText) ? 'cursor:pointer;' : ''
-          const hasCite = el.citationText || el.citationLink
-          const citeCaption = hasCite && (el.citationMode || 'caption') === 'caption'
-          const citeSide = hasCite && el.citationMode === 'side'
-          const cStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
-          let capHtml = ''
-          if (citeCaption) {
-            const align = el.citationAlign || 'left'
-            const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-            const cc = el.citationColor ? `color:${el.citationColor};` : ''
-            capHtml = el.citationLink
-              ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${el.citationLink.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
-              : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
-          }
-          const sIdx = citeSide ? sideCitations.findIndex(c => c.id === el.id) : -1
-          const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
-          const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : ''
-          const clipClose = citeCaption ? '</div>' : ''
-          if (el.imageW != null) {
-            const offX = el.imageOffsetX ?? 0
-            const offY = el.imageOffsetY ?? 0
-            const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
-          }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
-        }
-        if (el.type === 'shape') {
-          const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
-        }
-        if (el.type === 'html') {
-          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
-          const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'p5') {
-          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script></head><body><script>${el.content || ''}<\/script></body></html>`
-          const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'code') {
-          const lang = el.language || 'plaintext'
-          const codeContent = escapeHtml(el.content || '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
-        }
-        if (el.type === 'markdown') {
-          const md = (el.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\\/script></body></html>`
-          const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'timeline') {
-          const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
-          const lc = el.lineColor || '#6366f1', dc = el.dotColor || lc, tc = el.textColor || '#fff', fs = el.fontSize || 11
-          const spacing = el.tickSpacing || 'auto'
-          const yearMode = ['year','10year','100year','1000year'].includes(spacing) || (spacing === 'auto' && String(el.startDate).match(/^-?\d+$/))
-          const ticks = []
-          let datePos, itemDateLabel
-          if (yearMode) {
-            const y0 = parseInt(el.startDate) || 0, y1 = parseInt(el.endDate) || 0, yr = y1 - y0 || 1
-            datePos = (d) => pad + ((parseInt(d) - y0) / yr) * (w - pad * 2)
-            itemDateLabel = (d) => String(parseInt(d) || d)
-            const step = spacing === '1000year' ? 1000 : spacing === '100year' ? 100 : spacing === '10year' ? 10 : Math.abs(yr) > 8 ? 2 : 1
-            const sY = Math.ceil(y0 / step) * step
-            for (let y = sY; y <= y1; y += step) ticks.push({ date: String(y), label: String(y) })
-          } else {
-            const t0 = new Date(el.startDate).getTime(), t1 = new Date(el.endDate).getTime(), range = t1 - t0 || 1
-            datePos = (d) => pad + ((new Date(d).getTime() - t0) / range) * (w - pad * 2)
-            itemDateLabel = (d) => d
-            const d0 = new Date(el.startDate), d1 = new Date(el.endDate)
-            if (spacing === 'day') { const step = 86400000; for (let t = d0.getTime(); t <= d1.getTime(); t += step) { const d = new Date(t); ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getMonth()+1}/${d.getDate()}` }) } }
-            else if (spacing === 'month') { for (let d = new Date(d0.getFullYear(), d0.getMonth(), 1); d <= d1; d.setMonth(d.getMonth() + 1)) ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }) }
-            else { const yearSpan = (t1 - t0) / (365.25 * 24 * 3600000); const step = yearSpan > 8 ? 2 : 1; for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) }) }
-          }
-          const esc = (s) => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-          svg += `<line x1="${pad}" y1="${lineY}" x2="${w-pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`
-          for (const t of ticks) { const x = datePos(t.date); svg += `<line x1="${x}" y1="${lineY-4}" x2="${x}" y2="${lineY+4}" stroke="${lc}" stroke-width="1.5"/><text x="${x}" y="${lineY+14}" text-anchor="end" fill="${tc}" font-size="${fs-1}" opacity="0.5" transform="rotate(-45,${x},${lineY+14})">${t.label}</text>` }
-          for (const item of el.items || []) {
-            const x = datePos(item.date), isTop = item.side !== 'bottom', cl = item.connectorLength ?? 0
-            const cardY = isTop ? 8 - cl : lineY + 28 + cl, cardH = isTop ? lineY - 36 : h - lineY - 36
-            const connY1 = isTop ? cardY + cardH : lineY, connY2 = isTop ? lineY : cardY
-            const imgH = item.image ? Math.min(cardH * 0.55, 60) : 0
-            const hasExpand = item.image || item.detailedDescription
-            svg += `<g${hasExpand ? ` class="tl-event" data-tl-id="${item.id}" style="cursor:pointer"` : ''}>`
-            svg += `<line x1="${x}" y1="${connY1}" x2="${x}" y2="${connY2}" stroke="${lc}" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>`
-            svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`
-            if (isTop) {
-              let ty = cardY + fs
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
-              ty += fs + 2
-              if (item.description) { svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`; ty += fs }
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
-              ty += 4
-              if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
-            } else {
-              if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
-              svg += `<text x="${x}" y="${cardY+imgH+fs+2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
-              if (item.description) svg += `<text x="${x}" y="${cardY+imgH+fs*2+4}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`
-              svg += `<text x="${x}" y="${cardY+imgH+fs*(item.description?3:2)+6}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
-            }
-            svg += '</g>'
-          }
-          svg += '</svg>'
-          const expandItems = (el.items || []).filter(i => i.image || i.detailedDescription)
-          let expandData = ''
-          if (expandItems.length) {
-            const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(i.image) : '' })))
-            expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\\/script>`
-          }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
-        }
-        if (el.type === 'chart') {
-          const { chartType = 'bar', chartData = {} } = el
-          const labels = JSON.stringify(chartData.labels || [])
-          const datasets = JSON.stringify((chartData.datasets || []).map(ds => ({
-            label: ds.label || '', data: ds.data || [],
-            backgroundColor: ds.color || '#6366f1', borderColor: ds.color || '#6366f1',
-            borderWidth: chartType === 'line' ? 2 : 0, fill: chartType === 'line' ? false : undefined,
-          })))
-          const scalesOpt = chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`
-          const chartSrc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style></head><body><canvas id="c" style="width:100%;height:100%"></canvas><script>new Chart(document.getElementById('c'),{type:'${chartType}',data:{labels:${labels},datasets:${datasets}},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},scales:${scalesOpt}}});<\\/script></body></html>`
-          const escaped = chartSrc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'callout') {
-          const bg = el.calloutColor || '#ef4444'
-          const tc = el.calloutTextColor || '#ffffff'
-          const fs = el.fontSize || 16
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
-        }
-        if (el.type === 'icon') {
-          const color = el.iconColor || '#ffffff'
-          const sw = el.iconStrokeWidth || 2
-          const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
-          const path = iconPaths[el.iconName] || iconPaths['Star']
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
-        }
-        if (el.type === 'latex') {
-          const content = el.content || ''
-          const lc = el.textColor || 'white'
-          const sc = el.fontSize ? (el.fontSize / 20) : 1
-          const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
-          const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
-          if (hasTikz) {
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style></head><body><script type="text/tikz">${content}<\\/script></body></html>`
-            const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-          }
-          if (hasTable) {
-            const wrapped = content.includes('\\begin{document}') ? content
-              : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/latex.js"><\\/script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/base.css"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`
-            const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-          }
-          const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
-        }
-        if (el.type === 'video' || (el.type === 'manim' && el.rendered)) {
-          const src = absoluteSrc(el.type === 'manim' ? el.rendered : el.src)
-          const attrs = []
-          if (el.type === 'manim') { if (el.controls) attrs.push('controls'); if (el.autoplay !== false) attrs.push('autoplay'); if (el.loop !== false) attrs.push('loop'); if (el.muted !== false) attrs.push('muted') }
-          else { if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted') }
-          const posterAttr = el.poster ? ` poster="${absoluteSrc(el.poster)}"` : ''
-          const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
-          const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
-          let vidScript = ''
-          if (rate || hasClip) {
-            const parts = []
-            parts.push('var v=document.currentScript.previousElementSibling')
-            if (rate) parts.push(`v.playbackRate=${rate}`)
-            if (hasClip) {
-              const s = el.startTime || 0
-              const looping = el.loop
-              if (s > 0) parts.push(`v.addEventListener('loadedmetadata',function(){v.currentTime=${s}})`)
-              if (el.endTime != null) parts.push(`v.addEventListener('timeupdate',function(){if(v.currentTime>=${el.endTime}){${looping ? `v.currentTime=${s};v.play()` : 'v.pause()'}}})`)
-              if (s > 0) parts.push(`v.addEventListener('play',function(){if(v.currentTime<${s})v.currentTime=${s}})`)
-            }
-            vidScript = `<script>${parts.join(';')}</script>`
-          }
-          if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video>${vidScript}</div>`
-        }
-        if (el.type === 'manim' && !el.rendered) return '' // not yet rendered — omit from export
-        if (el.type === 'audio') {
-          const src = absoluteSrc(el.src)
-          const attrs = ['controls']
-          if (el.autoplay) attrs.push('autoplay')
-          if (el.loop) attrs.push('loop')
-          if (el.muted) attrs.push('muted')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
-        }
-        if (el.type === 'table') {
-          const data = el.data || [['']]
-          const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
-          const cellBg = el.cellBgColor || 'transparent'
-          const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
-          const borderWidth = el.borderWidth ?? 1
-          const textColor = el.textColor || '#ffffff'
-          const fontSize = el.fontSize || 14
-          const cellPadding = el.cellPadding || 8
-          const rows = data.map((row, ri) => {
-            const cells = (row || []).map((cell, ci) => {
-              const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
-              return `<td style="padding:${cellPadding}px;border:${borderWidth}px solid ${borderColor};background:${bg};color:${textColor};font-size:${fontSize}px;">${escapeHtml(cell || '')}</td>`
-            }).join('')
-            return `<tr>${cells}</tr>`
-          }).join('')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
-        }
-        if (el.type === 'textpath') {
-          const fontSize = el.fontSize || 64
-          const w = el.width
-          const pathSide = el.pathSide || 'bottom'
-          const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
-          const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
-          let svg, svgH
-          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-            const pad = Math.ceil(fontSize * 0.6)
-            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-            svgH = el.height || 300
-            const lineH = fontSize * (el.lineHeight ?? 1.35)
-            const tanA = Math.tan(((el.angle || 0) * Math.PI) / 180)
-            const lines = (el.content || '').split('\n')
-            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-            const guideX2 = pathX0 + svgH * tanA
-            const tspans = lines.map((line, i) =>
-              `<tspan x="${lineXAt(i)}" dy="${i === 0 ? fontSize : lineH}">${escapeHtml(line || ' ')}</tspan>`
-            ).join('')
-            const guideLine = el.showPath !== false
-              ? `<line x1="${pathX0}" y1="0" x2="${guideX2}" y2="${svgH}" stroke="rgba(34,211,238,0.4)" stroke-width="1"/>`
-              : ''
-            const anchor = pathSide === 'leftedge' ? 'start' : 'end'
-            svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible">${guideLine}<text ${baseTextAttrs} text-anchor="${anchor}">${tspans}</text></svg>`
-          } else {
-            const angle = el.angle || 0
-            const angleRad = (angle * Math.PI) / 180
-            const dy = w * Math.tan(angleRad)
-            const pad = Math.ceil(fontSize * 1.2)
-            const minY = Math.min(0, dy)
-            svgH = Math.ceil(Math.abs(dy) + pad * 2)
-            const baselineY = pad - minY
-            const pathD = `M 0,${baselineY} L ${w},${baselineY + dy}`
-            const pathId = `tp-${el.id}`
-            const capHeight = Math.round(fontSize * 0.72)
-            const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-            const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-            const dyAttr = textDy ? ` dy="${textDy}"` : ''
-            svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
-          }
-          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${elStyle}">${svg}</div>`
-        }
-        if (el.type === 'drawing') {
-          const svgPaths = (el.paths || []).map(path => {
-            const d = pointsToPath(path.points, el.smooth !== false)
-            return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
-          }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
-        }
-        return ''
-      }).join('\n')
+    // Pinned elements sit outside the scroller, so they stay in the viewport.
+    const elementsHtml = sortedElements.filter(el => !(isTall && isPinnedEl(el))).map(renderElement).join('\n')
+    const pinnedHtml = isTall ? sortedElements.filter(isPinnedEl).map(renderElement).join('\n') : ''
 
     let sideCitationsHtml = ''
     if (sideCitations.length > 0) {
@@ -463,7 +530,17 @@ export function generateRevealHTML(presentation) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : slide.transition}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    slideSectionHtmlByIndex.set(slideIndex, `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    const scrollAttr = isTall ? ` data-scroll-height="${canvasH}"` : ''
+    const bodyHtml = isTall
+      ? `      <div class="slide-scroller" data-prevent-swipe style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;">
+        <div class="slide-scroll-inner" style="position:relative;width:${slideW}px;height:${canvasH}px;">
+${elementsHtml}
+        </div>
+      </div>
+      <div class="slide-scroll-track" aria-hidden="true"><div class="slide-scroll-thumb"></div></div>
+${pinnedHtml}`
+      : elementsHtml
+    slideSectionHtmlByIndex.set(slideIndex, `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
 
   // Group into columns for 2D output
@@ -542,6 +619,16 @@ export function generateRevealHTML(presentation) {
     /* Reset reveal.js section padding/alignment so absolute positions match the editor canvas exactly */
     .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
     .reveal .slides section > * { overflow: hidden; }
+    /* Tall slides: the section is a window onto a taller canvas. Scrollbars are
+       hidden in favour of the progress track so the slide edge stays clean. */
+    .reveal .slides section > .slide-scroller { overflow-y: auto !important; overflow-x: hidden !important; scrollbar-width: none; -ms-overflow-style: none; }
+    .reveal .slides section > .slide-scroller::-webkit-scrollbar { width: 0; height: 0; }
+    .reveal .slides section .slide-scroll-inner { overflow: visible; }
+    .slide-scroll-track { position: absolute; top: 0; right: 0; width: 4px; height: 100%; z-index: 940; background: rgba(127,127,127,0.12); pointer-events: none; }
+    .slide-scroll-thumb { position: absolute; left: 0; top: 0; width: 100%; height: 0; background: rgba(160,160,160,0.5); border-radius: 2px; }
+    /* Scroll-triggered elements are hidden by script, never by the stylesheet, so
+       a deck whose JavaScript fails to run still shows all of its content. */
+    .reveal .slides section .scroll-anim-hidden { opacity: 0 !important; }
     /* Override ALL theme element styles to match TipTap editor exactly */
     .reveal p { margin: 0 0 0.4em !important; }
     .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 { margin: 0 0 0.4em !important; text-transform: none !important; letter-spacing: normal !important; text-shadow: none !important; }
@@ -713,6 +800,196 @@ ${slidesHtml}
     }
     Reveal.on('ready',        function(e) { notifyIframes(e.currentSlide); });
     Reveal.on('slidechanged', function(e) { notifyIframes(e.currentSlide); });
+
+    // ── Tall slides: scroll the canvas, then advance ──────────────────────────
+    (function() {
+      if (!document.querySelector('.slide-scroller')) return;   // no tall slides in this deck
+
+      function scrollerOf(slide) { return slide ? slide.querySelector('.slide-scroller') : null; }
+      function scrollable(sc) { return sc && sc.scrollHeight > sc.clientHeight + 2; }
+
+      function syncThumb(sc) {
+        var track = sc.parentElement.querySelector('.slide-scroll-track');
+        if (!track) return;
+        var thumb = track.querySelector('.slide-scroll-thumb');
+        var max = sc.scrollHeight - sc.clientHeight;
+        var h = Math.max(24, (sc.clientHeight / sc.scrollHeight) * sc.clientHeight);
+        thumb.style.height = h + 'px';
+        thumb.style.top = (max > 0 ? (sc.scrollTop / max) * (sc.clientHeight - h) : 0) + 'px';
+      }
+
+      function overviewActive() {
+        try { return Reveal.isOverview(); } catch (e) { return false; }
+      }
+
+      function atEdge(sc, dir) {
+        return dir > 0
+          ? sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 2
+          : sc.scrollTop <= 2;
+      }
+
+      // Scroll a step if there is canvas left in that direction, else navigate.
+      function step(dir, navigate) {
+        var sc = overviewActive() ? null : scrollerOf(Reveal.getCurrentSlide());
+        if (scrollable(sc) && !atEdge(sc, dir)) {
+          sc.scrollBy({ top: dir * sc.clientHeight * 0.85, behavior: 'smooth' });
+          return;
+        }
+        navigate();
+      }
+
+      // Same keys reveal binds by default, but they walk the canvas first. The
+      // alt (skip fragments) and shift (go back) modifiers behave as they do
+      // without this deck being tall.
+      function skip(e) { return { skipFragments: !!(e && e.altKey) }; }
+      Reveal.configure({ keyboard: {
+        38: function(e) { step(-1, function() { Reveal.up(skip(e)); }); },     // up arrow
+        40: function(e) { step( 1, function() { Reveal.down(skip(e)); }); },   // down arrow
+        33: function(e) { step(-1, function() { Reveal.prev(skip(e)); }); },   // page up
+        34: function(e) { step( 1, function() { Reveal.next(skip(e)); }); },   // page down
+        32: function(e) {                                                     // space
+          var back = !!(e && e.shiftKey);
+          step(back ? -1 : 1, function() {
+            if (back) { Reveal.prev(skip(e)); return; }
+            if (overviewActive() && Reveal.toggleOverview) Reveal.toggleOverview(false);
+            Reveal.next(skip(e));
+          });
+        }
+      }});
+
+      // ── Scroll-driven animation ───────────────────────────────────────────
+      var reduceMotion = false;
+      try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+
+${SCROLL_PROGRESS_JS}
+
+      // Scrubbing writes the individual transform properties, which compose with an
+      // element's own rotate() transform rather than overwriting it. The
+      // progress variable is always published, so custom CSS can drive anything.
+      function applyScrub(el, p, viewH) {
+        el.style.setProperty('--scroll-progress', p.toFixed(4));
+        if (reduceMotion) return;
+        var preset = el.getAttribute('data-scroll-preset') || 'parallax';
+        var speed = parseFloat(el.getAttribute('data-scroll-speed'));
+        if (isNaN(speed)) speed = 0.2;
+        var c = (p - 0.5) * 2;                       // -1 entering, 0 mid-screen, +1 leaving
+        if (preset === 'parallax')     el.style.translate = '0 ' + (c * speed * viewH * 0.5).toFixed(2) + 'px';
+        else if (preset === 'zoom')    el.style.scale = (1 + c * speed).toFixed(4);
+        else if (preset === 'rotate')  el.style.rotate = (c * speed * 45).toFixed(2) + 'deg';
+        else if (preset === 'fade') {
+          if (el._baseOpacity == null) {
+            var authored = parseFloat(el.style.opacity);
+            el._baseOpacity = isNaN(authored) ? 1 : authored;
+          }
+          el.style.opacity = (el._baseOpacity * clamp01(Math.min(p, 1 - p) / 0.25)).toFixed(3);
+        }
+      }
+
+      var current = null, framePending = false;
+
+      // Re-armed on arrival, so revisiting a slide replays its animations.
+      function wireAnimations(slide) {
+        var sc = scrollerOf(slide);
+        if (!sc) return;
+        if (slide._scrollIO) { slide._scrollIO.disconnect(); slide._scrollIO = null; }
+
+        var enters = [].slice.call(slide.querySelectorAll('[data-scroll-anim="enter"]'));
+        enters.forEach(function(el) { el.classList.remove('scroll-anim-hidden'); });
+        if (enters.length && !reduceMotion) {
+          var io = new IntersectionObserver(function(entries) {
+            entries.forEach(function(en) {
+              if (!en.isIntersecting) return;
+              var el = en.target;
+              el.classList.remove('scroll-anim-hidden');   // visible first, animated second
+              var fn = GSAP_PRESETS[el.getAttribute('data-scroll-preset')] || GSAP_PRESETS.fadeUp;
+              try { fn(el, (parseFloat(el.getAttribute('data-scroll-duration')) || 600) / 1000, 0); } catch (err) {}
+              if (el.getAttribute('data-scroll-once') !== 'false') io.unobserve(el);
+            });
+          }, { root: sc, rootMargin: '0px 0px -15% 0px', threshold: 0.01 });
+          enters.forEach(function(el) { el.classList.add('scroll-anim-hidden'); io.observe(el); });
+          slide._scrollIO = io;
+        }
+
+        slide._scrubs = [].slice.call(slide.querySelectorAll('[data-scroll-anim="scrub"]'));
+
+        // An embed that finishes loading after we arrive missed its starting
+        // progress, so hand it out again once it is there to receive it.
+        slide.querySelectorAll('iframe').forEach(function(fr) {
+          if (fr._progressHooked) return;
+          fr._progressHooked = 1;
+          fr.addEventListener('load', function() { fr._sp = null; fr._ep = null; requestScrubUpdate(); });
+        });
+      }
+
+      // Embeds are handed the deck's scroll position, so a figure inside an iframe
+      // can animate along with the slide: listen for a message of
+      // { source: 'parallax-host', type: 'scroll-progress', payload: { slide, element } }.
+      function notifyEmbeds(slide, sc, sp) {
+        slide.querySelectorAll('iframe').forEach(function(fr) {
+          var ep = sc.contains(fr) ? elementProgress(fr.parentElement || fr, sc) : sp;
+          if (fr._sp === sp && fr._ep === ep) return;
+          fr._sp = sp; fr._ep = ep;
+          try {
+            fr.contentWindow.postMessage({
+              source: 'parallax-host', type: 'scroll-progress', payload: { slide: sp, element: ep }
+            }, '*');
+          } catch (err) {}
+        });
+      }
+
+      function updateScrub() {
+        framePending = false;
+        var slide = current, sc = scrollerOf(slide);
+        if (!slide || !sc) return;
+        var sp = scrollProgress(sc);
+        slide.style.setProperty('--slide-scroll-progress', sp.toFixed(4));
+        (slide._scrubs || []).forEach(function(el) {
+          // A pinned element sits outside the scroller and never travels, so it
+          // scrubs on the slide's own progress instead.
+          applyScrub(el, sc.contains(el) ? elementProgress(el, sc) : sp, sc.clientHeight);
+        });
+        notifyEmbeds(slide, sc, sp);
+      }
+
+      function requestScrubUpdate() {
+        if (framePending) return;
+        framePending = true;
+        requestAnimationFrame(updateScrub);
+      }
+
+      // Arrive at the top of the canvas going forwards, at the bottom coming back.
+      var lastH = 0, lastV = 0;
+      function land(e) {
+        var indices = Reveal.getIndices();
+        var backwards = indices.h < lastH || (indices.h === lastH && indices.v < lastV);
+        lastH = indices.h; lastV = indices.v;
+        var sc = scrollerOf(e.currentSlide);
+        current = sc ? e.currentSlide : null;
+        if (!sc) return;
+        var prev = sc.style.scrollBehavior;
+        sc.style.scrollBehavior = 'auto';
+        sc.scrollTop = backwards ? sc.scrollHeight : 0;
+        sc.style.scrollBehavior = prev;
+        syncThumb(sc);
+        wireAnimations(e.currentSlide);
+        updateScrub();
+      }
+      Reveal.on('ready', land);
+      Reveal.on('slidechanged', land);
+
+      document.querySelectorAll('.slide-scroller').forEach(function(sc) {
+        sc.addEventListener('scroll', function() { syncThumb(sc); requestScrubUpdate(); }, { passive: true });
+      });
+
+      // An iframe swallows the wheel, so embeds that cannot scroll themselves
+      // hand the delta back and we scroll the canvas for them.
+      window.addEventListener('message', function(ev) {
+        var msg = ev.data;
+        if (!msg || msg.source !== 'parallax-embed' || msg.type !== 'wheel') return;
+        var sc = scrollerOf(Reveal.getCurrentSlide());
+        if (scrollable(sc)) sc.scrollTop += msg.dy || 0;
+      });
+    })();
 
     // ── Custom transitions (differential rotation) ───────────────────────
     (function() {
@@ -1090,7 +1367,7 @@ function getBgPrintStyle(bg) {
   return 'background-color:#1e1e2e;'
 }
 
-function generatePrintHTML(presentation) {
+export function generatePrintHTML(presentation) {
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
   const globalFont = presentation.globalFont || ''
@@ -1115,163 +1392,181 @@ function generatePrintHTML(presentation) {
     return footerTimeMode === 'timer-down' ? `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : '00:00'
   })()
 
-  // Expand each slide into one page per fragment step (initial + one per unique index)
+  // Expand each slide into one page per fragment step (initial + one per unique index).
+  // Tall slides expand by scroll viewport instead, every fragment shown: scrolling
+  // replaces clicking there, so there are no intermediate states worth printing.
   const pages = []
   let printPageCounter = 0
   presentation.slides.forEach(slide => {
+    const viewports = getScrollViewports(slide, slideH)
+    if (viewports > 1) {
+      for (let v = 0; v < viewports; v++) pages.push({ slide, maxIdx: Infinity, viewport: v, first: v === 0 })
+      return
+    }
     const fragIndices = [...new Set(
       (slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1)
     )].sort((a, b) => a - b)
-    pages.push({ slide, maxIdx: -Infinity })           // initial: no fragments
-    fragIndices.forEach(idx => pages.push({ slide, maxIdx: idx }))
+    pages.push({ slide, maxIdx: -Infinity, viewport: 0, first: true })           // initial: no fragments
+    fragIndices.forEach(idx => pages.push({ slide, maxIdx: idx, viewport: 0, first: false }))
   })
   const totalPages = pages.length
+  const hasTallSlides = pages.some(pg => pg.viewport > 0)
 
-  const pagesHtml = pages.map(({ slide, maxIdx }, pageIndex) => {
+  const pagesHtml = pages.map(({ slide, maxIdx, viewport, first }, pageIndex) => {
     const bgStyle = getBgPrintStyle(slide.background)
 
-    const elementsHtml = (slide.elements || [])
+    const canvasH = getCanvasHeight(slide, slideH)
+    const isTall = canvasH > slideH
+
+    const renderElement = el => {
+    const isHidden = el.fragment && (el.fragmentIndex || 1) > maxIdx
+    const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
+    const rotationStyleP = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+    const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
+    const vis = isHidden ? 'visibility:hidden;' : ''
+    if (el.type === 'text') {
+      const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
+      return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${el.content || ''}</div>`
+    }
+    if (el.type === 'image') {
+      const src = absoluteSrc(el.src)
+      if (el.imageW != null) {
+        const imgStyle = `position:absolute;left:${el.imageOffsetX ?? 0}px;top:${el.imageOffsetY ?? 0}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit || 'contain'};max-width:none;max-height:none;`
+        return `<div style="${style}${vis}"><img src="${src}" alt="${el.alt || ''}" style="${imgStyle}" /></div>`
+      }
+      return `<div style="${style}${vis}"><img src="${src}" alt="${el.alt || ''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit || 'contain'};max-width:none;max-height:none;" /></div>`
+    }
+    if (el.type === 'shape') {
+      const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
+      return `<div style="${style}${opacityStyle}${vis}">${shapeSvgString(el)}</div>`
+    }
+    if (el.type === 'html') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`
+    }
+    if (el.type === 'p5') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
+    }
+    if (el.type === 'code') {
+      const lang = el.language || 'plaintext'
+      const codeContent = escapeHtml(el.content || '')
+      return `<div style="${style}${vis}"><pre class="hljs" style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}">${codeContent}</code></pre></div>`
+    }
+    if (el.type === 'markdown') {
+      return `<div style="${style}${vis}padding:8px 12px;color:white;overflow:auto;font-size:18px;line-height:1.6;">${el.content || ''}</div>`
+    }
+    if (el.type === 'chart') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">Chart</div>`
+    }
+    if (el.type === 'timeline') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">Timeline</div>`
+    }
+    if (el.type === 'callout') {
+      const bg = el.calloutColor || '#ef4444'; const tc = el.calloutTextColor || '#ffffff'; const fs = el.fontSize || 16
+      return `<div style="${style}${vis}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;">${el.calloutNumber || 1}</div>`
+    }
+    if (el.type === 'icon') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:16px;">Icon</div>`
+    }
+    if (el.type === 'latex') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);border:1px dashed rgba(99,102,241,0.3);color:rgba(255,255,255,0.4);font-family:serif;font-size:16px;">LaTeX</div>`
+    }
+    if (el.type === 'video') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9654; Video</div>`
+    }
+    if (el.type === 'manim') {
+      if (el.rendered) return `<div style="${style}${vis}"><video src="${absoluteSrc(el.rendered)}" autoplay loop muted style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video></div>`
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">🎬 Manim (not rendered)</div>`
+    }
+    if (el.type === 'audio') {
+      return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9835; Audio</div>`
+    }
+    if (el.type === 'table') {
+      const data = el.data || [['']]
+      const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
+      const cellBg = el.cellBgColor || 'transparent'
+      const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
+      const borderWidth = el.borderWidth ?? 1
+      const textColor = el.textColor || '#ffffff'
+      const fontSize = el.fontSize || 14
+      const cellPadding = el.cellPadding || 8
+      const rows = data.map((row, ri) => {
+        const cells = (row || []).map((cell) => {
+          const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
+          return `<td style="padding:${cellPadding}px;border:${borderWidth}px solid ${borderColor};background:${bg};color:${textColor};font-size:${fontSize}px;">${escapeHtml(cell || '')}</td>`
+        }).join('')
+        return `<tr>${cells}</tr>`
+      }).join('')
+      return `<div style="${style}${vis}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+    }
+    if (el.type === 'textpath') {
+      const fontSize = el.fontSize || 64
+      const w = el.width
+      const pathSide = el.pathSide || 'bottom'
+      const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
+      const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
+      let svg, svgH
+      if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+        const pad = Math.ceil(fontSize * 0.6)
+        const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+        svgH = el.height || 300
+        const lineH = fontSize * (el.lineHeight ?? 1.35)
+        const tanA = Math.tan(((el.angle || 0) * Math.PI) / 180)
+        const lines = (el.content || '').split('\n')
+        const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+        const guideX2 = pathX0 + svgH * tanA
+        const tspans = lines.map((line, i) =>
+          `<tspan x="${lineXAt(i)}" dy="${i === 0 ? fontSize : lineH}">${escapeHtml(line || ' ')}</tspan>`
+        ).join('')
+        const guideLine = el.showPath !== false
+          ? `<line x1="${pathX0}" y1="0" x2="${guideX2}" y2="${svgH}" stroke="rgba(34,211,238,0.4)" stroke-width="1"/>`
+          : ''
+        const anchor = pathSide === 'leftedge' ? 'start' : 'end'
+        svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible">${guideLine}<text ${baseTextAttrs} text-anchor="${anchor}">${tspans}</text></svg>`
+      } else {
+        const angle = el.angle || 0
+        const angleRad = (angle * Math.PI) / 180
+        const dy = w * Math.tan(angleRad)
+        const pad = Math.ceil(fontSize * 1.2)
+        const minY = Math.min(0, dy)
+        svgH = Math.ceil(Math.abs(dy) + pad * 2)
+        const baselineY = pad - minY
+        const pathD = `M 0,${baselineY} L ${w},${baselineY + dy}`
+        const pathId = `tp-${el.id}`
+        const capHeight = Math.round(fontSize * 0.72)
+        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
+        const dyAttr = textDy ? ` dy="${textDy}"` : ''
+        svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
+      }
+      const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
+      return `<div style="${elStyle}">${svg}</div>`
+    }
+    if (el.type === 'drawing') {
+      const svgPaths = (el.paths || []).map(path => {
+        const d = pointsToPath(path.points, el.smooth !== false)
+        return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
+      }).join('')
+      return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+    }
+    if (el.type && el.type.startsWith('plugin:')) {
+      const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      return `<div${dataId}${fragClass}${fragIdx}${animAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
+    }
+    return ''
+    }
+
+    const sortedElements = (slide.elements || [])
       .slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
-      .map(el => {
-        const isHidden = el.fragment && (el.fragmentIndex || 1) > maxIdx
-        const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyleP = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
-        const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
-        const vis = isHidden ? 'visibility:hidden;' : ''
-        if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${el.content || ''}</div>`
-        }
-        if (el.type === 'image') {
-          const src = absoluteSrc(el.src)
-          if (el.imageW != null) {
-            const imgStyle = `position:absolute;left:${el.imageOffsetX ?? 0}px;top:${el.imageOffsetY ?? 0}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit || 'contain'};max-width:none;max-height:none;`
-            return `<div style="${style}${vis}"><img src="${src}" alt="${el.alt || ''}" style="${imgStyle}" /></div>`
-          }
-          return `<div style="${style}${vis}"><img src="${src}" alt="${el.alt || ''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit || 'contain'};max-width:none;max-height:none;" /></div>`
-        }
-        if (el.type === 'shape') {
-          const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div style="${style}${opacityStyle}${vis}">${shapeSvgString(el)}</div>`
-        }
-        if (el.type === 'html') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`
-        }
-        if (el.type === 'p5') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
-        }
-        if (el.type === 'code') {
-          const lang = el.language || 'plaintext'
-          const codeContent = escapeHtml(el.content || '')
-          return `<div style="${style}${vis}"><pre class="hljs" style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}">${codeContent}</code></pre></div>`
-        }
-        if (el.type === 'markdown') {
-          return `<div style="${style}${vis}padding:8px 12px;color:white;overflow:auto;font-size:18px;line-height:1.6;">${el.content || ''}</div>`
-        }
-        if (el.type === 'chart') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">Chart</div>`
-        }
-        if (el.type === 'timeline') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">Timeline</div>`
-        }
-        if (el.type === 'callout') {
-          const bg = el.calloutColor || '#ef4444'; const tc = el.calloutTextColor || '#ffffff'; const fs = el.fontSize || 16
-          return `<div style="${style}${vis}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;">${el.calloutNumber || 1}</div>`
-        }
-        if (el.type === 'icon') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-size:16px;">Icon</div>`
-        }
-        if (el.type === 'latex') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.1);border:1px dashed rgba(99,102,241,0.3);color:rgba(255,255,255,0.4);font-family:serif;font-size:16px;">LaTeX</div>`
-        }
-        if (el.type === 'video') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9654; Video</div>`
-        }
-        if (el.type === 'manim') {
-          if (el.rendered) return `<div style="${style}${vis}"><video src="${absoluteSrc(el.rendered)}" autoplay loop muted style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video></div>`
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">🎬 Manim (not rendered)</div>`
-        }
-        if (el.type === 'audio') {
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9835; Audio</div>`
-        }
-        if (el.type === 'table') {
-          const data = el.data || [['']]
-          const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
-          const cellBg = el.cellBgColor || 'transparent'
-          const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
-          const borderWidth = el.borderWidth ?? 1
-          const textColor = el.textColor || '#ffffff'
-          const fontSize = el.fontSize || 14
-          const cellPadding = el.cellPadding || 8
-          const rows = data.map((row, ri) => {
-            const cells = (row || []).map((cell) => {
-              const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
-              return `<td style="padding:${cellPadding}px;border:${borderWidth}px solid ${borderColor};background:${bg};color:${textColor};font-size:${fontSize}px;">${escapeHtml(cell || '')}</td>`
-            }).join('')
-            return `<tr>${cells}</tr>`
-          }).join('')
-          return `<div style="${style}${vis}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
-        }
-        if (el.type === 'textpath') {
-          const fontSize = el.fontSize || 64
-          const w = el.width
-          const pathSide = el.pathSide || 'bottom'
-          const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
-          const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
-          let svg, svgH
-          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-            const pad = Math.ceil(fontSize * 0.6)
-            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-            svgH = el.height || 300
-            const lineH = fontSize * (el.lineHeight ?? 1.35)
-            const tanA = Math.tan(((el.angle || 0) * Math.PI) / 180)
-            const lines = (el.content || '').split('\n')
-            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-            const guideX2 = pathX0 + svgH * tanA
-            const tspans = lines.map((line, i) =>
-              `<tspan x="${lineXAt(i)}" dy="${i === 0 ? fontSize : lineH}">${escapeHtml(line || ' ')}</tspan>`
-            ).join('')
-            const guideLine = el.showPath !== false
-              ? `<line x1="${pathX0}" y1="0" x2="${guideX2}" y2="${svgH}" stroke="rgba(34,211,238,0.4)" stroke-width="1"/>`
-              : ''
-            const anchor = pathSide === 'leftedge' ? 'start' : 'end'
-            svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible">${guideLine}<text ${baseTextAttrs} text-anchor="${anchor}">${tspans}</text></svg>`
-          } else {
-            const angle = el.angle || 0
-            const angleRad = (angle * Math.PI) / 180
-            const dy = w * Math.tan(angleRad)
-            const pad = Math.ceil(fontSize * 1.2)
-            const minY = Math.min(0, dy)
-            svgH = Math.ceil(Math.abs(dy) + pad * 2)
-            const baselineY = pad - minY
-            const pathD = `M 0,${baselineY} L ${w},${baselineY + dy}`
-            const pathId = `tp-${el.id}`
-            const capHeight = Math.round(fontSize * 0.72)
-            const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-            const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-            const dyAttr = textDy ? ` dy="${textDy}"` : ''
-            svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
-          }
-          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
-          return `<div style="${elStyle}">${svg}</div>`
-        }
-        if (el.type === 'drawing') {
-          const svgPaths = (el.paths || []).map(path => {
-            const d = pointsToPath(path.points, el.smooth !== false)
-            return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
-          }).join('')
-          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
-        }
-        if (el.type && el.type.startsWith('plugin:')) {
-          const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
-        }
-        return ''
-      }).join('\n')
+    const scrollingHtml = sortedElements.filter(el => !(isTall && isPinnedEl(el))).map(renderElement).join('\n')
+    const pinnedHtml = isTall ? sortedElements.filter(isPinnedEl).map(renderElement).join('\n') : ''
+    // Shift the canvas up by one viewport per page; .slide-page clips the overflow.
+    const elementsHtml = isTall
+      ? `<div style="position:absolute;left:0;top:${-viewport * slideH}px;width:${slideW}px;height:${canvasH}px;">\n${scrollingHtml}\n</div>\n${pinnedHtml}`
+      : scrollingHtml
 
     // Per-slide page numbering
     const slideHasPageNum = slide.showPageNumber !== false
-    if (slideHasPageNum && maxIdx === -Infinity) printPageCounter++ // only increment on initial page of each slide
+    if (slideHasPageNum && first) printPageCounter++ // only increment on the first page of each slide
     const pageLabel = showPageNumbers && slideHasPageNum
       ? (pageNumberFormat === 'c/t' ? `${printPageCounter} / ${(presentation.slides || []).filter(s => s.showPageNumber !== false).length}` : `${printPageCounter}`)
       : ''
@@ -1354,7 +1649,7 @@ function generatePrintHTML(presentation) {
   <div id="print-bar">
     <div>
       <strong>${title}</strong>
-      <span class="hint"> &nbsp;·&nbsp; ${totalPages} page${totalPages !== 1 ? 's' : ''} (fragments expanded)
+      <span class="hint"> &nbsp;·&nbsp; ${totalPages} page${totalPages !== 1 ? 's' : ''} (${hasTallSlides ? 'fragments + scroll viewports' : 'fragments'} expanded)
         &nbsp;·&nbsp; enable <em>Background graphics</em> in print settings</span>
     </div>
     <button onclick="window.print()">Print / Save as PDF</button>
@@ -1658,9 +1953,24 @@ export function generatePresenterHTML(presentation) {
     thumbs.forEach(function(t) {
       t.onclick = function() { goFlat(parseInt(t.getAttribute('data-idx'))); };
     });
+    // A tall slide scrolls inside the deck first, as it does in the deck window.
+    function scrollStep(dir) {
+      try {
+        if (!Reveal) return false;
+        var slide = Reveal.getCurrentSlide();
+        var sc = slide && slide.querySelector('.slide-scroller');
+        if (!sc || sc.scrollHeight <= sc.clientHeight + 2) return false;
+        var atEdge = dir > 0
+          ? sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 2
+          : sc.scrollTop <= 2;
+        if (atEdge) return false;
+        sc.scrollBy({ top: dir * sc.clientHeight * 0.85, behavior: 'smooth' });
+        return true;
+      } catch (err) { return false; }
+    }
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); goFlat(currentFlat + 1); }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goFlat(currentFlat - 1); }
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); if (!scrollStep(1)) goFlat(currentFlat + 1); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); if (!scrollStep(-1)) goFlat(currentFlat - 1); }
     });
   </script>
 </body>
