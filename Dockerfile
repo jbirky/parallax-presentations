@@ -36,6 +36,8 @@ RUN npm ci --workspace=server --omit=dev
 
 # Copy server source, docs, bundled plugins, and the compiled client
 COPY server/ ./server/
+# Builds from a git URL skip .dockerignore, so drop the sample data it would exclude
+RUN rm -rf server/data/* server/uploads/*
 COPY docs/ ./docs/
 COPY plugins/ ./plugins/
 COPY --from=builder /app/client/dist ./client/dist
