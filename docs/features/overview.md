@@ -50,13 +50,8 @@ The footer system lets you define a **section sequence** shown at the bottom of 
 ## Themes & Templates
 
 - **11 built-in reveal.js themes**: Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula
-- **6 design presets**: Academic, Minimal, Dark Tech, Warm, High Contrast, Pastel
 - **Custom templates**: Save any slide as a reusable template to re-use across presentations
 - **Per-slide overrides**: Change the background image or color on individual slides without affecting the rest of the deck
-
-::: tip
-Design presets apply a coordinated color palette, font stack, and default element styles all at once — great for getting a polished look quickly.
-:::
 
 ## Export & Sharing
 

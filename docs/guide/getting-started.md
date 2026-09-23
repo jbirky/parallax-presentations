@@ -17,7 +17,7 @@ Unlike editing raw Markdown or HTML reveal.js files, Parallax lets you:
 - **LaTeX & TikZ** — write display math or full TikZ diagrams in a split-pane editor with live preview
 - **Charts** — insert bar, line, and scatter charts from the element menu
 - **Slide navigation** — vertical stacks, reorderable slides, speaker notes
-- **Themes & presets** — 11 built-in reveal.js themes plus 6 design presets (Academic, Minimal, Dark Tech, etc.)
+- **Themes** — 11 built-in reveal.js themes
 - **Footer sequences** — automatic section progress footers for academic talks
 - **Export options** — standalone HTML, offline HTML (CDN inlined), PDF, PPTX, shareable links, GitHub push
 
