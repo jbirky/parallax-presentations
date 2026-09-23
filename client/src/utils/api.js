@@ -25,6 +25,17 @@ async function safeJson(r) {
 
 const BASE = '/api'
 
+// Resolves to { url }; rejects with the server's reason (storage full, file too big, ...)
+function uploadTo(url, file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return authFetch(url, { method: 'POST', body: fd }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Upload failed')
+    return b
+  })
+}
+
 export const api = {
   getPresentations: () => authFetch(`${BASE}/presentations`).then(safeJson),
   getPresentation: (id) => authFetch(`${BASE}/presentations/${id}`).then(safeJson),
@@ -40,16 +51,8 @@ export const api = {
   }).then(safeJson),
   deletePresentation: (id) => authFetch(`${BASE}/presentations/${id}`, { method: 'DELETE' }).then(safeJson),
   duplicatePresentation: (id) => authFetch(`${BASE}/presentations/${id}/duplicate`, { method: 'POST' }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.message || b.error || 'Duplicate failed'); return b }),
-  uploadFile: (file) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return authFetch('/api/upload', { method: 'POST', body: fd }).then(safeJson)
-  },
-  uploadFileToPresentation: (presentationId, file) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return authFetch(`/api/presentations/${presentationId}/upload`, { method: 'POST', body: fd }).then(safeJson)
-  },
+  uploadFile: (file) => uploadTo('/api/upload', file),
+  uploadFileToPresentation: (presentationId, file) => uploadTo(`/api/presentations/${presentationId}/upload`, file),
   getGithubConfig: () => authFetch(`${BASE}/github/config`).then(safeJson),
   saveGithubConfig: (data) => authFetch(`${BASE}/github/config`, {
     method: 'POST',

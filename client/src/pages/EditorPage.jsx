@@ -3231,8 +3231,10 @@ function draw() {
               if (url) addImageElement(url)
             }}
             onAddImageUpload={async (file) => {
-              const result = await api.uploadFile(file)
-              if (result.url) addImageElement(result.url)
+              try {
+                const result = await api.uploadFile(file)
+                if (result.url) addImageElement(result.url)
+              } catch (err) { alert('Upload failed: ' + err.message) }
             }}
 
             onAddShape={addShapeElement}
@@ -3255,8 +3257,10 @@ function draw() {
             onAddIcon={addIconElement}
             onAddVideo={addVideoElement}
             onAddVideoUpload={async (file) => {
-              const result = await api.uploadFileToPresentation(presentation.id, file)
-              if (result.url) addVideoElement(result.url)
+              try {
+                const result = await api.uploadFileToPresentation(presentation.id, file)
+                if (result.url) addVideoElement(result.url)
+              } catch (err) { alert('Upload failed: ' + err.message) }
             }}
             onAddAudio={addAudioElement}
             onAddTable={addTableElement}
@@ -3411,8 +3415,10 @@ function draw() {
                 if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
               }}
               onAddImage={async (file, dropX, dropY) => {
-                const result = await api.uploadFile(file)
-                if (result.url) addImageElement(result.url, dropX, dropY)
+                try {
+                  const result = await api.uploadFile(file)
+                  if (result.url) addImageElement(result.url, dropX, dropY)
+                } catch (err) { alert('Upload failed: ' + err.message) }
               }}
               slideW={slideW}
               slideH={slideH}

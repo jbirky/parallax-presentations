@@ -26,6 +26,7 @@ const {
 } = require('./services/guest-service')
 const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
+const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const {
@@ -61,6 +62,8 @@ const multerStorage = multer.diskStorage({
   }
 })
 const upload = multer({ storage: multerStorage, limits: { fileSize: 500 * 1024 * 1024 } }) // 500MB limit for video
+// Plan storage limits, checked before multer writes the file
+const storageQuota = uploadQuota(storage)
 
 app.use(helmetConfig())
 app.use(cors(corsConfig()))
@@ -358,13 +361,10 @@ app.get('/api/me', async (req, res) => {
       'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
       [req.userId]
     )
-    const { rows: storageRows } = await storage.query(
-      'SELECT COALESCE(SUM(size_bytes), 0)::bigint as used FROM uploads WHERE user_id = $1', [req.userId]
-    )
     res.json({
       plan,
       presentationCount: rows[0].count,
-      storageUsed: Number(storageRows[0]?.used || 0),
+      storageUsed: await storageUsedBytes(storage, req.userId),
       limits: {
         maxPresentations: limits.maxPresentations === Infinity ? null : limits.maxPresentations,
         expirationDays: limits.expirationDays,
@@ -1737,7 +1737,7 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
 // --- Datasets ---
 
 // POST /api/datasets — upload a dataset (CSV, JSON, TSV)
-app.post('/api/datasets', uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     const name = req.body.name || undefined
@@ -1872,7 +1872,7 @@ app.get('/api/fonts', async (req, res) => {
 })
 
 // POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
-app.post('/api/fonts/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/fonts/upload', uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
     const ext = path.extname(req.file.originalname).toLowerCase()
@@ -1988,7 +1988,7 @@ app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) 
 })
 
 // POST /api/upload (legacy global upload)
-app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     let filePath = req.file.path
@@ -2012,7 +2012,7 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, as
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     const pres = await storage.getPresentation(req.params.id, req.userId)
@@ -2038,7 +2038,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, uploa
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   const pres = await storage.getPresentation(req.params.id, req.userId)
   if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }

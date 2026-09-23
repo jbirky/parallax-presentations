@@ -9,6 +9,7 @@
 const rateLimit = require('express-rate-limit')
 const { clientIpKey } = require('./security')
 const { PLAN_LIMITS } = require('./auth')
+const { checkUpload, refuseUpload } = require('./upload-quota')
 const { touchGuestSession, guestKeyPrefix } = require('../services/guest-service')
 
 const GUEST_ROUTES = [
@@ -48,53 +49,13 @@ const UPLOAD_ROUTES = [
   /^\/api\/datasets$/,
 ]
 
-// Allowance for multipart framing around the file itself
-const MULTIPART_OVERHEAD = 64 * 1024
-// A refused upload is read to the end before answering (see refuseUpload),
-// unless it is bigger than this
-const DRAIN_LIMIT = 100 * 1024 * 1024
-
 function isGuestRoute(method, path) {
   return GUEST_ROUTES.some(([methods, re]) => methods.split(' ').includes(method) && re.test(path))
 }
 
-function formatMB(bytes) {
-  return `${Math.round(bytes / (1024 * 1024))} MB`
-}
-
-// Rejects an upload before multer writes it to disk if it is too big for a
-// guest or would take the session over its storage limit.
-async function checkGuestUpload(storage, req) {
-  const { maxFileBytes, storageBytes } = PLAN_LIMITS.guest
-  const length = Number(req.get('content-length'))
-  if (!length) return { status: 411, error: 'Upload size is required' }
-  if (length > maxFileBytes + MULTIPART_OVERHEAD) {
-    return { status: 413, error: `Guest uploads are limited to ${formatMB(maxFileBytes)} per file.` }
-  }
-  const { rows } = await storage.query(
-    `SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM uploads WHERE user_id = $1)
-          + (SELECT COALESCE(SUM(byte_size), 0) FROM datasets WHERE user_id = $1) AS used`,
-    [req.userId]
-  )
-  if (Number(rows[0].used) + length > storageBytes + MULTIPART_OVERHEAD) {
-    return { status: 413, error: `Guest storage is full (${formatMB(storageBytes)}). Delete some files to upload more.` }
-  }
-  return null
-}
-
-// Browsers often report a network error instead of the response if the server
-// answers and closes the connection while an upload is still being sent, so
-// read the rest of the body first.
-function refuseUpload(req, res, { status, error }) {
-  const send = () => { if (!res.headersSent) res.status(status).json({ error }) }
-  const length = Number(req.get('content-length'))
-  if (!length || length > DRAIN_LIMIT) {
-    res.set('Connection', 'close')
-    return send()
-  }
-  req.on('end', send)
-  req.on('error', () => {})
-  req.resume()
+const GUEST_UPLOAD_MESSAGES = {
+  fileTooBig: limit => `Guest uploads are limited to ${limit} per file.`,
+  storageFull: limit => `Guest storage is full (${limit}). Delete some files to upload more.`,
 }
 
 function guestAuth(storage) {
@@ -115,7 +76,7 @@ function guestAuth(storage) {
       req.isGuest = true
       req.guestKeyPrefix = guestKeyPrefix(session.id)
       if (req.method === 'POST' && UPLOAD_ROUTES.some(re => re.test(req.path))) {
-        const problem = await checkGuestUpload(storage, req)
+        const problem = await checkUpload(storage, req, PLAN_LIMITS.guest, GUEST_UPLOAD_MESSAGES)
         if (problem) return refuseUpload(req, res, problem)
       }
       next()
