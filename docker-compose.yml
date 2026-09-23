@@ -36,6 +36,11 @@ services:
       - PARALLAX_DB=postgres
       - PARALLAX_STORAGE=r2
       - NODE_ENV=production
+      # Own database and bucket so dev can never touch prod data
+      - DATABASE_URL=${DEV_DATABASE_URL:?set DEV_DATABASE_URL in .env}
+      - R2_BUCKET=parallax-uploads-dev
+      - R2_ACCESS_KEY=${DEV_R2_ACCESS_KEY:?set DEV_R2_ACCESS_KEY in .env}
+      - R2_SECRET_KEY=${DEV_R2_SECRET_KEY:?set DEV_R2_SECRET_KEY in .env}
     restart: unless-stopped
 
   umami:
@@ -63,15 +68,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --config /etc/cloudflared/config.yml run
-    volumes:
-      - /home/jbirky/.cloudflared:/etc/cloudflared:ro
-    depends_on:
-      - parallax-stable
     restart: unless-stopped
 
 volumes:
