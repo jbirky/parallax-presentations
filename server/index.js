@@ -17,13 +17,14 @@ const PORT = process.env.PORT || 3002
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const createStorage = require('./storage')
 const storage = createStorage()
-const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
+const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions,
 } = require('./services/guest-service')
+const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const {
@@ -223,6 +224,7 @@ if (IS_CLOUD) {
   app.use(async (req, res, next) => {
     if (!req.userId) return next()
     const clerkId = req.userId
+    req.authId = clerkId
 
     const cached = provisionCache.get(clerkId)
     if (cached && Date.now() - cached.cachedAt < CACHE_TTL) {
@@ -368,8 +370,21 @@ app.get('/api/me', async (req, res) => {
         storageBytes: limits.storageBytes,
       },
       billing: stripeService.isEnabled(),
+      isAdmin: isAdmin(req),
     })
   } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/admin/overview — sign-ups, per-user storage and processing, and
+// container CPU/memory. Not found for anyone who isn't an admin.
+app.get('/api/admin/overview', async (req, res) => {
+  if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    res.json(await getAdminOverview(storage, PLAN_LIMITS))
+  } catch (err) {
+    console.error('Admin overview error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ---- Billing API ----
@@ -433,6 +448,17 @@ function videoNeedsTranscode(filePath) {
     console.error('Video probe error:', e.message)
     return false
   }
+}
+
+// Converts an uploaded video if needed, recording the conversion as the
+// uploader's processing time
+function convertUploadedVideo(req, filePath) {
+  const started = Date.now()
+  const converted = transcodeVideoIfNeeded(filePath)
+  if (converted !== filePath) {
+    recordUsage(storage, { userId: req.userId, kind: 'video_conversion', durationMs: Date.now() - started, bytes: req.file.size })
+  }
+  return converted
 }
 
 function transcodeVideoIfNeeded(filePath) {
@@ -1945,7 +1971,7 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, as
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = transcodeVideoIfNeeded(filePath)
+      filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
@@ -1971,7 +1997,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, uploa
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = transcodeVideoIfNeeded(filePath)
+      filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
@@ -1995,6 +2021,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
     fs.ensureDirSync(tmpDir)
     const pptxPath = path.join(tmpDir, 'presentation.pptx')
     fs.moveSync(req.file.path, pptxPath)
+    const started = Date.now()
 
     // Convert PPTX → PDF
     execFileSync('libreoffice', [
@@ -2006,6 +2033,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
 
     // Convert PDF pages → PNG images at 150 dpi
     execFileSync('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
+    recordUsage(storage, { userId: req.userId, kind: 'powerpoint_import', durationMs: Date.now() - started, bytes: req.file.size })
 
     const pngFiles = fs.readdirSync(tmpDir)
       .filter(f => /^slide-?\d+\.png$/.test(f))
@@ -2051,6 +2079,7 @@ app.post('/api/render-manim', express.json(), async (req, res) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 200000) // 200s safety net
 
+  const started = Date.now()
   try {
     const upstream = await fetch(`${rendererUrl}/render`, {
       method: 'POST',
@@ -2060,6 +2089,7 @@ app.post('/api/render-manim', express.json(), async (req, res) => {
     })
     clearTimeout(timeout)
     const data = await upstream.json()
+    if (upstream.ok) recordUsage(storage, { userId: req.userId, kind: 'manim_render', durationMs: Date.now() - started })
     res.status(upstream.ok ? 200 : 500).json(data)
   } catch (err) {
     clearTimeout(timeout)
@@ -3315,6 +3345,9 @@ if (IS_CLOUD) {
       sweepingGuests = false
     }
   }, 60 * 1000)
+
+  // Container CPU and memory for the admin dashboard
+  startSystemSampling()
 }
 
 if (require.main === module) {

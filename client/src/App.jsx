@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import EditorPage from './pages/EditorPage'
 import LandingPage from './pages/LandingPage'
 import GuestPage from './pages/GuestPage'
+import AdminPage from './pages/AdminPage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
 
@@ -170,6 +171,14 @@ export default function App() {
         <GuestPage />
         {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
       </>
+    )
+  }
+
+  if (isCloud && window.location.pathname === '/admin') {
+    return (
+      <AuthGate>
+        <AdminPage />
+      </AuthGate>
     )
   }
 

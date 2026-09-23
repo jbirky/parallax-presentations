@@ -218,6 +218,14 @@ export const api = {
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
   resumeSubscription: () => authFetch(`${BASE}/billing/resume`, { method: 'POST' }).then(safeJson),
 
+  // Admin dashboard; null for anyone who isn't an admin
+  getAdminOverview: () => authFetch(`${BASE}/admin/overview`).then(async r => {
+    if (r.status === 404) return null
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not load the dashboard')
+    return b
+  }),
+
   renderManim: (data) => authFetch(`${BASE}/render-manim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

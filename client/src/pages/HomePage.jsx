@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { api } from '../utils/api'
 
 import { UserButton } from '@clerk/clerk-react'
@@ -336,6 +336,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
             <ExternalLink size={12} /> Site
           </a>
+          {planInfo?.isAdmin && (
+            <a href="/admin" title="Sign-ups, storage and server usage" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+              <Gauge size={12} /> Admin
+            </a>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
