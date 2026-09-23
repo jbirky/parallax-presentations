@@ -117,24 +117,6 @@ export const api = {
   deleteSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/snapshots/${snapshotId}`, { method: 'DELETE' }).then(safeJson),
   getSnapshotData: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/snapshots/${snapshotId}/data`).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),
 
-  // Rclone / Proton Drive
-  getRcloneStatus: () => authFetch(`${BASE}/rclone/status`).then(safeJson),
-  configureRclone: (data) => authFetch(`${BASE}/rclone/config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error); return b }),
-  syncToRemote: (data) => authFetch(`${BASE}/rclone/sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error); return b }),
-  syncSingleToRemote: (data) => authFetch(`${BASE}/rclone/sync-single`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error); return b }),
-
   // Git history
   getGitHistory: (id) => authFetch(`${BASE}/presentations/${id}/github/history`).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),
   getGitVersion: (id, sha) => authFetch(`${BASE}/presentations/${id}/github/version/${sha}`).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),

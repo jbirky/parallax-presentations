@@ -20,7 +20,6 @@ Unlike editing raw Markdown or HTML reveal.js files, Parallax lets you:
 - **Themes & presets** — 11 built-in reveal.js themes plus 6 design presets (Academic, Minimal, Dark Tech, etc.)
 - **Footer sequences** — automatic section progress footers for academic talks
 - **Export options** — standalone HTML, offline HTML (CDN inlined), PDF, PPTX, shareable links, GitHub push
-- **Cloud sync** — Proton Drive, S3, Google Drive, or any rclone remote
 
 ## Choose your installation method
 
