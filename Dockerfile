@@ -24,8 +24,8 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
-# Install rclone for cloud sync (Proton Drive, etc.) and ffmpeg for video transcoding
-RUN apk add --no-cache rclone ffmpeg libreoffice poppler-utils
+# Install ffmpeg for video transcoding, and libreoffice + poppler-utils for PowerPoint import
+RUN apk add --no-cache ffmpeg libreoffice poppler-utils
 
 # Copy workspace manifests
 COPY package.json package-lock.json ./

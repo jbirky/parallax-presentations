@@ -266,7 +266,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
   const [showMasterPanel, setShowMasterPanel] = useState(false)
-  const [showSyncModal, setShowSyncModal] = useState(false)
   const [showSyncDropdown, setShowSyncDropdown] = useState(false)
   const [showDefaultSettings, setShowDefaultSettings] = useState(false)
   const [showPresentDropdown, setShowPresentDropdown] = useState(false)
@@ -283,10 +282,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showDiagramModal, setShowDiagramModal] = useState(false)
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
-  const [syncStatus, setSyncStatus] = useState(null) // { installed, remotes, hasConfig }
-  const [syncConfig, setSyncConfig] = useState({ username: '', password: '', remoteName: 'protondrive' })
-  const [syncResult, setSyncResult] = useState(null) // { type, message }
-  const [syncing, setSyncing] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [snapshots, setSnapshots] = useState([])
   const [snapshotName, setSnapshotName] = useState('')
@@ -2094,20 +2089,6 @@ function draw() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
                     Zenodo
                   </button>
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowSyncDropdown(false)
-                      try { const s = await api.getRcloneStatus(); setSyncStatus(s) } catch { setSyncStatus({ installed: false }) }
-                      setSyncResult(null)
-                      setShowSyncModal(true)
-                    }}
-                  >
-                    <CloudUpload size={14} />
-                    Proton Drive
-                  </button>
                   <div style={{ borderTop: '1px solid var(--border)' }} />
                   <button
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
@@ -2926,156 +2907,6 @@ function draw() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sync / Proton Drive Modal */}
-      {showSyncModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
-          onClick={e => { if (e.target === e.currentTarget) setShowSyncModal(false) }}>
-          <div style={{ background: '#1e1e2e', borderRadius: 12, padding: 24, width: 440, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 16, color: '#e0e0e0' }}>Sync to Cloud</h3>
-              <button className="btn btn-ghost" onClick={() => setShowSyncModal(false)} style={{ padding: 4 }}>
-                <X size={16} />
-              </button>
-            </div>
-
-            {!syncStatus?.installed ? (
-              <div style={{ padding: '16px', background: 'rgba(239,68,68,0.1)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
-                rclone is not installed in the container. Rebuild with the updated Dockerfile to enable cloud sync.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 12, color: '#a0a0b0' }}>{syncStatus.version}</div>
-
-                {syncStatus.remotes?.length > 0 ? (
-                  <>
-                    <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.1)', borderRadius: 8, border: '1px solid rgba(34,197,94,0.2)', fontSize: 12, color: '#22c55e' }}>
-                      Configured remote{syncStatus.remotes.length > 1 ? 's' : ''}: {syncStatus.remotes.join(', ')}
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>Remote Path</label>
-                      <input
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 14, boxSizing: 'border-box' }}
-                        value={syncConfig.remotePath || '/slides-backup'}
-                        onChange={e => setSyncConfig(prev => ({ ...prev, remotePath: e.target.value }))}
-                        placeholder="/slides-backup"
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ flex: 1, justifyContent: 'center' }}
-                        disabled={syncing}
-                        onClick={async () => {
-                          setSyncing(true); setSyncResult(null)
-                          try {
-                            const r = await api.syncSingleToRemote({
-                              remote: syncStatus.remotes[0],
-                              remotePath: syncConfig.remotePath || '/slides-backup',
-                              presentationId
-                            })
-                            setSyncResult({ type: 'success', message: `Synced to ${r.destination}` })
-                          } catch (err) {
-                            setSyncResult({ type: 'error', message: err.message })
-                          } finally { setSyncing(false) }
-                        }}
-                      >
-                        <CloudUpload size={14} />
-                        {syncing ? 'Syncing...' : 'Sync This Presentation'}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ justifyContent: 'center' }}
-                        disabled={syncing}
-                        onClick={async () => {
-                          setSyncing(true); setSyncResult(null)
-                          try {
-                            const r = await api.syncToRemote({
-                              remote: syncStatus.remotes[0],
-                              remotePath: syncConfig.remotePath || '/slides-backup',
-                            })
-                            setSyncResult({ type: 'success', message: `Synced ${r.synced} presentations to ${r.destination}` })
-                          } catch (err) {
-                            setSyncResult({ type: 'error', message: err.message })
-                          } finally { setSyncing(false) }
-                        }}
-                      >
-                        Sync All
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p style={{ fontSize: 13, color: '#a0a0b0' }}>
-                      Configure Proton Drive credentials. Your password is stored in the rclone config file on the server.
-                    </p>
-                    <div>
-                      <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>Proton Username</label>
-                      <input
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 14, boxSizing: 'border-box' }}
-                        value={syncConfig.username}
-                        onChange={e => setSyncConfig(prev => ({ ...prev, username: e.target.value }))}
-                        placeholder="user@proton.me"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>Proton Password</label>
-                      <input
-                        type="password"
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 14, boxSizing: 'border-box' }}
-                        value={syncConfig.password}
-                        onChange={e => setSyncConfig(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="Password"
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 12, color: '#a0a0b0', display: 'block', marginBottom: 4 }}>Remote Name</label>
-                      <input
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #3a3a4e', background: '#2a2a3e', color: '#e0e0e0', fontSize: 14, boxSizing: 'border-box' }}
-                        value={syncConfig.remoteName}
-                        onChange={e => setSyncConfig(prev => ({ ...prev, remoteName: e.target.value }))}
-                        placeholder="protondrive"
-                      />
-                    </div>
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: '100%', justifyContent: 'center' }}
-                      disabled={syncing || !syncConfig.username || !syncConfig.password}
-                      onClick={async () => {
-                        setSyncing(true); setSyncResult(null)
-                        try {
-                          await api.configureRclone(syncConfig)
-                          const s = await api.getRcloneStatus()
-                          setSyncStatus(s)
-                          setSyncResult({ type: 'success', message: 'Connected to Proton Drive' })
-                        } catch (err) {
-                          setSyncResult({ type: 'error', message: err.message })
-                        } finally { setSyncing(false) }
-                      }}
-                    >
-                      {syncing ? 'Connecting...' : 'Connect'}
-                    </button>
-                  </>
-                )}
-
-                {syncResult && (
-                  <div style={{
-                    padding: '8px 12px', borderRadius: 6, fontSize: 13,
-                    background: syncResult.type === 'success' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                    color: syncResult.type === 'success' ? '#22c55e' : '#ef4444',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                  }}>
-                    {syncResult.type === 'success' ? <Check size={14} /> : <X size={14} />}
-                    <span>{syncResult.message}</span>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}

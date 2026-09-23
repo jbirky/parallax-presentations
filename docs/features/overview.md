@@ -69,15 +69,6 @@ Design presets apply a coordinated color palette, font stack, and default elemen
 
 See [Export & Sharing](/features/export) for details.
 
-## Cloud Sync
-
-Sync your presentations folder to a remote storage provider using [rclone](https://rclone.org/):
-
-- **Proton Drive** — first-class support with guided setup
-- **S3-compatible** — AWS S3, Backblaze B2, Cloudflare R2, MinIO
-- **Google Drive, Dropbox** — via standard rclone remotes
-- Manual sync or automatic background sync at a configurable interval
-
 ## Version History
 
 Parallax maintains a local version history for each presentation:

@@ -24,6 +24,4 @@ features:
     details: Docker, desktop app (Electron), or run from source. Your data stays on your machine — no sign-up required.
   - title: Themes & Templates
     details: 11 reveal.js themes, 6 design presets, custom reusable templates, and per-slide backgrounds.
-  - title: Cloud Sync
-    details: Sync to Proton Drive or any rclone-supported provider — S3, Google Drive, Dropbox, and more.
 ---
