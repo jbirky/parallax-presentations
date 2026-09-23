@@ -19,7 +19,7 @@ const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
-const { handleUpload: r2Upload, deleteUploadsForPresentation } = require('./services/upload-service')
+const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
@@ -3217,14 +3217,13 @@ function startServer(port) {
   })
 }
 
-// Periodic cleanup: hard-delete free-tier presentations expired > 7 days
+// Periodic cleanup: hard-delete free-tier presentations expired > 7 days,
+// along with their R2 files
 if (IS_CLOUD) {
   setInterval(async () => {
     try {
-      const { rowCount } = await storage.query(
-        "DELETE FROM presentations WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '7 days'"
-      )
-      if (rowCount > 0) console.log(`Cleanup: deleted ${rowCount} expired presentations`)
+      const deleted = await sweepExpiredPresentations(storage)
+      if (deleted > 0) console.log(`Cleanup: deleted ${deleted} expired presentations`)
     } catch (err) { console.error('Cleanup error:', err.message) }
   }, 60 * 60 * 1000)
 }

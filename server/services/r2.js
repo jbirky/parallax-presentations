@@ -76,6 +76,19 @@ async function deleteFromR2(storageKey) {
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }))
 }
 
+// Deletes keys a few at a time. Returns the keys that could not be deleted
+// (deleting a key that is already gone counts as success).
+async function deleteManyFromR2(storageKeys) {
+  const failed = []
+  const keys = [...new Set(storageKeys)]
+  for (let i = 0; i < keys.length; i += 10) {
+    const batch = keys.slice(i, i + 10)
+    const results = await Promise.allSettled(batch.map(key => deleteFromR2(key)))
+    results.forEach((r, j) => { if (r.status === 'rejected') failed.push(batch[j]) })
+  }
+  return failed
+}
+
 async function putBufferToR2(storageKey, buffer, contentType) {
   const s3 = getClient()
   await s3.send(new PutObjectCommand({
@@ -87,4 +100,4 @@ async function putBufferToR2(storageKey, buffer, contentType) {
   return { storageKey, size: buffer.length }
 }
 
-module.exports = { isR2Enabled, uploadToR2, streamFromR2, deleteFromR2, putBufferToR2 }
+module.exports = { isR2Enabled, uploadToR2, streamFromR2, deleteFromR2, deleteManyFromR2, putBufferToR2 }
