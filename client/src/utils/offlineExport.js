@@ -14,6 +14,40 @@ const CDN_RESOURCES = {
   ],
 }
 
+// Uploaded files are served by this app, so an export that only links to them
+// breaks once it's opened elsewhere or the files are deleted (guest sessions).
+// Matches /uploads/ paths that are relative or on this site's origin, never
+// the tail of another site's URL.
+function uploadPathRe() {
+  const origin = (globalThis.location?.origin || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^\\w.:/-])((?:${origin})?\\/uploads\\/[^\\s"'<>)\\\\&]+)`, 'g')
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function inlineUploads(html) {
+  const uploadPathRegex = uploadPathRe()
+  const dataUrls = new Map()
+  for (const [, , uploadPath] of html.matchAll(uploadPathRegex)) {
+    if (dataUrls.has(uploadPath)) continue
+    try {
+      const resp = await fetch(uploadPath)
+      dataUrls.set(uploadPath, resp.ok ? await blobToDataURL(await resp.blob()) : null)
+    } catch {
+      dataUrls.set(uploadPath, null)
+    }
+  }
+  return html.replace(uploadPathRegex, (whole, before, uploadPath) =>
+    dataUrls.get(uploadPath) ? before + dataUrls.get(uploadPath) : whole)
+}
+
 async function fetchText(url) {
   try {
     const resp = await fetch(url)
@@ -69,6 +103,9 @@ export async function generateOfflineHTML(html) {
   // Remove Computer Modern font link
   result = result.replace(/<link[^>]*href=["']https:\/\/cdn\.jsdelivr\.net\/gh\/dreampulse\/computer-modern[^"']*["'][^>]*>/g,
     '<!-- Computer Modern fonts removed for offline mode -->')
+
+  // Embed uploaded images, video and audio
+  result = await inlineUploads(result)
 
   return result
 }
