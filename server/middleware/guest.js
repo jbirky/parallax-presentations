@@ -3,8 +3,8 @@
 
 // Guest mode auth: resolves an X-Guest-Token header to the session's user and
 // limits guests to the routes the editor needs. Anything not listed here
-// (sharing, live sessions, GitHub/Zenodo/Zotero, templates, fonts, PowerPoint
-// import, Manim rendering, billing, ...) needs an account.
+// (plugins, sharing, live sessions, GitHub/Zenodo/Zotero, templates, fonts,
+// PowerPoint import, Manim rendering, billing, ...) needs an account.
 
 const rateLimit = require('express-rate-limit')
 const { ipKeyGenerator } = rateLimit
@@ -36,10 +36,7 @@ const GUEST_ROUTES = [
   ['GET POST', /^\/api\/presentations\/[^/]+\/datasets$/],
   ['DELETE', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+$/],
   ['GET', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+\/data$/],
-  // Plugins in a presentation; fonts and templates read-only
-  ['GET', /^\/api\/me\/plugins$/],
-  ['GET POST', /^\/api\/presentations\/[^/]+\/plugins$/],
-  ['DELETE', /^\/api\/presentations\/[^/]+\/plugins\/[^/]+$/],
+  // Fonts and templates read-only
   ['GET', /^\/api\/fonts$/],
   ['GET', /^\/api\/fonts\/file\/[^/]+$/],
   ['GET', /^\/api\/templates(\/[^/]+)?$/],

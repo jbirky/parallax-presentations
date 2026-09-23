@@ -374,9 +374,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     })
   }, [presentationId])
 
-  // Load plugins on mount
+  // Load plugins on mount; guests don't get plugins
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
   useEffect(() => {
+    if (guest) return
     loadPlugins({
       getPresentation: () => presentation,
       updateElement: (id, patch) => {
