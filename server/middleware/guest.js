@@ -103,14 +103,17 @@ function refuseUpload(req, res, { status, error }) {
 function guestAuth(storage) {
   return async (req, res, next) => {
     const token = req.get('X-Guest-Token')
-    if (!token || req.userId || !req.path.startsWith('/api/')) return next()
+    if (!token || !req.path.startsWith('/api/')) return next()
     try {
       const session = await touchGuestSession(storage, token, { activity: req.method !== 'GET' })
       if (!session) return res.status(401).json({ error: 'This guest session has ended.', code: 'guest_expired' })
       if (!isGuestRoute(req.method, req.path)) {
         return res.status(403).json({ error: 'Create a free account to use this feature.', code: 'guest_forbidden' })
       }
+      // The guest token wins over a signed-in visitor's Clerk session cookie,
+      // which the browser sends to /try too
       req.userId = session.userId
+      req.authId = null
       req.userPlan = 'guest'
       req.isGuest = true
       req.guestKeyPrefix = guestKeyPrefix(session.id)
