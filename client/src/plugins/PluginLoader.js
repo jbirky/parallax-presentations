@@ -20,6 +20,7 @@ export async function loadPlugins({ getPresentation, updateElement, showToast })
     return
   }
 
+  const sandboxFetches = []
   for (const plugin of plugins) {
     if (loaded.has(plugin.slug)) continue
     const manifest = plugin.manifest
@@ -27,6 +28,14 @@ export async function loadPlugins({ getPresentation, updateElement, showToast })
 
     registry.register(manifest, plugin.slug)
     loaded.add(plugin.slug)
+
+    if (manifest.sandbox) {
+      const sandboxUrl = `/api/plugins/${plugin.slug}/assets/${manifest.sandbox.replace(/^\.\//, '')}`
+      sandboxFetches.push(fetch(sandboxUrl)
+        .then(r => r.ok ? r.text() : null)
+        .then(html => { if (html) registry.setSandboxHtml(manifest.id, html) })
+        .catch(() => {}))
+    }
 
     if (manifest.main) {
       try {
@@ -48,6 +57,7 @@ export async function loadPlugins({ getPresentation, updateElement, showToast })
       }
     }
   }
+  await Promise.all(sandboxFetches)
 }
 
 export function getInsertablePluginTypes() {

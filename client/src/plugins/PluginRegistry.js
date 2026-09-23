@@ -135,6 +135,16 @@ class PluginRegistry {
     return this._elementTypes.get(fullType) || null
   }
 
+  // The plugin's sandbox page, kept so present mode can embed its elements
+  setSandboxHtml(pluginId, html) {
+    const entry = this._plugins.get(pluginId)
+    if (entry) entry.sandboxHtml = html
+  }
+
+  getSandboxHtml(elementType) {
+    return this.getPluginForElement(elementType)?.sandboxHtml || null
+  }
+
   getAllElementTypes() {
     return Array.from(this._elementTypes.values())
   }

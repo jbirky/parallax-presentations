@@ -27,6 +27,7 @@ const {
 const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload,
@@ -538,6 +539,7 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
 // Generate reveal.js HTML
 function generateRevealHTML(presentation, opts = {}) {
   const customFonts = opts.customFonts || []
+  const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
   const theme = presentation.theme || 'black'
   const transition = presentation.transition || 'slide'
   const slideW = presentation.slideWidth || 960
@@ -813,6 +815,12 @@ function generateRevealHTML(presentation, opts = {}) {
           return `<div${fragClass}${fragIdx} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
+          const sandboxHtml = el.pluginId ? pluginSandbox(el.pluginId) : null
+          if (sandboxHtml) {
+            const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
+              .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          }
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${fragClass}${fragIdx} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
