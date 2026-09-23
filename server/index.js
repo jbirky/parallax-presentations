@@ -22,7 +22,7 @@ const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./se
 const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
-  createGuestSession, closeGuestSession, sweepGuestSessions,
+  createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
 } = require('./services/guest-service')
 const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
@@ -384,6 +384,20 @@ app.get('/api/admin/overview', async (req, res) => {
     res.json(await getAdminOverview(storage, PLAN_LIMITS))
   } catch (err) {
     console.error('Admin overview error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/admin/guest-sessions/end-all — ends every guest session and
+// deletes its work. Not found for anyone who isn't an admin.
+app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    const result = await endAllGuestSessions(storage)
+    console.log(`Admin ended ${result.ended} guest sessions`)
+    res.json(result)
+  } catch (err) {
+    console.error('End guest sessions error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

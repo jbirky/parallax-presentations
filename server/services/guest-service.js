@@ -142,8 +142,31 @@ async function sweepGuestSessions(storage) {
   return deleted
 }
 
+// Admin action: ends every guest session now. Marking them closed past the
+// grace period stops their tokens working at once; a session whose files
+// can't be deleted here is left for the sweeper to retry.
+async function endAllGuestSessions(storage) {
+  const { rows } = await storage.query(
+    `UPDATE guest_sessions SET closing_at = NOW() - make_interval(secs => $1 + 1)
+     RETURNING id, user_id`,
+    [CLOSE_GRACE_SECONDS]
+  )
+  let cleanupPending = 0
+  for (const session of rows) {
+    try {
+      await deleteGuestSession(storage, session)
+    } catch (err) {
+      cleanupPending++
+      console.error(`Guest cleanup failed for session ${session.id}:`, err.message)
+    }
+  }
+  if (cleanupPending) sessionsMayExist = true
+  return { ended: rows.length, cleanupPending }
+}
+
 module.exports = {
   GUEST_IDLE_HOURS,
   isGuestModeEnabled, guestKeyPrefix, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, touchGuestSession, closeGuestSession, sweepGuestSessions,
+  endAllGuestSessions,
 }

@@ -75,6 +75,13 @@ describe('AdminDashboard', () => {
     expect(html).toContain('Guest mode isn’t set up here')
   })
 
+  it('offers to end guest sessions only while some are active', () => {
+    const endAll = guestsActive => renderToStaticMarkup(<AdminDashboard data={overview({ guestsActive })} />).includes('>End all</button>')
+    expect(endAll(3)).toBe(true)
+    expect(endAll(0)).toBe(false)
+    expect(endAll(null)).toBe(false)
+  })
+
   it('says it is collecting before there are two CPU readings', () => {
     const data = overview()
     data.system = { ...data.system, samples: [], cpuPercent: null }

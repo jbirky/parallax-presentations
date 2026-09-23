@@ -80,13 +80,48 @@ const styles = {
   details: { marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' },
 }
 
-function Stat({ label, value, note, first }) {
+function Stat({ label, value, note, first, children }) {
   return (
     <div style={{ flex: '1 1 170px', padding: '4px 16px', borderLeft: first ? 'none' : '1px solid var(--border)', minWidth: 0 }}>
       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</div>
       <div style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.3 }}>{value}</div>
       {note && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{note}</div>}
+      {children}
     </div>
+  )
+}
+
+// Ends every guest session, after a confirm, and deletes their work
+function EndGuestSessions({ active, onEnded }) {
+  const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState(null)
+
+  async function endAll() {
+    const sessions = `${active} guest session${active === 1 ? '' : 's'}`
+    if (!confirm(`End all ${sessions}? Their presentations and uploads will be deleted.`)) return
+    setWorking(true)
+    setMessage(null)
+    try {
+      const { ended, cleanupPending } = await api.endAllGuestSessions()
+      setMessage(`Ended ${ended} session${ended === 1 ? '' : 's'}.` +
+        (cleanupPending ? ` Files for ${cleanupPending} couldn’t be deleted yet; cleanup will retry.` : ''))
+      onEnded?.()
+    } catch (err) {
+      setMessage(`Couldn’t end the sessions: ${err.message}`)
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <>
+      {active > 0 && (
+        <button className="btn btn-secondary" onClick={endAll} disabled={working} style={{ marginTop: 6, padding: '3px 8px', fontSize: 12 }}>
+          {working ? 'Ending…' : 'End all'}
+        </button>
+      )}
+      {message && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)' }}>{message}</div>}
+    </>
   )
 }
 
@@ -138,7 +173,7 @@ function StorageMeter({ used, limit }) {
 }
 
 // The dashboard itself, rendered from the overview data
-export function AdminDashboard({ data, refreshing = false }) {
+export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded }) {
   const system = data.system
   const samples = system?.samples || []
   const cpuPoints = samples.map(s => ({ t: s.t, value: s.cpuPercent }))
@@ -159,7 +194,9 @@ export function AdminDashboard({ data, refreshing = false }) {
           note={plans.length ? plans.map(([plan, n]) => `${n} ${plan}`).join(' · ') : 'None yet'} />
         <Stat label="New accounts" value={data.accounts.new30d.toLocaleString()} note={`Last 30 days · ${data.accounts.new7d} in the last 7`} />
         <Stat label="Guest sessions now" value={data.guestsActive === null ? '—' : data.guestsActive.toLocaleString()}
-          note={data.guestsActive === null ? 'Guest mode isn’t set up here' : 'Active in the last 12 hours'} />
+          note={data.guestsActive === null ? 'Guest mode isn’t set up here' : 'Active in the last 12 hours'}>
+          {data.guestsActive !== null && <EndGuestSessions active={data.guestsActive} onEnded={onGuestSessionsEnded} />}
+        </Stat>
         <Stat label="Storage used" value={formatBytes(data.storage.uploadBytes + data.storage.datasetBytes)}
           note={`${formatBytes(data.storage.uploadBytes)} uploads · ${formatBytes(data.storage.datasetBytes)} datasets`} />
         <Stat label="Memory" value={formatBytes(system.memoryBytes)}
@@ -319,7 +356,7 @@ export default function AdminPage() {
           </p>
         )}
 
-        {data && <AdminDashboard data={data} refreshing={refreshing} />}
+        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} />}
       </div>
     </div>
   )

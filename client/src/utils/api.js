@@ -225,6 +225,11 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not load the dashboard')
     return b
   }),
+  endAllGuestSessions: () => authFetch(`${BASE}/admin/guest-sessions/end-all`, { method: 'POST' }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not end the guest sessions')
+    return b
+  }),
 
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
