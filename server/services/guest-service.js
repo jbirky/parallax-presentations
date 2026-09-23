@@ -13,6 +13,15 @@ const GUEST_IDLE_HOURS = 12
 // and a reloaded tab reconnects within seconds.
 const CLOSE_GRACE_SECONDS = 120
 
+// The sweeper skips its query while no sessions can exist, so an unused guest
+// mode doesn't keep the database awake. Unknown after a restart, so start true.
+let sessionsMayExist = true
+let sessionsCreated = 0
+
+function guestSessionsMayExist() {
+  return sessionsMayExist
+}
+
 function isGuestModeEnabled() {
   return process.env.PARALLAX_MODE === 'cloud' && !!isR2Enabled() &&
     !!process.env.TURNSTILE_SITE_KEY && !!process.env.TURNSTILE_SECRET_KEY
@@ -53,6 +62,8 @@ async function createGuestSession(storage) {
      INSERT INTO guest_sessions (user_id, token_hash) SELECT id, $3 FROM u`,
     [userId, `${userId}@guest.invalid`, hashToken(token)]
   )
+  sessionsCreated++
+  sessionsMayExist = true
   return { token }
 }
 
@@ -108,6 +119,7 @@ async function deleteGuestSession(storage, session) {
 // Deletes every session that was closed (past the grace period) or idle for
 // GUEST_IDLE_HOURS. A session whose files can't be deleted is retried next run.
 async function sweepGuestSessions(storage) {
+  const createdBefore = sessionsCreated
   const { rows } = await storage.query(
     `SELECT id, user_id FROM guest_sessions
       WHERE last_active_at < NOW() - make_interval(hours => $1)
@@ -124,11 +136,14 @@ async function sweepGuestSessions(storage) {
       console.error(`Guest cleanup failed for session ${session.id}:`, err.message)
     }
   }
+  const { rows: left } = await storage.query('SELECT EXISTS (SELECT 1 FROM guest_sessions) AS any')
+  // A session started while this sweep ran keeps the sweeper going
+  if (!left[0].any && sessionsCreated === createdBefore) sessionsMayExist = false
   return deleted
 }
 
 module.exports = {
   GUEST_IDLE_HOURS,
-  isGuestModeEnabled, guestKeyPrefix, verifyTurnstile,
+  isGuestModeEnabled, guestKeyPrefix, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, touchGuestSession, closeGuestSession, sweepGuestSessions,
 }

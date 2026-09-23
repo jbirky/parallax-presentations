@@ -21,7 +21,8 @@ const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
 const {
-  GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, createGuestSession, closeGuestSession, sweepGuestSessions,
+  GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
+  createGuestSession, closeGuestSession, sweepGuestSessions,
 } = require('./services/guest-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
@@ -3299,10 +3300,11 @@ if (IS_CLOUD) {
     } catch (err) { console.error('Cleanup error:', err.message) }
   }, 60 * 60 * 1000)
 
-  // Guest sessions: closed tabs (after a short grace period) and idle sessions
+  // Guest sessions: closed tabs (after a short grace period) and idle
+  // sessions. Skipped while none exist, so the database can go idle.
   let sweepingGuests = false
   setInterval(async () => {
-    if (sweepingGuests) return
+    if (sweepingGuests || !guestSessionsMayExist()) return
     sweepingGuests = true
     try {
       const deleted = await sweepGuestSessions(storage)
