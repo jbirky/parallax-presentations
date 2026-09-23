@@ -7,7 +7,7 @@
 // PowerPoint import, billing, ...) needs an account.
 
 const rateLimit = require('express-rate-limit')
-const { ipKeyGenerator } = rateLimit
+const { clientIpKey } = require('./security')
 const { PLAN_LIMITS } = require('./auth')
 const { touchGuestSession, guestKeyPrefix } = require('../services/guest-service')
 
@@ -126,14 +126,12 @@ function guestAuth(storage) {
   }
 }
 
-// Requests reach the app through the Cloudflare tunnel, so req.ip is the
-// tunnel's address; Cloudflare puts the visitor's address in CF-Connecting-IP.
 const guestCreateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: req => ipKeyGenerator(req.get('CF-Connecting-IP') || req.ip),
+  keyGenerator: clientIpKey,
   validate: { xForwardedForHeader: false },
   message: { error: 'Too many guest sessions from this network. Please try again later.' },
 })
