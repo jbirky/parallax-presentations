@@ -16,6 +16,10 @@ services:
       - PARALLAX_MODE=cloud
       - PARALLAX_DB=postgres
       - NODE_ENV=production
+    # A runaway video conversion or PowerPoint import gets this container
+    # restarted instead of starving the rest of the server
+    mem_limit: 4g
+    memswap_limit: 4g
     restart: unless-stopped
 
   parallax-dev:
@@ -45,6 +49,8 @@ services:
       # these to use the real TURNSTILE_* keys from .env
       - TURNSTILE_SITE_KEY=1x00000000000000000000AA
       - TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+    mem_limit: 4g
+    memswap_limit: 4g
     restart: unless-stopped
 
   umami:
