@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { Pencil, Presentation, Layout, Code2, Download, Server, Check, ArrowRight, BookOpen } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
+import { api } from '../utils/api'
 
 const FEATURES = [
   { icon: Pencil, title: 'WYSIWYG Editor', desc: 'Edit slides visually with a rich text editor. Drag, drop, and resize — no code required.' },
@@ -28,6 +29,11 @@ const PLANS = [
 export default function LandingPage({ onSignIn }) {
   const [tab, setTab] = useState('home')
   const [docsPage, setDocsPage] = useState(null)
+  const [guestEnabled, setGuestEnabled] = useState(false)
+
+  useEffect(() => {
+    api.getGuestConfig().then(config => setGuestEnabled(!!config.enabled)).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const hash = window.location.hash
@@ -89,6 +95,13 @@ export default function LandingPage({ onSignIn }) {
             Create interactive and intuitive slides<br />
             <span style={{ color: 'var(--accent)' }}>for complex concepts.</span>
           </h1>
+          {guestEnabled && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+              <a href="/try" className="landing-btn-primary" style={{ textDecoration: 'none' }}>
+                Try it without an account <ArrowRight size={16} />
+              </a>
+            </div>
+          )}
 
           {/* Editor screenshot */}
           <div className="landing-hero-visual">
@@ -148,16 +161,34 @@ export default function LandingPage({ onSignIn }) {
           >
             <Server size={16} /> Self-Hosting Guide
           </a>
-          <p style={{ color: 'var(--text-muted, #888)', fontSize: 14, marginTop: 32, maxWidth: 480, margin: '32px auto 0' }}>
-            Want to try it out first? You can demo a prototype of the app by signing up here.
-          </p>
-          <button
-            className="landing-btn-ghost"
-            style={{ margin: '12px auto 0', justifyContent: 'center', color: '#888', borderColor: '#555' }}
-            onClick={onSignIn}
-          >
-            Try the Demo <ArrowRight size={16} />
-          </button>
+          {guestEnabled ? (
+            <>
+              <p style={{ color: 'var(--text-muted, #888)', fontSize: 14, marginTop: 32, maxWidth: 480, margin: '32px auto 0' }}>
+                Want to try it out first? Open the editor as a guest. No account needed; your work is
+                deleted when you close the tab.
+              </p>
+              <a
+                href="/try"
+                className="landing-btn-ghost"
+                style={{ margin: '12px auto 0', justifyContent: 'center', color: '#888', borderColor: '#555', textDecoration: 'none' }}
+              >
+                Try as a guest <ArrowRight size={16} />
+              </a>
+            </>
+          ) : (
+            <>
+              <p style={{ color: 'var(--text-muted, #888)', fontSize: 14, marginTop: 32, maxWidth: 480, margin: '32px auto 0' }}>
+                Want to try it out first? You can demo a prototype of the app by signing up here.
+              </p>
+              <button
+                className="landing-btn-ghost"
+                style={{ margin: '12px auto 0', justifyContent: 'center', color: '#888', borderColor: '#555' }}
+                onClick={onSignIn}
+              >
+                Try the Demo <ArrowRight size={16} />
+              </button>
+            </>
+          )}
         </section>
 
         {/* Footer */}

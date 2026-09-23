@@ -41,6 +41,10 @@ services:
       - R2_BUCKET=parallax-uploads-dev
       - R2_ACCESS_KEY=${DEV_R2_ACCESS_KEY:?set DEV_R2_ACCESS_KEY in .env}
       - R2_SECRET_KEY=${DEV_R2_SECRET_KEY:?set DEV_R2_SECRET_KEY in .env}
+      # Cloudflare's always-pass Turnstile test keys for guest mode; remove
+      # these to use the real TURNSTILE_* keys from .env
+      - TURNSTILE_SITE_KEY=1x00000000000000000000AA
+      - TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
     restart: unless-stopped
 
   umami:

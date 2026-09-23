@@ -1,12 +1,20 @@
 let _getToken = async () => null
 export function setTokenGetter(fn) { _getToken = fn }
 
+// Guest mode: requests carry the guest session token instead of a Clerk token
+let _guestToken = null
+export function setGuestToken(token) { _guestToken = token }
+
 const _fetch = globalThis.fetch.bind(globalThis)
 async function authFetch(url, options = {}) {
   const token = await _getToken()
   const headers = { ...options.headers }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  return _fetch(url, { ...options, headers })
+  if (_guestToken) headers['X-Guest-Token'] = _guestToken
+  const res = await _fetch(url, { ...options, headers })
+  // A guest session that was closed or idle too long has been deleted
+  if (_guestToken && res.status === 401) globalThis.dispatchEvent(new Event('parallax:guest-expired'))
+  return res
 }
 
 async function safeJson(r) {
@@ -209,4 +217,21 @@ export const api = {
   getBillingStatus: () => authFetch(`${BASE}/billing/status`).then(safeJson),
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
   resumeSubscription: () => authFetch(`${BASE}/billing/resume`, { method: 'POST' }).then(safeJson),
+
+  renderManim: (data) => authFetch(`${BASE}/render-manim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Render failed'); return b }),
+
+  // Guest mode
+  getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
+  startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ turnstileToken })
+  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Could not start a guest session'); return b }),
+  resumeGuestSession: () => authFetch(`${BASE}/guest/resume`, { method: 'POST' })
+    .then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Guest session ended'); return b }),
+  pingGuestActivity: () => authFetch(`${BASE}/guest/activity`, { method: 'POST' }).catch(() => {}),
 }

@@ -217,7 +217,7 @@ const migrateSlide = (slide) => {
   return slide
 }
 
-export default function EditorPage({ presentationId, isTemplate = false, onGoHome }) {
+export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
   const [presentation, setPresentation] = useState(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
@@ -390,8 +390,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Load GitHub + Zenodo config on mount
   useEffect(() => {
-    api.getGithubConfig().then(setGithubConfig).catch(() => {})
-    api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+    if (!guest) {
+      api.getGithubConfig().then(setGithubConfig).catch(() => {})
+      api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+    }
     api.getFonts().then(fonts => {
       if (Array.isArray(fonts)) {
         setCustomFonts(fonts)
@@ -413,7 +415,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Load share status
   useEffect(() => {
-    if (presentationId) {
+    if (presentationId && !guest) {
       api.getShareStatus(presentationId).then(setShareStatus).catch(() => {})
     }
   }, [presentationId])
@@ -1283,13 +1285,7 @@ function draw() {
     if (!manimEditorState) return
     setManimEditorState(s => ({ ...s, rendering: true, error: null }))
     try {
-      const res = await fetch('/api/render-manim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: manimEditorState.content, sceneName: manimEditorState.sceneName, quality: manimEditorState.quality }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Render failed')
+      const data = await api.renderManim({ code: manimEditorState.content, sceneName: manimEditorState.sceneName, quality: manimEditorState.quality })
       setManimEditorState(s => ({ ...s, rendered: data.url, rendering: false, error: null }))
     } catch (err) {
       setManimEditorState(s => ({ ...s, rendering: false, error: err.message }))
@@ -1885,10 +1881,19 @@ function draw() {
     <div className="editor-page" style={{ position: 'relative' }}>
       {/* Editor Header */}
       <div className="editor-header">
-        <button className="back-btn btn-ghost" onClick={onGoHome}>
-          <ChevronLeft size={16} />
-          Back
-        </button>
+        {guest ? (
+          <span
+            title={`Nothing is saved to an account. This presentation and its uploads are deleted when you close this tab, or after ${guest.idleHours} hours without activity. To keep a copy, use Export → Export Offline HTML.`}
+            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', cursor: 'help' }}
+          >
+            Guest · deleted when you close this tab
+          </span>
+        ) : (
+          <button className="back-btn btn-ghost" onClick={onGoHome}>
+            <ChevronLeft size={16} />
+            Back
+          </button>
+        )}
         {isTemplate && (
           <span style={{ fontSize: 11, background: '#f59e0b', color: '#000', padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4 }}>TEMPLATE</span>
         )}
@@ -1998,7 +2003,7 @@ function draw() {
                     a.click()
                     URL.revokeObjectURL(url)
                   }},
-                ].map(({ label, icon, action }) => (
+                ].filter(item => !guest || item.label !== 'Share link').map(({ label, icon, action }) => (
                   <button
                     key={label}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
@@ -2050,68 +2055,70 @@ function draw() {
             Data
           </button>
 
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => setShowSyncDropdown(v => !v)}
-              title="Sync options"
-            >
-              <CloudUpload size={14} />
-              Sync
-              <ChevronDown size={12} style={{ marginLeft: 2 }} />
-            </button>
-            {showSyncDropdown && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
-                  >
-                    <Github size={14} />
-                    GitHub
-                  </button>
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowSyncDropdown(false)
-                      setZenodoStatus(null)
-                      if (presentationId) {
-                        api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                      }
-                      setShowZenodoModal(true)
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                    Zenodo
-                  </button>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowSyncDropdown(false)
-                      setShowGitHistory(true)
-                      setGitLoading(true)
-                      try {
-                        const commits = await api.getGitHistory(presentationId)
-                        setGitCommits(commits)
-                      } catch (e) { setGitCommits([]); console.error(e) }
-                      setGitLoading(false)
-                    }}
-                  >
-                    <History size={14} />
-                    Git History
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {!guest && (
+            <div style={{ position: 'relative' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowSyncDropdown(v => !v)}
+                title="Sync options"
+              >
+                <CloudUpload size={14} />
+                Sync
+                <ChevronDown size={12} style={{ marginLeft: 2 }} />
+              </button>
+              {showSyncDropdown && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
+                    >
+                      <Github size={14} />
+                      GitHub
+                    </button>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={async () => {
+                        setShowSyncDropdown(false)
+                        setZenodoStatus(null)
+                        if (presentationId) {
+                          api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+                        }
+                        setShowZenodoModal(true)
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
+                      Zenodo
+                    </button>
+                    <div style={{ borderTop: '1px solid var(--border)' }} />
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={async () => {
+                        setShowSyncDropdown(false)
+                        setShowGitHistory(true)
+                        setGitLoading(true)
+                        try {
+                          const commits = await api.getGitHistory(presentationId)
+                          setGitCommits(commits)
+                        } catch (e) { setGitCommits([]); console.error(e) }
+                        setGitLoading(false)
+                      }}
+                    >
+                      <History size={14} />
+                      Git History
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
@@ -2170,34 +2177,38 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
-                  <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: liveSession ? 'var(--danger)' : '#ef4444', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowPresentDropdown(false)
-                      if (liveSession) {
-                        await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {})
-                        setLiveSession(null)
-                        setLiveViewers(0)
-                        return
-                      }
-                      try {
-                        const { sessionId, url } = await api.startLiveSession(presentationId)
-                        setLiveSession({ sessionId, url })
-                        setLiveViewers(0)
-                        livePresentInWindow(presentation, sessionId, (count) => setLiveViewers(count))
-                      } catch (e) {
-                        alert('Failed to start live session: ' + e.message)
-                      }
-                    }}
-                  >
-                    <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: liveSession ? '#ef4444' : '#ef4444', display: 'block', animation: liveSession ? 'none' : 'none' }} />
-                    </span>
-                    {liveSession ? 'Stop Live Session' : 'Live Present'}
-                  </button>
+                  {!guest && (
+                    <>
+                      <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: liveSession ? 'var(--danger)' : '#ef4444', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={async () => {
+                          setShowPresentDropdown(false)
+                          if (liveSession) {
+                            await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {})
+                            setLiveSession(null)
+                            setLiveViewers(0)
+                            return
+                          }
+                          try {
+                            const { sessionId, url } = await api.startLiveSession(presentationId)
+                            setLiveSession({ sessionId, url })
+                            setLiveViewers(0)
+                            livePresentInWindow(presentation, sessionId, (count) => setLiveViewers(count))
+                          } catch (e) {
+                            alert('Failed to start live session: ' + e.message)
+                          }
+                        }}
+                      >
+                        <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: liveSession ? '#ef4444' : '#ef4444', display: 'block', animation: liveSession ? 'none' : 'none' }} />
+                        </span>
+                        {liveSession ? 'Stop Live Session' : 'Live Present'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -3374,7 +3385,7 @@ function draw() {
                 return next
               })
             }}
-            onImportPptx={handleImportPptx}
+            onImportPptx={guest ? undefined : handleImportPptx}
             drawTool={drawTool}
             onSetDrawTool={setDrawTool}
             onUndo={doUndo}

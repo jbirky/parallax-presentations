@@ -329,11 +329,13 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <FileText size={14} /> {pdfLoading ? 'Loading…' : 'Import PDF'}
               <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); setShowImageMenu(false) }} disabled={pdfLoading} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pptxLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pptxLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <FileText size={14} /> {pptxLoading ? 'Converting…' : 'Import PPTX'}
-              <input ref={pptxInputRef} type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" style={{ display: 'none' }} disabled={pptxLoading}
-                onChange={async e => { const f = e.target.files?.[0]; if (!f || !onImportPptx) return; if (pptxInputRef.current) pptxInputRef.current.value = ''; setShowImageMenu(false); setPptxLoading(true); try { await onImportPptx(f) } catch (err) { alert('PPTX import failed: ' + err.message) } finally { setPptxLoading(false) } }} />
-            </label>
+            {onImportPptx && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pptxLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pptxLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <FileText size={14} /> {pptxLoading ? 'Converting…' : 'Import PPTX'}
+                <input ref={pptxInputRef} type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" style={{ display: 'none' }} disabled={pptxLoading}
+                  onChange={async e => { const f = e.target.files?.[0]; if (!f || !onImportPptx) return; if (pptxInputRef.current) pptxInputRef.current.value = ''; setShowImageMenu(false); setPptxLoading(true); try { await onImportPptx(f) } catch (err) { alert('PPTX import failed: ' + err.message) } finally { setPptxLoading(false) } }} />
+              </label>
+            )}
             <DocsLink page="images" onClose={() => setShowImageMenu(false)} />
           </div>
         </>)}
@@ -382,14 +384,14 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <Video size={14} /> Upload Video
-              <input type="file" accept="video/mp4,video/webm,video/ogg,video/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); if (onAddVideoUpload) onAddVideoUpload(f); else { const fd = new FormData(); fd.append('file', f); const res = await fetch('/api/upload', { method: 'POST', body: fd }).then(r => r.json()); if (res.url) onAddVideo?.(res.url) } }} />
+              <input type="file" accept="video/mp4,video/webm,video/ogg,video/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); if (onAddVideoUpload) onAddVideoUpload(f); else { const res = await api.uploadFile(f); if (res.url) onAddVideo?.(res.url) } }} />
             </label>
             <button style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const url = window.prompt('Video URL:'); if (url?.trim()) { onAddVideo?.(url.trim()); setShowMediaMenu(false) } }}>
               <Link size={14} /> Video from URL
             </button>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <Music size={14} /> Upload Audio
-              <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); const fd = new FormData(); fd.append('file', f); const res = await fetch('/api/upload', { method: 'POST', body: fd }).then(r => r.json()); if (res.url) onAddAudio?.(res.url) }} />
+              <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); const res = await api.uploadFile(f); if (res.url) onAddAudio?.(res.url) }} />
             </label>
             <DocsLink page="media" onClose={() => setShowMediaMenu(false)} />
           </div>

@@ -57,7 +57,7 @@ function inferColumns(rows) {
   })
 }
 
-async function ingestDataset(filePath, originalFilename, { userId, storage, localDir }) {
+async function ingestDataset(filePath, originalFilename, { userId, storage, localDir, keyPrefix }) {
   const format = detectFormat(originalFilename)
   if (!format || !ALLOWED_FORMATS.has(format)) {
     throw new Error(`Unsupported file format. Accepted: ${[...ALLOWED_FORMATS].join(', ')}`)
@@ -72,7 +72,7 @@ async function ingestDataset(filePath, originalFilename, { userId, storage, loca
 
   let storageKey
   if (isR2Enabled()) {
-    storageKey = `${userId}/datasets/${baseName}/${uuidv4()}${path.extname(originalFilename)}`
+    storageKey = `${keyPrefix || userId}/datasets/${baseName}/${uuidv4()}${path.extname(originalFilename)}`
     await uploadToR2(filePath, storageKey, 'application/octet-stream')
   } else {
     const dsDir = path.join(localDir, 'datasets')

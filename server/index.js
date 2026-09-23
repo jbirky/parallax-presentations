@@ -20,6 +20,10 @@ const storage = createStorage()
 const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
+const {
+  GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, createGuestSession, closeGuestSession, sweepGuestSessions,
+} = require('./services/guest-service')
+const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
@@ -86,7 +90,8 @@ if (isR2Enabled()) {
       const { body, contentType, contentLength } = await streamFromR2(rows[0].storage_key)
       res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
       if (contentLength) res.setHeader('Content-Length', contentLength)
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      // Guest files are deleted with their session, so nothing may cache them
+      res.setHeader('Cache-Control', rows[0].storage_key.startsWith('guest/') ? 'private, no-store' : 'public, max-age=31536000, immutable')
       body.pipe(res)
     } catch (err) {
       console.error('R2 proxy error:', err.message)
@@ -262,6 +267,56 @@ if (IS_CLOUD) {
   })
 }
 
+// Guest mode: try the editor without an account. A guest session and all of
+// its files are deleted when its tab closes or after GUEST_IDLE_HOURS idle.
+if (IS_CLOUD) {
+  app.get('/api/guest/config', (req, res) => {
+    const enabled = isGuestModeEnabled()
+    res.json({ enabled, turnstileSiteKey: enabled ? process.env.TURNSTILE_SITE_KEY : null, idleHours: GUEST_IDLE_HOURS })
+  })
+
+  app.post('/api/guest', guestCreateLimiter, async (req, res) => {
+    if (!isGuestModeEnabled()) return res.status(404).json({ error: 'Guest mode is not available' })
+    try {
+      const ok = await verifyTurnstile(req.body?.turnstileToken, req.get('CF-Connecting-IP') || req.ip)
+      if (!ok) return res.status(403).json({ error: 'Verification failed. Please try again.' })
+      res.status(201).json(await createGuestSession(storage))
+    } catch (err) {
+      console.error('Guest session error:', err.message)
+      res.status(500).json({ error: 'Could not start a guest session' })
+    }
+  })
+
+  // Sent with navigator.sendBeacon when the tab closes, which can't set
+  // headers, so the token comes as the plain-text body.
+  app.post('/api/guest/close', express.text(), async (req, res) => {
+    try {
+      if (typeof req.body === 'string' && req.body) await closeGuestSession(storage, req.body)
+      res.status(204).end()
+    } catch (err) {
+      res.status(500).end()
+    }
+  })
+
+  app.use(guestAuth(storage))
+
+  app.post('/api/guest/resume', async (req, res) => {
+    if (!req.isGuest) return res.status(401).json({ error: 'This guest session has ended.', code: 'guest_expired' })
+    try {
+      const { rows } = await storage.query(
+        'SELECT id FROM presentations WHERE user_id = $1 AND is_template = false ORDER BY created_at LIMIT 1',
+        [req.userId]
+      )
+      res.json({ presentationId: rows[0]?.id || null, idleHours: GUEST_IDLE_HOURS })
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  // Recorded as activity by guestAuth; nothing else to do
+  app.post('/api/guest/activity', (req, res) => res.status(204).end())
+}
+
 // Protect all /api routes in cloud mode
 app.use('/api', requireUser)
 app.use('/api', apiLimiter)
@@ -279,7 +334,9 @@ async function checkPresentationQuota(req, res) {
   if (rows[0].count >= limits.maxPresentations) {
     res.status(403).json({
       error: 'presentation_limit_reached',
-      message: `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
+      message: plan === 'guest'
+        ? 'Guest mode is limited to one presentation.'
+        : `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
       limit: limits.maxPresentations, current: rows[0].count,
     })
     return false
@@ -362,7 +419,7 @@ if (IS_CLOUD && stripeService.isEnabled()) {
 // Transcode a video file to H.264 MP4 if its codec isn't web-compatible.
 // Returns the (possibly new) filename. Deletes the original on success.
 const WEB_VIDEO_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1', 'hevc', 'vp08', 'vp09'])
-function transcodeVideoIfNeeded(filePath) {
+function videoNeedsTranscode(filePath) {
   try {
     const codec = execFileSync('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0',
@@ -370,9 +427,16 @@ function transcodeVideoIfNeeded(filePath) {
       '-of', 'default=noprint_wrappers=1:nokey=1',
       filePath
     ], { encoding: 'utf8' }).trim().toLowerCase()
+    return !!codec && !WEB_VIDEO_CODECS.has(codec)
+  } catch (e) {
+    console.error('Video probe error:', e.message)
+    return false
+  }
+}
 
-    if (!codec || WEB_VIDEO_CODECS.has(codec)) return filePath
-
+function transcodeVideoIfNeeded(filePath) {
+  if (!videoNeedsTranscode(filePath)) return filePath
+  try {
     const dir = path.dirname(filePath)
     const base = path.basename(filePath, path.extname(filePath))
     const outPath = path.join(dir, `${base}.mp4`)
@@ -1622,7 +1686,7 @@ app.post('/api/datasets', uploadLimiter, upload.single('file'), async (req, res)
   try {
     const name = req.body.name || undefined
     const result = await ingestDataset(req.file.path, req.file.originalname, {
-      userId: req.userId, storage, localDir: DATA_DIR,
+      userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
     if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
     const ds = await storage.createDataset(result, req.userId)
@@ -1876,11 +1940,15 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, as
   try {
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
+      if (req.isGuest && videoNeedsTranscode(filePath)) {
+        fs.removeSync(filePath)
+        return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
+      }
       filePath = transcodeVideoIfNeeded(filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: null, userId: req.userId, storage,
+        presentationId: null, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -1898,11 +1966,15 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, uploa
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
+      if (req.isGuest && videoNeedsTranscode(filePath)) {
+        fs.removeSync(filePath)
+        return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
+      }
       filePath = transcodeVideoIfNeeded(filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: req.params.id, userId: req.userId, storage,
+        presentationId: req.params.id, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -3226,6 +3298,21 @@ if (IS_CLOUD) {
       if (deleted > 0) console.log(`Cleanup: deleted ${deleted} expired presentations`)
     } catch (err) { console.error('Cleanup error:', err.message) }
   }, 60 * 60 * 1000)
+
+  // Guest sessions: closed tabs (after a short grace period) and idle sessions
+  let sweepingGuests = false
+  setInterval(async () => {
+    if (sweepingGuests) return
+    sweepingGuests = true
+    try {
+      const deleted = await sweepGuestSessions(storage)
+      if (deleted > 0) console.log(`Cleanup: deleted ${deleted} guest sessions`)
+    } catch (err) {
+      console.error('Guest cleanup error:', err.message)
+    } finally {
+      sweepingGuests = false
+    }
+  }, 60 * 1000)
 }
 
 if (require.main === module) {

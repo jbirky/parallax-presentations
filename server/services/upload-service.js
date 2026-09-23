@@ -7,7 +7,7 @@ const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
 const { isR2Enabled, uploadToR2, deleteFromR2, deleteManyFromR2 } = require('./r2')
 
-async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage }) {
+async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage, keyPrefix }) {
   const contentType = mimetype || 'application/octet-stream'
   const fileHash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -25,7 +25,7 @@ async function handleUpload(filePath, originalFilename, mimetype, { presentation
   const ext = path.extname(originalFilename || filePath)
   const fileName = `${uuidv4()}${ext}`
   const urlFilename = presentationId ? `${presentationId}/${fileName}` : fileName
-  const storageKey = userId ? `${userId}/${urlFilename}` : `anonymous/${urlFilename}`
+  const storageKey = `${keyPrefix || userId || 'anonymous'}/${urlFilename}`
 
   const { size } = await uploadToR2(filePath, storageKey, contentType)
 
