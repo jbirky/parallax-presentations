@@ -73,6 +73,27 @@ if (stripeService.isEnabled()) {
 }
 
 app.use(express.json({ limit: '10mb' }))
+
+// Authorization gate for /uploads/*: only the owning user, or files belonging to
+// a publicly shared / template presentation, may be fetched (fixes CWE-284).
+const { authStack: uploadsAuthStack, IS_CLOUD: UPLOADS_IS_CLOUD } = require('./middleware/auth')
+app.use('/uploads', ...uploadsAuthStack(), async (req, res, next) => {
+  if (!UPLOADS_IS_CLOUD) return next()
+  const filename = req.path.replace(/^\/+/, '')
+  try {
+    const { rows } = await storage.query(
+      'SELECT u.user_id, p.share_enabled, p.is_template FROM uploads u LEFT JOIN presentations p ON p.id = u.presentation_id WHERE u.filename = $1',
+      [filename]
+    )
+    if (rows.length && rows[0].user_id !== req.userId && !rows[0].share_enabled && !rows[0].is_template) {
+      return res.status(403).send('Forbidden')
+    }
+    next()
+  } catch (err) {
+    res.status(500).send('Storage error')
+  }
+})
+
 if (isR2Enabled()) {
   app.get('/uploads/*', async (req, res) => {
     const urlPath = req.path.replace(/^\/uploads\//, '')
