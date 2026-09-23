@@ -1,5 +1,5 @@
 # Build stage: compile the React client
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy workspace manifests first for better layer caching
@@ -21,7 +21,7 @@ ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Install rclone for cloud sync (Proton Drive, etc.) and ffmpeg for video transcoding
