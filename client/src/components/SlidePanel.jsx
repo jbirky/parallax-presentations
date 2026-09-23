@@ -98,11 +98,6 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                   ))}
                 </svg>
               )}
-              {el.type === 'manim' && (
-                el.rendered
-                  ? <video src={el.rendered} muted style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
-                  : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: el.height * 0.25 }}>🎬</div>
-              )}
               {el.type === 'video' && (
                 el.poster
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />

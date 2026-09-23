@@ -4,7 +4,7 @@
 // Guest mode auth: resolves an X-Guest-Token header to the session's user and
 // limits guests to the routes the editor needs. Anything not listed here
 // (plugins, sharing, live sessions, GitHub/Zenodo/Zotero, templates, fonts,
-// PowerPoint import, Manim rendering, billing, ...) needs an account.
+// PowerPoint import, billing, ...) needs an account.
 
 const rateLimit = require('express-rate-limit')
 const { ipKeyGenerator } = rateLimit

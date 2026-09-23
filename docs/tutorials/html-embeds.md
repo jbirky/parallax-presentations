@@ -30,16 +30,6 @@ The embedded HTML is completely self-contained. It works in present mode, export
   <iframe src="/parallax-presentations/demos/p5-stars.html" style="width:100%;height:220px;border:none"></iframe>
 </div>
 
-## Manim animations
-
-1. Click **Manim** in the toolbar.
-2. Write a Manim scene in the code editor.
-3. Click **Render** — the server renders the animation and embeds the video.
-
-::: warning
-Manim rendering requires the Manim package installed on the server. Rendering may take several seconds depending on complexity.
-:::
-
 ## Tips
 
 - HTML embeds receive `EMBED_WIDTH` and `EMBED_HEIGHT` as JavaScript globals — use them to size your canvas responsively.

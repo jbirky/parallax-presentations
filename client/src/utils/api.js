@@ -226,12 +226,6 @@ export const api = {
     return b
   }),
 
-  renderManim: (data) => authFetch(`${BASE}/render-manim`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Render failed'); return b }),
-
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
   startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {

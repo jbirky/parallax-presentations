@@ -302,7 +302,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showRulers, setShowRulers] = useState(false)
   const [guides, setGuides] = useState([]) // persistent guide lines: [{ axis: 'x'|'y', position: number }]
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
-  const [manimEditorState, setManimEditorState] = useState(null) // { elementId, content, sceneName, quality, rendered, rendering, error }
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
@@ -738,37 +737,15 @@ svg.selectAll('circle').data(data).join('circle')
   .attr('fill', (d,i) => d3.schemeTableau10[i%10]).attr('opacity', 0.8);
 <\/script>`
 
-  const DEFAULT_MANIM = `from manim import *
-
-class MyScene(Scene):
-    def construct(self):
-        circle = Circle(radius=2, color=BLUE)
-        square = Square(side_length=2, color=RED)
-
-        title = Text("Manim Animation", font_size=36).to_edge(UP)
-        self.play(Write(title))
-        self.play(Create(circle))
-        self.wait(0.5)
-        self.play(Transform(circle, square))
-        self.wait(1)
-`
-
   const addPluginElement = useCallback((fullType) => {
     const el = createPluginElement(fullType)
     if (!el) return
-    if (fullType === 'plugin:manim') {
-      el.pluginData = { ...el.pluginData, content: DEFAULT_MANIM }
-    }
     setPresentation(prev => {
       if (!prev) return prev
       return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), el] } : s) }
     })
     setSelectedElementIds([el.id])
-    if (fullType === 'plugin:manim') {
-      const d = el.pluginData
-      setManimEditorState({ elementId: el.id, content: d.content, sceneName: d.sceneName || 'MyScene', quality: d.quality || 'l', rendered: null, rendering: false, error: null, isPlugin: true })
-    }
-  }, [DEFAULT_MANIM])
+  }, [])
 
   const addHtmlElement = useCallback(() => {
     const newEl = {
@@ -1224,74 +1201,6 @@ function draw() {
       return { ...prev, slides }
     })
   }, [slideW, slideH])
-
-  const addManimElement = useCallback(() => {
-    const newEl = {
-      id: crypto.randomUUID(),
-      type: 'manim',
-      x: 160, y: 90, width: 640, height: 360, zIndex: 2,
-      content: DEFAULT_MANIM,
-      sceneName: 'MyScene',
-      quality: 'l',
-      rendered: null,
-      loop: true,
-      autoplay: true,
-      muted: true,
-      controls: false,
-    }
-    setPresentation(prev => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        slides: prev.slides.map((s, i) =>
-          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
-        )
-      }
-    })
-    setSelectedElementIds([newEl.id])
-    setManimEditorState({ elementId: newEl.id, content: newEl.content, sceneName: newEl.sceneName, quality: newEl.quality, rendered: null, rendering: false, error: null })
-  }, [DEFAULT_MANIM])
-
-  const openManimEditor = useCallback((elementId) => {
-    const slide = presentation?.slides[currentSlideIndexRef.current]
-    const element = slide?.elements?.find(el => el.id === elementId)
-    if (!element) return
-    if (element.type === 'manim') {
-      setManimEditorState({ elementId, content: element.content || DEFAULT_MANIM, sceneName: element.sceneName || 'MyScene', quality: element.quality || 'l', rendered: element.rendered || null, rendering: false, error: null })
-    } else if (element.type === 'plugin:manim') {
-      const d = element.pluginData || {}
-      setManimEditorState({ elementId, content: d.content || DEFAULT_MANIM, sceneName: d.sceneName || 'MyScene', quality: d.quality || 'l', rendered: d.rendered || null, rendering: false, error: null, isPlugin: true })
-    }
-  }, [presentation, DEFAULT_MANIM])
-
-  const commitManimEdit = useCallback(() => {
-    if (!manimEditorState) return
-    const patch = {
-      content: manimEditorState.content,
-      sceneName: manimEditorState.sceneName,
-      quality: manimEditorState.quality,
-      rendered: manimEditorState.rendered,
-    }
-    if (manimEditorState.isPlugin) {
-      const slide = presentation?.slides[currentSlideIndexRef.current]
-      const element = slide?.elements?.find(el => el.id === manimEditorState.elementId)
-      updateElement(manimEditorState.elementId, { pluginData: { ...(element?.pluginData || {}), ...patch } })
-    } else {
-      updateElement(manimEditorState.elementId, patch)
-    }
-    setManimEditorState(null)
-  }, [manimEditorState, updateElement, presentation])
-
-  const renderManim = useCallback(async () => {
-    if (!manimEditorState) return
-    setManimEditorState(s => ({ ...s, rendering: true, error: null }))
-    try {
-      const data = await api.renderManim({ code: manimEditorState.content, sceneName: manimEditorState.sceneName, quality: manimEditorState.quality })
-      setManimEditorState(s => ({ ...s, rendered: data.url, rendering: false, error: null }))
-    } catch (err) {
-      setManimEditorState(s => ({ ...s, rendering: false, error: err.message }))
-    }
-  }, [manimEditorState])
 
   const addVideoElement = useCallback((src) => {
     const newEl = {
@@ -3351,7 +3260,6 @@ function draw() {
             }}
             onAddAudio={addAudioElement}
             onAddTable={addTableElement}
-            onAddManim={addManimElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}
             selectedCount={selectedElementIds.length}
@@ -3498,7 +3406,6 @@ function draw() {
               onOpenP5Editor={openP5Editor}
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
-              onOpenManimEditor={openManimEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -3748,115 +3655,6 @@ function draw() {
                   sandbox="allow-scripts"
                   title="LaTeX Preview"
                 />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manim Editor Modal */}
-      {manimEditorState && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onKeyDown={e => { if (e.key === 'Escape' && !manimEditorState.rendering) setManimEditorState(null) }}
-        >
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '90vw', maxWidth: 1200, height: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-            {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>Manim Animation</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Scene:</span>
-                <input
-                  className="prop-input"
-                  value={manimEditorState.sceneName}
-                  onChange={e => setManimEditorState(s => ({ ...s, sceneName: e.target.value }))}
-                  style={{ width: 140, fontSize: 12, padding: '3px 6px' }}
-                  placeholder="SceneName"
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Quality:</span>
-                <select
-                  value={manimEditorState.quality}
-                  onChange={e => setManimEditorState(s => ({ ...s, quality: e.target.value }))}
-                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
-                >
-                  <option value="l">Low (480p, fastest)</option>
-                  <option value="m">Medium (720p)</option>
-                  <option value="h">High (1080p, slow)</option>
-                </select>
-              </div>
-              <button
-                className="btn btn-primary"
-                style={{ fontSize: 12, padding: '4px 14px', opacity: manimEditorState.rendering ? 0.6 : 1 }}
-                onClick={renderManim}
-                disabled={manimEditorState.rendering}
-              >
-                {manimEditorState.rendering ? '⏳ Rendering…' : '▶ Render'}
-              </button>
-              {manimEditorState.rendered && !manimEditorState.rendering && (
-                <span style={{ fontSize: 11, color: '#4ade80' }}>✓ Rendered</span>
-              )}
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setManimEditorState(null)} disabled={manimEditorState.rendering}>Cancel</button>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={commitManimEdit} disabled={manimEditorState.rendering}>Apply</button>
-              </div>
-            </div>
-
-            {/* Body: editor left, preview right */}
-            <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-              {/* Code editor */}
-              <textarea
-                value={manimEditorState.content}
-                onChange={e => setManimEditorState(s => ({ ...s, content: e.target.value }))}
-                style={{ flex: '0 0 58%', background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', lineHeight: 1.6, tabSize: 4, borderRight: '1px solid var(--border)', borderRadius: '0 0 0 12px' }}
-                spellCheck={false}
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Tab') {
-                    e.preventDefault()
-                    const { selectionStart: s, selectionEnd: end, value } = e.target
-                    const next = value.substring(0, s) + '    ' + value.substring(end)
-                    e.target.value = next
-                    setManimEditorState(st => ({ ...st, content: next }))
-                    requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 4 })
-                  }
-                }}
-              />
-
-              {/* Preview panel */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0a0a14', borderRadius: '0 0 12px 0' }}>
-                {manimEditorState.rendering && (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: 32 }}>⏳</div>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>Rendering…</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 260, textAlign: 'center' }}>
-                      This can take 10–60 seconds depending on animation length and quality.
-                    </div>
-                  </div>
-                )}
-                {!manimEditorState.rendering && manimEditorState.error && (
-                  <div style={{ flex: 1, padding: 20, overflow: 'auto' }}>
-                    <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, fontWeight: 600 }}>Render Error</div>
-                    <pre style={{ fontSize: 11, color: '#fca5a5', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0 }}>{manimEditorState.error}</pre>
-                  </div>
-                )}
-                {!manimEditorState.rendering && !manimEditorState.error && manimEditorState.rendered && (
-                  <video
-                    key={manimEditorState.rendered}
-                    src={manimEditorState.rendered}
-                    controls
-                    autoPlay
-                    loop
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', borderRadius: '0 0 12px 0' }}
-                  />
-                )}
-                {!manimEditorState.rendering && !manimEditorState.error && !manimEditorState.rendered && (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: 40, opacity: 0.3 }}>🎬</div>
-                    <div style={{ fontSize: 13 }}>Click <strong style={{ color: 'var(--text-primary)' }}>▶ Render</strong> to generate the animation</div>
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>Low quality renders in ~10–30 seconds</div>
-                  </div>
-                )}
               </div>
             </div>
           </div>

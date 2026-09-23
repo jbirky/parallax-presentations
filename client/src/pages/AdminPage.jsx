@@ -14,7 +14,6 @@ const REFRESH_MS = 60 * 1000
 const JOB_LABELS = {
   video_conversion: 'Video conversion',
   powerpoint_import: 'PowerPoint import',
-  manim_render: 'Manim render',
 }
 
 function formatBytes(bytes) {
@@ -193,7 +192,7 @@ export function AdminDashboard({ data, refreshing = false }) {
 
       <section style={styles.panel}>
         <h2 style={styles.h2}>Accounts</h2>
-        <p style={styles.sub}>Sorted by storage used · processing counts video conversion, PowerPoint import and Manim renders over the last 30 days</p>
+        <p style={styles.sub}>Sorted by storage used · processing counts video conversion and PowerPoint import over the last 30 days</p>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
             <thead>

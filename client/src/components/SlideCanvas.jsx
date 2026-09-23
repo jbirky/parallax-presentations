@@ -230,7 +230,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1027,7 +1027,6 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
               else if (element.type === 'html') onOpenHtmlEditor?.(element.id)
               else if (element.type === 'code') onOpenCodeEditor?.(element.id)
               else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
-              else if (element.type === 'manim' || element.type === 'plugin:manim') onOpenManimEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
@@ -1517,16 +1516,6 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       )}
       {element.type === 'icon' && (
         <IconRenderer element={element} />
-      )}
-
-      {element.type === 'manim' && (
-        element.rendered
-          ? <video src={element.rendered} autoPlay={element.autoplay !== false} loop={element.loop !== false} muted={element.muted !== false} controls={element.controls || false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
-          : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'rgba(255,255,255,0.5)', fontFamily: 'sans-serif' }}>
-              <div style={{ fontSize: Math.min(element.height * 0.25, 48) }}>🎬</div>
-              <div style={{ fontSize: Math.min(element.height * 0.06, 14), fontWeight: 500 }}>Manim: {element.sceneName || 'MyScene'}</div>
-              <div style={{ fontSize: Math.min(element.height * 0.05, 11), opacity: 0.6 }}>Double-click to edit & render</div>
-            </div>
       )}
 
       {element.type === 'textpath' && !isEditing && (() => {

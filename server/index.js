@@ -2069,35 +2069,6 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
   }
 })
 
-// POST /api/render-manim — proxy to manim-renderer sidecar
-app.post('/api/render-manim', express.json(), async (req, res) => {
-  const { code, sceneName, quality } = req.body || {}
-  if (!code || !sceneName) return res.status(400).json({ error: 'Missing code or sceneName' })
-
-  const rendererUrl = process.env.MANIM_RENDERER_URL || 'http://manim-renderer:5000'
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 200000) // 200s safety net
-
-  const started = Date.now()
-  try {
-    const upstream = await fetch(`${rendererUrl}/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, sceneName, quality }),
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
-    const data = await upstream.json()
-    if (upstream.ok) recordUsage(storage, { userId: req.userId, kind: 'manim_render', durationMs: Date.now() - started })
-    res.status(upstream.ok ? 200 : 500).json(data)
-  } catch (err) {
-    clearTimeout(timeout)
-    if (err.name === 'AbortError') return res.status(504).json({ error: 'Render timed out' })
-    res.status(503).json({ error: `Manim renderer unreachable: ${err.message}` })
-  }
-})
-
 // GET /api/presentations/:id/export - download HTML
 app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
   try {

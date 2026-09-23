@@ -300,11 +300,10 @@ export function generateRevealHTML(presentation) {
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
-        if (el.type === 'video' || (el.type === 'manim' && el.rendered)) {
-          const src = absoluteSrc(el.type === 'manim' ? el.rendered : el.src)
+        if (el.type === 'video') {
+          const src = absoluteSrc(el.src)
           const attrs = []
-          if (el.type === 'manim') { if (el.controls) attrs.push('controls'); if (el.autoplay !== false) attrs.push('autoplay'); if (el.loop !== false) attrs.push('loop'); if (el.muted !== false) attrs.push('muted') }
-          else { if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted') }
+          if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted')
           const posterAttr = el.poster ? ` poster="${absoluteSrc(el.poster)}"` : ''
           const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
           const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
@@ -325,7 +324,6 @@ export function generateRevealHTML(presentation) {
           if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video>${vidScript}</div>`
         }
-        if (el.type === 'manim' && !el.rendered) return '' // not yet rendered — omit from export
         if (el.type === 'audio') {
           const src = absoluteSrc(el.src)
           const attrs = ['controls']
@@ -1186,10 +1184,6 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'video') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9654; Video</div>`
-        }
-        if (el.type === 'manim') {
-          if (el.rendered) return `<div style="${style}${vis}"><video src="${absoluteSrc(el.rendered)}" autoplay loop muted style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video></div>`
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">🎬 Manim (not rendered)</div>`
         }
         if (el.type === 'audio') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9835; Audio</div>`
