@@ -118,7 +118,8 @@ async function getAdminOverview(storage, planLimits) {
         SELECT u.id, u.email, u.name, COALESCE(u.plan, 'free') AS plan, u.created_at,
                (SELECT COUNT(*) FROM presentations p WHERE p.user_id = u.id AND NOT p.is_template)::int AS presentations,
                (SELECT MAX(updated_at) FROM presentations p WHERE p.user_id = u.id) AS last_active,
-               (SELECT COALESCE(SUM(size_bytes), 0) FROM uploads up WHERE up.user_id = u.id)::bigint AS upload_bytes,
+               (SELECT COALESCE(SUM(size_bytes), 0) FROM (
+                  SELECT DISTINCT ON (storage_key) size_bytes FROM uploads up WHERE up.user_id = u.id) files)::bigint AS upload_bytes,
                (SELECT COALESCE(SUM(byte_size), 0) FROM datasets d WHERE d.user_id = u.id)::bigint AS dataset_bytes,
                ${usageCols}
           FROM users u
@@ -127,7 +128,8 @@ async function getAdminOverview(storage, planLimits) {
       ORDER BY upload_bytes + dataset_bytes DESC, created_at DESC
       LIMIT 500`),
     storage.query(`
-      SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM uploads)::bigint AS upload_bytes,
+      SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM (
+                SELECT DISTINCT ON (storage_key) size_bytes FROM uploads) files)::bigint AS upload_bytes,
              (SELECT COALESCE(SUM(byte_size), 0) FROM datasets)::bigint AS dataset_bytes`),
     hasUsage ? storage.query(`
       SELECT kind, COUNT(*)::int AS jobs, COALESCE(SUM(duration_ms), 0)::bigint AS duration_ms

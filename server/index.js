@@ -19,7 +19,7 @@ const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
-const { handleUpload: r2Upload, deleteUploadsForPresentation, sweepExpiredPresentations } = require('./services/upload-service')
+const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
@@ -1678,13 +1678,19 @@ app.get('/api/presentations/:id/uploads', async (req, res) => {
 // GET /api/uploads - list all uploaded files for the current user
 app.get('/api/uploads', async (req, res) => {
   try {
+    // A duplicated presentation has its own rows for the original's files;
+    // list each file once, under the presentation that uploaded it
     const { rows } = await storage.query(
-      `SELECT u.id, u.filename, u.content_type, u.size_bytes, u.created_at, u.presentation_id,
-              p.title as presentation_title
-       FROM uploads u
-       LEFT JOIN presentations p ON p.id = u.presentation_id
-       WHERE u.user_id = $1
-       ORDER BY u.created_at DESC`,
+      `SELECT * FROM (
+         SELECT DISTINCT ON (u.storage_key)
+                u.id, u.filename, u.content_type, u.size_bytes, u.created_at, u.presentation_id,
+                p.title as presentation_title
+           FROM uploads u
+           LEFT JOIN presentations p ON p.id = u.presentation_id
+          WHERE u.user_id = $1
+          ORDER BY u.storage_key, u.created_at
+       ) files
+       ORDER BY created_at DESC`,
       [req.userId]
     )
     res.json(rows.map(r => ({
@@ -1720,7 +1726,8 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
       if (fs.existsSync(localPath)) fs.removeSync(localPath)
     }
 
-    await storage.query('DELETE FROM uploads WHERE id = $1', [req.params.id])
+    // Deleting the file removes it from every presentation that uses it
+    await storage.query('DELETE FROM uploads WHERE user_id = $1 AND storage_key = $2', [req.userId, rows[0].storage_key])
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1960,10 +1967,7 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
 // DELETE /api/presentations/:id
 app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
-    if (isR2Enabled()) {
-      await deleteUploadsForPresentation(req.params.id, storage)
-    }
-    const deleted = await storage.deletePresentation(req.params.id, req.userId)
+    const deleted = await deletePresentationAndFiles(storage, req.params.id, req.userId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
     res.json({ success: true })
   } catch (err) {

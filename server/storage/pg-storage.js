@@ -95,7 +95,16 @@ class PgStorage extends StorageInterface {
     delete copy.id
     delete copy.createdAt
     delete copy.updatedAt
-    return this.createPresentation(copy, userId)
+    const created = await this.createPresentation(copy, userId)
+    // The copy's slides use the original's files. Its own upload rows keep
+    // those files (and their /uploads/ URLs) when the original is deleted.
+    await this.query(
+      `INSERT INTO uploads (presentation_id, user_id, filename, storage_key, content_type, size_bytes, file_hash)
+       SELECT $1, user_id, filename, storage_key, content_type, size_bytes, file_hash
+         FROM uploads WHERE presentation_id = $2`,
+      [created.id, id]
+    )
+    return created
   }
 
   // --- Templates ---

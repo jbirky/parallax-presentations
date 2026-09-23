@@ -5,7 +5,7 @@ const path = require('path')
 const fs = require('fs-extra')
 const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
-const { isR2Enabled, uploadToR2, deleteFromR2, deleteManyFromR2 } = require('./r2')
+const { isR2Enabled, uploadToR2, deleteManyFromR2 } = require('./r2')
 
 async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage, keyPrefix }) {
   const contentType = mimetype || 'application/octet-stream'
@@ -40,17 +40,26 @@ async function handleUpload(filePath, originalFilename, mimetype, { presentation
   return { url: `/uploads/${urlFilename}` }
 }
 
-async function deleteUploadsForPresentation(presentationId, storage) {
-  if (!storage || !storage.query) return
-  const { rows } = await storage.query(
-    'SELECT storage_key FROM uploads WHERE presentation_id = $1',
-    [presentationId]
-  )
-  for (const row of rows) {
-    try { await deleteFromR2(row.storage_key) } catch (e) {
-      console.error('R2 delete failed:', e.message)
-    }
-  }
+// R2 files used only by the given presentations: a file that another upload
+// row still uses (a duplicated presentation's copy, say) is left out
+const UNSHARED_KEYS_SQL = `
+  SELECT DISTINCT u.storage_key FROM uploads u
+   WHERE u.presentation_id = ANY($1::uuid[])
+     AND NOT EXISTS (
+       SELECT 1 FROM uploads o
+        WHERE o.storage_key = u.storage_key
+          AND (o.presentation_id IS NULL OR o.presentation_id <> ALL($1::uuid[])))`
+
+// Deletes a user's presentation and the R2 files only it uses. Returns false,
+// deleting nothing, when the presentation isn't theirs.
+async function deletePresentationAndFiles(storage, presentationId, userId) {
+  // Read the files first: deleting the presentation removes its upload rows
+  const withFiles = isR2Enabled() && storage.query
+  const { rows } = withFiles ? await storage.query(UNSHARED_KEYS_SQL, [[presentationId]]) : { rows: [] }
+  if (!(await storage.deletePresentation(presentationId, userId))) return false
+  const failed = await deleteManyFromR2(rows.map(r => r.storage_key))
+  if (failed.length) console.error(`R2 delete failed for ${failed.length} files of presentation ${presentationId}`)
+  return true
 }
 
 // Hard-deletes free-tier presentations that expired more than 7 days ago,
@@ -66,15 +75,7 @@ async function sweepExpiredPresentations(storage) {
     if (!rows.length) break
     const ids = rows.map(r => r.id)
     if (isR2Enabled()) {
-      const { rows: keyRows } = await storage.query(
-        `SELECT DISTINCT u.storage_key FROM uploads u
-          WHERE u.presentation_id = ANY($1::uuid[])
-            AND NOT EXISTS (
-              SELECT 1 FROM uploads o
-               WHERE o.storage_key = u.storage_key
-                 AND (o.presentation_id IS NULL OR o.presentation_id <> ALL($1::uuid[])))`,
-        [ids]
-      )
+      const { rows: keyRows } = await storage.query(UNSHARED_KEYS_SQL, [ids])
       const failed = await deleteManyFromR2(keyRows.map(r => r.storage_key))
       if (failed.length) throw new Error(`could not delete ${failed.length} R2 files; will retry`)
     }
@@ -85,4 +86,4 @@ async function sweepExpiredPresentations(storage) {
   return deleted
 }
 
-module.exports = { handleUpload, deleteUploadsForPresentation, sweepExpiredPresentations }
+module.exports = { handleUpload, deletePresentationAndFiles, sweepExpiredPresentations }
