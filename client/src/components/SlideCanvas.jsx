@@ -36,6 +36,8 @@ import { calculateGuides } from '../utils/smartGuides'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
+import { libUrl, localizeLibraries } from '../utils/libraries'
+import { tikzDiagramSvg } from '../utils/tikzDiagram'
 
 function highlightCode(code, language) {
   try {
@@ -215,7 +217,7 @@ function applyCropHandle(handle, startCrop, dx, dy, elW, elH) {
 function buildP5Srcdoc(userCode, w, h, snapKey) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script>
+<script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script>
 ${snapshotScript(snapKey)}
 </head><body><script>
 ${userCode}
@@ -230,7 +232,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1027,6 +1029,7 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
               else if (element.type === 'html') onOpenHtmlEditor?.(element.id)
               else if (element.type === 'code') onOpenCodeEditor?.(element.id)
               else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
+              else if (element.type === 'tikz') onOpenTikzEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
@@ -1431,7 +1434,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'html' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}`}
-          srcDoc={buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
+          srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="HTML embed"
@@ -1440,7 +1443,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'p5' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}-${element.content}`}
-          srcDoc={buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
+          srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="p5.js sketch"
@@ -1501,6 +1504,10 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       )}
       {element.type === 'latex' && (
         <LatexRenderer element={element} isSelected={isSelected} />
+      )}
+      {element.type === 'tikz' && (
+        <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+          dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(element) }} />
       )}
       {element.type === 'markdown' && (
         <MarkdownRenderer element={element} />
@@ -1867,7 +1874,7 @@ function ChartRenderer({ element, isSelected }) {
 
   const chartHtml = `<!doctype html><html><head>
 <meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\/script>
+<script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script>
 <style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style>
 </head><body>
 <canvas id="c" style="width:100%;height:100%"></canvas>
@@ -1896,7 +1903,7 @@ new Chart(document.getElementById('c'),{
 
   return (
     <iframe
-      srcDoc={chartHtml}
+      srcDoc={localizeLibraries(chartHtml)}
       style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
       sandbox="allow-scripts"
       title="Chart"
@@ -2062,7 +2069,7 @@ function LatexRenderer({ element, isSelected }) {
   const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize)
   return (
     <iframe
-      srcDoc={html}
+      srcDoc={localizeLibraries(html)}
       style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
       sandbox="allow-scripts"
       title="LaTeX / TikZ"

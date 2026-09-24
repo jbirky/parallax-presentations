@@ -35,6 +35,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 const DOCS_BASE = '/#docs/tutorials/'
 const DocsLink = ({ page, onClose }) => (
@@ -69,7 +70,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddChart, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddChart, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -103,13 +104,13 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       if (!window.pdfjsLib) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script')
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+          s.src = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.js'))
           s.onload = resolve
           s.onerror = reject
           document.head.appendChild(s)
         })
         window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
       }
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -361,6 +362,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button onClick={() => { setShowEmbedMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
+            </button>
+            <button onClick={() => { setShowEmbedMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
             </button>
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button onClick={() => { setShowEmbedMenu(false); onAddAnime?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>

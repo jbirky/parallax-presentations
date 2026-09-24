@@ -38,6 +38,7 @@ import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
+import TikzEditorModal from '../components/TikzEditorModal'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -59,6 +60,7 @@ import atomOneLightCSS from '../../../node_modules/highlight.js/styles/atom-one-
 import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?raw'
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -283,6 +285,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showThreeModal, setShowThreeModal] = useState(false)
   const [showBibliographyModal, setShowBibliographyModal] = useState(false)
   const [showDiagramModal, setShowDiagramModal] = useState(false)
+  const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -728,7 +731,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   <p>Edit this content</p>
 </div>`
 
-  const DEFAULT_D3 = `<script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
+  const DEFAULT_D3 = `<script src="${libUrl('d3', 'dist/d3.min.js')}"><\/script>
 <style>* { box-sizing: border-box; margin: 0; } body { background: transparent; overflow: hidden; }</style>
 <svg id="viz" width="100%" height="100%" style="display:block;"></svg>
 <script>
@@ -955,6 +958,47 @@ function draw() {
     updateElement(latexEditorState.elementId, { content: latexEditorState.content })
     setLatexEditorState(null)
   }, [latexEditorState, updateElement])
+
+  // Opens the TikZ diagram editor on a canvas as dark or light as the slide,
+  // so the diagram looks there as it will on the slide
+  const slideIsDark = useCallback(() => {
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    const bg = slide?.background
+    if (bg?.type === 'color' && /^#[0-9a-f]{6}$/i.test(bg.color || '')) {
+      const [r, g, b] = [1, 3, 5].map(i => parseInt(bg.color.slice(i, i + 2), 16))
+      return 0.299 * r + 0.587 * g + 0.114 * b < 140
+    }
+    if (bg?.type === 'image' || bg?.type === 'gradient') return true
+    return !['white', 'beige', 'simple', 'serif', 'sky', 'solarized'].includes(presentation?.theme)
+  }, [presentation])
+
+  const openTikzEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'tikz') return
+    setTikzEditor({ elementId, state: element.editorState || null, dark: slideIsDark() })
+  }, [presentation, slideIsDark])
+
+  const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
+    const elementId = tikzEditor?.elementId
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      updateElement(elementId, { editorState: state, tikz, svg, height: Math.round((element?.width || width) * height / width) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / width, (slideH * 0.6) / height)
+      const w = Math.round(width * scale), h = Math.round(height * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'tikz', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, editorState: state, tikz, svg,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setTikzEditor(null)
+  }, [tikzEditor, presentation, updateElement, slideW, slideH])
 
   const addMarkdownElement = useCallback(() => {
     const newEl = {
@@ -3250,6 +3294,7 @@ function draw() {
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddDiagram={() => setShowDiagramModal(true)}
+            onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
             onAddP5={addP5Element}
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
@@ -3413,6 +3458,7 @@ function draw() {
               onOpenP5Editor={openP5Editor}
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
+              onOpenTikzEditor={openTikzEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -3445,6 +3491,7 @@ function draw() {
           onEditP5={() => selectedElementId && openP5Editor(selectedElementId)}
           onEditCode={() => selectedElementId && openCodeEditor(selectedElementId)}
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
+          onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -3530,7 +3577,7 @@ function draw() {
                 <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>Preview</div>
                 <iframe
                   key={p5EditorState.content}
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`}
+                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`)}
                   style={{ flex: 1, border: 'none', display: 'block' }}
                   sandbox="allow-scripts"
                   title="p5.js preview"
@@ -3791,6 +3838,15 @@ function draw() {
             setShowDiagramModal(false)
           }}
           onClose={() => setShowDiagramModal(false)}
+        />
+      )}
+
+      {tikzEditor && (
+        <TikzEditorModal
+          initialState={tikzEditor.state}
+          dark={tikzEditor.dark}
+          onSave={saveTikzDiagram}
+          onClose={() => setTikzEditor(null)}
         />
       )}
 

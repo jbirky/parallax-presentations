@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { api } from '../utils/api'
+import { formatSize, planSummary } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -65,15 +66,6 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
-
-  async function handleUpgrade() {
-    try {
-      const data = await api.createCheckout()
-      if (data.url) window.location.href = data.url
-    } catch (err) {
-      console.error('Checkout error:', err)
-    }
-  }
 
   const [showForkModal, setShowForkModal] = useState(false)
   const [forkUrl, setForkUrl] = useState('')
@@ -151,26 +143,31 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [showBillingModal, setShowBillingModal] = useState(false)
   const [billingStatus, setBillingStatus] = useState(null)
   const [billingLoading, setBillingLoading] = useState(false)
+  const [plansForSale, setPlansForSale] = useState([])
 
   async function openBillingModal() {
     setShowBillingModal(true)
     setBillingLoading(true)
-    try {
-      const status = await api.getBillingStatus()
-      setBillingStatus(status)
-    } catch { setBillingStatus(null) }
+    const [status, listed] = await Promise.all([
+      api.getBillingStatus().catch(() => null),
+      api.getPlans().catch(() => null),
+    ])
+    setBillingStatus(status)
+    setPlansForSale((listed?.plans || []).filter(p => p.purchasable))
     setBillingLoading(false)
   }
 
-  async function handleUpgradeFromModal() {
+  async function handleUpgrade(planId) {
     try {
-      const data = await api.createCheckout()
+      const data = await api.createCheckout(planId)
       if (data.url) window.location.href = data.url
-    } catch (err) { console.error('Checkout error:', err) }
+    } catch (err) {
+      alert(err.message || 'Could not start checkout')
+    }
   }
 
   async function handleCancelSubscription() {
-    if (!confirm('Cancel your Pro subscription? You\'ll keep access until the end of your billing period.')) return
+    if (!confirm(`Cancel your ${planInfo?.planName || ''} subscription? You'll keep access until the end of your billing period.`)) return
     try {
       const result = await api.cancelSubscription()
       setBillingStatus(prev => ({ ...prev, cancelAtPeriodEnd: true, currentPeriodEnd: result.cancelAt }))
@@ -380,11 +377,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
             borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)',
           }}>
-            You've reached the {planInfo.limits.maxPresentations}-presentation limit on the Free plan.
+            You've reached the {planInfo.limits.maxPresentations}-presentation limit on the {planInfo.planName} plan.
             {planInfo.limits.expirationDays && ` Presentations expire after ${planInfo.limits.expirationDays} days.`}
             {planInfo.billing && (
-              <button onClick={handleUpgrade} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                Upgrade to Pro — $5/mo
+              <button onClick={openBillingModal} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                See plans
               </button>
             )}
           </div>
@@ -889,24 +886,14 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     <span style={{ fontSize: 14, fontWeight: 600 }}>Current plan</span>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase',
-                      background: planInfo?.plan === 'pro' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.08)',
-                      color: planInfo?.plan === 'pro' ? '#818cf8' : 'var(--text-muted)',
-                    }}>{planInfo?.plan || 'free'}</span>
+                      background: planInfo?.plan !== 'free' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.08)',
+                      color: planInfo?.plan !== 'free' ? '#818cf8' : 'var(--text-muted)',
+                    }}>{planInfo?.planName || planInfo?.plan || 'Free'}</span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    {planInfo?.plan === 'free' ? (
-                      <>
-                        <div>{planInfo.limits?.maxPresentations || 3} presentations, 100 MB storage</div>
-                        <div>Presentations expire after {planInfo.limits?.expirationDays || 30} days</div>
-                      </>
-                    ) : (
-                      <>
-                        <div>Unlimited presentations, 5 GB storage</div>
-                        <div>No expiration</div>
-                      </>
-                    )}
+                    {planSummary(planInfo?.limits).map(line => <div key={line}>{line}</div>)}
                   </div>
-                  {planInfo?.plan !== 'free' && billingStatus?.currentPeriodEnd && (
+                  {billingStatus?.active && billingStatus.currentPeriodEnd && (
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
                       {billingStatus.cancelAtPeriodEnd
                         ? `Cancels on ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}`
@@ -926,18 +913,24 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span>Storage</span>
-                      <span>{((planInfo?.storageUsed || 0) / 1024 / 1024).toFixed(1)} MB{planInfo?.limits?.storageBytes ? ` / ${(planInfo.limits.storageBytes / 1024 / 1024 / 1024).toFixed(0)} GB` : ''}</span>
+                      <span>{formatBytes(planInfo?.storageUsed || 0)}{planInfo?.limits?.storageBytes ? ` / ${formatSize(planInfo.limits.storageBytes)}` : ''}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Actions */}
+                {!billingStatus?.active && plansForSale.some(p => p.id !== planInfo?.plan) && (
+                  <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
+                    {plansForSale.filter(p => p.id !== planInfo?.plan).map(p => (
+                      <button key={p.id} onClick={() => handleUpgrade(p.id)} title={planSummary(p).join(' · ')}
+                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                        Upgrade to {p.name}{p.priceLabel ? ` — ${p.priceLabel}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {planInfo?.plan === 'free' ? (
-                    <button onClick={handleUpgradeFromModal} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                      Upgrade to Pro — $5/mo
-                    </button>
-                  ) : billingStatus?.cancelAtPeriodEnd ? (
+                  {!billingStatus?.active ? null : billingStatus.cancelAtPeriodEnd ? (
                     <button onClick={handleResumeSubscription} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                       Resume subscription
                     </button>

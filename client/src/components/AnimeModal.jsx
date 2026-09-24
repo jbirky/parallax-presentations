@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useMemo } from 'react'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
-const ANIME_CDN = 'https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js'
+const ANIME_CDN = libUrl('animejs', 'lib/anime.min.js')
 
 const TEMPLATES = [
   { id: 'scatter-dots', name: 'Scatter Dots', desc: 'Dots scatter from center then reform into a pattern' },
@@ -273,7 +274,7 @@ export default function AnimeModal({ onInsert, onClose, slideW, slideH }) {
             <div style={{ padding: 12, flex: 1, minHeight: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a14' }}>
               <iframe
                 key={previewKey}
-                srcDoc={previewHtml}
+                srcDoc={localizeLibraries(previewHtml)}
                 style={{ width: (slideW || 960) * 0.55, height: (slideH || 540) * 0.55, border: '1px solid #333', borderRadius: 6, background: params.bg !== 'transparent' ? params.bg : '#0a0a14' }}
                 sandbox="allow-scripts"
                 title="Anime.js preview"

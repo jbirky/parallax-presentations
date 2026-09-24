@@ -3,6 +3,7 @@
 
 import { useState, useMemo } from 'react'
 import { Bold, Italic, Underline, Code2 } from 'lucide-react'
+import { localizeLibraries } from '../utils/libraries'
 
 const FONTS = [
   "'Barlow', sans-serif",
@@ -357,7 +358,7 @@ export default function KineticTextModal({ onInsert, onClose, slideW = 960, slid
             <div style={{ padding: 12, flex: 1, minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
               <iframe
                 key={previewKey}
-                srcDoc={previewHtml}
+                srcDoc={localizeLibraries(previewHtml)}
                 style={{ width: slideW * 0.55, height: slideH * 0.55, border: '1px solid #333', borderRadius: 6, background: '#000' }}
                 sandbox="allow-scripts"
                 title="Kinetic text preview"

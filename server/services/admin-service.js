@@ -5,6 +5,7 @@
 // container's CPU and memory.
 
 const fs = require('fs')
+const { listPlans, assignablePlans, toJSON } = require('./plans')
 
 // ── Container CPU and memory ────────────────────────────────────────────────
 // Read from this container's own cgroup (v2), so no Docker access is needed.
@@ -116,6 +117,7 @@ async function getAdminOverview(storage, planLimits) {
     storage.query(`
       SELECT * FROM (
         SELECT u.id, u.email, u.name, COALESCE(u.plan, 'free') AS plan, u.created_at,
+               u.stripe_subscription_id IS NOT NULL AS has_subscription,
                (SELECT COUNT(*) FROM presentations p WHERE p.user_id = u.id AND NOT p.is_template)::int AS presentations,
                (SELECT MAX(updated_at) FROM presentations p WHERE p.user_id = u.id) AS last_active,
                (SELECT COALESCE(SUM(size_bytes), 0) FROM (
@@ -149,6 +151,7 @@ async function getAdminOverview(storage, planLimits) {
     generatedAt: new Date().toISOString(),
     accounts: { total: t.accounts, new30d: t.new_30d, new7d: t.new_7d, byPlan: t.by_plan },
     guestsActive: guests ? guests.rows[0].active : null,
+    plans: listPlans().map(plan => ({ ...toJSON(plan), assignable: assignablePlans().includes(plan.id) })),
     signupsByWeek: weekly.rows.map(r => ({ weekStart: r.week_start, signups: r.signups })),
     storage: {
       uploadBytes: Number(storageTotals.rows[0].upload_bytes),
@@ -159,6 +162,7 @@ async function getAdminOverview(storage, planLimits) {
       email: r.email,
       name: r.name || '',
       plan: r.plan,
+      hasSubscription: r.has_subscription,
       createdAt: r.created_at,
       lastActive: r.last_active,
       presentations: r.presentations,
@@ -178,4 +182,29 @@ async function getAdminOverview(storage, planLimits) {
   }
 }
 
-module.exports = { startSystemSampling, recordUsage, getAdminOverview }
+// ── Plans ───────────────────────────────────────────────────────────────────
+
+// Puts an account on `plan`. On a plan whose presentations don't expire, its
+// existing presentations stop expiring, so the sweeper won't delete them.
+// Moving to one that does leaves existing presentations as they are, as a
+// cancelled subscription does. Returns null when there's no such account.
+async function setUserPlan(storage, planLimits, userId, plan) {
+  const { rows } = await storage.query(`
+    WITH target AS (
+      SELECT u.id, COALESCE(u.plan, 'free') AS plan, u.auth_id, u.stripe_subscription_id IS NOT NULL AS has_subscription
+        FROM users u WHERE u.id = $1 AND ${ACCOUNT} FOR UPDATE
+    ), changed AS (
+      UPDATE users u SET plan = $2 FROM target WHERE u.id = target.id RETURNING u.id
+    ), unexpired AS (
+      UPDATE presentations SET expires_at = NULL
+       WHERE $3::boolean AND expires_at IS NOT NULL AND user_id IN (SELECT id FROM changed) RETURNING id
+    )
+    SELECT plan, auth_id, has_subscription, (SELECT COUNT(*) FROM unexpired)::int AS unexpired FROM target`,
+    [userId, plan, !planLimits[plan].expirationDays]
+  )
+  if (!rows.length) return null
+  const r = rows[0]
+  return { previousPlan: r.plan, plan, authId: r.auth_id, hasSubscription: r.has_subscription, unexpired: r.unexpired }
+}
+
+module.exports = { startSystemSampling, recordUsage, getAdminOverview, setUserPlan }

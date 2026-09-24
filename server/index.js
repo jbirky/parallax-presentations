@@ -20,18 +20,24 @@ const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
+const { libUrl, localizeLibraries } = require('./services/libraries')
+const { tikzDiagramSvg } = require('./services/tikz-diagram')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
 } = require('./services/guest-service')
-const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
+const { startSystemSampling, recordUsage, getAdminOverview, setUserPlan } = require('./services/admin-service')
+const {
+  loadPlans, listPlans, planFor, assignablePlans, purchasablePlans, toJSON: planJSON,
+  PlanError, createPlan, updatePlan, deletePlan,
+} = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
-  requireValidId, requireValidSlug, requireValidSHA, validateUpload,
+  requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
   safeErrorMessage,
 } = require('./middleware/security')
@@ -73,7 +79,9 @@ const stripeService = require('./services/stripe')
 if (stripeService.isEnabled()) {
   app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-      await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
+      const { planChangedFor } = await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
+      // Their next request reads the new plan instead of the cached one
+      for (const authId of planChangedFor) provisionCache.delete(authId)
       res.json({ received: true })
     } catch (err) {
       console.error('Stripe webhook error:', err.message)
@@ -217,10 +225,13 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
 // In self-hosted mode, sets req.userId = null (no-op)
 authStack().forEach(mw => app.use(mw))
 
+// Signed-in users' account id and plan by Clerk ID, for CACHE_TTL. A plan
+// change, from an admin or a Stripe webhook, drops the account's entry.
+const provisionCache = new Map()
+
 // User provisioning (cloud mode only): maps Clerk auth ID → internal UUID.
 // On first authenticated request, creates a row in the users table.
 if (IS_CLOUD) {
-  const provisionCache = new Map()
   const CACHE_TTL = 5 * 60 * 1000
   let clerkClient = null
   try { clerkClient = require('@clerk/express').clerkClient } catch {}
@@ -324,6 +335,22 @@ if (IS_CLOUD) {
   app.post('/api/guest/activity', (req, res) => res.status(204).end())
 }
 
+// GET /api/plans — the listed plans, for pricing and upgrade options, each
+// marked purchasable when billing is on and it has a Stripe price. Public, so
+// it can be shown before anyone signs in.
+if (IS_CLOUD) {
+  app.get('/api/plans', (req, res) => {
+    const billing = stripeService.isEnabled()
+    res.json({
+      billing,
+      plans: listPlans().filter(p => p.public).map(p => {
+        const { stripePriceId, public: _public, sortOrder, ...shown } = planJSON(p)
+        return { ...shown, purchasable: billing && !!stripePriceId }
+      }),
+    })
+  })
+}
+
 // Protect all /api routes in cloud mode
 app.use('/api', requireUser)
 app.use('/api', apiLimiter)
@@ -331,8 +358,7 @@ app.use('/api', apiLimiter)
 // Plan quota check helper
 async function checkPresentationQuota(req, res) {
   if (!IS_CLOUD || !req.userId) return true
-  const plan = req.userPlan || 'free'
-  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+  const limits = planFor(req.userPlan)
   if (limits.maxPresentations === Infinity) return true
   const { rows } = await storage.query(
     'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
@@ -341,9 +367,9 @@ async function checkPresentationQuota(req, res) {
   if (rows[0].count >= limits.maxPresentations) {
     res.status(403).json({
       error: 'presentation_limit_reached',
-      message: plan === 'guest'
+      message: limits.id === 'guest'
         ? 'Guest mode is limited to one presentation.'
-        : `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
+        : `The ${limits.name} plan is limited to ${limits.maxPresentations} presentations.`,
       limit: limits.maxPresentations, current: rows[0].count,
     })
     return false
@@ -355,20 +381,21 @@ async function checkPresentationQuota(req, res) {
 app.get('/api/me', async (req, res) => {
   if (!IS_CLOUD) return res.json({ plan: null, presentationCount: 0, limits: null })
   try {
-    const plan = req.userPlan || 'free'
-    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+    const limits = planFor(req.userPlan)
     const { rows } = await storage.query(
       'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
       [req.userId]
     )
     res.json({
-      plan,
+      plan: limits.id,
+      planName: limits.name,
       presentationCount: rows[0].count,
       storageUsed: await storageUsedBytes(storage, req.userId),
       limits: {
         maxPresentations: limits.maxPresentations === Infinity ? null : limits.maxPresentations,
         expirationDays: limits.expirationDays,
         storageBytes: limits.storageBytes,
+        maxFileBytes: limits.maxFileBytes,
       },
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
@@ -381,7 +408,7 @@ app.get('/api/me', async (req, res) => {
 app.get('/api/admin/overview', async (req, res) => {
   if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
   try {
-    res.json(await getAdminOverview(storage, PLAN_LIMITS))
+    res.json({ ...await getAdminOverview(storage, PLAN_LIMITS), billingEnabled: stripeService.isEnabled() })
   } catch (err) {
     console.error('Admin overview error:', err.message)
     res.status(500).json({ error: err.message })
@@ -402,15 +429,73 @@ app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
   }
 })
 
+// POST /api/admin/users/:id/plan — puts an account on another plan, given as
+// { plan }. Not found for anyone who isn't an admin.
+app.post('/api/admin/users/:id/plan', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+  const plan = req.body?.plan
+  if (!assignablePlans().includes(plan)) return res.status(400).json({ error: 'Unknown plan' })
+  try {
+    const result = await setUserPlan(storage, PLAN_LIMITS, req.params.id, plan)
+    if (!result) return res.status(404).json({ error: 'Account not found' })
+    // Their next request reads the new plan instead of the cached one
+    if (result.authId) provisionCache.delete(result.authId)
+    console.log(`Admin moved account ${req.params.id} from ${result.previousPlan} to ${plan}`)
+    res.json({ previousPlan: result.previousPlan, plan, hasSubscription: result.hasSubscription, unexpired: result.unexpired })
+  } catch (err) {
+    console.error('Plan change error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Plans: POST /api/admin/plans adds one, PUT /api/admin/plans/:id saves one
+// and DELETE /api/admin/plans/:id removes one no account is on. Not found for
+// anyone who isn't an admin.
+function planRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof PlanError) return res.status(err.status).json({ error: err.message })
+      console.error('Plan edit error:', err.message)
+      res.status(500).json({ error: err.message })
+    }
+  }
+}
+
+app.post('/api/admin/plans', planRoute(async (req, res) => {
+  const plan = await createPlan(storage, req.body || {})
+  console.log(`Admin added plan ${plan.id}`)
+  res.status(201).json({ plan: planJSON(plan) })
+}))
+
+app.put('/api/admin/plans/:id', planRoute(async (req, res) => {
+  const { plan, unexpired } = await updatePlan(storage, req.params.id, req.body || {})
+  console.log(`Admin saved plan ${plan.id}${unexpired ? `; ${unexpired} presentations stopped expiring` : ''}`)
+  res.json({ plan: planJSON(plan), unexpired })
+}))
+
+app.delete('/api/admin/plans/:id', planRoute(async (req, res) => {
+  await deletePlan(storage, req.params.id)
+  console.log(`Admin deleted plan ${req.params.id}`)
+  res.json({ success: true })
+}))
+
 // ---- Billing API ----
 if (IS_CLOUD && stripeService.isEnabled()) {
+  // Body: { plan }, one of the plans for sale
   app.post('/api/billing/checkout', authLimiter, requireUser, async (req, res) => {
     try {
+      const plan = purchasablePlans().find(p => p.id === req.body?.plan)
+      if (!plan) return res.status(400).json({ error: 'That plan isn’t for sale' })
+      if (plan.id === req.userPlan) return res.status(400).json({ error: 'You’re already on that plan' })
       const { rows } = await storage.query('SELECT email, name FROM users WHERE id = $1', [req.userId])
       if (!rows[0]) return res.status(404).json({ error: 'User not found' })
       const baseUrl = req.headers.origin || 'https://parallax-presentations.com'
       const session = await stripeService.createCheckoutSession(
-        storage, req.userId, rows[0].email, rows[0].name,
+        storage, req.userId, rows[0].email, rows[0].name, plan,
         `${baseUrl}/dashboard?billing=success`,
         `${baseUrl}/dashboard?billing=cancel`
       )
@@ -654,6 +739,9 @@ function generateRevealHTML(presentation, opts = {}) {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
           return `<div${fragClass}${fragIdx} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
         }
+        if (el.type === 'tikz') {
+          return `<div${fragClass}${fragIdx} style="${style}">${tikzDiagramSvg(el)}</div>`
+        }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -665,7 +753,7 @@ function generateRevealHTML(presentation, opts = {}) {
           return `<div${fragClass}${fragIdx} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
         }
         if (el.type === 'markdown') {
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('marked', 'lib/marked.umd.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
           const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -739,7 +827,7 @@ function generateRevealHTML(presentation, opts = {}) {
             borderWidth: chartType === 'line' ? 2 : 0, fill: chartType === 'line' ? false : undefined,
           })))
           const scalesOpt = chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`
-          const chartSrc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style></head><body><canvas id="c" style="width:100%;height:100%"></canvas><script>new Chart(document.getElementById('c'),{type:'${chartType}',data:{labels:${labels},datasets:${datasets}},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},scales:${scalesOpt}}});<\/script></body></html>`
+          const chartSrc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style></head><body><canvas id="c" style="width:100%;height:100%"></canvas><script>new Chart(document.getElementById('c'),{type:'${chartType}',data:{labels:${labels},datasets:${datasets}},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},scales:${scalesOpt}}});<\/script></body></html>`
           const escaped = chartSrc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -770,7 +858,7 @@ function generateRevealHTML(presentation, opts = {}) {
           if (hasTable) {
             const wrapped = content.includes('\\begin{document}') ? content
               : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/latex.js"><\/script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/base.css"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\/span>'}<\/script></body></html>`
+            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script><link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\/span>'}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
             return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
@@ -996,22 +1084,22 @@ function generateRevealHTML(presentation, opts = {}) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(presentation.title || 'Presentation')}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${theme}.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/${codeTheme}.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
+  <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
+  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
+  <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts.css">
+  <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFonts.filter(f => f.source === 'google' && f.url).map(f => `\n  <link rel="stylesheet" href="${f.url}">`).join('')}
   <style>${customFonts.filter(f => f.source === 'upload' && f.url).map(f => `\n    @font-face { font-family: '${f.familyName}'; src: url('${f.url}'); }`).join('')}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-regular.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-regular.woff') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-bold.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-bold.woff') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-italic.woff2') format('woff2'), url('https://cdn.jsdelivr.net/npm/lm-web-fonts@0.1.0/fonts/lm-roman10-italic.woff') format('woff'); }
+    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
+    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
+    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
     html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
     /* Override reveal.js theme CSS variables to match editor */
     :root { --r-main-font-size: 42px; --r-block-margin: 0px; --r-heading-margin: 0 0 0.4em 0; --r-heading-text-transform: none; --r-heading-letter-spacing: normal; }
@@ -1106,11 +1194,11 @@ ${slidesHtml}
   <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${presentation.overviewLayout || 'linear'}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="${libUrl('reveal.js', 'dist/reveal.js')}"></script>
+  <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
+  <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
+  <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
+  <script src="${libUrl('gsap', 'dist/gsap.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = '${transition}';
@@ -1474,7 +1562,7 @@ function escapeHtml(str) {
 // GET /api/presentations - list summaries
 app.get('/api/presentations', async (req, res) => {
   try {
-    const excludeExpired = IS_CLOUD && (req.userPlan || 'free') === 'free'
+    const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
     res.json(await storage.listPresentations(req.userId, { excludeExpired }))
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1554,8 +1642,7 @@ app.post('/api/presentations', async (req, res) => {
       }
     }
 
-    const plan = req.userPlan || 'free'
-    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+    const limits = planFor(req.userPlan)
     const expiresAt = limits.expirationDays
       ? new Date(Date.now() + limits.expirationDays * 86400000).toISOString()
       : null
@@ -1712,7 +1799,7 @@ app.get('/api/uploads', async (req, res) => {
 app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
   try {
     const { rows } = await storage.query(
-      'SELECT id, storage_key, size_bytes FROM uploads WHERE id = $1 AND user_id = $2',
+      'SELECT id, filename, storage_key, size_bytes FROM uploads WHERE id = $1 AND user_id = $2',
       [req.params.id, req.userId]
     )
     if (!rows.length) return res.status(404).json({ error: 'File not found' })
@@ -1728,6 +1815,11 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
 
     // Deleting the file removes it from every presentation that uses it
     await storage.query('DELETE FROM uploads WHERE user_id = $1 AND storage_key = $2', [req.userId, rows[0].storage_key])
+    // A font's file: the font goes too, rather than staying listed without it
+    if (rows[0].filename.startsWith('fonts/')) {
+      await storage.query('DELETE FROM user_fonts WHERE user_id = $1 AND url = $2',
+        [req.userId, `/api/fonts/file/${rows[0].filename.slice('fonts/'.length)}`])
+    }
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1953,13 +2045,32 @@ app.post('/api/fonts/google', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// DELETE /api/fonts/:id - remove a custom font
+// Deletes an uploaded font's file, found from its URL: /api/fonts/file/<name>
+// is in R2 with an uploads row (which is what counts it toward storage), and
+// /uploads/fonts/<name> is on disk
+async function deleteFontFile(url, userId) {
+  const name = path.basename(url || '')
+  if (!name) return
+  if (url.startsWith('/api/fonts/file/')) {
+    const { rows } = await storage.query(
+      'DELETE FROM uploads WHERE user_id = $1 AND filename = $2 RETURNING storage_key', [userId, `fonts/${name}`]
+    )
+    for (const { storage_key } of rows) {
+      try { await deleteFromR2(storage_key) } catch (e) { console.error('R2 delete failed:', e.message) }
+    }
+  } else if (url.startsWith('/uploads/fonts/')) {
+    fs.removeSync(path.join(UPLOADS_DIR, 'fonts', name))
+  }
+}
+
+// DELETE /api/fonts/:id - remove a custom font, and an uploaded one's file
 app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
   try {
-    const { rowCount } = await storage.query(
-      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]
+    const { rows } = await storage.query(
+      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2 RETURNING source, url', [req.params.id, req.userId]
     )
-    if (!rowCount) return res.status(404).json({ error: 'Font not found' })
+    if (!rows.length) return res.status(404).json({ error: 'Font not found' })
+    if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
@@ -2115,7 +2226,7 @@ app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => 
   try {
     const presentation = await storage.getPresentation(req.params.id, req.userId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = generateRevealHTML(presentation)
+    const html = localizeLibraries(generateRevealHTML(presentation))
     res.setHeader('Content-Type', 'text/html')
     res.send(html)
   } catch (err) {
@@ -2171,7 +2282,7 @@ app.get('/share/:token', requireValidId('token'), async (req, res) => {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    const html = generateRevealHTML(presentation)
+    const html = localizeLibraries(generateRevealHTML(presentation))
     res.setHeader('Content-Type', 'text/html')
     res.send(html)
   } catch (err) {
@@ -2298,7 +2409,7 @@ app.get('/live/:id', async (req, res) => {
     const presentation = await storage.getPresentation(session.presentationId, session.userId)
     if (!presentation) return res.status(404).send('Presentation not found')
 
-    const baseHtml = generateRevealHTML(presentation)
+    const baseHtml = localizeLibraries(generateRevealHTML(presentation))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────
@@ -3221,8 +3332,9 @@ app.post('/api/presentations/fork', async (req, res) => {
       elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
     }))
 
-    const expiresAt = IS_CLOUD && req.userPlan === 'free'
-      ? new Date(Date.now() + (PLAN_LIMITS.free.expirationDays || 30) * 86400000).toISOString()
+    const { expirationDays } = planFor(req.userPlan)
+    const expiresAt = IS_CLOUD && expirationDays
+      ? new Date(Date.now() + expirationDays * 86400000).toISOString()
       : null
     const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
 
@@ -3301,6 +3413,8 @@ if (process.env.NODE_ENV === 'production') {
     clientDist = path.join(process.resourcesPath, 'client', 'dist')
   }
   if (fs.existsSync(clientDist)) {
+    // Bundled libraries: each path names its version, so they never change
+    app.use('/vendor', express.static(path.join(clientDist, 'vendor'), { immutable: true, maxAge: '1y', fallthrough: false }))
     app.use(express.static(clientDist))
     app.get('*', (req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'))
@@ -3315,8 +3429,12 @@ app.use((err, req, res, _next) => {
 })
 
 // When required as a module (Electron), export startServer. Otherwise start directly.
-function startServer(port) {
+async function startServer(port) {
   const p = port || PORT
+  // Until they load, the built-in plans apply
+  if (IS_CLOUD) {
+    try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
+  }
   return new Promise((resolve) => {
     const server = app.listen(p, () => {
       console.log(`Server running on http://localhost:${p}`)

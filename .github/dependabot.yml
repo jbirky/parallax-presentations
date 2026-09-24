@@ -1,0 +1,38 @@
+# Pull requests against dev when the libraries presentations load (the ones
+# in server/vendor-libraries.js) have new releases. Merging one is the whole
+# upgrade: the build bundles the new version and exports link to it. CI's
+# tests fail if a release moved a file the list names.
+#
+# Bug-fix and feature releases come grouped, once a week. New major versions
+# (and three.js 0.x releases, which change its API) come one pull request
+# each, because users' own embed code loads these libraries and may need
+# changes: check the release notes before merging, or close the pull request
+# to skip that version.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: reveal.js
+      - dependency-name: katex
+      - dependency-name: "@highlightjs/cdn-assets"
+      - dependency-name: gsap
+      - dependency-name: p5
+      - dependency-name: marked
+      - dependency-name: chart.js
+      - dependency-name: d3
+      - dependency-name: three
+      - dependency-name: animejs
+      - dependency-name: latex.js
+      - dependency-name: pdfjs-dist
+      - dependency-name: jsxgraph
+    groups:
+      bundled-libraries:
+        patterns: ["*"]
+        exclude-patterns: [three]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "Update bundled libraries:"

@@ -6,6 +6,7 @@ import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download
 import { shapeSvgString } from '../utils/shapeUtils'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
+import { tikzDiagramSvg } from '../utils/tikzDiagram'
 
 const THUMB_W = 150
 
@@ -82,6 +83,9 @@ function SlideThumbnail({ slide, slideW, slideH }) {
               {el.type === 'shape' && (
                 <div style={{ width: '100%', height: '100%', position: 'relative', opacity: el.opacity ?? 1 }}
                   dangerouslySetInnerHTML={{ __html: shapeSvgString(el) }} />
+              )}
+              {el.type === 'tikz' && (
+                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(el) }} />
               )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>

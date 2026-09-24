@@ -1,0 +1,3388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!--
+  SPDX-License-Identifier: AGPL-3.0-or-later
+  Copyright (c) 2026 Jessica Birky
+
+  TikZ Diagram Editor, also at https://jessicabirky.com/tikz_editor/. Parallax
+  runs it in a frame (client/src/components/TikzEditorModal.jsx) through
+  window.tikzEditorApi; on its own it works as a standalone page.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikZ Diagram Editor</title>
+<!-- KaTeX for math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<!-- svgcanvas records canvas drawing as vector SVG, for buildSVG() -->
+<script type="module">
+  import { Context } from "https://cdn.jsdelivr.net/npm/svgcanvas@2.6.0/dist/svgcanvas.esm.js";
+  window.SvgCanvasContext = Context;
+</script>
+<style>
+  /* In Parallax the diagram is saved with the slide, not as a JSON file */
+  body.embedded [onclick="saveJSON()"], body.embedded [onclick="loadJSON()"] { display: none; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #252526;
+    color: #ccc;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Toolbar */
+  .toolbar {
+    width: 160px;
+    min-width: 160px;
+    background: #252526;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow-y: auto;
+  }
+  .toolbar h1 {
+    font-size: 13px;
+    text-align: center;
+    padding: 14px 0;
+    color: #ccc;
+  }
+  .toolbar .sep { height: 1px; background: #444; margin: 4px 6px; }
+  .toolbar .section-label {
+    font-size: 9px;
+    color: #888;
+    padding: 6px 12px 2px;
+    letter-spacing: 1px;
+  }
+  .toolbar button {
+    display: block;
+    width: calc(100% - 12px);
+    margin: 1px 6px;
+    padding: 8px 12px;
+    background: #3c3c3c;
+    color: #ccc;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .toolbar button:hover { background: #4a4a4a; }
+  .toolbar button.active { background: #0078d4; color: white; }
+  .toolbar button.danger { background: #8b1a1a; }
+  .toolbar button.danger:hover { background: #a52a2a; }
+  .toolbar button.copy-btn { background: #1a472a; }
+  .toolbar button.copy-btn:hover { background: #2d6a3f; }
+  .toolbar button.clear-btn { background: #4a1e1e; }
+  .toolbar button.clear-btn:hover { background: #6b2d2d; }
+
+  /* Right panel */
+  .right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Canvas area */
+  .canvas-wrap {
+    flex: 3;
+    overflow: auto;
+    background: #333;
+    margin: 1px;
+    position: relative;
+  }
+  .canvas-inner {
+    position: relative;
+    width: 3000px;
+    height: 2000px;
+  }
+  canvas {
+    display: block;
+    cursor: default;
+  }
+
+  /* Math overlays */
+  #math-overlays {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .math-overlay {
+    position: absolute;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+    padding: 4px 8px;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+  .math-overlay .katex-display { margin: 0; display: inline; }
+  .math-overlay .katex-display > .katex { display: inline; }
+  .math-overlay .katex { white-space: nowrap; }
+
+  /* Code panel */
+  .code-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+    margin: 0 1px 1px;
+    min-height: 120px;
+  }
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2d2d2d;
+    padding: 4px 10px;
+  }
+  .code-header span { font-size: 11px; font-weight: bold; color: #ccc; }
+  .code-header div { display: flex; gap: 4px; }
+  .code-header button {
+    background: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 3px 12px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .code-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+  }
+  .code-body textarea {
+    flex: 1;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    color: #d4d4d4;
+    background: #1e1e1e;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 8px 12px;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .code-header .btn-apply {
+    background: #1a472a;
+    margin-left: 4px;
+  }
+  .code-header .btn-apply:hover {
+    background: #2d6a3f;
+  }
+
+  /* Status bar */
+  .status-bar {
+    background: #1a1a1a;
+    color: #aaa;
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  /* Properties panel (right sidebar) */
+  .props-panel {
+    width: 240px;
+    min-width: 240px;
+    background: #252526;
+    overflow-y: auto;
+    border-left: 1px solid #444;
+    padding: 0;
+  }
+  .props-panel h2 {
+    font-size: 11px;
+    text-align: center;
+    padding: 10px 0;
+    color: #ccc;
+    margin: 0;
+  }
+  .props-content { padding: 0 10px 10px; }
+  .props-empty {
+    color: #666;
+    font-size: 11px;
+    text-align: center;
+    padding: 30px 10px;
+  }
+  .props-panel label { display: block; color: #ccc; font-size: 11px; margin-bottom: 3px; }
+  .props-panel input[type="text"], .props-panel select, .props-panel textarea {
+    width: 100%;
+    padding: 4px 8px;
+    background: #3c3c3c;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 12px;
+    outline: none;
+  }
+  .props-panel input[type="text"]:focus, .props-panel select:focus, .props-panel textarea:focus { border-color: #0078d4; }
+  .props-panel select { cursor: pointer; }
+  .props-panel select option { background: #3c3c3c; color: white; }
+
+  /* Modal sections */
+  .modal-section { margin-top: 14px; }
+  .modal-section:first-child { margin-top: 0; }
+  .modal-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .modal-row > div { flex: 1; }
+  .modal-hint {
+    color: #888;
+    font-size: 10px;
+    margin-top: 3px;
+  }
+
+  /* Color picker */
+  .color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 6px;
+  }
+  .color-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .color-swatch:hover { transform: scale(1.15); }
+  .color-swatch.active { border-color: #0078d4; }
+  .color-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .color-transparent-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 5px;
+  }
+  .color-transparent-row input[type="checkbox"] {
+    accent-color: #0078d4;
+    cursor: pointer;
+  }
+  .color-transparent-row label {
+    font-size: 11px;
+    color: #aaa;
+    cursor: pointer;
+    display: inline;
+    margin: 0;
+  }
+  .color-hex-row span { color: #999; font-size: 11px; white-space: nowrap; }
+  .color-hex-row input[type="text"] {
+    width: 80px;
+    padding: 3px 6px;
+    font-size: 11px;
+    font-family: "Courier New", monospace;
+  }
+  .color-preview {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    border: 1px solid #555;
+    flex-shrink: 0;
+  }
+
+  /* Dual color pickers side by side */
+  .color-columns {
+    display: flex;
+    gap: 14px;
+  }
+  .color-col { flex: 1; min-width: 0; }
+  .color-col label { font-size: 11px; margin-bottom: 3px; }
+
+  /* Per-line font sizes */
+  .line-sizes { margin-top: 6px; }
+  .line-sizes-label { font-size: 11px; color: #999; margin-bottom: 3px; }
+  .line-size-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+  }
+  .line-size-row .line-preview {
+    flex: 1;
+    font-size: 11px;
+    color: #aaa;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .line-size-row select {
+    width: 52px;
+    padding: 2px 4px;
+    font-size: 11px;
+    background: #3c3c3c;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 3px;
+    outline: none;
+    flex-shrink: 0;
+  }
+
+  /* Style toggle buttons */
+  .style-toggles {
+    display: flex;
+    gap: 6px;
+  }
+  .style-toggle {
+    width: 36px;
+    height: 30px;
+    background: #3c3c3c;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .style-toggle:hover { background: #4a4a4a; }
+  .style-toggle.active {
+    background: #0078d4;
+    border-color: #0078d4;
+    color: white;
+  }
+
+  /* Context menu */
+  .ctx-menu {
+    display: none;
+    position: fixed;
+    background: #2d2d2d;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 0;
+    min-width: 160px;
+    z-index: 2000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .ctx-menu.active { display: block; }
+  .ctx-menu-item {
+    padding: 6px 16px;
+    font-size: 12px;
+    color: #ccc;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ctx-menu-item:hover { background: #0078d4; color: white; }
+  .ctx-menu-item.disabled { color: #666; pointer-events: none; }
+  .ctx-menu-item .shortcut { color: #888; font-size: 10px; margin-left: 16px; }
+  .ctx-menu-item:hover .shortcut { color: #ddd; }
+  .ctx-menu-sep { height: 1px; background: #444; margin: 4px 0; }
+
+  /* Project title */
+  .project-title-input {
+    width: calc(100% - 16px);
+    margin: 0 8px 4px;
+    padding: 4px 8px;
+    background: #3c3c3c;
+    color: #ddd;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 11px;
+    outline: none;
+    font-family: inherit;
+  }
+  .project-title-input:focus { border-color: #0078d4; }
+  .save-hint {
+    font-size: 8px;
+    color: #666;
+    text-align: center;
+    padding: 0 8px 2px;
+  }
+  .props-multi {
+    display: none;
+    color: #aaa;
+    font-size: 11px;
+    text-align: center;
+    padding: 20px 10px 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="main">
+  <div class="toolbar">
+    <h1>TikZ Editor</h1>
+    <input type="text" id="project-title" class="project-title-input" value="project-example" placeholder="Project name">
+    <div class="save-hint">Ctrl+S to save .tex</div>
+    <div class="sep"></div>
+    <div class="section-label">TOOLS</div>
+    <button id="tool-select" class="active" onclick="setTool('select')">&#8598; Select / Move</button>
+    <button id="tool-box" onclick="setTool('box')">&#9645; Rectangle</button>
+    <button id="tool-oval" onclick="setTool('oval')">&#11053; Oval</button>
+    <button id="tool-circle" onclick="setTool('circle')">&#9675; Circle</button>
+    <button id="tool-parallelogram" onclick="setTool('parallelogram')">&#9649; Parallelogram</button>
+    <button id="tool-polygon" onclick="setTool('polygon')">&#11042; Polygon</button>
+    <button id="tool-arrow" onclick="setTool('arrow')">&#8594; Arrow</button>
+    <button id="tool-darrow" onclick="setTool('darrow')">&#8674; Dashed Arrow</button>
+    <button id="tool-bidir" onclick="setTool('bidir')">&#8596; Bidir Arrow</button>
+    <button id="tool-pen" onclick="setTool('pen')">&#9998; Freehand</button>
+    <div class="sep" style="margin-top:10px"></div>
+    <div class="section-label">ACTIONS</div>
+    <button onclick="undo()">&#8617; Undo <span style="float:right;color:#888;font-size:9px">Ctrl+Z</span></button>
+    <button onclick="doRedo()">&#8618; Redo <span style="float:right;color:#888;font-size:9px">Ctrl+Y</span></button>
+    <button class="danger" onclick="deleteSelected()">&#128465; Delete</button>
+    <div class="sep" style="margin-top:10px"></div>
+    <div class="section-label">DIAGRAM</div>
+    <button class="copy-btn" onclick="saveJSON()">&#128190; Save JSON</button>
+    <button class="copy-btn" onclick="loadJSON()">&#128194; Load JSON</button>
+    <button class="copy-btn" onclick="saveTexFile()">&#128196; Save .tex</button>
+    <button class="copy-btn" onclick="copyTikz()">&#9112; Copy TikZ</button>
+    <button class="copy-btn" onclick="exportPNG()">&#128247; Export PNG</button>
+    <button class="copy-btn" onclick="exportSVG()">&#128248; Export SVG</button>
+    <button class="clear-btn" onclick="clearAll()">&#8634; Clear All</button>
+    <div class="sep" style="margin-top:10px"></div>
+    <div class="section-label">VIEW</div>
+    <button onclick="toggleDarkCanvas()">&#9681; Dark/Light Canvas</button>
+    <button onclick="zoomIn()">&#128269; Zoom In</button>
+    <button onclick="zoomOut()">&#128270; Zoom Out</button>
+    <button onclick="zoomReset()">&#8634; Zoom Reset</button>
+    <input type="hidden" id="json-file-input" accept=".json">
+  </div>
+
+  <div class="right-panel">
+    <div class="canvas-wrap" id="canvas-wrap">
+      <div class="canvas-inner">
+        <canvas id="canvas" width="3000" height="2000"></canvas>
+        <div id="math-overlays"></div>
+      </div>
+    </div>
+    <div class="code-panel">
+      <div class="code-header">
+        <span>TikZ Code</span>
+        <div>
+          <button class="btn-apply" onclick="applyTikz()">Apply</button>
+          <button onclick="copyTikz()">Copy</button>
+        </div>
+      </div>
+      <div class="code-body"><textarea id="tikz-output" spellcheck="false"></textarea></div>
+    </div>
+  </div>
+
+  <!-- Properties panel (right sidebar) -->
+  <div class="props-panel" id="props-panel">
+    <h2>Properties</h2>
+    <div class="props-empty" id="props-empty">Select a box to edit its properties</div>
+    <div class="props-multi" id="props-multi"></div>
+    <div class="props-content" id="props-content" style="display:none">
+      <!-- Text -->
+      <div class="modal-section">
+        <label for="modal-input">Text:</label>
+        <textarea id="modal-input" rows="2" style="width:100%;padding:4px 8px;background:#3c3c3c;color:white;border:1px solid #555;border-radius:3px;font-size:12px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+        <div class="modal-hint" style="font-size:9px;color:#666;margin-top:2px">$$...$$ for LaTeX math</div>
+        <div class="line-sizes" id="line-sizes-container">
+          <div class="line-sizes-label">Line sizes:</div>
+          <div id="line-sizes-list"></div>
+        </div>
+      </div>
+
+      <!-- Shape -->
+      <div class="modal-section">
+        <label for="modal-shape">Shape:</label>
+        <select id="modal-shape" onchange="onShapeChange()">
+          <option value="rectangle">Rectangle</option>
+          <option value="oval">Oval</option>
+          <option value="circle">Circle</option>
+          <option value="parallelogram">Parallelogram</option>
+          <option value="polygon">Polygon</option>
+        </select>
+        <div id="polygon-sides-wrap" style="display:none;margin-top:4px">
+          <label for="modal-nsides">Sides:</label>
+          <select id="modal-nsides">
+            <option value="3">3 (Triangle)</option>
+            <option value="4">4 (Diamond)</option>
+            <option value="5">5 (Pentagon)</option>
+            <option value="6" selected>6 (Hexagon)</option>
+            <option value="8">8 (Octagon)</option>
+            <option value="10">10</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Font -->
+      <div class="modal-section">
+        <label for="modal-font">Font:</label>
+        <select id="modal-font">
+          <option value="Computer Modern">Computer Modern</option>
+          <option value="Computer Modern Sans">Computer Modern Sans</option>
+          <option value="Latin Modern Roman">Latin Modern Roman</option>
+          <option value="Arial">Arial</option>
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Courier New">Courier New</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Trebuchet MS">Trebuchet MS</option>
+          <option value="Palatino">Palatino</option>
+          <option value="Garamond">Garamond</option>
+          <option value="Comic Sans MS">Comic Sans MS</option>
+        </select>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="modal-fontsize">Size:</label>
+            <select id="modal-fontsize">
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="14">14</option>
+              <option value="16">16</option>
+              <option value="18" selected>18</option>
+              <option value="20">20</option>
+              <option value="24">24</option>
+              <option value="28">28</option>
+              <option value="32">32</option>
+            </select>
+          </div>
+          <div>
+            <label>Style:</label>
+            <div class="style-toggles">
+              <button type="button" class="style-toggle" id="modal-bold" onclick="toggleBold()" title="Bold"><b>B</b></button>
+              <button type="button" class="style-toggle" id="modal-italic" onclick="toggleItalic()" title="Italic"><i>I</i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Face color -->
+      <div class="modal-section">
+        <label>Face color:</label>
+        <div class="color-transparent-row">
+          <input type="checkbox" id="face-transparent" onchange="toggleFaceTransparent()">
+          <label for="face-transparent">Transparent</label>
+        </div>
+        <div id="face-color-controls">
+          <div class="color-palette" id="face-color-palette"></div>
+          <div class="color-hex-row">
+            <span>Hex:</span>
+            <input type="text" id="face-color-hex" placeholder="#ffffff" maxlength="7">
+            <div class="color-preview" id="face-color-preview"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edge color -->
+      <div class="modal-section">
+        <label>Edge color:</label>
+        <div class="color-transparent-row">
+          <input type="checkbox" id="edge-transparent" onchange="toggleEdgeTransparent()">
+          <label for="edge-transparent">Transparent</label>
+        </div>
+        <div id="edge-color-controls">
+          <div class="color-palette" id="edge-color-palette"></div>
+          <div class="color-hex-row">
+            <span>Hex:</span>
+            <input type="text" id="edge-color-hex" placeholder="#4a4a4a" maxlength="7">
+            <div class="color-preview" id="edge-color-preview"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Text color -->
+      <div class="modal-section">
+        <label>Text color:</label>
+        <div class="color-transparent-row">
+          <input type="checkbox" id="text-color-auto" onchange="toggleTextColorAuto()" checked>
+          <label for="text-color-auto">Auto</label>
+        </div>
+        <div id="text-color-controls" style="display:none">
+          <div class="color-hex-row">
+            <span>Hex:</span>
+            <input type="text" id="text-color-hex" placeholder="#1a1a1a" maxlength="7">
+            <div class="color-preview" id="text-color-preview"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box style options -->
+      <div class="modal-section">
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="modal-linewidth">Edge width:</label>
+            <select id="modal-linewidth">
+              <option value="1">1 (thin)</option>
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+              <option value="4">4 (thick)</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label for="modal-borderstyle">Border:</label>
+            <select id="modal-borderstyle">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:12px">
+          <div class="color-transparent-row">
+            <input type="checkbox" id="modal-shadow">
+            <label for="modal-shadow">Shadow</label>
+          </div>
+          <div class="color-transparent-row">
+            <input type="checkbox" id="modal-locked">
+            <label for="modal-locked">Locked</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div class="ctx-menu" id="ctx-menu">
+  <div class="ctx-menu-item" onclick="ctxBringToFront()">Bring to Front<span class="shortcut">Shift+]</span></div>
+  <div class="ctx-menu-item" onclick="ctxMoveForward()">Move Forward<span class="shortcut">]</span></div>
+  <div class="ctx-menu-item" onclick="ctxMoveBackward()">Move Backward<span class="shortcut">[</span></div>
+  <div class="ctx-menu-item" onclick="ctxSendToBack()">Send to Back<span class="shortcut">Shift+[</span></div>
+  <div class="ctx-menu-sep"></div>
+  <div class="ctx-menu-item" onclick="ctxEdit()">Edit Properties</div>
+  <div class="ctx-menu-item" onclick="ctxDuplicate()">Duplicate<span class="shortcut">Ctrl+D</span></div>
+  <div class="ctx-menu-item" id="ctx-lock" onclick="ctxToggleLock()">Lock/Unlock</div>
+  <div class="ctx-menu-item" id="ctx-group" onclick="ctxGroup()">Group</div>
+  <div class="ctx-menu-item" id="ctx-ungroup" onclick="ctxUngroup()">Ungroup</div>
+  <div class="ctx-menu-item" onclick="ctxDelete()" style="color:#f87171">Delete<span class="shortcut">Del</span></div>
+</div>
+
+<div class="status-bar" id="status">Welcome! Select a tool from the sidebar, then click on the canvas.</div>
+
+<!-- Properties panel is inside .main layout, added below -->
+
+<script>
+// ── Data model ──────────────────────────────────────────────────────────────
+const GRID = 20;
+const MIN_BOX_SIZE = GRID * 2;
+const EDGE_GRAB = 7;
+let boxCounter = 0;
+
+function createBox(cx, cy, text = "", width = 140, height = 60) {
+  width = Math.round(width / GRID) * GRID;
+  height = Math.round(height / GRID) * GRID;
+  if (width < MIN_BOX_SIZE) width = MIN_BOX_SIZE;
+  if (height < MIN_BOX_SIZE) height = MIN_BOX_SIZE;
+  const left = snap(cx - width / 2);
+  const top = snap(cy - height / 2);
+  return {
+    id: ++boxCounter,
+    x: left + width / 2, y: top + height / 2,
+    text, width, height,
+    faceColor: "#ffffff",
+    edgeColor: "#4a4a4a",
+    fontSize: 18,
+    fontFamily: "Computer Modern Sans",
+    bold: false,
+    italic: false,
+    lineFontSizes: [],
+    rotation: 0,
+    shape: "rectangle",
+    nSides: 6,
+    textColor: "",
+    groupId: null,
+    locked: false,
+    lineWidth: 2,
+    borderStyle: "solid",
+    shadow: false,
+  };
+}
+
+function cloneBox(src) {
+  const box = {
+    id: ++boxCounter,
+    x: src.x + GRID * 2,
+    y: src.y + GRID * 2,
+    text: src.text,
+    width: src.width,
+    height: src.height,
+    faceColor: src.faceColor,
+    edgeColor: src.edgeColor,
+    fontSize: src.fontSize,
+    fontFamily: src.fontFamily,
+    bold: src.bold,
+    italic: src.italic,
+    lineFontSizes: src.lineFontSizes ? [...src.lineFontSizes] : [],
+    rotation: src.rotation || 0,
+    shape: src.shape || "rectangle",
+    nSides: src.nSides || 6,
+    textColor: src.textColor || "",
+    locked: false,
+    lineWidth: src.lineWidth || 2,
+    borderStyle: src.borderStyle || "solid",
+    shadow: src.shadow || false,
+  };
+  snapBoxToGrid(box);
+  return box;
+}
+
+// Arrow: bidir=bidirectional, headStyle=triangle|diamond|circle|none, lineWidth, curve=curvature factor
+function createArrow(src, dst, label = "", color = "", dashed = false, bidir = false, headStyle = "triangle", lineWidth = 1.8, curve = 0) {
+  return { src, dst, label, color, dashed, bidir, headStyle, lineWidth, curve };
+}
+
+// ── Color helpers ───────────────────────────────────────────────────────────
+const PALETTE = [
+  "#ffffff", "#e0e0e0", "#b0b0b0", "#666666", "#333333", "#000000",
+  "#dbeafe", "#93c5fd", "#3b82f6", "#1d4ed8",
+  "#dcfce7", "#86efac", "#22c55e", "#15803d",
+  "#fef9c3", "#fde047", "#eab308", "#a16207",
+  "#ffedd5", "#fdba74", "#f97316", "#c2410c",
+  "#fce7f3", "#f9a8d4", "#ec4899", "#be185d",
+  "#f3e8ff", "#d8b4fe", "#a855f7", "#7e22ce",
+  "#fca5a5", "#f87171", "#ef4444", "#b91c1c",
+  "#ccfbf1", "#5eead4", "#14b8a6", "#0f766e",
+];
+
+function hexToRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+function luminance(hex) {
+  const [r, g, b] = hexToRgb(hex).map(c => c / 255);
+  const toLinear = (c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+function textColorFor(bgHex) {
+  return luminance(bgHex) > 0.4 ? "#1a1a1a" : "#ffffff";
+}
+
+function isValidHex(str) {
+  return /^#[0-9a-fA-F]{6}$/.test(str);
+}
+
+// ── Math helpers ────────────────────────────────────────────────────────────
+// Parse text into segments: [{type:"text",content:"..."}, {type:"math",content:"..."}]
+function parseSegments(text) {
+  if (!text) return [];
+  const segments = [];
+  const re = /\$\$(.*?)\$\$/g;
+  let last = 0;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) {
+      segments.push({ type: "text", content: text.slice(last, match.index) });
+    }
+    segments.push({ type: "math", content: match[1].trim() });
+    last = re.lastIndex;
+  }
+  if (last < text.length) {
+    segments.push({ type: "text", content: text.slice(last) });
+  }
+  return segments;
+}
+
+function hasMath(text) {
+  return text && /\$\$.+?\$\$/.test(text);
+}
+
+// ── Box geometry helpers ────────────────────────────────────────────────────
+function boxEdges(box) {
+  return {
+    left: box.x - box.width / 2,
+    right: box.x + box.width / 2,
+    top: box.y - box.height / 2,
+    bottom: box.y + box.height / 2,
+  };
+}
+
+function getLineFontSize(box, lineIndex) {
+  return (box.lineFontSizes && box.lineFontSizes[lineIndex]) || box.fontSize || 18;
+}
+
+function snapBoxToGrid(box) {
+  box.width = Math.round(box.width / GRID) * GRID;
+  box.height = Math.round(box.height / GRID) * GRID;
+  if (box.width < MIN_BOX_SIZE) box.width = MIN_BOX_SIZE;
+  if (box.height < MIN_BOX_SIZE) box.height = MIN_BOX_SIZE;
+  const left = snap(box.x - box.width / 2);
+  const top = snap(box.y - box.height / 2);
+  box.x = left + box.width / 2;
+  box.y = top + box.height / 2;
+}
+
+// ── Shape helpers ────────────────────────────────────────────────────────
+function getShapeVertices(box) {
+  const hw = box.width / 2, hh = box.height / 2;
+  const shape = box.shape || "rectangle";
+  if (shape === "parallelogram") {
+    const skew = hw * 0.25;
+    return [[-hw + skew, -hh], [hw + skew, -hh], [hw - skew, hh], [-hw - skew, hh]];
+  }
+  if (shape === "polygon") {
+    const n = box.nSides || 6;
+    const verts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i / n) - Math.PI / 2;
+      verts.push([hw * Math.cos(a), hh * Math.sin(a)]);
+    }
+    return verts;
+  }
+  return null;
+}
+
+function pointInPolygon(px, py, verts) {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const [xi, yi] = verts[i], [xj, yj] = verts[j];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function hitTestShape(box, lx, ly) {
+  const hw = box.width / 2, hh = box.height / 2;
+  const shape = box.shape || "rectangle";
+  switch (shape) {
+    case "oval":
+      return (lx * lx) / (hw * hw) + (ly * ly) / (hh * hh) <= 1;
+    case "circle": {
+      const r = Math.min(hw, hh);
+      return lx * lx + ly * ly <= r * r;
+    }
+    case "parallelogram":
+    case "polygon":
+      return pointInPolygon(lx, ly, getShapeVertices(box));
+    default: // rectangle
+      return Math.abs(lx) <= hw && Math.abs(ly) <= hh;
+  }
+}
+
+// Ray from origin toward (dx,dy) intersecting polygon boundary
+function rayPolygonIntersect(dx, dy, verts) {
+  let minT = Infinity;
+  const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = verts[i], [x2, y2] = verts[(i + 1) % n];
+    const ex = x2 - x1, ey = y2 - y1;
+    const det = ex * dy - ey * dx;
+    if (Math.abs(det) < 1e-10) continue;
+    const t = (ex * y1 - ey * x1) / det;
+    const s = (dx * y1 - dy * x1) / det;
+    if (t > 0 && s >= 0 && s <= 1 && t < minT) minT = t;
+  }
+  return minT < Infinity ? [dx * minT, dy * minT] : [dx, dy];
+}
+
+function shapeEdgePoint(box, ldx, ldy) {
+  const hw = box.width / 2, hh = box.height / 2;
+  const shape = box.shape || "rectangle";
+  if (ldx === 0 && ldy === 0) return [0, 0];
+  switch (shape) {
+    case "oval": {
+      const t = 1 / Math.sqrt((ldx / hw) ** 2 + (ldy / hh) ** 2);
+      return [ldx * t, ldy * t];
+    }
+    case "circle": {
+      const r = Math.min(hw, hh);
+      const d = Math.sqrt(ldx * ldx + ldy * ldy);
+      return [ldx * r / d, ldy * r / d];
+    }
+    case "parallelogram":
+    case "polygon":
+      return rayPolygonIntersect(ldx, ldy, getShapeVertices(box));
+    default: { // rectangle
+      let scale;
+      if (ldx !== 0 && ldy !== 0) scale = Math.min(hw / Math.abs(ldx), hh / Math.abs(ldy));
+      else if (ldx === 0) scale = hh / Math.abs(ldy);
+      else scale = hw / Math.abs(ldx);
+      return [ldx * scale, ldy * scale];
+    }
+  }
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+let boxes = [];
+let arrows = [];
+let tool = "select";
+let selection = new Set(); // multi-select
+let arrowSrc = null;
+let hoverBox = null;
+let dragOrigin = null;
+let dragBoxPos = null; // Map: box → [origX, origY]
+
+let resizeEdge = null;
+let resizeBox = null;
+let resizeOriginal = null;
+
+let selRect = null; // rubber band {x1,y1,x2,y2} during drag-select
+
+let clipboard = null;
+let groupIdCounter = 0;
+
+// Undo/redo
+let undoStack = [];
+let redoStack = [];
+
+// View state
+let zoomLevel = 1;
+let darkCanvas = false;
+let gridSize = GRID;
+
+// Freehand strokes
+let freehandStrokes = []; // [{_isStroke:true, points:[[x,y],...], color, width}]
+let currentStroke = null;
+
+// Hit-test a point against a stroke (within tolerance pixels)
+function strokeAt(x, y, tol = 6) {
+  for (let i = freehandStrokes.length - 1; i >= 0; i--) {
+    const s = freehandStrokes[i];
+    for (let j = 0; j < s.points.length - 1; j++) {
+      const [ax, ay] = s.points[j], [bx, by] = s.points[j + 1];
+      // Point-to-segment distance
+      const dx = bx - ax, dy = by - ay;
+      const lenSq = dx * dx + dy * dy;
+      let t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq));
+      const px = ax + t * dx, py = ay + t * dy;
+      const dist = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
+      if (dist <= tol) return s;
+    }
+  }
+  return null;
+}
+
+// Compute bounding box of a stroke
+function strokeBounds(s) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of s.points) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  return { left: minX, right: maxX, top: minY, bottom: maxY };
+}
+
+// Convenience: single selected box (for properties panel)
+function getSelected() { return selection.size === 1 ? [...selection][0] : null; }
+// Get selected for back-compat
+Object.defineProperty(window, 'selected', {
+  get() { return getSelected(); },
+  set(v) {
+    selection.clear();
+    if (v) selection.add(v);
+  }
+});
+
+const canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+const wrap = document.getElementById("canvas-wrap");
+const statusEl = document.getElementById("status");
+const tikzOutput = document.getElementById("tikz-output");
+const mathOverlays = document.getElementById("math-overlays");
+
+// ── Colors ──────────────────────────────────────────────────────────────────
+const COLORS = {
+  grid: "#e8e8e8",
+  bgCanvas: "#fafafa",
+  boxSelect: "#0078d4",
+  boxHover: "#ff8c00",
+  arrowSrc: "#00aa44",
+  arrowColor: "#4a4a4a",
+  handle: "#0078d4",
+};
+
+// ── Geometry helpers ────────────────────────────────────────────────────────
+function snap(val) {
+  return Math.round(val / GRID) * GRID;
+}
+
+function edgePoint(box, towardX, towardY) {
+  const rad = (box.rotation || 0) * Math.PI / 180;
+  const gdx = towardX - box.x, gdy = towardY - box.y;
+  const ldx = gdx * Math.cos(-rad) - gdy * Math.sin(-rad);
+  const ldy = gdx * Math.sin(-rad) + gdy * Math.cos(-rad);
+  if (ldx === 0 && ldy === 0) return [box.x, box.y];
+  const [lex, ley] = shapeEdgePoint(box, ldx, ldy);
+  return [box.x + lex * Math.cos(rad) - ley * Math.sin(rad),
+          box.y + lex * Math.sin(rad) + ley * Math.cos(rad)];
+}
+
+// Transform point into box's local (unrotated) coordinate system
+function toLocalCoords(box, px, py) {
+  const rad = -(box.rotation || 0) * Math.PI / 180;
+  const dx = px - box.x, dy = py - box.y;
+  return [dx * Math.cos(rad) - dy * Math.sin(rad), dx * Math.sin(rad) + dy * Math.cos(rad)];
+}
+
+function boxAt(x, y) {
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const b = boxes[i];
+    const [lx, ly] = toLocalCoords(b, x, y);
+    if (hitTestShape(b, lx, ly)) return b;
+  }
+  return null;
+}
+
+function detectEdge(box, mx, my) {
+  // Work in local (unrotated) coordinates
+  const [lx, ly] = toLocalCoords(box, mx, my);
+  const hw = box.width / 2, hh = box.height / 2;
+  const g = EDGE_GRAB;
+  const nearLeft   = Math.abs(lx - (-hw)) <= g;
+  const nearRight  = Math.abs(lx - hw) <= g;
+  const nearTop    = Math.abs(ly - (-hh)) <= g;
+  const nearBottom = Math.abs(ly - hh) <= g;
+  const inXRange   = lx >= -hw - g && lx <= hw + g;
+  const inYRange   = ly >= -hh - g && ly <= hh + g;
+
+  if (nearLeft && nearTop) return "tl";
+  if (nearRight && nearTop) return "tr";
+  if (nearLeft && nearBottom) return "bl";
+  if (nearRight && nearBottom) return "br";
+  if (nearLeft && inYRange) return "left";
+  if (nearRight && inYRange) return "right";
+  if (nearTop && inXRange) return "top";
+  if (nearBottom && inXRange) return "bottom";
+  return null;
+}
+
+function edgeCursor(edge) {
+  const map = {
+    left: "ew-resize", right: "ew-resize",
+    top: "ns-resize", bottom: "ns-resize",
+    tl: "nwse-resize", br: "nwse-resize",
+    tr: "nesw-resize", bl: "nesw-resize",
+  };
+  return map[edge] || "default";
+}
+
+// ── Font helpers ────────────────────────────────────────────────────────────
+const FONT_TO_CSS = {
+  "Computer Modern": '"Computer Modern", "Latin Modern Roman", "CMU Serif", serif',
+  "Computer Modern Sans": '"Computer Modern Sans", "Latin Modern Sans", "CMU Sans Serif", sans-serif',
+  "Latin Modern Roman": '"Latin Modern Roman", "Computer Modern", "CMU Serif", serif',
+};
+
+const FONT_TO_LATEX = {
+  "Computer Modern": "\\rmfamily",
+  "Computer Modern Sans": "\\sffamily",
+  "Latin Modern Roman": "\\rmfamily",
+  "Arial": "\\sffamily",
+  "Helvetica": "\\sffamily",
+  "Verdana": "\\sffamily",
+  "Trebuchet MS": "\\sffamily",
+  "Times New Roman": "\\rmfamily",
+  "Georgia": "\\rmfamily",
+  "Palatino": "\\rmfamily",
+  "Garamond": "\\rmfamily",
+  "Courier New": "\\ttfamily",
+  "Comic Sans MS": "\\sffamily",
+};
+
+function fontSizeToLatex(px) {
+  if (px <= 6) return "\\tiny";
+  if (px <= 8) return "\\scriptsize";
+  if (px <= 9) return "\\footnotesize";
+  if (px <= 10) return "\\small";
+  if (px <= 12) return "\\normalsize";
+  if (px <= 14) return "\\large";
+  if (px <= 17) return "\\Large";
+  if (px <= 20) return "\\LARGE";
+  if (px <= 25) return "\\huge";
+  return "\\Huge";
+}
+
+// ── Drawing ─────────────────────────────────────────────────────────────────
+function drawGrid() {
+  ctx.strokeStyle = darkCanvas ? "#333333" : COLORS.grid;
+  ctx.lineWidth = 0.5;
+  const gs = gridSize || GRID;
+  for (let x = 0; x <= 3000; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 2000); ctx.stroke();
+  }
+  for (let y = 0; y <= 2000; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(3000, y); ctx.stroke();
+  }
+}
+
+function roundedRect(x1, y1, x2, y2, r, fill, outline, lw) {
+  ctx.beginPath();
+  ctx.moveTo(x1 + r, y1);
+  ctx.lineTo(x2 - r, y1);
+  ctx.quadraticCurveTo(x2, y1, x2, y1 + r);
+  ctx.lineTo(x2, y2 - r);
+  ctx.quadraticCurveTo(x2, y2, x2 - r, y2);
+  ctx.lineTo(x1 + r, y2);
+  ctx.quadraticCurveTo(x1, y2, x1, y2 - r);
+  ctx.lineTo(x1, y1 + r);
+  ctx.quadraticCurveTo(x1, y1, x1 + r, y1);
+  ctx.closePath();
+  if (fill !== "transparent") {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (outline !== "transparent") {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+}
+
+function fillStrokePath(fill, outline, lw) {
+  if (fill !== "transparent") { ctx.fillStyle = fill; ctx.fill(); }
+  if (outline !== "transparent") { ctx.strokeStyle = outline; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function drawShapePath(shape, box, hw, hh, fill, outline, lw) {
+  switch (shape) {
+    case "oval":
+      ctx.beginPath();
+      ctx.ellipse(0, 0, hw, hh, 0, 0, 2 * Math.PI);
+      fillStrokePath(fill, outline, lw);
+      break;
+    case "circle": {
+      const r = Math.min(hw, hh);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, 2 * Math.PI);
+      fillStrokePath(fill, outline, lw);
+      break;
+    }
+    case "parallelogram":
+    case "polygon": {
+      const verts = getShapeVertices(box);
+      ctx.beginPath();
+      ctx.moveTo(verts[0][0], verts[0][1]);
+      for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i][0], verts[i][1]);
+      ctx.closePath();
+      fillStrokePath(fill, outline, lw);
+      break;
+    }
+    default: // rectangle
+      roundedRect(-hw, -hh, hw, hh, 12, fill, outline, lw);
+  }
+}
+
+function drawBox(box, state = "normal") {
+  const faceColor = box.faceColor || "#ffffff";
+  const edgeColor = box.edgeColor || "#4a4a4a";
+  const rot = box.rotation || 0;
+
+  let outline, lw;
+  if (state === "selected")       { outline = COLORS.boxSelect; lw = 2.5; }
+  else if (state === "hover")     { outline = COLORS.boxHover;  lw = 2.0; }
+  else if (state === "arrow_src") { outline = COLORS.arrowSrc;  lw = 2.5; }
+  else                            { outline = edgeColor;        lw = box.lineWidth || 2.0; }
+
+  ctx.save();
+  ctx.translate(box.x, box.y);
+  if (rot) ctx.rotate(rot * Math.PI / 180);
+
+  // Drop shadow
+  if (box.shadow) {
+    ctx.shadowColor = "rgba(0,0,0,0.25)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 3;
+  }
+
+  // Border style
+  if (box.borderStyle === "dashed") ctx.setLineDash([8, 4]);
+  else if (box.borderStyle === "dotted") ctx.setLineDash([2, 4]);
+
+  const hw = box.width / 2, hh = box.height / 2;
+  const shape = box.shape || "rectangle";
+  drawShapePath(shape, box, hw, hh, faceColor, outline, lw);
+
+  // Skip canvas text for boxes with math (rendered via overlay) or empty text
+  if (box.text && !hasMath(box.text)) {
+    const textBg = faceColor === "transparent" ? "#ffffff" : faceColor;
+    ctx.fillStyle = box.textColor || textColorFor(textBg);
+    const cssFontFamily = FONT_TO_CSS[box.fontFamily] || box.fontFamily || "Arial";
+    const fontStyle = (box.italic ? "italic " : "") + (box.bold ? "bold " : "");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const maxWidth = box.width - 16;
+
+    // Split on explicit newlines, word-wrap each paragraph with its own font size
+    const paragraphs = box.text.split("\n");
+    // Each rendered line: { text, fontSize }
+    const lines = [];
+    for (let pi = 0; pi < paragraphs.length; pi++) {
+      const para = paragraphs[pi];
+      const sz = getLineFontSize(box, pi);
+      if (para === "") { lines.push({ text: "", fontSize: sz }); continue; }
+      ctx.font = `${fontStyle}${sz}px ${cssFontFamily}`;
+      const words = para.split(" ");
+      let line = "";
+      for (const word of words) {
+        const test = line ? line + " " + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          lines.push({ text: line, fontSize: sz });
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      if (line) lines.push({ text: line, fontSize: sz });
+    }
+
+    // Compute total height and draw (relative to 0,0 since we translated)
+    let totalHeight = 0;
+    const lineHeights = lines.map(l => l.fontSize * 1.35);
+    for (const lh of lineHeights) totalHeight += lh;
+    let curY = -totalHeight / 2;
+    for (let i = 0; i < lines.length; i++) {
+      const lh = lineHeights[i];
+      ctx.font = `${fontStyle}${lines[i].fontSize}px ${cssFontFamily}`;
+      ctx.fillText(lines[i].text, 0, curY + lh / 2, maxWidth);
+      curY += lh;
+    }
+  }
+
+  if (state === "selected" && !box.locked) {
+    drawResizeHandles(box);
+  }
+
+  // Lock indicator
+  if (box.locked) {
+    ctx.fillStyle = "#888";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillText("\u{1F512}", hw - 2, -hh + 2);
+  }
+
+  ctx.restore();
+}
+
+function drawResizeHandles(box) {
+  // Drawing in local (translated+rotated) coords: center is (0,0)
+  const hw = box.width / 2, hh = box.height / 2;
+  const sz = 5;
+  const handles = [
+    { x: -hw, y: -hh },
+    { x:  hw, y: -hh },
+    { x: -hw, y:  hh },
+    { x:  hw, y:  hh },
+    { x: 0,   y: -hh },
+    { x: 0,   y:  hh },
+    { x: -hw, y: 0 },
+    { x:  hw, y: 0 },
+  ];
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = COLORS.handle;
+  ctx.lineWidth = 1.5;
+  for (const h of handles) {
+    ctx.fillRect(h.x - sz, h.y - sz, sz * 2, sz * 2);
+    ctx.strokeRect(h.x - sz, h.y - sz, sz * 2, sz * 2);
+  }
+}
+
+function drawArrowHead(tipX, tipY, angle, c, style) {
+  const headLen = 14;
+  const headAngle = Math.PI / 7;
+  if (style === "none") return;
+  if (style === "circle") {
+    ctx.beginPath();
+    ctx.arc(tipX - 5 * Math.cos(angle), tipY - 5 * Math.sin(angle), 5, 0, 2 * Math.PI);
+    ctx.fillStyle = c;
+    ctx.fill();
+    return;
+  }
+  if (style === "diamond") {
+    const d = 10;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - d * Math.cos(angle - 0.4), tipY - d * Math.sin(angle - 0.4));
+    ctx.lineTo(tipX - d * 1.4 * Math.cos(angle), tipY - d * 1.4 * Math.sin(angle));
+    ctx.lineTo(tipX - d * Math.cos(angle + 0.4), tipY - d * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = c;
+    ctx.fill();
+    return;
+  }
+  // Default: triangle
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - headLen * Math.cos(angle - headAngle), tipY - headLen * Math.sin(angle - headAngle));
+  ctx.lineTo(tipX - headLen * 0.6 * Math.cos(angle), tipY - headLen * 0.6 * Math.sin(angle));
+  ctx.lineTo(tipX - headLen * Math.cos(angle + headAngle), tipY - headLen * Math.sin(angle + headAngle));
+  ctx.closePath();
+  ctx.fillStyle = c;
+  ctx.fill();
+}
+
+function getArrowColor(arrow) {
+  if (arrow.color) return arrow.color;
+  const srcEdge = arrow.src && arrow.src.edgeColor;
+  if (srcEdge && srcEdge !== "transparent") return srcEdge;
+  return COLORS.arrowColor;
+}
+
+function drawArrow(arrow) {
+  const c = getArrowColor(arrow);
+  const lw = arrow.lineWidth || 1.8;
+  const headStyle = arrow.headStyle || "triangle";
+  const isSelfLoop = arrow.src === arrow.dst;
+
+  if (isSelfLoop) {
+    // Self-loop: draw a loop above the box
+    const b = arrow.src;
+    const topY = b.y - b.height / 2;
+    const cx = b.x, cy = topY - 30;
+    ctx.save();
+    if (arrow.dashed) ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 25, 0.3 * Math.PI, 0.7 * Math.PI, true);
+    ctx.strokeStyle = c;
+    ctx.lineWidth = lw;
+    ctx.stroke();
+    ctx.restore();
+    drawArrowHead(cx + 20, topY, Math.PI / 2, c, headStyle);
+    if (arrow.label) {
+      ctx.fillStyle = c;
+      ctx.font = "10px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(arrow.label, cx, cy - 25);
+    }
+    return;
+  }
+
+  const [sx, sy] = edgePoint(arrow.src, arrow.dst.x, arrow.dst.y);
+  const [dx, dy] = edgePoint(arrow.dst, arrow.src.x, arrow.src.y);
+  const curveAmt = arrow.curve || 0;
+
+  ctx.save();
+  if (arrow.dashed) ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+
+  let mx, my, endAngle;
+  if (curveAmt !== 0) {
+    // Curved arrow via quadratic bezier
+    const midX = (sx + dx) / 2, midY = (sy + dy) / 2;
+    const perpX = -(dy - sy), perpY = dx - sx;
+    const len = Math.sqrt(perpX * perpX + perpY * perpY) || 1;
+    const cpx = midX + (perpX / len) * curveAmt;
+    const cpy = midY + (perpY / len) * curveAmt;
+    ctx.quadraticCurveTo(cpx, cpy, dx, dy);
+    mx = (sx + 2 * cpx + dx) / 4;
+    my = (sy + 2 * cpy + dy) / 4;
+    endAngle = Math.atan2(dy - cpy, dx - cpx);
+  } else {
+    ctx.lineTo(dx, dy);
+    mx = (sx + dx) / 2;
+    my = (sy + dy) / 2;
+    endAngle = Math.atan2(dy - sy, dx - sx);
+  }
+  ctx.strokeStyle = c;
+  ctx.lineWidth = lw;
+  ctx.stroke();
+  ctx.restore();
+
+  // Arrow head at destination
+  drawArrowHead(dx, dy, endAngle, c, headStyle);
+
+  // Bidirectional: head at source too
+  if (arrow.bidir) {
+    const startAngle = curveAmt !== 0
+      ? Math.atan2(sy - ((sy + 2 * ((sy + dy) / 2 + 0) + dy) / 4), sx - ((sx + dx) / 2))
+      : Math.atan2(sy - dy, sx - dx);
+    drawArrowHead(sx, sy, curveAmt !== 0 ? Math.atan2(sy - my, sx - mx) : Math.atan2(sy - dy, sx - dx), c, headStyle);
+  }
+
+  if (arrow.label) {
+    ctx.fillStyle = c;
+    ctx.font = "10px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(arrow.label, mx, my - 6);
+  }
+}
+
+// ── Math overlay rendering ──────────────────────────────────────────────────
+function updateMathOverlays() {
+  mathOverlays.innerHTML = "";
+  for (const box of boxes) {
+    if (!hasMath(box.text)) continue;
+    mathOverlays.appendChild(buildMathOverlay(box));
+  }
+}
+
+// A box's text with its math rendered by KaTeX, positioned over the box
+function buildMathOverlay(box) {
+  const katexReady = typeof katex !== "undefined";
+  const segments = parseSegments(box.text);
+  const e = boxEdges(box);
+  const faceColor = box.faceColor || "#ffffff";
+  const cssFontFamily = FONT_TO_CSS[box.fontFamily] || box.fontFamily || "Arial";
+
+  const div = document.createElement("div");
+  div.className = "math-overlay";
+  div.style.left = e.left + "px";
+  div.style.top = e.top + "px";
+  div.style.width = box.width + "px";
+  div.style.height = box.height + "px";
+  div.style.color = box.textColor || textColorFor(faceColor === "transparent" ? "#ffffff" : faceColor);
+  div.style.fontSize = (box.fontSize || 18) + "px";
+  div.style.fontFamily = cssFontFamily;
+  if (box.bold) div.style.fontWeight = "bold";
+  if (box.italic) div.style.fontStyle = "italic";
+  if (box.rotation) div.style.transform = `rotate(${box.rotation}deg)`;
+
+  // Build mixed content, processing each line separated by newlines
+  // Split full text into lines, parse segments per line
+  const textLines = box.text.split("\n");
+  const wrapper = document.createElement("div");
+  wrapper.style.display = "inline-block";
+  wrapper.style.lineHeight = "1.4";
+  wrapper.style.textAlign = "center";
+
+  for (let li = 0; li < textLines.length; li++) {
+    const lineSz = getLineFontSize(box, li);
+    const lineSpan = document.createElement("div");
+    lineSpan.style.fontSize = lineSz + "px";
+    lineSpan.style.lineHeight = "1.4";
+    const lineSegments = parseSegments(textLines[li]);
+    for (const seg of lineSegments) {
+      if (seg.type === "math" && katexReady) {
+        const mathSpan = document.createElement("span");
+        try {
+          katex.render(seg.content, mathSpan, {
+            throwOnError: false,
+            displayMode: false,
+            output: "html",
+          });
+        } catch (err) {
+          mathSpan.textContent = seg.content;
+        }
+        lineSpan.appendChild(mathSpan);
+      } else {
+        const textNode = document.createElement("span");
+        textNode.textContent = seg.content;
+        lineSpan.appendChild(textNode);
+      }
+    }
+    wrapper.appendChild(lineSpan);
+  }
+
+  div.appendChild(wrapper);
+  return div;
+}
+
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = darkCanvas ? "#1e1e1e" : COLORS.bgCanvas;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  // Draw freehand strokes
+  for (const stroke of freehandStrokes) {
+    if (stroke.points.length < 2) continue;
+    ctx.save();
+    if (selection.has(stroke)) {
+      ctx.strokeStyle = COLORS.boxSelect;
+      ctx.lineWidth = (stroke.width || 2) + 3;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+      for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = stroke.color || "#333";
+    ctx.lineWidth = stroke.width || 2;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+    for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (currentStroke && currentStroke.points.length > 1) {
+    ctx.save();
+    ctx.strokeStyle = currentStroke.color || "#333";
+    ctx.lineWidth = currentStroke.width || 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(currentStroke.points[0][0], currentStroke.points[0][1]);
+    for (let i = 1; i < currentStroke.points.length; i++) ctx.lineTo(currentStroke.points[i][0], currentStroke.points[i][1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+  for (const a of arrows) drawArrow(a);
+  for (const b of boxes) {
+    let state = "normal";
+    if (selection.has(b)) state = "selected";
+    else if (b === arrowSrc) state = "arrow_src";
+    else if (b === hoverBox) state = "hover";
+    drawBox(b, state);
+  }
+  // Draw rubber band selection rectangle
+  if (selRect) {
+    const x = Math.min(selRect.x1, selRect.x2);
+    const y = Math.min(selRect.y1, selRect.y2);
+    const w = Math.abs(selRect.x2 - selRect.x1);
+    const h = Math.abs(selRect.y2 - selRect.y1);
+    ctx.save();
+    ctx.strokeStyle = "#0078d4";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.fillStyle = "rgba(0, 120, 212, 0.08)";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+  updateMathOverlays();
+}
+
+// ── Tool management ─────────────────────────────────────────────────────────
+function setTool(t) {
+  tool = t;
+  arrowSrc = null;
+  deselect();
+
+  document.querySelectorAll(".toolbar button[id^='tool-']").forEach(btn => {
+    btn.classList.toggle("active", btn.id === "tool-" + t);
+  });
+
+  const shapeTool = ["box", "oval", "circle", "parallelogram", "polygon"].includes(t);
+  const arrowTool = ["arrow", "darrow", "bidir"].includes(t);
+  canvas.style.cursor = (shapeTool || arrowTool) ? "crosshair" : t === "pen" ? "crosshair" : "default";
+
+  const labels = {
+    select: "Select / Move — click to select, Ctrl+click multi-select, drag to rubber-band select",
+    box: "Rectangle — click to place",
+    oval: "Oval — click to place",
+    circle: "Circle — click to place",
+    parallelogram: "Parallelogram — click to place",
+    polygon: "Polygon — click to place (change sides in properties)",
+    arrow: "Arrow — click source box, then destination box",
+    darrow: "Dashed Arrow — click source, then destination (gray)",
+    bidir: "Bidirectional Arrow — click source, then destination",
+    pen: "Freehand — click and drag to draw",
+  };
+  statusEl.textContent = "Tool: " + labels[t];
+}
+
+function deselect() {
+  if (selection.size > 0) {
+    selection.clear();
+    closeModal();
+    redraw();
+  }
+}
+
+function selectBox(box, additive) {
+  if (additive) {
+    if (selection.has(box)) selection.delete(box);
+    else selection.add(box);
+  } else {
+    selection.clear();
+    selection.add(box);
+  }
+  // Auto-select group members (non-additive click on grouped box)
+  if (!additive && box.groupId) {
+    for (const b of boxes) {
+      if (b.groupId === box.groupId) selection.add(b);
+    }
+  }
+  updatePropsPanel();
+}
+
+function updatePropsPanel() {
+  const single = getSelected();
+  if (single && !single._isStroke) {
+    openModal(single);
+  } else if (selection.size >= 1) {
+    closeModal();
+    document.getElementById("props-empty").style.display = "none";
+    document.getElementById("props-content").style.display = "none";
+    document.getElementById("props-multi").style.display = "block";
+    document.getElementById("props-multi").textContent = selection.size + " objects selected";
+  } else {
+    closeModal();
+  }
+}
+
+// ── Canvas events ───────────────────────────────────────────────────────────
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  const [x, y] = getCanvasPos(e);
+
+  const shapeTools = { box: "rectangle", oval: "oval", circle: "circle", parallelogram: "parallelogram", polygon: "polygon" };
+  if (shapeTools[tool]) {
+    pushUndo();
+    const box = createBox(x, y);
+    box.shape = shapeTools[tool];
+    if (tool === "circle") { const sz = Math.max(box.width, box.height); box.width = sz; box.height = sz; snapBoxToGrid(box); }
+    boxes.push(box);
+    redraw();
+    updateTikz();
+  } else if (tool === "arrow" || tool === "darrow" || tool === "bidir") {
+    const box = boxAt(x, y);
+    if (box) {
+      if (!arrowSrc) {
+        arrowSrc = box;
+        statusEl.textContent = "Now click the destination box" + (box === arrowSrc ? " (or same box for self-loop)" : "");
+        redraw();
+      } else {
+        const isDashed = tool === "darrow";
+        const isBidir = tool === "bidir";
+        const defaultColor = isDashed ? "#888888" : "";
+        pushUndo();
+        arrows.push(createArrow(arrowSrc, box, "", defaultColor, isDashed, isBidir));
+        arrowSrc = null;
+        setTool(tool);
+        redraw();
+        updateTikz();
+      }
+    }
+  } else if (tool === "pen") {
+    currentStroke = { _isStroke: true, points: [[x, y]], color: darkCanvas ? "#cccccc" : "#333333", width: 2 };
+  } else if (tool === "select") {
+    const isCtrl = e.ctrlKey || e.metaKey;
+    resizeEdge = null;
+    resizeBox = null;
+
+    // Check resize on single selected box (not locked)
+    if (selection.size === 1) {
+      const sel = getSelected();
+      const edge = (sel && !sel.locked) ? detectEdge(sel, x, y) : null;
+      if (edge) {
+        const be = boxEdges(sel);
+        resizeEdge = edge;
+        resizeBox = sel;
+        resizeOriginal = { left: be.left, right: be.right, top: be.top, bottom: be.bottom };
+        dragOrigin = [x, y];
+        return;
+      }
+    }
+
+    const box = boxAt(x, y);
+    if (box) {
+      if (isCtrl) {
+        // Ctrl+click: toggle in selection
+        selectBox(box, true);
+      } else if (!selection.has(box)) {
+        // Click unselected box: select it (+ group)
+        selectBox(box, false);
+      }
+      // Check resize on newly selected single box
+      if (selection.size === 1) {
+        const edge = detectEdge(box, x, y);
+        if (edge) {
+          const be = boxEdges(box);
+          resizeEdge = edge;
+          resizeBox = box;
+          resizeOriginal = { left: be.left, right: be.right, top: be.top, bottom: be.bottom };
+          dragOrigin = [x, y];
+          redraw();
+          return;
+        }
+      }
+      // Start drag-move for all selected items
+      dragOrigin = [x, y];
+      dragBoxPos = new Map();
+      for (const item of selection) {
+        if (item._isStroke) dragBoxPos.set(item, item.points.map(p => [...p]));
+        else dragBoxPos.set(item, [item.x, item.y]);
+      }
+    } else {
+      // No box clicked — check for freehand stroke
+      const stroke = strokeAt(x, y);
+      if (stroke) {
+        if (isCtrl) {
+          if (selection.has(stroke)) selection.delete(stroke);
+          else selection.add(stroke);
+        } else {
+          selection.clear();
+          selection.add(stroke);
+        }
+        // Start drag for selected strokes
+        dragOrigin = [x, y];
+        dragBoxPos = new Map();
+        for (const item of selection) {
+          if (item._isStroke) dragBoxPos.set(item, item.points.map(p => [...p]));
+          else dragBoxPos.set(item, [item.x, item.y]);
+        }
+        updatePropsPanel();
+      } else if (!isCtrl) {
+        // Click truly empty: start rubber band selection
+        selection.clear();
+        closeModal();
+        selRect = { x1: x, y1: y, x2: x, y2: y };
+        dragOrigin = [x, y];
+      }
+    }
+    redraw();
+    updateTikz();
+  }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  const [x, y] = getCanvasPos(e);
+
+  // Freehand drawing
+  if (tool === "pen" && currentStroke) {
+    currentStroke.points.push([x, y]);
+    redraw();
+    return;
+  }
+
+  if (tool === "select" && resizeEdge && resizeBox && dragOrigin) {
+    let { left, right, top, bottom } = resizeOriginal;
+    const dx = x - dragOrigin[0];
+    const dy = y - dragOrigin[1];
+
+    if (resizeEdge.includes("l") || resizeEdge === "left") left = snap(resizeOriginal.left + dx);
+    if (resizeEdge.includes("r") || resizeEdge === "right") right = snap(resizeOriginal.right + dx);
+    if (resizeEdge.includes("t") || resizeEdge === "top") top = snap(resizeOriginal.top + dy);
+    if (resizeEdge.includes("b") || resizeEdge === "bottom") bottom = snap(resizeOriginal.bottom + dy);
+
+    if (right - left < MIN_BOX_SIZE) {
+      if (resizeEdge.includes("l") || resizeEdge === "left") left = right - MIN_BOX_SIZE;
+      else right = left + MIN_BOX_SIZE;
+    }
+    if (bottom - top < MIN_BOX_SIZE) {
+      if (resizeEdge.includes("t") || resizeEdge === "top") top = bottom - MIN_BOX_SIZE;
+      else bottom = top + MIN_BOX_SIZE;
+    }
+
+    resizeBox.width = right - left;
+    resizeBox.height = bottom - top;
+    resizeBox.x = left + resizeBox.width / 2;
+    resizeBox.y = top + resizeBox.height / 2;
+    redraw();
+    return;
+  }
+
+  // Rubber band selection drag
+  if (tool === "select" && selRect && dragOrigin) {
+    selRect.x2 = x;
+    selRect.y2 = y;
+    redraw();
+    return;
+  }
+
+  // Multi-drag move (skip locked boxes)
+  if (tool === "select" && selection.size > 0 && dragOrigin && !resizeEdge && dragBoxPos instanceof Map) {
+    const dx = x - dragOrigin[0];
+    const dy = y - dragOrigin[1];
+    for (const item of selection) {
+      if (item.locked) continue;
+      const orig = dragBoxPos.get(item);
+      if (!orig) continue;
+      if (item._isStroke) {
+        // Move all points of the stroke
+        for (let i = 0; i < item.points.length; i++) {
+          item.points[i][0] = orig[i][0] + dx;
+          item.points[i][1] = orig[i][1] + dy;
+        }
+      } else {
+        item.x = orig[0] + dx;
+        item.y = orig[1] + dy;
+      }
+    }
+    redraw();
+  }
+
+  // Hover effect and cursor changes
+  if (tool === "select" && !dragOrigin) {
+    if (selection.size === 1) {
+      const sel = getSelected();
+      const edge = detectEdge(sel, x, y);
+      if (edge) {
+        canvas.style.cursor = edgeCursor(edge);
+        return;
+      }
+    }
+    const box = boxAt(x, y);
+    canvas.style.cursor = box ? "move" : "default";
+    if (box !== hoverBox) {
+      hoverBox = box;
+      redraw();
+    }
+  }
+});
+
+canvas.addEventListener("mouseup", (e) => {
+  // Freehand stroke complete
+  if (tool === "pen" && currentStroke) {
+    if (currentStroke.points.length > 2) {
+      pushUndo();
+      freehandStrokes.push(currentStroke);
+    }
+    currentStroke = null;
+    redraw();
+    return;
+  }
+
+  if (resizeEdge && resizeBox) {
+    snapBoxToGrid(resizeBox);
+    resizeEdge = null;
+    resizeBox = null;
+    resizeOriginal = null;
+    redraw();
+    updateTikz();
+  } else if (selRect) {
+    // Complete rubber band selection
+    const x1 = Math.min(selRect.x1, selRect.x2), x2 = Math.max(selRect.x1, selRect.x2);
+    const y1 = Math.min(selRect.y1, selRect.y2), y2 = Math.max(selRect.y1, selRect.y2);
+    if (x2 - x1 > 5 || y2 - y1 > 5) { // ignore tiny drags
+      for (const b of boxes) {
+        const e = boxEdges(b);
+        if (e.left < x2 && e.right > x1 && e.top < y2 && e.bottom > y1) {
+          selection.add(b);
+        }
+      }
+      for (const s of freehandStrokes) {
+        const sb = strokeBounds(s);
+        if (sb.left < x2 && sb.right > x1 && sb.top < y2 && sb.bottom > y1) {
+          selection.add(s);
+        }
+      }
+    }
+    selRect = null;
+    updatePropsPanel();
+    redraw();
+    updateTikz();
+  } else if (selection.size > 0 && dragOrigin && dragBoxPos instanceof Map) {
+    for (const b of selection) snapBoxToGrid(b);
+    redraw();
+    updateTikz();
+  }
+  dragOrigin = null;
+  dragBoxPos = null;
+});
+
+canvas.addEventListener("dblclick", (e) => {
+  const [x, y] = getCanvasPos(e);
+  const box = boxAt(x, y);
+  if (box) openModal(box);
+});
+
+document.addEventListener("keydown", (e) => {
+  // Save: Ctrl+S / Cmd+S
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    e.preventDefault();
+    saveTexFile();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+    e.preventDefault();
+    doRedo();
+    return;
+  }
+
+  // Check if user is typing in an input/textarea in the props panel
+  const focusedEl = document.activeElement;
+  const typingInPanel = focusedEl && (focusedEl.tagName === "TEXTAREA" || focusedEl.tagName === "INPUT") && focusedEl.closest(".props-panel");
+
+  if (e.key === "Escape") {
+    if (selection.size > 0) { deselect(); return; }
+    if (arrowSrc) {
+      arrowSrc = null;
+      setTool(tool === "darrow" ? "darrow" : "arrow");
+      redraw();
+    } else {
+      setTool("select");
+    }
+  }
+
+  if (typingInPanel) return; // don't handle other keys when typing in props panel
+
+  if ((e.key === "Delete" || e.key === "Backspace")) {
+    deleteSelected();
+  }
+
+  // Copy: Ctrl+C / Cmd+C
+  if ((e.ctrlKey || e.metaKey) && e.key === "c" && selected) {
+    clipboard = {
+      text: selected.text,
+      width: selected.width,
+      height: selected.height,
+      faceColor: selected.faceColor,
+      edgeColor: selected.edgeColor,
+      fontSize: selected.fontSize,
+      fontFamily: selected.fontFamily,
+      bold: selected.bold,
+      italic: selected.italic,
+      lineFontSizes: selected.lineFontSizes ? [...selected.lineFontSizes] : [],
+      rotation: selected.rotation || 0,
+      shape: selected.shape || "rectangle",
+      nSides: selected.nSides || 6,
+      textColor: selected.textColor || "",
+    };
+    statusEl.textContent = "\u2713 Box copied";
+    setTimeout(() => { statusEl.textContent = "Tool: Select / Move"; }, 2000);
+  }
+
+  // Paste: Ctrl+V / Cmd+V
+  if ((e.ctrlKey || e.metaKey) && e.key === "v" && clipboard) {
+    e.preventDefault();
+    // Place pasted box near the center of the visible area
+    const scrollX = wrap.scrollLeft + wrap.clientWidth / 2;
+    const scrollY = wrap.scrollTop + wrap.clientHeight / 2;
+    const box = createBox(scrollX, scrollY, clipboard.text, clipboard.width, clipboard.height);
+    box.faceColor = clipboard.faceColor;
+    box.edgeColor = clipboard.edgeColor;
+    box.fontSize = clipboard.fontSize;
+    box.fontFamily = clipboard.fontFamily;
+    box.bold = clipboard.bold;
+    box.italic = clipboard.italic;
+    box.lineFontSizes = clipboard.lineFontSizes ? [...clipboard.lineFontSizes] : [];
+    box.rotation = clipboard.rotation || 0;
+    box.shape = clipboard.shape || "rectangle";
+    box.nSides = clipboard.nSides || 6;
+    box.textColor = clipboard.textColor || "";
+    // Push to end so it renders on top
+    boxes.push(box);
+    selected = box;
+    redraw();
+    updateTikz();
+    statusEl.textContent = "\u2713 Box pasted";
+    setTimeout(() => { statusEl.textContent = "Tool: Select / Move"; }, 2000);
+  }
+
+  // Duplicate: Ctrl+D / Cmd+D
+  if ((e.ctrlKey || e.metaKey) && e.key === "d" && selection.size > 0) {
+    e.preventDefault();
+    const newSel = [];
+    for (const b of selection) { const nb = cloneBox(b); boxes.push(nb); newSel.push(nb); }
+    selection.clear();
+    for (const nb of newSel) selection.add(nb);
+    updatePropsPanel();
+    redraw();
+    updateTikz();
+  }
+
+  // Layer ordering: ] = forward, [ = backward, Shift+] = front, Shift+[ = back
+  if (e.key === "]" && selection.size > 0 && !e.ctrlKey && !e.metaKey) {
+    for (const b of [...selection].reverse()) e.shiftKey ? bringToFront(b) : moveForward(b);
+  }
+  if (e.key === "[" && selection.size > 0 && !e.ctrlKey && !e.metaKey) {
+    for (const b of selection) e.shiftKey ? sendToBack(b) : moveBackward(b);
+  }
+
+  // Rotate: R = +45°, Shift+R = -45°
+  if ((e.key === "r" || e.key === "R") && selection.size > 0 && !e.ctrlKey && !e.metaKey) {
+    const step = e.shiftKey ? -45 : 45;
+    for (const b of selection) {
+      b.rotation = ((b.rotation || 0) + step) % 360;
+      if (b.rotation < 0) b.rotation += 360;
+    }
+    redraw();
+    updateTikz();
+  }
+});
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+function saveTexFile() {
+  updateTikz();
+  const title = document.getElementById("project-title").value.trim() || "project-example";
+  const filename = title.replace(/[^a-zA-Z0-9_\-]/g, "_") + ".tex";
+  const tikzCode = tikzOutput.value;
+
+  const texContent = `\\documentclass[tikz,border=10pt]{standalone}
+\\usepackage[T1]{fontenc}
+\\usepackage{lmodern}
+\\usetikzlibrary{shapes.geometric}
+
+${tikzCode}
+`;
+
+  const blob = new Blob([texContent], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  statusEl.textContent = "\u2713 Saved as " + filename;
+  setTimeout(() => {
+    statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1);
+  }, 3000);
+}
+
+function exportPNG() {
+  if (boxes.length === 0) return;
+  // Find bounding box of all content
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const b of boxes) {
+    const e = boxEdges(b);
+    minX = Math.min(minX, e.left - 40);
+    minY = Math.min(minY, e.top - 40);
+    maxX = Math.max(maxX, e.right + 40);
+    maxY = Math.max(maxY, e.bottom + 40);
+  }
+  const w = maxX - minX, h = maxY - minY;
+  const scale = 2; // 2x resolution
+
+  const expCanvas = document.createElement("canvas");
+  expCanvas.width = w * scale;
+  expCanvas.height = h * scale;
+  const expCtx = expCanvas.getContext("2d");
+  expCtx.scale(scale, scale);
+  expCtx.translate(-minX, -minY);
+  expCtx.fillStyle = "#ffffff";
+  expCtx.fillRect(minX, minY, w, h);
+
+  // Swap ctx, clear selection, render, restore
+  const origCtx = ctx;
+  const origSel = new Set(selection);
+  ctx = expCtx;
+  selection.clear();
+  for (const a of arrows) drawArrow(a);
+  for (const b of boxes) drawBox(b, "normal");
+  ctx = origCtx;
+  for (const b of origSel) selection.add(b);
+
+  const title = document.getElementById("project-title").value.trim() || "project-example";
+  const filename = title.replace(/[^a-zA-Z0-9_\-]/g, "_") + ".png";
+  expCanvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    statusEl.textContent = "\u2713 Exported " + filename;
+    setTimeout(() => { statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1); }, 3000);
+  }, "image/png");
+  redraw();
+}
+
+function deleteSelected() {
+  if (selection.size === 0) return;
+  pushUndo();
+  arrows = arrows.filter(a => !selection.has(a.src) && !selection.has(a.dst));
+  boxes = boxes.filter(b => !selection.has(b));
+  freehandStrokes = freehandStrokes.filter(s => !selection.has(s));
+  selection.clear();
+  closeModal();
+  redraw();
+  updateTikz();
+}
+
+function editSelected() {
+  if (selected) openModal(selected);
+}
+
+function clearAll() {
+  if (boxes.length === 0 && arrows.length === 0) return;
+  if (!confirm("Remove all boxes and arrows?")) return;
+  boxes = [];
+  arrows = [];
+  selected = null;
+  arrowSrc = null;
+  hoverBox = null;
+  boxCounter = 0;
+  redraw();
+  updateTikz();
+}
+
+// ── Undo/Redo ───────────────────────────────────────────────────────────────
+function getState() {
+  return JSON.stringify({
+    boxes: boxes.map(b => ({...b})),
+    arrows: arrows.map(a => ({ srcId: a.src.id, dstId: a.dst.id, label: a.label, color: a.color, dashed: a.dashed, bidir: a.bidir, headStyle: a.headStyle, lineWidth: a.lineWidth, curve: a.curve })),
+    freehandStrokes: freehandStrokes.map(s => ({...s, points: [...s.points]})),
+    boxCounter,
+  });
+}
+
+function restoreState(json) {
+  const s = JSON.parse(json);
+  boxCounter = s.boxCounter || 0;
+  boxes = s.boxes || [];
+  const idMap = {};
+  for (const b of boxes) idMap[b.id] = b;
+  arrows = (s.arrows || []).map(a => {
+    const src = idMap[a.srcId], dst = idMap[a.dstId];
+    if (!src || !dst) return null;
+    return { src, dst, label: a.label || "", color: a.color || "", dashed: a.dashed || false, bidir: a.bidir || false, headStyle: a.headStyle || "triangle", lineWidth: a.lineWidth || 1.8, curve: a.curve || 0 };
+  }).filter(Boolean);
+  freehandStrokes = s.freehandStrokes || [];
+  selection.clear();
+  closeModal();
+  redraw();
+  updateTikz();
+}
+
+function pushUndo() {
+  undoStack.push(getState());
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(getState());
+  restoreState(undoStack.pop());
+}
+
+function doRedo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(getState());
+  restoreState(redoStack.pop());
+}
+
+// ── Save/Load JSON ──────────────────────────────────────────────────────────
+function saveJSON() {
+  const title = document.getElementById("project-title").value.trim() || "project-example";
+  const data = {
+    title,
+    version: 2,
+    boxes: boxes.map(b => ({...b})),
+    arrows: arrows.map(a => ({ srcId: a.src.id, dstId: a.dst.id, label: a.label, color: a.color, dashed: a.dashed, bidir: a.bidir, headStyle: a.headStyle, lineWidth: a.lineWidth, curve: a.curve })),
+    freehandStrokes,
+    boxCounter,
+    darkCanvas,
+    gridSize,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = title.replace(/[^a-zA-Z0-9_\-]/g, "_") + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  statusEl.textContent = "\u2713 Saved JSON";
+  setTimeout(() => { statusEl.textContent = "Tool: " + tool; }, 2000);
+}
+
+function loadJSON() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        boxCounter = data.boxCounter || 0;
+        boxes = data.boxes || [];
+        const idMap = {};
+        for (const b of boxes) idMap[b.id] = b;
+        arrows = (data.arrows || []).map(a => {
+          const src = idMap[a.srcId], dst = idMap[a.dstId];
+          if (!src || !dst) return null;
+          return { src, dst, label: a.label || "", color: a.color || "", dashed: a.dashed || false, bidir: a.bidir || false, headStyle: a.headStyle || "triangle", lineWidth: a.lineWidth || 1.8, curve: a.curve || 0 };
+        }).filter(Boolean);
+        freehandStrokes = data.freehandStrokes || [];
+        if (data.darkCanvas !== undefined) darkCanvas = data.darkCanvas;
+        if (data.gridSize) gridSize = data.gridSize;
+        if (data.title) document.getElementById("project-title").value = data.title;
+        selection.clear();
+        closeModal();
+        undoStack = [];
+        redoStack = [];
+        redraw();
+        updateTikz();
+        statusEl.textContent = "\u2713 Loaded " + file.name;
+        setTimeout(() => { statusEl.textContent = "Tool: " + tool; }, 2000);
+      } catch (err) {
+        statusEl.textContent = "\u2717 Error: " + err.message;
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ── SVG Export ───────────────────────────────────────────────────────────────
+function exportSVG() {
+  if (boxes.length === 0 && freehandStrokes.length === 0) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const b of boxes) {
+    const e = boxEdges(b);
+    minX = Math.min(minX, e.left - 40);
+    minY = Math.min(minY, e.top - 40);
+    maxX = Math.max(maxX, e.right + 40);
+    maxY = Math.max(maxY, e.bottom + 40);
+  }
+  const w = maxX - minX, h = maxY - minY;
+
+  // Render to a temporary canvas, then export as SVG via serialization
+  // Simple approach: export as embedded PNG in SVG (works universally)
+  const expCanvas = document.createElement("canvas");
+  expCanvas.width = w * 2;
+  expCanvas.height = h * 2;
+  const expCtx = expCanvas.getContext("2d");
+  expCtx.scale(2, 2);
+  expCtx.translate(-minX, -minY);
+  expCtx.fillStyle = "#ffffff";
+  expCtx.fillRect(minX, minY, w, h);
+  const origCtx = ctx;
+  const origSel = new Set(selection);
+  ctx = expCtx;
+  selection.clear();
+  for (const stroke of freehandStrokes) {
+    if (stroke.points.length < 2) continue;
+    ctx.save(); ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+    for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+    ctx.stroke(); ctx.restore();
+  }
+  for (const a of arrows) drawArrow(a);
+  for (const b of boxes) drawBox(b, "normal");
+  ctx = origCtx;
+  for (const b of origSel) selection.add(b);
+
+  const dataUrl = expCanvas.toDataURL("image/png");
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <image width="${w}" height="${h}" xlink:href="${dataUrl}"/>
+</svg>`;
+
+  const title = document.getElementById("project-title").value.trim() || "project-example";
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = title.replace(/[^a-zA-Z0-9_\-]/g, "_") + ".svg";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  statusEl.textContent = "\u2713 Exported SVG";
+  setTimeout(() => { statusEl.textContent = "Tool: " + tool; }, 2000);
+  redraw();
+}
+
+// ── Zoom ────────────────────────────────────────────────────────────────────
+function applyZoom() {
+  const inner = document.querySelector(".canvas-inner");
+  inner.style.transform = `scale(${zoomLevel})`;
+  inner.style.transformOrigin = "0 0";
+  inner.style.width = (3000 * zoomLevel) + "px";
+  inner.style.height = (2000 * zoomLevel) + "px";
+  canvas.style.transform = `scale(${zoomLevel})`;
+  canvas.style.transformOrigin = "0 0";
+}
+
+function zoomIn() {
+  zoomLevel = Math.min(zoomLevel + 0.1, 3);
+  applyZoom();
+  statusEl.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
+}
+function zoomOut() {
+  zoomLevel = Math.max(zoomLevel - 0.1, 0.3);
+  applyZoom();
+  statusEl.textContent = "Zoom: " + Math.round(zoomLevel * 100) + "%";
+}
+function zoomReset() {
+  zoomLevel = 1;
+  applyZoom();
+  statusEl.textContent = "Zoom: 100%";
+}
+
+// Ctrl+scroll to zoom
+document.getElementById("canvas-wrap").addEventListener("wheel", (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    if (e.deltaY < 0) zoomIn();
+    else zoomOut();
+  }
+}, { passive: false });
+
+// ── Dark/Light Canvas Toggle ────────────────────────────────────────────────
+function toggleDarkCanvas() {
+  darkCanvas = !darkCanvas;
+  redraw();
+  statusEl.textContent = darkCanvas ? "Dark canvas" : "Light canvas";
+}
+
+// ── Lock ────────────────────────────────────────────────────────────────────
+// Prevent moving/resizing locked boxes — check in mousedown
+// (The locked check is integrated into the move/resize handlers below)
+
+// ── Layer ordering ──────────────────────────────────────────────────────────
+function moveForward(box) {
+  const i = boxes.indexOf(box);
+  if (i < 0 || i >= boxes.length - 1) return;
+  boxes[i] = boxes[i + 1];
+  boxes[i + 1] = box;
+  redraw(); updateTikz();
+}
+
+function moveBackward(box) {
+  const i = boxes.indexOf(box);
+  if (i <= 0) return;
+  boxes[i] = boxes[i - 1];
+  boxes[i - 1] = box;
+  redraw(); updateTikz();
+}
+
+function bringToFront(box) {
+  const i = boxes.indexOf(box);
+  if (i < 0 || i >= boxes.length - 1) return;
+  boxes.splice(i, 1);
+  boxes.push(box);
+  redraw(); updateTikz();
+}
+
+function sendToBack(box) {
+  const i = boxes.indexOf(box);
+  if (i <= 0) return;
+  boxes.splice(i, 1);
+  boxes.unshift(box);
+  redraw(); updateTikz();
+}
+
+// ── Context menu ────────────────────────────────────────────────────────────
+const ctxMenu = document.getElementById("ctx-menu");
+
+function showCtxMenu(x, y) {
+  ctxMenu.style.left = x + "px";
+  ctxMenu.style.top = y + "px";
+  ctxMenu.classList.add("active");
+}
+
+function hideCtxMenu() {
+  ctxMenu.classList.remove("active");
+}
+
+function ctxBringToFront() { for (const b of selection) bringToFront(b); hideCtxMenu(); }
+function ctxMoveForward()  { for (const b of [...selection].reverse()) moveForward(b); hideCtxMenu(); }
+function ctxMoveBackward() { for (const b of selection) moveBackward(b); hideCtxMenu(); }
+function ctxSendToBack()   { for (const b of [...selection].reverse()) sendToBack(b); hideCtxMenu(); }
+function ctxEdit()         { hideCtxMenu(); const s = getSelected(); if (s) openModal(s); }
+function ctxDuplicate()    {
+  hideCtxMenu();
+  const newSel = [];
+  for (const b of selection) { const nb = cloneBox(b); boxes.push(nb); newSel.push(nb); }
+  selection.clear();
+  for (const nb of newSel) selection.add(nb);
+  redraw(); updateTikz();
+}
+function ctxDelete()       { hideCtxMenu(); deleteSelected(); }
+
+function ctxToggleLock() {
+  hideCtxMenu();
+  for (const b of selection) b.locked = !b.locked;
+  redraw();
+}
+
+function ctxGroup() {
+  hideCtxMenu();
+  if (selection.size < 2) return;
+  const gid = ++groupIdCounter;
+  for (const b of selection) b.groupId = gid;
+  statusEl.textContent = "\u2713 Grouped " + selection.size + " objects";
+  setTimeout(() => { statusEl.textContent = "Tool: Select / Move"; }, 2000);
+  redraw();
+}
+
+function ctxUngroup() {
+  hideCtxMenu();
+  for (const b of selection) b.groupId = null;
+  statusEl.textContent = "\u2713 Ungrouped";
+  setTimeout(() => { statusEl.textContent = "Tool: Select / Move"; }, 2000);
+  redraw();
+}
+
+// Right-click on canvas
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  hideCtxMenu();
+  const [x, y] = getCanvasPos(e);
+  const box = boxAt(x, y);
+  if (box) {
+    if (!selection.has(box)) {
+      selectBox(box, false);
+    }
+    redraw();
+    // Show/hide group/ungroup based on context
+    const hasGroup = [...selection].some(b => b.groupId);
+    document.getElementById("ctx-group").style.display = selection.size >= 2 ? "" : "none";
+    document.getElementById("ctx-ungroup").style.display = hasGroup ? "" : "none";
+    showCtxMenu(e.clientX, e.clientY);
+  }
+});
+
+// Hide context menu on click elsewhere
+document.addEventListener("mousedown", (e) => {
+  if (!ctxMenu.contains(e.target)) hideCtxMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideCtxMenu();
+});
+
+// ── Modal ───────────────────────────────────────────────────────────────────
+let modalBox = null;
+let modalFaceColor = "#ffffff";
+let modalEdgeColor = "#4a4a4a";
+
+function buildPalette(containerId, setter) {
+  const container = document.getElementById(containerId);
+  for (const c of PALETTE) {
+    const swatch = document.createElement("div");
+    swatch.className = "color-swatch";
+    swatch.style.background = c;
+    swatch.dataset.color = c;
+    swatch.addEventListener("click", () => setter(c));
+    container.appendChild(swatch);
+  }
+}
+
+function setFaceColor(hex) {
+  modalFaceColor = hex;
+  document.getElementById("face-color-hex").value = hex;
+  document.getElementById("face-color-preview").style.background = hex;
+  document.querySelectorAll("#face-color-palette .color-swatch").forEach(sw => {
+    sw.classList.toggle("active", sw.dataset.color.toLowerCase() === hex.toLowerCase());
+  });
+}
+
+function setEdgeColor(hex) {
+  modalEdgeColor = hex;
+  document.getElementById("edge-color-hex").value = hex;
+  document.getElementById("edge-color-preview").style.background = hex;
+  document.querySelectorAll("#edge-color-palette .color-swatch").forEach(sw => {
+    sw.classList.toggle("active", sw.dataset.color.toLowerCase() === hex.toLowerCase());
+  });
+}
+
+buildPalette("face-color-palette", setFaceColor);
+buildPalette("edge-color-palette", setEdgeColor);
+
+function toggleBold() {
+  document.getElementById("modal-bold").classList.toggle("active");
+  applyProps();
+}
+function toggleItalic() {
+  document.getElementById("modal-italic").classList.toggle("active");
+  applyProps();
+}
+function onShapeChange() {
+  const shape = document.getElementById("modal-shape").value;
+  document.getElementById("polygon-sides-wrap").style.display = shape === "polygon" ? "block" : "none";
+}
+
+function toggleTextColorAuto() {
+  const auto = document.getElementById("text-color-auto").checked;
+  document.getElementById("text-color-controls").style.display = auto ? "none" : "block";
+}
+
+function toggleFaceTransparent() {
+  const checked = document.getElementById("face-transparent").checked;
+  document.getElementById("face-color-controls").style.display = checked ? "none" : "block";
+}
+function toggleEdgeTransparent() {
+  const checked = document.getElementById("edge-transparent").checked;
+  document.getElementById("edge-color-controls").style.display = checked ? "none" : "block";
+}
+
+function openModal(box) {
+  modalBox = box;
+  document.getElementById("props-empty").style.display = "none";
+  document.getElementById("props-content").style.display = "block";
+
+  document.getElementById("modal-input").value = box.text;
+  document.getElementById("modal-shape").value = box.shape || "rectangle";
+  document.getElementById("modal-nsides").value = box.nSides || 6;
+  document.getElementById("polygon-sides-wrap").style.display = (box.shape === "polygon") ? "block" : "none";
+
+  const hasCustomTextColor = !!box.textColor;
+  document.getElementById("text-color-auto").checked = !hasCustomTextColor;
+  document.getElementById("text-color-controls").style.display = hasCustomTextColor ? "block" : "none";
+  document.getElementById("text-color-hex").value = box.textColor || "#1a1a1a";
+  document.getElementById("text-color-preview").style.background = box.textColor || "#1a1a1a";
+
+  document.getElementById("modal-font").value = box.fontFamily || "Computer Modern Sans";
+  document.getElementById("modal-fontsize").value = box.fontSize || 18;
+  document.getElementById("modal-bold").classList.toggle("active", !!box.bold);
+  document.getElementById("modal-italic").classList.toggle("active", !!box.italic);
+
+  const faceTransparent = box.faceColor === "transparent";
+  document.getElementById("face-transparent").checked = faceTransparent;
+  document.getElementById("face-color-controls").style.display = faceTransparent ? "none" : "block";
+  setFaceColor(faceTransparent ? "#ffffff" : (box.faceColor || "#ffffff"));
+
+  const edgeTransparent = box.edgeColor === "transparent";
+  document.getElementById("edge-transparent").checked = edgeTransparent;
+  document.getElementById("edge-color-controls").style.display = edgeTransparent ? "none" : "block";
+  setEdgeColor(edgeTransparent ? "#4a4a4a" : (box.edgeColor || "#4a4a4a"));
+
+  // Box style
+  document.getElementById("modal-linewidth").value = box.lineWidth || 2;
+  document.getElementById("modal-borderstyle").value = box.borderStyle || "solid";
+  document.getElementById("modal-shadow").checked = !!box.shadow;
+  document.getElementById("modal-locked").checked = !!box.locked;
+
+  rebuildLineSizes();
+}
+
+// Rebuild per-line font size selectors from current textarea content
+function rebuildLineSizes() {
+  const list = document.getElementById("line-sizes-list");
+  list.innerHTML = "";
+  const text = document.getElementById("modal-input").value;
+  const textLines = text.split("\n");
+  const defaultSize = parseInt(document.getElementById("modal-fontsize").value) || 18;
+  const container = document.getElementById("line-sizes-container");
+
+  if (textLines.length <= 1) {
+    container.style.display = "none";
+    return;
+  }
+  container.style.display = "block";
+
+  const sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32];
+
+  for (let i = 0; i < textLines.length; i++) {
+    const row = document.createElement("div");
+    row.className = "line-size-row";
+
+    const label = document.createElement("span");
+    label.className = "line-preview";
+    const preview = textLines[i].trim() || "(empty line)";
+    label.textContent = `${i + 1}. ${preview}`;
+    label.title = preview;
+
+    const sel = document.createElement("select");
+    sel.dataset.lineIndex = i;
+    for (const s of sizes) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    }
+    // Set current value
+    const curSize = (modalBox && modalBox.lineFontSizes && modalBox.lineFontSizes[i]) || defaultSize;
+    sel.value = curSize;
+    // If value not in list, add it
+    if (!sizes.includes(curSize)) {
+      const opt = document.createElement("option");
+      opt.value = curSize;
+      opt.textContent = curSize;
+      sel.appendChild(opt);
+      sel.value = curSize;
+    }
+
+    row.appendChild(label);
+    row.appendChild(sel);
+    list.appendChild(row);
+  }
+}
+
+// Update line sizes list when textarea changes
+document.getElementById("modal-input").addEventListener("input", rebuildLineSizes);
+// Update line sizes when default font size changes
+document.getElementById("modal-fontsize").addEventListener("change", rebuildLineSizes);
+
+function closeModal() {
+  document.getElementById("props-empty").style.display = "block";
+  document.getElementById("props-content").style.display = "none";
+  document.getElementById("props-multi").style.display = "none";
+  modalBox = null;
+}
+
+function applyProps() {
+  if (!modalBox) return;
+  const raw = document.getElementById("modal-input").value;
+  const trimmedLines = raw.split("\n").map(l => l.trim());
+  // Remove leading and trailing empty lines
+  while (trimmedLines.length && trimmedLines[0] === "") trimmedLines.shift();
+  while (trimmedLines.length && trimmedLines[trimmedLines.length - 1] === "") trimmedLines.pop();
+  modalBox.text = trimmedLines.join("\n");
+  modalBox.shape = document.getElementById("modal-shape").value;
+  modalBox.nSides = parseInt(document.getElementById("modal-nsides").value) || 6;
+  // Text color
+  if (document.getElementById("text-color-auto").checked) {
+    modalBox.textColor = "";
+  } else {
+    const tcHex = document.getElementById("text-color-hex").value.trim();
+    modalBox.textColor = isValidHex(tcHex) ? tcHex : "#1a1a1a";
+  }
+  modalBox.fontFamily = document.getElementById("modal-font").value;
+  modalBox.fontSize = parseInt(document.getElementById("modal-fontsize").value) || 18;
+  modalBox.bold = document.getElementById("modal-bold").classList.contains("active");
+  modalBox.italic = document.getElementById("modal-italic").classList.contains("active");
+
+  // Save per-line font sizes
+  const lineSelects = document.querySelectorAll("#line-sizes-list select");
+  const defaultSize = modalBox.fontSize;
+  const lineSizes = [];
+  let hasOverride = false;
+  lineSelects.forEach((sel, i) => {
+    const sz = parseInt(sel.value) || defaultSize;
+    lineSizes.push(sz);
+    if (sz !== defaultSize) hasOverride = true;
+  });
+  modalBox.lineFontSizes = hasOverride ? lineSizes : [];
+
+  if (document.getElementById("face-transparent").checked) {
+    modalBox.faceColor = "transparent";
+  } else {
+    const faceHex = document.getElementById("face-color-hex").value.trim();
+    modalBox.faceColor = isValidHex(faceHex) ? faceHex : modalFaceColor;
+  }
+
+  if (document.getElementById("edge-transparent").checked) {
+    modalBox.edgeColor = "transparent";
+  } else {
+    const edgeHex = document.getElementById("edge-color-hex").value.trim();
+    modalBox.edgeColor = isValidHex(edgeHex) ? edgeHex : modalEdgeColor;
+  }
+
+  // Box style
+  modalBox.lineWidth = parseInt(document.getElementById("modal-linewidth").value) || 2;
+  modalBox.borderStyle = document.getElementById("modal-borderstyle").value;
+  modalBox.shadow = document.getElementById("modal-shadow").checked;
+  modalBox.locked = document.getElementById("modal-locked").checked;
+
+  redraw();
+  updateTikz();
+}
+
+// Keep backward compat — old references
+function saveModal() { applyProps(); }
+
+function setupHexInput(inputId, setterFn) {
+  document.getElementById(inputId).addEventListener("input", (e) => {
+    let val = e.target.value.trim();
+    if (val && !val.startsWith("#")) val = "#" + val;
+    if (isValidHex(val)) { setterFn(val); applyProps(); }
+  });
+}
+
+setupHexInput("face-color-hex", setFaceColor);
+setupHexInput("edge-color-hex", setEdgeColor);
+
+// Text color hex live update
+document.getElementById("text-color-hex").addEventListener("input", (e) => {
+  let val = e.target.value.trim();
+  if (val && !val.startsWith("#")) val = "#" + val;
+  if (isValidHex(val)) {
+    document.getElementById("text-color-preview").style.background = val;
+    applyProps();
+  }
+});
+
+// Auto-apply on text changes (debounced)
+let applyTimer = null;
+document.getElementById("modal-input").addEventListener("input", () => {
+  clearTimeout(applyTimer);
+  applyTimer = setTimeout(() => { applyProps(); rebuildLineSizes(); }, 150);
+});
+
+// Auto-apply on select/checkbox changes
+["modal-shape", "modal-nsides", "modal-font", "modal-fontsize"].forEach(id => {
+  document.getElementById(id).addEventListener("change", applyProps);
+});
+["face-transparent", "edge-transparent", "text-color-auto", "modal-shadow", "modal-locked"].forEach(id => {
+  document.getElementById(id).addEventListener("change", applyProps);
+});
+["modal-linewidth", "modal-borderstyle"].forEach(id => {
+  document.getElementById(id).addEventListener("change", applyProps);
+});
+
+// ── TikZ generation ─────────────────────────────────────────────────────────
+function tikzEscape(text) {
+  const replacements = [
+    ["\\", "\\textbackslash{}"],
+    ["_", "\\_"], ["&", "\\&"], ["%", "\\%"],
+    ["#", "\\#"], ["$", "\\$"], ["^", "\\^{}"],
+    ["~", "\\~{}"], ["{", "\\{"], ["}", "\\}"],
+  ];
+  for (const [ch, rep] of replacements) {
+    text = text.split(ch).join(rep);
+  }
+  return text;
+}
+
+function hexToTikzRgb(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return `{rgb,255:red,${r};green,${g};blue,${b}}`;
+}
+
+function generateTikz() {
+  const PX_PER_CM = 40.0;
+  const lines = [
+    "\\begin{tikzpicture}[",
+    "  node distance=2cm,",
+    "  every node/.style={font=\\small},",
+    "  % Requires: \\usetikzlibrary{shapes.geometric}",
+    "  box/.style={",
+    "    rounded corners=6pt,",
+    "    align=center",
+    "  }",
+    "]",
+    "",
+  ];
+
+  if (boxes.length === 0) {
+    lines.push("  % (no boxes yet)", "");
+  } else {
+    for (const box of boxes) {
+      const xCm = (box.x / PX_PER_CM).toFixed(2);
+      const yCm = (-box.y / PX_PER_CM).toFixed(2);
+      const wCm = (box.width / PX_PER_CM).toFixed(2);
+      const hCm = (box.height / PX_PER_CM).toFixed(2);
+
+      // Text content: handle newlines and mixed math/text segments
+      function processLine(line) {
+        if (hasMath(line)) {
+          const segs = parseSegments(line);
+          return segs.map(s => s.type === "math" ? "$" + s.content + "$" : tikzEscape(s.content)).join("");
+        }
+        return tikzEscape(line);
+      }
+      const textLines = (box.text || "").split("\n");
+      const defaultSz = box.fontSize || 18;
+      const processedLines = textLines.map((line, li) => {
+        const content = processLine(line);
+        const lineSz = getLineFontSize(box, li);
+        if (lineSz !== defaultSz) {
+          return `{${fontSizeToLatex(lineSz)} ${content}}`;
+        }
+        return content;
+      });
+      const txt = processedLines.join(" \\\\ ");
+
+      let fillStr, drawStr;
+      if (box.faceColor === "transparent") {
+        fillStr = ", fill=none";
+      } else {
+        const faceHex = (box.faceColor || "#ffffff").toLowerCase();
+        fillStr = faceHex !== "#ffffff"
+          ? `, fill=${hexToTikzRgb(box.faceColor)}`
+          : ", fill=white";
+      }
+      if (box.edgeColor === "transparent") {
+        drawStr = ", draw=none";
+      } else {
+        const edgeHex = (box.edgeColor || "#4a4a4a").toLowerCase();
+        drawStr = `, draw=${edgeHex !== "#000000" ? hexToTikzRgb(box.edgeColor) : "black"}`;
+      }
+
+      let textColor;
+      if (box.textColor) {
+        textColor = `, text=${hexToTikzRgb(box.textColor)}`;
+      } else {
+        const textBg = box.faceColor === "transparent" ? "#ffffff" : (box.faceColor || "#ffffff");
+        textColor = textColorFor(textBg) === "#ffffff" ? ", text=white" : "";
+      }
+
+      const latexFont = FONT_TO_LATEX[box.fontFamily] || "\\sffamily";
+      const latexSize = fontSizeToLatex(box.fontSize || 18);
+      const boldStr = box.bold ? "\\bfseries" : "";
+      const italicStr = box.italic ? "\\itshape" : "";
+      const fontStr = `, font=${latexSize}${boldStr}${italicStr}${latexFont}`;
+      const rotStr = (box.rotation && box.rotation % 360 !== 0) ? `, rotate=${box.rotation}` : "";
+
+      // Shape-specific style
+      let shapeStr = "";
+      const shape = box.shape || "rectangle";
+      if (shape === "oval") shapeStr = ", ellipse";
+      else if (shape === "circle") shapeStr = ", circle";
+      else if (shape === "parallelogram") shapeStr = ", trapezium, trapezium left angle=70, trapezium right angle=110";
+      else if (shape === "polygon") shapeStr = `, regular polygon, regular polygon sides=${box.nSides || 6}`;
+
+      lines.push(`  \\node[box, minimum width=${wCm}cm, minimum height=${hCm}cm${drawStr}${fillStr}${textColor}${fontStr}${rotStr}${shapeStr}] (n${box.id}) at (${xCm},${yCm}) {${txt}};`);
+    }
+  }
+
+  if (arrows.length > 0) {
+    lines.push("");
+    for (const a of arrows) {
+      const labelOpt = a.label
+        ? `node[midway, above, font=\\tiny] {${tikzEscape(a.label)}} `
+        : "";
+      let drawOpts = "->";
+      if (a.dashed) drawOpts += ", densely dashed";
+      const effectiveColor = getArrowColor(a);
+      drawOpts += `, color=${hexToTikzRgb(effectiveColor)}`;
+      lines.push(`  \\draw[${drawOpts}] (n${a.src.id}) -- ${labelOpt}(n${a.dst.id});`);
+    }
+  }
+
+  lines.push("", "\\end{tikzpicture}");
+  return lines.join("\n");
+}
+
+function updateTikz() {
+  tikzOutput.value = generateTikz();
+}
+
+function copyTikz() {
+  updateTikz();
+  const code = tikzOutput.value;
+  navigator.clipboard.writeText(code).then(() => {
+    statusEl.textContent = "\u2713 TikZ code copied to clipboard!";
+    setTimeout(() => {
+      statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1);
+    }, 3000);
+  }).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = code;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    statusEl.textContent = "\u2713 TikZ code copied to clipboard!";
+    setTimeout(() => {
+      statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1);
+    }, 3000);
+  });
+}
+
+// ── TikZ parser (import) ─────────────────────────────────────────────────────
+function tikzUnescape(text) {
+  const replacements = [
+    ["\\textbackslash{}", "\\"],
+    ["\\_", "_"], ["\\&", "&"], ["\\%", "%"],
+    ["\\#", "#"], ["\\$", "$"], ["\\^{}", "^"],
+    ["\\~{}", "~"], ["\\{", "{"], ["\\}", "}"],
+  ];
+  for (const [rep, ch] of replacements) {
+    text = text.split(rep).join(ch);
+  }
+  return text;
+}
+
+function parseTikzRgb(str) {
+  // Parse {rgb,255:red,R;green,G;blue,B} → #hex
+  const m = str.match(/rgb,255:red,(\d+);green,(\d+);blue,(\d+)/);
+  if (m) {
+    const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3]);
+    return "#" + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("");
+  }
+  return null;
+}
+
+function parseTikzColor(val) {
+  if (!val) return null;
+  val = val.trim();
+  if (val === "none") return "transparent";
+  if (val === "white") return "#ffffff";
+  if (val === "black") return "#000000";
+  if (val === "red") return "#ef4444";
+  if (val === "blue") return "#3b82f6";
+  if (val === "green") return "#22c55e";
+  return parseTikzRgb(val) || null;
+}
+
+function parseFontSpec(fontStr) {
+  const result = { fontSize: 18, fontFamily: "Arial", bold: false, italic: false };
+  if (!fontStr) return result;
+
+  if (fontStr.includes("\\bfseries")) result.bold = true;
+  if (fontStr.includes("\\itshape")) result.italic = true;
+
+  // Size
+  if (fontStr.includes("\\Huge")) result.fontSize = 32;
+  else if (fontStr.includes("\\huge")) result.fontSize = 24;
+  else if (fontStr.includes("\\LARGE")) result.fontSize = 20;
+  else if (/\\Large(?![a-z])/.test(fontStr)) result.fontSize = 16;
+  else if (/\\large(?![A-Z])/.test(fontStr)) result.fontSize = 14;
+  else if (fontStr.includes("\\normalsize")) result.fontSize = 12;
+  else if (fontStr.includes("\\small")) result.fontSize = 10;
+  else if (fontStr.includes("\\footnotesize")) result.fontSize = 9;
+  else if (fontStr.includes("\\scriptsize")) result.fontSize = 8;
+  else if (fontStr.includes("\\tiny")) result.fontSize = 6;
+
+  // Family
+  if (fontStr.includes("\\ttfamily")) result.fontFamily = "Courier New";
+  else if (fontStr.includes("\\rmfamily")) result.fontFamily = "Computer Modern";
+  else if (fontStr.includes("\\sffamily")) result.fontFamily = "Arial";
+
+  return result;
+}
+
+// Extract balanced brace content starting at pos (pos points to the opening {)
+function extractBraces(str, pos) {
+  if (str[pos] !== "{") return [null, pos];
+  let depth = 0;
+  let start = pos;
+  for (let i = pos; i < str.length; i++) {
+    if (str[i] === "{") depth++;
+    else if (str[i] === "}") {
+      depth--;
+      if (depth === 0) return [str.slice(start + 1, i), i + 1];
+    }
+  }
+  return [str.slice(start + 1), str.length];
+}
+
+// Parse a comma-separated options string, handling nested braces
+function parseOptions(optStr) {
+  const opts = {};
+  let i = 0;
+  while (i < optStr.length) {
+    // Skip whitespace and commas
+    while (i < optStr.length && (optStr[i] === "," || optStr[i] === " ")) i++;
+    if (i >= optStr.length) break;
+
+    // Read key
+    let keyEnd = i;
+    while (keyEnd < optStr.length && optStr[keyEnd] !== "=" && optStr[keyEnd] !== ",") keyEnd++;
+    const key = optStr.slice(i, keyEnd).trim();
+
+    if (keyEnd >= optStr.length || optStr[keyEnd] === ",") {
+      // Flag-style option (no value)
+      opts[key] = true;
+      i = keyEnd;
+      continue;
+    }
+
+    // Skip '='
+    i = keyEnd + 1;
+    // Skip whitespace
+    while (i < optStr.length && optStr[i] === " ") i++;
+
+    // Read value
+    let val;
+    if (i < optStr.length && optStr[i] === "{") {
+      [val, i] = extractBraces(optStr, i);
+    } else {
+      let valEnd = i;
+      while (valEnd < optStr.length && optStr[valEnd] !== ",") valEnd++;
+      val = optStr.slice(i, valEnd).trim();
+      i = valEnd;
+    }
+    opts[key] = val;
+  }
+  return opts;
+}
+
+function latexSizeToPx(cmd) {
+  const map = {
+    "\\tiny": 6, "\\scriptsize": 8, "\\footnotesize": 9,
+    "\\small": 10, "\\normalsize": 12, "\\large": 14,
+    "\\Large": 16, "\\LARGE": 20, "\\huge": 24, "\\Huge": 32,
+  };
+  return map[cmd] || null;
+}
+
+function parseNodeText(rawText) {
+  // Split on \\ into lines
+  const rawLines = rawText.split(/\s*\\\\\s*/);
+  const textLines = [];
+  const lineSizes = [];
+  let hasOverride = false;
+
+  for (const rawLine of rawLines) {
+    let line = rawLine.trim();
+    let lineSize = null;
+
+    // Detect per-line size: {\\large content} or {\\Large content}
+    const sizeMatch = line.match(/^\{(\\(?:tiny|scriptsize|footnotesize|small|normalsize|large|Large|LARGE|huge|Huge))\s+([\s\S]*)\}$/);
+    if (sizeMatch) {
+      lineSize = latexSizeToPx(sizeMatch[1]);
+      line = sizeMatch[2].trim();
+      if (lineSize) hasOverride = true;
+    }
+    lineSizes.push(lineSize);
+
+    // Convert inline math $...$ to $$...$$
+    line = line.replace(/\$((?:[^$\\]|\\.)+)\$/g, (_, math) => "$$" + math + "$$");
+    // Unescape LaTeX chars in non-math portions
+    const parts = line.split(/(\$\$.*?\$\$)/g);
+    line = parts.map(p => p.startsWith("$$") ? p : tikzUnescape(p)).join("");
+    textLines.push(line);
+  }
+
+  return { text: textLines.join("\n"), lineFontSizes: hasOverride ? lineSizes : [] };
+}
+
+function parseTikzCode(code) {
+  const PX_PER_CM = 40.0;
+  const newBoxes = [];
+  const newArrows = [];
+  const nodeMap = {}; // id → box
+
+  // Parse \node lines
+  const nodeRe = /\\node\s*\[([^\]]*)\]\s*\(([^)]+)\)\s*at\s*\(([^,]+),([^)]+)\)\s*\{/g;
+  let match;
+  while ((match = nodeRe.exec(code)) !== null) {
+    const optStr = match[1];
+    const nodeId = match[2].trim();
+    const xCm = parseFloat(match[3]);
+    const yCm = parseFloat(match[4]);
+
+    // Extract text content (balanced braces)
+    const textStart = match.index + match[0].length - 1; // points to '{'
+    const [rawText] = extractBraces(code, textStart);
+
+    const opts = parseOptions(optStr);
+
+    // Position
+    const x = xCm * PX_PER_CM;
+    const y = -yCm * PX_PER_CM; // flip Y
+
+    // Dimensions
+    let width = 140, height = 60;
+    if (opts["minimum width"]) {
+      const mw = parseFloat(opts["minimum width"]);
+      if (!isNaN(mw)) width = Math.round(mw * PX_PER_CM / GRID) * GRID;
+    }
+    if (opts["minimum height"]) {
+      const mh = parseFloat(opts["minimum height"]);
+      if (!isNaN(mh)) height = Math.round(mh * PX_PER_CM / GRID) * GRID;
+    }
+    if (width < MIN_BOX_SIZE) width = MIN_BOX_SIZE;
+    if (height < MIN_BOX_SIZE) height = MIN_BOX_SIZE;
+
+    // Colors
+    let faceColor = "#ffffff";
+    let edgeColor = "#4a4a4a";
+    if (opts.fill) {
+      const fc = parseTikzColor(opts.fill);
+      if (fc) faceColor = fc;
+    }
+    if (opts.draw) {
+      const ec = parseTikzColor(opts.draw);
+      if (ec) edgeColor = ec;
+    }
+
+    // Font
+    const fontInfo = parseFontSpec(opts.font || "");
+
+    // Text
+    const parsed = rawText !== null ? parseNodeText(rawText) : { text: "", lineFontSizes: [] };
+
+    const box = {
+      id: ++boxCounter,
+      x, y, text: parsed.text, width, height,
+      faceColor, edgeColor,
+      fontSize: fontInfo.fontSize,
+      fontFamily: fontInfo.fontFamily,
+      bold: fontInfo.bold,
+      italic: fontInfo.italic,
+      lineFontSizes: parsed.lineFontSizes.map(s => s || fontInfo.fontSize),
+      rotation: opts.rotate ? (parseFloat(opts.rotate) || 0) : 0,
+      shape: opts.ellipse ? "oval" : opts.circle ? "circle"
+        : opts.trapezium ? "parallelogram"
+        : opts["regular polygon"] ? "polygon" : "rectangle",
+      nSides: opts["regular polygon sides"] ? (parseInt(opts["regular polygon sides"]) || 6) : 6,
+      textColor: opts.text ? (parseTikzColor(opts.text) || "") : "",
+    };
+    snapBoxToGrid(box);
+    newBoxes.push(box);
+    nodeMap[nodeId] = box;
+  }
+
+  // Parse \draw lines
+  const drawRe = /\\draw\s*\[([^\]]*)\]\s*\(([^)]+)\)\s*--\s*(?:node\s*\[[^\]]*\]\s*\{([^}]*)\}\s*)?\(([^)]+)\)\s*;/g;
+  while ((match = drawRe.exec(code)) !== null) {
+    const drawOpts = match[1];
+    const srcId = match[2].trim();
+    const label = match[3] ? tikzUnescape(match[3].trim()) : "";
+    const dstId = match[4].trim();
+    const srcBox = nodeMap[srcId];
+    const dstBox = nodeMap[dstId];
+    if (srcBox && dstBox) {
+      const dashed = /dashed/.test(drawOpts);
+      let arrowColor = "";
+      const colorMatch = drawOpts.match(/color\s*=\s*(\{[^}]*\}|\w+)/);
+      if (colorMatch) {
+        const pc = parseTikzColor(colorMatch[1]);
+        if (pc) arrowColor = pc;
+      }
+      newArrows.push(createArrow(srcBox, dstBox, label, arrowColor, dashed));
+    }
+  }
+
+  return { boxes: newBoxes, arrows: newArrows };
+}
+
+function applyTikz() {
+  const code = tikzOutput.value;
+  try {
+    // Reset counter
+    boxCounter = 0;
+    const result = parseTikzCode(code);
+    boxes = result.boxes;
+    arrows = result.arrows;
+    selected = null;
+    arrowSrc = null;
+    hoverBox = null;
+    redraw();
+    statusEl.textContent = "\u2713 TikZ code applied — " + boxes.length + " box(es), " + arrows.length + " arrow(s)";
+    setTimeout(() => {
+      statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1);
+    }, 3000);
+  } catch (err) {
+    statusEl.textContent = "\u2717 Parse error: " + err.message;
+    setTimeout(() => {
+      statusEl.textContent = "Tool: " + tool.charAt(0).toUpperCase() + tool.slice(1);
+    }, 5000);
+  }
+}
+
+// ── Demo diagram ────────────────────────────────────────────────────────────
+function loadDemoDiagram() {
+  boxes = [];
+  arrows = [];
+  boxCounter = 0;
+  selected = null;
+
+  // Colors from the TikZ source
+  const C = {
+    modelBorder: "#d6b656", modelFill: "#fff2cc",
+    kernelBorder: "#5b9bd5", kernelFill: "#dce9f5",
+    simBorder: "#ed7d31", simFill: "#fce4d6",
+    dataBorder: "#70ad47", dataFill: "#e2f0d9",
+    infBorder: "#c44569", infFill: "#f8e8ee",
+  };
+
+  // Helper to make a box directly (bypasses createBox to set all properties)
+  function addBox(x, y, w, h, text, face, edge, opts = {}) {
+    w = Math.round(w / GRID) * GRID;
+    h = Math.round(h / GRID) * GRID;
+    const left = snap(x - w / 2);
+    const top = snap(y - h / 2);
+    const box = {
+      id: ++boxCounter,
+      x: left + w / 2, y: top + h / 2,
+      text, width: w, height: h,
+      faceColor: face, edgeColor: edge,
+      fontSize: opts.fontSize || 11,
+      fontFamily: opts.fontFamily || "Computer Modern Sans",
+      bold: opts.bold || false,
+      italic: opts.italic || false,
+      lineFontSizes: opts.lineFontSizes || [],
+      rotation: opts.rotation || 0,
+      shape: opts.shape || "rectangle",
+      nSides: opts.nSides || 6,
+      textColor: opts.textColor || "",
+    };
+    boxes.push(box);
+    return box;
+  }
+
+  // ── Layer background boxes (rendered first = behind everything) ──
+
+  // Model layer bg — label sits in the gap between the two node rows
+  addBox(500, 240, 620, 280, "",
+    C.modelFill, C.modelBorder);
+
+  // Model layer label
+  addBox(500, 120, 120, 40, "Model layer",
+    "#ffffff", C.modelBorder, { fontSize: 10, bold: true });
+
+  // Kernel layer bg
+  addBox(520, 480, 440, 140, "",
+    C.kernelFill, C.kernelBorder);
+
+  // Simulation bg
+  addBox(800, 480, 220, 140, "",
+    C.simFill, C.simBorder);
+
+  // Data layer bg
+  addBox(180, 660, 220, 140, "",
+    C.dataFill, C.dataBorder);
+
+  // Inference layer bg
+  addBox(510, 660, 420, 140, "",
+    C.infFill, C.infBorder);
+
+  // ── Layer labels (small boxes above each layer bg) ──
+  addBox(520, 420, 120, 40, "Kernel layer",
+    "#ffffff", C.kernelBorder, { fontSize: 10, bold: true });
+
+  addBox(800, 420, 100, 40, "Simulation",
+    "#ffffff", C.simBorder, { fontSize: 10, bold: true });
+
+  addBox(180, 600, 100, 40, "Data layer",
+    "#ffffff", C.dataBorder, { fontSize: 10, bold: true });
+
+  addBox(510, 600, 120, 40, "Inference layer",
+    "#ffffff", C.infBorder, { fontSize: 10, bold: true });
+
+  // ── Model layer node boxes ──
+  const envbase = addBox(300, 180, 180, 60, "EnvelopeFunction\nenvelope.py",
+    "#ffffff", C.modelBorder, { lineFontSizes: [11, 8] });
+
+  const latdist = addBox(500, 180, 180, 60, "LatitudeDistribution\nlatitude.py",
+    "#ffffff", C.modelBorder, { lineFontSizes: [11, 8] });
+
+  const visbase = addBox(700, 180, 180, 60, "VisibilityFunction\nvisibility.py",
+    "#ffffff", C.modelBorder, { lineFontSizes: [11, 8] });
+
+  const spotmodel = addBox(500, 300, 180, 60, "SpotEvolutionModel\nspot_model.py",
+    "#ffffff", C.modelBorder, { bold: true, lineFontSizes: [11, 8] });
+
+  // ── Kernel layer node boxes ──
+  const ak = addBox(420, 500, 180, 60, "AnalyticKernel\nanalytic_kernel.py",
+    "#ffffff", C.kernelBorder, { lineFontSizes: [11, 8] });
+
+  const nk = addBox(620, 500, 180, 60, "NumericalKernel\nnumerical_kernel.py",
+    "#ffffff", C.kernelBorder, { lineFontSizes: [11, 8] });
+
+  // ── Simulation node box ──
+  const lc = addBox(800, 500, 180, 60, "LightcurveModel\nlightcurve.py",
+    "#ffffff", C.simBorder, { lineFontSizes: [11, 8] });
+
+  // ── Data layer node box ──
+  const obs = addBox(180, 680, 180, 60, "TimeSeriesData\nobservations.py",
+    "#ffffff", C.dataBorder, { lineFontSizes: [11, 8] });
+
+  // ── Inference layer node boxes ──
+  const gp = addBox(420, 680, 180, 60, "GPSolver\ngp_solver.py",
+    "#ffffff", C.infBorder, { bold: true, lineFontSizes: [11, 8] });
+
+  const mcmc = addBox(600, 680, 180, 60, "MCMCSampler\nmcmc.py",
+    "#ffffff", C.infBorder, { lineFontSizes: [11, 8] });
+
+  // ── Arrows (color defaults to source box edge color) ──
+
+  // Model internal: components → SpotEvolutionModel
+  arrows.push(createArrow(envbase, spotmodel));
+  arrows.push(createArrow(latdist, spotmodel));
+  arrows.push(createArrow(visbase, spotmodel));
+
+  // Cross-layer
+  arrows.push(createArrow(obs, gp));              // Data → Inference
+  arrows.push(createArrow(spotmodel, ak));         // Model → Kernel
+  arrows.push(createArrow(spotmodel, lc));         // Model → Simulation
+  arrows.push(createArrow(ak, gp));                // Kernel → Inference
+  arrows.push(createArrow(lc, nk));                // Simulation → Kernel
+  arrows.push(createArrow(nk, ak, "benchmark", "#888888", true)); // dashed gray
+  arrows.push(createArrow(gp, mcmc));              // Inference internal
+}
+
+// ── Vector SVG ──────────────────────────────────────────────────────────────
+// The diagram as SVG, drawn by the same code as the canvas through an
+// svgcanvas context, with math labels as KaTeX HTML in <foreignObject> (the
+// page showing it needs KaTeX's CSS). The background is transparent and
+// shadows are left out. Returns { svg, width, height }, or null for an empty
+// diagram or before svgcanvas has loaded.
+function buildSVG() {
+  if (!window.SvgCanvasContext || (boxes.length === 0 && freehandStrokes.length === 0)) return null;
+  const PAD = 20;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = e => {
+    minX = Math.min(minX, e.left); minY = Math.min(minY, e.top);
+    maxX = Math.max(maxX, e.right); maxY = Math.max(maxY, e.bottom);
+  };
+  for (const b of boxes) grow(boxEdges(b));
+  for (const s of freehandStrokes) if (s.points.length) grow(strokeBounds(s));
+  minX -= PAD; minY -= PAD;
+  const w = Math.ceil(maxX + PAD - minX), h = Math.ceil(maxY + PAD - minY);
+
+  const svgCtx = new window.SvgCanvasContext({ width: w, height: h });
+  const origCtx = ctx;
+  const origSel = new Set(selection);
+  ctx = svgCtx;
+  selection.clear();
+  try {
+    ctx.translate(-minX, -minY);
+    for (const stroke of freehandStrokes) {
+      if (stroke.points.length < 2) continue;
+      ctx.save(); ctx.strokeStyle = stroke.color || "#333"; ctx.lineWidth = stroke.width || 2;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath(); ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
+      for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
+      ctx.stroke(); ctx.restore();
+    }
+    for (const a of arrows) drawArrow(a);
+    for (const b of boxes) drawBox(b, "normal");
+  } finally {
+    ctx = origCtx;
+    for (const b of origSel) selection.add(b);
+  }
+
+  const math = boxes.filter(b => hasMath(b.text)).map(b => {
+    const e = boxEdges(b);
+    const div = buildMathOverlay(b);
+    // The overlay's layout, which comes from the .math-overlay class here
+    div.style.removeProperty("left"); div.style.removeProperty("top");
+    Object.assign(div.style, {
+      width: "100%", height: "100%", boxSizing: "border-box", display: "flex",
+      alignItems: "center", justifyContent: "center", textAlign: "center",
+      overflow: "hidden", padding: "4px 8px", lineHeight: "1.4",
+    });
+    div.className = "tikz-diagram-math";
+    div.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+    return `<foreignObject x="${e.left - minX}" y="${e.top - minY}" width="${b.width}" height="${b.height}">${div.outerHTML}</foreignObject>`;
+  }).join("");
+  const mathStyle = math ? "<style>.tikz-diagram-math .katex{white-space:nowrap}.tikz-diagram-math .katex-display{margin:0;display:inline}</style>" : "";
+
+  let svg = svgCtx.getSerializedSvg(true);
+  // One of each attribute on the root (svgcanvas can repeat xmlns:xlink)
+  svg = svg.replace(/^<svg\b([^>]*)>/, (tag, attrs) => {
+    const seen = new Set();
+    return "<svg" + attrs.replace(/\s([\w:-]+)="[^"]*"/g, (a, name) => seen.has(name) ? "" : (seen.add(name), a)) + ">";
+  });
+  if (!/<svg[^>]*\sviewBox=/.test(svg)) svg = svg.replace(/<svg\b/, `<svg viewBox="0 0 ${w} ${h}"`);
+  svg = svg.replace(/<\/svg>\s*$/, `${mathStyle}${math}</svg>`);
+  return { svg, width: w, height: h };
+}
+
+// ── Embedding ───────────────────────────────────────────────────────────────
+// How Parallax drives the editor when it runs in a frame. Nothing here
+// changes the standalone page.
+window.tikzEditorApi = {
+  // Opens a diagram saved from read(), or an empty one, on a dark or light canvas
+  load(state, { dark = false } = {}) {
+    document.body.classList.add("embedded");
+    darkCanvas = !!dark;
+    if (state) {
+      restoreState(state);
+    } else {
+      boxes = []; arrows = []; freehandStrokes = [];
+      selection.clear(); selected = null; arrowSrc = null; hoverBox = null; boxCounter = 0;
+      redraw(); updateTikz();
+    }
+  },
+  // The diagram as { state, tikz, svg, width, height }, or null when it's empty
+  read() {
+    const drawn = buildSVG();
+    return drawn && { state: getState(), tikz: generateTikz(), ...drawn };
+  },
+};
+
+// ── Init ────────────────────────────────────────────────────────────────────
+// loadDemoDiagram(); // uncomment to load demo on startup
+
+// Re-render math overlays once KaTeX finishes loading
+document.addEventListener("DOMContentLoaded", () => {
+  const checkKatex = setInterval(() => {
+    if (typeof katex !== "undefined") {
+      clearInterval(checkKatex);
+      redraw();
+    }
+  }, 200);
+});
+
+redraw();
+updateTikz();
+</script>
+</body>
+</html>

@@ -24,8 +24,22 @@
     "electron:build:win": "npm run electron:prepare && npx electron-builder --win"
   },
   "devDependencies": {
+    "@highlightjs/cdn-assets": "11.11.1",
+    "animejs": "3.2.2",
+    "chart.js": "4.5.1",
     "concurrently": "^8.2.2",
+    "d3": "7.9.0",
     "electron": "^33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "gsap": "3.12.5",
+    "jsxgraph": "1.11.1",
+    "katex": "0.16.40",
+    "latex.js": "0.12.6",
+    "marked": "18.0.14",
+    "p5": "1.11.3",
+    "pdfjs-dist": "3.11.174",
+    "reveal.js": "5.1.0",
+    "svgcanvas": "2.6.0",
+    "three": "0.162.0"
   }
 }
