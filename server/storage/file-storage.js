@@ -165,7 +165,9 @@ class FileStorage extends StorageInterface {
     const file = path.join(this.historyDir, presentationId, `${snapshotId}.json`)
     if (!fs.existsSync(file)) return null
     const snap = fs.readJsonSync(file)
-    return this.updatePresentation(presentationId, snap.data)
+    // The presentation keeps its present-mode ink, which isn't part of a version
+    const { annotationSets, ...restored } = snap.data || {}
+    return this.updatePresentation(presentationId, restored)
   }
   async deleteSnapshot(presentationId, snapshotId) {
     const file = path.join(this.historyDir, presentationId, `${snapshotId}.json`)

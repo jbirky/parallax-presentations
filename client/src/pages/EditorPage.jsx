@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
+import { ChevronLeft, Pencil, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
 import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
@@ -39,6 +39,10 @@ import ThreeModal from '../components/ThreeModal'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
+import {
+  ANNOTATION_MESSAGE, newAnnotationSet, upsertAnnotationSet, recoverAnnotationBackups,
+  recentAnnotationSets, inkedSlideCount, withoutAnnotations,
+} from '../utils/annotations'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -364,9 +368,20 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     const loadFn = isTemplate ? api.getTemplate : api.getPresentation
     loadFn(presentationId).then(data => {
       // Migrate old slide format to new elements-based format
-      const migrated = {
+      let migrated = {
         ...data,
         slides: (data.slides || []).map(migrateSlide)
+      }
+      // Ink a Present window kept on this device because this tab was closed;
+      // saved straight away, since autosave skips the first load
+      if (!isTemplate) {
+        let storage = null
+        try { storage = window.localStorage } catch {}
+        const { presentation: withInk, recovered } = recoverAnnotationBackups(migrated, storage)
+        if (recovered) {
+          migrated = withInk
+          api.updatePresentation(migrated.id, migrated).catch(err => console.error('Saving recovered annotations failed', err))
+        }
       }
       setPresentation(migrated)
       if (migrated.gridSize) setGridSize(migrated.gridSize)
@@ -561,6 +576,23 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }
   }, [currentSlideIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Present-mode ink: the Present window sends its annotation set after each
+  // change; saving it goes through autosave like any other edit
+  useEffect(() => {
+    const onMessage = e => {
+      if (e.origin !== window.location.origin || e.data?.type !== ANNOTATION_MESSAGE || e.data.presentationId !== presentationId) return
+      setPresentation(prev => upsertAnnotationSet(prev, e.data.set))
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [presentationId])
+
+  // Presents with drawing on, into a new annotation set or on with `set`
+  const presentAnnotated = useCallback((set = null) => {
+    if (isTemplate) return presentInWindow(presentation)
+    presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
+  }, [presentation, isTemplate])
+
   // Auto-save with debounce
   useEffect(() => {
     if (!presentation || isFirstLoad.current) return
@@ -593,7 +625,12 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       return
     }
     const timer = setTimeout(() => {
-      historyRef.current = [...historyRef.current.slice(-50), JSON.parse(JSON.stringify(presentation))]
+      // Undo leaves present-mode ink alone, so it isn't in the history, and a
+      // change to the ink alone isn't an undo step
+      const snapshot = JSON.parse(JSON.stringify(withoutAnnotations(presentation)))
+      const last = historyRef.current[historyRef.current.length - 1]
+      if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return
+      historyRef.current = [...historyRef.current.slice(-50), snapshot]
       redoStackRef.current = []
     }, 500)
     return () => clearTimeout(timer)
@@ -1346,7 +1383,7 @@ function draw() {
     const newHist = hist.slice(0, -1)
     historyRef.current = newHist
     const prevState = newHist[newHist.length - 1]
-    setPresentation(prevState)
+    setPresentation(cur => cur?.annotationSets ? { ...prevState, annotationSets: cur.annotationSets } : prevState)
     setCurrentSlideIndex(ci => Math.min(ci, prevState.slides.length - 1))
   }, [])
 
@@ -1362,8 +1399,8 @@ function draw() {
     const redoState = stack[stack.length - 1]
     redoStackRef.current = stack.slice(0, -1)
     setPresentation(prev => {
-      if (prev) historyRef.current = [...historyRef.current.slice(-49), JSON.parse(JSON.stringify(prev))]
-      return redoState
+      if (prev) historyRef.current = [...historyRef.current.slice(-49), JSON.parse(JSON.stringify(withoutAnnotations(prev)))]
+      return prev?.annotationSets ? { ...redoState, annotationSets: prev.annotationSets } : redoState
     })
     setCurrentSlideIndex(ci => Math.min(ci, redoState.slides.length - 1))
   }, [])
@@ -2078,7 +2115,7 @@ function draw() {
             <div style={{ display: 'flex' }}>
               <button
                 className="btn btn-primary"
-                onClick={() => presentInWindow(presentation)}
+                onClick={() => presentAnnotated()}
                 title="Present"
                 style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
               >
@@ -2102,7 +2139,7 @@ function draw() {
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowPresentDropdown(false); presentInWindow(presentation) }}
+                    onClick={() => { setShowPresentDropdown(false); presentAnnotated() }}
                   >
                     <Play size={14} />
                     Present
@@ -2116,6 +2153,25 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
+                  {!isTemplate && recentAnnotationSets(presentation).length > 0 && (
+                    <>
+                      <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                      <div style={{ padding: '6px 12px 2px', fontSize: 11, color: 'var(--text-muted)' }}>Continue annotating</div>
+                      {recentAnnotationSets(presentation).map(set => (
+                        <button key={set.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          onClick={() => { setShowPresentDropdown(false); presentAnnotated(set) }}
+                          title="Present with this session's ink, and keep adding to it"
+                        >
+                          <Pencil size={14} />
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{set.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{inkedSlideCount(set)} {inkedSlideCount(set) === 1 ? 'page' : 'pages'}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
                   {isCloud && !guest && (
                     <>
                       <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />

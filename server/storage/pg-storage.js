@@ -267,7 +267,9 @@ class PgStorage extends StorageInterface {
     const { rows } = await this.query('SELECT data FROM snapshots WHERE id = $1 AND presentation_id = $2', [snapshotId, presentationId])
     if (!rows.length) return null
     const snapData = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data
-    return this.updatePresentation(presentationId, snapData, userId)
+    // The presentation keeps its present-mode ink, which isn't part of a version
+    const { annotationSets, ...restored } = snapData
+    return this.updatePresentation(presentationId, restored, userId)
   }
 
   async deleteSnapshot(presentationId, snapshotId, userId) {

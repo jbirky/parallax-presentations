@@ -8,6 +8,8 @@ import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
+import { installAnnotations } from './annotationOverlay'
+import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
@@ -70,7 +72,9 @@ function getSlideColumns(slides, presentation = {}) {
 
 const CUSTOM_TRANSITIONS = ['differential-rotation']
 
-export function generateRevealHTML(presentation) {
+// opts.annotate: { set } adds the Present window's drawing layer, saving into
+// that annotation set (see utils/annotationOverlay.js)
+export function generateRevealHTML(presentation, opts = {}) {
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
   const globalFont = presentation.globalFont || ''
@@ -464,7 +468,7 @@ export function generateRevealHTML(presentation) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : slide.transition}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    slideSectionHtmlByIndex.set(slideIndex, `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
 
   // Group into columns for 2D output
@@ -501,7 +505,7 @@ export function generateRevealHTML(presentation) {
         if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
         return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
       }).join('\n          ')
-      const refSlide = `    <section>
+      const refSlide = `    <section data-slide-id="references">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
         <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
         <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
@@ -1021,8 +1025,25 @@ ${showTimeWidget ? `
     })();
 ` : ''}
   </script>
+${opts.annotate ? annotationScript(presentation, opts.annotate.set) : ''}
 </body>
 </html>`
+}
+
+// The drawing layer's source, started once reveal.js is ready
+function annotationScript(presentation, set) {
+  const config = {
+    presentationId: presentation.id, set, message: ANNOTATION_MESSAGE, backupKey: backupKey(presentation.id, set.id),
+    slideW: presentation.slideWidth || 960, slideH: presentation.slideHeight || 540,
+  }
+  // Written into a <script>: no "</script>" or "<!--" can come from the data
+  const json = JSON.stringify(config).replace(/</g, '\\u003c')
+  return `  <script>
+  (function () {
+    var start = function () { (${installAnnotations.toString()})(${json}) }
+    if (Reveal.isReady()) start(); else Reveal.on('ready', start)
+  })()
+  </script>`
 }
 
 function getBackgroundAttrs(bg) {
@@ -1380,8 +1401,9 @@ export function exportPDF(presentation) {
   setTimeout(() => URL.revokeObjectURL(url), 120000)
 }
 
-export function presentInWindow(presentation) {
-  const html = localizeLibraries(generateRevealHTML(presentation))
+// With an annotation set, the window can be drawn on and saves into that set
+export function presentInWindow(presentation, { annotationSet } = {}) {
+  const html = localizeLibraries(generateRevealHTML(presentation, annotationSet ? { annotate: { set: annotationSet } } : {}))
   const blob = new Blob([html], { type: 'text/html' })
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank')
