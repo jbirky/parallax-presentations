@@ -73,7 +73,9 @@ const stripeService = require('./services/stripe')
 if (stripeService.isEnabled()) {
   app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-      await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
+      const { planChangedFor } = await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
+      // Their next request reads the new plan instead of the cached one
+      for (const authId of planChangedFor) provisionCache.delete(authId)
       res.json({ received: true })
     } catch (err) {
       console.error('Stripe webhook error:', err.message)
@@ -217,8 +219,8 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
 // In self-hosted mode, sets req.userId = null (no-op)
 authStack().forEach(mw => app.use(mw))
 
-// Signed-in users' account id and plan by Clerk ID, for CACHE_TTL. An admin
-// changing someone's plan drops their entry.
+// Signed-in users' account id and plan by Clerk ID, for CACHE_TTL. A plan
+// change, from an admin or a Stripe webhook, drops the account's entry.
 const provisionCache = new Map()
 
 // User provisioning (cloud mode only): maps Clerk auth ID → internal UUID.
