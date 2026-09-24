@@ -233,6 +233,15 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not end the guest sessions')
     return b
   }),
+  setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan }),
+  }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not change the plan')
+    return b
+  }),
 
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),

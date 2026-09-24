@@ -125,6 +125,56 @@ function EndGuestSessions({ active, onEnded }) {
   )
 }
 
+const PLAN_LABELS = { free: 'Free', pro: 'Pro', team: 'Team', guest: 'Guest' }
+const planLabel = plan => PLAN_LABELS[plan] || plan
+
+// What a move from one plan to another changes, for the confirm
+export function planChangeSummary(user, from, to) {
+  const lines = [`Move ${user.name || user.email} from ${planLabel(user.plan)} to ${planLabel(to.id)}?`,
+    `Storage limit: ${formatBytes(to.storageBytes)}.`]
+  if (from?.expirationDays && !to.expirationDays) lines.push('Their presentations will stop expiring.')
+  if (!from?.expirationDays && to.expirationDays) {
+    lines.push(`Their existing presentations are kept; new ones will expire after ${to.expirationDays} days.`)
+  }
+  if (user.hasSubscription) lines.push('They pay through Stripe, so a billing change can switch this back.')
+  return lines.join('\n\n')
+}
+
+// An account's plan, which an admin can change after a confirm
+function PlanPicker({ user, plans, onChanged }) {
+  const [moving, setMoving] = useState(null) // the plan being moved to
+  const [message, setMessage] = useState(null)
+
+  async function change(plan) {
+    const to = plans.find(p => p.id === plan)
+    if (!to || plan === user.plan) return
+    if (!confirm(planChangeSummary(user, plans.find(p => p.id === user.plan), to))) return
+    setMoving(plan)
+    setMessage(null)
+    try {
+      const { unexpired } = await api.setUserPlan(user.id, plan)
+      setMessage(`Moved to ${planLabel(plan)}.` +
+        (unexpired ? ` ${unexpired} presentation${unexpired === 1 ? '' : 's'} no longer expire${unexpired === 1 ? 's' : ''}.` : ''))
+      await onChanged?.()
+    } catch (err) {
+      setMessage(`Couldn’t change the plan: ${err.message}`)
+    } finally {
+      setMoving(null)
+    }
+  }
+
+  return (
+    <>
+      <select className="select-sm" value={moving || user.plan} disabled={!!moving}
+        onChange={e => change(e.target.value)} aria-label={`Plan for ${user.email}`}>
+        {!plans.some(p => p.id === user.plan) && <option value={user.plan}>{planLabel(user.plan)}</option>}
+        {plans.map(p => <option key={p.id} value={p.id}>{planLabel(p.id)}</option>)}
+      </select>
+      {message && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)', maxWidth: 180 }}>{message}</div>}
+    </>
+  )
+}
+
 function ChartPanel({ title, subtitle, children, table }) {
   return (
     <section style={styles.panel}>
@@ -173,7 +223,7 @@ function StorageMeter({ used, limit }) {
 }
 
 // The dashboard itself, rendered from the overview data
-export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded }) {
+export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded, onPlanChanged }) {
   const system = data.system
   const samples = system?.samples || []
   const cpuPoints = samples.map(s => ({ t: s.t, value: s.cpuPercent }))
@@ -251,7 +301,9 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded 
                     {u.name && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{u.email}</div>}
                   </td>
                   <td style={styles.td}>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{u.plan}</span>
+                    {data.plans?.length ? <PlanPicker user={u} plans={data.plans} onChanged={onPlanChanged} /> : (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{u.plan}</span>
+                    )}
                   </td>
                   <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>{formatDay(u.createdAt)}</td>
                   <td style={{ ...styles.td, ...styles.num }}>{u.presentations}</td>
@@ -356,7 +408,7 @@ export default function AdminPage() {
           </p>
         )}
 
-        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} />}
+        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} onPlanChanged={load} />}
       </div>
     </div>
   )

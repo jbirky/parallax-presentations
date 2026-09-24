@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AdminDashboard } from './AdminPage'
+import { AdminDashboard, planChangeSummary } from './AdminPage'
 import { niceTicks } from '../components/AdminCharts'
 
 const MB = 1024 * 1024
@@ -87,5 +87,47 @@ describe('AdminDashboard', () => {
     data.system = { ...data.system, samples: [], cpuPercent: null }
     const html = renderToStaticMarkup(<AdminDashboard data={data} />)
     expect(html).toContain('Collecting. Readings are taken every 60 seconds')
+  })
+
+  it('lets an admin pick each account’s plan once the server lists the plans', () => {
+    const picker = renderToStaticMarkup(<AdminDashboard data={overview({ plans: PLANS })} />)
+    expect(picker).toContain('aria-label="Plan for pro@example.com"')
+    expect(picker).toMatch(/<option value="pro" selected="">Pro<\/option>/)
+    expect(picker).toContain('<option value="team">Team</option>')
+    expect(picker).not.toContain('value="guest"')
+
+    const badge = renderToStaticMarkup(<AdminDashboard data={overview()} />)
+    expect(badge).not.toContain('<select')
+  })
+})
+
+const PLANS = [
+  { id: 'free', storageBytes: 100 * MB, expirationDays: 30 },
+  { id: 'pro', storageBytes: 5 * 1024 * MB, expirationDays: null },
+  { id: 'team', storageBytes: 25 * 1024 * MB, expirationDays: null },
+]
+
+describe('planChangeSummary', () => {
+  const [free, pro, team] = PLANS
+  const user = { name: 'Near', email: 'near@example.com', plan: 'free', hasSubscription: false }
+
+  it('says presentations stop expiring when moving off free', () => {
+    const text = planChangeSummary(user, free, pro)
+    expect(text).toContain('Move Near from Free to Pro?')
+    expect(text).toContain('Storage limit: 5.0 GB.')
+    expect(text).toContain('Their presentations will stop expiring.')
+  })
+
+  it('says only new presentations expire when moving to free', () => {
+    const text = planChangeSummary({ ...user, plan: 'pro' }, pro, free)
+    expect(text).toContain('Storage limit: 100 MB.')
+    expect(text).toContain('new ones will expire after 30 days')
+    expect(text).not.toContain('stop expiring')
+  })
+
+  it('leaves expiry out between plans that don’t expire, and warns about Stripe', () => {
+    const text = planChangeSummary({ ...user, plan: 'pro', hasSubscription: true }, pro, team)
+    expect(text).not.toContain('expir')
+    expect(text).toContain('They pay through Stripe')
   })
 })

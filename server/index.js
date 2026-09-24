@@ -24,14 +24,14 @@ const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
 } = require('./services/guest-service')
-const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
+const { startSystemSampling, recordUsage, getAdminOverview, assignablePlans, setUserPlan } = require('./services/admin-service')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
-  requireValidId, requireValidSlug, requireValidSHA, validateUpload,
+  requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
   safeErrorMessage,
 } = require('./middleware/security')
@@ -217,10 +217,13 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
 // In self-hosted mode, sets req.userId = null (no-op)
 authStack().forEach(mw => app.use(mw))
 
+// Signed-in users' account id and plan by Clerk ID, for CACHE_TTL. An admin
+// changing someone's plan drops their entry.
+const provisionCache = new Map()
+
 // User provisioning (cloud mode only): maps Clerk auth ID → internal UUID.
 // On first authenticated request, creates a row in the users table.
 if (IS_CLOUD) {
-  const provisionCache = new Map()
   const CACHE_TTL = 5 * 60 * 1000
   let clerkClient = null
   try { clerkClient = require('@clerk/express').clerkClient } catch {}
@@ -398,6 +401,26 @@ app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('End guest sessions error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/admin/users/:id/plan — puts an account on another plan, given as
+// { plan }. Not found for anyone who isn't an admin.
+app.post('/api/admin/users/:id/plan', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
+  const plan = req.body?.plan
+  if (!assignablePlans(PLAN_LIMITS).includes(plan)) return res.status(400).json({ error: 'Unknown plan' })
+  try {
+    const result = await setUserPlan(storage, PLAN_LIMITS, req.params.id, plan)
+    if (!result) return res.status(404).json({ error: 'Account not found' })
+    // Their next request reads the new plan instead of the cached one
+    if (result.authId) provisionCache.delete(result.authId)
+    console.log(`Admin moved account ${req.params.id} from ${result.previousPlan} to ${plan}`)
+    res.json({ previousPlan: result.previousPlan, plan, hasSubscription: result.hasSubscription, unexpired: result.unexpired })
+  } catch (err) {
+    console.error('Plan change error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
