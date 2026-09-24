@@ -71,7 +71,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -712,6 +712,20 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <button onClick={() => { setShowLayoutMenu(false); onAddMathGrid?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left', marginTop: 4 }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
                 <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x222E;</span> Math Grid
               </button>
+              {onAddTabs && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', padding: '4px 0', marginTop: 4 }}>
+                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x2395;</span> Tabs
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                    {[2, 3, 4].map(n => (
+                      <button key={n} title={`Insert ${n} tabs that switch between panels when presenting`}
+                        onClick={() => { setShowLayoutMenu(false); onAddTabs(n) }}
+                        style={{ minWidth: 26, padding: '2px 6px', fontSize: 12, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                        {n}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+              )}
             </div>
 
             {selectedCount >= 2 && (

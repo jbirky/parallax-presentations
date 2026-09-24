@@ -45,7 +45,7 @@ import {
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
-import { remapSlideLinks, renewElementIds, countLinksTo } from '../utils/clickActions'
+import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -1204,6 +1204,23 @@ function draw() {
       return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
     })
     setSelectedElementIds([newEl.id])
+  }, [currentSlide, slideW, slideH])
+
+  // Tabs, already wired to show their own panels; tab 1 is selected, so its
+  // On click shows how
+  const addTabs = useCallback((count) => {
+    const top = Math.max(0, ...(currentSlide?.elements || []).map(el => el.zIndex || 0))
+    const newElements = buildTabs(count, { slideW, slideH, zIndex: top + 1, makeId: () => crypto.randomUUID() })
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...newElements] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newElements[1].id])
   }, [currentSlide, slideW, slideH])
 
   const addModularGrid = useCallback((moduleShape, cols, rows, gap) => {
@@ -3376,6 +3393,7 @@ function draw() {
             onAddD3={addD3Element}
             onAddKineticText={() => setShowKineticModal(true)}
             onAddMathGrid={() => setShowMathGridModal(true)}
+            onAddTabs={addTabs}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddDiagram={() => setShowDiagramModal(true)}

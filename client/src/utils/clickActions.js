@@ -249,18 +249,55 @@ export function slideIdFromHref(href) {
   return m ? m[1] : null
 }
 
-// "Shape 2", or a text element's first line, for each element of a slide
+// "Shape 2", or a text element's first line or a shape's label, for each
+// element of a slide
 export function elementLabels(elements) {
   const labels = new Map()
   const counts = {}
   for (const el of elements || []) {
-    const text = el.type === 'text' ? firstLine(el.content) : ''
+    const text = el.type === 'text' ? firstLine(el.content) : el.type === 'shape' ? (el.text || '').trim() : ''
     if (text) { labels.set(el.id, shorten(text, 32)); continue }
     const name = (el.type || 'element').replace(/^plugin:/, '').replace(/^./, c => c.toUpperCase())
     counts[name] = (counts[name] || 0) + 1
     labels.set(el.id, `${name} ${counts[name]}`)
   }
   return labels
+}
+
+// A tabs component for a slide: a row of tab buttons over a panel, with each
+// tab showing its content and a bar under itself, and hiding the others'.
+// Tab 1 starts shown. Its parts aren't grouped, since a group shares one
+// click action.
+export function buildTabs(count, { slideW = 960, slideH = 540, zIndex = 1, makeId }) {
+  const n = Math.max(2, Math.min(6, count))
+  const mx = 80, top = 110, tabH = 44, gap = 8
+  const width = slideW - 2 * mx
+  const tabW = Math.min(200, (width - (n - 1) * gap) / n)
+  const panelY = top + tabH + 10
+  const panelH = Math.max(120, slideH - panelY - 50)
+  const shape = (extra) => ({
+    id: makeId(), type: 'shape', shape: 'rect', stroke: 'none', strokeWidth: 0, borderRadius: 0,
+    opacity: 1, text: '', fontSize: 18, textColor: '#ffffff', ...extra,
+  })
+  const background = shape({ x: mx, y: panelY, width, height: panelH, zIndex, fill: 'rgba(255,255,255,0.05)', stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1, borderRadius: 8 })
+  const tabs = [], bars = [], panels = []
+  for (let i = 0; i < n; i++) {
+    const x = mx + i * (tabW + gap)
+    const hidden = i ? { startHidden: true } : {}
+    tabs.push(shape({ x, y: top, width: tabW, height: tabH, zIndex: zIndex + 1, fill: 'rgba(255,255,255,0.08)', borderRadius: 6, text: `Tab ${i + 1}` }))
+    bars.push(shape({ x, y: top + tabH - 4, width: tabW, height: 4, zIndex: zIndex + 2, fill: '#6366f1', ...hidden }))
+    panels.push({
+      id: makeId(), type: 'text', x: mx + 24, y: panelY + 16, width: width - 48, height: panelH - 32, zIndex: zIndex + 2,
+      content: `<p><span style="font-size: 28px">Content for tab ${i + 1}</span></p><p><span style="font-size: 20px; color: #94a3b8">Double-click to edit. Each tab shows its own text here.</span></p>`,
+      ...hidden,
+    })
+  }
+  const switched = [...bars, ...panels].map(el => el.id)
+  tabs.forEach((tab, i) => {
+    const own = [bars[i].id, panels[i].id]
+    tab.clickAction = { type: 'visibility', show: own, hide: switched.filter(id => !own.includes(id)) }
+  })
+  return [background, ...tabs, ...bars, ...panels]
 }
 
 // ── PDF ────────────────────────────────────────────────────────────────────

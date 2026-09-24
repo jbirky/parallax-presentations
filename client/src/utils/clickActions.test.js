@@ -112,6 +112,51 @@ describe('showing and hiding', () => {
     expect(labels.get('tabA')).toBe('Go')
     expect(labels.get('note')).toBe('Html 1')
     expect([labels.get('s1'), labels.get('s2'), labels.get('p')]).toEqual(['Shape 1', 'Shape 2', 'Linear-algebra 1'])
+    expect(client.elementLabels([{ id: 'b', type: 'shape', text: ' Tab 2 ' }]).get('b')).toBe('Tab 2')
+  })
+})
+
+describe('the tabs insert', () => {
+  let n = 0
+  const makeId = () => `id${++n}`
+
+  it('makes tabs that each show their own panel and bar', () => {
+    const els = client.buildTabs(3, { slideW: 960, slideH: 540, zIndex: 5, makeId })
+    const [background, ...rest] = els
+    const tabs = rest.slice(0, 3), bars = rest.slice(3, 6), panels = rest.slice(6)
+    expect(els).toHaveLength(10)
+    expect(background).toMatchObject({ type: 'shape', zIndex: 5 })
+    expect(tabs.map(t => t.text)).toEqual(['Tab 1', 'Tab 2', 'Tab 3'])
+    tabs.forEach((tab, i) => {
+      const own = [bars[i].id, panels[i].id]
+      expect(tab.clickAction.show).toEqual(own)
+      expect(tab.clickAction.hide.sort()).toEqual([...bars, ...panels].map(e => e.id).filter(id => !own.includes(id)).sort())
+      expect(!!bars[i].startHidden).toBe(i > 0)
+      expect(!!panels[i].startHidden).toBe(i > 0)
+      expect(bars[i].x).toBe(tab.x) // under its tab
+    })
+    expect(Math.max(...els.map(e => e.x + e.width))).toBeLessThanOrEqual(960)
+    expect(Math.max(...els.map(e => e.y + e.height))).toBeLessThanOrEqual(540)
+    expect(new Set(els.map(e => e.id)).size).toBe(10)
+    expect(client.buildTabs(9, { makeId }).filter(e => e.clickAction)).toHaveLength(6)
+  })
+
+  it('switches panels when presented', () => {
+    const els = client.buildTabs(2, { makeId })
+    const html = generateRevealHTML({ id: 'p', slides: [{ id: 'tabs', elements: els }] })
+    const section = html.match(/<section data-slide-id="tabs"[\s\S]*?<\/section>/)[0]
+    const win = new Window({ url: 'http://localhost/deck.html' })
+    win.document.body.innerHTML = `<div class="reveal"><div class="slides">${section}</div></div>`
+    new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, { on() {} })
+    const doc = win.document
+    const shown = el => !doc.querySelector(`[data-el="${el.id}"]`).hasAttribute('data-hidden')
+    const [, tab1, tab2, bar1, bar2, panel1, panel2] = els
+    const click = tab => doc.querySelector(`[data-action-show~="${tab.clickAction.show[0]}"]`).dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+    expect([shown(bar1), shown(panel1), shown(bar2), shown(panel2)]).toEqual([true, true, false, false])
+    click(tab2)
+    expect([shown(bar1), shown(panel1), shown(bar2), shown(panel2)]).toEqual([false, false, true, true])
+    click(tab1)
+    expect([shown(bar1), shown(panel1), shown(bar2), shown(panel2)]).toEqual([true, true, false, false])
   })
 })
 
