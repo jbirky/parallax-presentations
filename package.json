@@ -26,7 +26,6 @@
   "devDependencies": {
     "@highlightjs/cdn-assets": "11.11.1",
     "animejs": "3.2.2",
-    "chart.js": "4.5.1",
     "concurrently": "^8.2.2",
     "d3": "7.9.0",
     "electron": "^33.4.11",

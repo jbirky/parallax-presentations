@@ -1014,24 +1014,6 @@ function draw() {
     setSelectedElementIds([newEl.id])
   }, [])
 
-  const addChartElement = useCallback(() => {
-    const newEl = {
-      id: crypto.randomUUID(),
-      type: 'chart',
-      x: 80, y: 80, width: 500, height: 380, zIndex: 2,
-      chartType: 'bar',
-      chartData: {
-        labels: ['A', 'B', 'C', 'D', 'E'],
-        datasets: [{ label: 'Series 1', data: [12, 19, 8, 15, 10], color: '#6366f1' }]
-      }
-    }
-    setPresentation(prev => {
-      if (!prev) return prev
-      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
-    })
-    setSelectedElementIds([newEl.id])
-  }, [])
-
   const addTimelineElement = useCallback(() => {
     const now = new Date()
     const startYear = now.getFullYear() - 2
@@ -3299,7 +3281,6 @@ function draw() {
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
             onAddMarkdown={addMarkdownElement}
-            onAddChart={addChartElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
             onAddIcon={addIconElement}

@@ -46,7 +46,7 @@ Export a **PowerPoint-compatible `.pptx` file** for editing in Microsoft Office,
 
 - Click **File → Export → PPTX**.
 - Text, images, and basic shapes are exported as editable PowerPoint elements.
-- Complex elements (LaTeX blocks, charts) are rasterized as images in the PPTX.
+- Complex elements such as LaTeX blocks are rasterized as images in the PPTX.
 
 ## Shareable links
 

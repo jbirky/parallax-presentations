@@ -33,7 +33,6 @@ export default defineConfig({
             { text: 'Text & Formatting', link: '/features/text-formatting' },
             { text: 'Shapes & Elements', link: '/features/shapes' },
             { text: 'LaTeX & Math', link: '/features/latex' },
-            { text: 'Charts', link: '/features/charts' },
             { text: 'Export & Sharing', link: '/features/export' }
           ]
         }
@@ -53,7 +52,7 @@ export default defineConfig({
             { text: 'Images', link: '/tutorials/images' },
             { text: 'Shapes & Drawing', link: '/tutorials/shapes-drawing' },
             { text: 'Code, LaTeX & Markdown', link: '/tutorials/code-math' },
-            { text: 'Charts & Tables', link: '/tutorials/charts-tables' },
+            { text: 'Tables', link: '/tutorials/tables' },
             { text: 'HTML Embeds & p5.js', link: '/tutorials/html-embeds' },
             { text: 'Kinetic Text', link: '/tutorials/kinetic-text' },
             { text: 'Video & Audio', link: '/tutorials/media' },

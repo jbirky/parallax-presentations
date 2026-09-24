@@ -1515,9 +1515,6 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'timeline' && (
         <TimelineRenderer element={element} />
       )}
-      {element.type === 'chart' && (
-        <ChartRenderer element={element} isSelected={isSelected} />
-      )}
       {element.type === 'callout' && (
         <CalloutRenderer element={element} />
       )}
@@ -1863,50 +1860,6 @@ function MarkdownRenderer({ element }) {
     <div
       style={{ width: '100%', height: '100%', overflow: 'auto', padding: '8px 12px', boxSizing: 'border-box', color: 'white', fontSize: '18px', lineHeight: 1.5 }}
       dangerouslySetInnerHTML={{ __html: html }}
-    />
-  )
-}
-
-function ChartRenderer({ element, isSelected }) {
-  const { chartType = 'bar', chartData = {} } = element
-  const labels = chartData.labels || []
-  const datasets = chartData.datasets || []
-
-  const chartHtml = `<!doctype html><html><head>
-<meta charset="utf-8">
-<script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style>
-</head><body>
-<canvas id="c" style="width:100%;height:100%"></canvas>
-<script>
-new Chart(document.getElementById('c'),{
-  type:'${chartType}',
-  data:{
-    labels:${JSON.stringify(labels)},
-    datasets:${JSON.stringify(datasets.map(ds => ({
-      label: ds.label || '',
-      data: ds.data || [],
-      backgroundColor: ds.color || '#6366f1',
-      borderColor: ds.color || '#6366f1',
-      borderWidth: chartType === 'line' ? 2 : 0,
-      fill: chartType === 'line' ? false : undefined,
-    })))}
-  },
-  options:{
-    responsive:true,
-    maintainAspectRatio:false,
-    plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},
-    scales:${chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`}
-  }
-});
-<\/script></body></html>`
-
-  return (
-    <iframe
-      srcDoc={localizeLibraries(chartHtml)}
-      style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
-      sandbox="allow-scripts"
-      title="Chart"
     />
   )
 }

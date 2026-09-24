@@ -70,7 +70,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddChart, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -402,13 +402,10 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
         </>)}
       </div>
 
-      <button className="btn-icon" title="Insert Chart" onClick={onAddChart} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-        <span style={{ fontSize: 14 }}>&#9776;</span> Chart
-      </button>
       <button className="btn-icon" title="Insert Timeline" onClick={onAddTimeline} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
         <Clock size={14} /> Timeline
       </button>
-      <a href={`${DOCS_BASE}charts-tables`} target="_blank" rel="noopener noreferrer" title="Chart & Table docs" style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', opacity: 0.5, marginLeft: -4 }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}><HelpCircle size={11} /></a>
+      <a href={`${DOCS_BASE}tables`} target="_blank" rel="noopener noreferrer" title="Table docs" style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', opacity: 0.5, marginLeft: -4 }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}><HelpCircle size={11} /></a>
       <button className="btn-icon" title="Add Table" onClick={() => { const r = parseInt(window.prompt('Rows:', '3') || '3'); const c = parseInt(window.prompt('Columns:', '3') || '3'); if (r && c) onAddTable?.(r, c) }} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
         <Table2 size={14} /> Table
       </button>
@@ -726,7 +723,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
         </>)}
       </div>
 
-      {/* Chart docs */}
       {/* Table docs - handled inline */}
 
       {selectedCount >= 2 && (

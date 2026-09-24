@@ -15,7 +15,6 @@ Unlike editing raw Markdown or HTML reveal.js files, Parallax lets you:
 
 - **Rich text formatting** via TipTap: headings, bold/italic/underline, font size & color, highlight, lists, tables, and code blocks
 - **LaTeX & TikZ** — write display math or full TikZ diagrams in a split-pane editor with live preview
-- **Charts** — insert bar, line, and scatter charts from the element menu
 - **Slide navigation** — vertical stacks, reorderable slides, speaker notes
 - **Themes** — 11 built-in reveal.js themes
 - **Footer sequences** — automatic section progress footers for academic talks
