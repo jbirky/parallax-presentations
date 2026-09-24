@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
 import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
@@ -42,7 +42,9 @@ import TikzEditorModal from '../components/TikzEditorModal'
 import {
   ANNOTATION_MESSAGE, newAnnotationSet, upsertAnnotationSet, recoverAnnotationBackups,
   recentAnnotationSets, inkedSlideCount, withoutAnnotations,
+  renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
+import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -68,6 +70,22 @@ import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
+// Publishing to Zenodo is turned off for now; its code stays for when it's
+// brought back, along with ZENODO_ENABLED in server/index.js
+const ZENODO_ENABLED = false
+
+// Downloads the presentation as one HTML file with its libraries and uploads
+// inlined, so it works offline and anywhere
+async function downloadOfflineHTML(presentation) {
+  const offline = await generateOfflineHTML(generateRevealHTML(presentation))
+  const blob = new Blob([offline], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}_offline.html`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 const CODE_THEME_CSS = {
   'monokai': monokaiCSS,
@@ -314,6 +332,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
+  const [showSessions, setShowSessions] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
   const mathNodeUpdateRef = useRef(null) // holds the TipTap updateAttributes fn for the active math node
 
@@ -413,7 +432,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   useEffect(() => {
     if (!guest) {
       api.getGithubConfig().then(setGithubConfig).catch(() => {})
-      api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+      if (ZENODO_ENABLED) api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
     }
     api.getFonts().then(fonts => {
       if (Array.isArray(fonts)) {
@@ -1968,18 +1987,11 @@ function draw() {
                   { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
                   { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
                   { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
-                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: async () => {
-                    const html = generateRevealHTML(presentation)
-                    const offline = await generateOfflineHTML(html)
-                    const blob = new Blob([offline], { type: 'text/html' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}_offline.html`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }},
-                ].filter(item => item.label !== 'Share link' || (isCloud && !guest)).map(({ label, icon, action }) => (
+                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
+                  { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
+                ].filter(item => item.label !== 'Share link' || (isCloud && !guest))
+                  .filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
+                  .map(({ label, icon, action }) => (
                   <button
                     key={label}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
@@ -2055,22 +2067,24 @@ function draw() {
                       <Github size={14} />
                       GitHub
                     </button>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={async () => {
-                        setShowSyncDropdown(false)
-                        setZenodoStatus(null)
-                        if (presentationId) {
-                          api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                        }
-                        setShowZenodoModal(true)
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                      Zenodo
-                    </button>
+                    {ZENODO_ENABLED && (
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={async () => {
+                          setShowSyncDropdown(false)
+                          setZenodoStatus(null)
+                          if (presentationId) {
+                            api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+                          }
+                          setShowZenodoModal(true)
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
+                        Zenodo
+                      </button>
+                    )}
                     <div style={{ borderTop: '1px solid var(--border)' }} />
                     <button
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
@@ -2170,6 +2184,16 @@ function draw() {
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{inkedSlideCount(set)} {inkedSlideCount(set) === 1 ? 'page' : 'pages'}</span>
                         </button>
                       ))}
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={() => { setShowPresentDropdown(false); setShowSessions(true) }}
+                        title="View, export, rename or delete annotation sessions"
+                      >
+                        <List size={14} />
+                        All sessions…
+                      </button>
                     </>
                   )}
                   {isCloud && !guest && (
@@ -3058,9 +3082,10 @@ function draw() {
                         if (!confirm(`Restore from commit ${commit.sha.slice(0, 7)}? Current changes will be overwritten.`)) return
                         setGitRestoring(commit.sha)
                         try {
-                          const data = await api.getGitVersion(presentationId, commit.sha)
+                          // Versions on GitHub have no present-mode ink; the presentation keeps its own
+                          const { annotationSets, ...data } = await api.getGitVersion(presentationId, commit.sha)
                           await api.updatePresentation(presentationId, data)
-                          setPresentation({ ...data, slides: (data.slides || []).map(s => s) })
+                          setPresentation(cur => ({ ...data, slides: (data.slides || []).map(s => s), ...(cur?.annotationSets && { annotationSets: cur.annotationSets }) }))
                           setShowGitHistory(false)
                         } catch (e) { alert('Restore failed: ' + e.message) }
                         setGitRestoring(null)
@@ -4007,6 +4032,19 @@ function draw() {
           </div>
         </div>
       )}
+      {showSessions && (
+        <AnnotationSessionsModal
+          sets={recentAnnotationSets(presentation, Infinity)}
+          onView={set => presentInWindow(inkedPresentation(presentation, set))}
+          onContinue={set => { setShowSessions(false); presentAnnotated(set) }}
+          onExportPdf={set => exportPDF(inkedPresentation(presentation, set))}
+          onExportHtml={set => downloadOfflineHTML(inkedPresentation(presentation, set))}
+          onRename={(id, name) => setPresentation(p => renameAnnotationSet(p, id, name))}
+          onDelete={id => setPresentation(p => deleteAnnotationSet(p, id))}
+          onClose={() => setShowSessions(false)}
+        />
+      )}
+
       {showImportSlideModal && (
         <ImportSlideModal
           currentPresentationId={presentationId}

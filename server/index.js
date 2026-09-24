@@ -161,7 +161,8 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Using LaTeX & Math', link: 'tutorials/using-latex' },
       { text: 'Version Diff', link: 'features/version-diff' },
       { text: 'Video & Audio', link: 'tutorials/media' },
-      { text: 'Zenodo Integration', link: 'features/zenodo' },
+      // Hidden while publishing to Zenodo is turned off (ZENODO_ENABLED)
+      // { text: 'Zenodo Integration', link: 'features/zenodo' },
     ],
   }
   res.json(sidebar)
@@ -2597,6 +2598,15 @@ app.get('/api/zotero/proxy/*', async (req, res) => {
 
 // --- Zenodo Integration ---
 
+// Publishing to Zenodo is turned off for now; the code stays for when it's
+// brought back. Set this to true (and ZENODO_ENABLED in the client's
+// EditorPage.jsx) to turn it on again.
+const ZENODO_ENABLED = false
+if (!ZENODO_ENABLED) {
+  app.use(['/api/zenodo', '/api/presentations/:id/zenodo'],
+    (req, res) => res.status(404).json({ error: 'Publishing to Zenodo is turned off' }))
+}
+
 // GET /api/zenodo/config
 app.get('/api/zenodo/config', async (req, res) => {
   try {
@@ -2653,8 +2663,10 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
     const config = await storage.getZenodoConfig(req.userId)
     if (!config.token) return res.status(400).json({ error: 'Zenodo not configured. Save your API token first.' })
 
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
-    if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
+    const stored = await storage.getPresentation(req.params.id, req.userId)
+    if (!stored) return res.status(404).json({ error: 'Presentation not found' })
+    // Published without its present-mode ink, which is private to the author
+    const { annotationSets, ...presentation } = stored
 
     const { creators, description, keywords, license } = req.body
     if (!creators || !creators.length) return res.status(400).json({ error: 'At least one creator is required' })
@@ -2889,8 +2901,10 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       return res.status(400).json({ error: 'GitHub not configured. Set token, owner, and repo first.' })
     }
 
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
-    if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
+    const stored = await storage.getPresentation(req.params.id, req.userId)
+    if (!stored) return res.status(404).json({ error: 'Presentation not found' })
+    // Pushed without its present-mode ink, which is private to the author
+    const { annotationSets, ...presentation } = stored
 
     const { token, owner, repo } = config
     const gh = (endpoint, opts = {}) => {
