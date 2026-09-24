@@ -20,6 +20,8 @@ docker compose up -d
 
 Then open **http://localhost:3002** in your browser.
 
+Only this computer can open it, since the self-hosted editor has no sign-in. To open it to your network too, change `"127.0.0.1:3002:3002"` to `"3002:3002"` in `docker-compose.yml`.
+
 ### Useful Docker commands
 
 ```bash
@@ -39,12 +41,12 @@ docker compose up -d --build
 
 ### Data persistence
 
-| Path inside container | What it stores |
-|---|---|
-| `/app/presentations` | All saved presentation files |
-| `/app/uploads` | Uploaded images and assets |
+| Path inside container | Docker volume | What it stores |
+|---|---|---|
+| `/app/server/data` | `parallax-selfhosted-data` | Presentations, templates, version history and settings |
+| `/app/server/uploads` | `parallax-selfhosted-uploads` | Uploaded images, videos and other files |
 
-These are mounted to `./presentations` and `./uploads` on the host by default (see `docker-compose.yml`).
+The volumes are kept when you stop or rebuild the container, including with `docker compose down`, but `docker compose down -v` deletes them.
 
 ---
 
@@ -90,7 +92,7 @@ For developers or anyone who wants to customize the editor.
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22 and npm
 
 ### Steps
 
@@ -119,8 +121,8 @@ Serves the built app at `http://localhost:3002`.
 
 ### Data persistence
 
-Presentations are saved to `./presentations/` and uploads to `./uploads/` in the project root.
+Presentations are saved to `server/data/` and uploads to `server/uploads/`.
 
 ::: warning
-When running from source, make sure to back up the `presentations/` directory — it is not tracked by git.
+When running from source, make sure to back up `server/data/` and `server/uploads/`. Neither is tracked by git.
 :::

@@ -1,0 +1,97 @@
+# parallax-presentations.com: prod (parallax-stable, from main) and dev
+# (parallax-dev, from dev) in cloud mode, plus Umami analytics. Needs the
+# server's .env, whose COMPOSE_FILE line makes plain `docker compose` use this
+# file. Self-hosting uses docker-compose.yml instead.
+#
+# The project name is pinned because the dev and Umami volumes are named
+# after it.
+name: parallax-presentations
+
+services:
+  parallax-stable:
+    build:
+      context: https://github.com/jbirky/parallax-presentations.git#main
+      args:
+        - VITE_PARALLAX_MODE=cloud
+        - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+    ports:
+      - "127.0.0.1:3002:3002"
+    volumes:
+      - parallax-data:/app/server/data
+      - parallax-uploads:/app/server/uploads
+    env_file:
+      - .env
+    environment:
+      - PARALLAX_MODE=cloud
+      - PARALLAX_DB=postgres
+      - NODE_ENV=production
+    # A runaway video conversion or PowerPoint import gets this container
+    # restarted instead of starving the rest of the server
+    mem_limit: 4g
+    memswap_limit: 4g
+    restart: unless-stopped
+
+  parallax-dev:
+    build:
+      context: https://github.com/jbirky/parallax-presentations.git#dev
+      args:
+        - VITE_PARALLAX_MODE=cloud
+        - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+    ports:
+      - "127.0.0.1:3003:3002"
+    volumes:
+      - parallax-dev-data:/app/server/data
+      - parallax-dev-uploads:/app/server/uploads
+    env_file:
+      - .env
+    environment:
+      - PARALLAX_MODE=cloud
+      - PARALLAX_DB=postgres
+      - PARALLAX_STORAGE=r2
+      - NODE_ENV=production
+      # Own database and bucket so dev can never touch prod data
+      - DATABASE_URL=${DEV_DATABASE_URL:?set DEV_DATABASE_URL in .env}
+      - R2_BUCKET=parallax-uploads-dev
+      - R2_ACCESS_KEY=${DEV_R2_ACCESS_KEY:?set DEV_R2_ACCESS_KEY in .env}
+      - R2_SECRET_KEY=${DEV_R2_SECRET_KEY:?set DEV_R2_SECRET_KEY in .env}
+    mem_limit: 4g
+    memswap_limit: 4g
+    restart: unless-stopped
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    ports:
+      - "127.0.0.1:3004:3000"
+    environment:
+      DATABASE_URL: postgresql://umami:umami@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:-replace-me-with-a-random-string}
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  umami-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  parallax-data:
+    external: true
+    name: parallax-data
+  parallax-uploads:
+    external: true
+    name: parallax-uploads
+  parallax-dev-data:
+  parallax-dev-uploads:
+  umami-db-data:
