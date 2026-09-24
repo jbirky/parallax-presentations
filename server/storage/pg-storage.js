@@ -176,8 +176,10 @@ class PgStorage extends StorageInterface {
   }
 
   async saveAsTemplate(presentationId, title, userId) {
-    const pres = await this.getPresentation(presentationId, userId)
-    if (!pres) return null
+    const stored = await this.getPresentation(presentationId, userId)
+    if (!stored) return null
+    // Without present-mode ink, which is private to this presentation
+    const { annotationSets, ...pres } = stored
     const tmplData = { ...JSON.parse(JSON.stringify(pres)), title: (title || pres.title || 'Untitled') + ' (template)' }
     delete tmplData.id
     delete tmplData.createdAt
@@ -237,8 +239,10 @@ class PgStorage extends StorageInterface {
   // --- Snapshots ---
 
   async createSnapshot(presentationId, name, userId) {
-    const pres = await this.getPresentation(presentationId, userId)
-    if (!pres) return null
+    const stored = await this.getPresentation(presentationId, userId)
+    if (!stored) return null
+    // A version is the slides; present-mode ink isn't part of it
+    const { annotationSets, ...pres } = stored
     const id = uuidv4()
     const label = name || new Date().toISOString()
     const now = new Date().toISOString()
