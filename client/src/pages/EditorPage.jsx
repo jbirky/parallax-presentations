@@ -45,7 +45,7 @@ import {
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
-import { remapSlideLinks, countLinksTo } from '../utils/clickActions'
+import { remapSlideLinks, renewElementIds, countLinksTo } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -1537,9 +1537,9 @@ function draw() {
     }
   }, [presentation])
 
-  // A click action is set on an element and the rest of its group, so any
-  // part of a grouped card or button can be clicked
-  const updateClickAction = useCallback((id, clickAction) => {
+  // Updates an element and the rest of its group: click actions, hover styles
+  // and being hidden at start apply to a grouped card or button as a whole
+  const updateWithGroup = useCallback((id, updates) => {
     setPresentation(prev => {
       if (!prev) return prev
       return {
@@ -1547,7 +1547,7 @@ function draw() {
         slides: prev.slides.map((s, i) => {
           if (i !== currentSlideIndexRef.current) return s
           const groupId = s.elements.find(el => el.id === id)?.groupId
-          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? { ...el, clickAction } : el) }
+          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? { ...el, ...updates } : el) }
         })
       }
     })
@@ -1785,7 +1785,7 @@ function draw() {
         ...slide,
         id,
         ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
-        elements: (slide.elements || []).map(el => ({ ...el, id: crypto.randomUUID() })),
+        elements: renewElementIds(slide.elements, () => crypto.randomUUID()),
       }
     }), slideIds)
     setPresentation(prev => {
@@ -1812,10 +1812,7 @@ function draw() {
     const slide = {
       ...presentation.slides[index],
       id: crypto.randomUUID(),
-      elements: (presentation.slides[index].elements || []).map(el => ({
-        ...el,
-        id: crypto.randomUUID()
-      }))
+      elements: renewElementIds(presentation.slides[index].elements, () => crypto.randomUUID()),
     }
     setPresentation(prev => {
       const slides = [...prev.slides]
@@ -3572,7 +3569,8 @@ function draw() {
           selectedElement={selectedElement}
           onUpdateSlide={updateCurrentSlide}
           onUpdateElement={(updates) => selectedElementId && updateElement(selectedElementId, updates)}
-          onUpdateClickAction={clickAction => selectedElementId && updateClickAction(selectedElementId, clickAction)}
+          onUpdateWithGroup={updates => selectedElementId && updateWithGroup(selectedElementId, updates)}
+          onSelectElement={id => setSelectedElementIds([id])}
           onDeleteElement={() => selectedElementId && deleteElement(selectedElementId)}
           onBringForward={() => selectedElementId && bringElementForward(selectedElementId)}
           onSendBackward={() => selectedElementId && sendElementBackward(selectedElementId)}

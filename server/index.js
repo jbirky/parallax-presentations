@@ -35,7 +35,7 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, remapSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, remapSlideLinks, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
@@ -683,6 +683,7 @@ function generateRevealHTML(presentation, opts = {}) {
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
+    const clickTargets = visibilityTargets(slide)
     const elementsHtml = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
@@ -694,7 +695,7 @@ function generateRevealHTML(presentation, opts = {}) {
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
-        const actionAttrs = clickActionAttrs(el)
+        const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex||1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
@@ -1597,7 +1598,7 @@ app.post('/api/presentations', async (req, res) => {
         const slides = (cloned.slides || []).map(s => {
           const id = uuidv4()
           if (s.id) slideIds.set(s.id, id)
-          return { ...s, id, elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() })) }
+          return { ...s, id, elements: renewElementIds(s.elements, uuidv4) }
         })
         presentation = {
           ...cloned,

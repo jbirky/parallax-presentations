@@ -10,7 +10,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { clickActionAttrs, slideIdAttr, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { clickActionAttrs, slideIdAttr, visibilityTargets, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
@@ -120,6 +120,7 @@ export function generateRevealHTML(presentation, opts = {}) {
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
+    const clickTargets = visibilityTargets(slide)
     const elementsHtml = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
@@ -136,7 +137,7 @@ export function generateRevealHTML(presentation, opts = {}) {
         const gsapAttrs = (el.animationEnter && el.animationEnter !== 'none')
           ? ` data-gsap-enter="${el.animationEnter}" data-gsap-delay="${el.animationDelay || 0}" data-gsap-duration="${el.animationDuration || 600}"`
           : ''
-        const actionAttrs = clickActionAttrs(el)
+        const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
@@ -1143,22 +1144,24 @@ function generatePrintHTML(presentation) {
   // Expand each slide into one page per fragment step (initial + one per unique index)
   const pages = []
   let printPageCounter = 0
-  presentation.slides.forEach(slide => {
+  presentation.slides.forEach((slide, slideIndex) => {
     const fragIndices = [...new Set(
       (slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1)
     )].sort((a, b) => a - b)
-    pages.push({ slide, maxIdx: -Infinity })           // initial: no fragments
-    fragIndices.forEach(idx => pages.push({ slide, maxIdx: idx }))
+    pages.push({ slide, slideIndex, maxIdx: -Infinity })           // initial: no fragments
+    fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
   })
   const totalPages = pages.length
 
-  const pagesHtml = pages.map(({ slide, maxIdx }, pageIndex) => {
+  const pagesHtml = pages.map(({ slide, slideIndex, maxIdx }, pageIndex) => {
     const bgStyle = getBgPrintStyle(slide.background)
+    // As the slide opens: fragments up to this step, without what a click shows
+    const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden
 
     const elementsHtml = (slide.elements || [])
       .slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
       .map(el => {
-        const isHidden = el.fragment && (el.fragmentIndex || 1) > maxIdx
+        const isHidden = hiddenOnPage(el)
         const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
         const rotationStyleP = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
@@ -1322,7 +1325,10 @@ function generatePrintHTML(presentation) {
       }
     }
 
-    return `<div class="slide-page" style="${bgStyle}font-size:42px;">\n${elementsHtml}\n${footerHtml}\n</div>`
+    // Slide links and clickable elements link to the slides' first pages
+    const anchor = maxIdx === -Infinity ? slideIdAttr(slide) : ''
+    const linksHtml = printActionLinks(presentation.slides, slideIndex, hiddenOnPage)
+    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${printSlideLinks(elementsHtml)}\n${linksHtml}\n${footerHtml}\n</div>`
   }).join('\n')
 
   const title = escapeHtml(presentation.title || 'Presentation')

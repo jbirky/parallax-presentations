@@ -3,10 +3,14 @@
 
 // Click actions and slide links, for pages the server builds (share links,
 // GitHub and Zenodo exports). In a presented deck, an element with a click
-// action goes to a slide, to the next or previous one, or opens a web page,
-// and text can link to a slide as #/s-<slide id>, which reveal.js resolves
-// from each slide section's id. The client's utils/clickActions.js is the same
-// code for pages built in the browser; the tests check that the two agree.
+// action goes to a slide, to the next or previous one, opens a web page, or
+// shows and hides elements on its slide, and text can link to a slide as
+// #/s-<slide id>, which reveal.js resolves from each slide section's id. The
+// client's utils/clickActions.js describes the data and has the same code
+// for pages built in the browser; the tests check that the two agree.
+
+const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
+const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
 
 // Embeds, players and drawings take their own clicks, or none
 const NO_CLICK_ACTION = new Set(['html', 'p5', 'video', 'audio', 'drawing'])
@@ -26,8 +30,26 @@ function safeActionUrl(url) {
 
 const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// The attributes that make an element clickable in a presented deck
-function clickActionAttrs(el) {
+// Element ids in a show/hide list; the page separates them with spaces
+const idList = list => (Array.isArray(list) ? list : []).filter(id => typeof id === 'string' && id && !/\s/.test(id))
+
+// The ids of the elements on `slide` that a click shows, hides or toggles
+function visibilityTargets(slide) {
+  const targets = new Set()
+  for (const el of slide?.elements || []) {
+    if (el.clickAction?.type !== 'visibility') continue
+    for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+  }
+  return targets
+}
+
+// The attributes that make an element clickable in a presented deck, and that
+// let a click on its slide show or hide it (`targets`, from visibilityTargets)
+function clickActionAttrs(el, targets = new Set()) {
+  return actionAttrs(el) + visibilityAttrs(el, targets)
+}
+
+function actionAttrs(el) {
   const action = el?.clickAction
   if (!action || !supportsClickAction(el)) return ''
   let target = ''
@@ -38,10 +60,21 @@ function clickActionAttrs(el) {
     const url = safeActionUrl(action.url)
     if (!url) return ''
     target = ` data-action-url="${escapeAttr(url)}"${action.newTab === false ? '' : ' data-action-new-tab'}`
+  } else if (action.type === 'visibility') {
+    target = VISIBILITY_KEYS.map(key => [key, idList(action[key])]).filter(([, ids]) => ids.length)
+      .map(([key, ids]) => ` data-action-${key}="${escapeAttr(ids.join(' '))}"`).join('')
+    if (!target) return ''
   } else if (action.type !== 'next' && action.type !== 'prev') {
     return ''
   }
-  return ` data-action="${action.type}"${target} role="${action.type === 'url' ? 'link' : 'button'}" tabindex="0"`
+  const hover = HOVER_EFFECTS.includes(el.hoverEffect) && el.hoverEffect !== 'brighten' ? ` data-hover="${el.hoverEffect}"` : ''
+  return ` data-action="${action.type}"${target}${hover} role="${action.type === 'url' ? 'link' : 'button'}" tabindex="0"`
+}
+
+// Any element, embeds included, can be shown or hidden by a click
+function visibilityAttrs(el, targets) {
+  if (!el?.id || !(targets.has(el.id) || el.startHidden)) return ''
+  return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}`
 }
 
 // A slide section's id, for slide links
@@ -52,8 +85,8 @@ function slideIdAttr(slide) {
 const SLIDE_LINK_RE = /#\/s-([A-Za-z0-9_-]+)/g
 
 // `slides` with their slide links and click actions pointed at new slide ids,
-// for slides copied under new ids (made from a template). Links to slides not
-// in `idMap` (old id → new id) are left as they are.
+// for slides copied under new ids (imported, or made from a template). Links
+// to slides not in `idMap` (old id → new id) are left as they are.
 function remapSlideLinks(slides, idMap) {
   const map = idMap instanceof Map ? idMap : new Map(Object.entries(idMap))
   const remapElement = el => {
@@ -70,20 +103,73 @@ function remapSlideLinks(slides, idMap) {
   return slides.map(slide => ({ ...slide, elements: (slide.elements || []).map(remapElement) }))
 }
 
-// Page CSS for presented decks
+// `elements` with their show/hide actions pointed at new element ids, for a
+// slide's elements copied under new ids. Ids not in `idMap` are left as they are.
+function remapElementRefs(elements, idMap) {
+  const map = idMap instanceof Map ? idMap : new Map(Object.entries(idMap))
+  return elements.map(el => {
+    const action = el.clickAction
+    if (action?.type !== 'visibility') return el
+    const next = { ...action }
+    for (const key of VISIBILITY_KEYS) {
+      if (Array.isArray(action[key])) next[key] = action[key].map(id => map.get(id) ?? id)
+    }
+    return { ...el, clickAction: next }
+  })
+}
+
+// `elements` under new ids from `makeId`, with their show/hide actions
+// following them, for a slide's elements copied to a new slide
+function renewElementIds(elements, makeId) {
+  const ids = new Map()
+  const renewed = (elements || []).map(el => {
+    const id = makeId()
+    if (el.id) ids.set(el.id, id)
+    return { ...el, id }
+  })
+  return remapElementRefs(renewed, ids)
+}
+
+
+// Page CSS for presented decks. Fragments keep reveal.js's own transitions.
 const CLICK_ACTION_CSS = `
-    .reveal .slides [data-action] { cursor:pointer; transition:filter 0.15s; }
+    .reveal .slides [data-action] { cursor:pointer; }
+    .reveal .slides [data-action]:not(.fragment), .reveal .slides [data-el]:not(.fragment) { transition:filter 0.15s, translate 0.15s, scale 0.15s, box-shadow 0.15s, opacity 0.25s, visibility 0.25s; }
     .reveal .slides [data-action]:hover { filter:brightness(1.15); }
+    .reveal .slides [data-action][data-hover]:hover { filter:none; }
+    .reveal .slides [data-action][data-hover="lift"]:hover { translate:0 -4px; box-shadow:0 10px 24px rgba(0,0,0,0.35); }
+    .reveal .slides [data-action][data-hover="grow"]:hover { scale:1.04; }
     .reveal .slides [data-action]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
-    .reveal .slides [data-action] iframe { pointer-events:none; }`
+    .reveal .slides [data-action] iframe { pointer-events:none; }
+    .reveal .slides [data-el][data-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
 
 // Page script for presented decks, after reveal.js has loaded. Slide links
 // move within the page, even ones saved to open in a new tab; an element's
-// action runs on click, or on Enter or Space once it has focus.
+// action runs on click, or on Enter or Space once it has focus. Each time a
+// slide opens, what its clicks showed or hid goes back to how it started.
 const CLICK_ACTION_SCRIPT = `
     (function() {
+      function hide(el, hidden) {
+        if (hidden) el.setAttribute('data-hidden', ''); else el.removeAttribute('data-hidden');
+      }
+      function reset(slide) {
+        var els = slide ? slide.querySelectorAll('[data-el]') : [];
+        for (var i = 0; i < els.length; i++) hide(els[i], els[i].hasAttribute('data-start-hidden'));
+      }
+      function showHide(el) {
+        var slide = el.closest('section');
+        var els = slide ? slide.querySelectorAll('[data-el]') : [];
+        var change = function(key, fn) {
+          var ids = (el.getAttribute('data-action-' + key) || '').split(' ');
+          for (var i = 0; i < els.length; i++) if (ids.indexOf(els[i].getAttribute('data-el')) !== -1) fn(els[i]);
+        };
+        change('hide', function(t) { hide(t, true); });
+        change('show', function(t) { hide(t, false); });
+        change('toggle', function(t) { hide(t, !t.hasAttribute('data-hidden')); });
+      }
       function run(el) {
         var type = el.getAttribute('data-action');
+        if (type === 'visibility') return showHide(el);
         if (type === 'next') return Reveal.next();
         if (type === 'prev') return Reveal.prev();
         if (type === 'slide') {
@@ -117,9 +203,9 @@ const CLICK_ACTION_SCRIPT = `
         e.stopPropagation();
         run(el);
       }, true);
+      Reveal.on('slidechanged', function(e) { reset(e.currentSlide); });
     })();`
 
 module.exports = {
-  supportsClickAction, safeActionUrl, clickActionAttrs, slideIdAttr, remapSlideLinks,
-  CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT,
+  HOVER_EFFECTS, supportsClickAction, slideAnchor, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT,
 }

@@ -6,7 +6,7 @@ if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
 import * as client from './clickActions'
-import { generateRevealHTML } from './generateHTML'
+import { generateRevealHTML, exportPDF } from './generateHTML'
 
 const require = createRequire(import.meta.url)
 const server = require('../../../server/services/click-actions.js')
@@ -61,6 +61,60 @@ describe('click actions', () => {
   })
 })
 
+describe('showing and hiding', () => {
+  const slide = { elements: [
+    text('tabA', { clickAction: { type: 'visibility', show: ['panelA'], hide: ['panelB', 'bad id', 7] } }),
+    text('tabB', { clickAction: { type: 'visibility', show: ['panelB'], hide: ['panelA'], toggle: ['note'] }, hoverEffect: 'lift' }),
+    text('panelA'),
+    text('panelB', { startHidden: true }),
+    { id: 'note', type: 'html', x: 0, y: 0, width: 10, height: 10, content: '' },
+    text('loose', { startHidden: true }),
+    text('plain'),
+  ] }
+
+  it('finds what a slide’s clicks show or hide', () => {
+    expect([...client.visibilityTargets(slide)].sort()).toEqual(['note', 'panelA', 'panelB'])
+    expect(client.visibilityTargets({}).size).toBe(0)
+  })
+
+  it('marks the clickers, the elements they change, and what starts hidden', () => {
+    const targets = client.visibilityTargets(slide)
+    const attrs = id => client.clickActionAttrs(slide.elements.find(e => e.id === id), targets)
+    expect(attrs('tabA')).toBe(' data-action="visibility" data-action-show="panelA" data-action-hide="panelB" role="button" tabindex="0"')
+    expect(attrs('tabB')).toBe(' data-action="visibility" data-action-show="panelB" data-action-hide="panelA" data-action-toggle="note" data-hover="lift" role="button" tabindex="0"')
+    expect(attrs('panelA')).toBe(' data-el="panelA"')
+    expect(attrs('panelB')).toBe(' data-el="panelB" data-start-hidden data-hidden')
+    expect(attrs('note')).toBe(' data-el="note"') // an embed can't be clicked, but can be shown
+    expect(attrs('loose')).toBe(' data-el="loose" data-start-hidden data-hidden')
+    expect(attrs('plain')).toBe('')
+    expect(client.clickActionAttrs(text('x', { clickAction: { type: 'visibility', show: [] } }))).toBe('')
+  })
+
+  it('writes hover styles other than the default', () => {
+    for (const [hoverEffect, attr] of [['lift', ' data-hover="lift"'], ['grow', ' data-hover="grow"'], ['none', ' data-hover="none"'], ['brighten', ''], ['spin', ''], [undefined, '']]) {
+      const attrs = client.clickActionAttrs(text('x', { clickAction: { type: 'next' }, hoverEffect }))
+      expect(attrs).toBe(` data-action="next"${attr} role="button" tabindex="0"`)
+    }
+  })
+
+  it('keeps show/hide pointing at the right elements when they get new ids', () => {
+    let n = 0
+    const renewed = client.renewElementIds(slide.elements, () => `new${++n}`)
+    expect(renewed.map(e => e.id)).toEqual(['new1', 'new2', 'new3', 'new4', 'new5', 'new6', 'new7'])
+    expect(renewed[0].clickAction).toEqual({ type: 'visibility', show: ['new3'], hide: ['new4', 'bad id', 7] })
+    expect(renewed[1].clickAction.toggle).toEqual(['new5'])
+    expect(slide.elements[0].clickAction.show).toEqual(['panelA']) // the originals are left alone
+    expect(client.remapElementRefs([text('a', { clickAction: { type: 'next' } })], { a: 'b' })[0].clickAction).toEqual({ type: 'next' })
+  })
+
+  it('names elements for the show/hide list', () => {
+    const labels = client.elementLabels(slide.elements.concat([{ id: 's1', type: 'shape' }, { id: 's2', type: 'shape' }, { id: 'p', type: 'plugin:linear-algebra' }]))
+    expect(labels.get('tabA')).toBe('Go')
+    expect(labels.get('note')).toBe('Html 1')
+    expect([labels.get('s1'), labels.get('s2'), labels.get('p')]).toEqual(['Shape 1', 'Shape 2', 'Linear-algebra 1'])
+  })
+})
+
 describe('slide links under new ids', () => {
   const slides = [
     { id: 'old1', elements: [
@@ -112,6 +166,15 @@ describe('the server’s copy', () => {
     expect(server.CLICK_ACTION_SCRIPT).toBe(client.CLICK_ACTION_SCRIPT)
     const slides = [{ id: 'o', elements: [text('t', { content: '<a href="#/s-o">x</a>', clickAction: { type: 'slide', slideId: 'o' } })] }]
     expect(server.remapSlideLinks(slides, { o: 'n' })).toEqual(client.remapSlideLinks(slides, { o: 'n' }))
+    const tabs = { elements: [
+      text('a', { clickAction: { type: 'visibility', show: ['b'], toggle: ['c'] }, hoverEffect: 'grow' }),
+      text('b', { startHidden: true }), { id: 'c', type: 'video' },
+    ] }
+    const targets = client.visibilityTargets(tabs)
+    expect([...server.visibilityTargets(tabs)]).toEqual([...targets])
+    for (const el of tabs.elements) expect(server.clickActionAttrs(el, targets)).toBe(client.clickActionAttrs(el, targets))
+    let a = 0, b = 0
+    expect(server.renewElementIds(tabs.elements, () => `n${++a}`)).toEqual(client.renewElementIds(tabs.elements, () => `n${++b}`))
   })
 })
 
@@ -123,6 +186,14 @@ describe('presented decks', () => {
       { id: 's2', elements: [] },
     ],
   }
+
+  it('marks what a click shows or hides', () => {
+    const html = generateRevealHTML({ id: 'p', slides: [{ id: 's1', elements: [
+      text('tab', { clickAction: { type: 'visibility', show: ['panel'] } }), text('panel', { startHidden: true }),
+    ] }] })
+    expect(html).toContain('data-action="visibility" data-action-show="panel"')
+    expect(html).toContain('data-el="panel" data-start-hidden data-hidden')
+  })
 
   it('addresses slides by id and marks clickable elements', () => {
     const html = generateRevealHTML(deck)
@@ -136,7 +207,11 @@ describe('presented decks', () => {
   function page(body) {
     const win = new Window({ url: 'http://localhost/deck.html' })
     win.document.body.innerHTML = `<div class="reveal"><div class="slides">${body}</div></div>`
-    const Reveal = { slide: vi.fn(), next: vi.fn(), prev: vi.fn(), getIndices: vi.fn(() => ({ h: 1, v: 2 })) }
+    const handlers = {}
+    const Reveal = {
+      slide: vi.fn(), next: vi.fn(), prev: vi.fn(), getIndices: vi.fn(() => ({ h: 1, v: 2 })),
+      on: (name, fn) => { handlers[name] = fn }, emit: (name, e) => handlers[name]?.(e),
+    }
     win.open = vi.fn()
     new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
     const click = el => { const e = new win.MouseEvent('click', { bubbles: true, cancelable: true }); el.dispatchEvent(e); return e }
@@ -185,5 +260,62 @@ describe('presented decks', () => {
     el.dispatchEvent(e)
     expect(Reveal.next).toHaveBeenCalledTimes(1)
     expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('shows, hides and toggles elements on the clicked slide, and resets them when the slide opens again', () => {
+    const { doc, Reveal, click } = page(`
+      <section id="one">
+        <div id="tabA" data-action="visibility" data-action-show="a" data-action-hide="b"></div>
+        <div id="tabB" data-action="visibility" data-action-show="b" data-action-hide="a" data-action-toggle="note"></div>
+        <div data-el="a"></div><div data-el="b" data-start-hidden data-hidden></div><div data-el="note" data-start-hidden data-hidden></div>
+      </section>
+      <section id="two"><div data-el="b"></div></section>`)
+    const hidden = (slide, id) => doc.querySelector(`#${slide} [data-el="${id}"]`).hasAttribute('data-hidden')
+    click(doc.getElementById('tabB'))
+    expect([hidden('one', 'a'), hidden('one', 'b'), hidden('one', 'note')]).toEqual([true, false, false])
+    expect(hidden('two', 'b')).toBe(false) // only the clicked slide changes
+    click(doc.getElementById('tabB'))
+    expect(hidden('one', 'note')).toBe(true) // toggled back
+    click(doc.getElementById('tabA'))
+    expect([hidden('one', 'a'), hidden('one', 'b')]).toEqual([false, true])
+    click(doc.getElementById('tabB'))
+    Reveal.emit('slidechanged', { currentSlide: doc.getElementById('one') })
+    expect([hidden('one', 'a'), hidden('one', 'b'), hidden('one', 'note')]).toEqual([false, true, true])
+  })
+})
+
+describe('PDF export', () => {
+  it('links clickable elements and slide links to the slides’ pages, and leaves out what starts hidden', async () => {
+    let blob = null
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => { blob = b; return 'blob:x' })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    globalThis.window.open = vi.fn()
+    vi.useFakeTimers()
+    try {
+      exportPDF({ id: 'p', slides: [
+        { id: 's1', elements: [
+          text('go', { x: 10, y: 20, width: 30, height: 40, clickAction: { type: 'slide', slideId: 's2' } }),
+          text('link', { content: '<p><a href="#/s-s2" target="_blank">two</a></p>' }),
+          text('web', { clickAction: { type: 'url', url: 'https://x.org' } }),
+          text('bad', { clickAction: { type: 'url', url: 'javascript:alert(1)' } }),
+          text('back', { clickAction: { type: 'prev' } }),
+          text('secret', { content: '<p>SECRET</p>', startHidden: true }),
+        ] },
+        { id: 's2', elements: [text('later', { fragment: true, fragmentIndex: 1, clickAction: { type: 'prev' } })] },
+      ] })
+      const html = await blob.text()
+      expect(html).toContain('<div class="slide-page" id="s-s1"')
+      expect(html.match(/id="s-s2"/g)).toHaveLength(1) // only the slide's first page
+      expect(html).toContain('<a href="#s-s2" style="position:absolute;left:10px;top:20px;width:30px;height:40px;')
+      expect(html).toContain('<a href="#s-s2" target="_blank">two</a>')
+      expect(html).toContain('<a href="https://x.org"')
+      expect(html).not.toContain('javascript:')
+      expect(html.match(/<a href="#s-s1"/g)).toHaveLength(1) // "later" links back only once it's shown
+      expect(html).toMatch(/visibility:hidden;[^>]*>\s*<p>SECRET/)
+    } finally {
+      vi.useRealTimers()
+      createObjectURL.mockRestore()
+      vi.restoreAllMocks()
+    }
   })
 })

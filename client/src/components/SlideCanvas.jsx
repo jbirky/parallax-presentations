@@ -1313,7 +1313,9 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
         left: element.x, top: element.y,
         width: element.width, height: isAutoFit ? 'auto' : element.height,
         zIndex: element.zIndex || 1,
-        outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : 'none',
+        outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : element.startHidden ? '1px dashed rgba(148,163,184,0.8)' : 'none',
+        // Hidden until a click shows it when presented: faded here, so it can still be edited
+        opacity: element.startHidden && !isSelected && !isEditing ? 0.45 : undefined,
         cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
         overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
@@ -1705,7 +1707,18 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
           background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
           padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
         }}>
-          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web' }[element.clickAction.type] || '↗'}
+          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }[element.clickAction.type] || '↗'}
+        </div>
+      )}
+
+      {/* Hidden until a click shows it */}
+      {element.startHidden && (
+        <div style={{
+          position: 'absolute', bottom: -18, left: 0, zIndex: 101, pointerEvents: 'none',
+          background: '#64748b', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          Hidden
         </div>
       )}
 
