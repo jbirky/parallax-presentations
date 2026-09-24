@@ -1,7 +1,14 @@
 // Shared LaTeX iframe HTML generator
 // Supports: KaTeX math, LaTeX tables via LaTeX.js, TikZ diagrams via TikZJax
+// Only shown in the editor, so it loads the bundled libraries
+
+import { libUrl, localizeLibraries } from './libraries'
 
 export function generateLatexIframeHtml(content, textColor, fontSize) {
+  return localizeLibraries(buildLatexIframeHtml(content, textColor, fontSize))
+}
+
+function buildLatexIframeHtml(content, textColor, fontSize) {
   const c = textColor || 'white'
   const scale = fontSize ? (fontSize / 20) : 1
   const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
@@ -26,8 +33,8 @@ export function generateLatexIframeHtml(content, textColor, fontSize) {
       : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
     return `<!doctype html><html><head>
 <meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/latex.js"><\/script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/latex.js@0.12.6/dist/base.css">
+<script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script>
+<link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 8px; background: transparent; color: ${c} !important; width: 100%; height: 100%; overflow: auto; font-family: 'Computer Modern', Georgia, serif; transform: scale(${scale}); transform-origin: top left; }
@@ -52,8 +59,8 @@ export function generateLatexIframeHtml(content, textColor, fontSize) {
   // KaTeX for math expressions
   return `<!doctype html><html><head>
 <meta charset="utf-8">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"><\/script>
+<link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
+<script src="${libUrl('katex', 'dist/katex.min.js')}"><\/script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: transparent; overflow: hidden; color: ${c}; }

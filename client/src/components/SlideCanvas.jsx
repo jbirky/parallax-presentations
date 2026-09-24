@@ -36,6 +36,7 @@ import { calculateGuides } from '../utils/smartGuides'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 function highlightCode(code, language) {
   try {
@@ -215,7 +216,7 @@ function applyCropHandle(handle, startCrop, dx, dy, elW, elH) {
 function buildP5Srcdoc(userCode, w, h, snapKey) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script>
+<script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script>
 ${snapshotScript(snapKey)}
 </head><body><script>
 ${userCode}
@@ -1431,7 +1432,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'html' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}`}
-          srcDoc={buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
+          srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="HTML embed"
@@ -1440,7 +1441,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'p5' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}-${element.content}`}
-          srcDoc={buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
+          srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="p5.js sketch"
@@ -1867,7 +1868,7 @@ function ChartRenderer({ element, isSelected }) {
 
   const chartHtml = `<!doctype html><html><head>
 <meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"><\/script>
+<script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script>
 <style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style>
 </head><body>
 <canvas id="c" style="width:100%;height:100%"></canvas>
@@ -1896,7 +1897,7 @@ new Chart(document.getElementById('c'),{
 
   return (
     <iframe
-      srcDoc={chartHtml}
+      srcDoc={localizeLibraries(chartHtml)}
       style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
       sandbox="allow-scripts"
       title="Chart"
@@ -2062,7 +2063,7 @@ function LatexRenderer({ element, isSelected }) {
   const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize)
   return (
     <iframe
-      srcDoc={html}
+      srcDoc={localizeLibraries(html)}
       style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
       sandbox="allow-scripts"
       title="LaTeX / TikZ"

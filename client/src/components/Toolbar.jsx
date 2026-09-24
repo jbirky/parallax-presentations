@@ -35,6 +35,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 const DOCS_BASE = '/#docs/tutorials/'
 const DocsLink = ({ page, onClose }) => (
@@ -103,13 +104,13 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       if (!window.pdfjsLib) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script')
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+          s.src = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.js'))
           s.onload = resolve
           s.onerror = reject
           document.head.appendChild(s)
         })
         window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
       }
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise

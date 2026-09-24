@@ -2,9 +2,10 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useMemo } from 'react'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
-const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js'
-const ORBIT_CDN = 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js'
+const THREE_CDN = libUrl('three', 'build/three.module.js')
+const ORBIT_CDN = libUrl('three', 'examples/jsm/controls/OrbitControls.js')
 
 const TEMPLATES = [
   { id: 'rotating-cube', name: 'Rotating Cube', desc: 'Simple colored cube with orbit controls' },
@@ -304,7 +305,7 @@ export default function ThreeModal({ onInsert, onClose, slideW, slideH }) {
             <div style={{ padding: 12, flex: isCustom ? 'none' : 1, minHeight: isCustom ? 220 : 280, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a14' }}>
               <iframe
                 key={previewKey}
-                srcDoc={previewHtml}
+                srcDoc={localizeLibraries(previewHtml)}
                 style={{ width: (slideW || 960) * 0.58, height: (slideH || 540) * 0.58, border: '1px solid #333', borderRadius: 6, background: '#0a0a14' }}
                 sandbox="allow-scripts"
                 title="Three.js preview"

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { X, Play, RotateCcw } from 'lucide-react'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 
@@ -36,9 +37,9 @@ export default function TransitionPreview({ presentation, fromIndex, onClose, sl
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/${presentation.theme || 'black'}.css">
+<link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
+<link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
+<link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${presentation.theme || 'black'}.css`)}">
 <style>
   html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;}
   .reveal .slides section{padding:0!important;text-align:left!important;font-family:-apple-system,sans-serif;}
@@ -55,8 +56,8 @@ export default function TransitionPreview({ presentation, fromIndex, onClose, sl
   <section${getBgAttrs(slide2.background)} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">${renderElements(slide2.elements)}</section>
 </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"><\/script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"><\/script>
+<script src="${libUrl('reveal.js', 'dist/reveal.js')}"><\/script>
+<script src="${libUrl('gsap', 'dist/gsap.min.js')}"><\/script>
 <script>
 var _ct=['differential-rotation'],_gt='${transition}',_gc=_ct.indexOf(_gt)!==-1;
 Reveal.initialize({
@@ -111,7 +112,7 @@ setTimeout(()=>Reveal.next(),800);
           <iframe
             key={key}
             ref={iframeRef}
-            srcDoc={html}
+            srcDoc={localizeLibraries(html)}
             style={{ width: slideW, height: slideH, border: 'none', transform: 'scale(0.6)', transformOrigin: 'top left' }}
             title="Transition Preview"
           />

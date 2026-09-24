@@ -1,16 +1,21 @@
-// Offline export: fetch CDN resources and inline them into the HTML
+// Offline export: inline the libraries a deck links to, read from this app's
+// bundled copies, so neither exporting nor the exported file needs internet
 
+import { libUrl, localizeLibraries } from './libraries'
+
+// The links generateRevealHTML writes, which the export replaces
 const CDN_RESOURCES = {
   css: [
-    'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reset.css',
-    'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css',
-    'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css',
+    libUrl('reveal.js', 'dist/reset.css'),
+    libUrl('reveal.js', 'dist/reveal.css'),
+    libUrl('katex', 'dist/katex.min.css'),
   ],
   js: [
-    'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js',
-    'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js',
-    'https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js',
-    'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js',
+    libUrl('reveal.js', 'dist/reveal.js'),
+    libUrl('reveal.js', 'plugin/notes/notes.js'),
+    libUrl('reveal.js', 'plugin/highlight/highlight.js'),
+    libUrl('katex', 'dist/katex.min.js'),
+    libUrl('gsap', 'dist/gsap.min.js'),
   ],
 }
 
@@ -48,9 +53,10 @@ async function inlineUploads(html) {
     dataUrls.get(uploadPath) ? before + dataUrls.get(uploadPath) : whole)
 }
 
+// Reads a library from its bundled copy when there is one
 async function fetchText(url) {
   try {
-    const resp = await fetch(url)
+    const resp = await fetch(localizeLibraries(url))
     if (!resp.ok) return `/* Failed to fetch: ${url} */`
     return await resp.text()
   } catch {
@@ -81,7 +87,7 @@ export async function generateOfflineHTML(html) {
   }
 
   // Code theme CSS (dynamic URL)
-  const codeThemeMatch = result.match(/<link[^>]*href=["'](https:\/\/cdn\.jsdelivr\.net\/npm\/highlight\.js@[^"']+)["'][^>]*>/)
+  const codeThemeMatch = result.match(/<link[^>]*href=["'](https:\/\/cdn\.jsdelivr\.net\/npm\/@highlightjs\/cdn-assets@[^"']+\/styles\/[^"']+)["'][^>]*>/)
   if (codeThemeMatch) {
     const codeThemeCss = await fetchText(codeThemeMatch[1])
     result = result.replace(codeThemeMatch[0], `<style>/* ${codeThemeMatch[1]} */\n${codeThemeCss}\n</style>`)
@@ -101,7 +107,7 @@ export async function generateOfflineHTML(html) {
     '<!-- Google Fonts removed for offline mode -->')
 
   // Remove Computer Modern font link
-  result = result.replace(/<link[^>]*href=["']https:\/\/cdn\.jsdelivr\.net\/gh\/dreampulse\/computer-modern[^"']*["'][^>]*>/g,
+  result = result.replace(/<link[^>]*href=["']https:\/\/cdn\.jsdelivr\.net\/npm\/latex\.js@[^"']*\/dist\/fonts\/cmu\.css["'][^>]*>/g,
     '<!-- Computer Modern fonts removed for offline mode -->')
 
   // Embed uploaded images, video and audio

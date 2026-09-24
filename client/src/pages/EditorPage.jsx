@@ -59,6 +59,7 @@ import atomOneLightCSS from '../../../node_modules/highlight.js/styles/atom-one-
 import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?raw'
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -728,7 +729,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   <p>Edit this content</p>
 </div>`
 
-  const DEFAULT_D3 = `<script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
+  const DEFAULT_D3 = `<script src="${libUrl('d3', 'dist/d3.min.js')}"><\/script>
 <style>* { box-sizing: border-box; margin: 0; } body { background: transparent; overflow: hidden; }</style>
 <svg id="viz" width="100%" height="100%" style="display:block;"></svg>
 <script>
@@ -3530,7 +3531,7 @@ function draw() {
                 <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>Preview</div>
                 <iframe
                   key={p5EditorState.content}
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`}
+                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`)}
                   style={{ flex: 1, border: 'none', display: 'block' }}
                   sandbox="allow-scripts"
                   title="p5.js preview"
