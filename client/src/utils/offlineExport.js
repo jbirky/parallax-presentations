@@ -67,6 +67,9 @@ async function fetchText(url) {
 export async function generateOfflineHTML(html) {
   // Replace <link rel="stylesheet" href="CDN_URL"> with <style>...</style>
   // Replace <script src="CDN_URL"></script> with <script>...</script>
+  // The code goes in through replacer functions: in a replacement string,
+  // the "$&" and "$'" in reveal.js, KaTeX and highlight.js would be expanded
+  // into the page itself, ending the inlined script early
 
   let result = html
 
@@ -75,7 +78,7 @@ export async function generateOfflineHTML(html) {
     const css = await fetchText(url)
     result = result.replace(
       new RegExp(`<link[^>]*href=["']${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`, 'g'),
-      `<style>/* ${url} */\n${css}\n</style>`
+      () => `<style>/* ${url} */\n${css}\n</style>`
     )
   }
 
@@ -83,14 +86,14 @@ export async function generateOfflineHTML(html) {
   const themeMatch = result.match(/<link[^>]*href=["'](https:\/\/cdn\.jsdelivr\.net\/npm\/reveal\.js@[^"']*\/dist\/theme\/[^"']+\.css)["'][^>]*>/)
   if (themeMatch) {
     const themeCss = await fetchText(themeMatch[1])
-    result = result.replace(themeMatch[0], `<style>/* ${themeMatch[1]} */\n${themeCss}\n</style>`)
+    result = result.replace(themeMatch[0], () => `<style>/* ${themeMatch[1]} */\n${themeCss}\n</style>`)
   }
 
   // Code theme CSS (dynamic URL)
   const codeThemeMatch = result.match(/<link[^>]*href=["'](https:\/\/cdn\.jsdelivr\.net\/npm\/@highlightjs\/cdn-assets@[^"']+\/styles\/[^"']+)["'][^>]*>/)
   if (codeThemeMatch) {
     const codeThemeCss = await fetchText(codeThemeMatch[1])
-    result = result.replace(codeThemeMatch[0], `<style>/* ${codeThemeMatch[1]} */\n${codeThemeCss}\n</style>`)
+    result = result.replace(codeThemeMatch[0], () => `<style>/* ${codeThemeMatch[1]} */\n${codeThemeCss}\n</style>`)
   }
 
   // Fetch and inline JS
@@ -98,7 +101,7 @@ export async function generateOfflineHTML(html) {
     const js = await fetchText(url)
     result = result.replace(
       new RegExp(`<script[^>]*src=["']${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*><\\/script>`, 'g'),
-      `<script>/* ${url} */\n${js}\n</script>`
+      () => `<script>/* ${url} */\n${js}\n</script>`
     )
   }
 
