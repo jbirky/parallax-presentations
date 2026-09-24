@@ -66,6 +66,8 @@ Click **Export** > **Export PPTX** to generate a PowerPoint file. Text, shapes, 
 
 ## Sharing
 
+Sharing is only in the cloud version at parallax-presentations.com. The self-hosted version and the desktop app keep everything on your computer, so share an exported HTML file from them instead.
+
 1. Click the **Share** button in the toolbar.
 2. Toggle sharing on. A shareable URL is generated.
 3. Anyone with the link can view the presentation in present mode (read-only).

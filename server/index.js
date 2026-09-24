@@ -2125,6 +2125,14 @@ app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => 
 
 // --- Share Links ---
 
+// Share links and live presenting are for the cloud version. Self-hosted, the
+// editor has no sign-in, so anyone who could open a link could already open
+// every presentation; and at localhost, nobody else can open one anyway.
+if (!IS_CLOUD) {
+  app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live'],
+    (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
+}
+
 // Helper: read/write share tokens
 
 

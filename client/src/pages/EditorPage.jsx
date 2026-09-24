@@ -60,6 +60,9 @@ import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
 
+// Share links and live presenting exist only in the cloud version
+const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
+
 const CODE_THEME_CSS = {
   'monokai': monokaiCSS,
   'github-dark': githubDarkCSS,
@@ -415,7 +418,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Load share status
   useEffect(() => {
-    if (presentationId && !guest) {
+    if (presentationId && !guest && isCloud) {
       api.getShareStatus(presentationId).then(setShareStatus).catch(() => {})
     }
   }, [presentationId])
@@ -1913,7 +1916,7 @@ function draw() {
                     a.click()
                     URL.revokeObjectURL(url)
                   }},
-                ].filter(item => !guest || item.label !== 'Share link').map(({ label, icon, action }) => (
+                ].filter(item => item.label !== 'Share link' || (isCloud && !guest)).map(({ label, icon, action }) => (
                   <button
                     key={label}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
@@ -2087,7 +2090,7 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
-                  {!guest && (
+                  {isCloud && !guest && (
                     <>
                       <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
                       <button
