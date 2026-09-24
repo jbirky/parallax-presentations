@@ -4,6 +4,7 @@
 import { useState, useRef, useMemo } from 'react'
 import katex from 'katex'
 import { api } from '../utils/api'
+import { supportsClickAction, safeActionUrl, slideLabel } from '../utils/clickActions'
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
 
 const CODE_LANGUAGES = [
@@ -144,7 +145,7 @@ function CopyTikzButton({ tikz }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateClickAction, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -1559,6 +1560,67 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               </div>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open editor</p>
             </div>
+            )
+          })()}
+
+          {/* On click, when presented */}
+          {supportsClickAction(selectedElement) && onUpdateClickAction && (() => {
+            const action = selectedElement.clickAction || null
+            const slides = presentation?.slides || []
+            const imageClick = selectedElement.type === 'image' && (selectedElement.clickToExpand || selectedElement.popupText)
+            const setType = type => onUpdateClickAction(
+              type === 'none' ? null
+                : type === 'slide' ? { type, slideId: action?.slideId || slides.find(s => s.id && s.id !== slide.id)?.id || null }
+                : type === 'url' ? { type, url: action?.url || '', newTab: action?.newTab ?? true }
+                : { type })
+            const missing = action?.type === 'slide' && !slides.some(s => s.id && s.id === action.slideId)
+            const badUrl = action?.type === 'url' && !!action.url?.trim() && !safeActionUrl(action.url)
+            return (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>On click</div>
+                {imageClick ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+                    This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                  </p>
+                ) : (<>
+                  <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
+                    aria-label="On click" style={{ padding: '4px 6px', marginBottom: 6 }}>
+                    <option value="none">Nothing</option>
+                    <option value="slide">Go to slide</option>
+                    <option value="next">Next slide</option>
+                    <option value="prev">Previous slide</option>
+                    <option value="url">Open web page</option>
+                  </select>
+                  {action?.type === 'slide' && (
+                    <select className="prop-input" value={missing ? '' : action.slideId}
+                      onChange={e => onUpdateClickAction({ type: 'slide', slideId: e.target.value })}
+                      aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
+                      {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
+                      {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
+                    </select>
+                  )}
+                  {action?.type === 'url' && (<>
+                    <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
+                      onChange={e => onUpdateClickAction({ ...action, url: e.target.value })}
+                      aria-label="Web address" aria-invalid={badUrl} />
+                    <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
+                      Opens https://, http:// and mailto: addresses.
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
+                      <input type="checkbox" checked={action.newTab !== false}
+                        onChange={e => onUpdateClickAction({ ...action, newTab: e.target.checked })}
+                        style={{ accentColor: 'var(--accent)' }} />
+                      Open in a new tab
+                    </label>
+                  </>)}
+                  {action && selectedElement.groupId && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Applies to the whole group.</div>
+                  )}
+                  {action && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Works when presenting, in exported HTML and on share links.</div>
+                  )}
+                </>)}
+              </div>
             )
           })()}
 

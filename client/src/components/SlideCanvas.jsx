@@ -36,6 +36,7 @@ import { calculateGuides } from '../utils/smartGuides'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
+import { supportsClickAction } from '../utils/clickActions'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 
@@ -1694,6 +1695,17 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
           padding: '2px 6px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
         }}>
           ▶ {element.fragmentIndex ?? 1}
+        </div>
+      )}
+
+      {/* Click action badge: what the element does when clicked while presenting */}
+      {element.clickAction && supportsClickAction(element) && (
+        <div style={{
+          position: 'absolute', bottom: -18, right: 0, zIndex: 101, pointerEvents: 'none',
+          background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web' }[element.clickAction.type] || '↗'}
         </div>
       )}
 

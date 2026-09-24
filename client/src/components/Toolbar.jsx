@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
+import { slideHref, slideIdFromHref, slideLabel } from '../utils/clickActions'
 import { api } from '../utils/api'
 import {
   Undo2, Redo2,
@@ -70,7 +71,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -173,12 +174,24 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   function handleLink() {
     if (!editor) return
     const previousUrl = editor.getAttributes('link').href || ''
-    setLinkModal({ url: previousUrl || 'https://', isEdit: !!previousUrl })
-    setTimeout(() => linkInputRef.current?.select(), 50)
+    const linkedSlide = slideIdFromHref(previousUrl)
+    setLinkModal({
+      mode: linkedSlide ? 'slide' : 'web',
+      url: linkedSlide ? 'https://' : previousUrl || 'https://',
+      slideId: linkedSlide || slides.find(s => s.id && s.id !== slide?.id)?.id || '',
+      isEdit: !!previousUrl,
+    })
+    if (!linkedSlide) setTimeout(() => linkInputRef.current?.select(), 50)
   }
 
   function submitLink() {
     if (!editor || !linkModal) return
+    // A slide link opens in the same page, and follows the slide wherever it moves
+    if (linkModal.mode === 'slide') {
+      if (linkModal.slideId) editor.chain().focus().extendMarkRange('link').setLink({ href: slideHref(linkModal.slideId), target: null }).run()
+      setLinkModal(null)
+      return
+    }
     const url = linkModal.url.trim()
     if (url === '' || url === 'https://') {
       editor.chain().focus().unsetLink().run()
@@ -1381,6 +1394,31 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary, #fff)', marginBottom: 12 }}>
               {linkModal.isEdit ? 'Edit Link' : 'Insert Link'}
             </div>
+            <div role="radiogroup" aria-label="Link to" style={{ display: 'flex', gap: 4, marginBottom: 12, padding: 3, borderRadius: 7, background: 'var(--bg-hover, #252530)' }}>
+              {[['web', 'Web page'], ['slide', 'Slide']].map(([mode, label]) => (
+                <button key={mode} role="radio" aria-checked={linkModal.mode === mode}
+                  onClick={() => setLinkModal(prev => ({ ...prev, mode }))}
+                  style={{ flex: 1, padding: '5px 8px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                    background: linkModal.mode === mode ? 'var(--accent, #6366f1)' : 'none', color: linkModal.mode === mode ? '#fff' : 'var(--text-secondary, #aaa)' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {linkModal.mode === 'slide' ? (<>
+              <div style={{ fontSize: 11, color: 'var(--text-muted, #888)', marginBottom: 4 }}>Slide</div>
+              <select
+                value={slides.some(s => s.id && s.id === linkModal.slideId) ? linkModal.slideId : ''}
+                onChange={e => setLinkModal(prev => ({ ...prev, slideId: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitLink() } else if (e.key === 'Escape') setLinkModal(null) }}
+                aria-label="Slide"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border, #333)', background: 'var(--bg-hover, #252530)', color: 'var(--text-primary, #fff)', fontSize: 14, boxSizing: 'border-box', outline: 'none' }}
+                autoFocus
+              >
+                {!slides.some(s => s.id && s.id === linkModal.slideId) && <option value="">{linkModal.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
+                {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text-muted, #888)', marginTop: 6 }}>Goes to this slide when presenting, even after slides are reordered.</div>
+            </>) : (<>
             <div style={{ fontSize: 11, color: 'var(--text-muted, #888)', marginBottom: 4 }}>URL</div>
             <input
               ref={linkInputRef}
@@ -1392,6 +1430,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border, #333)', background: 'var(--bg-hover, #252530)', color: 'var(--text-primary, #fff)', fontSize: 14, boxSizing: 'border-box', outline: 'none' }}
               autoFocus
             />
+            </>)}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
               {linkModal.isEdit && (
                 <button onClick={() => { editor?.chain().focus().unsetLink().run(); setLinkModal(null) }}
@@ -1403,7 +1442,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                 style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border, #333)', background: 'none', color: 'var(--text-primary, #fff)', cursor: 'pointer', fontSize: 12 }}>
                 Cancel
               </button>
-              <button onClick={submitLink}
+              <button onClick={submitLink} disabled={linkModal.mode === 'slide' && !slides.some(s => s.id && s.id === linkModal.slideId)}
                 style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                 {linkModal.isEdit ? 'Update' : 'Insert'}
               </button>

@@ -45,6 +45,7 @@ import {
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
+import { remapSlideLinks, countLinksTo } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -1536,6 +1537,22 @@ function draw() {
     }
   }, [presentation])
 
+  // A click action is set on an element and the rest of its group, so any
+  // part of a grouped card or button can be clicked
+  const updateClickAction = useCallback((id, clickAction) => {
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) => {
+          if (i !== currentSlideIndexRef.current) return s
+          const groupId = s.elements.find(el => el.id === id)?.groupId
+          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? { ...el, clickAction } : el) }
+        })
+      }
+    })
+  }, [])
+
   const updateElements = useCallback((updates) => {
     setPresentation(prev => {
       if (!prev) return prev
@@ -1759,12 +1776,18 @@ function draw() {
   const importSlidesFromPresentation = (importedSlides) => {
     if (!importedSlides.length) return
     const is2D = presentation.slides.some(s => s.column !== undefined)
-    const newSlides = importedSlides.map(slide => ({
-      ...slide,
-      id: crypto.randomUUID(),
-      ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
-      elements: (slide.elements || []).map(el => ({ ...el, id: crypto.randomUUID() })),
-    }))
+    // New ids, with links between the imported slides following them
+    const slideIds = new Map()
+    const newSlides = remapSlideLinks(importedSlides.map(slide => {
+      const id = crypto.randomUUID()
+      if (slide.id) slideIds.set(slide.id, id)
+      return {
+        ...slide,
+        id,
+        ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
+        elements: (slide.elements || []).map(el => ({ ...el, id: crypto.randomUUID() })),
+      }
+    }), slideIds)
     setPresentation(prev => {
       const slides = [...prev.slides]
       slides.splice(currentSlideIndex + 1, 0, ...newSlides)
@@ -1775,6 +1798,8 @@ function draw() {
 
   const deleteSlide = (index) => {
     if (!presentation || presentation.slides.length <= 1) return
+    const links = countLinksTo(presentation.slides, presentation.slides[index]?.id)
+    if (links && !confirm(`${links} ${links === 1 ? 'link or button goes' : 'links or buttons go'} to this slide, and won't do anything once it's deleted. Delete it anyway?`)) return
     setPresentation(prev => ({
       ...prev,
       slides: prev.slides.filter((_, i) => i !== index)
@@ -3381,6 +3406,7 @@ function draw() {
             smartGuidesEnabled={smartGuidesEnabled}
             onToggleSmartGuides={() => setSmartGuidesEnabled(v => !v)}
             slide={currentSlide}
+            slides={presentation.slides}
             onUpdateSlide={updateCurrentSlide}
             onGroupElements={groupElements}
             onUngroupElements={ungroupElements}
@@ -3546,6 +3572,7 @@ function draw() {
           selectedElement={selectedElement}
           onUpdateSlide={updateCurrentSlide}
           onUpdateElement={(updates) => selectedElementId && updateElement(selectedElementId, updates)}
+          onUpdateClickAction={clickAction => selectedElementId && updateClickAction(selectedElementId, clickAction)}
           onDeleteElement={() => selectedElementId && deleteElement(selectedElementId)}
           onBringForward={() => selectedElementId && bringElementForward(selectedElementId)}
           onSendBackward={() => selectedElementId && sendElementBackward(selectedElementId)}
