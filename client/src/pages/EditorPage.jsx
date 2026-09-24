@@ -45,7 +45,7 @@ import {
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
-import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs } from '../utils/clickActions'
+import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -522,6 +522,21 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
+
+  // Previewing a slide's clicks on the canvas (utils/clickActions.js), chosen
+  // per slide while editing
+  const [clickPreview, setClickPreview] = useState({})
+  const preview = canvasClickPreview(currentSlide?.elements, currentSlide ? clickPreview[currentSlide.id] : null, selectedElementIds)
+  const canvasSlide = currentSlide && preview.elements !== currentSlide.elements ? { ...currentSlide, elements: preview.elements } : currentSlide
+  const setPreviewMode = mode => { if (currentSlide) setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode })) }
+
+  // Selecting a tab previews its click, and selecting something the preview
+  // hides switches to a click that shows it
+  useEffect(() => {
+    if (!currentSlide || selectedElementIds.length !== 1) return
+    const mode = previewForSelection(currentSlide.elements, selectedElementIds[0], preview.mode)
+    if (mode) setPreviewMode(mode)
+  }, [selectedElementIds, currentSlide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
   const hasReferencesSlide = referencedEntries.length > 0
   const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
@@ -3460,6 +3475,24 @@ function draw() {
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
+            {!isViewingReferences && preview.canPreview && (() => {
+              const labels = elementLabels(currentSlide.elements)
+              const modes = [['start', 'As it opens', 'The slide as it opens, before any clicks'],
+                ...preview.clickers.map(c => [c.id, labels.get(c.id), `The slide after clicking “${labels.get(c.id)}”`]),
+                ['all', 'Everything', 'Everything on the slide, with what starts hidden faded']]
+              return (
+                <div role="toolbar" aria-label="Show on the canvas" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                  <span>Show on canvas:</span>
+                  {modes.map(([mode, label, title]) => (
+                    <button key={mode} title={title} aria-pressed={preview.mode === mode} onClick={() => setPreviewMode(mode)}
+                      style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        background: preview.mode === mode ? 'var(--accent)' : 'var(--bg-card)', color: preview.mode === mode ? '#fff' : 'var(--text-secondary)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
             {isViewingReferences ? (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
                 <div style={{ width: slideW * 0.75, height: slideH * 0.75, background: '#111122', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', padding: '24px 32px', position: 'relative', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
@@ -3484,7 +3517,8 @@ function draw() {
               </div>
             ) : <SlideCanvas
               editor={editor}
-              slide={currentSlide}
+              slide={canvasSlide}
+              fadedIds={preview.fadedIds}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
               showGrid={showGrid}

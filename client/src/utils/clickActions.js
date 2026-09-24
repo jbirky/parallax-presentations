@@ -264,6 +264,68 @@ export function elementLabels(elements) {
   return labels
 }
 
+// The elements of a slide whose click shows or hides something, one per
+// group, for previewing their clicks in the editor
+export function visibilityClickers(elements) {
+  const groups = new Set()
+  return (elements || []).filter(el => {
+    if (el.clickAction?.type !== 'visibility' || !supportsClickAction(el)) return false
+    if (!el.groupId) return true
+    if (groups.has(el.groupId)) return false
+    groups.add(el.groupId)
+    return true
+  })
+}
+
+// The ids of the elements on a slide that are hidden once it opens and
+// `clickerId`'s element is clicked (or as it opens, with no clicker)
+export function hiddenAfterClick(elements, clickerId = null) {
+  const hidden = new Set((elements || []).filter(el => el.startHidden).map(el => el.id))
+  const action = clickerId && (elements || []).find(el => el.id === clickerId)?.clickAction
+  if (action?.type === 'visibility') {
+    idList(action.hide).forEach(id => hidden.add(id))
+    idList(action.show).forEach(id => hidden.delete(id))
+    idList(action.toggle).forEach(id => hidden.has(id) ? hidden.delete(id) : hidden.add(id))
+  }
+  return hidden
+}
+
+// What the editor's canvas shows of a slide while previewing its clicks.
+// `mode` is 'all' (everything, with what starts hidden faded), 'start' (the
+// slide as it opens) or a clicker's id (the slide after that click); slides
+// with show/hide preview 'start' unless told otherwise, so tab panels don't
+// overlap. Selected elements stay on the canvas, faded if the preview hides them.
+export function canvasClickPreview(elements, mode, selectedIds = []) {
+  const all = elements || []
+  const clickers = visibilityClickers(all)
+  const canPreview = clickers.length > 0 || all.some(el => el.startHidden)
+  const current = !canPreview ? 'all'
+    : mode === 'all' || clickers.some(c => c.id === mode) ? mode
+    : 'start'
+  const hidden = current === 'all' ? new Set() : hiddenAfterClick(all, current === 'start' ? null : current)
+  const selected = new Set(selectedIds)
+  return {
+    canPreview, clickers, mode: current,
+    elements: hidden.size ? all.filter(el => !hidden.has(el.id) || selected.has(el.id)) : all,
+    fadedIds: new Set(current === 'all'
+      ? all.filter(el => el.startHidden && !selected.has(el.id)).map(el => el.id)
+      : [...hidden].filter(id => selected.has(id))),
+  }
+}
+
+// The preview to switch to when `selectedId` is selected: its own click if
+// it's a clicker (or in a clicker's group), or a click that shows it if the
+// current preview hides it; null to stay
+export function previewForSelection(elements, selectedId, mode) {
+  const el = (elements || []).find(e => e.id === selectedId)
+  if (!el) return null
+  const clickers = visibilityClickers(elements)
+  const clicker = clickers.find(c => c.id === el.id || (el.groupId && c.groupId === el.groupId))
+  if (clicker) return clicker.id === mode ? null : clicker.id
+  if (mode === 'all' || !hiddenAfterClick(elements, mode === 'start' ? null : mode).has(el.id)) return null
+  return clickers.find(c => ['show', 'toggle'].some(k => idList(c.clickAction[k]).includes(el.id)))?.id || null
+}
+
 // A tabs component for a slide: a row of tab buttons over a panel, with each
 // tab showing its content and a bar under itself, and hiding the others'.
 // Tab 1 starts shown. Its parts aren't grouped, since a group shares one

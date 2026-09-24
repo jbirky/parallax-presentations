@@ -116,6 +116,64 @@ describe('showing and hiding', () => {
   })
 })
 
+describe('previewing clicks on the canvas', () => {
+  let n = 0
+  const els = client.buildTabs(3, { makeId: () => `t${++n}` })
+  const [, tab1, tab2, tab3, bar1, bar2, bar3, panel1, panel2, panel3] = els
+  const ids = list => list.map(e => e.id).sort()
+
+  it('shows the slide as it opens, so tab panels don’t overlap', () => {
+    const p = client.canvasClickPreview(els, undefined)
+    expect(p.canPreview).toBe(true)
+    expect(p.mode).toBe('start')
+    expect(ids(p.clickers)).toEqual(ids([tab1, tab2, tab3]))
+    expect(p.elements.map(e => e.id)).not.toContain(panel2.id)
+    expect(p.elements.map(e => e.id)).toContain(panel1.id)
+    expect(p.fadedIds.size).toBe(0)
+  })
+
+  it('shows the slide after a tab’s click', () => {
+    const p = client.canvasClickPreview(els, tab3.id)
+    expect(p.mode).toBe(tab3.id)
+    const shown = p.elements.map(e => e.id)
+    expect(shown).toEqual(expect.arrayContaining([panel3.id, bar3.id, tab1.id]))
+    expect(shown).not.toEqual(expect.arrayContaining([panel1.id]))
+    expect(shown).not.toContain(panel2.id)
+  })
+
+  it('keeps what’s selected, faded, and shows everything when asked', () => {
+    expect([...client.canvasClickPreview(els, tab3.id, [panel1.id]).fadedIds]).toEqual([panel1.id])
+    const all = client.canvasClickPreview(els, 'all', [panel2.id])
+    expect(all.elements).toBe(els)
+    expect([...all.fadedIds].sort()).toEqual(ids([bar2, bar3, panel3])) // hidden at start, not selected
+    expect(client.canvasClickPreview(els, 'gone').mode).toBe('start')
+    const plain = [text('a')]
+    expect(client.canvasClickPreview(plain, tab1.id)).toMatchObject({ canPreview: false, mode: 'all', elements: plain })
+  })
+
+  it('switches to a tab’s click when it’s selected, or to one that shows what’s selected', () => {
+    expect(client.previewForSelection(els, tab2.id, 'start')).toBe(tab2.id)
+    expect(client.previewForSelection(els, tab2.id, tab2.id)).toBeNull()
+    expect(client.previewForSelection(els, panel3.id, 'start')).toBe(tab3.id)
+    expect(client.previewForSelection(els, panel1.id, 'start')).toBeNull() // already shown
+    expect(client.previewForSelection(els, panel2.id, 'all')).toBeNull()
+    expect(client.previewForSelection(els, 'nope', 'start')).toBeNull()
+    const grouped = [text('g1', { groupId: 'g', clickAction: { type: 'visibility', show: ['x'] } }), text('g2', { groupId: 'g', clickAction: { type: 'visibility', show: ['x'] } }), text('x', { startHidden: true })]
+    expect(client.visibilityClickers(grouped).map(e => e.id)).toEqual(['g1'])
+    expect(client.previewForSelection(grouped, 'g2', 'start')).toBe('g1')
+  })
+
+  it('works out what a click leaves hidden', () => {
+    const slide = [
+      text('s', { startHidden: true }), text('v'),
+      text('c', { clickAction: { type: 'visibility', show: ['s'], hide: ['v'], toggle: ['t', 'u'] } }),
+      text('t', { startHidden: true }), text('u'),
+    ]
+    expect([...client.hiddenAfterClick(slide)].sort()).toEqual(['s', 't'])
+    expect([...client.hiddenAfterClick(slide, 'c')].sort()).toEqual(['u', 'v'])
+  })
+})
+
 describe('the tabs insert', () => {
   let n = 0
   const makeId = () => `id${++n}`
