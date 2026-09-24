@@ -39,6 +39,6 @@
     "pdfjs-dist": "3.11.174",
     "reveal.js": "5.1.0",
     "svgcanvas": "2.6.0",
-    "three": "0.162.0"
+    "three": "0.186.0"
   }
 }
