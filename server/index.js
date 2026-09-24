@@ -24,7 +24,11 @@ const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
 } = require('./services/guest-service')
-const { startSystemSampling, recordUsage, getAdminOverview, assignablePlans, setUserPlan } = require('./services/admin-service')
+const { startSystemSampling, recordUsage, getAdminOverview, setUserPlan } = require('./services/admin-service')
+const {
+  loadPlans, listPlans, planFor, assignablePlans, purchasablePlans, toJSON: planJSON,
+  PlanError, createPlan, updatePlan, deletePlan,
+} = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
@@ -329,6 +333,22 @@ if (IS_CLOUD) {
   app.post('/api/guest/activity', (req, res) => res.status(204).end())
 }
 
+// GET /api/plans — the listed plans, for pricing and upgrade options, each
+// marked purchasable when billing is on and it has a Stripe price. Public, so
+// it can be shown before anyone signs in.
+if (IS_CLOUD) {
+  app.get('/api/plans', (req, res) => {
+    const billing = stripeService.isEnabled()
+    res.json({
+      billing,
+      plans: listPlans().filter(p => p.public).map(p => {
+        const { stripePriceId, public: _public, sortOrder, ...shown } = planJSON(p)
+        return { ...shown, purchasable: billing && !!stripePriceId }
+      }),
+    })
+  })
+}
+
 // Protect all /api routes in cloud mode
 app.use('/api', requireUser)
 app.use('/api', apiLimiter)
@@ -336,8 +356,7 @@ app.use('/api', apiLimiter)
 // Plan quota check helper
 async function checkPresentationQuota(req, res) {
   if (!IS_CLOUD || !req.userId) return true
-  const plan = req.userPlan || 'free'
-  const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+  const limits = planFor(req.userPlan)
   if (limits.maxPresentations === Infinity) return true
   const { rows } = await storage.query(
     'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
@@ -346,9 +365,9 @@ async function checkPresentationQuota(req, res) {
   if (rows[0].count >= limits.maxPresentations) {
     res.status(403).json({
       error: 'presentation_limit_reached',
-      message: plan === 'guest'
+      message: limits.id === 'guest'
         ? 'Guest mode is limited to one presentation.'
-        : `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
+        : `The ${limits.name} plan is limited to ${limits.maxPresentations} presentations.`,
       limit: limits.maxPresentations, current: rows[0].count,
     })
     return false
@@ -360,20 +379,21 @@ async function checkPresentationQuota(req, res) {
 app.get('/api/me', async (req, res) => {
   if (!IS_CLOUD) return res.json({ plan: null, presentationCount: 0, limits: null })
   try {
-    const plan = req.userPlan || 'free'
-    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+    const limits = planFor(req.userPlan)
     const { rows } = await storage.query(
       'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
       [req.userId]
     )
     res.json({
-      plan,
+      plan: limits.id,
+      planName: limits.name,
       presentationCount: rows[0].count,
       storageUsed: await storageUsedBytes(storage, req.userId),
       limits: {
         maxPresentations: limits.maxPresentations === Infinity ? null : limits.maxPresentations,
         expirationDays: limits.expirationDays,
         storageBytes: limits.storageBytes,
+        maxFileBytes: limits.maxFileBytes,
       },
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
@@ -386,7 +406,7 @@ app.get('/api/me', async (req, res) => {
 app.get('/api/admin/overview', async (req, res) => {
   if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
   try {
-    res.json(await getAdminOverview(storage, PLAN_LIMITS))
+    res.json({ ...await getAdminOverview(storage, PLAN_LIMITS), billingEnabled: stripeService.isEnabled() })
   } catch (err) {
     console.error('Admin overview error:', err.message)
     res.status(500).json({ error: err.message })
@@ -413,7 +433,7 @@ app.post('/api/admin/users/:id/plan', async (req, res) => {
   if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
   if (!isValidUUID(req.params.id)) return res.status(400).json({ error: 'Invalid id' })
   const plan = req.body?.plan
-  if (!assignablePlans(PLAN_LIMITS).includes(plan)) return res.status(400).json({ error: 'Unknown plan' })
+  if (!assignablePlans().includes(plan)) return res.status(400).json({ error: 'Unknown plan' })
   try {
     const result = await setUserPlan(storage, PLAN_LIMITS, req.params.id, plan)
     if (!result) return res.status(404).json({ error: 'Account not found' })
@@ -427,15 +447,53 @@ app.post('/api/admin/users/:id/plan', async (req, res) => {
   }
 })
 
+// Plans: POST /api/admin/plans adds one, PUT /api/admin/plans/:id saves one
+// and DELETE /api/admin/plans/:id removes one no account is on. Not found for
+// anyone who isn't an admin.
+function planRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof PlanError) return res.status(err.status).json({ error: err.message })
+      console.error('Plan edit error:', err.message)
+      res.status(500).json({ error: err.message })
+    }
+  }
+}
+
+app.post('/api/admin/plans', planRoute(async (req, res) => {
+  const plan = await createPlan(storage, req.body || {})
+  console.log(`Admin added plan ${plan.id}`)
+  res.status(201).json({ plan: planJSON(plan) })
+}))
+
+app.put('/api/admin/plans/:id', planRoute(async (req, res) => {
+  const { plan, unexpired } = await updatePlan(storage, req.params.id, req.body || {})
+  console.log(`Admin saved plan ${plan.id}${unexpired ? `; ${unexpired} presentations stopped expiring` : ''}`)
+  res.json({ plan: planJSON(plan), unexpired })
+}))
+
+app.delete('/api/admin/plans/:id', planRoute(async (req, res) => {
+  await deletePlan(storage, req.params.id)
+  console.log(`Admin deleted plan ${req.params.id}`)
+  res.json({ success: true })
+}))
+
 // ---- Billing API ----
 if (IS_CLOUD && stripeService.isEnabled()) {
+  // Body: { plan }, one of the plans for sale
   app.post('/api/billing/checkout', authLimiter, requireUser, async (req, res) => {
     try {
+      const plan = purchasablePlans().find(p => p.id === req.body?.plan)
+      if (!plan) return res.status(400).json({ error: 'That plan isn’t for sale' })
+      if (plan.id === req.userPlan) return res.status(400).json({ error: 'You’re already on that plan' })
       const { rows } = await storage.query('SELECT email, name FROM users WHERE id = $1', [req.userId])
       if (!rows[0]) return res.status(404).json({ error: 'User not found' })
       const baseUrl = req.headers.origin || 'https://parallax-presentations.com'
       const session = await stripeService.createCheckoutSession(
-        storage, req.userId, rows[0].email, rows[0].name,
+        storage, req.userId, rows[0].email, rows[0].name, plan,
         `${baseUrl}/dashboard?billing=success`,
         `${baseUrl}/dashboard?billing=cancel`
       )
@@ -1499,7 +1557,7 @@ function escapeHtml(str) {
 // GET /api/presentations - list summaries
 app.get('/api/presentations', async (req, res) => {
   try {
-    const excludeExpired = IS_CLOUD && (req.userPlan || 'free') === 'free'
+    const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
     res.json(await storage.listPresentations(req.userId, { excludeExpired }))
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1579,8 +1637,7 @@ app.post('/api/presentations', async (req, res) => {
       }
     }
 
-    const plan = req.userPlan || 'free'
-    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free
+    const limits = planFor(req.userPlan)
     const expiresAt = limits.expirationDays
       ? new Date(Date.now() + limits.expirationDays * 86400000).toISOString()
       : null
@@ -3262,8 +3319,9 @@ app.post('/api/presentations/fork', async (req, res) => {
       elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
     }))
 
-    const expiresAt = IS_CLOUD && req.userPlan === 'free'
-      ? new Date(Date.now() + (PLAN_LIMITS.free.expirationDays || 30) * 86400000).toISOString()
+    const { expirationDays } = planFor(req.userPlan)
+    const expiresAt = IS_CLOUD && expirationDays
+      ? new Date(Date.now() + expirationDays * 86400000).toISOString()
       : null
     const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
 
@@ -3356,8 +3414,12 @@ app.use((err, req, res, _next) => {
 })
 
 // When required as a module (Electron), export startServer. Otherwise start directly.
-function startServer(port) {
+async function startServer(port) {
   const p = port || PORT
+  // Until they load, the built-in plans apply
+  if (IS_CLOUD) {
+    try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
+  }
   return new Promise((resolve) => {
     const server = app.listen(p, () => {
       console.log(`Server running on http://localhost:${p}`)

@@ -3,8 +3,8 @@
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET
-const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || 'price_1TVnpZF9LOeD1Xd0coGVd0fI'
-const { PLAN_LIMITS } = require('../middleware/auth')
+// Each plan's Stripe price is set from /admin
+const { PLAN_LIMITS, planForPrice } = require('./plans')
 
 let stripe = null
 function getStripe() {
@@ -32,17 +32,18 @@ async function getOrCreateCustomer(storage, userId, email, name) {
   return customer.id
 }
 
-async function createCheckoutSession(storage, userId, email, name, successUrl, cancelUrl) {
+// Checkout for `plan`, one with a Stripe price
+async function createCheckoutSession(storage, userId, email, name, plan, successUrl, cancelUrl) {
   const s = getStripe()
   const customerId = await getOrCreateCustomer(storage, userId, email, name)
   const session = await s.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
     allow_promotion_codes: true,
-    line_items: [{ price: STRIPE_PRO_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
-    metadata: { parallax_user_id: userId },
+    metadata: { parallax_user_id: userId, parallax_plan: plan.id },
   })
   return session
 }
@@ -61,23 +62,28 @@ async function createPortalSession(storage, userId) {
   return session
 }
 
-// Puts the customer's account on Pro, recording `subscriptionId` when given.
-// Pro presentations don't expire, so the account's existing ones stop
-// expiring too; otherwise the sweeper would still delete the ones made on
-// Free. Returns the account's Clerk ID.
-async function moveCustomerToPro(storage, customerId, subscriptionId = null) {
+// Puts the customer's account on the paid plan `planId`, recording
+// `subscriptionId` when given. On a plan whose presentations don't expire,
+// the account's existing ones stop expiring too; otherwise the sweeper would
+// still delete the ones made on Free. Returns the account's Clerk ID.
+async function moveCustomerToPlan(storage, customerId, planId, subscriptionId = null) {
   const { rows } = await storage.query(`
     WITH changed AS (
-      UPDATE users SET plan = 'pro', plan_expires_at = NULL, stripe_subscription_id = COALESCE($2, stripe_subscription_id)
+      UPDATE users SET plan = $2, plan_expires_at = NULL, stripe_subscription_id = COALESCE($3, stripe_subscription_id)
        WHERE stripe_customer_id = $1 RETURNING id, auth_id
     ), unexpired AS (
       UPDATE presentations SET expires_at = NULL
-       WHERE $3::boolean AND expires_at IS NOT NULL AND user_id IN (SELECT id FROM changed)
+       WHERE $4::boolean AND expires_at IS NOT NULL AND user_id IN (SELECT id FROM changed)
     )
     SELECT auth_id FROM changed`,
-    [customerId, subscriptionId, !PLAN_LIMITS.pro.expirationDays]
+    [customerId, planId, subscriptionId, !PLAN_LIMITS[planId].expirationDays]
   )
   return rows.map(r => r.auth_id)
+}
+
+// The plan a subscription pays for, by its price
+function planForSubscription(sub) {
+  return planForPrice(sub?.items?.data?.[0]?.price?.id)
 }
 
 // Returns the event and the Clerk IDs of accounts whose plan it changed, so
@@ -91,7 +97,11 @@ async function handleWebhook(storage, rawBody, signature) {
     case 'checkout.session.completed': {
       const session = event.data.object
       if (session.mode === 'subscription') {
-        planChangedFor = await moveCustomerToPro(storage, session.customer, session.subscription)
+        // The plan checkout was opened for, or else the one the price sells
+        const fromMetadata = PLAN_LIMITS[session.metadata?.parallax_plan]
+        const plan = fromMetadata?.stripePriceId ? fromMetadata : planForSubscription(await s.subscriptions.retrieve(session.subscription))
+        if (plan) planChangedFor = await moveCustomerToPlan(storage, session.customer, plan.id, session.subscription)
+        else console.error(`Stripe checkout ${session.id} is for a price no plan uses; plan left as it is`)
       }
       break
     }
@@ -99,7 +109,10 @@ async function handleWebhook(storage, rawBody, signature) {
       const sub = event.data.object
       const status = sub.status
       if (status === 'active') {
-        planChangedFor = await moveCustomerToPro(storage, sub.customer)
+        // Switching plans in the billing portal changes the price
+        const plan = planForSubscription(sub)
+        if (plan) planChangedFor = await moveCustomerToPlan(storage, sub.customer, plan.id)
+        else console.error(`Stripe subscription ${sub.id} is for a price no plan uses; plan left as it is`)
       } else if (status === 'past_due' || status === 'unpaid') {
         // keep pro for now, but could downgrade after grace period
       }

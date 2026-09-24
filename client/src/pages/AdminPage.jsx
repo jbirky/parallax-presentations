@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
+import { formatSize, planSummary } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
 
@@ -125,13 +126,14 @@ function EndGuestSessions({ active, onEnded }) {
   )
 }
 
-const PLAN_LABELS = { free: 'Free', pro: 'Pro', team: 'Team', guest: 'Guest' }
-const planLabel = plan => PLAN_LABELS[plan] || plan
+const MB = 1024 * 1024
+const GB = 1024 * MB
+const planName = (plans, id) => plans.find(p => p.id === id)?.name || id
 
 // What a move from one plan to another changes, for the confirm
 export function planChangeSummary(user, from, to) {
-  const lines = [`Move ${user.name || user.email} from ${planLabel(user.plan)} to ${planLabel(to.id)}?`,
-    `Storage limit: ${formatBytes(to.storageBytes)}.`]
+  const lines = [`Move ${user.name || user.email} from ${from?.name || user.plan} to ${to.name}?`,
+    `Storage limit: ${formatSize(to.storageBytes)}.`]
   if (from?.expirationDays && !to.expirationDays) lines.push('Their presentations will stop expiring.')
   if (!from?.expirationDays && to.expirationDays) {
     lines.push(`Their existing presentations are kept; new ones will expire after ${to.expirationDays} days.`)
@@ -144,16 +146,17 @@ export function planChangeSummary(user, from, to) {
 function PlanPicker({ user, plans, onChanged }) {
   const [moving, setMoving] = useState(null) // the plan being moved to
   const [message, setMessage] = useState(null)
+  const choices = plans.filter(p => p.assignable)
 
   async function change(plan) {
-    const to = plans.find(p => p.id === plan)
+    const to = choices.find(p => p.id === plan)
     if (!to || plan === user.plan) return
     if (!confirm(planChangeSummary(user, plans.find(p => p.id === user.plan), to))) return
     setMoving(plan)
     setMessage(null)
     try {
       const { unexpired } = await api.setUserPlan(user.id, plan)
-      setMessage(`Moved to ${planLabel(plan)}.` +
+      setMessage(`Moved to ${to.name}.` +
         (unexpired ? ` ${unexpired} presentation${unexpired === 1 ? '' : 's'} no longer expire${unexpired === 1 ? 's' : ''}.` : ''))
       await onChanged?.()
     } catch (err) {
@@ -167,11 +170,261 @@ function PlanPicker({ user, plans, onChanged }) {
     <>
       <select className="select-sm" value={moving || user.plan} disabled={!!moving}
         onChange={e => change(e.target.value)} aria-label={`Plan for ${user.email}`}>
-        {!plans.some(p => p.id === user.plan) && <option value={user.plan}>{planLabel(user.plan)}</option>}
-        {plans.map(p => <option key={p.id} value={p.id}>{planLabel(p.id)}</option>)}
+        {!choices.some(p => p.id === user.plan) && <option value={user.plan}>{planName(plans, user.plan)}</option>}
+        {choices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       {message && <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-secondary)', maxWidth: 180 }}>{message}</div>}
     </>
+  )
+}
+
+// ── Plan editor ──
+
+const EMPTY_PLAN = {
+  id: '', name: '', storageBytes: GB, maxPresentations: null, expirationDays: null, maxFileBytes: null,
+  stripePriceId: null, priceLabel: null, public: false, sortOrder: 10,
+}
+
+// A plan as form fields: sizes in MB or GB, blanks for no limit
+export function toPlanForm(plan) {
+  const inGB = plan.storageBytes >= GB && plan.storageBytes % GB === 0
+  return {
+    id: plan.id,
+    name: plan.name,
+    storage: String(inGB ? plan.storageBytes / GB : Math.round(plan.storageBytes / MB * 10) / 10),
+    storageUnit: inGB ? 'GB' : 'MB',
+    maxPresentations: plan.maxPresentations == null ? '' : String(plan.maxPresentations),
+    expirationDays: plan.expirationDays == null ? '' : String(plan.expirationDays),
+    maxFileMB: plan.maxFileBytes == null ? '' : String(Math.round(plan.maxFileBytes / MB * 10) / 10),
+    stripePriceId: plan.stripePriceId || '',
+    priceLabel: plan.priceLabel || '',
+    public: !!plan.public,
+    sortOrder: String(plan.sortOrder ?? 0),
+  }
+}
+
+// Form fields back to what the server takes; blanks stay blank for it to check
+export function fromPlanForm(form) {
+  const bytes = (value, unit) => value.trim() === '' ? null : Math.round(Number(value) * unit)
+  return {
+    id: form.id.trim(),
+    name: form.name,
+    storageBytes: bytes(form.storage, form.storageUnit === 'GB' ? GB : MB),
+    maxPresentations: form.maxPresentations.trim() === '' ? null : Number(form.maxPresentations),
+    expirationDays: form.expirationDays.trim() === '' ? null : Number(form.expirationDays),
+    maxFileBytes: bytes(form.maxFileMB, MB),
+    stripePriceId: form.stripePriceId.trim() || null,
+    priceLabel: form.priceLabel.trim() || null,
+    public: form.public,
+    sortOrder: form.sortOrder.trim() === '' ? 0 : Number(form.sortOrder),
+  }
+}
+
+// What saving `next` over `old` does to the `accounts` already on it, for the confirm
+export function planEditEffects(old, next, accounts) {
+  const effects = []
+  if (old.expirationDays && !next.expirationDays) {
+    effects.push(!accounts ? 'Presentations will stop expiring.'
+      : `Presentations of ${accounts === 1 ? 'the account' : `the ${accounts} accounts`} on it will stop expiring.`)
+  } else if (!old.expirationDays && next.expirationDays) {
+    effects.push(`Only presentations made from now on will expire, after ${next.expirationDays} days; existing ones won’t.`)
+  } else if (old.expirationDays !== next.expirationDays) {
+    effects.push(`The new expiry applies to presentations made from now on; existing ones keep their dates.`)
+  }
+  if (accounts && next.storageBytes < old.storageBytes) {
+    effects.push(`Accounts on it storing more than ${formatSize(next.storageBytes)} can’t upload until they free space.`)
+  }
+  if (accounts && next.maxPresentations != null && (old.maxPresentations == null || next.maxPresentations < old.maxPresentations)) {
+    effects.push(`Accounts on it with more than ${next.maxPresentations} presentations keep them but can’t make more.`)
+  }
+  if (old.stripePriceId && old.stripePriceId !== next.stripePriceId) {
+    effects.push('Existing subscribers stay on the old price in Stripe; renewals on it will no longer match a plan until you move them.')
+  }
+  return effects
+}
+
+const fieldLabel = { display: 'grid', gap: 3, fontSize: 12, color: 'var(--text-muted)' }
+const fieldInput = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 6, fontSize: 13, minWidth: 0, width: '100%', boxSizing: 'border-box' }
+const chip = { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+
+function Field({ label, hint, children }) {
+  return (
+    <label style={fieldLabel}>
+      <span>{label}{hint && <span style={{ color: 'var(--text-muted)', opacity: 0.8 }}> · {hint}</span>}</span>
+      {children}
+    </label>
+  )
+}
+
+// Edits one plan, or a new one when `isNew`
+function PlanForm({ plan, isNew, accounts, onDone }) {
+  const [form, setForm] = useState(() => toPlanForm(plan))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const builtIn = plan.id === 'free' || plan.id === 'guest'
+
+  async function save(e) {
+    e.preventDefault()
+    const next = fromPlanForm(form)
+    if (!isNew) {
+      const effects = planEditEffects(plan, next, accounts)
+      if (effects.length && !confirm([`Save ${next.name || plan.name}?`, ...effects].join('\n\n'))) return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const { unexpired } = await api.savePlan(next, isNew)
+      await onDone?.(unexpired ? `Saved. ${unexpired} presentation${unexpired === 1 ? '' : 's'} stopped expiring.` : 'Saved.')
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+        {isNew && (
+          <Field label="Id" hint="kept on accounts">
+            <input style={fieldInput} value={form.id} onChange={set('id')} placeholder="starter" required pattern="[a-z][a-z0-9-]{1,31}" />
+          </Field>
+        )}
+        <Field label="Name"><input style={fieldInput} value={form.name} onChange={set('name')} required maxLength={40} /></Field>
+        <Field label="Storage">
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input style={fieldInput} type="number" min="1" step="any" value={form.storage} onChange={set('storage')} required />
+            <select className="select-sm" value={form.storageUnit} onChange={set('storageUnit')} aria-label="Storage unit">
+              <option>MB</option><option>GB</option>
+            </select>
+          </div>
+        </Field>
+        <Field label="Presentations" hint="blank: unlimited">
+          <input style={fieldInput} type="number" min="1" step="1" value={form.maxPresentations} onChange={set('maxPresentations')} />
+        </Field>
+        <Field label="Expires after (days)" hint="blank: never">
+          <input style={fieldInput} type="number" min="1" step="1" value={form.expirationDays} onChange={set('expirationDays')} />
+        </Field>
+        <Field label="Largest file (MB)" hint="blank: 500">
+          <input style={fieldInput} type="number" min="1" max="500" step="any" value={form.maxFileMB} onChange={set('maxFileMB')} />
+        </Field>
+        <Field label="Order"><input style={fieldInput} type="number" min="0" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></Field>
+        {!builtIn && (
+          <Field label="Stripe price ID" hint="blank: not for sale">
+            <input style={{ ...fieldInput, fontFamily: 'monospace' }} value={form.stripePriceId} onChange={set('stripePriceId')} placeholder="price_…" spellCheck={false} />
+          </Field>
+        )}
+        {plan.id !== 'guest' && (
+          <Field label="Price label" hint="shown to buyers">
+            <input style={fieldInput} value={form.priceLabel} onChange={set('priceLabel')} placeholder="$5/mo" maxLength={40} />
+          </Field>
+        )}
+      </div>
+      {plan.id !== 'guest' && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <input type="checkbox" checked={form.public} onChange={set('public')} /> Listed for people choosing a plan
+        </label>
+      )}
+      {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '5px 12px', fontSize: 13 }}>
+          {saving ? 'Saving…' : isNew ? 'Add plan' : 'Save'}
+        </button>
+        <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => onDone?.(null)} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
+      </div>
+    </form>
+  )
+}
+
+function PlanCard({ plan, accounts, onChanged }) {
+  const [editing, setEditing] = useState(false)
+  const [message, setMessage] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const builtIn = plan.id === 'free' || plan.id === 'guest'
+
+  async function remove() {
+    if (!confirm(`Delete the ${plan.name} plan?`)) return
+    setDeleting(true)
+    try {
+      await api.deletePlan(plan.id)
+      await onChanged?.()
+    } catch (err) {
+      setMessage(err.message)
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 8, alignContent: 'start', minWidth: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
+        <strong style={{ fontSize: 14 }}>{plan.name}</strong>
+        <code style={{ fontSize: 11, color: 'var(--text-muted)' }}>{plan.id}</code>
+        <span style={chip}>{plan.id === 'guest' ? 'Guest mode' : plan.public ? 'Listed' : 'Hidden'}</span>
+        {plan.id !== 'guest' && (
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>
+            {accounts} account{accounts === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      {editing ? (
+        <PlanForm plan={plan} accounts={accounts} onDone={async done => {
+          if (done) { setMessage(done); await onChanged?.() }
+          setEditing(false)
+        }} />
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            {planSummary(plan).map(line => <div key={line}>{line}</div>)}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
+            {plan.stripePriceId
+              ? <>{plan.priceLabel || 'Priced'} · <code>{plan.stripePriceId}</code></>
+              : plan.priceLabel || (builtIn ? '—' : 'Not for sale')}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary" onClick={() => { setMessage(null); setEditing(true) }} style={{ padding: '3px 10px', fontSize: 12 }}>Edit</button>
+            {!builtIn && (
+              <button className="btn btn-secondary" onClick={remove} disabled={deleting || accounts > 0}
+                title={accounts > 0 ? 'Move its accounts to another plan first' : undefined} style={{ padding: '3px 10px', fontSize: 12 }}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
+          </div>
+          {message && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{message}</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
+function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
+  const [adding, setAdding] = useState(false)
+  return (
+    <section style={styles.panel}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={styles.h2}>Plans</h2>
+          <p style={styles.sub}>
+            Limits apply as soon as you save.{' '}
+            {billingEnabled
+              ? 'Listed plans with a Stripe price can be bought from the dashboard.'
+              : 'Billing is switched off, so Stripe prices take effect once it’s on.'}
+          </p>
+        </div>
+        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add a plan</button>}
+      </div>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+        {adding && (
+          <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12 }}>
+            <PlanForm plan={EMPTY_PLAN} isNew accounts={0} onDone={async done => {
+              if (done) await onChanged?.()
+              setAdding(false)
+            }} />
+          </div>
+        )}
+        {plans.map(p => <PlanCard key={p.id} plan={p} accounts={byPlan?.[p.id] || 0} onChanged={onChanged} />)}
+      </div>
+    </section>
   )
 }
 
@@ -276,6 +529,10 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
             ariaLabel="Container memory over the last 24 hours" emptyText={collecting} />
         </ChartPanel>
       </div>
+
+      {data.plans?.length > 0 && (
+        <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />
+      )}
 
       <section style={styles.panel}>
         <h2 style={styles.h2}>Accounts</h2>

@@ -5,15 +5,13 @@
 // the file to disk. Guests are checked in guestAuth; signed-in users on a plan
 // by uploadQuota on each upload route.
 
-const { PLAN_LIMITS } = require('./auth')
+const { planFor } = require('../services/plans')
 
 // Allowance for multipart framing around the file itself
 const MULTIPART_OVERHEAD = 64 * 1024
 // A refused upload is read to the end before answering (see refuseUpload),
 // unless it is bigger than this
 const DRAIN_LIMIT = 100 * 1024 * 1024
-
-const PLAN_NAMES = { free: 'Free', pro: 'Pro', team: 'Team' }
 
 function formatSize(bytes) {
   const gb = bytes / (1024 * 1024 * 1024)
@@ -66,13 +64,13 @@ function refuseUpload(req, res, { status, error }) {
 function uploadQuota(storage) {
   return async (req, res, next) => {
     if (!storage.query || !req.userId || req.isGuest) return next()
-    const plan = PLAN_LIMITS[req.userPlan] ? req.userPlan : 'free'
+    const plan = planFor(req.userPlan)
     try {
-      const problem = await checkUpload(storage, req, PLAN_LIMITS[plan], {
-        fileTooBig: limit => `Files are limited to ${limit} each.`,
-        storageFull: limit => plan === 'free'
-          ? `Your storage is full (${limit} on the Free plan). Delete some files or upgrade to Pro to upload more.`
-          : `Your storage is full (${limit} on the ${PLAN_NAMES[plan] || plan} plan). Delete some files to upload more.`,
+      const problem = await checkUpload(storage, req, plan, {
+        fileTooBig: limit => `Files are limited to ${limit} each on the ${plan.name} plan.`,
+        storageFull: limit => plan.id === 'free'
+          ? `Your storage is full (${limit} on the ${plan.name} plan). Delete some files or upgrade to upload more.`
+          : `Your storage is full (${limit} on the ${plan.name} plan). Delete some files to upload more.`,
       })
       if (problem) return refuseUpload(req, res, problem)
       next()

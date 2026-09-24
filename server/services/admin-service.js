@@ -5,6 +5,7 @@
 // container's CPU and memory.
 
 const fs = require('fs')
+const { listPlans, assignablePlans, toJSON } = require('./plans')
 
 // ── Container CPU and memory ────────────────────────────────────────────────
 // Read from this container's own cgroup (v2), so no Docker access is needed.
@@ -150,9 +151,7 @@ async function getAdminOverview(storage, planLimits) {
     generatedAt: new Date().toISOString(),
     accounts: { total: t.accounts, new30d: t.new_30d, new7d: t.new_7d, byPlan: t.by_plan },
     guestsActive: guests ? guests.rows[0].active : null,
-    plans: assignablePlans(planLimits).map(id => ({
-      id, storageBytes: planLimits[id].storageBytes, expirationDays: planLimits[id].expirationDays,
-    })),
+    plans: listPlans().map(plan => ({ ...toJSON(plan), assignable: assignablePlans().includes(plan.id) })),
     signupsByWeek: weekly.rows.map(r => ({ weekStart: r.week_start, signups: r.signups })),
     storage: {
       uploadBytes: Number(storageTotals.rows[0].upload_bytes),
@@ -185,12 +184,6 @@ async function getAdminOverview(storage, planLimits) {
 
 // ── Plans ───────────────────────────────────────────────────────────────────
 
-// Plans an admin can put an account on: all but guest, which only guest mode
-// gives out
-function assignablePlans(planLimits) {
-  return Object.keys(planLimits).filter(plan => plan !== 'guest')
-}
-
 // Puts an account on `plan`. On a plan whose presentations don't expire, its
 // existing presentations stop expiring, so the sweeper won't delete them.
 // Moving to one that does leaves existing presentations as they are, as a
@@ -214,4 +207,4 @@ async function setUserPlan(storage, planLimits, userId, plan) {
   return { previousPlan: r.plan, plan, authId: r.auth_id, hasSubscription: r.has_subscription, unexpired: r.unexpired }
 }
 
-module.exports = { startSystemSampling, recordUsage, getAdminOverview, assignablePlans, setUserPlan }
+module.exports = { startSystemSampling, recordUsage, getAdminOverview, setUserPlan }

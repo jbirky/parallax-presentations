@@ -215,7 +215,17 @@ export const api = {
   getShareStatus: (id) => authFetch(`${BASE}/presentations/${id}/share`).then(safeJson),
 
   // Billing
-  createCheckout: () => authFetch(`${BASE}/billing/checkout`, { method: 'POST' }).then(safeJson),
+  // The listed plans: { billing, plans }. Public, so it works signed out.
+  getPlans: () => _fetch(`${BASE}/plans`).then(safeJson),
+  createCheckout: (plan) => authFetch(`${BASE}/billing/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan }),
+  }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not start checkout')
+    return b
+  }),
   createPortal: () => authFetch(`${BASE}/billing/portal`, { method: 'POST' }).then(safeJson),
   getBillingStatus: () => authFetch(`${BASE}/billing/status`).then(safeJson),
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
@@ -231,6 +241,20 @@ export const api = {
   endAllGuestSessions: () => authFetch(`${BASE}/admin/guest-sessions/end-all`, { method: 'POST' }).then(async r => {
     const b = await safeJson(r)
     if (!r.ok) throw new Error(b.error || 'Could not end the guest sessions')
+    return b
+  }),
+  savePlan: (plan, isNew) => authFetch(isNew ? `${BASE}/admin/plans` : `${BASE}/admin/plans/${plan.id}`, {
+    method: isNew ? 'POST' : 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(plan),
+  }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not save the plan')
+    return b
+  }),
+  deletePlan: (id) => authFetch(`${BASE}/admin/plans/${id}`, { method: 'DELETE' }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not delete the plan')
     return b
   }),
   setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {

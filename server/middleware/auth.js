@@ -43,12 +43,8 @@ function authStack() {
   return [attachUserId]
 }
 
-const PLAN_LIMITS = {
-  free: { maxPresentations: 3, expirationDays: 30, storageBytes: 100 * 1024 * 1024 },
-  pro:  { maxPresentations: Infinity, expirationDays: null, storageBytes: 5 * 1024 * 1024 * 1024 },
-  team: { maxPresentations: Infinity, expirationDays: null, storageBytes: 25 * 1024 * 1024 * 1024 },
-  guest: { maxPresentations: 1, expirationDays: null, storageBytes: 25 * 1024 * 1024, maxFileBytes: 10 * 1024 * 1024 },
-}
+// Each plan's limits, by plan id; kept up to date from the plans table
+const { PLAN_LIMITS } = require('../services/plans')
 
 // Admins are listed by Clerk user ID in ADMIN_USER_IDS (comma-separated).
 // Needs the Clerk ID the provisioning middleware keeps on req.authId.

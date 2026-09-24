@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AdminDashboard, planChangeSummary } from './AdminPage'
+import { AdminDashboard, planChangeSummary, toPlanForm, fromPlanForm, planEditEffects } from './AdminPage'
 import { niceTicks } from '../components/AdminCharts'
 
 const MB = 1024 * 1024
@@ -101,10 +101,15 @@ describe('AdminDashboard', () => {
   })
 })
 
+const plan = (id, name, fields) => ({
+  id, name, maxPresentations: null, expirationDays: null, maxFileBytes: null, stripePriceId: null,
+  priceLabel: null, public: false, sortOrder: 0, assignable: id !== 'guest', ...fields,
+})
 const PLANS = [
-  { id: 'free', storageBytes: 100 * MB, expirationDays: 30 },
-  { id: 'pro', storageBytes: 5 * 1024 * MB, expirationDays: null },
-  { id: 'team', storageBytes: 25 * 1024 * MB, expirationDays: null },
+  plan('free', 'Free', { storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, priceLabel: 'Free', public: true }),
+  plan('pro', 'Pro', { storageBytes: 5 * 1024 * MB, stripePriceId: 'price_pro123', priceLabel: '$5/mo', public: true, sortOrder: 1 }),
+  plan('team', 'Team', { storageBytes: 25 * 1024 * MB, sortOrder: 2 }),
+  plan('guest', 'Guest', { storageBytes: 25 * MB, maxPresentations: 1, maxFileBytes: 10 * MB, sortOrder: 3 }),
 ]
 
 describe('planChangeSummary', () => {
@@ -114,7 +119,7 @@ describe('planChangeSummary', () => {
   it('says presentations stop expiring when moving off free', () => {
     const text = planChangeSummary(user, free, pro)
     expect(text).toContain('Move Near from Free to Pro?')
-    expect(text).toContain('Storage limit: 5.0 GB.')
+    expect(text).toContain('Storage limit: 5 GB.')
     expect(text).toContain('Their presentations will stop expiring.')
   })
 
@@ -129,5 +134,42 @@ describe('planChangeSummary', () => {
     const text = planChangeSummary({ ...user, plan: 'pro', hasSubscription: true }, pro, team)
     expect(text).not.toContain('expir')
     expect(text).toContain('They pay through Stripe')
+  })
+})
+
+describe('plan editor', () => {
+  const [free, pro] = PLANS
+
+  it('round-trips a plan through the form', () => {
+    const form = toPlanForm(free)
+    expect(form).toMatchObject({ storage: '100', storageUnit: 'MB', maxPresentations: '3', expirationDays: '30', maxFileMB: '', stripePriceId: '' })
+    expect(toPlanForm(pro)).toMatchObject({ storage: '5', storageUnit: 'GB', maxPresentations: '', expirationDays: '' })
+    const back = fromPlanForm(form)
+    expect(back).toMatchObject({ id: 'free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null })
+    expect(fromPlanForm({ ...form, storage: '1.5', storageUnit: 'GB', maxFileMB: '50' })).toMatchObject({ storageBytes: 1536 * MB, maxFileBytes: 50 * MB })
+  })
+
+  it('warns about what a save does to accounts on the plan', () => {
+    expect(planEditEffects(free, { ...free, expirationDays: null }, 5)).toEqual(['Presentations of the 5 accounts on it will stop expiring.'])
+    expect(planEditEffects(pro, { ...pro, expirationDays: 14 }, 1)[0]).toContain('Only presentations made from now on will expire')
+    expect(planEditEffects(free, { ...free, storageBytes: 50 * MB, maxPresentations: 2 }, 1)).toEqual([
+      'Accounts on it storing more than 50 MB can’t upload until they free space.',
+      'Accounts on it with more than 2 presentations keep them but can’t make more.',
+    ])
+    expect(planEditEffects(pro, { ...pro, stripePriceId: 'price_new123' }, 0)[0]).toContain('Existing subscribers stay on the old price')
+    expect(planEditEffects(free, { ...free, name: 'Starter' }, 9)).toEqual([])
+  })
+
+  it('shows a card per plan, with delete only for plans that can go', () => {
+    const html = renderToStaticMarkup(<AdminDashboard data={overview({ plans: PLANS })} />)
+    expect(html).toContain('<h2 style="margin:0 0 2px;font-size:14px;font-weight:600">Plans</h2>')
+    expect(html).toContain('Billing is switched off')
+    expect(html).toContain('5 accounts')
+    expect(html).toContain('$5/mo · <code>price_pro123</code>')
+    expect(html).toContain('Guest mode')
+    expect(html).toContain('Files up to 10 MB each')
+    // Free and guest can't be deleted; pro has an account, so its Delete is disabled
+    expect(html.match(/>Delete<\/button>/g)).toHaveLength(2)
+    expect(html).toContain('disabled="" title="Move its accounts to another plan first"')
   })
 })
