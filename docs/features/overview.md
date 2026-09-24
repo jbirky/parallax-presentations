@@ -59,7 +59,7 @@ The footer system lets you define a **section sequence** shown at the bottom of 
 - **Offline HTML** — all CDN assets inlined; works without internet access
 - **PDF** — print-ready via browser print dialog with all fragments expanded
 - **PPTX** — PowerPoint-compatible export
-- **Shareable link** — generate a URL to share a read-only or editable view
+- **Shareable link** — generate a URL to share a read-only or editable view (cloud version only)
 - **GitHub push** — commit your presentation directly to a GitHub repository
 
 See [Export & Sharing](/features/export) for details.

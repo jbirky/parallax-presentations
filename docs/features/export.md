@@ -57,7 +57,7 @@ Generate a **shareable URL** that others can open to view (or edit) your present
 - Copy and share the URL.
 
 ::: tip
-Shareable links require your Parallax instance to be accessible from the internet (or your local network). If running locally behind a firewall, share the exported HTML file instead.
+Sharing is only in the cloud version at parallax-presentations.com. The self-hosted version and the desktop app keep everything on your computer, so share an exported HTML file from them instead.
 :::
 
 ## GitHub sync & hosting
