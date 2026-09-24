@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/jbirky/revealjs_gui
+      link: https://github.com/jbirky/parallax-presentations
 
 features:
   - title: WYSIWYG Editing
@@ -23,5 +23,5 @@ features:
   - title: Self-Hosted
     details: Docker, desktop app (Electron), or run from source. Your data stays on your machine — no sign-up required.
   - title: Themes & Templates
-    details: 11 reveal.js themes, 6 design presets, custom reusable templates, and per-slide backgrounds.
+    details: 11 reveal.js themes, custom reusable templates, and per-slide backgrounds.
 ---

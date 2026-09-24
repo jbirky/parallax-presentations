@@ -38,8 +38,14 @@ function helmetConfig() {
   })
 }
 
+// Requests reach the app through the Cloudflare tunnel, so req.ip is the
+// tunnel's address; Cloudflare puts the visitor's address in CF-Connecting-IP.
+function clientIpKey(req) {
+  return ipKeyGenerator(req.get('CF-Connecting-IP') || req.ip)
+}
+
 function userOrIpKey(req) {
-  return req.userId || ipKeyGenerator(req)
+  return req.userId || clientIpKey(req)
 }
 
 const apiLimiter = rateLimit({
@@ -66,6 +72,7 @@ const authLimiter = rateLimit({
   max: IS_CLOUD ? 30 : 0,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: userOrIpKey,
   skip: () => !IS_CLOUD,
   message: { error: 'Too many requests, please try again later' },
 })
@@ -190,6 +197,7 @@ function safeErrorMessage(err) {
 module.exports = {
   corsConfig,
   helmetConfig,
+  clientIpKey,
   apiLimiter,
   uploadLimiter,
   authLimiter,

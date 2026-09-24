@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3')
 const { Upload } = require('@aws-sdk/lib-storage')
 const fs = require('fs')
 const path = require('path')
@@ -76,6 +76,31 @@ async function deleteFromR2(storageKey) {
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }))
 }
 
+// Deletes keys a few at a time. Returns the keys that could not be deleted
+// (deleting a key that is already gone counts as success).
+async function deleteManyFromR2(storageKeys) {
+  const failed = []
+  const keys = [...new Set(storageKeys)]
+  for (let i = 0; i < keys.length; i += 10) {
+    const batch = keys.slice(i, i + 10)
+    const results = await Promise.allSettled(batch.map(key => deleteFromR2(key)))
+    results.forEach((r, j) => { if (r.status === 'rejected') failed.push(batch[j]) })
+  }
+  return failed
+}
+
+async function listR2Keys(prefix) {
+  const s3 = getClient()
+  const keys = []
+  let ContinuationToken
+  do {
+    const res = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken }))
+    for (const obj of res.Contents || []) keys.push(obj.Key)
+    ContinuationToken = res.IsTruncated ? res.NextContinuationToken : undefined
+  } while (ContinuationToken)
+  return keys
+}
+
 async function putBufferToR2(storageKey, buffer, contentType) {
   const s3 = getClient()
   await s3.send(new PutObjectCommand({
@@ -87,4 +112,4 @@ async function putBufferToR2(storageKey, buffer, contentType) {
   return { storageKey, size: buffer.length }
 }
 
-module.exports = { isR2Enabled, uploadToR2, streamFromR2, deleteFromR2, putBufferToR2 }
+module.exports = { isR2Enabled, uploadToR2, streamFromR2, deleteFromR2, deleteManyFromR2, listR2Keys, putBufferToR2 }

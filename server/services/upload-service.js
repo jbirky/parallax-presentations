@@ -5,9 +5,9 @@ const path = require('path')
 const fs = require('fs-extra')
 const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
-const { uploadToR2, deleteFromR2 } = require('./r2')
+const { isR2Enabled, uploadToR2, deleteManyFromR2 } = require('./r2')
 
-async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage }) {
+async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage, keyPrefix }) {
   const contentType = mimetype || 'application/octet-stream'
   const fileHash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -25,7 +25,7 @@ async function handleUpload(filePath, originalFilename, mimetype, { presentation
   const ext = path.extname(originalFilename || filePath)
   const fileName = `${uuidv4()}${ext}`
   const urlFilename = presentationId ? `${presentationId}/${fileName}` : fileName
-  const storageKey = userId ? `${userId}/${urlFilename}` : `anonymous/${urlFilename}`
+  const storageKey = `${keyPrefix || userId || 'anonymous'}/${urlFilename}`
 
   const { size } = await uploadToR2(filePath, storageKey, contentType)
 
@@ -40,17 +40,50 @@ async function handleUpload(filePath, originalFilename, mimetype, { presentation
   return { url: `/uploads/${urlFilename}` }
 }
 
-async function deleteUploadsForPresentation(presentationId, storage) {
-  if (!storage || !storage.query) return
-  const { rows } = await storage.query(
-    'SELECT storage_key FROM uploads WHERE presentation_id = $1',
-    [presentationId]
-  )
-  for (const row of rows) {
-    try { await deleteFromR2(row.storage_key) } catch (e) {
-      console.error('R2 delete failed:', e.message)
-    }
-  }
+// R2 files used only by the given presentations: a file that another upload
+// row still uses (a duplicated presentation's copy, say) is left out
+const UNSHARED_KEYS_SQL = `
+  SELECT DISTINCT u.storage_key FROM uploads u
+   WHERE u.presentation_id = ANY($1::uuid[])
+     AND NOT EXISTS (
+       SELECT 1 FROM uploads o
+        WHERE o.storage_key = u.storage_key
+          AND (o.presentation_id IS NULL OR o.presentation_id <> ALL($1::uuid[])))`
+
+// Deletes a user's presentation and the R2 files only it uses. Returns false,
+// deleting nothing, when the presentation isn't theirs.
+async function deletePresentationAndFiles(storage, presentationId, userId) {
+  // Read the files first: deleting the presentation removes its upload rows
+  const withFiles = isR2Enabled() && storage.query
+  const { rows } = withFiles ? await storage.query(UNSHARED_KEYS_SQL, [[presentationId]]) : { rows: [] }
+  if (!(await storage.deletePresentation(presentationId, userId))) return false
+  const failed = await deleteManyFromR2(rows.map(r => r.storage_key))
+  if (failed.length) console.error(`R2 delete failed for ${failed.length} files of presentation ${presentationId}`)
+  return true
 }
 
-module.exports = { handleUpload, deleteUploadsForPresentation }
+// Hard-deletes free-tier presentations that expired more than 7 days ago,
+// deleting their R2 files first. A file still used by another upload row
+// is kept. If any file can't be deleted, that batch is left for the next run
+// so no rows are removed while their files remain.
+async function sweepExpiredPresentations(storage) {
+  let deleted = 0
+  for (let round = 0; round < 20; round++) {
+    const { rows } = await storage.query(
+      "SELECT id FROM presentations WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '7 days' LIMIT 100"
+    )
+    if (!rows.length) break
+    const ids = rows.map(r => r.id)
+    if (isR2Enabled()) {
+      const { rows: keyRows } = await storage.query(UNSHARED_KEYS_SQL, [ids])
+      const failed = await deleteManyFromR2(keyRows.map(r => r.storage_key))
+      if (failed.length) throw new Error(`could not delete ${failed.length} R2 files; will retry`)
+    }
+    const { rowCount } = await storage.query('DELETE FROM presentations WHERE id = ANY($1::uuid[])', [ids])
+    deleted += rowCount
+    if (rows.length < 100) break
+  }
+  return deleted
+}
+
+module.exports = { handleUpload, deletePresentationAndFiles, sweepExpiredPresentations }

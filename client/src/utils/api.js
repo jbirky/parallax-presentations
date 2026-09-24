@@ -1,12 +1,20 @@
 let _getToken = async () => null
 export function setTokenGetter(fn) { _getToken = fn }
 
+// Guest mode: requests carry the guest session token instead of a Clerk token
+let _guestToken = null
+export function setGuestToken(token) { _guestToken = token }
+
 const _fetch = globalThis.fetch.bind(globalThis)
 async function authFetch(url, options = {}) {
   const token = await _getToken()
   const headers = { ...options.headers }
   if (token) headers['Authorization'] = `Bearer ${token}`
-  return _fetch(url, { ...options, headers })
+  if (_guestToken) headers['X-Guest-Token'] = _guestToken
+  const res = await _fetch(url, { ...options, headers })
+  // A guest session that was closed or idle too long has been deleted
+  if (_guestToken && res.status === 401) globalThis.dispatchEvent(new Event('parallax:guest-expired'))
+  return res
 }
 
 async function safeJson(r) {
@@ -16,6 +24,17 @@ async function safeJson(r) {
 }
 
 const BASE = '/api'
+
+// Resolves to { url }; rejects with the server's reason (storage full, file too big, ...)
+function uploadTo(url, file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return authFetch(url, { method: 'POST', body: fd }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Upload failed')
+    return b
+  })
+}
 
 export const api = {
   getPresentations: () => authFetch(`${BASE}/presentations`).then(safeJson),
@@ -32,16 +51,8 @@ export const api = {
   }).then(safeJson),
   deletePresentation: (id) => authFetch(`${BASE}/presentations/${id}`, { method: 'DELETE' }).then(safeJson),
   duplicatePresentation: (id) => authFetch(`${BASE}/presentations/${id}/duplicate`, { method: 'POST' }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.message || b.error || 'Duplicate failed'); return b }),
-  uploadFile: (file) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return authFetch('/api/upload', { method: 'POST', body: fd }).then(safeJson)
-  },
-  uploadFileToPresentation: (presentationId, file) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return authFetch(`/api/presentations/${presentationId}/upload`, { method: 'POST', body: fd }).then(safeJson)
-  },
+  uploadFile: (file) => uploadTo('/api/upload', file),
+  uploadFileToPresentation: (presentationId, file) => uploadTo(`/api/presentations/${presentationId}/upload`, file),
   getGithubConfig: () => authFetch(`${BASE}/github/config`).then(safeJson),
   saveGithubConfig: (data) => authFetch(`${BASE}/github/config`, {
     method: 'POST',
@@ -209,4 +220,28 @@ export const api = {
   getBillingStatus: () => authFetch(`${BASE}/billing/status`).then(safeJson),
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
   resumeSubscription: () => authFetch(`${BASE}/billing/resume`, { method: 'POST' }).then(safeJson),
+
+  // Admin dashboard; null for anyone who isn't an admin
+  getAdminOverview: () => authFetch(`${BASE}/admin/overview`).then(async r => {
+    if (r.status === 404) return null
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not load the dashboard')
+    return b
+  }),
+  endAllGuestSessions: () => authFetch(`${BASE}/admin/guest-sessions/end-all`, { method: 'POST' }).then(async r => {
+    const b = await safeJson(r)
+    if (!r.ok) throw new Error(b.error || 'Could not end the guest sessions')
+    return b
+  }),
+
+  // Guest mode
+  getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
+  startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ turnstileToken })
+  }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Could not start a guest session'); return b }),
+  resumeGuestSession: () => authFetch(`${BASE}/guest/resume`, { method: 'POST' })
+    .then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Guest session ended'); return b }),
+  pingGuestActivity: () => authFetch(`${BASE}/guest/activity`, { method: 'POST' }).catch(() => {}),
 }

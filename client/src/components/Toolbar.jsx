@@ -69,7 +69,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddChart, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddManim, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddChart, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddAnime, onAddThree, onAddDiagram, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -213,6 +213,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   }
 
   const currentColor = editor ? (editor.getAttributes('textStyle').color || '#ffffff') : '#ffffff'
+  // Falls back to the first preset so the custom picker opens on a usable
+  // highlight rather than white when nothing is highlighted yet.
+  const currentHighlight = editor ? (editor.getAttributes('highlight').color || '#fef08a') : '#fef08a'
 
   return (
     <div className="toolbar">
@@ -326,11 +329,13 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <FileText size={14} /> {pdfLoading ? 'Loading…' : 'Import PDF'}
               <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); setShowImageMenu(false) }} disabled={pdfLoading} />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pptxLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pptxLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <FileText size={14} /> {pptxLoading ? 'Converting…' : 'Import PPTX'}
-              <input ref={pptxInputRef} type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" style={{ display: 'none' }} disabled={pptxLoading}
-                onChange={async e => { const f = e.target.files?.[0]; if (!f || !onImportPptx) return; if (pptxInputRef.current) pptxInputRef.current.value = ''; setShowImageMenu(false); setPptxLoading(true); try { await onImportPptx(f) } catch (err) { alert('PPTX import failed: ' + err.message) } finally { setPptxLoading(false) } }} />
-            </label>
+            {onImportPptx && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pptxLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pptxLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <FileText size={14} /> {pptxLoading ? 'Converting…' : 'Import PPTX'}
+                <input ref={pptxInputRef} type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" style={{ display: 'none' }} disabled={pptxLoading}
+                  onChange={async e => { const f = e.target.files?.[0]; if (!f || !onImportPptx) return; if (pptxInputRef.current) pptxInputRef.current.value = ''; setShowImageMenu(false); setPptxLoading(true); try { await onImportPptx(f) } catch (err) { alert('PPTX import failed: ' + err.message) } finally { setPptxLoading(false) } }} />
+              </label>
+            )}
             <DocsLink page="images" onClose={() => setShowImageMenu(false)} />
           </div>
         </>)}
@@ -379,14 +384,14 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <Video size={14} /> Upload Video
-              <input type="file" accept="video/mp4,video/webm,video/ogg,video/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); if (onAddVideoUpload) onAddVideoUpload(f); else { const fd = new FormData(); fd.append('file', f); const res = await fetch('/api/upload', { method: 'POST', body: fd }).then(r => r.json()); if (res.url) onAddVideo?.(res.url) } }} />
+              <input type="file" accept="video/mp4,video/webm,video/ogg,video/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); if (onAddVideoUpload) onAddVideoUpload(f); else { try { const res = await api.uploadFile(f); if (res.url) onAddVideo?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } } }} />
             </label>
             <button style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const url = window.prompt('Video URL:'); if (url?.trim()) { onAddVideo?.(url.trim()); setShowMediaMenu(false) } }}>
               <Link size={14} /> Video from URL
             </button>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <Music size={14} /> Upload Audio
-              <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); const fd = new FormData(); fd.append('file', f); const res = await fetch('/api/upload', { method: 'POST', body: fd }).then(r => r.json()); if (res.url) onAddAudio?.(res.url) }} />
+              <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); try { const res = await api.uploadFile(f); if (res.url) onAddAudio?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } }} />
             </label>
             <DocsLink page="media" onClose={() => setShowMediaMenu(false)} />
           </div>
@@ -538,7 +543,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                         const file = e.target.files?.[0]; if (!file) return
                         setUploading(true)
                         try { const res = await api.uploadFile(file); if (res.url) setBgImage(res.url) }
-                        catch(err) { console.error('Upload failed', err) }
+                        catch(err) { alert('Upload failed: ' + err.message) }
                         finally { setUploading(false); if (bgFileRef.current) bgFileRef.current.value = '' }
                       }} />
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -1091,6 +1096,18 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                     }}
                   />
                 ))}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Custom</span>
+                  <div className="color-btn-wrapper" style={{ flex: 1 }}>
+                    <div style={{ width: '100%', height: 22, borderRadius: 4, background: currentHighlight, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer' }} />
+                    <input
+                      type="color"
+                      value={currentHighlight}
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                      onChange={e => editor.chain().focus().setHighlight({ color: e.target.value }).run()}
+                    />
+                  </div>
+                </div>
                 <button
                   title="Remove highlight"
                   style={{

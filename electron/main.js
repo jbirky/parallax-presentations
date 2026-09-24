@@ -7,6 +7,11 @@ const net = require('net')
 
 app.commandLine.appendSwitch('no-sandbox')
 
+// Electron names the user data folder after package.json's name. Keep the
+// folder from before the package was renamed so existing desktop installs
+// still find their presentations and uploads.
+app.setPath('userData', path.join(app.getPath('appData'), 'revealjs-editor'))
+
 let mainWindow
 let serverInstance
 let activePort

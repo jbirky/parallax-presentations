@@ -1,26 +1,30 @@
 services:
   parallax-stable:
     build:
-      context: https://github.com/jbirky/revealjs_gui.git#main
+      context: https://github.com/jbirky/parallax-presentations.git#main
       args:
         - VITE_PARALLAX_MODE=cloud
         - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
     ports:
       - "127.0.0.1:3002:3002"
     volumes:
-      - revealjs-data:/app/server/data
-      - revealjs-uploads:/app/server/uploads
+      - parallax-data:/app/server/data
+      - parallax-uploads:/app/server/uploads
     env_file:
       - .env
     environment:
       - PARALLAX_MODE=cloud
       - PARALLAX_DB=postgres
       - NODE_ENV=production
+    # A runaway video conversion or PowerPoint import gets this container
+    # restarted instead of starving the rest of the server
+    mem_limit: 4g
+    memswap_limit: 4g
     restart: unless-stopped
 
   parallax-dev:
     build:
-      context: https://github.com/jbirky/revealjs_gui.git#dev
+      context: https://github.com/jbirky/parallax-presentations.git#dev
       args:
         - VITE_PARALLAX_MODE=cloud
         - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
@@ -36,6 +40,13 @@ services:
       - PARALLAX_DB=postgres
       - PARALLAX_STORAGE=r2
       - NODE_ENV=production
+      # Own database and bucket so dev can never touch prod data
+      - DATABASE_URL=${DEV_DATABASE_URL:?set DEV_DATABASE_URL in .env}
+      - R2_BUCKET=parallax-uploads-dev
+      - R2_ACCESS_KEY=${DEV_R2_ACCESS_KEY:?set DEV_R2_ACCESS_KEY in .env}
+      - R2_SECRET_KEY=${DEV_R2_SECRET_KEY:?set DEV_R2_SECRET_KEY in .env}
+    mem_limit: 4g
+    memswap_limit: 4g
     restart: unless-stopped
 
   umami:
@@ -65,22 +76,13 @@ services:
       retries: 5
     restart: unless-stopped
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    command: tunnel --config /etc/cloudflared/config.yml run
-    volumes:
-      - /home/jbirky/.cloudflared:/etc/cloudflared:ro
-    depends_on:
-      - parallax-stable
-    restart: unless-stopped
-
 volumes:
-  revealjs-data:
+  parallax-data:
     external: true
-    name: revealjs_gui_revealjs-data
-  revealjs-uploads:
+    name: parallax-data
+  parallax-uploads:
     external: true
-    name: revealjs_gui_revealjs-uploads
+    name: parallax-uploads
   parallax-dev-data:
   parallax-dev-uploads:
   umami-db-data:

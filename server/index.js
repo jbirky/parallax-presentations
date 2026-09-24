@@ -17,10 +17,18 @@ const PORT = process.env.PORT || 3002
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const createStorage = require('./storage')
 const storage = createStorage()
-const { authStack, requireUser, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
+const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
-const { handleUpload: r2Upload, deleteUploadsForPresentation } = require('./services/upload-service')
+const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
+const {
+  GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
+  createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
+} = require('./services/guest-service')
+const { startSystemSampling, recordUsage, getAdminOverview } = require('./services/admin-service')
+const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
+const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload,
@@ -54,6 +62,8 @@ const multerStorage = multer.diskStorage({
   }
 })
 const upload = multer({ storage: multerStorage, limits: { fileSize: 500 * 1024 * 1024 } }) // 500MB limit for video
+// Plan storage limits, checked before multer writes the file
+const storageQuota = uploadQuota(storage)
 
 app.use(helmetConfig())
 app.use(cors(corsConfig()))
@@ -86,7 +96,8 @@ if (isR2Enabled()) {
       const { body, contentType, contentLength } = await streamFromR2(rows[0].storage_key)
       res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
       if (contentLength) res.setHeader('Content-Length', contentLength)
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      // Guest files are deleted with their session, so nothing may cache them
+      res.setHeader('Cache-Control', rows[0].storage_key.startsWith('guest/') ? 'private, no-store' : 'public, max-age=31536000, immutable')
       body.pipe(res)
     } catch (err) {
       console.error('R2 proxy error:', err.message)
@@ -158,7 +169,7 @@ app.get('/api/docs/:section/:page', (req, res) => {
 
 const docsPublic = path.join(DOCS_DIR, 'public')
 if (fs.existsSync(docsPublic)) {
-  app.use('/revealjs_gui', express.static(docsPublic))
+  app.use('/parallax-presentations', express.static(docsPublic))
 }
 
 // Plugin assets (public, before auth — sandbox iframes need these)
@@ -217,6 +228,7 @@ if (IS_CLOUD) {
   app.use(async (req, res, next) => {
     if (!req.userId) return next()
     const clerkId = req.userId
+    req.authId = clerkId
 
     const cached = provisionCache.get(clerkId)
     if (cached && Date.now() - cached.cachedAt < CACHE_TTL) {
@@ -262,6 +274,56 @@ if (IS_CLOUD) {
   })
 }
 
+// Guest mode: try the editor without an account. A guest session and all of
+// its files are deleted when its tab closes or after GUEST_IDLE_HOURS idle.
+if (IS_CLOUD) {
+  app.get('/api/guest/config', (req, res) => {
+    const enabled = isGuestModeEnabled()
+    res.json({ enabled, turnstileSiteKey: enabled ? process.env.TURNSTILE_SITE_KEY : null, idleHours: GUEST_IDLE_HOURS })
+  })
+
+  app.post('/api/guest', guestCreateLimiter, async (req, res) => {
+    if (!isGuestModeEnabled()) return res.status(404).json({ error: 'Guest mode is not available' })
+    try {
+      const ok = await verifyTurnstile(req.body?.turnstileToken, req.get('CF-Connecting-IP') || req.ip)
+      if (!ok) return res.status(403).json({ error: 'Verification failed. Please try again.' })
+      res.status(201).json(await createGuestSession(storage))
+    } catch (err) {
+      console.error('Guest session error:', err.message)
+      res.status(500).json({ error: 'Could not start a guest session' })
+    }
+  })
+
+  // Sent with navigator.sendBeacon when the tab closes, which can't set
+  // headers, so the token comes as the plain-text body.
+  app.post('/api/guest/close', express.text(), async (req, res) => {
+    try {
+      if (typeof req.body === 'string' && req.body) await closeGuestSession(storage, req.body)
+      res.status(204).end()
+    } catch (err) {
+      res.status(500).end()
+    }
+  })
+
+  app.use(guestAuth(storage))
+
+  app.post('/api/guest/resume', async (req, res) => {
+    if (!req.isGuest) return res.status(401).json({ error: 'This guest session has ended.', code: 'guest_expired' })
+    try {
+      const { rows } = await storage.query(
+        'SELECT id FROM presentations WHERE user_id = $1 AND is_template = false ORDER BY created_at LIMIT 1',
+        [req.userId]
+      )
+      res.json({ presentationId: rows[0]?.id || null, idleHours: GUEST_IDLE_HOURS })
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+
+  // Recorded as activity by guestAuth; nothing else to do
+  app.post('/api/guest/activity', (req, res) => res.status(204).end())
+}
+
 // Protect all /api routes in cloud mode
 app.use('/api', requireUser)
 app.use('/api', apiLimiter)
@@ -279,7 +341,9 @@ async function checkPresentationQuota(req, res) {
   if (rows[0].count >= limits.maxPresentations) {
     res.status(403).json({
       error: 'presentation_limit_reached',
-      message: `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
+      message: plan === 'guest'
+        ? 'Guest mode is limited to one presentation.'
+        : `Free plan is limited to ${limits.maxPresentations} presentations. Upgrade to Pro for unlimited.`,
       limit: limits.maxPresentations, current: rows[0].count,
     })
     return false
@@ -297,21 +361,45 @@ app.get('/api/me', async (req, res) => {
       'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
       [req.userId]
     )
-    const { rows: storageRows } = await storage.query(
-      'SELECT COALESCE(SUM(size_bytes), 0)::bigint as used FROM uploads WHERE user_id = $1', [req.userId]
-    )
     res.json({
       plan,
       presentationCount: rows[0].count,
-      storageUsed: Number(storageRows[0]?.used || 0),
+      storageUsed: await storageUsedBytes(storage, req.userId),
       limits: {
         maxPresentations: limits.maxPresentations === Infinity ? null : limits.maxPresentations,
         expirationDays: limits.expirationDays,
         storageBytes: limits.storageBytes,
       },
       billing: stripeService.isEnabled(),
+      isAdmin: isAdmin(req),
     })
   } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// GET /api/admin/overview — sign-ups, per-user storage and processing, and
+// container CPU/memory. Not found for anyone who isn't an admin.
+app.get('/api/admin/overview', async (req, res) => {
+  if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    res.json(await getAdminOverview(storage, PLAN_LIMITS))
+  } catch (err) {
+    console.error('Admin overview error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/admin/guest-sessions/end-all — ends every guest session and
+// deletes its work. Not found for anyone who isn't an admin.
+app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    const result = await endAllGuestSessions(storage)
+    console.log(`Admin ended ${result.ended} guest sessions`)
+    res.json(result)
+  } catch (err) {
+    console.error('End guest sessions error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ---- Billing API ----
@@ -362,7 +450,7 @@ if (IS_CLOUD && stripeService.isEnabled()) {
 // Transcode a video file to H.264 MP4 if its codec isn't web-compatible.
 // Returns the (possibly new) filename. Deletes the original on success.
 const WEB_VIDEO_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1', 'hevc', 'vp08', 'vp09'])
-function transcodeVideoIfNeeded(filePath) {
+function videoNeedsTranscode(filePath) {
   try {
     const codec = execFileSync('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0',
@@ -370,9 +458,27 @@ function transcodeVideoIfNeeded(filePath) {
       '-of', 'default=noprint_wrappers=1:nokey=1',
       filePath
     ], { encoding: 'utf8' }).trim().toLowerCase()
+    return !!codec && !WEB_VIDEO_CODECS.has(codec)
+  } catch (e) {
+    console.error('Video probe error:', e.message)
+    return false
+  }
+}
 
-    if (!codec || WEB_VIDEO_CODECS.has(codec)) return filePath
+// Converts an uploaded video if needed, recording the conversion as the
+// uploader's processing time
+function convertUploadedVideo(req, filePath) {
+  const started = Date.now()
+  const converted = transcodeVideoIfNeeded(filePath)
+  if (converted !== filePath) {
+    recordUsage(storage, { userId: req.userId, kind: 'video_conversion', durationMs: Date.now() - started, bytes: req.file.size })
+  }
+  return converted
+}
 
+function transcodeVideoIfNeeded(filePath) {
+  if (!videoNeedsTranscode(filePath)) return filePath
+  try {
     const dir = path.dirname(filePath)
     const base = path.basename(filePath, path.extname(filePath))
     const outPath = path.join(dir, `${base}.mp4`)
@@ -432,7 +538,7 @@ function shapeSvgString(el) {
 }
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=s.getAttribute('width'),h=s.getAttribute('height');if(w&&h&&!s.getAttribute('viewBox')){s.setAttribute('viewBox','0 0 '+parseFloat(w)+' '+parseFloat(h));s.setAttribute('width','100%');s.setAttribute('height','100%');}s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle
   if (/<head[^>]*>/i.test(userHtml))
@@ -447,6 +553,7 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
 // Generate reveal.js HTML
 function generateRevealHTML(presentation, opts = {}) {
   const customFonts = opts.customFonts || []
+  const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
   const theme = presentation.theme || 'black'
   const transition = presentation.transition || 'slide'
   const slideW = presentation.slideWidth || 960
@@ -549,8 +656,8 @@ function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
-          const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(embedHtml)}`
-          return `<div${fragClass}${fragIdx} style="${style}"><iframe src="${dataUrl}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
@@ -722,6 +829,12 @@ function generateRevealHTML(presentation, opts = {}) {
           return `<div${fragClass}${fragIdx} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
+          const sandboxHtml = el.pluginId ? pluginSandbox(el.pluginId) : null
+          if (sandboxHtml) {
+            const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
+              .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          }
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${fragClass}${fragIdx} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
@@ -1565,13 +1678,19 @@ app.get('/api/presentations/:id/uploads', async (req, res) => {
 // GET /api/uploads - list all uploaded files for the current user
 app.get('/api/uploads', async (req, res) => {
   try {
+    // A duplicated presentation has its own rows for the original's files;
+    // list each file once, under the presentation that uploaded it
     const { rows } = await storage.query(
-      `SELECT u.id, u.filename, u.content_type, u.size_bytes, u.created_at, u.presentation_id,
-              p.title as presentation_title
-       FROM uploads u
-       LEFT JOIN presentations p ON p.id = u.presentation_id
-       WHERE u.user_id = $1
-       ORDER BY u.created_at DESC`,
+      `SELECT * FROM (
+         SELECT DISTINCT ON (u.storage_key)
+                u.id, u.filename, u.content_type, u.size_bytes, u.created_at, u.presentation_id,
+                p.title as presentation_title
+           FROM uploads u
+           LEFT JOIN presentations p ON p.id = u.presentation_id
+          WHERE u.user_id = $1
+          ORDER BY u.storage_key, u.created_at
+       ) files
+       ORDER BY created_at DESC`,
       [req.userId]
     )
     res.json(rows.map(r => ({
@@ -1607,7 +1726,8 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
       if (fs.existsSync(localPath)) fs.removeSync(localPath)
     }
 
-    await storage.query('DELETE FROM uploads WHERE id = $1', [req.params.id])
+    // Deleting the file removes it from every presentation that uses it
+    await storage.query('DELETE FROM uploads WHERE user_id = $1 AND storage_key = $2', [req.userId, rows[0].storage_key])
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1617,12 +1737,12 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
 // --- Datasets ---
 
 // POST /api/datasets — upload a dataset (CSV, JSON, TSV)
-app.post('/api/datasets', uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     const name = req.body.name || undefined
     const result = await ingestDataset(req.file.path, req.file.originalname, {
-      userId: req.userId, storage, localDir: DATA_DIR,
+      userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
     if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
     const ds = await storage.createDataset(result, req.userId)
@@ -1752,7 +1872,7 @@ app.get('/api/fonts', async (req, res) => {
 })
 
 // POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
-app.post('/api/fonts/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/fonts/upload', uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
     const ext = path.extname(req.file.originalname).toLowerCase()
@@ -1847,10 +1967,7 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
 // DELETE /api/presentations/:id
 app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
-    if (isR2Enabled()) {
-      await deleteUploadsForPresentation(req.params.id, storage)
-    }
-    const deleted = await storage.deletePresentation(req.params.id, req.userId)
+    const deleted = await deletePresentationAndFiles(storage, req.params.id, req.userId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
     res.json({ success: true })
   } catch (err) {
@@ -1871,16 +1988,20 @@ app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) 
 })
 
 // POST /api/upload (legacy global upload)
-app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      filePath = transcodeVideoIfNeeded(filePath)
+      if (req.isGuest && videoNeedsTranscode(filePath)) {
+        fs.removeSync(filePath)
+        return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
+      }
+      filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: null, userId: req.userId, storage,
+        presentationId: null, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -1891,18 +2012,22 @@ app.post('/api/upload', uploadLimiter, upload.single('file'), validateUpload, as
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     const pres = await storage.getPresentation(req.params.id, req.userId)
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      filePath = transcodeVideoIfNeeded(filePath)
+      if (req.isGuest && videoNeedsTranscode(filePath)) {
+        fs.removeSync(filePath)
+        return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
+      }
+      filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: req.params.id, userId: req.userId, storage,
+        presentationId: req.params.id, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -1913,7 +2038,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, uploa
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   const pres = await storage.getPresentation(req.params.id, req.userId)
   if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
@@ -1922,6 +2047,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
     fs.ensureDirSync(tmpDir)
     const pptxPath = path.join(tmpDir, 'presentation.pptx')
     fs.moveSync(req.file.path, pptxPath)
+    const started = Date.now()
 
     // Convert PPTX → PDF
     execFileSync('libreoffice', [
@@ -1933,6 +2059,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
 
     // Convert PDF pages → PNG images at 150 dpi
     execFileSync('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
+    recordUsage(storage, { userId: req.userId, kind: 'powerpoint_import', durationMs: Date.now() - started, bytes: req.file.size })
 
     const pngFiles = fs.readdirSync(tmpDir)
       .filter(f => /^slide-?\d+\.png$/.test(f))
@@ -1965,33 +2092,6 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
     res.status(500).json({ error: err.message })
   } finally {
     fs.removeSync(tmpDir)
-  }
-})
-
-// POST /api/render-manim — proxy to manim-renderer sidecar
-app.post('/api/render-manim', express.json(), async (req, res) => {
-  const { code, sceneName, quality } = req.body || {}
-  if (!code || !sceneName) return res.status(400).json({ error: 'Missing code or sceneName' })
-
-  const rendererUrl = process.env.MANIM_RENDERER_URL || 'http://manim-renderer:5000'
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 200000) // 200s safety net
-
-  try {
-    const upstream = await fetch(`${rendererUrl}/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, sceneName, quality }),
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
-    const data = await upstream.json()
-    res.status(upstream.ok ? 200 : 500).json(data)
-  } catch (err) {
-    clearTimeout(timeout)
-    if (err.name === 'AbortError') return res.status(504).json({ error: 'Render timed out' })
-    res.status(503).json({ error: `Manim renderer unreachable: ${err.message}` })
   }
 })
 
@@ -3217,16 +3317,34 @@ function startServer(port) {
   })
 }
 
-// Periodic cleanup: hard-delete free-tier presentations expired > 7 days
+// Periodic cleanup: hard-delete free-tier presentations expired > 7 days,
+// along with their R2 files
 if (IS_CLOUD) {
   setInterval(async () => {
     try {
-      const { rowCount } = await storage.query(
-        "DELETE FROM presentations WHERE expires_at IS NOT NULL AND expires_at < NOW() - INTERVAL '7 days'"
-      )
-      if (rowCount > 0) console.log(`Cleanup: deleted ${rowCount} expired presentations`)
+      const deleted = await sweepExpiredPresentations(storage)
+      if (deleted > 0) console.log(`Cleanup: deleted ${deleted} expired presentations`)
     } catch (err) { console.error('Cleanup error:', err.message) }
   }, 60 * 60 * 1000)
+
+  // Guest sessions: closed tabs (after a short grace period) and idle
+  // sessions. Skipped while none exist, so the database can go idle.
+  let sweepingGuests = false
+  setInterval(async () => {
+    if (sweepingGuests || !guestSessionsMayExist()) return
+    sweepingGuests = true
+    try {
+      const deleted = await sweepGuestSessions(storage)
+      if (deleted > 0) console.log(`Cleanup: deleted ${deleted} guest sessions`)
+    } catch (err) {
+      console.error('Guest cleanup error:', err.message)
+    } finally {
+      sweepingGuests = false
+    }
+  }, 60 * 1000)
+
+  // Container CPU and memory for the admin dashboard
+  startSystemSampling()
 }
 
 if (require.main === module) {

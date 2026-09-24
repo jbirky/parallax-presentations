@@ -15,7 +15,7 @@ Charts are rendered with Chart.js and update live as you change the data.
 ### Example output
 
 <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-  <iframe src="/revealjs_gui/demos/chart-bar.html" style="width:100%;height:260px;border:none"></iframe>
+  <iframe src="/parallax-presentations/demos/chart-bar.html" style="width:100%;height:260px;border:none"></iframe>
 </div>
 
 ## Tables
@@ -32,5 +32,5 @@ Charts are rendered with Chart.js and update live as you change the data.
 ### Example output
 
 <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-  <iframe src="/revealjs_gui/demos/table.html" style="width:100%;height:180px;border:none"></iframe>
+  <iframe src="/parallax-presentations/demos/table.html" style="width:100%;height:180px;border:none"></iframe>
 </div>

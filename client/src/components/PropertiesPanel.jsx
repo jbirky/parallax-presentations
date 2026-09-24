@@ -141,6 +141,8 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
     try {
       const result = await api.uploadFileToPresentation(presentation.id, file)
       if (result.url) onUpdateElement({ src: result.url })
+    } catch (err) {
+      alert('Upload failed: ' + err.message)
     } finally {
       setVideoUploading(false)
     }

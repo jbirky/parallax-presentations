@@ -13,7 +13,7 @@ This tutorial covers code blocks, LaTeX/TikZ elements, and Markdown blocks.
 ### Example output
 
 <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-  <iframe src="/revealjs_gui/demos/code-block.html" style="width:100%;height:260px;border:none"></iframe>
+  <iframe src="/parallax-presentations/demos/code-block.html" style="width:100%;height:260px;border:none"></iframe>
 </div>
 
 ## LaTeX & TikZ
@@ -27,7 +27,7 @@ This tutorial covers code blocks, LaTeX/TikZ elements, and Markdown blocks.
 ### Example output
 
 <div style="border: 1px solid #333; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-  <iframe src="/revealjs_gui/demos/latex-equation.html" style="width:100%;height:100px;border:none"></iframe>
+  <iframe src="/parallax-presentations/demos/latex-equation.html" style="width:100%;height:100px;border:none"></iframe>
 </div>
 
 ::: tip

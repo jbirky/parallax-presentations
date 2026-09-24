@@ -3,6 +3,8 @@ import { useAuth, SignIn, SignedIn, SignedOut } from '@clerk/clerk-react'
 import HomePage from './pages/HomePage'
 import EditorPage from './pages/EditorPage'
 import LandingPage from './pages/LandingPage'
+import GuestPage from './pages/GuestPage'
+import AdminPage from './pages/AdminPage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
 
@@ -160,6 +162,24 @@ export default function App() {
     setPresentationId(null)
     setIsTemplate(false)
     window.history.pushState(null, '', '/dashboard')
+  }
+
+  // Guest mode: the editor without an account, outside the sign-in gate
+  if (isCloud && window.location.pathname === '/try') {
+    return (
+      <>
+        <GuestPage />
+        {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
+      </>
+    )
+  }
+
+  if (isCloud && window.location.pathname === '/admin') {
+    return (
+      <AuthGate>
+        <AdminPage />
+      </AuthGate>
+    )
   }
 
   return (

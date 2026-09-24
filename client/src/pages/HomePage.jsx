@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { api } from '../utils/api'
 
 import { UserButton } from '@clerk/clerk-react'
@@ -10,137 +10,6 @@ const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
 const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom']
-
-// ── Preset themes (built-in, not stored on server) ──────────────────────────
-const PRESET_THEMES = [
-  {
-    id: '__preset_minimal_dark',
-    title: 'Minimal Dark',
-    theme: 'black',
-    transition: 'fade',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'text', x: 80, y: 180, width: 800, height: 100, zIndex: 1, content: '<h1 style="text-align:center; color:white">Presentation Title</h1>' },
-        { type: 'text', x: 200, y: 300, width: 560, height: 60, zIndex: 2, content: '<p style="text-align:center; color:rgba(255,255,255,0.5)">Your Name &middot; Date</p>' },
-      ], background: { type: 'color', color: '#0f0f1a' } },
-      { id: 's2', elements: [
-        { type: 'text', x: 60, y: 40, width: 840, height: 70, zIndex: 1, content: '<h2 style="color:white">Section Title</h2>' },
-        { type: 'shape', shape: 'rect', x: 60, y: 110, width: 840, height: 2, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 60, y: 130, width: 840, height: 360, zIndex: 3, content: '<p style="color:rgba(255,255,255,0.8)">Content goes here</p>' },
-      ], background: { type: 'color', color: '#0f0f1a' } },
-    ],
-    thumbnail: { type: 'color', color: '#0f0f1a' },
-    description: 'Clean dark theme with indigo accents',
-  },
-  {
-    id: '__preset_minimal_light',
-    title: 'Minimal Light',
-    theme: 'white',
-    transition: 'fade',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'text', x: 80, y: 180, width: 800, height: 100, zIndex: 1, content: '<h1 style="text-align:center; color:#1a1a2e">Presentation Title</h1>' },
-        { type: 'text', x: 200, y: 300, width: 560, height: 60, zIndex: 2, content: '<p style="text-align:center; color:#666">Your Name &middot; Date</p>' },
-      ], background: { type: 'color', color: '#fafafa' } },
-      { id: 's2', elements: [
-        { type: 'text', x: 60, y: 40, width: 840, height: 70, zIndex: 1, content: '<h2 style="color:#1a1a2e">Section Title</h2>' },
-        { type: 'shape', shape: 'rect', x: 60, y: 110, width: 840, height: 2, zIndex: 2, fill: '#3b82f6', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 60, y: 130, width: 840, height: 360, zIndex: 3, content: '<p style="color:#333">Content goes here</p>' },
-      ], background: { type: 'color', color: '#fafafa' } },
-    ],
-    thumbnail: { type: 'color', color: '#fafafa' },
-    description: 'Clean light theme with blue accents',
-  },
-  {
-    id: '__preset_academic',
-    title: 'Academic',
-    theme: 'white',
-    transition: 'slide',
-    footerMode: 'sequence',
-    sequenceSections: ['Introduction', 'Methods', 'Results', 'Discussion'],
-    showFooter: true,
-    showPageNumbers: true,
-    footerFontFamily: "'Latin Modern Roman',serif",
-    footerColor: '#1a1a2e',
-    footerInactiveColor: '#b0b0c0',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'text', x: 60, y: 120, width: 840, height: 120, zIndex: 1, content: '<h1 style="text-align:center; font-family: Latin Modern Roman, serif; color:#1a1a2e">Research Paper Title</h1>' },
-        { type: 'text', x: 160, y: 260, width: 640, height: 50, zIndex: 2, content: '<p style="text-align:center; font-family: Latin Modern Roman, serif; color:#444">Author Name<br>Institution</p>' },
-        { type: 'text', x: 260, y: 360, width: 440, height: 40, zIndex: 3, content: '<p style="text-align:center; font-family: Latin Modern Roman, serif; color:#888; font-size:18px">Conference / Date</p>' },
-      ], background: { type: 'color', color: '#ffffff' }, activeSection: 0 },
-      { id: 's2', elements: [
-        { type: 'text', x: 60, y: 30, width: 840, height: 60, zIndex: 1, content: '<h2 style="font-family: Latin Modern Roman, serif; color:#1a1a2e">Outline</h2>' },
-        { type: 'shape', shape: 'rect', x: 60, y: 90, width: 840, height: 1, zIndex: 2, fill: '#ccc', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 60, y: 110, width: 840, height: 380, zIndex: 3, content: '<ul style="font-family: Latin Modern Roman, serif; color:#333; font-size:24px"><li>Introduction &amp; Motivation</li><li>Methods</li><li>Results</li><li>Discussion &amp; Conclusion</li></ul>' },
-      ], background: { type: 'color', color: '#ffffff' }, activeSection: 0 },
-    ],
-    thumbnail: { type: 'color', color: '#ffffff' },
-    description: 'Serif fonts, sequence footer, academic layout',
-  },
-  {
-    id: '__preset_gradient',
-    title: 'Gradient',
-    theme: 'black',
-    transition: 'slide',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'text', x: 80, y: 160, width: 800, height: 120, zIndex: 1, content: '<h1 style="text-align:center; color:white">Bold Statement</h1>' },
-        { type: 'text', x: 200, y: 300, width: 560, height: 60, zIndex: 2, content: '<p style="text-align:center; color:rgba(255,255,255,0.6)">Supporting context</p>' },
-      ], background: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' } },
-      { id: 's2', elements: [
-        { type: 'text', x: 60, y: 40, width: 840, height: 70, zIndex: 1, content: '<h2 style="color:white">Topic</h2>' },
-        { type: 'text', x: 60, y: 130, width: 420, height: 360, zIndex: 2, content: '<p style="color:rgba(255,255,255,0.85)">Left column</p>' },
-        { type: 'text', x: 520, y: 130, width: 400, height: 360, zIndex: 3, content: '<p style="color:rgba(255,255,255,0.85)">Right column</p>' },
-      ], background: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' } },
-    ],
-    thumbnail: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' },
-    description: 'Teal-to-dark gradient backgrounds',
-  },
-  {
-    id: '__preset_corporate',
-    title: 'Corporate',
-    theme: 'white',
-    transition: 'slide',
-    showFooter: true,
-    showPageNumbers: true,
-    footerColor: '#334155',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'shape', shape: 'rect', x: 0, y: 0, width: 960, height: 200, zIndex: 0, fill: '#1e293b', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 60, y: 50, width: 840, height: 100, zIndex: 1, content: '<h1 style="text-align:center; color:white">Company Name</h1>' },
-        { type: 'text', x: 60, y: 150, width: 840, height: 40, zIndex: 2, content: '<p style="text-align:center; color:rgba(255,255,255,0.6); font-size:18px">Quarterly Business Review</p>' },
-        { type: 'text', x: 200, y: 280, width: 560, height: 100, zIndex: 3, content: '<p style="text-align:center; color:#334155">Presented by Team Lead<br>Q1 2026</p>' },
-      ], background: { type: 'color', color: '#f8fafc' } },
-      { id: 's2', elements: [
-        { type: 'shape', shape: 'rect', x: 0, y: 0, width: 960, height: 60, zIndex: 0, fill: '#1e293b', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 30, y: 10, width: 900, height: 40, zIndex: 1, content: '<h3 style="color:white">Agenda</h3>' },
-        { type: 'text', x: 60, y: 80, width: 840, height: 400, zIndex: 2, content: '<ul style="color:#334155; font-size:22px"><li>Key Metrics</li><li>Achievements</li><li>Challenges</li><li>Next Steps</li></ul>' },
-      ], background: { type: 'color', color: '#f8fafc' } },
-    ],
-    thumbnail: { type: 'color', color: '#1e293b' },
-    description: 'Professional with navy header bar',
-  },
-  {
-    id: '__preset_neon',
-    title: 'Neon',
-    theme: 'black',
-    transition: 'zoom',
-    slides: [
-      { id: 's1', elements: [
-        { type: 'text', x: 80, y: 160, width: 800, height: 120, zIndex: 1, content: '<h1 style="text-align:center; color:#e879f9">Neon Title</h1>' },
-        { type: 'text', x: 200, y: 300, width: 560, height: 60, zIndex: 2, content: '<p style="text-align:center; color:#22d3ee">Subtitle goes here</p>' },
-      ], background: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' } },
-      { id: 's2', elements: [
-        { type: 'text', x: 60, y: 40, width: 840, height: 70, zIndex: 1, content: '<h2 style="color:#e879f9">Topic</h2>' },
-        { type: 'shape', shape: 'rect', x: 60, y: 110, width: 840, height: 2, zIndex: 2, fill: '#22d3ee', stroke: 'none', strokeWidth: 0, locked: true },
-        { type: 'text', x: 60, y: 130, width: 840, height: 360, zIndex: 3, content: '<p style="color:rgba(255,255,255,0.8)">Content</p>' },
-      ], background: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' } },
-    ],
-    thumbnail: { type: 'gradient', gradient: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' },
-    description: 'Dark purple with neon pink & cyan',
-  },
-]
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -376,28 +245,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  async function handleCreateFromTemplate(templateId, isPreset = false) {
+  async function handleCreateFromTemplate(templateId) {
     setCreating(true)
     try {
-      if (isPreset) {
-        // Preset templates: send the full slide data directly
-        const preset = PRESET_THEMES.find(p => p.id === templateId)
-        if (!preset) return
-        const { id, thumbnail, description, ...data } = preset
-        const pres = await api.createPresentation({
-          ...data,
-          title: data.title,
-          slides: data.slides.map(s => ({
-            ...s,
-            id: crypto.randomUUID(),
-            elements: (s.elements || []).map(el => ({ ...el, id: crypto.randomUUID() }))
-          }))
-        })
-        onOpen(pres.id, false, pres.title)
-      } else {
-        const pres = await api.createPresentation({ templateId })
-        onOpen(pres.id, false, pres.title)
-      }
+      const pres = await api.createPresentation({ templateId })
+      onOpen(pres.id, false, pres.title)
     } catch (err) {
       console.error('Failed to create from template', err)
     } finally {
@@ -468,8 +320,6 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     setShowModal(true)
   }
 
-  const allTemplates = [...PRESET_THEMES, ...templates.map(t => ({ ...t, isUser: true }))]
-
   if (initialSlug && !slugConsumed.current) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary, #0f0f1a)', color: 'var(--text-muted, #888)' }}>
@@ -486,6 +336,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
             <ExternalLink size={12} /> Site
           </a>
+          {planInfo?.isAdmin && (
+            <a href="/admin" title="Sign-ups, storage and server usage" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+              <Gauge size={12} /> Admin
+            </a>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
@@ -661,34 +516,6 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   >
                     <Trash2 size={14} />
                   </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Preset Themes Section */}
-        <h2 style={{ marginTop: 40 }}>Preset Themes</h2>
-        <div className="presentations-grid">
-          {PRESET_THEMES.map(preset => {
-            const bg = getCardBg(preset.thumbnail)
-            const bgProp = isGradientOrImage(preset.thumbnail)
-              ? { background: bg }
-              : { backgroundColor: bg }
-
-            return (
-              <div
-                key={preset.id}
-                className="presentation-card"
-                onClick={() => handleCreateFromTemplate(preset.id, true)}
-                style={{ cursor: creating ? 'wait' : 'pointer' }}
-              >
-                <div className="card-preview" style={bgProp}>
-                  <Layout size={24} style={{ position: 'absolute', top: 6, right: 6, opacity: 0.3 }} />
-                </div>
-                <div className="card-info">
-                  <h3>{preset.title}</h3>
-                  <p>{preset.description}</p>
                 </div>
               </div>
             )
@@ -895,7 +722,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   >
                     Blank
                   </button>
-                  {allTemplates.map(tmpl => (
+                  {templates.map(tmpl => (
                     <button
                       key={tmpl.id}
                       type="button"

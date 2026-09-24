@@ -5,10 +5,19 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
 
-function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=s.getAttribute('width'),h=s.getAttribute('height');if(w&&h&&!s.getAttribute('viewBox'))s.setAttribute('viewBox','0 0 '+parseFloat(w)+' '+parseFloat(h));if(s.getAttribute('viewBox')){s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;}});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+// Editor only: hand the slide panel a still of this embed once it has settled,
+// so thumbnails need no second run of the embed's script. Serialising an SVG is
+// cheap and stays sharp; a canvas has to go through toDataURL. Two passes --
+// one once the embed has drawn, a later one to catch a slow CDN.
+function snapshotScript(key) {
+  if (!key) return ''
+  return `<script>(function(){var K=${JSON.stringify(key)},sent='';function post(u){if(!u||u===sent)return;sent=u;try{parent.postMessage({source:'parallax-embed',type:'snapshot',key:K,dataUrl:u},'*')}catch(e){}}function grab(){try{var c=document.querySelector('canvas');if(c&&c.width>0&&c.height>0){post(c.toDataURL('image/png'));return}var s=document.querySelector('svg');if(!s)return;var r=s.getBoundingClientRect();if(!r.width||!r.height)return;var n=s.cloneNode(true);n.setAttribute('xmlns','http://www.w3.org/2000/svg');if(!n.getAttribute('viewBox')&&s.viewBox&&s.viewBox.baseVal){var v=s.viewBox.baseVal;if(v.width&&v.height)n.setAttribute('viewBox',v.x+' '+v.y+' '+v.width+' '+v.height)}if(!n.getAttribute('viewBox'))n.setAttribute('viewBox','0 0 '+Math.round(r.width)+' '+Math.round(r.height));n.setAttribute('width',Math.round(r.width));n.setAttribute('height',Math.round(r.height));post('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(n)))}catch(e){}}setTimeout(grab,900);setTimeout(grab,2600);})();<\/script>`
+}
+
+function buildHtmlEmbed(userHtml, embedW, embedH, snapKey) {
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle
+  const injection = initScript + resetStyle + snapshotScript(snapKey)
   // Inject into <head> so DOCTYPE stays first (preserves standards mode)
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, m => m + injection)
@@ -26,6 +35,7 @@ import hljs from 'highlight.js'
 import { calculateGuides } from '../utils/smartGuides'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
+import { snapshotKey } from '../utils/embedSnapshots'
 
 function highlightCode(code, language) {
   try {
@@ -202,10 +212,11 @@ function applyCropHandle(handle, startCrop, dx, dy, elW, elH) {
   return { x, y, w, h }
 }
 
-function buildP5Srcdoc(userCode, w, h) {
+function buildP5Srcdoc(userCode, w, h, snapKey) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style>
 <script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script>
+${snapshotScript(snapKey)}
 </head><body><script>
 ${userCode}
 <\/script></body></html>`
@@ -219,7 +230,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenManimEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1016,7 +1027,6 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
               else if (element.type === 'html') onOpenHtmlEditor?.(element.id)
               else if (element.type === 'code') onOpenCodeEditor?.(element.id)
               else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
-              else if (element.type === 'manim' || element.type === 'plugin:manim') onOpenManimEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
@@ -1421,7 +1431,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'html' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}`}
-          srcDoc={buildHtmlEmbed(element.content || '', element.width, element.height)}
+          srcDoc={buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="HTML embed"
@@ -1430,7 +1440,7 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'p5' && (
         <iframe
           key={`${element.id}-${element.width}-${element.height}-${element.content}`}
-          srcDoc={buildP5Srcdoc(element.content || '', element.width, element.height)}
+          srcDoc={buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content))}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
           sandbox="allow-scripts"
           title="p5.js sketch"
@@ -1506,16 +1516,6 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       )}
       {element.type === 'icon' && (
         <IconRenderer element={element} />
-      )}
-
-      {element.type === 'manim' && (
-        element.rendered
-          ? <video src={element.rendered} autoPlay={element.autoplay !== false} loop={element.loop !== false} muted={element.muted !== false} controls={element.controls || false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
-          : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'rgba(255,255,255,0.5)', fontFamily: 'sans-serif' }}>
-              <div style={{ fontSize: Math.min(element.height * 0.25, 48) }}>🎬</div>
-              <div style={{ fontSize: Math.min(element.height * 0.06, 14), fontWeight: 500 }}>Manim: {element.sceneName || 'MyScene'}</div>
-              <div style={{ fontSize: Math.min(element.height * 0.05, 11), opacity: 0.6 }}>Double-click to edit & render</div>
-            </div>
       )}
 
       {element.type === 'textpath' && !isEditing && (() => {

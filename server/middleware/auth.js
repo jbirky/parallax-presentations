@@ -47,6 +47,15 @@ const PLAN_LIMITS = {
   free: { maxPresentations: 3, expirationDays: 30, storageBytes: 100 * 1024 * 1024 },
   pro:  { maxPresentations: Infinity, expirationDays: null, storageBytes: 5 * 1024 * 1024 * 1024 },
   team: { maxPresentations: Infinity, expirationDays: null, storageBytes: 25 * 1024 * 1024 * 1024 },
+  guest: { maxPresentations: 1, expirationDays: null, storageBytes: 25 * 1024 * 1024, maxFileBytes: 10 * 1024 * 1024 },
 }
 
-module.exports = { authStack, requireUser, IS_CLOUD, PLAN_LIMITS }
+// Admins are listed by Clerk user ID in ADMIN_USER_IDS (comma-separated).
+// Needs the Clerk ID the provisioning middleware keeps on req.authId.
+function isAdmin(req) {
+  if (!IS_CLOUD || !req.authId) return false
+  const ids = (process.env.ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+  return ids.includes(req.authId)
+}
+
+module.exports = { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS }

@@ -21,6 +21,7 @@ import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
+import { reorderSlides } from '../utils/slideReorder'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
@@ -37,6 +38,7 @@ import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
+import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
@@ -215,9 +217,10 @@ const migrateSlide = (slide) => {
   return slide
 }
 
-export default function EditorPage({ presentationId, isTemplate = false, onGoHome }) {
+export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
   const [presentation, setPresentation] = useState(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState('') // '', 'saving', 'saved'
   const [loading, setLoading] = useState(true)
@@ -299,8 +302,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showRulers, setShowRulers] = useState(false)
   const [guides, setGuides] = useState([]) // persistent guide lines: [{ axis: 'x'|'y', position: number }]
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
-  const [manimEditorState, setManimEditorState] = useState(null) // { elementId, content, sceneName, quality, rendered, rendering, error }
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
+  const [showImportSlideModal, setShowImportSlideModal] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
   const mathNodeUpdateRef = useRef(null) // holds the TipTap updateAttributes fn for the active math node
 
@@ -370,9 +373,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     })
   }, [presentationId])
 
-  // Load plugins on mount
+  // Load plugins on mount; guests don't get plugins
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
   useEffect(() => {
+    if (guest) return
     loadPlugins({
       getPresentation: () => presentation,
       updateElement: (id, patch) => {
@@ -386,8 +390,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Load GitHub + Zenodo config on mount
   useEffect(() => {
-    api.getGithubConfig().then(setGithubConfig).catch(() => {})
-    api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+    if (!guest) {
+      api.getGithubConfig().then(setGithubConfig).catch(() => {})
+      api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+    }
     api.getFonts().then(fonts => {
       if (Array.isArray(fonts)) {
         setCustomFonts(fonts)
@@ -409,7 +415,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Load share status
   useEffect(() => {
-    if (presentationId) {
+    if (presentationId && !guest) {
       api.getShareStatus(presentationId).then(setShareStatus).catch(() => {})
     }
   }, [presentationId])
@@ -731,37 +737,15 @@ svg.selectAll('circle').data(data).join('circle')
   .attr('fill', (d,i) => d3.schemeTableau10[i%10]).attr('opacity', 0.8);
 <\/script>`
 
-  const DEFAULT_MANIM = `from manim import *
-
-class MyScene(Scene):
-    def construct(self):
-        circle = Circle(radius=2, color=BLUE)
-        square = Square(side_length=2, color=RED)
-
-        title = Text("Manim Animation", font_size=36).to_edge(UP)
-        self.play(Write(title))
-        self.play(Create(circle))
-        self.wait(0.5)
-        self.play(Transform(circle, square))
-        self.wait(1)
-`
-
   const addPluginElement = useCallback((fullType) => {
     const el = createPluginElement(fullType)
     if (!el) return
-    if (fullType === 'plugin:manim') {
-      el.pluginData = { ...el.pluginData, content: DEFAULT_MANIM }
-    }
     setPresentation(prev => {
       if (!prev) return prev
       return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), el] } : s) }
     })
     setSelectedElementIds([el.id])
-    if (fullType === 'plugin:manim') {
-      const d = el.pluginData
-      setManimEditorState({ elementId: el.id, content: d.content, sceneName: d.sceneName || 'MyScene', quality: d.quality || 'l', rendered: null, rendering: false, error: null, isPlugin: true })
-    }
-  }, [DEFAULT_MANIM])
+  }, [])
 
   const addHtmlElement = useCallback(() => {
     const newEl = {
@@ -1217,80 +1201,6 @@ function draw() {
       return { ...prev, slides }
     })
   }, [slideW, slideH])
-
-  const addManimElement = useCallback(() => {
-    const newEl = {
-      id: crypto.randomUUID(),
-      type: 'manim',
-      x: 160, y: 90, width: 640, height: 360, zIndex: 2,
-      content: DEFAULT_MANIM,
-      sceneName: 'MyScene',
-      quality: 'l',
-      rendered: null,
-      loop: true,
-      autoplay: true,
-      muted: true,
-      controls: false,
-    }
-    setPresentation(prev => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        slides: prev.slides.map((s, i) =>
-          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
-        )
-      }
-    })
-    setSelectedElementIds([newEl.id])
-    setManimEditorState({ elementId: newEl.id, content: newEl.content, sceneName: newEl.sceneName, quality: newEl.quality, rendered: null, rendering: false, error: null })
-  }, [DEFAULT_MANIM])
-
-  const openManimEditor = useCallback((elementId) => {
-    const slide = presentation?.slides[currentSlideIndexRef.current]
-    const element = slide?.elements?.find(el => el.id === elementId)
-    if (!element) return
-    if (element.type === 'manim') {
-      setManimEditorState({ elementId, content: element.content || DEFAULT_MANIM, sceneName: element.sceneName || 'MyScene', quality: element.quality || 'l', rendered: element.rendered || null, rendering: false, error: null })
-    } else if (element.type === 'plugin:manim') {
-      const d = element.pluginData || {}
-      setManimEditorState({ elementId, content: d.content || DEFAULT_MANIM, sceneName: d.sceneName || 'MyScene', quality: d.quality || 'l', rendered: d.rendered || null, rendering: false, error: null, isPlugin: true })
-    }
-  }, [presentation, DEFAULT_MANIM])
-
-  const commitManimEdit = useCallback(() => {
-    if (!manimEditorState) return
-    const patch = {
-      content: manimEditorState.content,
-      sceneName: manimEditorState.sceneName,
-      quality: manimEditorState.quality,
-      rendered: manimEditorState.rendered,
-    }
-    if (manimEditorState.isPlugin) {
-      const slide = presentation?.slides[currentSlideIndexRef.current]
-      const element = slide?.elements?.find(el => el.id === manimEditorState.elementId)
-      updateElement(manimEditorState.elementId, { pluginData: { ...(element?.pluginData || {}), ...patch } })
-    } else {
-      updateElement(manimEditorState.elementId, patch)
-    }
-    setManimEditorState(null)
-  }, [manimEditorState, updateElement, presentation])
-
-  const renderManim = useCallback(async () => {
-    if (!manimEditorState) return
-    setManimEditorState(s => ({ ...s, rendering: true, error: null }))
-    try {
-      const res = await fetch('/api/render-manim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: manimEditorState.content, sceneName: manimEditorState.sceneName, quality: manimEditorState.quality }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Render failed')
-      setManimEditorState(s => ({ ...s, rendered: data.url, rendering: false, error: null }))
-    } catch (err) {
-      setManimEditorState(s => ({ ...s, rendering: false, error: err.message }))
-    }
-  }, [manimEditorState])
 
   const addVideoElement = useCallback((src) => {
     const newEl = {
@@ -1761,6 +1671,23 @@ function draw() {
     setCurrentSlideIndex(currentSlideIndex + 1)
   }
 
+  const importSlidesFromPresentation = (importedSlides) => {
+    if (!importedSlides.length) return
+    const is2D = presentation.slides.some(s => s.column !== undefined)
+    const newSlides = importedSlides.map(slide => ({
+      ...slide,
+      id: crypto.randomUUID(),
+      ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
+      elements: (slide.elements || []).map(el => ({ ...el, id: crypto.randomUUID() })),
+    }))
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      slides.splice(currentSlideIndex + 1, 0, ...newSlides)
+      return { ...prev, slides }
+    })
+    setCurrentSlideIndex(currentSlideIndex + 1)
+  }
+
   const deleteSlide = (index) => {
     if (!presentation || presentation.slides.length <= 1) return
     setPresentation(prev => ({
@@ -1800,6 +1727,49 @@ function draw() {
     setCurrentSlideIndex(toIndex)
   }
 
+  // Multi-slide selection, tracked by slide id so it survives reordering,
+  // adding and deleting without going stale.
+  const selectSlide = (index) => {
+    setCurrentSlideIndex(index)
+    setSelectedSlideIds([])
+  }
+
+  const toggleSlideSelection = (index) => {
+    if (!presentation) return
+    const slides = presentation.slides
+    const id = slides[index]?.id
+    if (!id) return
+    const currentId = slides[currentSlideIndex]?.id
+    // Drop ids for slides that have since been deleted. A selection that is no
+    // longer showing as a group restarts from the active slide, which is what
+    // the panel is displaying at that point.
+    const live = new Set(slides.map(s => s.id))
+    const kept = selectedSlideIds.filter(x => live.has(x))
+    const base = kept.length > 1 ? kept : (currentId ? [currentId] : [])
+    if (base.includes(id)) {
+      const next = base.filter(x => x !== id)
+      // One slide left is just a normal single selection
+      setSelectedSlideIds(next.length > 1 ? next : [])
+      if (id === currentId && next.length) {
+        const fallback = slides.findIndex(s => s.id === next[0])
+        if (fallback >= 0) setCurrentSlideIndex(fallback)
+      }
+    } else {
+      setSelectedSlideIds([...base, id])
+      setCurrentSlideIndex(index)
+    }
+  }
+
+  const moveSlides = (indices, toIndex) => {
+    if (!presentation) return
+    const currentId = presentation.slides[currentSlideIndex]?.id
+    const slides = reorderSlides(presentation.slides, indices, toIndex)
+    if (!slides) return
+    setPresentation(prev => ({ ...prev, slides }))
+    const nextCurrent = slides.findIndex(s => s.id === currentId)
+    if (nextCurrent >= 0) setCurrentSlideIndex(nextCurrent)
+  }
+
   if (loading) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -1821,10 +1791,19 @@ function draw() {
     <div className="editor-page" style={{ position: 'relative' }}>
       {/* Editor Header */}
       <div className="editor-header">
-        <button className="back-btn btn-ghost" onClick={onGoHome}>
-          <ChevronLeft size={16} />
-          Back
-        </button>
+        {guest ? (
+          <span
+            title={`Nothing is saved to an account. This presentation and its uploads are deleted when you close this tab, or after ${guest.idleHours} hours without activity. To keep a copy, use Export → Export Offline HTML.`}
+            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', cursor: 'help' }}
+          >
+            Guest · deleted when you close this tab
+          </span>
+        ) : (
+          <button className="back-btn btn-ghost" onClick={onGoHome}>
+            <ChevronLeft size={16} />
+            Back
+          </button>
+        )}
         {isTemplate && (
           <span style={{ fontSize: 11, background: '#f59e0b', color: '#000', padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4 }}>TEMPLATE</span>
         )}
@@ -1934,7 +1913,7 @@ function draw() {
                     a.click()
                     URL.revokeObjectURL(url)
                   }},
-                ].map(({ label, icon, action }) => (
+                ].filter(item => !guest || item.label !== 'Share link').map(({ label, icon, action }) => (
                   <button
                     key={label}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
@@ -1986,68 +1965,70 @@ function draw() {
             Data
           </button>
 
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => setShowSyncDropdown(v => !v)}
-              title="Sync options"
-            >
-              <CloudUpload size={14} />
-              Sync
-              <ChevronDown size={12} style={{ marginLeft: 2 }} />
-            </button>
-            {showSyncDropdown && (
-              <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
-                  >
-                    <Github size={14} />
-                    GitHub
-                  </button>
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowSyncDropdown(false)
-                      setZenodoStatus(null)
-                      if (presentationId) {
-                        api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                      }
-                      setShowZenodoModal(true)
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                    Zenodo
-                  </button>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowSyncDropdown(false)
-                      setShowGitHistory(true)
-                      setGitLoading(true)
-                      try {
-                        const commits = await api.getGitHistory(presentationId)
-                        setGitCommits(commits)
-                      } catch (e) { setGitCommits([]); console.error(e) }
-                      setGitLoading(false)
-                    }}
-                  >
-                    <History size={14} />
-                    Git History
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {!guest && (
+            <div style={{ position: 'relative' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowSyncDropdown(v => !v)}
+                title="Sync options"
+              >
+                <CloudUpload size={14} />
+                Sync
+                <ChevronDown size={12} style={{ marginLeft: 2 }} />
+              </button>
+              {showSyncDropdown && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
+                    >
+                      <Github size={14} />
+                      GitHub
+                    </button>
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={async () => {
+                        setShowSyncDropdown(false)
+                        setZenodoStatus(null)
+                        if (presentationId) {
+                          api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+                        }
+                        setShowZenodoModal(true)
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
+                      Zenodo
+                    </button>
+                    <div style={{ borderTop: '1px solid var(--border)' }} />
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={async () => {
+                        setShowSyncDropdown(false)
+                        setShowGitHistory(true)
+                        setGitLoading(true)
+                        try {
+                          const commits = await api.getGitHistory(presentationId)
+                          setGitCommits(commits)
+                        } catch (e) { setGitCommits([]); console.error(e) }
+                        setGitLoading(false)
+                      }}
+                    >
+                      <History size={14} />
+                      Git History
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
@@ -2106,34 +2087,38 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
-                  <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
-                  <button
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: liveSession ? 'var(--danger)' : '#ef4444', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={async () => {
-                      setShowPresentDropdown(false)
-                      if (liveSession) {
-                        await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {})
-                        setLiveSession(null)
-                        setLiveViewers(0)
-                        return
-                      }
-                      try {
-                        const { sessionId, url } = await api.startLiveSession(presentationId)
-                        setLiveSession({ sessionId, url })
-                        setLiveViewers(0)
-                        livePresentInWindow(presentation, sessionId, (count) => setLiveViewers(count))
-                      } catch (e) {
-                        alert('Failed to start live session: ' + e.message)
-                      }
-                    }}
-                  >
-                    <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: liveSession ? '#ef4444' : '#ef4444', display: 'block', animation: liveSession ? 'none' : 'none' }} />
-                    </span>
-                    {liveSession ? 'Stop Live Session' : 'Live Present'}
-                  </button>
+                  {!guest && (
+                    <>
+                      <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: liveSession ? 'var(--danger)' : '#ef4444', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={async () => {
+                          setShowPresentDropdown(false)
+                          if (liveSession) {
+                            await api.stopLiveSession(presentationId, liveSession.sessionId).catch(() => {})
+                            setLiveSession(null)
+                            setLiveViewers(0)
+                            return
+                          }
+                          try {
+                            const { sessionId, url } = await api.startLiveSession(presentationId)
+                            setLiveSession({ sessionId, url })
+                            setLiveViewers(0)
+                            livePresentInWindow(presentation, sessionId, (count) => setLiveViewers(count))
+                          } catch (e) {
+                            alert('Failed to start live session: ' + e.message)
+                          }
+                        }}
+                      >
+                        <span style={{ width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: liveSession ? '#ef4444' : '#ef4444', display: 'block', animation: liveSession ? 'none' : 'none' }} />
+                        </span>
+                        {liveSession ? 'Stop Live Session' : 'Live Present'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -3213,9 +3198,13 @@ function draw() {
         <SlidePanel
           slides={presentation.slides}
           currentIndex={currentSlideIndex}
-          onSelect={setCurrentSlideIndex}
+          onSelect={selectSlide}
+          selectedIds={selectedSlideIds}
+          onToggleSelect={toggleSlideSelection}
+          onMoveMultiple={moveSlides}
           onAdd={(colNum) => { setPendingAddColumn(colNum ?? null); setShowTemplateModal(true) }}
           onAddColumn={addColumn}
+          onImport={() => setShowImportSlideModal(true)}
           onDelete={deleteSlide}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
@@ -3242,8 +3231,10 @@ function draw() {
               if (url) addImageElement(url)
             }}
             onAddImageUpload={async (file) => {
-              const result = await api.uploadFile(file)
-              if (result.url) addImageElement(result.url)
+              try {
+                const result = await api.uploadFile(file)
+                if (result.url) addImageElement(result.url)
+              } catch (err) { alert('Upload failed: ' + err.message) }
             }}
 
             onAddShape={addShapeElement}
@@ -3266,12 +3257,13 @@ function draw() {
             onAddIcon={addIconElement}
             onAddVideo={addVideoElement}
             onAddVideoUpload={async (file) => {
-              const result = await api.uploadFileToPresentation(presentation.id, file)
-              if (result.url) addVideoElement(result.url)
+              try {
+                const result = await api.uploadFileToPresentation(presentation.id, file)
+                if (result.url) addVideoElement(result.url)
+              } catch (err) { alert('Upload failed: ' + err.message) }
             }}
             onAddAudio={addAudioElement}
             onAddTable={addTableElement}
-            onAddManim={addManimElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}
             selectedCount={selectedElementIds.length}
@@ -3306,7 +3298,7 @@ function draw() {
                 return next
               })
             }}
-            onImportPptx={handleImportPptx}
+            onImportPptx={guest ? undefined : handleImportPptx}
             drawTool={drawTool}
             onSetDrawTool={setDrawTool}
             onUndo={doUndo}
@@ -3418,14 +3410,15 @@ function draw() {
               onOpenP5Editor={openP5Editor}
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
-              onOpenManimEditor={openManimEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
               }}
               onAddImage={async (file, dropX, dropY) => {
-                const result = await api.uploadFile(file)
-                if (result.url) addImageElement(result.url, dropX, dropY)
+                try {
+                  const result = await api.uploadFile(file)
+                  if (result.url) addImageElement(result.url, dropX, dropY)
+                } catch (err) { alert('Upload failed: ' + err.message) }
               }}
               slideW={slideW}
               slideH={slideH}
@@ -3668,115 +3661,6 @@ function draw() {
                   sandbox="allow-scripts"
                   title="LaTeX Preview"
                 />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manim Editor Modal */}
-      {manimEditorState && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onKeyDown={e => { if (e.key === 'Escape' && !manimEditorState.rendering) setManimEditorState(null) }}
-        >
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '90vw', maxWidth: 1200, height: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-            {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>Manim Animation</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Scene:</span>
-                <input
-                  className="prop-input"
-                  value={manimEditorState.sceneName}
-                  onChange={e => setManimEditorState(s => ({ ...s, sceneName: e.target.value }))}
-                  style={{ width: 140, fontSize: 12, padding: '3px 6px' }}
-                  placeholder="SceneName"
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Quality:</span>
-                <select
-                  value={manimEditorState.quality}
-                  onChange={e => setManimEditorState(s => ({ ...s, quality: e.target.value }))}
-                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
-                >
-                  <option value="l">Low (480p, fastest)</option>
-                  <option value="m">Medium (720p)</option>
-                  <option value="h">High (1080p, slow)</option>
-                </select>
-              </div>
-              <button
-                className="btn btn-primary"
-                style={{ fontSize: 12, padding: '4px 14px', opacity: manimEditorState.rendering ? 0.6 : 1 }}
-                onClick={renderManim}
-                disabled={manimEditorState.rendering}
-              >
-                {manimEditorState.rendering ? '⏳ Rendering…' : '▶ Render'}
-              </button>
-              {manimEditorState.rendered && !manimEditorState.rendering && (
-                <span style={{ fontSize: 11, color: '#4ade80' }}>✓ Rendered</span>
-              )}
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setManimEditorState(null)} disabled={manimEditorState.rendering}>Cancel</button>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={commitManimEdit} disabled={manimEditorState.rendering}>Apply</button>
-              </div>
-            </div>
-
-            {/* Body: editor left, preview right */}
-            <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-              {/* Code editor */}
-              <textarea
-                value={manimEditorState.content}
-                onChange={e => setManimEditorState(s => ({ ...s, content: e.target.value }))}
-                style={{ flex: '0 0 58%', background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', lineHeight: 1.6, tabSize: 4, borderRight: '1px solid var(--border)', borderRadius: '0 0 0 12px' }}
-                spellCheck={false}
-                autoFocus
-                onKeyDown={e => {
-                  if (e.key === 'Tab') {
-                    e.preventDefault()
-                    const { selectionStart: s, selectionEnd: end, value } = e.target
-                    const next = value.substring(0, s) + '    ' + value.substring(end)
-                    e.target.value = next
-                    setManimEditorState(st => ({ ...st, content: next }))
-                    requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 4 })
-                  }
-                }}
-              />
-
-              {/* Preview panel */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#0a0a14', borderRadius: '0 0 12px 0' }}>
-                {manimEditorState.rendering && (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: 32 }}>⏳</div>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>Rendering…</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 260, textAlign: 'center' }}>
-                      This can take 10–60 seconds depending on animation length and quality.
-                    </div>
-                  </div>
-                )}
-                {!manimEditorState.rendering && manimEditorState.error && (
-                  <div style={{ flex: 1, padding: 20, overflow: 'auto' }}>
-                    <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, fontWeight: 600 }}>Render Error</div>
-                    <pre style={{ fontSize: 11, color: '#fca5a5', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.5, margin: 0 }}>{manimEditorState.error}</pre>
-                  </div>
-                )}
-                {!manimEditorState.rendering && !manimEditorState.error && manimEditorState.rendered && (
-                  <video
-                    key={manimEditorState.rendered}
-                    src={manimEditorState.rendered}
-                    controls
-                    autoPlay
-                    loop
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', borderRadius: '0 0 12px 0' }}
-                  />
-                )}
-                {!manimEditorState.rendering && !manimEditorState.error && !manimEditorState.rendered && (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: 40, opacity: 0.3 }}>🎬</div>
-                    <div style={{ fontSize: 13 }}>Click <strong style={{ color: 'var(--text-primary)' }}>▶ Render</strong> to generate the animation</div>
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>Low quality renders in ~10–30 seconds</div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -4026,6 +3910,13 @@ function draw() {
             </div>
           </div>
         </div>
+      )}
+      {showImportSlideModal && (
+        <ImportSlideModal
+          currentPresentationId={presentationId}
+          onImport={importSlidesFromPresentation}
+          onClose={() => setShowImportSlideModal(false)}
+        />
       )}
       {/* Park the TipTap editor DOM off-screen when not editing so ProseMirror's
           contenteditable node doesn't float at (0,0) inside the slide canvas. */}

@@ -147,6 +147,10 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .slide-item { border-radius: 6px; border: 2px solid transparent; cursor: pointer; position: relative; transition: all 0.15s; }
 .slide-item:hover { border-color: var(--border-light); }
 .slide-item.active { border-color: var(--accent); }
+/* Part of a ctrl+click multi-selection: softer than the active slide, which
+   keeps its solid accent border even while selected. */
+.slide-item.multi-selected { border-color: rgba(99,102,241,0.55); background: rgba(99,102,241,0.14); box-shadow: 0 0 0 2px rgba(99,102,241,0.18); }
+.slide-item.multi-selected.active { border-color: var(--accent); }
 .slide-number { position: absolute; top: 4px; left: 4px; font-size: 10px; color: rgba(255,255,255,0.5); background: rgba(0,0,0,0.4); padding: 1px 4px; border-radius: 3px; z-index: 10; }
 .slide-copy-btn { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.5); border: none; color: rgba(255,255,255,0.55); padding: 3px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: background 0.15s, color 0.15s; }
 .slide-copy-btn:hover { background: rgba(99,102,241,0.85); color: white; }

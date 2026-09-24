@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { pointsToPath } from '../utils/drawingUtils'
+import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 
 const THUMB_W = 150
 
@@ -97,21 +98,27 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                   ))}
                 </svg>
               )}
-              {el.type === 'manim' && (
-                el.rendered
-                  ? <video src={el.rendered} muted style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
-                  : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: el.height * 0.25 }}>🎬</div>
-              )}
               {el.type === 'video' && (
                 el.poster
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />
                   : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'chart' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5') && (
-                <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                  { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'chart' ? '▦' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : 'MD' }
-                </div>
-              )}
+              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'chart' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5') && (() => {
+                // A still captured while this embed was live on the canvas, so the
+                // thumbnail costs nothing to draw. Placeholder tile until then.
+                const snap = (el.type === 'html' || el.type === 'p5')
+                  ? getSnapshot(snapshotKey(el.id, el.content))
+                  : null
+                if (snap) {
+                  return <img src={snap} alt="" draggable={false}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                }
+                return (
+                  <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
+                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'chart' ? '▦' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : 'MD' }
+                  </div>
+                )
+              })()}
             </div>
           ))
         }
@@ -137,7 +144,7 @@ function buildColumns(slides) {
   return sortedKeys.map(k => ({ colNum: k, items: colMap[k] }))
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -145,6 +152,51 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
 
   const columns = useMemo(() => buildColumns(slides), [slides])
   const is2D = slides.some(s => s.column !== undefined)
+
+  // Redraw thumbnails as embed snapshots arrive
+  useSyncExternalStore(subscribeSnapshots, getSnapshotVersion, getSnapshotVersion)
+
+  // The parent tracks the multi-selection by slide id; map it back to indices.
+  const selectedIndices = useMemo(() => {
+    if (!selectedIds.length) return []
+    const ids = new Set(selectedIds)
+    return slides.reduce((acc, s, i) => (ids.has(s.id) ? (acc.push(i), acc) : acc), [])
+  }, [slides, selectedIds])
+  const isMultiSelect = selectedIndices.length > 1
+
+  // Ctrl/Cmd+click toggles a slide in or out of the selection; a plain click
+  // collapses back to one.
+  function handleItemClick(e, index) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      onToggleSelect?.(index)
+    } else {
+      onSelect(index)
+    }
+  }
+
+  // Dragging a slide that is part of the selection drags the whole group;
+  // dragging anything else behaves as a plain single-slide drag.
+  function handleDragStart(index, colNum) {
+    const group = isMultiSelect && selectedIndices.includes(index) ? selectedIndices : null
+    dragSrcRef.current = { flatIndex: index, colNum, indices: group }
+  }
+
+  function handleDrop(index, colNum) {
+    const src = dragSrcRef.current
+    dragSrcRef.current = null
+    setDragOverInfo(null)
+    if (!src) return
+    if (src.indices) {
+      if (src.indices.includes(index)) return
+      if (colNum === undefined || src.colNum === colNum) onMoveMultiple?.(src.indices, index)
+      else src.indices.forEach(i => onMoveToColumn(i, colNum))
+      return
+    }
+    if (src.flatIndex === index) return
+    if (colNum === undefined || src.colNum === colNum) onMove(src.flatIndex, index)
+    else onMoveToColumn(src.flatIndex, colNum)
+  }
 
   useEffect(() => {
     itemRefs.current[currentIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -154,6 +206,11 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
   const currentColIdx = columns.findIndex(c => c.colNum === currentColNum)
 
   function handleKeyDown(e) {
+    if (e.key === 'Escape' && isMultiSelect) {
+      e.preventDefault()
+      onSelect(currentIndex)
+      return
+    }
     if (is2D) {
       const currentCol = columns[currentColIdx]
       const rowIdx = currentCol ? currentCol.items.findIndex(it => it.flatIndex === currentIndex) : -1
@@ -191,7 +248,9 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
       <div className="slide-panel">
         <div className="slide-panel-header">
           <span>Slides</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{slides.length}</span>
+          <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
+            {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
+          </span>
         </div>
 
         <div
@@ -210,24 +269,23 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
             <div
               key={slide.id || index}
               ref={el => { itemRefs.current[index] = el }}
-              className={`slide-item ${index === currentIndex ? 'active' : ''}`}
+              className={`slide-item ${index === currentIndex ? 'active' : ''} ${selectedIndices.includes(index) && isMultiSelect ? 'multi-selected' : ''}`}
               style={{
                 ...(dragOverInfo?.flatIndex === index ? { outline: '2px solid var(--accent)', outlineOffset: '-2px' } : undefined),
                 ...(isGrouped ? { marginTop: prevSameGroup ? 1 : undefined, marginBottom: nextSameGroup ? 1 : undefined } : undefined),
               }}
               draggable
-              onDragStart={() => { dragSrcRef.current = { flatIndex: index } }}
-              onDragOver={e => { e.preventDefault(); setDragOverInfo({ flatIndex: index }) }}
-              onDragLeave={() => setDragOverInfo(null)}
-              onDrop={e => {
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={e => {
                 e.preventDefault()
-                setDragOverInfo(null)
-                const src = dragSrcRef.current
-                if (src && src.flatIndex !== index) onMove(src.flatIndex, index)
-                dragSrcRef.current = null
+                // No drop marker on the slides being dragged
+                if (dragSrcRef.current?.indices?.includes(index)) return
+                setDragOverInfo({ flatIndex: index })
               }}
+              onDragLeave={() => setDragOverInfo(null)}
+              onDrop={e => { e.preventDefault(); handleDrop(index) }}
               onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
-              onClick={() => { onSelect(index); listRef.current?.focus() }}
+              onClick={e => { handleItemClick(e, index); listRef.current?.focus() }}
             >
               {isGrouped && (
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
@@ -280,6 +338,10 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
             <Plus size={12} />
             Add Column
           </button>
+          <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
+            <Download size={12} />
+            Import Slide
+          </button>
         </div>
       </div>
     )
@@ -290,7 +352,9 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
     <div className="slide-panel" style={{ width: Math.min(columns.length * (THUMB_W + 28) + 20, 480), maxWidth: '45vw', minWidth: 200 }}>
       <div className="slide-panel-header">
         <span>Slides</span>
-        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{columns.length} col · {slides.length}</span>
+        <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
+          {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
+        </span>
       </div>
 
       <div
@@ -352,28 +416,20 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
                 <div
                   key={slide.id || flatIndex}
                   ref={el => { itemRefs.current[flatIndex] = el }}
-                  className={`slide-item ${flatIndex === currentIndex ? 'active' : ''}`}
+                  className={`slide-item ${flatIndex === currentIndex ? 'active' : ''} ${selectedIndices.includes(flatIndex) && isMultiSelect ? 'multi-selected' : ''}`}
                   style={dragOverInfo?.flatIndex === flatIndex ? { outline: '2px solid var(--accent)', outlineOffset: '-2px' } : undefined}
                   draggable
-                  onDragStart={() => { dragSrcRef.current = { flatIndex, colNum } }}
-                  onDragOver={e => { e.preventDefault(); setDragOverInfo({ flatIndex, colNum }) }}
-                  onDragLeave={() => setDragOverInfo(null)}
-                  onDrop={e => {
+                  onDragStart={() => handleDragStart(flatIndex, colNum)}
+                  onDragOver={e => {
                     e.preventDefault()
-                    setDragOverInfo(null)
-                    const src = dragSrcRef.current
-                    if (!src || src.flatIndex === flatIndex) { dragSrcRef.current = null; return }
-                    if (src.colNum === colNum) {
-                      // Same column: reorder rows
-                      onMove(src.flatIndex, flatIndex)
-                    } else {
-                      // Different column: move to this column
-                      onMoveToColumn(src.flatIndex, colNum)
-                    }
-                    dragSrcRef.current = null
+                    // No drop marker on the slides being dragged
+                    if (dragSrcRef.current?.indices?.includes(flatIndex)) return
+                    setDragOverInfo({ flatIndex, colNum })
                   }}
+                  onDragLeave={() => setDragOverInfo(null)}
+                  onDrop={e => { e.preventDefault(); handleDrop(flatIndex, colNum) }}
                   onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
-                  onClick={() => onSelect(flatIndex)}
+                  onClick={e => handleItemClick(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
                   <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />
@@ -428,10 +484,14 @@ export default function SlidePanel({ slides, currentIndex, onSelect, onAdd, onAd
         </div>
       </div>
 
-      <div className="slide-panel-footer">
+      <div className="slide-panel-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <button className="add-slide-btn" style={{ fontSize: 11 }} onClick={() => onAdd(currentColNum)}>
           <Plus size={12} />
           Add to Col {currentColIdx + 1}
+        </button>
+        <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
+          <Download size={12} />
+          Import Slide
         </button>
       </div>
     </div>

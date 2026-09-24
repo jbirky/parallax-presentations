@@ -4,9 +4,11 @@
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
 import { getReferencedEntries } from './bibtexParser'
+import registry from '../plugins/PluginRegistry'
+import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=s.getAttribute('width'),h=s.getAttribute('height');if(w&&h&&!s.getAttribute('viewBox')){s.setAttribute('viewBox','0 0 '+parseFloat(w)+' '+parseFloat(h));s.setAttribute('width','100%');s.setAttribute('height','100%');}s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle
   if (/<head[^>]*>/i.test(userHtml))
@@ -173,8 +175,8 @@ export function generateRevealHTML(presentation) {
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
-          const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(embedHtml)}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe src="${dataUrl}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"><\/script></head><body><script>${el.content || ''}<\/script></body></html>`
@@ -300,11 +302,10 @@ export function generateRevealHTML(presentation) {
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
-        if (el.type === 'video' || (el.type === 'manim' && el.rendered)) {
-          const src = absoluteSrc(el.type === 'manim' ? el.rendered : el.src)
+        if (el.type === 'video') {
+          const src = absoluteSrc(el.src)
           const attrs = []
-          if (el.type === 'manim') { if (el.controls) attrs.push('controls'); if (el.autoplay !== false) attrs.push('autoplay'); if (el.loop !== false) attrs.push('loop'); if (el.muted !== false) attrs.push('muted') }
-          else { if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted') }
+          if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted')
           const posterAttr = el.poster ? ` poster="${absoluteSrc(el.poster)}"` : ''
           const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
           const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
@@ -325,7 +326,6 @@ export function generateRevealHTML(presentation) {
           if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video>${vidScript}</div>`
         }
-        if (el.type === 'manim' && !el.rendered) return '' // not yet rendered — omit from export
         if (el.type === 'audio') {
           const src = absoluteSrc(el.src)
           const attrs = ['controls']
@@ -401,6 +401,15 @@ export function generateRevealHTML(presentation) {
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
           return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+        }
+        if (el.type && el.type.startsWith('plugin:')) {
+          const sandboxHtml = registry.getSandboxHtml(el.type)
+          if (!sandboxHtml) {
+            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
+          }
+          const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         return ''
       }).join('\n')
@@ -1186,10 +1195,6 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'video') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9654; Video</div>`
-        }
-        if (el.type === 'manim') {
-          if (el.rendered) return `<div style="${style}${vis}"><video src="${absoluteSrc(el.rendered)}" autoplay loop muted style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video></div>`
-          return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">🎬 Manim (not rendered)</div>`
         }
         if (el.type === 'audio') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.3);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&#9835; Audio</div>`
