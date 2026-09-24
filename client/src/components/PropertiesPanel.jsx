@@ -125,7 +125,26 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
+// Copies a TikZ diagram's code, for pasting into a LaTeX document
+function CopyTikzButton({ tikz }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(tikz || '')
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      alert('Couldn’t copy: ' + err.message)
+    }
+  }
+  return (
+    <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={copy} disabled={!tikz}>
+      {copied ? 'Copied' : 'Copy TikZ'}
+    </button>
+  )
+}
+
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -384,6 +403,16 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 Edit p5.js Sketch
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open sketch editor</p>
+            </div>
+          )}
+
+          {/* TikZ diagram */}
+          {selectedElement.type === 'tikz' && (
+            <div style={{ marginBottom: 10, display: 'grid', gap: 6 }}>
+              <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={onEditTikz}>
+                Edit TikZ diagram
+              </button>
+              <CopyTikzButton tikz={selectedElement.tikz} />
             </div>
           )}
 

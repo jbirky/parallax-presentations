@@ -36,6 +36,8 @@ module.exports = {
     },
     'pdfjs-dist': { files: ['build/pdf.min.js', 'build/pdf.worker.min.js'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
+    // Records canvas drawing as SVG, for the TikZ diagram editor's export
+    svgcanvas: { files: ['dist/svgcanvas.esm.js'] },
   },
   cdnjs: {
     'pdf.js': { package: 'pdfjs-dist', dir: 'build' },

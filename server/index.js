@@ -21,6 +21,7 @@ const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./mi
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
 const { libUrl, localizeLibraries } = require('./services/libraries')
+const { tikzDiagramSvg } = require('./services/tikz-diagram')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
@@ -737,6 +738,9 @@ function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
           return `<div${fragClass}${fragIdx} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+        }
+        if (el.type === 'tikz') {
+          return `<div${fragClass}${fragIdx} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)

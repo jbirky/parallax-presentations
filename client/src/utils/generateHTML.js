@@ -7,6 +7,7 @@ import { getReferencedEntries } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
+import { tikzDiagramSvg } from './tikzDiagram'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
@@ -173,6 +174,9 @@ export function generateRevealHTML(presentation) {
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+        }
+        if (el.type === 'tikz') {
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
@@ -1163,6 +1167,9 @@ function generatePrintHTML(presentation) {
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
           return `<div style="${style}${opacityStyle}${vis}">${shapeSvgString(el)}</div>`
+        }
+        if (el.type === 'tikz') {
+          return `<div style="${style}${vis}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'html') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`
