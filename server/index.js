@@ -1712,7 +1712,7 @@ app.get('/api/uploads', async (req, res) => {
 app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
   try {
     const { rows } = await storage.query(
-      'SELECT id, storage_key, size_bytes FROM uploads WHERE id = $1 AND user_id = $2',
+      'SELECT id, filename, storage_key, size_bytes FROM uploads WHERE id = $1 AND user_id = $2',
       [req.params.id, req.userId]
     )
     if (!rows.length) return res.status(404).json({ error: 'File not found' })
@@ -1728,6 +1728,11 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
 
     // Deleting the file removes it from every presentation that uses it
     await storage.query('DELETE FROM uploads WHERE user_id = $1 AND storage_key = $2', [req.userId, rows[0].storage_key])
+    // A font's file: the font goes too, rather than staying listed without it
+    if (rows[0].filename.startsWith('fonts/')) {
+      await storage.query('DELETE FROM user_fonts WHERE user_id = $1 AND url = $2',
+        [req.userId, `/api/fonts/file/${rows[0].filename.slice('fonts/'.length)}`])
+    }
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1953,13 +1958,32 @@ app.post('/api/fonts/google', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// DELETE /api/fonts/:id - remove a custom font
+// Deletes an uploaded font's file, found from its URL: /api/fonts/file/<name>
+// is in R2 with an uploads row (which is what counts it toward storage), and
+// /uploads/fonts/<name> is on disk
+async function deleteFontFile(url, userId) {
+  const name = path.basename(url || '')
+  if (!name) return
+  if (url.startsWith('/api/fonts/file/')) {
+    const { rows } = await storage.query(
+      'DELETE FROM uploads WHERE user_id = $1 AND filename = $2 RETURNING storage_key', [userId, `fonts/${name}`]
+    )
+    for (const { storage_key } of rows) {
+      try { await deleteFromR2(storage_key) } catch (e) { console.error('R2 delete failed:', e.message) }
+    }
+  } else if (url.startsWith('/uploads/fonts/')) {
+    fs.removeSync(path.join(UPLOADS_DIR, 'fonts', name))
+  }
+}
+
+// DELETE /api/fonts/:id - remove a custom font, and an uploaded one's file
 app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
   try {
-    const { rowCount } = await storage.query(
-      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]
+    const { rows } = await storage.query(
+      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2 RETURNING source, url', [req.params.id, req.userId]
     )
-    if (!rowCount) return res.status(404).json({ error: 'Font not found' })
+    if (!rows.length) return res.status(404).json({ error: 'Font not found' })
+    if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
