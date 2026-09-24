@@ -79,6 +79,12 @@ describe('bundled library versions', () => {
     }
   })
 
+  it('has Dependabot propose updates for exactly the bundled packages', () => {
+    const config = fs.readFileSync(path.resolve(__dirname, '../../../.github/dependabot.yml'), 'utf8')
+    const allowed = [...config.matchAll(/dependency-name: "?([^"\n]+)"?/g)].map(m => m[1]).sort()
+    expect(allowed).toEqual(Object.keys(packages).sort())
+  })
+
   it('gives the server the versions the build bundled, or else the pinned ones', () => {
     const manifest = path.resolve(__dirname, '../../dist/vendor/manifest.json')
     const expected = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')).versions
