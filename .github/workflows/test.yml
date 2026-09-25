@@ -30,4 +30,4 @@ jobs:
 
       # The tests that need Postgres skip without TEST_DATABASE_URL
       - name: Run server tests
-        run: node --test server/test/*.test.js
+        run: node --test --test-force-exit server/test/*.test.js

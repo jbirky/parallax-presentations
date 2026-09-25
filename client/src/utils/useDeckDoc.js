@@ -17,6 +17,12 @@ export function useDeckDoc() {
       if (next !== prev) setDeckState(next)
     },
     resetDeck: next => setDeckState(store.reset(next)),
+    // Starts from a live document; returns the deck read from it
+    attachDeck: (doc, meta) => {
+      const deck = store.attach(doc, meta)
+      setDeckState(deck)
+      return deck
+    },
     undo: () => store.undo(),
     redo: () => store.redo(),
     canUndo: () => store.canUndo(),

@@ -14,6 +14,12 @@ class PgStorage extends StorageInterface {
   constructor(connectionString) {
     super()
     this.pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } })
+    // Set when presentations are edited live (services/collab.js):
+    // beforeRead(id) stores the live document's edits in data, and
+    // liveSave(id, data, { baseVersion }) saves to the live document, or
+    // returns null when the presentation has none
+    this.beforeRead = null
+    this.liveSave = null
   }
 
   async query(text, params) {
@@ -45,6 +51,7 @@ class PgStorage extends StorageInterface {
   }
 
   async getPresentation(id, userId) {
+    if (this.beforeRead) await this.beforeRead(id)
     const sql = userId
       ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt", version FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = false'
       : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt", version FROM presentations WHERE id = $1 AND is_template = false'
@@ -78,6 +85,8 @@ class PgStorage extends StorageInterface {
     if (!existing) return null
     const checked = Number.isInteger(baseVersion)
     if (checked && baseVersion !== existing.version) return { conflict: true, version: existing.version }
+    const live = this.liveSave && await this.liveSave(id, data, { baseVersion })
+    if (live) return live.conflict ? live : this.getPresentation(id, userId)
     const now = new Date().toISOString()
     const { version: _, ...merged } = { ...existing, ...data, id, updatedAt: now }
     const params = [merged.title || 'Untitled', JSON.stringify(merged), now, id]

@@ -76,6 +76,33 @@ const storageQuota = uploadQuota(storage)
 // Owner or editor of the presentation in the route's :id (or another param)
 const deckAccess = (param = 'id') => deckAccessFor(storage, param)
 
+// Live editing over a WebSocket at /collab (cloud only; services/collab.js).
+// Hocuspocus needs Node 22, which the desktop app's server may not have, so
+// it's loaded only here. Reading a presentation stores its live edits first,
+// and saving one goes into its live document.
+let collab = null
+if (IS_CLOUD && storage.query) {
+  const { createCollab } = require('./services/collab')
+  collab = createCollab({ storage, userIdForToken })
+  storage.beforeRead = collab.flush
+  storage.liveSave = collab.applySave
+  // Stopping the server stores every open document first
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, async () => {
+      await collab.flushAll()
+      process.exit(0)
+    })
+  }
+}
+
+// The user a Clerk session token is for (the WebSocket has no Clerk middleware)
+async function userIdForToken(token) {
+  const { verifyToken } = require('@clerk/express')
+  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+  const { rows } = await storage.query('SELECT id FROM users WHERE auth_id = $1', [sub])
+  return rows[0]?.id || null
+}
+
 app.use(helmetConfig())
 app.use(cors(corsConfig()))
 
@@ -2091,6 +2118,7 @@ app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
     const deleted = await deletePresentationAndFiles(storage, req.params.id, req.userId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
+    collab?.closeDocument(req.params.id)
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -2332,6 +2360,7 @@ app.delete('/api/presentations/:id/collaborators/:userId', requireValidId(), req
     if (!(await collaboration.removeCollaborator(storage, req.params.id, req.params.userId))) {
       return res.status(404).json({ error: 'Not an editor of this presentation' })
     }
+    collab?.disconnectUser(req.params.id, req.params.userId)
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -3536,7 +3565,13 @@ async function startServer(port) {
       console.log(`Server running on http://localhost:${p}`)
       resolve(server)
     })
+    attachLiveEditing(server)
   })
+}
+
+// Serves live editing's WebSocket on an HTTP server, in the cloud version
+function attachLiveEditing(server) {
+  collab?.attach(server)
 }
 
 // Periodic cleanup: hard-delete free-tier presentations expired > 7 days,
@@ -3573,4 +3608,4 @@ if (require.main === module) {
   startServer()
 }
 
-module.exports = { app, startServer }
+module.exports = { app, startServer, attachLiveEditing }

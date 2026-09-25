@@ -384,6 +384,25 @@ describe('the editor’s deck', () => {
     expect(store.undo().version).toBe(3)
   })
 
+  it('takes a document filled elsewhere, and follows the changes that arrive in it', () => {
+    const onChange = vi.fn()
+    const store = createDeckStore({ onChange })
+    const live = new Y.Doc()
+    loadDeck(live, deck())
+    const attached = store.attach(live, { id: 'p1', version: 9, title: 'not this' })
+    expect(store.doc).toBe(live)
+    expect(attached).toEqual({ ...withoutServerFields(deck()), id: 'p1', version: 9 })
+
+    // a change from someone else, then one here: undo takes back only this one
+    live.transact(() => live.getMap('fields').set('theme', 'white'), 'server')
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ theme: 'white' }))
+    store.set(prev => editElement(prev, 'a', { x: 5 }))
+    const undone = store.undo()
+    expect(element(undone, 'a').x).toBe(0)
+    expect(undone.theme).toBe('white')
+    expect(undone.id).toBe('p1')
+  })
+
   it('reopens after being closed', () => {
     const store = createDeckStore()
     store.set(deck())

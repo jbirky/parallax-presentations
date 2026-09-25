@@ -6,69 +6,15 @@
 //
 //   TEST_DATABASE_URL=postgres://… node --test server/test/*.test.js
 //
-// The server runs in cloud mode with Clerk stubbed out: a request's user is
-// its X-Test-User header. .env isn't read, and R2 is off.
+// The server runs as helpers.js describes.
 
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
-const path = require('path')
-const os = require('os')
-const fs = require('fs')
 const crypto = require('crypto')
+const { DB, startCloudServer } = require('./helpers')
 
-const DB = process.env.TEST_DATABASE_URL
 const skip = DB ? false : 'TEST_DATABASE_URL is not set'
-const serverDir = path.join(__dirname, '..')
-
-let base, server, pool
-const run = crypto.randomBytes(4).toString('hex')
-const user = name => `${name}-${run}`
-
-function stub(moduleName, exports) {
-  const file = require.resolve(moduleName, { paths: [serverDir] })
-  require.cache[file] = { id: file, filename: file, loaded: true, exports, children: [], paths: [] }
-}
-
-function startServer() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'parallax-test-'))
-  Object.assign(process.env, {
-    PARALLAX_MODE: 'cloud', PARALLAX_DB: 'postgres', DATABASE_URL: DB, NODE_ENV: 'test',
-    SLIDES_DATA_DIR: path.join(tmp, 'data'), SLIDES_UPLOADS_DIR: path.join(tmp, 'uploads'),
-  })
-  delete process.env.PARALLAX_STORAGE
-  stub('dotenv', { config: () => ({ parsed: {} }) })
-  stub('@clerk/express', {
-    clerkMiddleware: () => (req, res, next) => { req.testUser = req.get('X-Test-User') || null; next() },
-    getAuth: req => ({ userId: req.testUser }),
-    requireAuth: () => (req, res, next) => next(),
-    clerkClient: { users: { getUser: async id => ({ emailAddresses: [{ emailAddress: `${id}@test.local` }], firstName: id, lastName: '', imageUrl: '' }) } },
-  })
-  // The server's cleanup timers mustn't keep the tests running
-  const setIntervalBefore = global.setInterval
-  global.setInterval = (...args) => setIntervalBefore(...args).unref()
-  const { app } = require('../index.js')
-  global.setInterval = setIntervalBefore
-  return new Promise(resolve => {
-    const s = app.listen(0, '127.0.0.1', () => resolve(s))
-  })
-}
-
-async function call(who, method, url, body, headers = {}) {
-  const raw = Buffer.isBuffer(body)
-  const res = await fetch(base + url, {
-    method,
-    headers: {
-      ...(who && { 'X-Test-User': who }),
-      ...(body !== undefined && !raw && { 'Content-Type': 'application/json' }),
-      ...headers,
-    },
-    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
-  })
-  const text = await res.text()
-  let json = null
-  try { json = JSON.parse(text) } catch {}
-  return { status: res.status, body: json }
-}
+let t, call, userId, createDeck, pool, run
 
 // A one-file multipart body, with its length known up front as the quota needs
 function imageUpload() {
@@ -88,35 +34,19 @@ const upload = (who, id) => {
   return call(who, 'POST', `/api/presentations/${id}/upload`, body, headers)
 }
 
-async function userId(who) {
-  const { rows } = await pool.query('SELECT id FROM users WHERE auth_id = $1', [who])
-  return rows[0].id
-}
-
-async function createDeck(who, title) {
-  const res = await call(who, 'POST', '/api/presentations', { title })
-  assert.equal(res.status, 201, JSON.stringify(res.body))
-  return res.body.id
-}
-
 describe('editing a presentation with others', { skip }, () => {
-  const owner = user('owner'), editor = user('editor'), stranger = user('stranger'), second = user('second')
-  let deck, token
+  let owner, editor, stranger, second, deck, token
 
   before(async () => {
-    server = await startServer()
-    base = `http://127.0.0.1:${server.address().port}`
-    const { Pool } = require('pg')
-    pool = new Pool({ connectionString: DB, ssl: { rejectUnauthorized: false } })
+    t = await startCloudServer()
+    ;({ call, userId, createDeck, pool, run } = t)
+    ;[owner, editor, stranger, second] = ['owner', 'editor', 'stranger', 'second'].map(t.user)
     // Each user gets a row on their first request
     for (const who of [owner, editor, stranger, second]) assert.equal((await call(who, 'GET', '/api/me')).status, 200)
     deck = await createDeck(owner, `Shared talk ${run}`)
   })
 
-  after(async () => {
-    server?.close()
-    await pool?.end()
-  })
+  after(() => t?.stop())
 
   const editorRoutes = id => [
     ['GET', `/api/presentations/${id}`],

@@ -1,5 +1,7 @@
 let _getToken = async () => null
 export function setTokenGetter(fn) { _getToken = fn }
+// The signed-in user's session token, for live editing's WebSocket
+export const getAuthToken = () => _getToken()
 
 // Guest mode: requests carry the guest session token instead of a Clerk token
 let _guestToken = null

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// The editor with others: what an editor doesn't get, and what happens when
-// someone else saved first.
+// The editor with others, saving over HTTP: what an editor doesn't get, and
+// what happens when someone else saved first.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -13,6 +13,12 @@ const conflict = Object.assign(new Error('Someone else saved'), { code: 'conflic
 // Calls the test doesn't set up resolve to nothing
 vi.mock('../utils/api', () => ({
   api: new Proxy({}, { get: (api, name) => api[name] ?? (api[name] = vi.fn(async () => null)) }),
+  getAuthToken: async () => 'token',
+}))
+// Live editing refuses at once, so these open the presentation the saved way
+// (EditorPage.live.test.jsx has live editing)
+vi.mock('../utils/liveDeck', () => ({
+  connectLive: vi.fn(({ onRefused }) => { queueMicrotask(onRefused); return { disconnect: () => {} } }),
 }))
 import { api } from '../utils/api'
 import EditorPage from './EditorPage'
@@ -53,6 +59,7 @@ afterEach(() => {
 describe('the editor, shared', () => {
   it('leaves the owner’s Sync menu out for an editor', async () => {
     await open('editor')
+    expect(el.querySelector('.editor-header .title-input').value).toBe('Group talk')
     expect(button('Sync')).toBeUndefined()
   })
 

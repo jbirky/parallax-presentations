@@ -33,15 +33,23 @@ Files an editor uploads count against the **owner's** storage, not the editor's.
 
 To stop editing a presentation someone shared with you, click **Leave** on its card on your dashboard, or **Leave presentation** in the **Editors** dialog.
 
-## When two people save at once
+## Editing at the same time
 
-For now, Parallax saves one copy at a time; the changes you see come from whoever saved last. If someone else saves while you're editing, Parallax stops saving your changes and asks what to do:
+Everyone editing a presentation sees each other's changes as they're made, and there's no Save button. Next to the title, the editor shows:
+
+| It says | Meaning |
+|---------|---------|
+| **Saving…** | Your latest changes are on their way. |
+| **Saved** | Everyone editing has your changes, and they're kept. |
+| **Reconnecting…** | The connection dropped. Your changes are kept in the tab and sent when it's back, so keep the tab open until it says **Saved**. |
+
+**Undo** (`Ctrl+Z`) takes back only your own changes, never someone else's.
+
+If two people change the same thing at once, such as the same text box or the same shape's color, the change made last is kept. Changes to different things, even on the same slide, are all kept.
+
+## If live editing can't connect
+
+On some networks Parallax can't connect for live editing. It then saves your changes the usual way, and you won't see other people's changes until you reopen the presentation. If someone else saves while you're editing, Parallax stops saving your changes and asks what to do:
 
 - **Load their version** opens what they saved. Your changes since their save are dropped.
 - **Keep mine** saves your copy over theirs.
-
-To avoid this, agree on who edits when, or work on the presentation one at a time.
-
-::: tip
-Seeing each other's changes as they happen is on the way. Until then, the steps above keep one person's save from quietly replacing another's.
-:::

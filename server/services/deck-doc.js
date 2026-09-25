@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
+// Written by scripts/copy-deck-doc.js from client/src/utils/deckDoc.js; edit
+// that, then run the script.
+
 // The deck as a Yjs document, which is what editors share when they edit a
 // deck live (server/services/collab.js). The editor keeps the deck as plain
 // JSON and changes it by copying, as it always has; each change is compared
@@ -22,18 +25,18 @@
 // the same slide at once can leave its id in the order twice; reading keeps
 // the first.
 
-import * as Y from 'yjs'
+const Y = require('yjs')
 
 // Kept by the server, not part of the document
-export const META_KEYS = ['id', 'createdAt', 'updatedAt', 'expiresAt', 'version']
+const META_KEYS = ['id', 'createdAt', 'updatedAt', 'expiresAt', 'version']
 // Present-mode ink: saved with the deck, but not an undo step
-export const UNTRACKED_KEYS = ['annotationSets']
+const UNTRACKED_KEYS = ['annotationSets']
 
 // Transaction origins. The editor's edits are undo steps; loading a deck and
 // ink aren't. Any other origin (undo and redo, and later other people) means
 // the editor's JSON is behind the document.
-export const EDIT = 'edit'
-export const QUIET = 'quiet'
+const EDIT = 'edit'
+const QUIET = 'quiet'
 
 const META = new Set(META_KEYS)
 const UNTRACKED = new Set(UNTRACKED_KEYS)
@@ -45,7 +48,7 @@ const anyField = () => true
 const isObject = v => v !== null && typeof v === 'object'
 const keyOf = item => String(item.id)
 
-export function deepEqual(a, b) {
+function deepEqual(a, b) {
   if (a === b) return true
   if (!isObject(a) || !isObject(b)) return false
   if (Array.isArray(a) !== Array.isArray(b)) return false
@@ -69,7 +72,7 @@ function storable(value) {
 // Gives every slide, and every element in a slide, an id of its own. Returns
 // the deck itself when nothing needed one. The elements of a slide that is
 // one of checked's own slides, the deck before, were checked then.
-export function withIds(deck, makeId = () => crypto.randomUUID(), checked = null) {
+function withIds(deck, makeId = () => crypto.randomUUID(), checked = null) {
   if (!Array.isArray(deck?.slides)) return deck
   const hasId = item => (typeof item.id === 'string' && item.id !== '') || Number.isFinite(item.id)
   const checkedSlides = new Set(Array.isArray(checked?.slides) ? checked.slides : [])
@@ -197,7 +200,7 @@ function writeTracked(doc, prev, next) {
 }
 
 // Fills an empty document with deck, as a change nobody can undo
-export function loadDeck(doc, deck) {
+function loadDeck(doc, deck) {
   doc.transact(() => {
     writeTracked(doc, null, deck)
     writeFields(doc.getMap('fields'), deck, null, untrackedDeckField)
@@ -206,7 +209,7 @@ export function loadDeck(doc, deck) {
 
 // Writes what changed from prev, the deck the document matched, to next.
 // Ink goes in a transaction of its own, which undo doesn't track.
-export function writeDeck(doc, prev, next) {
+function writeDeck(doc, prev, next) {
   doc.transact(() => writeTracked(doc, prev, next), EDIT)
   doc.transact(() => writeFields(doc.getMap('fields'), next, prev, untrackedDeckField), QUIET)
 }
@@ -226,7 +229,7 @@ function readOrder(yarr, map) {
 // Notes what changes in the document between reads, so a read can reuse the
 // JSON of every slide and element that didn't change. take() returns what
 // changed since it was last called and starts over.
-export function trackChanges(doc) {
+function trackChanges(doc) {
   let changes
   const reset = () => { changes = { fields: false, order: false, slides: new Map() } }
   reset()
@@ -286,7 +289,7 @@ function readSlide(y, id, prev, change) {
 // what trackChanges saw since then, everything that didn't change is prev's
 // own objects, so the editor redraws only what did. The server's fields come
 // from prev.
-export function readDeck(doc, prev = null, changes = null) {
+function readDeck(doc, prev = null, changes = null) {
   const deck = {}
   for (const key of META_KEYS) if (prev?.[key] !== undefined) deck[key] = prev[key]
   if (prev && changes && !changes.fields) {
@@ -309,132 +312,4 @@ export function readDeck(doc, prev = null, changes = null) {
   return deck
 }
 
-// ── The editor's deck ───────────────────────────────────────────────────────
-
-export const UNDO_STEPS = 100
-
-// Undo keeps every value a step deleted, so it can put it back. Values that
-// came and went within the step (the text after each keystroke, while typing)
-// are never put back, so they're let go; Yjs frees them once the transaction
-// ends. Call from afterTransaction, after the UndoManager's own listener.
-function releaseWithinStep(undoManager, transaction) {
-  const step = undoManager.undoStack[undoManager.undoStack.length - 1]
-  if (!step) return
-  Y.iterateDeletedStructs(transaction, transaction.deleteSet, item => {
-    if (item instanceof Y.Item && Y.isDeleted(step.insertions, item.id)) item.keep = false
-  })
-}
-
-// Forgets the steps past the last UNDO_STEPS, freeing what they kept. Freed
-// within the transaction: at its end Yjs joins the deleted values it split
-// apart here, and a joined value is kept if any part of it was.
-function trimUndo(doc, undoManager) {
-  const stack = undoManager.undoStack
-  if (stack.length <= UNDO_STEPS) return
-  const old = stack.splice(0, stack.length - UNDO_STEPS)
-  doc.transact(transaction => {
-    for (const step of old) {
-      Y.iterateDeletedStructs(transaction, step.deletions, item => {
-        if (item instanceof Y.Item) item.keep = false
-      })
-      Y.tryGc(step.deletions, doc.store, doc.gcFilter)
-    }
-  }, QUIET)
-}
-
-// Holds the editor's deck and its document. set() takes a deck or an updater,
-// like React's setState, and writes the change to the document at once, so
-// the next set() and the document always agree. onChange(deck) is called when
-// the document changes the deck itself: on undo and redo.
-export function createDeckStore({ onChange = () => {}, makeId } = {}) {
-  let deck = null
-  let doc = null
-  let undoManager = null
-  let changes = null
-
-  function close() {
-    if (!doc) return
-    changes.stop()
-    undoManager.destroy()
-    doc.destroy()
-    doc = undoManager = changes = null
-  }
-
-  function open(next) {
-    close()
-    doc = new Y.Doc()
-    loadDeck(doc, next)
-    watch()
-  }
-
-  // Undo for the document, and the deck kept up with changes from elsewhere
-  function watch() {
-    undoManager = new Y.UndoManager(
-      [doc.getMap('fields'), doc.getArray('slideOrder'), doc.getMap('slides')],
-      { trackedOrigins: new Set([EDIT]), captureTimeout: 500 },
-    )
-    changes = trackChanges(doc)
-    doc.on('afterTransaction', transaction => {
-      const taken = changes.take()
-      if (transaction.origin === EDIT) releaseWithinStep(undoManager, transaction)
-      if (transaction.origin === EDIT || transaction.origin === QUIET) return
-      deck = readDeck(doc, deck, taken)
-      onChange(deck)
-    })
-  }
-
-  return {
-    get: () => deck,
-    get doc() { return doc },
-    set(update) {
-      const prev = deck
-      let next = typeof update === 'function' ? update(prev) : update
-      if (next === prev) return prev
-      if (next) next = withIds(next, makeId, prev)
-      deck = next
-      if (!next) close()
-      else if (!doc || !prev || prev.id !== next.id) open(next)
-      else {
-        writeDeck(doc, prev, next)
-        trimUndo(doc, undoManager)
-      }
-      return next
-    },
-    // Starts from a document something else fills and keeps in step: a live
-    // one (utils/liveDeck.js). The deck is read from it, with meta's server
-    // fields (id, createdAt, …) added; changes that arrive in it reach
-    // onChange like undo's.
-    attach(liveDoc, meta = {}) {
-      close()
-      doc = liveDoc
-      watch()
-      const serverFields = {}
-      for (const key of META_KEYS) if (meta[key] !== undefined) serverFields[key] = meta[key]
-      deck = readDeck(doc, serverFields)
-      return deck
-    },
-    // Starts over from deck, in a new document with no undo history, as when
-    // it was first opened
-    reset(next) {
-      deck = withIds(next, makeId)
-      open(deck)
-      return deck
-    },
-    // Each returns the deck after, or null when there was nothing to undo
-    undo() {
-      if (!undoManager?.canUndo()) return null
-      undoManager.undo()
-      return deck
-    },
-    redo() {
-      if (!undoManager?.canRedo()) return null
-      undoManager.redo()
-      return deck
-    },
-    canUndo: () => !!undoManager?.canUndo(),
-    canRedo: () => !!undoManager?.canRedo(),
-    // Edits less than half a second apart are one undo step; this ends the step
-    stopCapturing: () => undoManager?.stopCapturing(),
-    destroy: close,
-  }
-}
+module.exports = { META_KEYS, UNTRACKED_KEYS, EDIT, QUIET, deepEqual, withIds, loadDeck, writeDeck, trackChanges, readDeck }

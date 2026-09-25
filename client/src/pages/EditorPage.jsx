@@ -17,7 +17,8 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
-import { api } from '../utils/api'
+import { api, getAuthToken } from '../utils/api'
+import { connectLive } from '../utils/liveDeck'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
@@ -73,6 +74,8 @@ import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
+// How long to wait for live editing to connect before saving the usual way
+const LIVE_WAIT_MS = 10000
 // Publishing to Zenodo is turned off for now; its code stays for when it's
 // brought back, along with ZENODO_ENABLED in server/index.js
 const ZENODO_ENABLED = false
@@ -249,7 +252,7 @@ const migrateSlide = (slide) => {
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
-  const { deck: presentation, setDeck: setPresentation, resetDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
+  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -301,6 +304,12 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // first, { kind: 'gone' } when the presentation is gone or this user was
   // removed from it
   const [saveProblem, setSaveProblem] = useState(null)
+  // Editing live: { status: 'connecting' | 'connected' | 'disconnected',
+  // unsent: changes the server hasn't confirmed, synced: the deck arrived },
+  // or null when edits are saved by autosave instead
+  const liveEligible = isCloud && !guest && !isTemplate
+  const [live, setLive] = useState(null)
+  const liveRef = useRef(null)
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -391,37 +400,103 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   useEffect(() => { selectedElementIdsRef.current = selectedElementIds }, [selectedElementIds])
 
-  // Load presentation (or template) on mount
+  // Load presentation (or template) on mount. Signed in to the cloud version,
+  // it's edited live: the deck comes from the server's document, which keeps
+  // everyone's copy in step (utils/liveDeck.js), and there's no autosave. If
+  // that doesn't connect within LIVE_WAIT_MS, edits are saved as before.
   useEffect(() => {
     if (!presentationId) return
+    let cancelled = false
     const loadFn = isTemplate ? api.getTemplate : api.getPresentation
-    loadFn(presentationId).then(data => {
-      // Migrate old slide format to new elements-based format
-      let migrated = {
-        ...data,
-        slides: (data.slides || []).map(migrateSlide)
-      }
-      // Ink a Present window kept on this device because this tab was closed;
+    // Ink a Present window kept on this device because this tab was closed
+    const recoverInk = deck => {
+      let storage = null
+      try { storage = window.localStorage } catch {}
+      return recoverAnnotationBackups(deck, storage)
+    }
+    const opened = deck => {
+      if (deck.gridSize) setGridSize(deck.gridSize)
+      if (deck.guides && deck.guides.length) setGuides(deck.guides)
+      setLoading(false)
+      isFirstLoad.current = true
+    }
+    const openSaved = saved => {
+      let migrated = saved
       // saved straight away, since autosave skips the first load
       if (!isTemplate) {
-        let storage = null
-        try { storage = window.localStorage } catch {}
-        const { presentation: withInk, recovered } = recoverAnnotationBackups(migrated, storage)
+        const { presentation: withInk, recovered } = recoverInk(migrated)
         if (recovered) {
           migrated = withInk
           api.updatePresentation(migrated.id, migrated).catch(err => console.error('Saving recovered annotations failed', err))
         }
       }
       setPresentation(migrated)
-      if (migrated.gridSize) setGridSize(migrated.gridSize)
-      if (migrated.guides && migrated.guides.length) setGuides(migrated.guides)
-      setLoading(false)
-      isFirstLoad.current = true
+      opened(migrated)
+    }
+    const openLive = saved => {
+      let arrived = false
+      const fallBack = () => {
+        clearTimeout(giveUp)
+        connection.disconnect()
+        liveRef.current = null
+        if (cancelled) return
+        setLive(null)
+        openSaved(saved)
+      }
+      const connection = connectLive({
+        id: presentationId,
+        token: getAuthToken,
+        onSynced: doc => {
+          if (cancelled) return
+          arrived = true
+          clearTimeout(giveUp)
+          const deck = attachDeck(doc, saved)
+          const { presentation: withInk, recovered } = recoverInk(deck)
+          if (recovered) setPresentation(withInk)
+          setLive(l => ({ ...l, synced: true }))
+          opened(deck)
+        },
+        onStatus: status => setLive(l => l && { ...l, status }),
+        onUnsent: unsent => setLive(l => l && { ...l, unsent }),
+        // Removed as an editor, or the presentation deleted; before the
+        // document arrives, it's more likely live editing that's broken
+        onRefused: () => {
+          if (!arrived) return fallBack()
+          connection.disconnect()
+          setSaveProblem({ kind: 'gone' })
+        },
+      })
+      liveRef.current = connection
+      setLive({ status: 'connecting', unsent: 0, synced: false })
+      const giveUp = setTimeout(() => { if (!arrived) fallBack() }, LIVE_WAIT_MS)
+    }
+    loadFn(presentationId).then(data => {
+      if (cancelled) return
+      // Migrate old slide format to new elements-based format
+      const migrated = {
+        ...data,
+        slides: (data.slides || []).map(migrateSlide)
+      }
+      if (liveEligible) openLive(migrated)
+      else openSaved(migrated)
     }).catch(err => {
       console.error('Failed to load presentation', err)
       setLoading(false)
     })
+    return () => {
+      cancelled = true
+      liveRef.current?.disconnect()
+      liveRef.current = null
+    }
   }, [presentationId])
+
+  // Changes not yet sent live: ask before the tab closes
+  useEffect(() => {
+    if (!live?.synced || (live.status === 'connected' && !live.unsent)) return
+    const warn = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [live])
 
   // Load plugins on mount; guests don't get plugins
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
@@ -644,9 +719,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
   }, [presentation, isTemplate])
 
-  // Auto-save with debounce; stopped while a save was refused
+  // Auto-save with debounce; stopped while a save was refused, and not used
+  // while editing live
   useEffect(() => {
-    if (!presentation || isFirstLoad.current || saveProblem) return
+    if (!presentation || isFirstLoad.current || saveProblem || live) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
     setSaveStatus('saving')
@@ -668,7 +744,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [presentation, saveProblem])
+  }, [presentation, saveProblem, live])
 
   // After a refused save: start over from what's saved, dropping this tab's
   // changes since, or save this tab's copy over it
@@ -1966,9 +2042,12 @@ function draw() {
           placeholder={isTemplate ? 'Untitled Template' : 'Untitled Presentation'}
         />
         <div className="header-controls">
+          {live?.synced && (live.status !== 'connected'
+            ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
+            : <span className="save-indicator" style={live.unsent ? undefined : { color: 'var(--success)' }} title="Saved as you go; everyone editing sees your changes">{live.unsent ? 'Saving…' : 'Saved'}</span>)}
           {saveStatus === 'saving' && <span className="save-indicator">Saving...</span>}
           {saveStatus === 'saved' && <span className="save-indicator" style={{ color: 'var(--success)' }}>Saved</span>}
-          {!saveStatus && lastSavedAt && (
+          {!live && !saveStatus && lastSavedAt && (
             <span className="save-indicator" style={{ fontSize: 10, color: 'var(--text-muted)' }} title={lastSavedAt.toLocaleString()}>
               {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
