@@ -45,7 +45,15 @@ Everyone editing a presentation sees each other's changes as they're made, and t
 
 **Undo** (`Ctrl+Z`) takes back only your own changes, never someone else's.
 
-If two people change the same thing at once, such as the same text box or the same shape's color, the change made last is kept. Changes to different things, even on the same slide, are all kept.
+## Seeing who else is editing
+
+- Next to the title there's a picture or initial for each person editing. Hover over it to see which slide they're on, and click it to go there.
+- Each slide someone is on has a dot in their color in the slide list.
+- On your slide, what someone else has selected has an outline in their color, with their name under it.
+
+While someone is typing in a text box, or has an element's editor open (HTML, p5.js, code, LaTeX, TikZ or a dynamical system), its tag says **… is editing**. You can't open or delete it until they're done or close the presentation, but you can still move, resize and restyle it.
+
+If two people change the same setting at once, such as the same shape's color, the change made last is kept. Changes to different things, even on the same slide, are all kept.
 
 ## If live editing can't connect
 

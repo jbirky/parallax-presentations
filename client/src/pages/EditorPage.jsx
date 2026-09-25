@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -19,6 +19,7 @@ import TableCell from '@tiptap/extension-table-cell'
 import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
+import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
@@ -310,6 +311,29 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const liveEligible = isCloud && !guest && !isTemplate
   const [live, setLive] = useState(null)
   const liveRef = useRef(null)
+  // Everyone's tab's state, from live editing's awareness (utils/presence.js)
+  const [awarenessStates, setAwarenessStates] = useState(() => new Map())
+  const peers = useMemo(
+    () => peersFrom(awarenessStates, liveRef.current?.awareness?.clientID, access?.people, access?.you),
+    [awarenessStates, access],
+  )
+  const peersRef = useRef(peers)
+  peersRef.current = peers
+  // A short message at the bottom of the window
+  const [notice, setNotice] = useState(null)
+  const noticeTimerRef = useRef(null)
+  const showNotice = useCallback((message) => {
+    setNotice(message)
+    clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4000)
+  }, [])
+  // Whether someone else has the element open (a text box they're typing in,
+  // or its editor); if so, says who
+  const heldByOther = useCallback((elementId, why = '') => {
+    const peer = editorOf(peersRef.current, elementId)
+    if (peer) showNotice(editingMessage(peer) + why)
+    return !!peer
+  }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -451,6 +475,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
           arrived = true
           clearTimeout(giveUp)
           const deck = attachDeck(doc, saved)
+          const { awareness } = connection
+          const onAwareness = () => setAwarenessStates(new Map(awareness.getStates()))
+          awareness.on('change', onAwareness)
+          onAwareness()
           const { presentation: withInk, recovered } = recoverInk(deck)
           if (recovered) setPresentation(withInk)
           setLive(l => ({ ...l, synced: true }))
@@ -610,6 +638,44 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }
 
   const currentSlide = presentation?.slides[currentSlideIndex]
+
+  // Editing live: tell the others where this tab is, what it has selected,
+  // and what it has open (the text box being typed in, or an element editor)
+  const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
+    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || null
+  useEffect(() => {
+    const awareness = live?.synced && liveRef.current?.awareness
+    if (!awareness) return
+    awareness.setLocalState({ user: access?.you || null, slide: currentSlide?.id || null, selected: selectedElementIds, editing: openElementId })
+  }, [live?.synced, access?.you, currentSlide?.id, selectedElementIds, openElementId])
+
+  // Someone joined since the people list was loaded: load it again
+  const unknownPeople = peers.filter(p => !p.known).map(p => p.userId).sort().join()
+  useEffect(() => {
+    if (unknownPeople) api.getCollaborators(presentationId).then(setAccess).catch(() => {})
+  }, [unknownPeople])
+
+  // Two tabs opened the same element at the same moment: the other one keeps
+  // it. A text box stops being edited here (what was typed is kept); an
+  // element editor stays open, with a warning, so nothing in it is lost.
+  const warnedRef = useRef(null)
+  useEffect(() => {
+    const own = liveRef.current?.awareness?.clientID
+    if (!openElementId || own == null || !shouldLetGo(peers, own, openElementId)) return
+    const peer = editorOf(peers, openElementId)
+    if (openElementId === editingElementId) {
+      stopEditingElement()
+      showNotice(`${peer.self ? 'Your other tab' : peer.name} started editing this at the same moment`)
+    } else if (warnedRef.current !== openElementId) {
+      warnedRef.current = openElementId
+      showNotice(`${peer.self ? 'Your other tab' : peer.name} opened this at the same moment. Whoever saves last replaces the other's changes.`)
+    }
+  }, [peers, openElementId])
+
+  // Where the others are: dots on the slides, outlines on this slide's elements
+  const presenceBySlide = useMemo(() => peopleBySlide(peers), [peers])
+  const remoteUse = useMemo(() => elementsInUse(peers, currentSlide?.id), [peers, currentSlide?.id])
+  const othersHere = useMemo(() => distinctPeople(peers).filter(p => !p.self), [peers])
 
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
@@ -793,6 +859,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [])
 
   const deleteElement = useCallback((id) => {
+    if (heldByOther(id, ', so it wasn’t deleted')) return
     setPresentation(prev => {
       if (!prev) return prev
       return {
@@ -979,7 +1046,7 @@ svg.selectAll('circle').data(data).join('circle')
 
   const openHtmlEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'html') return
+    if (!element || element.type !== 'html' || heldByOther(elementId)) return
     setHtmlEditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -1036,7 +1103,7 @@ function draw() {
 
   const openP5Editor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'p5') return
+    if (!element || element.type !== 'p5' || heldByOther(elementId)) return
     setP5EditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -1071,7 +1138,7 @@ function draw() {
   const openCodeEditor = useCallback((elementId) => {
     const slide = presentation?.slides[currentSlideIndexRef.current]
     const element = slide?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'code') return
+    if (!element || element.type !== 'code' || heldByOther(elementId)) return
     setCodeEditorState({ elementId, content: element.content || '', language: element.language || 'javascript' })
   }, [presentation])
 
@@ -1110,7 +1177,7 @@ function draw() {
 
   const openLatexEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'latex') return
+    if (!element || element.type !== 'latex' || heldByOther(elementId)) return
     setLatexEditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -1135,7 +1202,7 @@ function draw() {
 
   const openTikzEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'tikz') return
+    if (!element || element.type !== 'tikz' || heldByOther(elementId)) return
     setTikzEditor({ elementId, state: element.editorState || null, dark: slideIsDark() })
   }, [presentation, slideIsDark])
 
@@ -1489,7 +1556,7 @@ function draw() {
 
   const startEditingElement = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'text') return
+    if (!element || element.type !== 'text' || heldByOther(elementId)) return
     setEditingElementId(elementId)
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
@@ -1676,7 +1743,10 @@ function draw() {
   }, [])
 
   const deleteSelectedElements = useCallback(() => {
-    const ids = selectedElementIdsRef.current
+    // What someone else has open stays
+    const held = selectedElementIdsRef.current.find(id => editorOf(peersRef.current, id))
+    if (held) heldByOther(held, ', so it wasn’t deleted')
+    const ids = selectedElementIdsRef.current.filter(id => !editorOf(peersRef.current, id))
     if (!ids.length) return
     setPresentation(prev => {
       if (!prev) return prev
@@ -2051,6 +2121,25 @@ function draw() {
             <span className="save-indicator" style={{ fontSize: 10, color: 'var(--text-muted)' }} title={lastSavedAt.toLocaleString()}>
               {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
+          )}
+
+          {othersHere.length > 0 && (
+            <div className="presence-avatars" role="group" aria-label="Also editing" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              {othersHere.slice(0, 4).map((p, i) => {
+                const index = presentation.slides.findIndex(s => s.id === p.slide)
+                const where = `${p.name}${index >= 0 ? `, slide ${index + 1}` : ''}${p.editing ? ', editing' : ''}`
+                return (
+                  <button key={p.userId} title={where} aria-label={where}
+                    onClick={() => { if (index >= 0) setCurrentSlideIndex(index) }}
+                    style={{ marginLeft: i ? -6 : 0, width: 26, height: 26, borderRadius: '50%', border: `2px solid ${p.color}`, padding: 0, background: '#3a3a52', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" width={22} height={22} style={{ borderRadius: '50%' }} /> : (p.name || '?')[0].toUpperCase()}
+                  </button>
+                )
+              })}
+              {othersHere.length > 4 && (
+                <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--text-muted)' }} title={othersHere.slice(4).map(p => p.name).join(', ')}>+{othersHere.length - 4}</span>
+              )}
+            </div>
           )}
 
           <button
@@ -3442,6 +3531,7 @@ function draw() {
       <div className="editor-body">
         <SlidePanel
           slides={presentation.slides}
+          presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
           selectedIds={selectedSlideIds}
@@ -3599,6 +3689,7 @@ function draw() {
             ) : <SlideCanvas
               editor={editor}
               slide={canvasSlide}
+              remoteUse={remoteUse}
               fadedIds={preview.fadedIds}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
@@ -3679,7 +3770,7 @@ function draw() {
               onOpenTikzEditor={openTikzEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
-                if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
+                if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
               }}
               onAddImage={async (file, dropX, dropY) => {
                 try {
@@ -4085,6 +4176,12 @@ function draw() {
               <button className="btn btn-secondary" onClick={onGoHome}>Back to presentations</button>
             </>
           )}
+        </div>
+      )}
+
+      {notice && (
+        <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(520px, calc(100vw - 32px))', padding: '8px 14px', borderRadius: 8, background: 'rgba(20,20,35,0.95)', border: '1px solid var(--border)', color: '#e0e0e0', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {notice}
         </div>
       )}
 

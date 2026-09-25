@@ -19,7 +19,8 @@ export const liveUrl = (location = window.location) =>
 //   onUnsent(n)       how many changes the server hasn't confirmed yet
 //   onRefused()       the server won't let this user in: they were removed,
 //                     or the presentation was deleted
-// Returns { doc, disconnect }.
+// Returns { doc, awareness, disconnect }: awareness is where each tab says
+// where it is and what it's doing (utils/presence.js).
 export function connectLive({ id, token, onSynced, onStatus = () => {}, onUnsent = () => {}, onRefused = () => {}, url = liveUrl() }) {
   const doc = new Y.Doc()
   let synced = false
@@ -37,5 +38,5 @@ export function connectLive({ id, token, onSynced, onStatus = () => {}, onUnsent
     onUnsyncedChanges: ({ number }) => onUnsent(number),
     onAuthenticationFailed: () => onRefused(),
   })
-  return { doc, disconnect: () => provider.destroy() }
+  return { doc, awareness: provider.awareness, disconnect: () => provider.destroy() }
 }

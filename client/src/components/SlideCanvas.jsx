@@ -233,7 +233,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, fadedIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1011,6 +1011,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             faded={!!fadedIds?.has(element.id)}
             isSelected={selectedElementIds.includes(element.id)}
             isEditing={editingElementId === element.id}
+            remote={remoteUse?.get(element.id)}
             isCropping={cropMode?.elementId === element.id}
             cropState={cropMode?.elementId === element.id ? cropMode : null}
             isDragging={draggingRef.current?.elementId === element.id}
@@ -1271,7 +1272,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
   )
 }
 
-function CanvasElement({ element, faded, isSelected, isEditing, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+function CanvasElement({ element, faded, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1309,6 +1310,7 @@ function CanvasElement({ element, faded, isSelected, isEditing, isCropping, crop
   return (
     <div
       ref={outerRef}
+      data-element-id={element.id}
       style={{
         position: 'absolute',
         left: element.x, top: element.y,
@@ -1723,6 +1725,9 @@ function CanvasElement({ element, faded, isSelected, isEditing, isCropping, crop
         </div>
       )}
 
+      {/* Others who have it selected or open (live editing; utils/presence.js) */}
+      {remote && <RemoteUse use={remote} />}
+
       {/* Group badge */}
       {element.groupId && isSelected && (
         <div style={{
@@ -2041,6 +2046,32 @@ function TimelineRenderer({ element }) {
         </div>
       )}
     </div>
+  )
+}
+
+// An outline in the color of whoever else has an element selected, and a tag
+// with their names, or who's editing it
+function RemoteUse({ use }) {
+  const lead = use.editing || use.people[0]
+  const names = use.people.map(p => p.self ? 'You (other tab)' : p.name)
+  const label = use.editing
+    ? (use.editing.self ? 'You’re editing in another tab' : `${use.editing.name} is editing`)
+    : names.join(', ')
+  return (
+    <>
+      <div aria-hidden style={{
+        position: 'absolute', inset: -3, border: `2px ${use.editing ? 'solid' : 'dashed'} ${lead.color}`,
+        borderRadius: 3, pointerEvents: 'none', zIndex: 102,
+      }} />
+      <div style={{
+        position: 'absolute', bottom: -20, left: -3, zIndex: 102, pointerEvents: 'none',
+        background: lead.color, color: '#111', fontSize: 10, fontWeight: 600, fontFamily: 'sans-serif',
+        padding: '1px 6px', borderRadius: 3, whiteSpace: 'nowrap', userSelect: 'none', maxWidth: 240,
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {label}
+      </div>
+    </>
   )
 }
 

@@ -201,6 +201,20 @@ describe('live editing', { skip }, () => {
     b.connection.disconnect()
   })
 
+  it('tells each editor where the others are, until they leave', async () => {
+    const a = await connect(owner, deck)
+    const b = await connect(editor, deck)
+    const state = { user: 'u-owner', slide: 's1', selected: ['e1'], editing: 'e1' }
+    a.provider.awareness.setLocalState(state)
+    const seen = () => [...b.provider.awareness.getStates().values()].find(s => s.user === 'u-owner')
+    await until(() => seen()?.editing === 'e1', 'the other editor to see what the first is doing')
+    assert.deepEqual(seen(), state)
+    // gone when they disconnect, which lets go of what they had open
+    a.provider.destroy()
+    await until(() => !seen(), 'the first editor to be gone')
+    b.provider.destroy()
+  })
+
   it('disconnects an editor the owner removes, for good', async () => {
     const other = await t.createDeck(owner, 'Short collaboration', { slides: slides() })
     await t.invite(owner, other, editor)

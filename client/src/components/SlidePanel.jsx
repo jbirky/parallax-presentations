@@ -148,7 +148,21 @@ function buildColumns(slides) {
   return sortedKeys.map(k => ({ colNum: k, items: colMap[k] }))
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0 }) {
+// Who else is on a slide, when editing live: a dot in each person's color
+function PresenceDots({ people }) {
+  if (!people?.length) return null
+  const names = people.map(p => p.self ? 'You, in another tab' : p.name).join(', ')
+  return (
+    <div role="img" aria-label={`Here: ${names}`} title={names}
+      style={{ position: 'absolute', bottom: 4, right: 4, zIndex: 11, display: 'flex', gap: 2, pointerEvents: 'auto' }}>
+      {people.slice(0, 4).map(p => (
+        <span key={p.userId} style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, boxShadow: '0 0 0 1.5px rgba(0,0,0,0.6)' }} />
+      ))}
+    </div>
+  )
+}
+
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -296,6 +310,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
               )}
               <span className="slide-number">{index + 1}</span>
               <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />
+              <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
               )}
@@ -437,6 +452,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
                   <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />
+                  <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
                   )}
