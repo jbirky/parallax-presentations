@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { ArrowLeft, Check } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
+import { safeHtml } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
 
 const THUMB_W = 160
@@ -43,14 +44,14 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: el.content || '' }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
               )}
               {el.type === 'image' && (
                 <img src={el.src} alt="" style={{ width: '100%', height: '100%', objectFit: el.objectFit || 'contain', display: 'block' }} draggable={false} />
               )}
               {el.type === 'shape' && (
                 <div style={{ width: '100%', height: '100%', position: 'relative', opacity: el.opacity ?? 1 }}
-                  dangerouslySetInnerHTML={{ __html: shapeSvgString(el) }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(shapeSvgString(el)) }} />
               )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>

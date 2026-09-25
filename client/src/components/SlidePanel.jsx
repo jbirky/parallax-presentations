@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
+import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
@@ -51,7 +52,7 @@ function SlideThumbnail({ slide, slideW, slideH }) {
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: el.content || '' }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
               )}
               {el.type === 'image' && (() => {
                 const imgFilter = [
@@ -85,10 +86,10 @@ function SlideThumbnail({ slide, slideW, slideH }) {
               })()}
               {el.type === 'shape' && (
                 <div style={{ width: '100%', height: '100%', position: 'relative', opacity: el.opacity ?? 1 }}
-                  dangerouslySetInnerHTML={{ __html: shapeSvgString(el) }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(shapeSvgString(el)) }} />
               )}
               {el.type === 'tikz' && (
-                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(el) }} />
+                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(el)) }} />
               )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>

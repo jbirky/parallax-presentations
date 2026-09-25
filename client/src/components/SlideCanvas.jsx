@@ -40,6 +40,7 @@ import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
+import { safeHtml, safeSvg } from '../utils/safeHtml'
 
 function highlightCode(code, language) {
   try {
@@ -1396,7 +1397,7 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
           }}
-          dangerouslySetInnerHTML={{ __html: element.content || '' }}
+          dangerouslySetInnerHTML={{ __html: safeHtml(element.content) }}
         />
       )}
       {element.type === 'text' && isEditing && (
@@ -1558,7 +1559,7 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
       )}
       {element.type === 'tikz' && (
         <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-          dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(element) }} />
+          dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(element)) }} />
       )}
       {element.type === 'markdown' && (
         <MarkdownRenderer element={element} />
@@ -1931,7 +1932,7 @@ function markdownToHtml(md) {
 }
 
 function MarkdownRenderer({ element }) {
-  const html = markdownToHtml(element.content || '')
+  const html = safeHtml(markdownToHtml(element.content || ''))
   return (
     <div
       style={{ width: '100%', height: '100%', overflow: 'auto', padding: '8px 12px', boxSizing: 'border-box', color: 'white', fontSize: '18px', lineHeight: 1.5 }}
