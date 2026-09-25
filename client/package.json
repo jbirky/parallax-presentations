@@ -30,7 +30,7 @@
     "@tiptap/starter-kit": "^2.6.6",
     "dompurify": "^3.4.16",
     "highlight.js": "^11.11.1",
-    "katex": "^0.16.40",
+    "katex": "^0.18.7",
     "lucide-react": "^0.441.0",
     "pptxgenjs": "^4.0.1",
     "react": "^18.3.1",
