@@ -51,7 +51,7 @@ describe('offline HTML', () => {
     const html = await generateOfflineHTML(generateRevealHTML(inkedPresentation(deck, set)))
     expect(html).toContain('<path d="M 1 2 L 3 4"')
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1])
-    expect(scripts.length).toBeGreaterThanOrEqual(6)
+    expect(scripts.length).toBeGreaterThanOrEqual(5)
     const broken = scripts.filter(code => { try { new vm.Script(code); return false } catch { return true } })
     expect(broken.map(code => code.slice(0, 80))).toEqual([])
   })

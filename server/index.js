@@ -730,7 +730,9 @@ function generateRevealHTML(presentation, opts = {}) {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
           ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${sanitizeCSSValue(el.shadowColor)||'rgba(0,0,0,0.5)'};` : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+        // The rotate property, not transform, so that fragment transitions and
+        // hover styles leave the rotation alone
+        const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''

@@ -133,7 +133,9 @@ export function generateRevealHTML(presentation, opts = {}) {
           ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
           : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+        // The rotate property, not transform, so that fragment, entry and
+        // auto-animate transitions and hover styles leave the rotation alone
+        const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
         const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
@@ -395,7 +397,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const dyAttr = textDy ? ` dy="${textDy}"` : ''
             svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
           }
-          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
+          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `rotate:${el.rotation}deg;` : ''}`
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
         }
         if (el.type === 'drawing') {
@@ -654,7 +656,6 @@ ${slidesHtml}
   <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
   <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
-  <script src="${libUrl('gsap', 'dist/gsap.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = '${presentation.transition || 'slide'}';
@@ -668,6 +669,7 @@ ${slidesHtml}
       maxScale: 10,
       center: false,
       transition: _isGlobalCustom ? 'none' : _globalTransition,
+      autoAnimateStyles: ['opacity', 'color', 'background-color', 'padding', 'font-size', 'line-height', 'letter-spacing', 'border-width', 'border-color', 'border-radius', 'outline', 'outline-offset', 'rotate'],
       plugins: [ RevealNotes, RevealHighlight ]
     });
     Reveal.on('ready', function() {
@@ -694,30 +696,39 @@ ${slidesHtml}
       });
     });
 
-    // ── GSAP element entry animations ─────────────────────────────────────────
-    var GSAP_PRESETS = {
-      fadeIn:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0 },                              { opacity: 1,            duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity' }); },
-      fadeUp:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, y: 48 },                       { opacity: 1, y: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeDown:   function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, y: -48 },                      { opacity: 1, y: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeLeft:   function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, x: 48 },                       { opacity: 1, x: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeRight:  function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, x: -48 },                      { opacity: 1, x: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      zoomIn:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, scale: 0.7 },                  { opacity: 1, scale: 1,  duration: dur, delay: delay, ease: 'back.out(1.4)', clearProps: 'opacity,transform' }); },
-      zoomOut:    function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, scale: 1.3 },                  { opacity: 1, scale: 1,  duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
-      slideUp:    function(el, dur, delay) { gsap.fromTo(el, { y: 560 },                                  { y: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideDown:  function(el, dur, delay) { gsap.fromTo(el, { y: -560 },                                 { y: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideLeft:  function(el, dur, delay) { gsap.fromTo(el, { x: 980 },                                  { x: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideRight: function(el, dur, delay) { gsap.fromTo(el, { x: -980 },                                 { x: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      flipX:      function(el, dur, delay) { gsap.fromTo(el, { rotationX: 90, opacity: 0, transformPerspective: 600 }, { rotationX: 0, opacity: 1, duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
-      flipY:      function(el, dur, delay) { gsap.fromTo(el, { rotationY: 90, opacity: 0, transformPerspective: 600 }, { rotationY: 0, opacity: 1, duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
+    // ── Element entry animations ──────────────────────────────────────────────
+    // Web Animations on translate, scale and opacity, from each preset's start
+    // to the element's own style: its rotation, and anything else set on it,
+    // stays as it is, and nothing is left on the element afterwards.
+    var OUT2 = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', OUT3 = 'cubic-bezier(0.215, 0.61, 0.355, 1)', BACK = 'cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    var ENTRY_PRESETS = {
+      fadeIn:     [OUT2, { opacity: 0 }],
+      fadeUp:     [OUT3, { opacity: 0, translate: '0 48px' }],
+      fadeDown:   [OUT3, { opacity: 0, translate: '0 -48px' }],
+      fadeLeft:   [OUT3, { opacity: 0, translate: '48px 0' }],
+      fadeRight:  [OUT3, { opacity: 0, translate: '-48px 0' }],
+      zoomIn:     [BACK, { opacity: 0, scale: '0.7' }],
+      zoomOut:    [OUT2, { opacity: 0, scale: '1.3' }],
+      slideUp:    [OUT3, { translate: '0 560px' }],
+      slideDown:  [OUT3, { translate: '0 -560px' }],
+      slideLeft:  [OUT3, { translate: '980px 0' }],
+      slideRight: [OUT3, { translate: '-980px 0' }],
+      flipX:      [OUT2, { opacity: 0, transform: 'perspective(600px) rotateX(90deg)' }, { transform: 'perspective(600px) rotateX(0deg)' }],
+      flipY:      [OUT2, { opacity: 0, transform: 'perspective(600px) rotateY(90deg)' }, { transform: 'perspective(600px) rotateY(0deg)' }],
     };
     function runSlideAnimations(slide) {
       if (!slide) return;
       slide.querySelectorAll('[data-gsap-enter]').forEach(function(el) {
-        var type     = el.getAttribute('data-gsap-enter');
-        var delay    = parseFloat(el.getAttribute('data-gsap-delay')    || 0)   / 1000;
-        var duration = parseFloat(el.getAttribute('data-gsap-duration') || 600) / 1000;
-        var fn = GSAP_PRESETS[type];
-        if (fn) fn(el, duration, delay);
+        var preset = ENTRY_PRESETS[el.getAttribute('data-gsap-enter')];
+        if (!preset || !el.animate) return;
+        var from = Object.assign({ offset: 0 }, preset[1]);
+        if (el._entry) el._entry.cancel();
+        el._entry = el.animate(preset[2] ? [from, preset[2]] : [from], {
+          duration: parseFloat(el.getAttribute('data-gsap-duration') || 600),
+          delay: parseFloat(el.getAttribute('data-gsap-delay') || 0),
+          easing: preset[0],
+          fill: 'backwards',
+        });
       });
     }
     Reveal.on('ready',        function(e) { runSlideAnimations(e.currentSlide); });

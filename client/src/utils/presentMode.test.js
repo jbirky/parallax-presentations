@@ -627,7 +627,6 @@ describe('Reveal.js initialization', () => {
     expect(srcs.some(s => s.includes('notes'))).toBe(true)
     expect(srcs.some(s => s.includes('highlight'))).toBe(true)
     expect(srcs.some(s => s.includes('katex'))).toBe(true)
-    expect(srcs.some(s => s.includes('gsap'))).toBe(true)
   })
 
   it('configures correct width/height/margin', () => {
@@ -702,7 +701,8 @@ describe('element rendering', () => {
     })
     const doc = parseHTML(generateRevealHTML(pres))
     const el = doc.querySelector('.reveal .slides section div[style]')
-    expect(el.getAttribute('style')).toContain('rotate(45deg)')
+    expect(el.getAttribute('style')).toContain('rotate:45deg;')
+    expect(el.getAttribute('style')).not.toContain('transform')
   })
 
   it('applies box-shadow to elements', () => {
