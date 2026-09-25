@@ -141,6 +141,19 @@ export function renewElementIds(elements, makeId) {
   return remapElementRefs(renewed, ids)
 }
 
+// `slides` under new ids from `makeId`, and their elements too, with slide
+// links and show/hide actions following them, for slides copied into a deck
+// (imported, forked, or made from a template)
+export function renewSlideIds(slides, makeId) {
+  const ids = new Map()
+  const renewed = (slides || []).map(slide => {
+    const id = makeId()
+    if (slide.id) ids.set(slide.id, id)
+    return { ...slide, id, elements: renewElementIds(slide.elements, makeId) }
+  })
+  return remapSlideLinks(renewed, ids)
+}
+
 // How many elements link to the slide with `slideId`, by click action or by a
 // link in their text
 export function countLinksTo(slides, slideId) {
@@ -234,6 +247,12 @@ function firstLine(html) {
     .split('\n').map(line => line.trim()).find(Boolean) || ''
 }
 const shorten = (text, max) => text.length > max ? `${text.slice(0, max - 1)}…` : text
+
+// A copy of `el` under `id`, for pasting and duplicating: a click on it that
+// shows or hides the element itself does so to the copy
+export function copyElement(el, id) {
+  return remapElementRefs([{ ...el, id }], new Map(el?.id ? [[el.id, id]] : []))[0]
+}
 
 // "3 · First line of text" for a slide picker
 export function slideLabel(slide, index) {

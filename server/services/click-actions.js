@@ -144,6 +144,19 @@ function renewElementIds(elements, makeId) {
   return remapElementRefs(renewed, ids)
 }
 
+// `slides` under new ids from `makeId`, and their elements too, with slide
+// links and show/hide actions following them, for slides copied into a deck
+// (imported, forked, or made from a template)
+function renewSlideIds(slides, makeId) {
+  const ids = new Map()
+  const renewed = (slides || []).map(slide => {
+    const id = makeId()
+    if (slide.id) ids.set(slide.id, id)
+    return { ...slide, id, elements: renewElementIds(slide.elements, makeId) }
+  })
+  return remapSlideLinks(renewed, ids)
+}
+
 // How many elements link to the slide with `slideId`, by click action or by a
 // link in their text
 function countLinksTo(slides, slideId) {
@@ -228,4 +241,4 @@ const CLICK_ACTION_SCRIPT = `
       Reveal.on('slidechanged', function(e) { reset(e.currentSlide); });
     })();`
 
-module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }
+module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, renewSlideIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }

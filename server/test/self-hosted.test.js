@@ -57,6 +57,26 @@ describe('the self-hosted version', () => {
     assert.ok((await call('GET', '/api/presentations')).body.some(p => p.id === id))
   })
 
+  it('makes a presentation from a template under new ids, with its links and show/hide following them', async () => {
+    const template = (await call('POST', '/api/templates', { title: 'Menu', slides: [
+      { id: 'menu', elements: [
+        { id: 'go', type: 'text', content: '<p><a href="#/s-end">End</a></p>', clickAction: { type: 'slide', slideId: 'end' } },
+        { id: 'tab', type: 'shape', clickAction: { type: 'visibility', show: ['panel'] } },
+        { id: 'panel', type: 'text', content: '<p>Hi</p>', startHidden: true },
+      ] },
+      { id: 'end', elements: [] },
+    ] })).body
+    const made = (await call('POST', '/api/presentations', { templateId: template.id })).body
+    const [menu, end] = made.slides
+    assert.notEqual(menu.id, 'menu')
+    assert.notEqual(end.id, 'end')
+    const [go, tab, panel] = menu.elements
+    assert.equal(go.content, `<p><a href="#/s-${end.id}">End</a></p>`)
+    assert.deepEqual(go.clickAction, { type: 'slide', slideId: end.id })
+    assert.notEqual(panel.id, 'panel')
+    assert.deepEqual(tab.clickAction, { type: 'visibility', show: [panel.id] })
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

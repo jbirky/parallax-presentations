@@ -37,7 +37,7 @@ const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, visibilityTargets, remapSlideLinks, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
@@ -1646,20 +1646,14 @@ app.post('/api/presentations', async (req, res) => {
       const template = await storage.getTemplate(templateId, req.userId)
       if (template) {
         const cloned = JSON.parse(JSON.stringify(template))
-        // New slide ids, with the template's slide links following them
-        const slideIds = new Map()
-        const slides = (cloned.slides || []).map(s => {
-          const id = uuidv4()
-          if (s.id) slideIds.set(s.id, id)
-          return { ...s, id, elements: renewElementIds(s.elements, uuidv4) }
-        })
         presentation = {
           ...cloned,
           id: uuidv4(),
           title: title || cloned.title || 'Untitled Presentation',
           createdAt: now,
           updatedAt: now,
-          slides: remapSlideLinks(slides, slideIds),
+          // New slide and element ids, with the template's links following them
+          slides: renewSlideIds(cloned.slides, uuidv4),
         }
         // Remove template-specific fields
         delete presentation.isTemplate
@@ -3466,11 +3460,8 @@ app.post('/api/presentations/fork', async (req, res) => {
     delete forkedPres.updatedAt
     delete forkedPres.expiresAt
     forkedPres.title = (forkedPres.title || 'Untitled') + ' (fork)'
-    forkedPres.slides = (forkedPres.slides || []).map(s => ({
-      ...s,
-      id: uuidv4(),
-      elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
-    }))
+    // New slide and element ids, with links and show/hide following them
+    forkedPres.slides = renewSlideIds(forkedPres.slides, uuidv4)
 
     const { expirationDays } = planFor(req.userPlan)
     const expiresAt = IS_CLOUD && expirationDays

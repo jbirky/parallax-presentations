@@ -50,7 +50,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
+import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -1661,8 +1661,7 @@ function draw() {
         e.preventDefault()
       } else if (e.key === 'v' && clipboard) {
         const newEl = {
-          ...clipboard,
-          id: crypto.randomUUID(),
+          ...copyElement(clipboard, crypto.randomUUID()),
           x: Math.min((clipboard.x || 0) + 20, slideW - (clipboard.width || 100)),
           y: Math.min((clipboard.y || 0) + 20, bottomOf(clipboard) - (clipboard.height || 100))
         }
@@ -1676,8 +1675,7 @@ function draw() {
         e.preventDefault()
       } else if (e.key === 'd' && element) {
         const newEl = {
-          ...element,
-          id: crypto.randomUUID(),
+          ...copyElement(element, crypto.randomUUID()),
           x: Math.min((element.x || 0) + 20, slideW - (element.width || 100)),
           y: Math.min((element.y || 0) + 20, bottomOf(element) - (element.height || 100))
         }
@@ -1986,17 +1984,8 @@ function draw() {
     if (!importedSlides.length) return
     const is2D = presentation.slides.some(s => s.column !== undefined)
     // New ids, with links between the imported slides following them
-    const slideIds = new Map()
-    const newSlides = remapSlideLinks(importedSlides.map(slide => {
-      const id = crypto.randomUUID()
-      if (slide.id) slideIds.set(slide.id, id)
-      return {
-        ...slide,
-        id,
-        ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
-        elements: renewElementIds(slide.elements, () => crypto.randomUUID()),
-      }
-    }), slideIds)
+    const newSlides = renewSlideIds(importedSlides, () => crypto.randomUUID())
+      .map(slide => is2D ? { ...slide, column: presentation.slides[currentSlideIndex]?.column ?? 0 } : slide)
     setPresentation(prev => {
       const slides = [...prev.slides]
       slides.splice(currentSlideIndex + 1, 0, ...newSlides)

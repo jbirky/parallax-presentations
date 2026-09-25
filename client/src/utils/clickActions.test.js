@@ -109,6 +109,13 @@ describe('showing and hiding', () => {
     expect(client.remapElementRefs([text('a', { clickAction: { type: 'next' } })], { a: 'b' })[0].clickAction).toEqual({ type: 'next' })
   })
 
+  it('points a copy’s clicks on itself at the copy', () => {
+    const dismiss = text('note', { clickAction: { type: 'visibility', hide: ['note', 'other'] } })
+    expect(client.copyElement(dismiss, 'copy')).toEqual({ ...dismiss, id: 'copy', clickAction: { type: 'visibility', hide: ['copy', 'other'] } })
+    expect(dismiss.clickAction.hide).toEqual(['note', 'other'])
+    expect(client.copyElement(text('a', { clickAction: { type: 'next' } }), 'b')).toEqual(text('b', { clickAction: { type: 'next' } }))
+  })
+
   it('names elements for the show/hide list', () => {
     const labels = client.elementLabels(slide.elements.concat([{ id: 's1', type: 'shape' }, { id: 's2', type: 'shape' }, { id: 'p', type: 'plugin:linear-algebra' }]))
     expect(labels.get('tabA')).toBe('Go')
@@ -238,6 +245,22 @@ describe('slide links under new ids', () => {
     expect(a.elements[2].content).toBe('[back](#/s-new1)')
     expect(b.elements[0].clickAction.slideId).toBe('gone')
     expect(slides[0].elements[1].clickAction.slideId).toBe('old2') // the originals are left alone
+  })
+
+  it('gives slides and their elements new ids, with links and show/hide following them', () => {
+    const deck = [...slides, { elements: [text('t', { clickAction: { type: 'visibility', show: ['p'] } }), text('p', { startHidden: true })] }]
+    let n = 0
+    const [a, b, c] = client.renewSlideIds(deck, () => `n${++n}`)
+    expect([a.id, b.id, c.id]).toEqual(['n1', 'n5', 'n7'])
+    expect(a.elements.map(e => e.id)).toEqual(['n2', 'n3', 'n4'])
+    expect(a.elements[0].content).toBe('<p><a href="#/s-n5">next</a> <a href="#/s-elsewhere">x</a> <a href="#/s-old22">y</a></p>')
+    expect(a.elements[1].clickAction).toEqual({ type: 'slide', slideId: 'n5' })
+    expect(a.elements[2].content).toBe('[back](#/s-n1)')
+    expect(c.elements[0].clickAction).toEqual({ type: 'visibility', show: ['n9'] })
+    expect(slides[0].id).toBe('old1') // the originals are left alone
+    expect(client.renewSlideIds(undefined, () => 'x')).toEqual([])
+    let m = 0
+    expect(server.renewSlideIds(deck, () => `n${++m}`)).toEqual(client.renewSlideIds(deck, (() => { let k = 0; return () => `n${++k}` })()))
   })
 
   it('counts the links to a slide', () => {
