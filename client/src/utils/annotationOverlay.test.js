@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { installAnnotations } from './annotationOverlay'
+
+// Saves what's waiting to be saved while the page is still here, as leaving
+// it does, so no save runs after the test environment is gone
+afterEach(() => window.dispatchEvent(new Event('pagehide')))
 
 const KEY = 'parallax-annotations:p1:set1'
 
