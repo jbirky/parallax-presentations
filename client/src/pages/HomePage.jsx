@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
@@ -52,6 +52,9 @@ function slugify(str) {
 
 export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) {
   const [presentations, setPresentations] = useState([])
+  // The user's own, and those others invited them to edit
+  const own = presentations.filter(p => p.role !== 'editor')
+  const shared = presentations.filter(p => p.role === 'editor')
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
   const slugConsumed = useRef(false)
@@ -275,6 +278,18 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
+  async function handleLeave(e, pres) {
+    e.stopPropagation()
+    if (!confirm(`Leave “${pres.title || 'Untitled'}”? You won't be able to open it again unless ${pres.ownerName || 'the owner'} invites you.`)) return
+    try {
+      const { you } = await api.getCollaborators(pres.id)
+      await api.removeCollaborator(pres.id, you)
+      setPresentations(prev => prev.filter(p => p.id !== pres.id))
+    } catch (err) {
+      console.error('Failed to leave presentation', err)
+    }
+  }
+
   async function handleDeleteTemplate(e, id) {
     e.stopPropagation()
     if (!confirm('Delete this template?')) return
@@ -310,6 +325,81 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     } catch (err) {
       console.error('Failed to create template', err)
     }
+  }
+
+  // A presentation's card; one shared with this user names its owner and can be left
+  function presentationCard(pres) {
+    const bg = getCardBg(pres.thumbnail)
+    const bgProp = isGradientOrImage(pres.thumbnail)
+      ? { background: bg }
+      : { backgroundColor: bg }
+    const shared = pres.role === 'editor'
+
+    return (
+      <div
+        key={pres.id}
+        className="presentation-card"
+        onClick={() => onOpen(pres.id, false, pres.title)}
+      >
+        <div className="card-preview" style={bgProp}>
+          {(!pres.thumbnail || pres.thumbnail.type === 'none') && (
+            <Presentation size={40} />
+          )}
+        </div>
+        <div className="card-info">
+          <h3>{pres.title || 'Untitled'}</h3>
+          <p>{pres.slideCount} slide{pres.slideCount !== 1 ? 's' : ''} &middot; {formatDate(pres.updatedAt)}</p>
+          {shared && pres.ownerName && (
+            <p style={{ fontSize: 11, margin: '2px 0 0' }}>Owned by {pres.ownerName}</p>
+          )}
+          {isCloud && pres.expiresAt && (() => {
+            const days = Math.ceil((new Date(pres.expiresAt) - Date.now()) / 86400000)
+            return (
+              <p style={{ fontSize: 11, color: days <= 7 ? '#ef4444' : '#f59e0b', margin: '2px 0 0' }}>
+                {days <= 0 ? 'Expired' : `Expires in ${days} day${days !== 1 ? 's' : ''}`}
+              </p>
+            )
+          })()}
+        </div>
+        <div className="card-actions">
+          <button
+            className="btn-icon"
+            title="Edit"
+            onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
+          >
+            <Pencil size={14} />
+          </button>
+          {shared ? (
+            <button
+              className="btn-icon"
+              title="Leave"
+              onClick={(e) => handleLeave(e, pres)}
+              style={{ color: 'var(--danger)' }}
+            >
+              <LogOut size={14} />
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn-icon"
+                title="Duplicate"
+                onClick={(e) => handleDuplicate(e, pres.id)}
+              >
+                <Copy size={14} />
+              </button>
+              <button
+                className="btn-icon"
+                title="Delete"
+                onClick={(e) => handleDelete(e, pres.id)}
+                style={{ color: 'var(--danger)' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
   function handleOpenModal() {
@@ -396,71 +486,25 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
               <span>New Presentation</span>
             </div>
 
-            {presentations.length === 0 ? (
+            {own.length === 0 ? (
               <div className="empty-state">
                 <Presentation size={48} />
                 <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No presentations yet</p>
                 <p style={{ fontSize: 14 }}>Create your first presentation to get started</p>
               </div>
             ) : (
-              presentations.map(pres => {
-                const bg = getCardBg(pres.thumbnail)
-                const bgProp = isGradientOrImage(pres.thumbnail)
-                  ? { background: bg }
-                  : { backgroundColor: bg }
-
-                return (
-                  <div
-                    key={pres.id}
-                    className="presentation-card"
-                    onClick={() => onOpen(pres.id, false, pres.title)}
-                  >
-                    <div className="card-preview" style={bgProp}>
-                      {(!pres.thumbnail || pres.thumbnail.type === 'none') && (
-                        <Presentation size={40} />
-                      )}
-                    </div>
-                    <div className="card-info">
-                      <h3>{pres.title || 'Untitled'}</h3>
-                      <p>{pres.slideCount} slide{pres.slideCount !== 1 ? 's' : ''} &middot; {formatDate(pres.updatedAt)}</p>
-                      {isCloud && pres.expiresAt && (() => {
-                        const days = Math.ceil((new Date(pres.expiresAt) - Date.now()) / 86400000)
-                        return (
-                          <p style={{ fontSize: 11, color: days <= 7 ? '#ef4444' : '#f59e0b', margin: '2px 0 0' }}>
-                            {days <= 0 ? 'Expired' : `Expires in ${days} day${days !== 1 ? 's' : ''}`}
-                          </p>
-                        )
-                      })()}
-                    </div>
-                    <div className="card-actions">
-                      <button
-                        className="btn-icon"
-                        title="Edit"
-                        onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        className="btn-icon"
-                        title="Duplicate"
-                        onClick={(e) => handleDuplicate(e, pres.id)}
-                      >
-                        <Copy size={14} />
-                      </button>
-                      <button
-                        className="btn-icon"
-                        title="Delete"
-                        onClick={(e) => handleDelete(e, pres.id)}
-                        style={{ color: 'var(--danger)' }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })
+              own.map(presentationCard)
             )}
           </div>
+        )}
+
+        {shared.length > 0 && (
+          <>
+            <h2 style={{ marginTop: 40 }}>Shared with you</h2>
+            <div className="presentations-grid">
+              {shared.map(presentationCard)}
+            </div>
+          </>
         )}
 
         {/* My Templates Section */}

@@ -364,6 +364,26 @@ describe('the editor’s deck', () => {
     expect(store.get().slides[0].elements.map(e => e.id)).toEqual(['id2', 'id3'])
   })
 
+  it('starts over from a deck, with no undo', () => {
+    const store = createDeckStore()
+    store.set(deck())
+    store.set(prev => editElement(prev, 'a', { x: 5 }))
+    const first = store.doc
+    const fresh = deck({ title: 'Their version' })
+    expect(store.reset(fresh)).toBe(fresh)
+    expect(store.doc).not.toBe(first)
+    expect(store.canUndo()).toBe(false)
+    expect(readDeck(store.doc).title).toBe('Their version')
+  })
+
+  it('leaves the server’s version number out of the document', () => {
+    const store = createDeckStore()
+    store.set(deck({ version: 3 }))
+    expect(readDeck(store.doc).version).toBeUndefined()
+    store.set(prev => editElement(prev, 'a', { x: 5 }))
+    expect(store.undo().version).toBe(3)
+  })
+
   it('reopens after being closed', () => {
     const store = createDeckStore()
     store.set(deck())

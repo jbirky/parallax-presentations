@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
 import { api } from '../utils/api'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
@@ -46,6 +46,7 @@ import {
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
+import EditorsModal from '../components/EditorsModal'
 import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
@@ -248,7 +249,7 @@ const migrateSlide = (slide) => {
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
-  const { deck: presentation, setDeck: setPresentation, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
+  const { deck: presentation, setDeck: setPresentation, resetDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -291,6 +292,15 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showFindReplace, setShowFindReplace] = useState(false)
   const [showTransitionPreview, setShowTransitionPreview] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
+  // Who edits this presentation (cloud): { role, you, people, inviteToken }.
+  // An editor doesn't get the owner's share, live, GitHub and Zenodo menus.
+  const [access, setAccess] = useState(null)
+  const isEditor = access?.role === 'editor'
+  const [showEditorsModal, setShowEditorsModal] = useState(false)
+  // Autosave stopped: { kind: 'conflict', version } when someone else saved
+  // first, { kind: 'gone' } when the presentation is gone or this user was
+  // removed from it
+  const [saveProblem, setSaveProblem] = useState(null)
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -452,6 +462,13 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       }
     }).catch(() => {})
   }, [])
+
+  // Load who edits it
+  useEffect(() => {
+    if (presentationId && !guest && isCloud && !isTemplate) {
+      api.getCollaborators(presentationId).then(setAccess).catch(() => {})
+    }
+  }, [presentationId])
 
   // Load share status
   useEffect(() => {
@@ -627,9 +644,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
   }, [presentation, isTemplate])
 
-  // Auto-save with debounce
+  // Auto-save with debounce; stopped while a save was refused
   useEffect(() => {
-    if (!presentation || isFirstLoad.current) return
+    if (!presentation || isFirstLoad.current || saveProblem) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
     setSaveStatus('saving')
@@ -643,13 +660,29 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       } catch (err) {
         console.error('Auto-save failed', err)
         setSaveStatus('')
+        if (err.code === 'conflict') setSaveProblem({ kind: 'conflict', version: err.version })
+        else if (err.status === 404) setSaveProblem({ kind: 'gone' })
       }
     }, 1500)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [presentation])
+  }, [presentation, saveProblem])
+
+  // After a refused save: start over from what's saved, dropping this tab's
+  // changes since, or save this tab's copy over it
+  const loadSavedVersion = async () => {
+    if (editingElementId) stopEditingElement()
+    const saved = await api.getPresentation(presentationId)
+    resetDeck({ ...saved, slides: (saved.slides || []).map(migrateSlide) })
+    setCurrentSlideIndex(i => Math.max(0, Math.min(i, (saved.slides?.length || 1) - 1)))
+    setSaveProblem(null)
+  }
+  const saveOverVersion = () => {
+    api.saveOverVersion(presentationId, saveProblem.version)
+    setSaveProblem(null)
+  }
 
   const updateCurrentSlide = useCallback((updates) => {
     setPresentation(prev => {
@@ -2004,13 +2037,15 @@ function draw() {
               >
                 {[
                   { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+                  { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
                   { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
                   { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
                   { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
                   { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
                   { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
                   { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-                ].filter(item => item.label !== 'Share link' || (isCloud && !guest))
+                ].filter(item => item.label !== 'Share link' || (isCloud && !guest && !isEditor))
+                  .filter(item => item.label !== 'Editors…' || (isCloud && !guest && !isTemplate))
                   .filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
                   .map(({ label, icon, action }) => (
                   <button
@@ -2064,7 +2099,7 @@ function draw() {
             Data
           </button>
 
-          {!guest && (
+          {!guest && !isEditor && (
             <div style={{ position: 'relative' }}>
               <button
                 className="btn btn-secondary"
@@ -2217,7 +2252,7 @@ function draw() {
                       </button>
                     </>
                   )}
-                  {isCloud && !guest && (
+                  {isCloud && !guest && !isEditor && (
                     <>
                       <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
                       <button
@@ -3957,6 +3992,33 @@ function draw() {
       )}
 
       {/* Share Modal */}
+      {saveProblem && (
+        <div role="alert" style={{ position: 'fixed', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(640px, calc(100vw - 32px))', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 8, background: '#3b2a12', border: '1px solid #b45309', color: '#fde68a', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {saveProblem.kind === 'conflict' ? (
+            <>
+              <span style={{ flex: '1 1 260px' }}>Someone else saved this presentation after you opened it, so your latest changes aren't saved.</span>
+              <button className="btn btn-secondary" onClick={loadSavedVersion}>Load their version</button>
+              <button className="btn btn-secondary" onClick={saveOverVersion} title="Your copy replaces what they saved">Keep mine</button>
+            </>
+          ) : (
+            <>
+              <span style={{ flex: '1 1 260px' }}>This presentation was deleted, or you were removed as an editor. Your changes aren't saved.</span>
+              <button className="btn btn-secondary" onClick={onGoHome}>Back to presentations</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {showEditorsModal && access && (
+        <EditorsModal
+          presentationId={presentationId}
+          access={access}
+          onChange={setAccess}
+          onClose={() => setShowEditorsModal(false)}
+          onLeft={() => { setShowEditorsModal(false); onGoHome() }}
+        />
+      )}
+
       {showShareModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowShareModal(false) }}>

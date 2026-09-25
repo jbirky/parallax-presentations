@@ -5,10 +5,14 @@ import EditorPage from './pages/EditorPage'
 import LandingPage from './pages/LandingPage'
 import GuestPage from './pages/GuestPage'
 import AdminPage from './pages/AdminPage'
+import InvitePage from './pages/InvitePage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
 
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
+
+// /invite/<token>: a presentation's invite link (cloud only)
+const inviteToken = () => (isCloud && window.location.pathname.match(/^\/invite\/([0-9a-f-]{36})$/i)?.[1]) || null
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
@@ -20,7 +24,9 @@ function TokenBridge() {
   return null
 }
 
+// Signing in from an invite link comes back to it
 function SignInPage() {
+  const invited = !!inviteToken()
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -33,10 +39,10 @@ function SignInPage() {
           <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax
         </h1>
         <p style={{ color: 'var(--text-muted, #888)', marginTop: 8, fontSize: 15 }}>
-          Sign in to create and manage presentations
+          {invited ? 'Sign in to accept the invitation' : 'Sign in to create and manage presentations'}
         </p>
       </div>
-      <SignIn routing="hash" afterSignInUrl="/dashboard" appearance={{
+      <SignIn routing="hash" afterSignInUrl={invited ? window.location.pathname : '/dashboard'} afterSignUpUrl={invited ? window.location.pathname : undefined} appearance={{
         variables: { colorPrimary: '#6366f1', colorBackground: '#2a2a3e', colorText: '#f0f0f0', colorInputBackground: '#3a3a52', colorInputText: '#f0f0f0' },
         elements: { socialButtonsBlockButton: { backgroundColor: '#ffffff', color: '#1a1a2e', borderColor: '#e0e0e0' } },
       }} />
@@ -171,6 +177,16 @@ export default function App() {
         <GuestPage />
         {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
       </>
+    )
+  }
+
+  const invite = page === 'home' ? inviteToken() : null
+  if (invite) {
+    return (
+      <AuthGate>
+        <InvitePage token={invite} onOpen={(id, title) => openEditor(id, false, title)} />
+        {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
+      </AuthGate>
     )
   }
 

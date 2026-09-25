@@ -32,13 +32,14 @@ async function storageUsedBytes(storage, userId) {
 
 // Returns { status, error } when the upload can't be taken, or null.
 // `messages` words the refusals: { fileTooBig(limit), storageFull(limit) }.
-async function checkUpload(storage, req, { maxFileBytes, storageBytes }, messages) {
+// The file goes on userId's storage, the uploader's own unless given.
+async function checkUpload(storage, req, { maxFileBytes, storageBytes }, messages, userId = req.userId) {
   const length = Number(req.get('content-length'))
   if (!length) return { status: 411, error: 'Upload size is required' }
   if (maxFileBytes && length > maxFileBytes + MULTIPART_OVERHEAD) {
     return { status: 413, error: messages.fileTooBig(formatSize(maxFileBytes)) }
   }
-  if (storageBytes && await storageUsedBytes(storage, req.userId) + length > storageBytes + MULTIPART_OVERHEAD) {
+  if (storageBytes && await storageUsedBytes(storage, userId) + length > storageBytes + MULTIPART_OVERHEAD) {
     return { status: 413, error: messages.storageFull(formatSize(storageBytes)) }
   }
   return null
@@ -60,18 +61,25 @@ function refuseUpload(req, res, { status, error }) {
 }
 
 // Upload routes for signed-in users: refuses a file that would take them over
-// their plan's storage. Only Postgres storage (cloud) has plans and usage.
+// their plan's storage. Only Postgres storage (cloud) has plans and usage. An
+// upload to a presentation someone else owns (req.deck, from deckAccess) goes
+// on the owner's storage, under the owner's plan.
 function uploadQuota(storage) {
   return async (req, res, next) => {
     if (!storage.query || !req.userId || req.isGuest) return next()
-    const plan = planFor(req.userPlan)
+    const forOwner = req.deck && req.deck.role !== 'owner'
+    const plan = planFor(forOwner ? req.deck.ownerPlan : req.userPlan)
+    const messages = forOwner ? {
+      fileTooBig: limit => `Files are limited to ${limit} each on the owner's ${plan.name} plan.`,
+      storageFull: limit => `The owner's storage is full (${limit} on the ${plan.name} plan). Ask them to free some space.`,
+    } : {
+      fileTooBig: limit => `Files are limited to ${limit} each on the ${plan.name} plan.`,
+      storageFull: limit => plan.id === 'free'
+        ? `Your storage is full (${limit} on the ${plan.name} plan). Delete some files or upgrade to upload more.`
+        : `Your storage is full (${limit} on the ${plan.name} plan). Delete some files to upload more.`,
+    }
     try {
-      const problem = await checkUpload(storage, req, plan, {
-        fileTooBig: limit => `Files are limited to ${limit} each on the ${plan.name} plan.`,
-        storageFull: limit => plan.id === 'free'
-          ? `Your storage is full (${limit} on the ${plan.name} plan). Delete some files or upgrade to upload more.`
-          : `Your storage is full (${limit} on the ${plan.name} plan). Delete some files to upload more.`,
-      })
+      const problem = await checkUpload(storage, req, plan, messages, forOwner ? req.deck.ownerId : req.userId)
       if (problem) return refuseUpload(req, res, problem)
       next()
     } catch (err) {

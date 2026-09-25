@@ -33,6 +33,8 @@ const {
 } = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
+const collaboration = require('./services/collaboration')
+const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
 const { clickActionAttrs, slideIdAttr, visibilityTargets, remapSlideLinks, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
@@ -71,6 +73,8 @@ const multerStorage = multer.diskStorage({
 const upload = multer({ storage: multerStorage, limits: { fileSize: 500 * 1024 * 1024 } }) // 500MB limit for video
 // Plan storage limits, checked before multer writes the file
 const storageQuota = uploadQuota(storage)
+// Owner or editor of the presentation in the route's :id (or another param)
+const deckAccess = (param = 'id') => deckAccessFor(storage, param)
 
 app.use(helmetConfig())
 app.use(cors(corsConfig()))
@@ -147,6 +151,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Code, LaTeX & Markdown', link: 'tutorials/code-math' },
       { text: 'Diagram Editor', link: 'tutorials/diagrams' },
       { text: 'Drawing on Slides', link: 'tutorials/drawing-on-slides' },
+      { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
       { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
@@ -1557,7 +1562,11 @@ function escapeHtml(str) {
 app.get('/api/presentations', async (req, res) => {
   try {
     const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
-    res.json(await storage.listPresentations(req.userId, { excludeExpired }))
+    const own = await storage.listPresentations(req.userId, { excludeExpired })
+    const shared = IS_CLOUD && storage.query && !req.isGuest
+      ? await collaboration.listSharedPresentations(storage, req.userId)
+      : []
+    res.json([...own, ...shared])
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -1716,9 +1725,9 @@ app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req
 })
 
 // GET /api/presentations/:id - get full presentation
-app.get('/api/presentations/:id', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     res.json(presentation)
   } catch (err) {
@@ -1726,11 +1735,15 @@ app.get('/api/presentations/:id', requireValidId(), async (req, res) => {
   }
 })
 
-// PUT /api/presentations/:id - update
-app.put('/api/presentations/:id', requireValidId(), async (req, res) => {
+// PUT /api/presentations/:id - update. A body with the version it was made
+// from is refused (409) when someone has saved a newer one since.
+app.put('/api/presentations/:id', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const updated = await storage.updatePresentation(req.params.id, req.body, req.userId)
+    const updated = await storage.updatePresentation(req.params.id, req.body, req.deck.ownerId, { baseVersion: req.body?.version })
     if (!updated) return res.status(404).json({ error: 'Not found' })
+    if (updated.conflict) {
+      return res.status(409).json({ error: 'conflict', message: 'Someone else saved this presentation since your copy was loaded.', version: updated.version })
+    }
     res.json(updated)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1738,9 +1751,9 @@ app.put('/api/presentations/:id', requireValidId(), async (req, res) => {
 })
 
 // GET /api/presentations/:id/uploads - list uploaded files
-app.get('/api/presentations/:id/uploads', async (req, res) => {
+app.get('/api/presentations/:id/uploads', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const { rows } = await storage.query(
       'SELECT id, filename, content_type, size_bytes, created_at FROM uploads WHERE presentation_id = $1 ORDER BY created_at DESC',
@@ -1899,14 +1912,15 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
 })
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
-app.post('/api/presentations/:pid/datasets', async (req, res) => {
+// A presentation's datasets are its owner's.
+app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   const { pid } = req.params
   const { datasetId, alias } = req.body
   if (!datasetId) return res.status(400).json({ error: 'datasetId is required' })
   try {
-    const pres = await storage.getPresentation(pid, req.userId)
+    const pres = await storage.getPresentation(pid, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Presentation not found' })
-    const ds = await storage.getDataset(datasetId, req.userId)
+    const ds = await storage.getDataset(datasetId, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     await storage.linkDatasetToPresentation(pid, datasetId, alias)
     res.json({ success: true })
@@ -1914,7 +1928,7 @@ app.post('/api/presentations/:pid/datasets', async (req, res) => {
 })
 
 // DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
-app.delete('/api/presentations/:pid/datasets/:did', async (req, res) => {
+app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
     res.json({ success: true })
@@ -1922,16 +1936,16 @@ app.delete('/api/presentations/:pid/datasets/:did', async (req, res) => {
 })
 
 // GET /api/presentations/:pid/datasets — list datasets linked to a presentation
-app.get('/api/presentations/:pid/datasets', async (req, res) => {
+app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     res.json(await storage.getPresentationDatasets(req.params.pid))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
-app.get('/api/presentations/:pid/datasets/:did/data', async (req, res) => {
+app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.did, req.userId)
+    const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
     const opts = {}
@@ -2120,10 +2134,10 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
@@ -2135,7 +2149,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, stora
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: req.params.id, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
+        presentationId: req.params.id, userId: req.deck.ownerId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -2146,9 +2160,9 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, stora
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
-  const pres = await storage.getPresentation(req.params.id, req.userId)
+  const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
   if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
   const tmpDir = path.join(os.tmpdir(), uuidv4())
   try {
@@ -2180,7 +2194,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
       const urls = []
       for (const f of pngFiles) {
         const result = await r2Upload(path.join(tmpDir, f), f, 'image/png', {
-          presentationId: req.params.id, userId: req.userId, storage,
+          presentationId: req.params.id, userId: req.deck.ownerId, storage,
         })
         urls.push(result.url)
       }
@@ -2204,9 +2218,9 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
 })
 
 // GET /api/presentations/:id/export - download HTML
-app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     const html = generateRevealHTML(presentation)
     const filename = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.html`
@@ -2219,9 +2233,9 @@ app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
 })
 
 // GET /api/presentations/:id/present - serve in browser
-app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     const html = localizeLibraries(generateRevealHTML(presentation))
     res.setHeader('Content-Type', 'text/html')
@@ -2237,7 +2251,8 @@ app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => 
 // editor has no sign-in, so anyone who could open a link could already open
 // every presentation; and at localhost, nobody else can open one anyway.
 if (!IS_CLOUD) {
-  app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live'],
+  app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
+    '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2274,6 +2289,77 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
 })
 
 // GET /share/:token - public view of shared presentation
+// --- Editing with others (cloud only; see services/collaboration.js) ---
+
+// GET /api/presentations/:id/collaborators - the owner and editors, the
+// caller's role and id, and for the owner, the invite link's token
+app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), async (req, res) => {
+  try {
+    const people = await collaboration.listCollaborators(storage, req.params.id)
+    const inviteToken = req.deck.role === 'owner' ? await collaboration.getInviteToken(storage, req.params.id) : null
+    res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/presentations/:id/invite - turn the invite link on, with a new
+// token; a link given out before stops working
+app.post('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
+  try {
+    res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, true) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/presentations/:id/invite - turn the invite link off
+app.delete('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
+  try {
+    res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, false) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/presentations/:id/collaborators/:userId - the owner removes an
+// editor, or an editor leaves
+app.delete('/api/presentations/:id/collaborators/:userId', requireValidId(), requireValidId('userId'), deckAccess(), async (req, res) => {
+  if (req.deck.role !== 'owner' && req.params.userId !== req.userId) {
+    return res.status(403).json({ error: 'Only the owner can remove other editors' })
+  }
+  try {
+    if (!(await collaboration.removeCollaborator(storage, req.params.id, req.params.userId))) {
+      return res.status(404).json({ error: 'Not an editor of this presentation' })
+    }
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/invites/:token - the presentation an invite link is for
+app.get('/api/invites/:token', requireValidId('token'), async (req, res) => {
+  try {
+    const invite = await collaboration.describeInvite(storage, req.params.token, req.userId)
+    if (!invite) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
+    res.json(invite)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/invites/:token/accept - become an editor of that presentation
+app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res) => {
+  try {
+    const joined = await collaboration.acceptInvite(storage, req.params.token, req.userId)
+    if (!joined) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
+    res.json(joined)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.get('/share/:token', requireValidId('token'), async (req, res) => {
   try {
     const presentation = await storage.getSharedPresentation(req.params.token)
@@ -2489,42 +2575,42 @@ app.get('/live/:id', async (req, res) => {
 // --- Version History ---
 
 // POST /api/presentations/:id/snapshot
-app.post('/api/presentations/:id/snapshot', requireValidId(), async (req, res) => {
+app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const result = await storage.createSnapshot(req.params.id, req.body.name, req.userId)
+    const result = await storage.createSnapshot(req.params.id, req.body.name, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:id/snapshots - list snapshots
-app.get('/api/presentations/:id/snapshots', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/snapshots', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    res.json(await storage.listSnapshots(req.params.id, req.userId))
+    res.json(await storage.listSnapshots(req.params.id, req.deck.ownerId))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
-app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.userId)
+    const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
     res.json(restored)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // DELETE /api/presentations/:id/snapshots/:snapshotId
-app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.userId)
+    await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:id/snapshots/:snapshotId/data - get snapshot data without restoring
-app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.userId)
+    const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!data) return res.status(404).json({ error: 'Snapshot not found' })
     res.json(data)
   } catch (err) { res.status(500).json({ error: err.message }) }
@@ -3387,18 +3473,18 @@ if (IS_CLOUD) {
   })
 }
 
-app.get('/api/presentations/:id/plugins', async (req, res) => {
+app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const plugins = await storage.getPresentationPlugins(req.params.id)
     res.json(plugins)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-app.post('/api/presentations/:id/plugins', async (req, res) => {
+app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const { pluginId, config } = req.body
     await storage.enablePluginForPresentation(req.params.id, pluginId, config)
@@ -3406,9 +3492,9 @@ app.post('/api/presentations/:id/plugins', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/presentations/:id/plugins/:pluginId', async (req, res) => {
+app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     await storage.disablePluginForPresentation(req.params.id, req.params.pluginId)
     res.json({ ok: true })

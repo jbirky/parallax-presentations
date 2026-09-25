@@ -23,7 +23,7 @@
 import * as Y from 'yjs'
 
 // Kept by the server, not part of the document
-export const META_KEYS = ['id', 'createdAt', 'updatedAt', 'expiresAt']
+export const META_KEYS = ['id', 'createdAt', 'updatedAt', 'expiresAt', 'version']
 // Present-mode ink: saved with the deck, but not an undo step
 export const UNTRACKED_KEYS = ['annotationSets']
 
@@ -392,6 +392,13 @@ export function createDeckStore({ onChange = () => {}, makeId } = {}) {
         trimUndo(doc, undoManager)
       }
       return next
+    },
+    // Starts over from deck, in a new document with no undo history, as when
+    // it was first opened
+    reset(next) {
+      deck = withIds(next, makeId)
+      open(deck)
+      return deck
     },
     // Each returns the deck after, or null when there was nothing to undo
     undo() {

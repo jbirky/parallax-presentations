@@ -6,6 +6,10 @@ const { v4: uuidv4 } = require('uuid')
 const StorageInterface = require('./interface')
 const { encrypt, decrypt } = require('../utils/crypto')
 
+// Fields kept in columns, which the data's copies of don't matter to whether
+// a save changed anything
+const UNSAVED_FIELDS = `'{id,createdAt,updatedAt,expiresAt,version}'::text[]`
+
 class PgStorage extends StorageInterface {
   constructor(connectionString) {
     super()
@@ -42,13 +46,13 @@ class PgStorage extends StorageInterface {
 
   async getPresentation(id, userId) {
     const sql = userId
-      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt" FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = false'
-      : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt" FROM presentations WHERE id = $1 AND is_template = false'
+      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt", version FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = false'
+      : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt", expires_at as "expiresAt", version FROM presentations WHERE id = $1 AND is_template = false'
     const params = userId ? [id, userId] : [id]
     const { rows } = await this.query(sql, params)
     if (!rows.length) return null
     const r = rows[0]
-    return { ...r.data, id: r.id, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt || null }
+    return { ...r.data, id: r.id, createdAt: r.createdAt, updatedAt: r.updatedAt, expiresAt: r.expiresAt || null, version: r.version }
   }
 
   async createPresentation(data, userId, expiresAt = null) {
@@ -64,19 +68,36 @@ class PgStorage extends StorageInterface {
     return pres
   }
 
-  async updatePresentation(id, data, userId) {
+  // Saves data over the presentation. With baseVersion, the version the
+  // saver's copy came from, a save from an older version is refused: returns
+  // { conflict: true, version } with the version now. A save that changes
+  // nothing isn't written, so it doesn't bump the version and leave everyone
+  // else's copy out of date.
+  async updatePresentation(id, data, userId, { baseVersion } = {}) {
     const existing = await this.getPresentation(id, userId)
     if (!existing) return null
+    const checked = Number.isInteger(baseVersion)
+    if (checked && baseVersion !== existing.version) return { conflict: true, version: existing.version }
     const now = new Date().toISOString()
-    const merged = { ...existing, ...data, id, updatedAt: now }
-    const sql = userId
-      ? 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4 AND user_id = $5'
-      : 'UPDATE presentations SET title = $1, data = $2, updated_at = $3 WHERE id = $4'
-    const params = userId
-      ? [merged.title || 'Untitled', JSON.stringify(merged), now, id, userId]
-      : [merged.title || 'Untitled', JSON.stringify(merged), now, id]
-    await this.query(sql, params)
-    return merged
+    const { version: _, ...merged } = { ...existing, ...data, id, updatedAt: now }
+    const params = [merged.title || 'Untitled', JSON.stringify(merged), now, id]
+    const where = [
+      'id = $4',
+      `(title IS DISTINCT FROM $1 OR (data - ${UNSAVED_FIELDS}) IS DISTINCT FROM ($2::jsonb - ${UNSAVED_FIELDS}))`,
+    ]
+    if (userId) { params.push(userId); where.push(`user_id = $${params.length}`) }
+    if (checked) { params.push(baseVersion); where.push(`version = $${params.length}`) }
+    const { rows } = await this.query(
+      `UPDATE presentations SET title = $1, data = $2, updated_at = $3, version = version + 1
+        WHERE ${where.join(' AND ')} RETURNING version`,
+      params
+    )
+    if (rows.length) return { ...merged, version: rows[0].version }
+    // Nothing written: either nothing changed, or someone saved in between
+    const current = await this.getPresentation(id, userId)
+    if (!current) return null
+    if (checked && current.version !== baseVersion) return { conflict: true, version: current.version }
+    return current
   }
 
   async deletePresentation(id, userId) {
@@ -95,6 +116,7 @@ class PgStorage extends StorageInterface {
     delete copy.id
     delete copy.createdAt
     delete copy.updatedAt
+    delete copy.version
     const created = await this.createPresentation(copy, userId)
     // The copy's slides use the original's files. Its own upload rows keep
     // those files (and their /uploads/ URLs) when the original is deleted.
@@ -179,7 +201,7 @@ class PgStorage extends StorageInterface {
     const stored = await this.getPresentation(presentationId, userId)
     if (!stored) return null
     // Without present-mode ink, which is private to this presentation
-    const { annotationSets, ...pres } = stored
+    const { annotationSets, version, ...pres } = stored
     const tmplData = { ...JSON.parse(JSON.stringify(pres)), title: (title || pres.title || 'Untitled') + ' (template)' }
     delete tmplData.id
     delete tmplData.createdAt
@@ -242,7 +264,7 @@ class PgStorage extends StorageInterface {
     const stored = await this.getPresentation(presentationId, userId)
     if (!stored) return null
     // A version is the slides; present-mode ink isn't part of it
-    const { annotationSets, ...pres } = stored
+    const { annotationSets, version, ...pres } = stored
     const id = uuidv4()
     const label = name || new Date().toISOString()
     const now = new Date().toISOString()

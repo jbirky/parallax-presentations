@@ -16,6 +16,7 @@ export function useDeckDoc() {
       const next = store.set(update)
       if (next !== prev) setDeckState(next)
     },
+    resetDeck: next => setDeckState(store.reset(next)),
     undo: () => store.undo(),
     redo: () => store.redo(),
     canUndo: () => store.canUndo(),
