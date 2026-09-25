@@ -14,8 +14,9 @@
 //   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none'
 //   el.startHidden = true: hidden each time its slide opens, until a click shows it
 //
-// The server's services/click-actions.js has the same code for the pages it
-// builds; the tests check that the two agree.
+// The server has a copy of everything above "Editor helpers" below, for the
+// pages it builds (share links, GitHub and Zenodo exports), written by
+// scripts/copy-click-actions.js.
 
 export const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 export const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']

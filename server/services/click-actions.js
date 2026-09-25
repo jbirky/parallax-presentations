@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// Click actions and slide links, for pages the server builds (share links,
-// GitHub and Zenodo exports). In a presented deck, an element with a click
-// action goes to a slide, to the next or previous one, opens a web page, or
-// shows and hides elements on its slide, and text can link to a slide as
-// #/s-<slide id>, which reveal.js resolves from each slide section's id. The
-// client's utils/clickActions.js describes the data and has the same code
-// for pages built in the browser; the tests check that the two agree.
+// Written by scripts/copy-click-actions.js from client/src/utils/clickActions.js;
+// edit that, then run the script.
 
+// Click actions and slide links. In a presented deck, an element with a click
+// action goes to a slide, to the next or previous one, opens a web page, or
+// shows and hides elements on its slide (tabs, click-to-reveal), and text can
+// link to a slide. Slides are addressed by id, as #/s-<slide id>: each slide's
+// section has that id, which reveal.js resolves (and shows in the address
+// bar), so links and shared URLs keep their slide when slides move.
+//
+//   el.clickAction = { type: 'slide', slideId } | { type: 'next' } | { type: 'prev' }
+//                  | { type: 'url', url, newTab }
+//                  | { type: 'visibility', show: [elementId], hide: [...], toggle: [...] }
+//   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none'
+//   el.startHidden = true: hidden each time its slide opens, until a click shows it
+//
+// The server has a copy of everything above "Editor helpers" below, for the
+// pages it builds (share links, GitHub and Zenodo exports), written by
+// scripts/copy-click-actions.js.
+
+const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
 const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
 
@@ -19,6 +32,7 @@ function supportsClickAction(el) {
 }
 
 const slideAnchor = id => `s-${id}`
+const slideHref = id => `#/${slideAnchor(id)}`
 
 // Shared decks are served from the app's own origin, so a web page action
 // opens only http(s) and mailto addresses, never script
@@ -130,6 +144,14 @@ function renewElementIds(elements, makeId) {
   return remapElementRefs(renewed, ids)
 }
 
+// How many elements link to the slide with `slideId`, by click action or by a
+// link in their text
+function countLinksTo(slides, slideId) {
+  if (!slideId) return 0
+  const linksTo = el => (el.clickAction?.type === 'slide' && el.clickAction.slideId === slideId)
+    || [...JSON.stringify(el).matchAll(SLIDE_LINK_RE)].some(m => m[1] === slideId)
+  return (slides || []).reduce((n, slide) => n + (slide.elements || []).filter(linksTo).length, 0)
+}
 
 // Page CSS for presented decks. Fragments keep reveal.js's own transitions.
 const CLICK_ACTION_CSS = `
@@ -206,6 +228,4 @@ const CLICK_ACTION_SCRIPT = `
       Reveal.on('slidechanged', function(e) { reset(e.currentSlide); });
     })();`
 
-module.exports = {
-  HOVER_EFFECTS, supportsClickAction, slideAnchor, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT,
-}
+module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }

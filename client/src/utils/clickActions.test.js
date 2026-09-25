@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'module'
+import { readFileSync } from 'fs'
 import { Window } from 'happy-dom'
 
 if (!globalThis.window) globalThis.window = {}
@@ -10,6 +11,7 @@ import { generateRevealHTML, exportPDF } from './generateHTML'
 
 const require = createRequire(import.meta.url)
 const server = require('../../../server/services/click-actions.js')
+const { serverCopy, SOURCE, TARGET } = require('../../../scripts/copy-click-actions.js')
 
 const text = (id, extra = {}) => ({ id, type: 'text', x: 0, y: 0, width: 100, height: 40, zIndex: 1, content: '<p>Go</p>', ...extra })
 
@@ -254,6 +256,10 @@ describe('slide links under new ids', () => {
 })
 
 describe('the server’s copy', () => {
+  it('is up to date (if not, run node scripts/copy-click-actions.js)', () => {
+    expect(readFileSync(TARGET, 'utf8')).toBe(serverCopy(readFileSync(SOURCE, 'utf8')))
+  })
+
   it('writes the same pages', () => {
     const elements = [
       text('a', { clickAction: { type: 'slide', slideId: 's2' } }),
