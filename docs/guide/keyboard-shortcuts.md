@@ -36,6 +36,10 @@ A complete reference for keyboard shortcuts available in Parallax.
 | `S` | Open speaker notes window |
 | `B` | Pause / blackout screen |
 | `?` | Show reveal.js shortcut help overlay |
+| `D` | Open or close the pen toolbar, to draw on slides |
+| `E` | Eraser, while the pen toolbar is open |
+| `Ctrl+Z` | Undo the last stroke, while drawing |
+| `Tab`, then `Enter` / `Space` | Click a clickable element |
 
 ## Text editing (inside a text element)
 
@@ -48,6 +52,7 @@ A complete reference for keyboard shortcuts available in Parallax.
 | `Ctrl+Shift+H` | Highlight |
 | `Ctrl+A` | Select all text in element |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo within text |
+| `Ctrl+K` | Add or edit a link, to a web page or a slide |
 
 ::: tip
 Press `Escape` once to finish editing text while keeping the element selected. Press `Escape` again to fully deselect.

@@ -77,7 +77,7 @@ This configuration is saved once and reused across all your presentations.
 ### Pushing a presentation
 
 1. Click the **GitHub** button, enter an optional commit message, and click **Push to GitHub**.
-2. Parallax exports a self-contained `presentation.html` and the raw `presentation.json` into a folder named after your presentation title.
+2. Parallax exports a self-contained `presentation.html` and the raw `presentation.json` into a folder named after your presentation title. Ink you drew while presenting isn't included.
 3. All images and assets referenced in the presentation are uploaded alongside the HTML into an `assets/` subfolder.
 4. A `README.md` at the repo root is automatically generated with links to all your pushed presentations.
 
