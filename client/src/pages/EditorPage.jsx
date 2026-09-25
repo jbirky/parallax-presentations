@@ -22,6 +22,7 @@ import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
 import { reorderSlides } from '../utils/slideReorder'
+import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
@@ -41,7 +42,7 @@ import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
 import {
   ANNOTATION_MESSAGE, newAnnotationSet, upsertAnnotationSet, recoverAnnotationBackups,
-  recentAnnotationSets, inkedSlideCount, withoutAnnotations,
+  recentAnnotationSets, inkedSlideCount,
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
@@ -246,7 +247,8 @@ const migrateSlide = (slide) => {
 }
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
-  const [presentation, setPresentation] = useState(null)
+  // The deck lives in a Yjs document; setPresentation works like a useState setter
+  const { deck: presentation, setDeck: setPresentation, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -341,12 +343,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const settingContent = useRef(false)
   const saveTimerRef = useRef(null)
   const isFirstLoad = useRef(true)
-  const historyRef = useRef([]) // undo history: array of presentation snapshots
-  const applyingUndoRef = useRef(false)
   const editingElementIdRef = useRef(null)
   const currentSlideIndexRef = useRef(0)
   const selectedElementIdsRef = useRef([])
-  const redoStackRef = useRef([])
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -650,25 +649,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [presentation])
-
-  // Undo history: debounce-push presentation snapshots; skip during undo itself
-  useEffect(() => {
-    if (!presentation || isFirstLoad.current) return
-    if (applyingUndoRef.current) {
-      applyingUndoRef.current = false
-      return
-    }
-    const timer = setTimeout(() => {
-      // Undo leaves present-mode ink alone, so it isn't in the history, and a
-      // change to the ink alone isn't an undo step
-      const snapshot = JSON.parse(JSON.stringify(withoutAnnotations(presentation)))
-      const last = historyRef.current[historyRef.current.length - 1]
-      if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return
-      historyRef.current = [...historyRef.current.slice(-50), snapshot]
-      redoStackRef.current = []
-    }, 500)
-    return () => clearTimeout(timer)
   }, [presentation])
 
   const updateCurrentSlide = useCallback((updates) => {
@@ -1427,16 +1407,11 @@ function draw() {
     })
   }, [currentSlide, updateElement])
 
+  // Undo and redo leave present-mode ink alone, and a change to the ink alone
+  // isn't an undo step (see utils/deckDoc.js)
   const doUndo = useCallback(() => {
-    const hist = historyRef.current
-    if (hist.length < 2) return
-    applyingUndoRef.current = true
-    redoStackRef.current = [...redoStackRef.current.slice(-19), hist[hist.length - 1]]
-    const newHist = hist.slice(0, -1)
-    historyRef.current = newHist
-    const prevState = newHist[newHist.length - 1]
-    setPresentation(cur => cur?.annotationSets ? { ...prevState, annotationSets: cur.annotationSets } : prevState)
-    setCurrentSlideIndex(ci => Math.min(ci, prevState.slides.length - 1))
+    const deck = undoDeck()
+    if (deck) setCurrentSlideIndex(ci => Math.max(0, Math.min(ci, deck.slides.length - 1)))
   }, [])
 
   const updateMathNode = useCallback((attrs) => {
@@ -1445,16 +1420,8 @@ function draw() {
   }, [])
 
   const doRedo = useCallback(() => {
-    const stack = redoStackRef.current
-    if (!stack.length) return
-    applyingUndoRef.current = true
-    const redoState = stack[stack.length - 1]
-    redoStackRef.current = stack.slice(0, -1)
-    setPresentation(prev => {
-      if (prev) historyRef.current = [...historyRef.current.slice(-49), JSON.parse(JSON.stringify(withoutAnnotations(prev)))]
-      return prev?.annotationSets ? { ...redoState, annotationSets: prev.annotationSets } : redoState
-    })
-    setCurrentSlideIndex(ci => Math.min(ci, redoState.slides.length - 1))
+    const deck = redoDeck()
+    if (deck) setCurrentSlideIndex(ci => Math.max(0, Math.min(ci, deck.slides.length - 1)))
   }, [])
 
   // Cut / copy / paste / duplicate keyboard shortcuts
@@ -3469,8 +3436,8 @@ function draw() {
             onSetDrawTool={setDrawTool}
             onUndo={doUndo}
             onRedo={doRedo}
-            canUndo={historyRef.current.length >= 2}
-            canRedo={redoStackRef.current.length > 0}
+            canUndo={canUndo()}
+            canRedo={canRedo()}
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
           />

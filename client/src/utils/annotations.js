@@ -105,14 +105,6 @@ export function recoverAnnotationBackups(presentation, storage) {
   return { presentation: result, recovered }
 }
 
-// For undo history: the presentation without its annotation sets, which undo
-// and redo leave as they are
-export function withoutAnnotations(presentation) {
-  if (!presentation?.annotationSets) return presentation
-  const { annotationSets, ...rest } = presentation
-  return rest
-}
-
 // The presentation as it looked with `set`'s ink, as an ordinary deck for
 // exports and read-only views: each inked slide gets its ink as a drawing
 // element on top, and each board becomes a blank slide after the page it was

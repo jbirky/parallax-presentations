@@ -9,7 +9,7 @@ if (!globalThis.window.location) globalThis.window.location = { origin: 'http://
 
 import {
   newAnnotationSet, hasInk, upsertAnnotationSet, recentAnnotationSets, inkedSlideCount,
-  recoverAnnotationBackups, withoutAnnotations, backupKey,
+  recoverAnnotationBackups, backupKey,
   renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
 } from './annotations'
 import { generateRevealHTML } from './generateHTML'
@@ -58,11 +58,6 @@ describe('annotation sets', () => {
     const p = { annotationSets: [set('old', { updatedAt: '2026-09-01T00:00:00Z' }), set('new', { updatedAt: '2026-09-20T00:00:00Z' }), set('never', { createdAt: '2026-09-10T00:00:00Z' })] }
     expect(recentAnnotationSets(p).map(s => s.id)).toEqual(['new', 'never', 'old'])
     expect(recentAnnotationSets(p, 1)).toHaveLength(1)
-  })
-
-  it('leaves annotation sets out of undo history', () => {
-    const p = { id: 'p1', slides: [], annotationSets: [set('a')] }
-    expect(withoutAnnotations(p)).toEqual({ id: 'p1', slides: [] })
   })
 })
 
