@@ -14,6 +14,9 @@ Click the **Present** button (play icon) in the top-right toolbar to open the fu
 | `F` | Toggle fullscreen |
 | `Escape` | Exit fullscreen or close overlay |
 | `O` | Overview / slide grid |
+| `D` | Open the pen toolbar to draw on slides |
+
+Drawing on slides, and keeping each session's ink, is covered in **Drawing on Slides**. Buttons and links that respond to clicks are covered in **Links & Click Actions**.
 
 ## Preview a single slide
 

@@ -4,7 +4,7 @@ A high-level tour of everything Parallax can do.
 
 ## Editing
 
-Parallax is built around a drag-and-drop canvas. Every element on a slide — text boxes, images, shapes, code blocks, LaTeX blocks, charts — can be:
+Parallax is built around a drag-and-drop canvas. Every element on a slide — text boxes, images, shapes, code blocks, LaTeX blocks, tables — can be:
 
 - **Clicked to select** and dragged to reposition
 - **Resized** by dragging corner or edge handles (hold `Shift` to lock aspect ratio)
@@ -23,7 +23,6 @@ An undo/redo stack tracks every change (`Ctrl+Z` / `Ctrl+Y`).
 | Shape | Rectangle, circle, arrow, line — filled or outlined, any color |
 | Code block | Syntax-highlighted code via highlight.js; supports 100+ languages |
 | LaTeX block | Display math and TikZ diagrams with live split-pane preview |
-| Chart | Bar, line, and scatter charts powered by Chart.js |
 | Embed | Iframe embeds for web content |
 
 ::: tip

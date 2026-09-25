@@ -22,13 +22,13 @@ updates:
       - dependency-name: gsap
       - dependency-name: p5
       - dependency-name: marked
-      - dependency-name: chart.js
       - dependency-name: d3
       - dependency-name: three
       - dependency-name: animejs
       - dependency-name: latex.js
       - dependency-name: pdfjs-dist
       - dependency-name: jsxgraph
+      - dependency-name: svgcanvas
     groups:
       bundled-libraries:
         patterns: ["*"]

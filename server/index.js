@@ -33,8 +33,11 @@ const {
 } = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
+const collaboration = require('./services/collaboration')
+const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, remapSlideLinks, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
@@ -70,6 +73,35 @@ const multerStorage = multer.diskStorage({
 const upload = multer({ storage: multerStorage, limits: { fileSize: 500 * 1024 * 1024 } }) // 500MB limit for video
 // Plan storage limits, checked before multer writes the file
 const storageQuota = uploadQuota(storage)
+// Owner or editor of the presentation in the route's :id (or another param)
+const deckAccess = (param = 'id') => deckAccessFor(storage, param)
+
+// Live editing over a WebSocket at /collab (cloud only; services/collab.js).
+// Hocuspocus needs Node 22, which the desktop app's server may not have, so
+// it's loaded only here. Reading a presentation stores its live edits first,
+// and saving one goes into its live document.
+let collab = null
+if (IS_CLOUD && storage.query) {
+  const { createCollab } = require('./services/collab')
+  collab = createCollab({ storage, userIdForToken, ipOf: req => req.headers['cf-connecting-ip'] || req.socket.remoteAddress })
+  storage.beforeRead = collab.flush
+  storage.liveSave = collab.applySave
+  // Stopping the server stores every open document first
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, async () => {
+      await collab.flushAll()
+      process.exit(0)
+    })
+  }
+}
+
+// The user a Clerk session token is for (the WebSocket has no Clerk middleware)
+async function userIdForToken(token) {
+  const { verifyToken } = require('@clerk/express')
+  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+  const { rows } = await storage.query('SELECT id FROM users WHERE auth_id = $1', [sub])
+  return rows[0]?.id || null
+}
 
 app.use(helmetConfig())
 app.use(cors(corsConfig()))
@@ -145,12 +177,15 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Citations & Bibliography', link: 'tutorials/citations' },
       { text: 'Code, LaTeX & Markdown', link: 'tutorials/code-math' },
       { text: 'Diagram Editor', link: 'tutorials/diagrams' },
+      { text: 'Drawing on Slides', link: 'tutorials/drawing-on-slides' },
+      { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
       { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
       { text: 'Images', link: 'tutorials/images' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
       { text: 'LaTeX & Math', link: 'features/latex' },
+      { text: 'Links & Click Actions', link: 'tutorials/interactive-slides' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
@@ -161,7 +196,8 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Using LaTeX & Math', link: 'tutorials/using-latex' },
       { text: 'Version Diff', link: 'features/version-diff' },
       { text: 'Video & Audio', link: 'tutorials/media' },
-      { text: 'Zenodo Integration', link: 'features/zenodo' },
+      // Hidden while publishing to Zenodo is turned off (ZENODO_ENABLED)
+      // { text: 'Zenodo Integration', link: 'features/zenodo' },
     ],
   }
   res.json(sidebar)
@@ -681,6 +717,7 @@ function generateRevealHTML(presentation, opts = {}) {
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
+    const clickTargets = visibilityTargets(slide)
     const elementsHtml = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
@@ -692,11 +729,12 @@ function generateRevealHTML(presentation, opts = {}) {
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
+        const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex||1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${fragClass}${fragIdx} style="${textStyle} padding:8px 12px; color:white;">${el.content || ''}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;">${el.content || ''}</div>`
         }
         if (el.type === 'image') {
           const imgFilterParts = [
@@ -731,31 +769,31 @@ function generateRevealHTML(presentation, opts = {}) {
             const offX = el.imageOffsetX ?? 0
             const offY = el.imageOffsetY ?? 0
             const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
-            return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+            return `<div${fragClass}${fragIdx}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
           }
-          return `<div${fragClass}${fragIdx}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${fragClass}${fragIdx} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
         }
         if (el.type === 'tikz') {
-          return `<div${fragClass}${fragIdx} style="${style}">${tikzDiagramSvg(el)}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
           const codeContent = escapeHtml(el.content || '')
-          return `<div${fragClass}${fragIdx} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
         }
         if (el.type === 'markdown') {
           const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('marked', 'lib/marked.umd.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
           const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'timeline') {
           const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
@@ -816,33 +854,20 @@ function generateRevealHTML(presentation, opts = {}) {
             const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image || '' })))
             expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\/script>`
           }
-          return `<div${fragClass}${fragIdx} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
-        }
-        if (el.type === 'chart') {
-          const { chartType = 'bar', chartData = {} } = el
-          const labels = JSON.stringify(chartData.labels || [])
-          const datasets = JSON.stringify((chartData.datasets || []).map(ds => ({
-            label: ds.label || '', data: ds.data || [],
-            backgroundColor: ds.color || '#6366f1', borderColor: ds.color || '#6366f1',
-            borderWidth: chartType === 'line' ? 2 : 0, fill: chartType === 'line' ? false : undefined,
-          })))
-          const scalesOpt = chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`
-          const chartSrc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style></head><body><canvas id="c" style="width:100%;height:100%"></canvas><script>new Chart(document.getElementById('c'),{type:'${chartType}',data:{labels:${labels},datasets:${datasets}},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},scales:${scalesOpt}}});<\/script></body></html>`
-          const escaped = chartSrc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
         }
         if (el.type === 'callout') {
           const bg = sanitizeCSSValue(el.calloutColor) || '#ef4444'
           const tc = sanitizeCSSValue(el.calloutTextColor) || '#ffffff'
           const fs = el.fontSize || 16
-          return `<div${fragClass}${fragIdx} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
         }
         if (el.type === 'icon') {
           const color = sanitizeCSSValue(el.iconColor) || '#ffffff'
           const sw = el.iconStrokeWidth || 2
           const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
           const path = iconPaths[el.iconName] || iconPaths['Star']
-          return `<div${fragClass}${fragIdx} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
         }
         if (el.type === 'latex') {
           const content = el.content || ''
@@ -853,17 +878,17 @@ function generateRevealHTML(presentation, opts = {}) {
           if (hasTikz) {
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style></head><body><script type="text/tikz">${content}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           if (hasTable) {
             const wrapped = content.includes('\\begin{document}') ? content
               : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script><link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\/span>'}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
         if (el.type === 'video') {
           const attrs = []
@@ -889,14 +914,14 @@ function generateRevealHTML(presentation, opts = {}) {
             vidScript = `<script>${parts.join(';')}</script>`
           }
           if (hasClip && el.loop) { const li = attrs.indexOf('loop'); if (li >= 0) attrs.splice(li, 1) }
-          return `<div${fragClass}${fragIdx} style="${style}"><video ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${el.objectFit||'contain'};display:block;"><source src="${safeVideoSrc}" type="${videoMime}"></video>${vidScript}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><video ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${el.objectFit||'contain'};display:block;"><source src="${safeVideoSrc}" type="${videoMime}"></video>${vidScript}</div>`
         }
         if (el.type === 'audio') {
           const attrs = ['controls']
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
           if (el.muted) attrs.push('muted')
-          return `<div${fragClass}${fragIdx} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${sanitizeUrl(el.src)}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${sanitizeUrl(el.src)}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
         }
         if (el.type === 'table') {
           const data = el.data || [['']]
@@ -914,17 +939,17 @@ function generateRevealHTML(presentation, opts = {}) {
             }).join('')
             return `<tr>${cells}</tr>`
           }).join('')
-          return `<div${fragClass}${fragIdx} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = el.pluginId ? pluginSandbox(el.pluginId) : null
           if (sandboxHtml) {
             const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
               .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
       }).join('\n')
@@ -987,7 +1012,7 @@ function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${_isCustom ? 'none' : slide.transition}"` : ''
     const customTransAttr = _isCustom ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    return { slideIndex, html: `    <section${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
+    return { slideIndex, html: `    <section${slideIdAttr(slide)}${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
   })
 
   // Group slides into 2D columns (section-based or column-based)
@@ -1143,7 +1168,7 @@ function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -1357,6 +1382,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
+${CLICK_ACTION_SCRIPT}
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
   const slideCoords = {}
@@ -1563,7 +1589,11 @@ function escapeHtml(str) {
 app.get('/api/presentations', async (req, res) => {
   try {
     const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
-    res.json(await storage.listPresentations(req.userId, { excludeExpired }))
+    const own = await storage.listPresentations(req.userId, { excludeExpired })
+    const shared = IS_CLOUD && storage.query && !req.isGuest
+      ? await collaboration.listSharedPresentations(storage, req.userId)
+      : []
+    res.json([...own, ...shared])
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -1601,17 +1631,20 @@ app.post('/api/presentations', async (req, res) => {
       const template = await storage.getTemplate(templateId, req.userId)
       if (template) {
         const cloned = JSON.parse(JSON.stringify(template))
+        // New slide ids, with the template's slide links following them
+        const slideIds = new Map()
+        const slides = (cloned.slides || []).map(s => {
+          const id = uuidv4()
+          if (s.id) slideIds.set(s.id, id)
+          return { ...s, id, elements: renewElementIds(s.elements, uuidv4) }
+        })
         presentation = {
           ...cloned,
           id: uuidv4(),
           title: title || cloned.title || 'Untitled Presentation',
           createdAt: now,
           updatedAt: now,
-          slides: (cloned.slides || []).map(s => ({
-            ...s,
-            id: uuidv4(),
-            elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
-          }))
+          slides: remapSlideLinks(slides, slideIds),
         }
         // Remove template-specific fields
         delete presentation.isTemplate
@@ -1719,9 +1752,9 @@ app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req
 })
 
 // GET /api/presentations/:id - get full presentation
-app.get('/api/presentations/:id', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     res.json(presentation)
   } catch (err) {
@@ -1729,11 +1762,15 @@ app.get('/api/presentations/:id', requireValidId(), async (req, res) => {
   }
 })
 
-// PUT /api/presentations/:id - update
-app.put('/api/presentations/:id', requireValidId(), async (req, res) => {
+// PUT /api/presentations/:id - update. A body with the version it was made
+// from is refused (409) when someone has saved a newer one since.
+app.put('/api/presentations/:id', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const updated = await storage.updatePresentation(req.params.id, req.body, req.userId)
+    const updated = await storage.updatePresentation(req.params.id, req.body, req.deck.ownerId, { baseVersion: req.body?.version })
     if (!updated) return res.status(404).json({ error: 'Not found' })
+    if (updated.conflict) {
+      return res.status(409).json({ error: 'conflict', message: 'Someone else saved this presentation since your copy was loaded.', version: updated.version })
+    }
     res.json(updated)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -1741,9 +1778,9 @@ app.put('/api/presentations/:id', requireValidId(), async (req, res) => {
 })
 
 // GET /api/presentations/:id/uploads - list uploaded files
-app.get('/api/presentations/:id/uploads', async (req, res) => {
+app.get('/api/presentations/:id/uploads', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const { rows } = await storage.query(
       'SELECT id, filename, content_type, size_bytes, created_at FROM uploads WHERE presentation_id = $1 ORDER BY created_at DESC',
@@ -1902,14 +1939,15 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
 })
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
-app.post('/api/presentations/:pid/datasets', async (req, res) => {
+// A presentation's datasets are its owner's.
+app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   const { pid } = req.params
   const { datasetId, alias } = req.body
   if (!datasetId) return res.status(400).json({ error: 'datasetId is required' })
   try {
-    const pres = await storage.getPresentation(pid, req.userId)
+    const pres = await storage.getPresentation(pid, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Presentation not found' })
-    const ds = await storage.getDataset(datasetId, req.userId)
+    const ds = await storage.getDataset(datasetId, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     await storage.linkDatasetToPresentation(pid, datasetId, alias)
     res.json({ success: true })
@@ -1917,7 +1955,7 @@ app.post('/api/presentations/:pid/datasets', async (req, res) => {
 })
 
 // DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
-app.delete('/api/presentations/:pid/datasets/:did', async (req, res) => {
+app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
     res.json({ success: true })
@@ -1925,16 +1963,16 @@ app.delete('/api/presentations/:pid/datasets/:did', async (req, res) => {
 })
 
 // GET /api/presentations/:pid/datasets — list datasets linked to a presentation
-app.get('/api/presentations/:pid/datasets', async (req, res) => {
+app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     res.json(await storage.getPresentationDatasets(req.params.pid))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
-app.get('/api/presentations/:pid/datasets/:did/data', async (req, res) => {
+app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.did, req.userId)
+    const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
     const opts = {}
@@ -2080,6 +2118,7 @@ app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {
     const deleted = await deletePresentationAndFiles(storage, req.params.id, req.userId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
+    collab?.closeDocument(req.params.id)
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -2123,10 +2162,10 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
@@ -2138,7 +2177,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, stora
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
-        presentationId: req.params.id, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
+        presentationId: req.params.id, userId: req.deck.ownerId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
     }
@@ -2149,9 +2188,9 @@ app.post('/api/presentations/:id/upload', requireValidId(), uploadLimiter, stora
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
-  const pres = await storage.getPresentation(req.params.id, req.userId)
+  const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
   if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
   const tmpDir = path.join(os.tmpdir(), uuidv4())
   try {
@@ -2183,7 +2222,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
       const urls = []
       for (const f of pngFiles) {
         const result = await r2Upload(path.join(tmpDir, f), f, 'image/png', {
-          presentationId: req.params.id, userId: req.userId, storage,
+          presentationId: req.params.id, userId: req.deck.ownerId, storage,
         })
         urls.push(result.url)
       }
@@ -2207,9 +2246,9 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), uploadLimiter, 
 })
 
 // GET /api/presentations/:id/export - download HTML
-app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     const html = generateRevealHTML(presentation)
     const filename = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.html`
@@ -2222,9 +2261,9 @@ app.get('/api/presentations/:id/export', requireValidId(), async (req, res) => {
 })
 
 // GET /api/presentations/:id/present - serve in browser
-app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     const html = localizeLibraries(generateRevealHTML(presentation))
     res.setHeader('Content-Type', 'text/html')
@@ -2240,7 +2279,8 @@ app.get('/api/presentations/:id/present', requireValidId(), async (req, res) => 
 // editor has no sign-in, so anyone who could open a link could already open
 // every presentation; and at localhost, nobody else can open one anyway.
 if (!IS_CLOUD) {
-  app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live'],
+  app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
+    '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2277,6 +2317,78 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
 })
 
 // GET /share/:token - public view of shared presentation
+// --- Editing with others (cloud only; see services/collaboration.js) ---
+
+// GET /api/presentations/:id/collaborators - the owner and editors, the
+// caller's role and id, and for the owner, the invite link's token
+app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), async (req, res) => {
+  try {
+    const people = await collaboration.listCollaborators(storage, req.params.id)
+    const inviteToken = req.deck.role === 'owner' ? await collaboration.getInviteToken(storage, req.params.id) : null
+    res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/presentations/:id/invite - turn the invite link on, with a new
+// token; a link given out before stops working
+app.post('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
+  try {
+    res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, true) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/presentations/:id/invite - turn the invite link off
+app.delete('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
+  try {
+    res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, false) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /api/presentations/:id/collaborators/:userId - the owner removes an
+// editor, or an editor leaves
+app.delete('/api/presentations/:id/collaborators/:userId', requireValidId(), requireValidId('userId'), deckAccess(), async (req, res) => {
+  if (req.deck.role !== 'owner' && req.params.userId !== req.userId) {
+    return res.status(403).json({ error: 'Only the owner can remove other editors' })
+  }
+  try {
+    if (!(await collaboration.removeCollaborator(storage, req.params.id, req.params.userId))) {
+      return res.status(404).json({ error: 'Not an editor of this presentation' })
+    }
+    collab?.disconnectUser(req.params.id, req.params.userId)
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// GET /api/invites/:token - the presentation an invite link is for
+app.get('/api/invites/:token', requireValidId('token'), async (req, res) => {
+  try {
+    const invite = await collaboration.describeInvite(storage, req.params.token, req.userId)
+    if (!invite) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
+    res.json(invite)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /api/invites/:token/accept - become an editor of that presentation
+app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res) => {
+  try {
+    const joined = await collaboration.acceptInvite(storage, req.params.token, req.userId)
+    if (!joined) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
+    res.json(joined)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.get('/share/:token', requireValidId('token'), async (req, res) => {
   try {
     const presentation = await storage.getSharedPresentation(req.params.token)
@@ -2492,42 +2604,42 @@ app.get('/live/:id', async (req, res) => {
 // --- Version History ---
 
 // POST /api/presentations/:id/snapshot
-app.post('/api/presentations/:id/snapshot', requireValidId(), async (req, res) => {
+app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const result = await storage.createSnapshot(req.params.id, req.body.name, req.userId)
+    const result = await storage.createSnapshot(req.params.id, req.body.name, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:id/snapshots - list snapshots
-app.get('/api/presentations/:id/snapshots', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/snapshots', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    res.json(await storage.listSnapshots(req.params.id, req.userId))
+    res.json(await storage.listSnapshots(req.params.id, req.deck.ownerId))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
-app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.userId)
+    const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
     res.json(restored)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // DELETE /api/presentations/:id/snapshots/:snapshotId
-app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.userId)
+    await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:id/snapshots/:snapshotId/data - get snapshot data without restoring
-app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), requireValidId('snapshotId'), async (req, res) => {
+app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
   try {
-    const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.userId)
+    const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!data) return res.status(404).json({ error: 'Snapshot not found' })
     res.json(data)
   } catch (err) { res.status(500).json({ error: err.message }) }
@@ -2610,6 +2722,15 @@ app.get('/api/zotero/proxy/*', async (req, res) => {
 
 // --- Zenodo Integration ---
 
+// Publishing to Zenodo is turned off for now; the code stays for when it's
+// brought back. Set this to true (and ZENODO_ENABLED in the client's
+// EditorPage.jsx) to turn it on again.
+const ZENODO_ENABLED = false
+if (!ZENODO_ENABLED) {
+  app.use(['/api/zenodo', '/api/presentations/:id/zenodo'],
+    (req, res) => res.status(404).json({ error: 'Publishing to Zenodo is turned off' }))
+}
+
 // GET /api/zenodo/config
 app.get('/api/zenodo/config', async (req, res) => {
   try {
@@ -2666,8 +2787,10 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
     const config = await storage.getZenodoConfig(req.userId)
     if (!config.token) return res.status(400).json({ error: 'Zenodo not configured. Save your API token first.' })
 
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
-    if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
+    const stored = await storage.getPresentation(req.params.id, req.userId)
+    if (!stored) return res.status(404).json({ error: 'Presentation not found' })
+    // Published without its present-mode ink, which is private to the author
+    const { annotationSets, ...presentation } = stored
 
     const { creators, description, keywords, license } = req.body
     if (!creators || !creators.length) return res.status(400).json({ error: 'At least one creator is required' })
@@ -2902,8 +3025,10 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       return res.status(400).json({ error: 'GitHub not configured. Set token, owner, and repo first.' })
     }
 
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
-    if (!presentation) return res.status(404).json({ error: 'Presentation not found' })
+    const stored = await storage.getPresentation(req.params.id, req.userId)
+    if (!stored) return res.status(404).json({ error: 'Presentation not found' })
+    // Pushed without its present-mode ink, which is private to the author
+    const { annotationSets, ...presentation } = stored
 
     const { token, owner, repo } = config
     const gh = (endpoint, opts = {}) => {
@@ -3377,18 +3502,18 @@ if (IS_CLOUD) {
   })
 }
 
-app.get('/api/presentations/:id/plugins', async (req, res) => {
+app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const plugins = await storage.getPresentationPlugins(req.params.id)
     res.json(plugins)
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-app.post('/api/presentations/:id/plugins', async (req, res) => {
+app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const { pluginId, config } = req.body
     await storage.enablePluginForPresentation(req.params.id, pluginId, config)
@@ -3396,9 +3521,9 @@ app.post('/api/presentations/:id/plugins', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-app.delete('/api/presentations/:id/plugins/:pluginId', async (req, res) => {
+app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const pres = await storage.getPresentation(req.params.id, req.userId)
+    const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
     await storage.disablePluginForPresentation(req.params.id, req.params.pluginId)
     res.json({ ok: true })
@@ -3440,7 +3565,13 @@ async function startServer(port) {
       console.log(`Server running on http://localhost:${p}`)
       resolve(server)
     })
+    attachLiveEditing(server)
   })
+}
+
+// Serves live editing's WebSocket on an HTTP server, in the cloud version
+function attachLiveEditing(server) {
+  collab?.attach(server)
 }
 
 // Periodic cleanup: hard-delete free-tier presentations expired > 7 days,
@@ -3477,4 +3608,4 @@ if (require.main === module) {
   startServer()
 }
 
-module.exports = { app, startServer }
+module.exports = { app, startServer, attachLiveEditing }

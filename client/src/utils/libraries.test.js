@@ -38,8 +38,8 @@ describe.each([['client', clientLibraries], ['server', serverLibraries]])('%s li
     expect(local('<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>'))
       .toBe(`<script src="${BASE}/vendor/d3@${v.d3}/dist/d3.min.js"></script>`)
     // inside an escaped srcdoc attribute
-    expect(local('srcdoc="&lt;script src=&quot;https://cdn.jsdelivr.net/npm/chart.js@4&quot;&gt;"'))
-      .toBe(`srcdoc="&lt;script src=&quot;${BASE}/vendor/chart.js@${v['chart.js']}/dist/chart.umd.min.js&quot;&gt;"`)
+    expect(local('srcdoc="&lt;script src=&quot;https://cdn.jsdelivr.net/npm/d3@7&quot;&gt;"'))
+      .toBe(`srcdoc="&lt;script src=&quot;${BASE}/vendor/d3@${v.d3}/dist/d3.min.js&quot;&gt;"`)
   })
 
   it('maps cdnjs links for the libraries it has', () => {
@@ -55,6 +55,7 @@ describe.each([['client', clientLibraries], ['server', serverLibraries]])('%s li
       'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js', // another 0.x minor
       `https://cdn.jsdelivr.net/npm/three@${v.three}/examples/jsm/loaders/GLTFLoader.js`, // not bundled
       'https://cdn.jsdelivr.net/npm/lodash@4/lodash.min.js', // not a bundled package
+      'https://cdn.jsdelivr.net/npm/chart.js@4', // no longer bundled
       'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js',
       'https://tikzjax.com/v1/tikzjax.js',
     ]
@@ -78,6 +79,12 @@ describe('bundled library versions', () => {
     }
   })
 
+  it('has Dependabot propose updates for exactly the bundled packages', () => {
+    const config = fs.readFileSync(path.resolve(__dirname, '../../../.github/dependabot.yml'), 'utf8')
+    const allowed = [...config.matchAll(/dependency-name: "?([^"\n]+)"?/g)].map(m => m[1]).sort()
+    expect(allowed).toEqual(Object.keys(packages).sort())
+  })
+
   it('gives the server the versions the build bundled, or else the pinned ones', () => {
     const manifest = path.resolve(__dirname, '../../dist/vendor/manifest.json')
     const expected = fs.existsSync(manifest) ? JSON.parse(fs.readFileSync(manifest, 'utf8')).versions
@@ -96,7 +103,6 @@ describe('presenting from the app', () => {
         elements: [
           { id: 'p', type: 'p5', x: 0, y: 0, width: 200, height: 200, content: 'function setup(){createCanvas(100,100)}' },
           { id: 'm', type: 'markdown', x: 0, y: 0, width: 200, height: 200, content: '# Hi' },
-          { id: 'c', type: 'chart', x: 0, y: 0, width: 200, height: 200, chartType: 'bar', chartData: { labels: ['a'], datasets: [{ label: 'x', data: [1] }] } },
           { id: 'l', type: 'latex', x: 0, y: 0, width: 200, height: 200, content: '\\begin{tabular}{cc} a & b \\end{tabular}' },
           { id: 'k', type: 'code', x: 0, y: 0, width: 200, height: 200, language: 'js', content: 'let a = 1' },
           { id: 'h', type: 'html', x: 0, y: 0, width: 200, height: 200, content: '<script src="https://cdn.jsdelivr.net/npm/d3@7"></script><svg></svg>' },
@@ -107,7 +113,7 @@ describe('presenting from the app', () => {
     expect(html).toContain('https://cdn.jsdelivr.net/npm/') // what a download keeps
     const presented = clientLibraries.localizeLibraries(html, BASE)
     expect(presented).not.toMatch(/https:\/\/(cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com)\//)
-    for (const name of ['reveal.js', 'katex', 'gsap', 'p5', 'marked', 'chart.js', 'latex.js', 'd3', '@highlightjs/cdn-assets']) {
+    for (const name of ['reveal.js', 'katex', 'gsap', 'p5', 'marked', 'latex.js', 'd3', '@highlightjs/cdn-assets']) {
       expect(presented, name).toContain(`${BASE}/vendor/${name}@${v[name]}/`)
     }
   })

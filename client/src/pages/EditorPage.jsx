@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -16,12 +16,15 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database } from 'lucide-react'
-import { api } from '../utils/api'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
+import { api, getAuthToken } from '../utils/api'
+import { connectLive } from '../utils/liveDeck'
+import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
 import { reorderSlides } from '../utils/slideReorder'
+import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
@@ -39,6 +42,14 @@ import ThreeModal from '../components/ThreeModal'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
+import {
+  ANNOTATION_MESSAGE, newAnnotationSet, upsertAnnotationSet, recoverAnnotationBackups,
+  recentAnnotationSets, inkedSlideCount,
+  renameAnnotationSet, deleteAnnotationSet, inkedPresentation,
+} from '../utils/annotations'
+import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
+import EditorsModal from '../components/EditorsModal'
+import { remapSlideLinks, renewElementIds, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -64,6 +75,24 @@ import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
+// How long to wait for live editing to connect before saving the usual way
+const LIVE_WAIT_MS = 10000
+// Publishing to Zenodo is turned off for now; its code stays for when it's
+// brought back, along with ZENODO_ENABLED in server/index.js
+const ZENODO_ENABLED = false
+
+// Downloads the presentation as one HTML file with its libraries and uploads
+// inlined, so it works offline and anywhere
+async function downloadOfflineHTML(presentation) {
+  const offline = await generateOfflineHTML(generateRevealHTML(presentation))
+  const blob = new Blob([offline], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}_offline.html`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 const CODE_THEME_CSS = {
   'monokai': monokaiCSS,
@@ -223,7 +252,8 @@ const migrateSlide = (slide) => {
 }
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
-  const [presentation, setPresentation] = useState(null)
+  // The deck lives in a Yjs document; setPresentation works like a useState setter
+  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -266,6 +296,44 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showFindReplace, setShowFindReplace] = useState(false)
   const [showTransitionPreview, setShowTransitionPreview] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
+  // Who edits this presentation (cloud): { role, you, people, inviteToken }.
+  // An editor doesn't get the owner's share, live, GitHub and Zenodo menus.
+  const [access, setAccess] = useState(null)
+  const isEditor = access?.role === 'editor'
+  const [showEditorsModal, setShowEditorsModal] = useState(false)
+  // Autosave stopped: { kind: 'conflict', version } when someone else saved
+  // first, { kind: 'gone' } when the presentation is gone or this user was
+  // removed from it
+  const [saveProblem, setSaveProblem] = useState(null)
+  // Editing live: { status: 'connecting' | 'connected' | 'disconnected',
+  // unsent: changes the server hasn't confirmed, synced: the deck arrived },
+  // or null when edits are saved by autosave instead
+  const liveEligible = isCloud && !guest && !isTemplate
+  const [live, setLive] = useState(null)
+  const liveRef = useRef(null)
+  // Everyone's tab's state, from live editing's awareness (utils/presence.js)
+  const [awarenessStates, setAwarenessStates] = useState(() => new Map())
+  const peers = useMemo(
+    () => peersFrom(awarenessStates, liveRef.current?.awareness?.clientID, access?.people, access?.you),
+    [awarenessStates, access],
+  )
+  const peersRef = useRef(peers)
+  peersRef.current = peers
+  // A short message at the bottom of the window
+  const [notice, setNotice] = useState(null)
+  const noticeTimerRef = useRef(null)
+  const showNotice = useCallback((message) => {
+    setNotice(message)
+    clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4000)
+  }, [])
+  // Whether someone else has the element open (a text box they're typing in,
+  // or its editor); if so, says who
+  const heldByOther = useCallback((elementId, why = '') => {
+    const peer = editorOf(peersRef.current, elementId)
+    if (peer) showNotice(editingMessage(peer) + why)
+    return !!peer
+  }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -310,6 +378,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
+  const [showSessions, setShowSessions] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
   const mathNodeUpdateRef = useRef(null) // holds the TipTap updateAttributes fn for the active math node
 
@@ -317,12 +386,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const settingContent = useRef(false)
   const saveTimerRef = useRef(null)
   const isFirstLoad = useRef(true)
-  const historyRef = useRef([]) // undo history: array of presentation snapshots
-  const applyingUndoRef = useRef(false)
   const editingElementIdRef = useRef(null)
   const currentSlideIndexRef = useRef(0)
   const selectedElementIdsRef = useRef([])
-  const redoStackRef = useRef([])
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -358,26 +424,107 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   useEffect(() => { selectedElementIdsRef.current = selectedElementIds }, [selectedElementIds])
 
-  // Load presentation (or template) on mount
+  // Load presentation (or template) on mount. Signed in to the cloud version,
+  // it's edited live: the deck comes from the server's document, which keeps
+  // everyone's copy in step (utils/liveDeck.js), and there's no autosave. If
+  // that doesn't connect within LIVE_WAIT_MS, edits are saved as before.
   useEffect(() => {
     if (!presentationId) return
+    let cancelled = false
     const loadFn = isTemplate ? api.getTemplate : api.getPresentation
+    // Ink a Present window kept on this device because this tab was closed
+    const recoverInk = deck => {
+      let storage = null
+      try { storage = window.localStorage } catch {}
+      return recoverAnnotationBackups(deck, storage)
+    }
+    const opened = deck => {
+      if (deck.gridSize) setGridSize(deck.gridSize)
+      if (deck.guides && deck.guides.length) setGuides(deck.guides)
+      setLoading(false)
+      isFirstLoad.current = true
+    }
+    const openSaved = saved => {
+      let migrated = saved
+      // saved straight away, since autosave skips the first load
+      if (!isTemplate) {
+        const { presentation: withInk, recovered } = recoverInk(migrated)
+        if (recovered) {
+          migrated = withInk
+          api.updatePresentation(migrated.id, migrated).catch(err => console.error('Saving recovered annotations failed', err))
+        }
+      }
+      setPresentation(migrated)
+      opened(migrated)
+    }
+    const openLive = saved => {
+      let arrived = false
+      const fallBack = () => {
+        clearTimeout(giveUp)
+        connection.disconnect()
+        liveRef.current = null
+        if (cancelled) return
+        setLive(null)
+        openSaved(saved)
+      }
+      const connection = connectLive({
+        id: presentationId,
+        token: getAuthToken,
+        onSynced: doc => {
+          if (cancelled) return
+          arrived = true
+          clearTimeout(giveUp)
+          const deck = attachDeck(doc, saved)
+          const { awareness } = connection
+          const onAwareness = () => setAwarenessStates(new Map(awareness.getStates()))
+          awareness.on('change', onAwareness)
+          onAwareness()
+          const { presentation: withInk, recovered } = recoverInk(deck)
+          if (recovered) setPresentation(withInk)
+          setLive(l => ({ ...l, synced: true }))
+          opened(deck)
+        },
+        onStatus: status => setLive(l => l && { ...l, status }),
+        onUnsent: unsent => setLive(l => l && { ...l, unsent }),
+        // Removed as an editor, or the presentation deleted; before the
+        // document arrives, it's more likely live editing that's broken
+        onRefused: () => {
+          if (!arrived) return fallBack()
+          connection.disconnect()
+          setSaveProblem({ kind: 'gone' })
+        },
+      })
+      liveRef.current = connection
+      setLive({ status: 'connecting', unsent: 0, synced: false })
+      const giveUp = setTimeout(() => { if (!arrived) fallBack() }, LIVE_WAIT_MS)
+    }
     loadFn(presentationId).then(data => {
+      if (cancelled) return
       // Migrate old slide format to new elements-based format
       const migrated = {
         ...data,
         slides: (data.slides || []).map(migrateSlide)
       }
-      setPresentation(migrated)
-      if (migrated.gridSize) setGridSize(migrated.gridSize)
-      if (migrated.guides && migrated.guides.length) setGuides(migrated.guides)
-      setLoading(false)
-      isFirstLoad.current = true
+      if (liveEligible) openLive(migrated)
+      else openSaved(migrated)
     }).catch(err => {
       console.error('Failed to load presentation', err)
       setLoading(false)
     })
+    return () => {
+      cancelled = true
+      liveRef.current?.disconnect()
+      liveRef.current = null
+    }
   }, [presentationId])
+
+  // Changes not yet sent live: ask before the tab closes
+  useEffect(() => {
+    if (!live?.synced || (live.status === 'connected' && !live.unsent)) return
+    const warn = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [live])
 
   // Load plugins on mount; guests don't get plugins
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
@@ -398,7 +545,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   useEffect(() => {
     if (!guest) {
       api.getGithubConfig().then(setGithubConfig).catch(() => {})
-      api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
+      if (ZENODO_ENABLED) api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
     }
     api.getFonts().then(fonts => {
       if (Array.isArray(fonts)) {
@@ -418,6 +565,13 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       }
     }).catch(() => {})
   }, [])
+
+  // Load who edits it
+  useEffect(() => {
+    if (presentationId && !guest && isCloud && !isTemplate) {
+      api.getCollaborators(presentationId).then(setAccess).catch(() => {})
+    }
+  }, [presentationId])
 
   // Load share status
   useEffect(() => {
@@ -485,8 +639,89 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   const currentSlide = presentation?.slides[currentSlideIndex]
 
+  // Editing live: tell the others where this tab is, what it has selected,
+  // and what it has open (the text box being typed in, or an element editor)
+  const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
+    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || null
+  useEffect(() => {
+    const awareness = live?.synced && liveRef.current?.awareness
+    if (!awareness) return
+    awareness.setLocalState({ user: access?.you || null, slide: currentSlide?.id || null, selected: selectedElementIds, editing: openElementId })
+  }, [live?.synced, access?.you, currentSlide?.id, selectedElementIds, openElementId])
+
+  // Someone joined since the people list was loaded: load it again
+  const unknownPeople = peers.filter(p => !p.known).map(p => p.userId).sort().join()
+  useEffect(() => {
+    if (unknownPeople) api.getCollaborators(presentationId).then(setAccess).catch(() => {})
+  }, [unknownPeople])
+
+  // Two tabs opened the same element at the same moment: the other one keeps
+  // it. A text box stops being edited here (what was typed is kept); an
+  // element editor stays open, with a warning, so nothing in it is lost.
+  const warnedRef = useRef(null)
+  useEffect(() => {
+    const own = liveRef.current?.awareness?.clientID
+    if (!openElementId || own == null || !shouldLetGo(peers, own, openElementId)) return
+    const peer = editorOf(peers, openElementId)
+    if (openElementId === editingElementId) {
+      stopEditingElement()
+      showNotice(`${peer.self ? 'Your other tab' : peer.name} started editing this at the same moment`)
+    } else if (warnedRef.current !== openElementId) {
+      warnedRef.current = openElementId
+      showNotice(`${peer.self ? 'Your other tab' : peer.name} opened this at the same moment. Whoever saves last replaces the other's changes.`)
+    }
+  }, [peers, openElementId])
+
+  // The slides changed under the same position (someone else moved or deleted
+  // slides, or undo did): keep showing the slide that was showing. When it was
+  // deleted, show the one now in its place.
+  const followRef = useRef({ index: 0, id: null })
+  useEffect(() => {
+    const slides = presentation?.slides
+    if (!slides) return
+    const { index, id } = followRef.current
+    if (currentSlideIndex === index && id && slides[currentSlideIndex]?.id !== id) {
+      const now = slides.findIndex(s => s.id === id)
+      const next = now >= 0 ? now : Math.max(0, Math.min(currentSlideIndex, slides.length - 1))
+      if (next !== currentSlideIndex) {
+        setCurrentSlideIndex(next)
+        return
+      }
+    }
+    followRef.current = { index: currentSlideIndex, id: slides[currentSlideIndex]?.id || null }
+  }, [presentation?.slides, currentSlideIndex])
+
+  // The text box being typed in was deleted (by someone else, or with its
+  // slide): stop editing it
+  useEffect(() => {
+    if (editingElementId && presentation && !currentSlide?.elements?.some(el => el.id === editingElementId)) {
+      stopEditingElement()
+      setSelectedElementIds([])
+    }
+  }, [presentation, editingElementId])
+
+  // Where the others are: dots on the slides, outlines on this slide's elements
+  const presenceBySlide = useMemo(() => peopleBySlide(peers), [peers])
+  const remoteUse = useMemo(() => elementsInUse(peers, currentSlide?.id), [peers, currentSlide?.id])
+  const othersHere = useMemo(() => distinctPeople(peers).filter(p => !p.self), [peers])
+
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
+
+  // Previewing a slide's clicks on the canvas (utils/clickActions.js), chosen
+  // per slide while editing
+  const [clickPreview, setClickPreview] = useState({})
+  const preview = canvasClickPreview(currentSlide?.elements, currentSlide ? clickPreview[currentSlide.id] : null, selectedElementIds)
+  const canvasSlide = currentSlide && preview.elements !== currentSlide.elements ? { ...currentSlide, elements: preview.elements } : currentSlide
+  const setPreviewMode = mode => { if (currentSlide) setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode })) }
+
+  // Selecting a tab previews its click, and selecting something the preview
+  // hides switches to a click that shows it
+  useEffect(() => {
+    if (!currentSlide || selectedElementIds.length !== 1) return
+    const mode = previewForSelection(currentSlide.elements, selectedElementIds[0], preview.mode)
+    if (mode) setPreviewMode(mode)
+  }, [selectedElementIds, currentSlide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
   const hasReferencesSlide = referencedEntries.length > 0
   const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
@@ -561,9 +796,27 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }
   }, [currentSlideIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-save with debounce
+  // Present-mode ink: the Present window sends its annotation set after each
+  // change; saving it goes through autosave like any other edit
   useEffect(() => {
-    if (!presentation || isFirstLoad.current) return
+    const onMessage = e => {
+      if (e.origin !== window.location.origin || e.data?.type !== ANNOTATION_MESSAGE || e.data.presentationId !== presentationId) return
+      setPresentation(prev => upsertAnnotationSet(prev, e.data.set))
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [presentationId])
+
+  // Presents with drawing on, into a new annotation set or on with `set`
+  const presentAnnotated = useCallback((set = null) => {
+    if (isTemplate) return presentInWindow(presentation)
+    presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
+  }, [presentation, isTemplate])
+
+  // Auto-save with debounce; stopped while a save was refused, and not used
+  // while editing live
+  useEffect(() => {
+    if (!presentation || isFirstLoad.current || saveProblem || live) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
 
     setSaveStatus('saving')
@@ -577,27 +830,29 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       } catch (err) {
         console.error('Auto-save failed', err)
         setSaveStatus('')
+        if (err.code === 'conflict') setSaveProblem({ kind: 'conflict', version: err.version })
+        else if (err.status === 404) setSaveProblem({ kind: 'gone' })
       }
     }, 1500)
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [presentation])
+  }, [presentation, saveProblem, live])
 
-  // Undo history: debounce-push presentation snapshots; skip during undo itself
-  useEffect(() => {
-    if (!presentation || isFirstLoad.current) return
-    if (applyingUndoRef.current) {
-      applyingUndoRef.current = false
-      return
-    }
-    const timer = setTimeout(() => {
-      historyRef.current = [...historyRef.current.slice(-50), JSON.parse(JSON.stringify(presentation))]
-      redoStackRef.current = []
-    }, 500)
-    return () => clearTimeout(timer)
-  }, [presentation])
+  // After a refused save: start over from what's saved, dropping this tab's
+  // changes since, or save this tab's copy over it
+  const loadSavedVersion = async () => {
+    if (editingElementId) stopEditingElement()
+    const saved = await api.getPresentation(presentationId)
+    resetDeck({ ...saved, slides: (saved.slides || []).map(migrateSlide) })
+    setCurrentSlideIndex(i => Math.max(0, Math.min(i, (saved.slides?.length || 1) - 1)))
+    setSaveProblem(null)
+  }
+  const saveOverVersion = () => {
+    api.saveOverVersion(presentationId, saveProblem.version)
+    setSaveProblem(null)
+  }
 
   const updateCurrentSlide = useCallback((updates) => {
     setPresentation(prev => {
@@ -632,6 +887,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [])
 
   const deleteElement = useCallback((id) => {
+    if (heldByOther(id, ', so it wasn’t deleted')) return
     setPresentation(prev => {
       if (!prev) return prev
       return {
@@ -818,7 +1074,7 @@ svg.selectAll('circle').data(data).join('circle')
 
   const openHtmlEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'html') return
+    if (!element || element.type !== 'html' || heldByOther(elementId)) return
     setHtmlEditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -875,7 +1131,7 @@ function draw() {
 
   const openP5Editor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'p5') return
+    if (!element || element.type !== 'p5' || heldByOther(elementId)) return
     setP5EditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -910,7 +1166,7 @@ function draw() {
   const openCodeEditor = useCallback((elementId) => {
     const slide = presentation?.slides[currentSlideIndexRef.current]
     const element = slide?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'code') return
+    if (!element || element.type !== 'code' || heldByOther(elementId)) return
     setCodeEditorState({ elementId, content: element.content || '', language: element.language || 'javascript' })
   }, [presentation])
 
@@ -949,7 +1205,7 @@ function draw() {
 
   const openLatexEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'latex') return
+    if (!element || element.type !== 'latex' || heldByOther(elementId)) return
     setLatexEditorState({ elementId, content: element.content || '' })
   }, [presentation])
 
@@ -974,7 +1230,7 @@ function draw() {
 
   const openTikzEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'tikz') return
+    if (!element || element.type !== 'tikz' || heldByOther(elementId)) return
     setTikzEditor({ elementId, state: element.editorState || null, dark: slideIsDark() })
   }, [presentation, slideIsDark])
 
@@ -1006,24 +1262,6 @@ function draw() {
       type: 'markdown',
       x: 80, y: 80, width: 600, height: 380, zIndex: 2,
       content: '## Hello Markdown\n\n- Item one\n- Item two\n- Item three\n\n**Bold** and *italic* text with [links](https://example.com).\n\n```python\ndef hello():\n    print("Hello!")\n```'
-    }
-    setPresentation(prev => {
-      if (!prev) return prev
-      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
-    })
-    setSelectedElementIds([newEl.id])
-  }, [])
-
-  const addChartElement = useCallback(() => {
-    const newEl = {
-      id: crypto.randomUUID(),
-      type: 'chart',
-      x: 80, y: 80, width: 500, height: 380, zIndex: 2,
-      chartType: 'bar',
-      chartData: {
-        labels: ['A', 'B', 'C', 'D', 'E'],
-        datasets: [{ label: 'Series 1', data: [12, 19, 8, 15, 10], color: '#6366f1' }]
-      }
     }
     setPresentation(prev => {
       if (!prev) return prev
@@ -1165,6 +1403,23 @@ function draw() {
       return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
     })
     setSelectedElementIds([newEl.id])
+  }, [currentSlide, slideW, slideH])
+
+  // Tabs, already wired to show their own panels; tab 1 is selected, so its
+  // On click shows how
+  const addTabs = useCallback((count) => {
+    const top = Math.max(0, ...(currentSlide?.elements || []).map(el => el.zIndex || 0))
+    const newElements = buildTabs(count, { slideW, slideH, zIndex: top + 1, makeId: () => crypto.randomUUID() })
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...newElements] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newElements[1].id])
   }, [currentSlide, slideW, slideH])
 
   const addModularGrid = useCallback((moduleShape, cols, rows, gap) => {
@@ -1329,7 +1584,7 @@ function draw() {
 
   const startEditingElement = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
-    if (!element || element.type !== 'text') return
+    if (!element || element.type !== 'text' || heldByOther(elementId)) return
     setEditingElementId(elementId)
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
@@ -1356,16 +1611,11 @@ function draw() {
     })
   }, [currentSlide, updateElement])
 
+  // Undo and redo leave present-mode ink alone, and a change to the ink alone
+  // isn't an undo step (see utils/deckDoc.js)
   const doUndo = useCallback(() => {
-    const hist = historyRef.current
-    if (hist.length < 2) return
-    applyingUndoRef.current = true
-    redoStackRef.current = [...redoStackRef.current.slice(-19), hist[hist.length - 1]]
-    const newHist = hist.slice(0, -1)
-    historyRef.current = newHist
-    const prevState = newHist[newHist.length - 1]
-    setPresentation(prevState)
-    setCurrentSlideIndex(ci => Math.min(ci, prevState.slides.length - 1))
+    const deck = undoDeck()
+    if (deck) setCurrentSlideIndex(ci => Math.max(0, Math.min(ci, deck.slides.length - 1)))
   }, [])
 
   const updateMathNode = useCallback((attrs) => {
@@ -1374,16 +1624,8 @@ function draw() {
   }, [])
 
   const doRedo = useCallback(() => {
-    const stack = redoStackRef.current
-    if (!stack.length) return
-    applyingUndoRef.current = true
-    const redoState = stack[stack.length - 1]
-    redoStackRef.current = stack.slice(0, -1)
-    setPresentation(prev => {
-      if (prev) historyRef.current = [...historyRef.current.slice(-49), JSON.parse(JSON.stringify(prev))]
-      return redoState
-    })
-    setCurrentSlideIndex(ci => Math.min(ci, redoState.slides.length - 1))
+    const deck = redoDeck()
+    if (deck) setCurrentSlideIndex(ci => Math.max(0, Math.min(ci, deck.slides.length - 1)))
   }, [])
 
   // Cut / copy / paste / duplicate keyboard shortcuts
@@ -1498,6 +1740,22 @@ function draw() {
     }
   }, [presentation])
 
+  // Updates an element and the rest of its group: click actions, hover styles
+  // and being hidden at start apply to a grouped card or button as a whole
+  const updateWithGroup = useCallback((id, updates) => {
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) => {
+          if (i !== currentSlideIndexRef.current) return s
+          const groupId = s.elements.find(el => el.id === id)?.groupId
+          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? { ...el, ...updates } : el) }
+        })
+      }
+    })
+  }, [])
+
   const updateElements = useCallback((updates) => {
     setPresentation(prev => {
       if (!prev) return prev
@@ -1513,7 +1771,10 @@ function draw() {
   }, [])
 
   const deleteSelectedElements = useCallback(() => {
-    const ids = selectedElementIdsRef.current
+    // What someone else has open stays
+    const held = selectedElementIdsRef.current.find(id => editorOf(peersRef.current, id))
+    if (held) heldByOther(held, ', so it wasn’t deleted')
+    const ids = selectedElementIdsRef.current.filter(id => !editorOf(peersRef.current, id))
     if (!ids.length) return
     setPresentation(prev => {
       if (!prev) return prev
@@ -1721,12 +1982,18 @@ function draw() {
   const importSlidesFromPresentation = (importedSlides) => {
     if (!importedSlides.length) return
     const is2D = presentation.slides.some(s => s.column !== undefined)
-    const newSlides = importedSlides.map(slide => ({
-      ...slide,
-      id: crypto.randomUUID(),
-      ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
-      elements: (slide.elements || []).map(el => ({ ...el, id: crypto.randomUUID() })),
-    }))
+    // New ids, with links between the imported slides following them
+    const slideIds = new Map()
+    const newSlides = remapSlideLinks(importedSlides.map(slide => {
+      const id = crypto.randomUUID()
+      if (slide.id) slideIds.set(slide.id, id)
+      return {
+        ...slide,
+        id,
+        ...(is2D ? { column: presentation.slides[currentSlideIndex]?.column ?? 0 } : {}),
+        elements: renewElementIds(slide.elements, () => crypto.randomUUID()),
+      }
+    }), slideIds)
     setPresentation(prev => {
       const slides = [...prev.slides]
       slides.splice(currentSlideIndex + 1, 0, ...newSlides)
@@ -1737,6 +2004,15 @@ function draw() {
 
   const deleteSlide = (index) => {
     if (!presentation || presentation.slides.length <= 1) return
+    // Not while someone else has something on it open
+    const open = presentation.slides[index]?.elements?.map(el => editorOf(peersRef.current, el.id)).find(Boolean)
+    if (open) {
+      return showNotice(open.self
+        ? 'You’re editing something on this slide in another tab, so it wasn’t deleted'
+        : `${open.name} is editing something on this slide, so it wasn’t deleted`)
+    }
+    const links = countLinksTo(presentation.slides, presentation.slides[index]?.id)
+    if (links && !confirm(`${links} ${links === 1 ? 'link or button goes' : 'links or buttons go'} to this slide, and won't do anything once it's deleted. Delete it anyway?`)) return
     setPresentation(prev => ({
       ...prev,
       slides: prev.slides.filter((_, i) => i !== index)
@@ -1749,10 +2025,7 @@ function draw() {
     const slide = {
       ...presentation.slides[index],
       id: crypto.randomUUID(),
-      elements: (presentation.slides[index].elements || []).map(el => ({
-        ...el,
-        id: crypto.randomUUID()
-      }))
+      elements: renewElementIds(presentation.slides[index].elements, () => crypto.randomUUID()),
     }
     setPresentation(prev => {
       const slides = [...prev.slides]
@@ -1874,12 +2147,34 @@ function draw() {
           placeholder={isTemplate ? 'Untitled Template' : 'Untitled Presentation'}
         />
         <div className="header-controls">
+          {live?.synced && (live.status !== 'connected'
+            ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
+            : <span className="save-indicator" style={live.unsent ? undefined : { color: 'var(--success)' }} title="Saved as you go; everyone editing sees your changes">{live.unsent ? 'Saving…' : 'Saved'}</span>)}
           {saveStatus === 'saving' && <span className="save-indicator">Saving...</span>}
           {saveStatus === 'saved' && <span className="save-indicator" style={{ color: 'var(--success)' }}>Saved</span>}
-          {!saveStatus && lastSavedAt && (
+          {!live && !saveStatus && lastSavedAt && (
             <span className="save-indicator" style={{ fontSize: 10, color: 'var(--text-muted)' }} title={lastSavedAt.toLocaleString()}>
               {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
+          )}
+
+          {othersHere.length > 0 && (
+            <div className="presence-avatars" role="group" aria-label="Also editing" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              {othersHere.slice(0, 4).map((p, i) => {
+                const index = presentation.slides.findIndex(s => s.id === p.slide)
+                const where = `${p.name}${index >= 0 ? `, slide ${index + 1}` : ''}${p.editing ? ', editing' : ''}`
+                return (
+                  <button key={p.userId} title={where} aria-label={where}
+                    onClick={() => { if (index >= 0) setCurrentSlideIndex(index) }}
+                    style={{ marginLeft: i ? -6 : 0, width: 26, height: 26, borderRadius: '50%', border: `2px solid ${p.color}`, padding: 0, background: '#3a3a52', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" width={22} height={22} style={{ borderRadius: '50%' }} /> : (p.name || '?')[0].toUpperCase()}
+                  </button>
+                )
+              })}
+              {othersHere.length > 4 && (
+                <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--text-muted)' }} title={othersHere.slice(4).map(p => p.name).join(', ')}>+{othersHere.length - 4}</span>
+              )}
+            </div>
           )}
 
           <button
@@ -1945,22 +2240,17 @@ function draw() {
               >
                 {[
                   { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+                  { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
                   { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
                   { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
                   { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
                   { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
-                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: async () => {
-                    const html = generateRevealHTML(presentation)
-                    const offline = await generateOfflineHTML(html)
-                    const blob = new Blob([offline], { type: 'text/html' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}_offline.html`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }},
-                ].filter(item => item.label !== 'Share link' || (isCloud && !guest)).map(({ label, icon, action }) => (
+                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
+                  { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
+                ].filter(item => item.label !== 'Share link' || (isCloud && !guest && !isEditor))
+                  .filter(item => item.label !== 'Editors…' || (isCloud && !guest && !isTemplate))
+                  .filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
+                  .map(({ label, icon, action }) => (
                   <button
                     key={label}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
@@ -2012,7 +2302,7 @@ function draw() {
             Data
           </button>
 
-          {!guest && (
+          {!guest && !isEditor && (
             <div style={{ position: 'relative' }}>
               <button
                 className="btn btn-secondary"
@@ -2036,22 +2326,24 @@ function draw() {
                       <Github size={14} />
                       GitHub
                     </button>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={async () => {
-                        setShowSyncDropdown(false)
-                        setZenodoStatus(null)
-                        if (presentationId) {
-                          api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                        }
-                        setShowZenodoModal(true)
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                      Zenodo
-                    </button>
+                    {ZENODO_ENABLED && (
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={async () => {
+                          setShowSyncDropdown(false)
+                          setZenodoStatus(null)
+                          if (presentationId) {
+                            api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+                          }
+                          setShowZenodoModal(true)
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
+                        Zenodo
+                      </button>
+                    )}
                     <div style={{ borderTop: '1px solid var(--border)' }} />
                     <button
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
@@ -2096,7 +2388,7 @@ function draw() {
             <div style={{ display: 'flex' }}>
               <button
                 className="btn btn-primary"
-                onClick={() => presentInWindow(presentation)}
+                onClick={() => presentAnnotated()}
                 title="Present"
                 style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
               >
@@ -2120,7 +2412,7 @@ function draw() {
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowPresentDropdown(false); presentInWindow(presentation) }}
+                    onClick={() => { setShowPresentDropdown(false); presentAnnotated() }}
                   >
                     <Play size={14} />
                     Present
@@ -2134,7 +2426,36 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
-                  {isCloud && !guest && (
+                  {!isTemplate && recentAnnotationSets(presentation).length > 0 && (
+                    <>
+                      <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                      <div style={{ padding: '6px 12px 2px', fontSize: 11, color: 'var(--text-muted)' }}>Continue annotating</div>
+                      {recentAnnotationSets(presentation).map(set => (
+                        <button key={set.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          onClick={() => { setShowPresentDropdown(false); presentAnnotated(set) }}
+                          title="Present with this session's ink, and keep adding to it"
+                        >
+                          <Pencil size={14} />
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{set.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{inkedSlideCount(set)} {inkedSlideCount(set) === 1 ? 'page' : 'pages'}</span>
+                        </button>
+                      ))}
+                      <button
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        onClick={() => { setShowPresentDropdown(false); setShowSessions(true) }}
+                        title="View, export, rename or delete annotation sessions"
+                      >
+                        <List size={14} />
+                        All sessions…
+                      </button>
+                    </>
+                  )}
+                  {isCloud && !guest && !isEditor && (
                     <>
                       <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
                       <button
@@ -3020,9 +3341,10 @@ function draw() {
                         if (!confirm(`Restore from commit ${commit.sha.slice(0, 7)}? Current changes will be overwritten.`)) return
                         setGitRestoring(commit.sha)
                         try {
-                          const data = await api.getGitVersion(presentationId, commit.sha)
+                          // Versions on GitHub have no present-mode ink; the presentation keeps its own
+                          const { annotationSets, ...data } = await api.getGitVersion(presentationId, commit.sha)
                           await api.updatePresentation(presentationId, data)
-                          setPresentation({ ...data, slides: (data.slides || []).map(s => s) })
+                          setPresentation(cur => ({ ...data, slides: (data.slides || []).map(s => s), ...(cur?.annotationSets && { annotationSets: cur.annotationSets }) }))
                           setShowGitHistory(false)
                         } catch (e) { alert('Restore failed: ' + e.message) }
                         setGitRestoring(null)
@@ -3244,6 +3566,7 @@ function draw() {
       <div className="editor-body">
         <SlidePanel
           slides={presentation.slides}
+          presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
           selectedIds={selectedSlideIds}
@@ -3291,6 +3614,7 @@ function draw() {
             onAddD3={addD3Element}
             onAddKineticText={() => setShowKineticModal(true)}
             onAddMathGrid={() => setShowMathGridModal(true)}
+            onAddTabs={addTabs}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddDiagram={() => setShowDiagramModal(true)}
@@ -3299,7 +3623,6 @@ function draw() {
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
             onAddMarkdown={addMarkdownElement}
-            onAddChart={addChartElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
             onAddIcon={addIconElement}
@@ -3319,6 +3642,7 @@ function draw() {
             smartGuidesEnabled={smartGuidesEnabled}
             onToggleSmartGuides={() => setSmartGuidesEnabled(v => !v)}
             slide={currentSlide}
+            slides={presentation.slides}
             onUpdateSlide={updateCurrentSlide}
             onGroupElements={groupElements}
             onUngroupElements={ungroupElements}
@@ -3351,12 +3675,30 @@ function draw() {
             onSetDrawTool={setDrawTool}
             onUndo={doUndo}
             onRedo={doRedo}
-            canUndo={historyRef.current.length >= 2}
-            canRedo={redoStackRef.current.length > 0}
+            canUndo={canUndo()}
+            canRedo={canRedo()}
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
+            {!isViewingReferences && preview.canPreview && (() => {
+              const labels = elementLabels(currentSlide.elements)
+              const modes = [['start', 'As it opens', 'The slide as it opens, before any clicks'],
+                ...preview.clickers.map(c => [c.id, labels.get(c.id), `The slide after clicking “${labels.get(c.id)}”`]),
+                ['all', 'Everything', 'Everything on the slide, with what starts hidden faded']]
+              return (
+                <div role="toolbar" aria-label="Show on the canvas" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                  <span>Show on canvas:</span>
+                  {modes.map(([mode, label, title]) => (
+                    <button key={mode} title={title} aria-pressed={preview.mode === mode} onClick={() => setPreviewMode(mode)}
+                      style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        background: preview.mode === mode ? 'var(--accent)' : 'var(--bg-card)', color: preview.mode === mode ? '#fff' : 'var(--text-secondary)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
             {isViewingReferences ? (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' }}>
                 <div style={{ width: slideW * 0.75, height: slideH * 0.75, background: '#111122', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', padding: '24px 32px', position: 'relative', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
@@ -3381,7 +3723,9 @@ function draw() {
               </div>
             ) : <SlideCanvas
               editor={editor}
-              slide={currentSlide}
+              slide={canvasSlide}
+              remoteUse={remoteUse}
+              fadedIds={preview.fadedIds}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
               showGrid={showGrid}
@@ -3461,7 +3805,7 @@ function draw() {
               onOpenTikzEditor={openTikzEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
-                if (el) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
+                if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
               }}
               onAddImage={async (file, dropX, dropY) => {
                 try {
@@ -3484,6 +3828,8 @@ function draw() {
           selectedElement={selectedElement}
           onUpdateSlide={updateCurrentSlide}
           onUpdateElement={(updates) => selectedElementId && updateElement(selectedElementId, updates)}
+          onUpdateWithGroup={updates => selectedElementId && updateWithGroup(selectedElementId, updates)}
+          onSelectElement={id => setSelectedElementIds([id])}
           onDeleteElement={() => selectedElementId && deleteElement(selectedElementId)}
           onBringForward={() => selectedElementId && bringElementForward(selectedElementId)}
           onSendBackward={() => selectedElementId && sendElementBackward(selectedElementId)}
@@ -3851,6 +4197,39 @@ function draw() {
       )}
 
       {/* Share Modal */}
+      {saveProblem && (
+        <div role="alert" style={{ position: 'fixed', top: 56, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(640px, calc(100vw - 32px))', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 8, background: '#3b2a12', border: '1px solid #b45309', color: '#fde68a', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {saveProblem.kind === 'conflict' ? (
+            <>
+              <span style={{ flex: '1 1 260px' }}>Someone else saved this presentation after you opened it, so your latest changes aren't saved.</span>
+              <button className="btn btn-secondary" onClick={loadSavedVersion}>Load their version</button>
+              <button className="btn btn-secondary" onClick={saveOverVersion} title="Your copy replaces what they saved">Keep mine</button>
+            </>
+          ) : (
+            <>
+              <span style={{ flex: '1 1 260px' }}>This presentation was deleted, or you were removed as an editor. Your changes aren't saved.</span>
+              <button className="btn btn-secondary" onClick={onGoHome}>Back to presentations</button>
+            </>
+          )}
+        </div>
+      )}
+
+      {notice && (
+        <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(520px, calc(100vw - 32px))', padding: '8px 14px', borderRadius: 8, background: 'rgba(20,20,35,0.95)', border: '1px solid var(--border)', color: '#e0e0e0', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {notice}
+        </div>
+      )}
+
+      {showEditorsModal && access && (
+        <EditorsModal
+          presentationId={presentationId}
+          access={access}
+          onChange={setAccess}
+          onClose={() => setShowEditorsModal(false)}
+          onLeft={() => { setShowEditorsModal(false); onGoHome() }}
+        />
+      )}
+
       {showShareModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowShareModal(false) }}>
@@ -3970,6 +4349,19 @@ function draw() {
           </div>
         </div>
       )}
+      {showSessions && (
+        <AnnotationSessionsModal
+          sets={recentAnnotationSets(presentation, Infinity)}
+          onView={set => presentInWindow(inkedPresentation(presentation, set))}
+          onContinue={set => { setShowSessions(false); presentAnnotated(set) }}
+          onExportPdf={set => exportPDF(inkedPresentation(presentation, set))}
+          onExportHtml={set => downloadOfflineHTML(inkedPresentation(presentation, set))}
+          onRename={(id, name) => setPresentation(p => renameAnnotationSet(p, id, name))}
+          onDelete={id => setPresentation(p => deleteAnnotationSet(p, id))}
+          onClose={() => setShowSessions(false)}
+        />
+      )}
+
       {showImportSlideModal && (
         <ImportSlideModal
           currentPresentationId={presentationId}

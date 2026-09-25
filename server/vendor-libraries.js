@@ -23,7 +23,6 @@ module.exports = {
     gsap: { files: ['dist/gsap.min.js'] },
     p5: { files: ['lib/p5.min.js'] },
     marked: { files: ['lib/marked.umd.js'], main: 'lib/marked.umd.js' },
-    'chart.js': { files: ['dist/chart.umd.min.js'], main: 'dist/chart.umd.min.js' },
     d3: { files: ['dist/d3.min.js'], main: 'dist/d3.min.js' },
     three: { files: ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js'] },
     animejs: { files: ['lib/anime.min.js'] },

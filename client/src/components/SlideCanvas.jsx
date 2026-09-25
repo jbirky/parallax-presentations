@@ -36,6 +36,7 @@ import { calculateGuides } from '../utils/smartGuides'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
+import { supportsClickAction } from '../utils/clickActions'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 
@@ -232,7 +233,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export default function SlideCanvas({ editor, slide, fadedIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   const containerRef = useRef(null)
@@ -1007,8 +1008,10 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
           <CanvasElement
             key={element.id}
             element={element}
+            faded={!!fadedIds?.has(element.id)}
             isSelected={selectedElementIds.includes(element.id)}
             isEditing={editingElementId === element.id}
+            remote={remoteUse?.get(element.id)}
             isCropping={cropMode?.elementId === element.id}
             cropState={cropMode?.elementId === element.id ? cropMode : null}
             isDragging={draggingRef.current?.elementId === element.id}
@@ -1269,7 +1272,7 @@ export default function SlideCanvas({ editor, slide, selectedElementIds, editing
   )
 }
 
-function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+function CanvasElement({ element, faded, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1307,12 +1310,15 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
   return (
     <div
       ref={outerRef}
+      data-element-id={element.id}
       style={{
         position: 'absolute',
         left: element.x, top: element.y,
         width: element.width, height: isAutoFit ? 'auto' : element.height,
         zIndex: element.zIndex || 1,
-        outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : 'none',
+        outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : faded ? '1px dashed rgba(148,163,184,0.8)' : 'none',
+        // Hidden when presented, at least for now: faded here, so it can still be edited
+        opacity: faded && !isEditing ? 0.45 : undefined,
         cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
         overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
@@ -1515,9 +1521,6 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
       {element.type === 'timeline' && (
         <TimelineRenderer element={element} />
       )}
-      {element.type === 'chart' && (
-        <ChartRenderer element={element} isSelected={isSelected} />
-      )}
       {element.type === 'callout' && (
         <CalloutRenderer element={element} />
       )}
@@ -1700,6 +1703,31 @@ function CanvasElement({ element, isSelected, isEditing, isCropping, cropState, 
         </div>
       )}
 
+      {/* Click action badge: what the element does when clicked while presenting */}
+      {element.clickAction && supportsClickAction(element) && (
+        <div style={{
+          position: 'absolute', bottom: -18, right: 0, zIndex: 101, pointerEvents: 'none',
+          background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }[element.clickAction.type] || '↗'}
+        </div>
+      )}
+
+      {/* Hidden until a click shows it */}
+      {element.startHidden && (
+        <div style={{
+          position: 'absolute', bottom: -18, left: 0, zIndex: 101, pointerEvents: 'none',
+          background: '#64748b', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          Hidden
+        </div>
+      )}
+
+      {/* Others who have it selected or open (live editing; utils/presence.js) */}
+      {remote && <RemoteUse use={remote} />}
+
       {/* Group badge */}
       {element.groupId && isSelected && (
         <div style={{
@@ -1867,50 +1895,6 @@ function MarkdownRenderer({ element }) {
   )
 }
 
-function ChartRenderer({ element, isSelected }) {
-  const { chartType = 'bar', chartData = {} } = element
-  const labels = chartData.labels || []
-  const datasets = chartData.datasets || []
-
-  const chartHtml = `<!doctype html><html><head>
-<meta charset="utf-8">
-<script src="${libUrl('chart.js', 'dist/chart.umd.min.js')}"><\/script>
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:transparent;overflow:hidden}</style>
-</head><body>
-<canvas id="c" style="width:100%;height:100%"></canvas>
-<script>
-new Chart(document.getElementById('c'),{
-  type:'${chartType}',
-  data:{
-    labels:${JSON.stringify(labels)},
-    datasets:${JSON.stringify(datasets.map(ds => ({
-      label: ds.label || '',
-      data: ds.data || [],
-      backgroundColor: ds.color || '#6366f1',
-      borderColor: ds.color || '#6366f1',
-      borderWidth: chartType === 'line' ? 2 : 0,
-      fill: chartType === 'line' ? false : undefined,
-    })))}
-  },
-  options:{
-    responsive:true,
-    maintainAspectRatio:false,
-    plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{size:12}}}},
-    scales:${chartType === 'pie' || chartType === 'doughnut' ? '{}' : `{x:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}},y:{ticks:{color:'rgba(255,255,255,0.6)'},grid:{color:'rgba(255,255,255,0.1)'}}}`}
-  }
-});
-<\/script></body></html>`
-
-  return (
-    <iframe
-      srcDoc={localizeLibraries(chartHtml)}
-      style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none', background: 'transparent' }}
-      sandbox="allow-scripts"
-      title="Chart"
-    />
-  )
-}
-
 function CalloutRenderer({ element }) {
   const num = element.calloutNumber || 1
   const bg = element.calloutColor || '#ef4444'
@@ -2062,6 +2046,32 @@ function TimelineRenderer({ element }) {
         </div>
       )}
     </div>
+  )
+}
+
+// An outline in the color of whoever else has an element selected, and a tag
+// with their names, or who's editing it
+function RemoteUse({ use }) {
+  const lead = use.editing || use.people[0]
+  const names = use.people.map(p => p.self ? 'You (other tab)' : p.name)
+  const label = use.editing
+    ? (use.editing.self ? 'You’re editing in another tab' : `${use.editing.name} is editing`)
+    : names.join(', ')
+  return (
+    <>
+      <div aria-hidden style={{
+        position: 'absolute', inset: -3, border: `2px ${use.editing ? 'solid' : 'dashed'} ${lead.color}`,
+        borderRadius: 3, pointerEvents: 'none', zIndex: 102,
+      }} />
+      <div style={{
+        position: 'absolute', bottom: -20, left: -3, zIndex: 102, pointerEvents: 'none',
+        background: lead.color, color: '#111', fontSize: 10, fontWeight: 600, fontFamily: 'sans-serif',
+        padding: '1px 6px', borderRadius: 3, whiteSpace: 'nowrap', userSelect: 'none', maxWidth: 240,
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {label}
+      </div>
+    </>
   )
 }
 

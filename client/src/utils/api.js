@@ -1,5 +1,7 @@
 let _getToken = async () => null
 export function setTokenGetter(fn) { _getToken = fn }
+// The signed-in user's session token, for live editing's WebSocket
+export const getAuthToken = () => _getToken()
 
 // Guest mode: requests carry the guest session token instead of a Clerk token
 let _guestToken = null
@@ -25,6 +27,43 @@ async function safeJson(r) {
 
 const BASE = '/api'
 
+// The version of each presentation as this tab last loaded or saved it. A save
+// sends it, and the server refuses a save made from an older version (409)
+// when someone else has saved since. Self-hosted, presentations have none.
+const versions = new Map()
+function noteVersion(id, deck) {
+  if (id && Number.isInteger(deck?.version)) versions.set(id, deck.version)
+  return deck
+}
+
+// Rejects with the server's reason; a refused save's error has code
+// 'conflict' and the version that's saved now
+async function checked(r, fallback) {
+  const b = await safeJson(r)
+  if (r.status === 409) throw Object.assign(new Error(b.message || 'Someone else saved this presentation'), { code: 'conflict', version: b.version })
+  if (!r.ok) throw Object.assign(new Error(b.message || b.error || fallback), { status: r.status })
+  return b
+}
+
+function json(method, data) {
+  return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
+}
+
+// One save per presentation at a time: a save asked for while another is on
+// its way is sent once that one is done, from the version it made, so a slow
+// save doesn't make the tab's next one look out of date
+const saving = new Map()
+function savePresentation(id, data) {
+  const send = () => authFetch(`${BASE}/presentations/${id}`, json('PUT', { ...data, version: versions.get(id) }))
+    .then(r => checked(r, 'Save failed'))
+    .then(deck => noteVersion(id, deck))
+  const save = (saving.get(id) || Promise.resolve()).then(send, send)
+  saving.set(id, save)
+  const done = () => { if (saving.get(id) === save) saving.delete(id) }
+  save.then(done, done)
+  return save
+}
+
 // Resolves to { url }; rejects with the server's reason (storage full, file too big, ...)
 function uploadTo(url, file) {
   const fd = new FormData()
@@ -38,17 +77,15 @@ function uploadTo(url, file) {
 
 export const api = {
   getPresentations: () => authFetch(`${BASE}/presentations`).then(safeJson),
-  getPresentation: (id) => authFetch(`${BASE}/presentations/${id}`).then(safeJson),
+  getPresentation: (id) => authFetch(`${BASE}/presentations/${id}`).then(safeJson).then(deck => noteVersion(id, deck)),
   createPresentation: (data) => authFetch(`${BASE}/presentations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.message || b.error || 'Create failed'); return b }),
-  updatePresentation: (id, data) => authFetch(`${BASE}/presentations/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(safeJson),
+  updatePresentation: savePresentation,
+  // After a refused save, to save over the version that's there now
+  saveOverVersion: (id, version) => { versions.set(id, version) },
   deletePresentation: (id) => authFetch(`${BASE}/presentations/${id}`, { method: 'DELETE' }).then(safeJson),
   duplicatePresentation: (id) => authFetch(`${BASE}/presentations/${id}/duplicate`, { method: 'POST' }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.message || b.error || 'Duplicate failed'); return b }),
   uploadFile: (file) => uploadTo('/api/upload', file),
@@ -124,7 +161,7 @@ export const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
   }).then(safeJson),
   getSnapshots: (id) => authFetch(`${BASE}/presentations/${id}/snapshots`).then(safeJson),
-  restoreSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/restore/${snapshotId}`, { method: 'POST' }).then(safeJson),
+  restoreSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/restore/${snapshotId}`, { method: 'POST' }).then(safeJson).then(deck => noteVersion(id, deck)),
   deleteSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/snapshots/${snapshotId}`, { method: 'DELETE' }).then(safeJson),
   getSnapshotData: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/snapshots/${snapshotId}/data`).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),
 
@@ -193,6 +230,13 @@ export const api = {
     body: JSON.stringify({ name }),
   }).then(safeJson),
   deleteDataset: (id) => authFetch(`${BASE}/datasets/${id}`, { method: 'DELETE' }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Delete failed'); return b }),
+  // Editing with others (cloud only)
+  getCollaborators: (id) => authFetch(`${BASE}/presentations/${id}/collaborators`).then(r => checked(r, 'Failed')),
+  turnOnInvite: (id) => authFetch(`${BASE}/presentations/${id}/invite`, { method: 'POST' }).then(r => checked(r, 'Failed')),
+  turnOffInvite: (id) => authFetch(`${BASE}/presentations/${id}/invite`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
+  removeCollaborator: (id, userId) => authFetch(`${BASE}/presentations/${id}/collaborators/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
+  getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
+  acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
   linkDataset: (pid, datasetId, alias) => authFetch(`${BASE}/presentations/${pid}/datasets`, {
     method: 'POST',

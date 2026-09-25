@@ -11,6 +11,8 @@
     "@aws-sdk/client-s3": "^3.1045.0",
     "@aws-sdk/lib-storage": "^3.1045.0",
     "@clerk/express": "^2.1.15",
+    "@hocuspocus/common": "^4.7.0",
+    "@hocuspocus/server": "^4.7.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.2.1",
     "dotenv": "^17.4.2",
@@ -18,9 +20,12 @@
     "express-rate-limit": "^8.5.2",
     "fs-extra": "^11.2.0",
     "helmet": "^8.1.0",
+    "lib0": "^0.2.117",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.20.0",
     "stripe": "^22.1.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "ws": "^8.21.3",
+    "yjs": "^13.6.33"
   }
 }

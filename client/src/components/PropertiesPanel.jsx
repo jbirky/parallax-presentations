@@ -4,6 +4,7 @@
 import { useState, useRef, useMemo } from 'react'
 import katex from 'katex'
 import { api } from '../utils/api'
+import { supportsClickAction, safeActionUrl, slideLabel, elementLabels } from '../utils/clickActions'
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
 
 const CODE_LANGUAGES = [
@@ -144,7 +145,7 @@ function CopyTikzButton({ tikz }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -694,55 +695,6 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 style={{ width: '100%', minHeight: 120, background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 4, fontSize: 11, fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }}
                 spellCheck={false}
               />
-            </div>
-          )}
-
-          {/* Chart options */}
-          {selectedElement.type === 'chart' && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Chart Type</div>
-              <select className="prop-input" value={selectedElement.chartType || 'bar'} onChange={e => onUpdateElement({ chartType: e.target.value })} style={{ padding: '4px 6px', marginBottom: 8 }}>
-                {['bar', 'line', 'pie', 'doughnut', 'radar', 'polarArea'].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-              </select>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Labels (comma-separated)</div>
-              <input className="prop-input" type="text"
-                value={(selectedElement.chartData?.labels || []).join(', ')}
-                onChange={e => onUpdateElement({ chartData: { ...selectedElement.chartData, labels: e.target.value.split(',').map(s => s.trim()) } })}
-                style={{ marginBottom: 6, fontSize: 11, padding: '4px 6px' }}
-              />
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Values (comma-separated)</div>
-              <input className="prop-input" type="text"
-                value={((selectedElement.chartData?.datasets || [])[0]?.data || []).join(', ')}
-                onChange={e => {
-                  const data = e.target.value.split(',').map(s => Number(s.trim()) || 0)
-                  const datasets = [...(selectedElement.chartData?.datasets || [{ label: 'Series 1', data: [], color: '#6366f1' }])]
-                  datasets[0] = { ...datasets[0], data }
-                  onUpdateElement({ chartData: { ...selectedElement.chartData, datasets } })
-                }}
-                style={{ marginBottom: 6, fontSize: 11, padding: '4px 6px' }}
-              />
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Series Label</div>
-              <input className="prop-input" type="text"
-                value={(selectedElement.chartData?.datasets || [])[0]?.label || ''}
-                onChange={e => {
-                  const datasets = [...(selectedElement.chartData?.datasets || [{ label: '', data: [], color: '#6366f1' }])]
-                  datasets[0] = { ...datasets[0], label: e.target.value }
-                  onUpdateElement({ chartData: { ...selectedElement.chartData, datasets } })
-                }}
-                style={{ marginBottom: 6, fontSize: 11, padding: '4px 6px' }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Color</div>
-                <input type="color"
-                  value={(selectedElement.chartData?.datasets || [])[0]?.color || '#6366f1'}
-                  onChange={e => {
-                    const datasets = [...(selectedElement.chartData?.datasets || [{ label: '', data: [], color: '#6366f1' }])]
-                    datasets[0] = { ...datasets[0], color: e.target.value }
-                    onUpdateElement({ chartData: { ...selectedElement.chartData, datasets } })
-                  }}
-                  style={{ width: 28, height: 28, padding: 2, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                />
-              </div>
             </div>
           )}
 
@@ -1608,6 +1560,146 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               </div>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open editor</p>
             </div>
+            )
+          })()}
+
+          {/* Interaction when presented: a click action, and being shown or hidden by one */}
+          {onUpdateWithGroup && (() => {
+            const el = selectedElement
+            const action = el.clickAction || null
+            const slides = presentation?.slides || []
+            const elements = slide.elements || []
+            const canClick = supportsClickAction(el)
+            const imageClick = el.type === 'image' && (el.clickToExpand || el.popupText)
+            const setAction = clickAction => onUpdateWithGroup({ clickAction })
+            const setType = type => setAction(
+              type === 'none' ? null
+                : type === 'slide' ? { type, slideId: action?.slideId || slides.find(s => s.id && s.id !== slide.id)?.id || null }
+                : type === 'url' ? { type, url: action?.url || '', newTab: action?.newTab ?? true }
+                : type === 'visibility' ? { type, show: action?.show || [], hide: action?.hide || [], toggle: action?.toggle || [] }
+                : { type })
+            const missing = action?.type === 'slide' && !slides.some(s => s.id && s.id === action.slideId)
+            const badUrl = action?.type === 'url' && !!action.url?.trim() && !safeActionUrl(action.url)
+
+            // What a click can show or hide: each group counts as one
+            const labels = elementLabels(elements)
+            const entries = []
+            const seenGroups = new Set()
+            for (const e of elements) {
+              if (!e.groupId) { entries.push({ key: e.id, ids: [e.id], label: labels.get(e.id) }); continue }
+              if (seenGroups.has(e.groupId)) continue
+              seenGroups.add(e.groupId)
+              const members = elements.filter(m => m.groupId === e.groupId)
+              const named = members.find(m => m.type === 'text') || members[0]
+              entries.push({ key: e.groupId, ids: members.map(m => m.id), label: `Group: ${labels.get(named.id)}` })
+            }
+            const VIS = ['show', 'hide', 'toggle']
+            const stateOf = entry => VIS.find(k => entry.ids.every(id => (action?.[k] || []).includes(id))) || 'none'
+            const setState = (entry, state) => {
+              const exists = id => elements.some(e => e.id === id)
+              const next = { ...action }
+              for (const k of VIS) next[k] = (action?.[k] || []).filter(id => !entry.ids.includes(id) && exists(id))
+              if (state !== 'none') next[state] = [...next[state], ...entry.ids]
+              setAction(next)
+            }
+            const hiddenAtStart = entry => entry.ids.every(id => elements.find(e => e.id === id)?.startHidden)
+            const shownByAClick = elements.some(e => e.clickAction?.type === 'visibility'
+              && ['show', 'toggle'].some(k => (e.clickAction[k] || []).includes(el.id)))
+
+            return (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>On click</div>
+                {!canClick ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                    This element takes its own clicks, but a click on something else can still show or hide it.
+                  </p>
+                ) : imageClick ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                    This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                  </p>
+                ) : (<>
+                  <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
+                    aria-label="On click" style={{ padding: '4px 6px', marginBottom: 6 }}>
+                    <option value="none">Nothing</option>
+                    <option value="slide">Go to slide</option>
+                    <option value="next">Next slide</option>
+                    <option value="prev">Previous slide</option>
+                    <option value="visibility">Show or hide elements</option>
+                    <option value="url">Open web page</option>
+                  </select>
+                  {action?.type === 'slide' && (
+                    <select className="prop-input" value={missing ? '' : action.slideId}
+                      onChange={e => setAction({ type: 'slide', slideId: e.target.value })}
+                      aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
+                      {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
+                      {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
+                    </select>
+                  )}
+                  {action?.type === 'visibility' && (
+                    <div role="group" aria-label="What a click shows or hides" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {entries.map(entry => (
+                        <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button onClick={() => onSelectElement?.(entry.ids[0])} title="Select it"
+                            style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {entry.label}{entry.ids.includes(el.id) ? ' (this)' : ''}
+                            {hiddenAtStart(entry) && <span style={{ color: 'var(--text-muted)' }}> · hidden at start</span>}
+                          </button>
+                          <select className="prop-input" value={stateOf(entry)} onChange={e => setState(entry, e.target.value)}
+                            aria-label={`${entry.label}: on click`} style={{ width: 84, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
+                            <option value="none">—</option>
+                            <option value="show">Show</option>
+                            <option value="hide">Hide</option>
+                            <option value="toggle">Toggle</option>
+                          </select>
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Click a name to select it.</div>
+                    </div>
+                  )}
+                  {action?.type === 'url' && (<>
+                    <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
+                      onChange={e => setAction({ ...action, url: e.target.value })}
+                      aria-label="Web address" aria-invalid={badUrl} />
+                    <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
+                      Opens https://, http:// and mailto: addresses.
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
+                      <input type="checkbox" checked={action.newTab !== false}
+                        onChange={e => setAction({ ...action, newTab: e.target.checked })}
+                        style={{ accentColor: 'var(--accent)' }} />
+                      Open in a new tab
+                    </label>
+                  </>)}
+                  {action && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>On hover</span>
+                      <select className="prop-input" value={el.hoverEffect || 'brighten'}
+                        onChange={e => onUpdateWithGroup({ hoverEffect: e.target.value === 'brighten' ? null : e.target.value })}
+                        aria-label="On hover" style={{ padding: '2px 6px', fontSize: 11 }}>
+                        <option value="brighten">Brighten</option>
+                        <option value="lift">Lift</option>
+                        <option value="grow">Grow</option>
+                        <option value="none">Nothing</option>
+                      </select>
+                    </div>
+                  )}
+                </>)}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 8 }}>
+                  <input type="checkbox" checked={!!el.startHidden}
+                    onChange={e => onUpdateWithGroup({ startHidden: e.target.checked || null })}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  Hidden until a click shows it
+                </label>
+                {el.startHidden && !shownByAClick && (
+                  <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>Nothing on this slide shows it yet.</div>
+                )}
+                {(action || el.startHidden) && el.groupId && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Applies to the whole group.</div>
+                )}
+                {(action || el.startHidden) && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Works when presenting, in exported HTML and on share links.</div>
+                )}
+              </div>
             )
           })()}
 

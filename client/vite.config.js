@@ -77,7 +77,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:3002',
-      '/uploads': 'http://localhost:3002'
+      '/uploads': 'http://localhost:3002',
+      // Live editing's WebSocket
+      '/collab': { target: 'ws://localhost:3002', ws: true },
     }
   },
   test: {
