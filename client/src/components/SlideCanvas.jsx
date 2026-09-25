@@ -4,6 +4,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
+import { getCanvasHeight, isPinned } from '../utils/scrollingSlides'
 
 // Editor only: hand the slide panel a still of this embed once it has settled,
 // so thumbnails need no second run of the embed's script. Serialising an SVG is
@@ -236,6 +237,10 @@ function getBgStyle(bg) {
 export default function SlideCanvas({ editor, slide, fadedIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
+  // A scrolling slide is laid out on a canvas taller than the screen, SLIDE_H;
+  // its pinned elements stay on the screen, so they keep to the first one
+  const CANVAS_H = getCanvasHeight(slide, slideH)
+  const scrolling = CANVAS_H > SLIDE_H
   const containerRef = useRef(null)
   const canvasRef = useRef(null)
   const [scale, setScale] = useState(1)
@@ -300,6 +305,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
   useEffect(() => { scaleRef.current = scale }, [scale])
   useEffect(() => { selectedElementIdsRef.current = selectedElementIds }, [selectedElementIds])
   useEffect(() => { smartGuidesRef.current = smartGuidesEnabled }, [smartGuidesEnabled])
+  const canvasHRef = useRef(CANVAS_H)
+  useEffect(() => { canvasHRef.current = CANVAS_H }, [CANVAS_H])
   const slideRef = useRef(slide)
   useEffect(() => { slideRef.current = slide }, [slide])
   const persistentGuidesRef = useRef(persistentGuides)
@@ -321,7 +328,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const x = Math.max(0, Math.min(SLIDE_W, (e.clientX - rect.left) / scaleRef.current))
-      const y = Math.max(0, Math.min(SLIDE_H, (e.clientY - rect.top) / scaleRef.current))
+      const y = Math.max(0, Math.min(canvasHRef.current, (e.clientY - rect.top) / scaleRef.current))
       drawPointsRef.current.push({ x, y })
       setLiveStroke(prev => prev ? { ...prev, points: [...drawPointsRef.current] } : null)
     }
@@ -348,13 +355,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
     const update = () => {
       if (!containerRef.current) return
       const { clientWidth: w, clientHeight: h } = containerRef.current
-      setScale(Math.max(Math.min((w - 24) / SLIDE_W, (h - 24) / SLIDE_H), 0.1))
+      setScale(Math.max(Math.min((w - 24) / SLIDE_W, (h - 24) / CANVAS_H), 0.1))
     }
     update()
     const ro = new ResizeObserver(update)
     if (containerRef.current) ro.observe(containerRef.current)
     return () => ro.disconnect()
-  }, [])
+  }, [SLIDE_W, CANVAS_H])
 
   // Global mouse move/up for element drag + crop drag
   useEffect(() => {
@@ -456,7 +463,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         const rect = canvasRef.current.getBoundingClientRect()
         const pos = dg.axis === 'x'
           ? Math.max(0, Math.min(SLIDE_W, Math.round((e.clientX - rect.left) / scaleRef.current)))
-          : Math.max(0, Math.min(SLIDE_H, Math.round((e.clientY - rect.top) / scaleRef.current)))
+          : Math.max(0, Math.min(canvasHRef.current, Math.round((e.clientY - rect.top) / scaleRef.current)))
         onUpdateGuide?.(dg.index, pos)
         return
       }
@@ -467,7 +474,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         const rect = canvasRef.current.getBoundingClientRect()
         const pos = da.axis === 'x'
           ? Math.max(0, Math.min(SLIDE_W, Math.round((e.clientX - rect.left) / scaleRef.current)))
-          : Math.max(0, Math.min(SLIDE_H, Math.round((e.clientY - rect.top) / scaleRef.current)))
+          : Math.max(0, Math.min(canvasHRef.current, Math.round((e.clientY - rect.top) / scaleRef.current)))
         const updated = (slideRef.current?.axisLines || []).map(a => a.id === da.id ? { ...a, position: pos } : a)
         onUpdateAxisLines?.(updated)
         return
@@ -497,6 +504,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       }
       const drag = draggingRef.current
       if (!drag || !canvasRef.current) return
+      // How far down an element can go: the canvas, or for a pinned one the screen
+      const boundH = id => {
+        const el = (slideRef.current?.elements || []).find(el => el.id === id)
+        return isPinned(el) ? SLIDE_H : canvasHRef.current
+      }
+      const bh = boundH(drag.elementId)
       const rect = canvasRef.current.getBoundingClientRect()
       const mouseX = (e.clientX - rect.left) / scaleRef.current
       const mouseY = (e.clientY - rect.top) / scaleRef.current
@@ -507,50 +520,50 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           const updates = drag.startEls.map(sel => ({
             id: sel.id,
             x: Math.max(0, Math.min(SLIDE_W - sel.width, sel.x + dx)),
-            y: Math.max(0, Math.min(SLIDE_H - sel.height, sel.y + dy)),
+            y: Math.max(0, Math.min(boundH(sel.id) - sel.height, sel.y + dy)),
           }))
           onUpdateElements(updates)
         } else {
           const rawX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, drag.startEl.x + dx))
-          const rawY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, drag.startEl.y + dy))
+          const rawY = Math.max(0, Math.min(bh - drag.startEl.height, drag.startEl.y + dy))
           let newX, newY
           if (showGridRef.current) {
             const { x: snappedX, y: snappedY } = snapWithRef(rawX, rawY, drag.startEl.width, drag.startEl.height, drag.startEl.snapRef || 'ul', snap)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, snappedX))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, snappedY))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, snappedY))
             // Custom guides override grid snap when closer
             const { x: gx, y: gy, didX, didY } = guideSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (didX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, gx))
-            if (didY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, gy))
+            if (didY) newY = Math.max(0, Math.min(bh - drag.startEl.height, gy))
             // Layout grid + axis lines override when closer
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           } else if (persistentGuidesRef.current.length > 0) {
             const { x: gx, y: gy } = guideSnap(rawX, rawY, drag.startEl.width, drag.startEl.height)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, gx))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, gy))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, gy))
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           } else if (smartGuidesRef.current) {
             const allEls = (slideRef.current?.elements || [])
             const draggedEl = { id: drag.elementId, x: rawX, y: rawY, width: drag.startEl.width, height: drag.startEl.height }
-            const { guides, snappedX, snappedY } = calculateGuides(draggedEl, allEls, SLIDE_W, SLIDE_H)
+            const { guides, snappedX, snappedY } = calculateGuides(draggedEl, allEls, SLIDE_W, canvasHRef.current)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, snappedX))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, snappedY))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, snappedY))
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides(guides)
           } else {
             newX = rawX
             newY = rawY
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(rawX, rawY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           }
           onUpdateElement(drag.elementId, { x: newX, y: newY })
@@ -572,7 +585,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         updates.x = snap(Math.max(0, updates.x))
         updates.y = snap(Math.max(0, updates.y))
         updates.width = snap(Math.min(SLIDE_W - updates.x, updates.width))
-        updates.height = snap(Math.min(SLIDE_H - updates.y, updates.height))
+        updates.height = snap(Math.min(bh - updates.y, updates.height))
         // Snap resize edges to custom guides
         if (persistentGuidesRef.current.length > 0) {
           const { x: gx, y: gy, didX, didY } = guideSnap(updates.x, updates.y, updates.width, updates.height)
@@ -757,13 +770,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       : (me.clientY - rect.top) / scaleRef.current
     const onMove = (me) => {
       const pos = getPos(me)
-      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : SLIDE_H)) {
+      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : CANVAS_H)) {
         setPreviewGuide({ axis, position: Math.round(pos) })
       }
     }
     const onUp = (me) => {
       const pos = getPos(me)
-      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : SLIDE_H)) {
+      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : CANVAS_H)) {
         onAddGuide?.({ axis, position: Math.round(pos) })
       }
       setPreviewGuide(null)
@@ -804,13 +817,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             style={{
               position: 'absolute', left: 0, top: '50%',
               transform: `translateY(calc(-50% * 1)) scale(${scale})`, transformOrigin: 'left center',
-              width: 20, height: SLIDE_H, background: 'rgba(30,30,46,0.9)', zIndex: 100,
+              width: 20, height: CANVAS_H, background: 'rgba(30,30,46,0.9)', zIndex: 100,
               cursor: 'crosshair', overflow: 'hidden', borderRight: '1px solid var(--border)',
               userSelect: 'none', fontSize: 8, color: 'rgba(255,255,255,0.4)',
             }}
             onMouseDown={e => handleRulerMouseDown('y', e)}
           >
-            {Array.from({ length: Math.ceil(SLIDE_H / 50) }, (_, i) => (
+            {Array.from({ length: Math.ceil(CANVAS_H / 50) }, (_, i) => (
               <div key={i} style={{ position: 'absolute', top: i * 50, left: 0, borderTop: '1px solid rgba(255,255,255,0.2)', width: '100%', paddingLeft: 2, paddingTop: 1 }}>
                 {i * 50}
               </div>
@@ -822,7 +835,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         ref={canvasRef}
         className="slide-canvas"
         style={{
-          width: SLIDE_W, height: SLIDE_H,
+          width: SLIDE_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
           flexShrink: 0, position: 'relative', fontSize: '42px',
           outline: dragOver ? '3px dashed #6366f1' : 'none',
@@ -835,7 +848,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           const rect = canvasRef.current?.getBoundingClientRect()
           if (!rect) return
           const x = Math.max(0, Math.min(SLIDE_W, (e.clientX - rect.left) / scaleRef.current))
-          const y = Math.max(0, Math.min(SLIDE_H, (e.clientY - rect.top) / scaleRef.current))
+          const y = Math.max(0, Math.min(canvasHRef.current, (e.clientY - rect.top) / scaleRef.current))
           drawingActiveRef.current = true
           drawPointsRef.current = [{ x, y }]
           setLiveStroke({ ...drawToolRef.current, points: [{ x, y }] })
@@ -857,6 +870,28 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             backgroundImage: 'linear-gradient(to right, rgba(99,102,241,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(99,102,241,0.18) 1px, transparent 1px)',
             backgroundSize: `${gridSize}px ${gridSize}px`
           }} />
+        )}
+
+        {/* Where each screen of a scrolling slide ends, and which elements are
+            pinned to the screen. Labels are sized against the zoom, which is
+            small for a canvas several screens tall. */}
+        {scrolling && (
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 996 }}>
+            {Array.from({ length: Math.ceil(CANVAS_H / SLIDE_H) - 1 }, (_, i) => (
+              <div key={i} style={{ position: 'absolute', left: 0, top: (i + 1) * SLIDE_H, width: '100%', borderTop: `${Math.max(1, Math.round(2 / scale))}px dashed rgba(99,102,241,0.55)` }}>
+                <div style={{
+                  position: 'absolute', right: Math.round(4 / scale), top: Math.round(4 / scale), whiteSpace: 'nowrap',
+                  color: 'rgba(165,168,255,0.85)', fontSize: Math.round(11 / scale), fontWeight: 600, letterSpacing: 0.3,
+                }}>screen {i + 2}</div>
+              </div>
+            ))}
+            {(slide?.elements || []).filter(isPinned).map(el => (
+              <div key={el.id} style={{
+                position: 'absolute', left: el.x, top: Math.max(0, el.y - Math.round(15 / scale)), whiteSpace: 'nowrap',
+                color: 'rgba(165,168,255,0.9)', fontSize: Math.round(10 / scale), fontWeight: 600, letterSpacing: 0.3,
+              }}>PINNED</div>
+            ))}
+          </div>
         )}
 
         {/* Layout grid overlay (typographic columns/rows) */}
@@ -908,7 +943,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {persistentGuides.map((guide, i) => (
           guide.axis === 'x' ? (
             <div key={`pg${i}`} style={{
-              position: 'absolute', left: guide.position, top: 0, width: 9, height: SLIDE_H,
+              position: 'absolute', left: guide.position, top: 0, width: 9, height: CANVAS_H,
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
@@ -943,7 +978,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {(slide?.axisLines || []).filter(a => a.visible).map((axisLine) => (
           axisLine.axis === 'x' ? (
             <div key={axisLine.id} style={{
-              position: 'absolute', left: axisLine.position, top: 0, width: 9, height: SLIDE_H,
+              position: 'absolute', left: axisLine.position, top: 0, width: 9, height: CANVAS_H,
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
@@ -983,7 +1018,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {/* Preview guide while dragging from ruler */}
         {previewGuide && (
           previewGuide.axis === 'x' ? (
-            <div style={{ position: 'absolute', left: previewGuide.position, top: 0, width: 1, height: SLIDE_H, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', left: previewGuide.position, top: 0, width: 1, height: CANVAS_H, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
           ) : (
             <div style={{ position: 'absolute', top: previewGuide.position, left: 0, height: 1, width: SLIDE_W, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
           )
@@ -993,7 +1028,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {activeGuides.map((guide, i) => (
           guide.axis === 'x' ? (
             <div key={`g${i}`} style={{
-              position: 'absolute', left: guide.position, top: 0, width: 1, height: SLIDE_H,
+              position: 'absolute', left: guide.position, top: 0, width: 1, height: CANVAS_H,
               background: '#f59e0b', zIndex: 999, pointerEvents: 'none',
             }} />
           ) : (
@@ -1063,6 +1098,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           />
         ))}
 
+        {/* Scrolling slide badge, under the auto-animate one when both show */}
+        {scrolling && (
+          <div style={{
+            position: 'absolute', top: slide?.autoAnimate ? 26 : 6, right: 6, zIndex: 999, pointerEvents: 'none',
+            background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: Math.round(9 / scale), fontWeight: 600,
+            padding: `${Math.round(2 / scale)}px ${Math.round(6 / scale)}px`, borderRadius: 3, letterSpacing: 0.3,
+          }}>SCROLL {+(CANVAS_H / SLIDE_H).toFixed(2)}&times;</div>
+        )}
+
         {/* Auto-animate badge */}
         {slide?.autoAnimate && (
           <div style={{
@@ -1072,11 +1116,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           }}>MORPH</div>
         )}
 
-        {/* Footer overlay */}
+        {/* Footer overlay. On a scrolling slide it's at the foot of the first
+            screen: presenting, it stays at the foot of the screen as the canvas scrolls. */}
         {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && (
           footerMode === 'sequence' && sequenceSections.length > 0 ? (
             <div style={{
-              position: 'absolute', bottom: 6, left: 16, right: 16, zIndex: 900,
+              position: 'absolute', bottom: 6 + CANVAS_H - SLIDE_H, left: 16, right: 16, zIndex: 900,
               display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0,
               fontSize: footerFontSize, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
@@ -1108,7 +1153,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             </div>
           ) : (
             <div style={{
-              position: 'absolute', bottom: 8, left: 16, right: 16, zIndex: 900,
+              position: 'absolute', bottom: 8 + CANVAS_H - SLIDE_H, left: 16, right: 16, zIndex: 900,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               fontSize: footerFontSize, color: footerColor, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
@@ -1127,7 +1172,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             <svg key={el.id}
               style={{
                 position: 'absolute', left: 0, top: 0,
-                width: SLIDE_W, height: SLIDE_H,
+                width: SLIDE_W, height: CANVAS_H,
                 zIndex: el.zIndex || 1,
                 overflow: 'visible',
                 pointerEvents: 'none',
@@ -1151,7 +1196,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
                 />
               ))}
               {selectedElementIds.includes(el.id) && (
-                <rect x={0} y={0} width={SLIDE_W} height={SLIDE_H}
+                <rect x={0} y={0} width={SLIDE_W} height={CANVAS_H}
                   fill="none" stroke="#6366f1" strokeWidth={2}
                   strokeDasharray="6 3" pointerEvents="none"
                 />
@@ -1162,7 +1207,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
 
         {/* Live stroke while drawing */}
         {liveStroke && liveStroke.points.length >= 2 && (
-          <svg style={{ position: 'absolute', left: 0, top: 0, width: SLIDE_W, height: SLIDE_H, pointerEvents: 'none', zIndex: 9998, overflow: 'visible' }}>
+          <svg style={{ position: 'absolute', left: 0, top: 0, width: SLIDE_W, height: CANVAS_H, pointerEvents: 'none', zIndex: 9998, overflow: 'visible' }}>
             <path
               d={pointsToPath(liveStroke.points, false)}
               stroke={liveStroke.color || '#ffffff'}

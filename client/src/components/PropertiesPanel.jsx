@@ -6,6 +6,7 @@ import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels } from '../utils/clickActions'
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
+import { getCanvasHeight, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -147,7 +148,7 @@ function CopyTikzButton({ tikz }) {
 
 export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
   const [videoUploading, setVideoUploading] = useState(false)
-  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
+  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
     <h3 onClick={() => setCollapsed(p => ({ ...p, [k]: !p[k] }))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
       {children} <span style={{ fontSize: 10, opacity: 0.5 }}>{collapsed[k] ? '▸' : '▾'}</span>
@@ -1362,6 +1363,33 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </div>
           )}
 
+          {/* Pinned on a scrolling slide */}
+          {(() => {
+            const vh = presentation?.slideHeight || 540
+            if (getCanvasHeight(slide, vh) <= vh) return null
+            return (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isPinned(selectedElement)}
+                    onChange={e => {
+                      if (!e.target.checked) { onUpdateElement({ scrollBehavior: undefined }); return }
+                      // A pinned element's y is on the screen, so it has to be within the first one
+                      const maxY = Math.max(0, vh - (selectedElement.height || 0))
+                      onUpdateElement({ scrollBehavior: 'pin', y: Math.min(selectedElement.y ?? 0, maxY) })
+                    }}
+                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Pin while scrolling</span>
+                </label>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  Stays on the screen while the rest of the slide scrolls past, so it sits within the first screen.
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Slide entry animation (GSAP) */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Slide Entry Animation</div>
@@ -1859,6 +1887,60 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           </div>
         </div>
         </>)}
+      </div>
+
+      {/* Scrolling: a canvas taller than the screen */}
+      <div className="prop-section">
+        <SectionHead k="scroll">Scrolling</SectionHead>
+        {!collapsed.scroll && (() => {
+          const vh = presentation?.slideHeight || 540
+          const canvasH = getCanvasHeight(slide, vh)
+          const screens = canvasH / vh
+          const setHeight = h => onUpdateSlide({ scrollHeight: h > vh ? Math.min(Math.round(h), vh * MAX_SCREENS) : undefined })
+          const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && (el.y ?? 0) >= canvasH).length
+          return (<>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas height</div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {[1, 1.5, 2, 3].map(k => (
+                <button
+                  key={k}
+                  className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                  onClick={() => setHeight(vh * k)}
+                >
+                  {k === 1 ? 'Off' : `${k}\u00d7`}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Height (px)</div>
+                {/* Set on Enter or leaving the field: a height typed a digit at a
+                    time would turn scrolling off and on as it went */}
+                <input className="prop-input" type="number" min={vh} max={vh * MAX_SCREENS} step={20}
+                  key={`${slide?.id}:${canvasH}`}
+                  defaultValue={canvasH}
+                  onBlur={e => setHeight(Number(e.target.value) || 0)}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
+                <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {canvasH > vh
+                ? 'Presenting shows one screen at a time. \u2193 and Space scroll down, showing fragments as they come into view, then go on to the next slide. PDF and PowerPoint export give a page per screen.'
+                : 'Make the canvas taller than the screen to scroll through this slide while presenting.'}
+            </div>
+            {offCanvas > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>
+                {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} below the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
+              </div>
+            )}
+          </>)
+        })()}
       </div>
 
       {/* Present Grid per-slide override */}

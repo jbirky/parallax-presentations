@@ -68,6 +68,7 @@ export default defineConfig({
             { text: 'Transitions', link: '/tutorials/transitions' },
             { text: 'Presenting & Export', link: '/tutorials/presenting' },
             { text: 'Drawing on Slides', link: '/tutorials/drawing-on-slides' },
+            { text: 'Scrolling Slides', link: '/tutorials/scrolling-slides' },
             { text: 'Links & Click Actions', link: '/tutorials/interactive-slides' },
             { text: 'Editing with Others', link: '/tutorials/editing-with-others' },
             { text: 'Using LaTeX & Math', link: '/tutorials/using-latex' },

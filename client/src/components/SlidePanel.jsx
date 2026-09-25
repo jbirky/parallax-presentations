@@ -7,6 +7,7 @@ import { shapeSvgString } from '../utils/shapeUtils'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
+import { getCanvasHeight } from '../utils/scrollingSlides'
 
 const THUMB_W = 150
 
@@ -21,6 +22,8 @@ function getBgStyle(bg) {
 function SlideThumbnail({ slide, slideW, slideH }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
+  // A scrolling slide shows its first screen, and a badge for how many it has
+  const canvasH = getCanvasHeight(slide, slideH)
 
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', flexShrink: 0, borderRadius: 3 }}>
@@ -127,6 +130,13 @@ function SlideThumbnail({ slide, slideW, slideH }) {
           ))
         }
       </div>
+      {canvasH > slideH && (
+        <div title="Scrolling slide" style={{
+          position: 'absolute', bottom: 2, right: 2, pointerEvents: 'none',
+          background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: 8, fontWeight: 600,
+          padding: '1px 4px', borderRadius: 2, letterSpacing: 0.2,
+        }}>&#8597; {+(canvasH / slideH).toFixed(2)}&times;</div>
+      )}
     </div>
   )
 }

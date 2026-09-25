@@ -11,6 +11,7 @@ import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
@@ -121,9 +122,12 @@ export function generateRevealHTML(presentation, opts = {}) {
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
     const clickTargets = visibilityTargets(slide)
-    const elementsHtml = (slide.elements || [])
+    const canvasH = getCanvasHeight(slide, slideH)
+    const scrolling = canvasH > slideH
+    const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    const renderedElements = sortedElements
       .map(el => {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
           ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
@@ -399,7 +403,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = registry.getSandboxHtml(el.type)
@@ -411,7 +415,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         return ''
-      }).join('\n')
+      })
+    // On a scrolling slide, pinned elements stay on the screen, outside the canvas
+    const pinned = i => scrolling && isPinned(sortedElements[i])
+    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
+    const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
 
     let sideCitationsHtml = ''
     if (sideCitations.length > 0) {
@@ -471,8 +479,12 @@ export function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : slide.transition}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
+    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
+    const bodyHtml = scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
+  const scrollingDeck = hasScrollingSlides(presentation)
 
   // Group into columns for 2D output
   const columns = getSlideColumns(presentation.slides, presentation)
@@ -587,7 +599,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${scrollingDeck ? SCROLLING_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -842,7 +854,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1141,25 +1153,35 @@ function generatePrintHTML(presentation) {
     return footerTimeMode === 'timer-down' ? `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : '00:00'
   })()
 
-  // Expand each slide into one page per fragment step (initial + one per unique index)
+  // Expand each slide into one page per fragment step (initial + one per unique index).
+  // A scrolling slide has a page per screen instead, with its fragments shown.
   const pages = []
   let printPageCounter = 0
   presentation.slides.forEach((slide, slideIndex) => {
+    const screens = getScreenCount(slide, slideH)
+    if (screens > 1) {
+      for (let screen = 0; screen < screens; screen++) pages.push({ slide, slideIndex, maxIdx: Infinity, screen, first: screen === 0 })
+      return
+    }
     const fragIndices = [...new Set(
       (slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1)
     )].sort((a, b) => a - b)
-    pages.push({ slide, slideIndex, maxIdx: -Infinity })           // initial: no fragments
+    pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
   })
   const totalPages = pages.length
 
-  const pagesHtml = pages.map(({ slide, slideIndex, maxIdx }, pageIndex) => {
-    const bgStyle = getBgPrintStyle(slide.background)
+  const pagesHtml = pages.map(({ slide, slideIndex, maxIdx, screen, first }, pageIndex) => {
     // As the slide opens: fragments up to this step, without what a click shows
     const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden
+    const canvasH = getCanvasHeight(slide, slideH)
+    const scrolling = canvasH > slideH
+    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
+    const bgStyle = canvasBg ? getBgPrintStyle(null) : getBgPrintStyle(slide.background)
 
-    const elementsHtml = (slide.elements || [])
+    const sortedElements = (slide.elements || [])
       .slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    const renderedElements = sortedElements
       .map(el => {
         const isHidden = hiddenOnPage(el)
         const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
@@ -1284,18 +1306,20 @@ function generatePrintHTML(presentation) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
-      }).join('\n')
+      })
+    const pinned = i => scrolling && isPinned(sortedElements[i])
+    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
 
     // Per-slide page numbering
     const slideHasPageNum = slide.showPageNumber !== false
-    if (slideHasPageNum && maxIdx === -Infinity) printPageCounter++ // only increment on initial page of each slide
+    if (slideHasPageNum && first) printPageCounter++ // only increment on the first page of each slide
     const pageLabel = showPageNumbers && slideHasPageNum
       ? (pageNumberFormat === 'c/t' ? `${printPageCounter} / ${(presentation.slides || []).filter(s => s.showPageNumber !== false).length}` : `${printPageCounter}`)
       : ''
@@ -1326,9 +1350,19 @@ function generatePrintHTML(presentation) {
     }
 
     // Slide links and clickable elements link to the slides' first pages
-    const anchor = maxIdx === -Infinity ? slideIdAttr(slide) : ''
+    const anchor = first ? slideIdAttr(slide) : ''
     const linksHtml = printActionLinks(presentation.slides, slideIndex, hiddenOnPage)
-    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${printSlideLinks(elementsHtml)}\n${linksHtml}\n${footerHtml}\n</div>`
+    let bodyHtml = `${printSlideLinks(elementsHtml)}\n${linksHtml}`
+    if (scrolling) {
+      // This page's screen of the canvas, whose links move with it, under the pinned elements
+      const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
+      bodyHtml = printScreenBody({
+        slideW, slideH, canvasH, screen, background: canvasBg,
+        elementsHtml: `${printSlideLinks(elementsHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || isPinned(el))}`,
+        pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
+      })
+    }
+    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n')
 
   const title = escapeHtml(presentation.title || 'Presentation')

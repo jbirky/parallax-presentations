@@ -3,7 +3,8 @@
 
 // The drawing layer of the editor's Present window: a pen toolbar, ink kept in
 // an SVG inside each slide (in slide coordinates, so it scales and moves with
-// the slide), whiteboard pages, and saving through the editor. It runs in the
+// the slide; on a scrolling slide, in the canvas and its coordinates, so it
+// scrolls with what it marks), whiteboard pages, and saving through the editor. It runs in the
 // presented page, where generateRevealHTML injects it as source text, so it
 // must use nothing from outside its own body. The data it edits is described
 // in utils/annotations.js.
@@ -43,15 +44,20 @@ export function installAnnotations(config) {
     const s = window.Reveal && Reveal.getCurrentSlide()
     return keyOf(s) ? s : null
   }
+  // What ink goes on: a scrolling slide's canvas (utils/scrollingSlides.js), or the slide
+  const scrollerOf = section => section && section.querySelector(':scope > .slide-scroller')
+  const surfaceOf = section => scrollerOf(section)?.querySelector(':scope > .slide-scroll-inner') || section
+  const heightOf = section => Number(section.getAttribute('data-scroll-height')) || H
 
   // ── Drawing ──────────────────────────────────────────────────────────────
   function layerOf(section) {
-    let svg = section.querySelector(':scope > svg.pp-ink')
+    const surface = surfaceOf(section)
+    let svg = surface.querySelector(':scope > svg.pp-ink')
     if (!svg) {
       svg = document.createElementNS(NS, 'svg')
       svg.setAttribute('class', 'pp-ink')
-      svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
-      section.appendChild(svg)
+      svg.setAttribute('viewBox', `0 0 ${W} ${heightOf(section)}`)
+      surface.appendChild(svg)
     }
     return svg
   }
@@ -82,9 +88,9 @@ export function installAnnotations(config) {
     for (const p of pathsOf(section)) layer.appendChild(pathElement(p))
   }
   function toSlide(e, section) {
-    const r = section.getBoundingClientRect()
+    const r = surfaceOf(section).getBoundingClientRect()
     const round = v => Math.round(v * 10) / 10
-    return [round((e.clientX - r.left) * W / r.width), round((e.clientY - r.top) * H / r.height)]
+    return [round((e.clientX - r.left) * W / r.width), round((e.clientY - r.top) * heightOf(section) / r.height)]
   }
   // Ramer–Douglas–Peucker, to keep strokes small
   function simplify(points, tolerance) {
@@ -293,6 +299,37 @@ export function installAnnotations(config) {
       if (tool && (stylus || !penSeen)) { e.preventDefault(); e.stopPropagation() }
     }, { passive: false })
   }
+  // The layer is over a scrolling slide's canvas, so it scrolls the canvas for
+  // the wheel, and for a finger dragged up or down once a stylus draws. A
+  // sideways drag still reaches reveal.js, to change slides.
+  shield.addEventListener('wheel', e => {
+    const scroller = scrollerOf(currentPage())
+    if (!scroller) return
+    e.preventDefault()
+    scroller.scrollTop += e.deltaY
+  }, { passive: false })
+  let drag = null
+  shield.addEventListener('touchstart', e => {
+    const scroller = scrollerOf(currentPage())
+    const t = e.touches[0]
+    drag = tool && penSeen && scroller && e.touches.length === 1 && t.touchType !== 'stylus'
+      ? { scroller, x: t.clientX, y: t.clientY, vertical: null } : null
+  }, { passive: true })
+  shield.addEventListener('touchmove', e => {
+    if (!drag) return
+    const t = e.touches[0]
+    if (drag.vertical === null) {
+      const dx = t.clientX - drag.x, dy = t.clientY - drag.y
+      if (Math.hypot(dx, dy) < 8) return
+      drag.vertical = Math.abs(dy) > Math.abs(dx)
+    }
+    if (!drag.vertical) return
+    e.stopPropagation()
+    const scale = drag.scroller.clientHeight / (drag.scroller.getBoundingClientRect().height || 1)
+    drag.scroller.scrollTop -= (t.clientY - drag.y) * scale
+    drag.y = t.clientY
+  }, { passive: true })
+  shield.addEventListener('touchend', () => { drag = null })
 
   // ── Toolbar ──────────────────────────────────────────────────────────────
   const style = document.createElement('style')

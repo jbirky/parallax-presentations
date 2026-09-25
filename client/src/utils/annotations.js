@@ -9,12 +9,15 @@
 //     slides: { [slideId]: { paths: [{ points, color, strokeWidth, opacity }] } },
 //     boards: [{ id, afterId, paths }] }       // whiteboard pages
 //
-// Paths are in slide coordinates, with points as [x, y] pairs. The Present
-// window (utils/annotationOverlay.js) sends the whole set to the editor after
-// each change, and keeps a copy in localStorage in case the editor tab is gone;
+// Paths are in slide coordinates (a scrolling slide's are its canvas's), with
+// points as [x, y] pairs. The Present window (utils/annotationOverlay.js)
+// sends the whole set to the editor after each change, and keeps a copy in
+// localStorage in case the editor tab is gone;
 // the editor saves sets with the presentation and recovers such copies. A
 // deleted set stays behind as { id, deletedAt }, so neither an open Present
 // window nor a copy on some device can bring it back.
+
+import { getCanvasHeight } from './scrollingSlides'
 
 export const ANNOTATION_MESSAGE = 'parallax-annotations'
 const BACKUP_PREFIX = 'parallax-annotations:'
@@ -119,8 +122,8 @@ export function inkedPresentation(presentation, set) {
     const pts = points.map(([x, y]) => ({ x, y }))
     return pts.length === 1 ? [pts[0], { x: pts[0].x + 0.01, y: pts[0].y }] : pts
   }
-  const inkElement = (id, paths, zIndex) => ({
-    id: `ink-${id}`, type: 'drawing', x: 0, y: 0, width: W, height: H, zIndex,
+  const inkElement = (id, paths, zIndex, height = H) => ({
+    id: `ink-${id}`, type: 'drawing', x: 0, y: 0, width: W, height, zIndex,
     paths: paths.filter(p => p.points?.length).map(p => ({
       points: toPoints(p.points), color: p.color, strokeWidth: p.strokeWidth, opacity: p.opacity ?? 1,
     })),
@@ -132,7 +135,7 @@ export function inkedPresentation(presentation, set) {
     if (!paths?.length) return { key, slide }
     const top = Math.max(0, ...(slide.elements || []).map(el => el.zIndex || 0))
     // Above the footer and grid, as the Present window's ink layer is
-    const ink = inkElement(key, paths, Math.max(2000, top + 1))
+    const ink = inkElement(key, paths, Math.max(2000, top + 1), getCanvasHeight(slide, H))
     return { key, slide: { ...slide, elements: [...(slide.elements || []), ink] } }
   })
   // A board's page goes right after its anchor, so later boards on the same
