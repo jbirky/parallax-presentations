@@ -5,7 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
-vi.stubEnv('VITE_PARALLAX_MODE', 'cloud')
+// The cloud version, set before EditorPage is imported (imports come first)
+vi.hoisted(() => vi.stubEnv('VITE_PARALLAX_MODE', 'cloud'))
 
 const saved = { id: 'p1', title: 'Group talk', version: 7, slides: [{ id: 's1', elements: [{ id: 'a', type: 'text', x: 0, y: 0, width: 100, height: 40, zIndex: 1, content: '<p>Hi</p>' }] }] }
 const conflict = Object.assign(new Error('Someone else saved'), { code: 'conflict', version: 8 })

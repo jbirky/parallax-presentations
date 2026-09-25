@@ -8,7 +8,8 @@ import * as Y from 'yjs'
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
 import { loadDeck, readDeck } from '../utils/deckDoc'
 
-vi.stubEnv('VITE_PARALLAX_MODE', 'cloud')
+// The cloud version, set before EditorPage is imported (imports come first)
+vi.hoisted(() => vi.stubEnv('VITE_PARALLAX_MODE', 'cloud'))
 
 // The presentation as saved, which the editor fetches first
 const saved = { id: 'p1', title: 'Saved title', version: 3, createdAt: '2026-09-01T00:00:00Z', slides: [{ id: 's1', elements: [] }] }
