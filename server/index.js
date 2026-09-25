@@ -2566,7 +2566,9 @@ app.get('/live/:id', async (req, res) => {
           data.unlocked.forEach(function(i) { unlocked.add(i); });
           maxUnlocked = Math.max.apply(null, Array.from(unlocked));
           if (data.type === 'init') {
-            Reveal.slide(flatToHV(data.currentSlide));
+            // Join on the presenter's slide, once the deck is ready
+            var join = function() { var at = flatToHV(data.currentSlide); Reveal.slide(at.h, at.v); };
+            if (Reveal.isReady()) join(); else Reveal.on('ready', join);
           }
         }
         if (data.type === 'ended') {
