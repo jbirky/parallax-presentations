@@ -105,7 +105,13 @@ async function userIdForToken(token) {
 }
 
 app.use(helmetConfig())
-app.use(cors(corsConfig()))
+// Library files, uploads and a live session's slide feed are public, and the
+// pages that use them are sandboxed (sendDeckPage), so their requests come
+// from origin null: those answer any origin, without credentials
+const PUBLIC_CORS = /^\/(vendor|uploads)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+const publicCors = cors()
+const appCors = cors(corsConfig())
+app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
 
 // Stripe webhook — must be before express.json() to get raw body
 const stripeService = require('./services/stripe')
@@ -389,8 +395,10 @@ if (IS_CLOUD) {
   })
 }
 
-// Protect all /api routes in cloud mode
-app.use('/api', requireUser)
+// Protect all /api routes in cloud mode, but for the slide feed of a live
+// session, which its audience follows without signing in
+const LIVE_FEED = /^\/live\/[^/]+\/(stream|status)$/
+app.use('/api', (req, res, next) => (LIVE_FEED.test(req.path) ? next() : requireUser(req, res, next)))
 app.use('/api', apiLimiter)
 
 // Plan quota check helper
@@ -2269,14 +2277,23 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
   }
 })
 
+// A page built from a deck, in a sandbox. A deck runs its author's code (HTML
+// embeds, and anything in its text), so its page gets an origin of its own,
+// null: it can't read this site's cookies or storage, or use the API as
+// whoever opened it. Links and web page actions open outside the sandbox.
+const DECK_PAGE_SANDBOX = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+function sendDeckPage(res, html) {
+  res.setHeader('Content-Type', 'text/html')
+  res.setHeader('Content-Security-Policy', DECK_PAGE_SANDBOX)
+  res.send(html)
+}
+
 // GET /api/presentations/:id/present - serve in browser
 app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async (req, res) => {
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = localizeLibraries(generateRevealHTML(presentation))
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2403,9 +2420,7 @@ app.get('/share/:token', requireValidId('token'), async (req, res) => {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    const html = localizeLibraries(generateRevealHTML(presentation))
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2603,8 +2618,7 @@ app.get('/live/:id', async (req, res) => {
     const html = lastBodyIdx >= 0
       ? baseHtml.slice(0, lastBodyIdx) + liveScript + '\n</body>' + baseHtml.slice(lastBodyIdx + 7)
       : baseHtml + liveScript
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, html)
   } catch (err) {
     res.status(500).send('Error loading presentation')
   }
