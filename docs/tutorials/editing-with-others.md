@@ -53,6 +53,8 @@ Everyone editing a presentation sees each other's changes as they're made, and t
 
 While someone is typing in a text box, or has an element's editor open (HTML, p5.js, code, LaTeX, TikZ or a dynamical system), its tag says **… is editing**. You can't open or delete it until they're done or close the presentation, but you can still move, resize and restyle it.
 
+You also can't delete a slide while someone has something on it open. If someone else moves the slide you're on, you stay on it; if they delete it, you're taken to the slide now in its place.
+
 If two people change the same setting at once, such as the same shape's color, the change made last is kept. Changes to different things, even on the same slide, are all kept.
 
 ## If live editing can't connect

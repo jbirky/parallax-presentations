@@ -232,6 +232,66 @@ describe('the editor, live', () => {
     expect(status()).toBe('Ada started editing this at the same moment')
   })
 
+  // A change the server sends: someone else's, to the slide order
+  const reorderRemotely = ids => act(async () => {
+    doc.transact(() => {
+      const order = doc.getArray('slideOrder')
+      order.delete(0, order.length)
+      order.insert(0, ids)
+    }, 'server')
+  })
+  const deleteSlideRemotely = id => act(async () => {
+    doc.transact(() => {
+      const order = doc.getArray('slideOrder')
+      order.delete(order.toArray().indexOf(id), 1)
+      doc.getMap('slides').delete(id)
+    }, 'server')
+  })
+  const activeSlide = () => [...el.querySelectorAll('.slide-item')].findIndex(item => item.className.includes('active'))
+
+  it('keeps showing the same slide when someone else moves it', async () => {
+    await open()
+    expect(activeSlide()).toBe(0)
+    await reorderRemotely(['s2', 's1'])
+    expect(activeSlide()).toBe(1)
+    expect(canvasElement('e1')).toBeTruthy()
+    expect(mine().slide).toBe('s1')
+  })
+
+  it('shows the slide now in its place when someone else deletes it', async () => {
+    await open()
+    await act(async () => { el.querySelectorAll('.slide-item')[1].click() })
+    expect(activeSlide()).toBe(1)
+    await deleteSlideRemotely('s2')
+    expect(activeSlide()).toBe(0)
+    expect(canvasElement('e1')).toBeTruthy()
+  })
+
+  it('stops editing a text box someone else deleted', async () => {
+    await open()
+    await doubleClick(canvasElement('e1'))
+    expect(mine().editing).toBe('e1')
+    await act(async () => {
+      doc.transact(() => {
+        const slide = doc.getMap('slides').get('s1')
+        const order = slide.get('elementOrder')
+        order.delete(order.toArray().indexOf('e1'), 1)
+        slide.get('elements').delete('e1')
+      }, 'server')
+    })
+    expect(mine().editing).toBeNull()
+  })
+
+  it('won’t delete a slide someone else has something open on', async () => {
+    await open()
+    await tab(10, { user: 'u-ada', slide: 's1', selected: ['e2'], editing: 'e2' }).say()
+    window.confirm = () => true
+    const remove = el.querySelectorAll('.slide-item')[0].querySelector('button[title="Delete"]')
+    await act(async () => { remove.click() })
+    expect(readDeck(doc).slides.map(s => s.id)).toEqual(['s1', 's2'])
+    expect(status()).toBe('Ada is editing something on this slide, so it wasn’t deleted')
+  })
+
   it('saves the usual way when refused before the document arrives', async () => {
     await open({ arrive: false })
     await act(async () => { connection.opts.onRefused() })

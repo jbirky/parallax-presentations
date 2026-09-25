@@ -20,8 +20,9 @@
 
 const { randomUUID } = require('crypto')
 const Y = require('yjs')
+const decoding = require('lib0/decoding')
 const { WebSocketServer } = require('ws')
-const { Hocuspocus } = require('@hocuspocus/server')
+const { Hocuspocus, MessageType } = require('@hocuspocus/server')
 const { Forbidden } = require('@hocuspocus/common')
 const { loadDeck, writeDeck, readDeck, withIds, META_KEYS } = require('./deck-doc')
 const { presentationAccess } = require('./collaboration')
@@ -48,8 +49,52 @@ function deckFromData(data) {
   return withIds(deck, randomUUID)
 }
 
-// userIdForToken(token): the user a sign-in token is for, or null
-function createCollab({ storage, userIdForToken, debounce = 2000, maxDebounce = 10000 }) {
+// Limits on the WebSocket, so one visitor can't swamp the server. A tab
+// sends at most one message per 30 ms window while something changes
+// (utils/liveDeck.js), plus its presence.
+const LIMITS = {
+  connectsPerMinute: 60,        // new WebSockets per visitor (IP)
+  messagesPerSecond: 60,        // per connection, averaged over...
+  messageBurst: 600,            // ...this many messages
+  bytesPerMinute: 64 * 1024 * 1024,
+}
+const TooManyMessages = { code: 4429, reason: 'Too many messages' }
+
+// Allows `rate` things a second on average, and `burst` at once
+function tokenBucket(rate, burst, now = Date.now) {
+  let tokens = burst
+  let last = now()
+  return (cost = 1) => {
+    const t = now()
+    tokens = Math.min(burst, tokens + (t - last) / 1000 * rate)
+    last = t
+    if (tokens < cost) return false
+    tokens -= cost
+    return true
+  }
+}
+
+// A tab says who it is in its presence (utils/presence.js), and may only
+// say it's the user it signed in as. A message that names anyone else is
+// refused, which closes the connection.
+function checkPresence(rawMessage, userId) {
+  const message = decoding.createDecoder(rawMessage)
+  decoding.readVarString(message)
+  if (decoding.readVarUint(message) !== MessageType.Awareness) return
+  const update = decoding.createDecoder(decoding.readVarUint8Array(message))
+  const count = decoding.readVarUint(update)
+  for (let i = 0; i < count; i++) {
+    decoding.readVarUint(update)
+    decoding.readVarUint(update)
+    const state = JSON.parse(decoding.readVarString(update))
+    if (state && state.user != null && state.user !== userId) throw Forbidden
+  }
+}
+
+// userIdForToken(token): the user a sign-in token is for, or null.
+// ipOf(req): who's asking, for the connection limit.
+function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remoteAddress, debounce = 2000, maxDebounce = 10000, limits = {} }) {
+  limits = { ...LIMITS, ...limits }
   const storeKey = id => `onStoreDocument-${id}`
 
   // Writes the document to ydoc and data. The version goes up, and
@@ -98,6 +143,9 @@ function createCollab({ storage, userIdForToken, debounce = 2000, maxDebounce = 
     },
     async onStoreDocument({ documentName, document }) {
       await store(documentName, document)
+    },
+    async beforeHandleMessage({ update, context }) {
+      checkPresence(update, context.userId)
     },
   })
 
@@ -148,15 +196,32 @@ function createCollab({ storage, userIdForToken, debounce = 2000, maxDebounce = 
     }
   }
 
+  // New connections per visitor in the last minute
+  const connects = new Map()
+  const sweep = setInterval(() => connects.clear(), 60 * 1000)
+  sweep.unref()
+
   // Serves /collab on an HTTP server
   function attach(server) {
     const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES })
     server.on('upgrade', (req, socket, head) => {
       const url = new URL(req.url, 'http://localhost')
       if (url.pathname !== PATH) return socket.destroy()
+      const ip = ipOf(req)
+      const count = (connects.get(ip) || 0) + 1
+      connects.set(ip, count)
+      if (count > limits.connectsPerMinute) {
+        socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+        return
+      }
       sockets.handleUpgrade(req, socket, head, ws => {
         const client = hocuspocus.handleConnection(ws, new Request(url))
-        ws.on('message', data => client.handleMessage(new Uint8Array(data.buffer, data.byteOffset, data.byteLength)))
+        const messages = tokenBucket(limits.messagesPerSecond, limits.messageBurst)
+        const bytes = tokenBucket(limits.bytesPerMinute / 60, limits.bytesPerMinute)
+        ws.on('message', data => {
+          if (!messages() || !bytes(data.byteLength)) return ws.close(TooManyMessages.code, TooManyMessages.reason)
+          client.handleMessage(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
+        })
         ws.on('close', (code, reason) => client.handleClose({ code, reason: reason.toString() }))
         ws.on('error', err => console.error('Live editing socket error:', err.message))
       })
@@ -173,4 +238,4 @@ function createCollab({ storage, userIdForToken, debounce = 2000, maxDebounce = 
   return { hocuspocus, attach, applySave, flush, flushAll, closeDocument, disconnectUser }
 }
 
-module.exports = { createCollab, deckFromData, PATH }
+module.exports = { createCollab, deckFromData, tokenBucket, PATH }

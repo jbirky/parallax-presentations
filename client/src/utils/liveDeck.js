@@ -10,6 +10,8 @@
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 
+export const FLUSH_MS = 30
+
 export const liveUrl = (location = window.location) =>
   `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`
 
@@ -29,6 +31,9 @@ export function connectLive({ id, token, onSynced, onStatus = () => {}, onUnsent
     name: id,
     document: doc,
     token,
+    // Changes (a drag, typing) and presence within 30 ms go as one message;
+    // the last one always goes
+    flushDelay: FLUSH_MS,
     onSynced: ({ state }) => {
       if (!state || synced) return
       synced = true

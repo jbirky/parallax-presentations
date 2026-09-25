@@ -83,7 +83,7 @@ const deckAccess = (param = 'id') => deckAccessFor(storage, param)
 let collab = null
 if (IS_CLOUD && storage.query) {
   const { createCollab } = require('./services/collab')
-  collab = createCollab({ storage, userIdForToken })
+  collab = createCollab({ storage, userIdForToken, ipOf: req => req.headers['cf-connecting-ip'] || req.socket.remoteAddress })
   storage.beforeRead = collab.flush
   storage.liveSave = collab.applySave
   // Stopping the server stores every open document first

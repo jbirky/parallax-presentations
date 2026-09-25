@@ -17,18 +17,18 @@ const providers = []
 
 // A browser editing presentation `id` as `who`: resolves once it has synced,
 // or once it's refused, with `failed` set
-function connect(who, id) {
+function connect(who, id, base = t.base) {
   const doc = new Y.Doc()
   const events = []
   return new Promise(resolve => {
     const provider = new HocuspocusProvider({
-      url: `${t.base.replace('http', 'ws')}/collab`,
+      url: `${base.replace('http', 'ws')}/collab`,
       name: id,
       document: doc,
       token: who,
       onSynced: () => resolve({ provider, doc, events }),
       onAuthenticationFailed: ({ reason }) => { events.push('refused'); resolve({ provider, doc, events, failed: reason }) },
-      onClose: () => events.push('closed'),
+      onClose: ({ event }) => { events.push('closed'); events.push(`closed ${event?.code}`) },
     })
     providers.push(provider)
   })
@@ -204,15 +204,65 @@ describe('live editing', { skip }, () => {
   it('tells each editor where the others are, until they leave', async () => {
     const a = await connect(owner, deck)
     const b = await connect(editor, deck)
-    const state = { user: 'u-owner', slide: 's1', selected: ['e1'], editing: 'e1' }
+    const ownerId = await t.userId(owner)
+    const state = { user: ownerId, slide: 's1', selected: ['e1'], editing: 'e1' }
     a.provider.awareness.setLocalState(state)
-    const seen = () => [...b.provider.awareness.getStates().values()].find(s => s.user === 'u-owner')
+    const seen = () => [...b.provider.awareness.getStates().values()].find(s => s.user === ownerId)
     await until(() => seen()?.editing === 'e1', 'the other editor to see what the first is doing')
     assert.deepEqual(seen(), state)
     // gone when they disconnect, which lets go of what they had open
     a.provider.destroy()
     await until(() => !seen(), 'the first editor to be gone')
     b.provider.destroy()
+  })
+
+  it('closes the connection of a tab that says it’s someone else, and tells no one', async () => {
+    const a = await connect(editor, deck)
+    const b = await connect(owner, deck)
+    const ownerId = await t.userId(owner)
+    a.provider.awareness.setLocalState({ user: ownerId, slide: 's1', selected: [], editing: 'e1' })
+    await until(() => a.events.includes('closed'), 'the connection to be closed')
+    await new Promise(resolve => setTimeout(resolve, 200))
+    const claims = [...b.provider.awareness.getStates().entries()].filter(([id, s]) => id !== b.provider.awareness.clientID && s.user === ownerId)
+    assert.deepEqual(claims, [])
+    a.provider.destroy()
+    b.provider.destroy()
+  })
+
+  it('closes a connection that sends too much, and turns away a visitor opening too many', async () => {
+    const http = require('http')
+    const PgStorage = require('../storage/pg-storage')
+    const { createCollab } = require('../services/collab')
+    const storage = new PgStorage(DB)
+    const collab = createCollab({
+      storage,
+      userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,
+      limits: { messagesPerSecond: 5, messageBurst: 20, connectsPerMinute: 4 },
+    })
+    const server = http.createServer()
+    collab.attach(server)
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${server.address().port}`
+    try {
+      const a = await connect(owner, deck, base)
+      for (let i = 0; i < 60; i++) edit(a.doc, renamed(`Flood ${i}`))
+      await until(() => a.events.includes('closed 4429'), 'the flooding connection to be closed')
+      a.provider.destroy()
+
+      // that was the first of four; three more open, the fifth is refused
+      const opened = []
+      for (let i = 0; i < 4; i++) {
+        opened.push(await new Promise(resolve => {
+          const ws = new WebSocket(`${base.replace('http', 'ws')}/collab`)
+          ws.onopen = () => { ws.close(); resolve('open') }
+          ws.onerror = () => resolve('refused')
+        }))
+      }
+      assert.deepEqual(opened, ['open', 'open', 'open', 'refused'])
+    } finally {
+      server.close()
+      await storage.pool.end()
+    }
   })
 
   it('disconnects an editor the owner removes, for good', async () => {

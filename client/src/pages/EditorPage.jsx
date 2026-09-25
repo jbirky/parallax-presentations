@@ -672,6 +672,34 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }
   }, [peers, openElementId])
 
+  // The slides changed under the same position (someone else moved or deleted
+  // slides, or undo did): keep showing the slide that was showing. When it was
+  // deleted, show the one now in its place.
+  const followRef = useRef({ index: 0, id: null })
+  useEffect(() => {
+    const slides = presentation?.slides
+    if (!slides) return
+    const { index, id } = followRef.current
+    if (currentSlideIndex === index && id && slides[currentSlideIndex]?.id !== id) {
+      const now = slides.findIndex(s => s.id === id)
+      const next = now >= 0 ? now : Math.max(0, Math.min(currentSlideIndex, slides.length - 1))
+      if (next !== currentSlideIndex) {
+        setCurrentSlideIndex(next)
+        return
+      }
+    }
+    followRef.current = { index: currentSlideIndex, id: slides[currentSlideIndex]?.id || null }
+  }, [presentation?.slides, currentSlideIndex])
+
+  // The text box being typed in was deleted (by someone else, or with its
+  // slide): stop editing it
+  useEffect(() => {
+    if (editingElementId && presentation && !currentSlide?.elements?.some(el => el.id === editingElementId)) {
+      stopEditingElement()
+      setSelectedElementIds([])
+    }
+  }, [presentation, editingElementId])
+
   // Where the others are: dots on the slides, outlines on this slide's elements
   const presenceBySlide = useMemo(() => peopleBySlide(peers), [peers])
   const remoteUse = useMemo(() => elementsInUse(peers, currentSlide?.id), [peers, currentSlide?.id])
@@ -1976,6 +2004,13 @@ function draw() {
 
   const deleteSlide = (index) => {
     if (!presentation || presentation.slides.length <= 1) return
+    // Not while someone else has something on it open
+    const open = presentation.slides[index]?.elements?.map(el => editorOf(peersRef.current, el.id)).find(Boolean)
+    if (open) {
+      return showNotice(open.self
+        ? 'You’re editing something on this slide in another tab, so it wasn’t deleted'
+        : `${open.name} is editing something on this slide, so it wasn’t deleted`)
+    }
     const links = countLinksTo(presentation.slides, presentation.slides[index]?.id)
     if (links && !confirm(`${links} ${links === 1 ? 'link or button goes' : 'links or buttons go'} to this slide, and won't do anything once it's deleted. Delete it anyway?`)) return
     setPresentation(prev => ({
