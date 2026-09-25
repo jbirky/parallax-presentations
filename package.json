@@ -37,7 +37,7 @@
     "marked": "18.0.14",
     "p5": "1.11.3",
     "pdfjs-dist": "3.11.174",
-    "reveal.js": "5.1.0",
+    "reveal.js": "6.0.2",
     "svgcanvas": "2.6.0",
     "three": "0.162.0"
   }
