@@ -2174,7 +2174,7 @@ function TableRenderer({ element, isEditing }) {
   )
 }
 
-function ShapeRenderer({ element }) {
+export function ShapeRenderer({ element }) {
   const w = element.width, h = element.height
   const fill = element.fill || '#6366f1'
   const stroke = element.stroke || 'none'
@@ -2226,7 +2226,7 @@ function ShapeRenderer({ element }) {
   }
 
   return (
-    <div style={{ position: 'absolute', inset: 0, opacity: element.opacity || 1 }}>
+    <div style={{ position: 'absolute', inset: 0, opacity: element.opacity ?? 1 }}>
       <svg
         width="100%" height="100%"
         viewBox={`0 0 ${w} ${h}`}
