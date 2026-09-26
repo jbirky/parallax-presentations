@@ -11,7 +11,7 @@ import { generateRevealHTML, exportPDF } from './generateHTML'
 
 const require = createRequire(import.meta.url)
 const server = require('../../../server/services/click-actions.js')
-const { serverCopy, SOURCE, TARGET } = require('../../../scripts/copy-click-actions.js')
+const { serverCopy, COPIES } = require('../../../scripts/copy-click-actions.js')
 
 const text = (id, extra = {}) => ({ id, type: 'text', x: 0, y: 0, width: 100, height: 40, zIndex: 1, content: '<p>Go</p>', ...extra })
 
@@ -361,6 +361,68 @@ describe('previewing states on the canvas', () => {
   })
 })
 
+describe('morphing shapes', () => {
+  const blob = { id: 'm', type: 'shape', shape: 'circle', x: 0, y: 0, width: 100, height: 100, fill: '#f00', text: 'Hi',
+    states: [{ id: 'star', name: 'Star', shape: 'star' }, { id: 'wide', name: 'Wide', width: 300, borderRadius: 4, duration: 400, easing: 'spring' }, { id: 'red', fill: '#0f0' }] }
+
+  it('draws a shape whose states change its outline as a path, with each state’s outline', () => {
+    const svg = client.shapeSvg(blob)
+    const outlines = /data-morph="([^"]+)"/.exec(svg)[1].split('|')
+    expect(outlines.map(o => o.slice(0, o.indexOf(':')))).toEqual(['', 'star', 'wide', 'red'])
+    for (const o of outlines) expect(o.slice(o.indexOf(':') + 1).split(' ')).toHaveLength(64)
+    expect(outlines[2]).toMatch(/:150,0 /) // the wide state's top middle
+    expect(svg).toMatch(/<path d="M50 0L/) // it starts as its default
+    expect(client.shapeSvg({ ...blob, initialState: 'star' })).toMatch(/<path d="M50 0L/)
+    expect(client.shapeSvg({ ...blob, initialState: 'wide' })).toMatch(/<path d="M150 0L/)
+  })
+
+  it('leaves a shape whose states only recolor it, and lines, as they are drawn', () => {
+    expect(client.shapeSvg({ ...blob, states: [blob.states[2]] })).toContain('<ellipse')
+    expect(client.shapeSvg({ ...blob, shape: 'line' })).toContain('<line')
+    expect(client.shapeSvg({ ...blob, states: [{ id: 'x', shape: 'squiggle' }] })).toContain('<ellipse')
+  })
+
+  it('moves the path’s points to the new state’s outline', () => {
+    vi.useFakeTimers()
+    try {
+      const win = new Window({ url: 'http://localhost/deck.html' })
+      const svg = client.shapeSvg(blob)
+      win.document.body.innerHTML = `<style>${client.statesCss([{ elements: [blob] }])}</style><div class="reveal"><div class="slides"><section>
+        <div id="go" data-action="visibility" data-action-set="m:wide:toggle"></div>
+        <div id="m" data-el="m" data-st-list="star wide red" data-st="" data-st-start="">${svg}</div></section></div></div>`
+      const Reveal = { on: () => {} }
+      let reduced = false
+      win.matchMedia = () => ({ matches: reduced })
+      win.requestAnimationFrame = fn => setTimeout(() => fn(Date.now()), 16)
+      win.cancelAnimationFrame = id => clearTimeout(id)
+      new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+      const path = win.document.querySelector('path')
+      const top = () => path.getAttribute('d').match(/^M([\d.]+) /)[1]
+      const click = () => win.document.getElementById('go').dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+      click()
+      vi.advanceTimersByTime(200)
+      expect(+top()).toBeGreaterThan(100) // on its way (a spring goes a little past)
+      expect(top()).not.toBe('150.00')
+      vi.advanceTimersByTime(400)
+      expect(top()).toBe('150.00')
+      // With the state's own easing, read from its CSS: a spring overshoots
+      expect(win.getComputedStyle(win.document.getElementById('m')).getPropertyValue('--st-ease')).toBe('cubic-bezier(0.34,1.56,0.64,1)')
+      const mid = []
+      click()
+      for (let i = 0; i < 30; i++) { vi.advanceTimersByTime(16); mid.push(+top()) }
+      expect(Math.min(...mid)).toBeLessThan(50) // past the default's top middle, then back
+      expect(top()).toBe('50.00')
+      click()
+      vi.advanceTimersByTime(1000)
+      reduced = true
+      click()
+      expect(top()).toBe('50.00') // at once, with reduced motion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('the state presets', () => {
   let n = 0
   const makeId = () => `p${++n}`
@@ -491,7 +553,7 @@ describe('slide links under new ids', () => {
 
 describe('the server’s copy', () => {
   it('is up to date (if not, run node scripts/copy-click-actions.js)', () => {
-    expect(readFileSync(TARGET, 'utf8')).toBe(serverCopy(readFileSync(SOURCE, 'utf8')))
+    for (const copy of COPIES) expect(readFileSync(copy.TARGET, 'utf8')).toBe(serverCopy(readFileSync(copy.SOURCE, 'utf8'), copy))
   })
 
   it('writes the same pages', () => {
@@ -521,6 +583,8 @@ describe('the server’s copy', () => {
     expect(server.renewElementIds(tabs.elements, () => `n${++a}`)).toEqual(client.renewElementIds(tabs.elements, () => `n${++b}`))
     const flip = client.buildFlipCard({ makeId: () => `f${++a}` })
     expect(server.statesCss([{ elements: flip }])).toBe(client.statesCss([{ elements: flip }]))
+    const morphing = { id: 'm', type: 'shape', shape: 'circle', width: 80, height: 80, states: [{ id: 'star', shape: 'star', width: 120 }] }
+    expect(server.shapeSvg(morphing)).toBe(client.shapeSvg(morphing))
     for (const el of flip) expect(server.clickActionAttrs(el, targets)).toBe(client.clickActionAttrs(el, targets))
   })
 })

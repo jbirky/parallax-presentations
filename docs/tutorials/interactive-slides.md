@@ -78,13 +78,13 @@ This adds a row of tab buttons over a panel. Clicking a tab shows its own text, 
 
 ## States
 
-An element can have states: other looks that a click or hover changes it to, moving there smoothly. A state can change the element's position, size, rotation, scale and opacity, turn it over, recolor a shape's fill, outline and label, change an image's filters, and bring it in front of everything else.
+An element can have states: other looks that a click or hover changes it to, moving there smoothly. A state can change the element's position, size, rotation, scale and opacity, turn it over, recolor a shape's fill, outline and label, change an image's filters, and bring it in front of everything else. A shape's state can also make it another shape, such as a circle that becomes a star: it morphs from one outline to the other.
 
 ### Recording a state
 
 1. Select the element.
 2. In **Interactions**, next to **States**, click **+ State**. A bar above the slide says the state is being recorded.
-3. Move, resize, turn or recolor the element on the canvas or in the Properties panel. These changes go into the state, and the element itself stays as it was. The state's box also sets how long it **Takes**, its easing (**Spring** overshoots a little), **Flip across**, **Flip over**, **Scale** and **In front of everything**.
+3. Move, resize, turn or recolor the element on the canvas or in the Properties panel. These changes go into the state, and the element itself stays as it was. The state's box also sets how long it **Takes**, its easing (**Spring** overshoots a little), **Flip across**, **Flip over**, **Scale** and **In front of everything**, and for a shape, its **Shape** in the state (not for lines).
 4. Click **Default**, click **Done**, or press `Esc` to stop.
 
 Click a state's name to record more changes to it, and **Default** to edit the element itself. **Starts as** sets the state it's in each time its slide opens. **Clear changes** empties a state, and **Delete state** removes it. An element can have up to 8 states.

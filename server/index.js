@@ -37,7 +37,7 @@ const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
@@ -631,43 +631,6 @@ function transcodeVideoIfNeeded(filePath) {
 
 
 // Shape SVG rendering helper (mirrors client/src/utils/shapeUtils.js)
-function shapeSvgString(el) {
-  const w = el.width, h = el.height
-  const fill = sanitizeCSSValue(el.fill) || '#6366f1'
-  const stroke = sanitizeCSSValue(el.stroke) || 'none'
-  const sw = el.strokeWidth || 0
-  const shape = el.shape || 'rect'
-  let inner = ''
-  if (shape === 'line') {
-    const lw = el.strokeWidth || 3
-    inner = `<line x1="${lw}" y1="${h/2}" x2="${w-lw}" y2="${h/2}" stroke="${fill}" stroke-width="${lw}" fill="none" />`
-  } else {
-    let shapeEl = ''
-    switch(shape) {
-      case 'rect': shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" rx="${el.borderRadius||0}" />`; break
-      case 'rounded-rect': shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" rx="${Math.min(w,h)*0.15}" />`; break
-      case 'circle': shapeEl = `<ellipse cx="${w/2}" cy="${h/2}" rx="${Math.max(0,w/2-sw/2)}" ry="${Math.max(0,h/2-sw/2)}" />`; break
-      case 'triangle': shapeEl = `<polygon points="${w/2},${sw} ${w-sw},${h-sw} ${sw},${h-sw}" />`; break
-      case 'diamond': shapeEl = `<polygon points="${w/2},${sw} ${w-sw},${h/2} ${w/2},${h-sw} ${sw},${h/2}" />`; break
-      case 'arrow-right': shapeEl = `<polygon points="${sw},${h*0.35} ${w*0.6},${h*0.35} ${w*0.6},${sw} ${w-sw},${h/2} ${w*0.6},${h-sw} ${w*0.6},${h*0.65} ${sw},${h*0.65}" />`; break
-      case 'star': {
-        const cx=w/2,cy=h/2,outerR=Math.min(w,h)/2-sw,innerR=outerR*0.4,pts=[]
-        for(let i=0;i<10;i++){const a=(Math.PI/5)*i-Math.PI/2;const r=i%2===0?outerR:innerR;pts.push(`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`)}
-        shapeEl = `<polygon points="${pts.join(' ')}" />`; break
-      }
-      default: shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" />`
-    }
-    inner = `<g fill="${fill}" stroke="${stroke}" stroke-width="${sw}">${shapeEl}</g>`
-  }
-  let textEl = ''
-  if (el.text) {
-    const fs = el.fontSize || 16
-    const tc = sanitizeCSSValue(el.textColor) || '#ffffff'
-    textEl = `<text x="${w/2}" y="${h/2}" dominant-baseline="middle" text-anchor="middle" font-size="${fs}" fill="${tc}">${escapeHtml(el.text)}</text>`
-  }
-  return `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="position:absolute;inset:0;overflow:visible;">${inner}${textEl}</svg>`
-}
-
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
@@ -790,7 +753,7 @@ function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
           return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`

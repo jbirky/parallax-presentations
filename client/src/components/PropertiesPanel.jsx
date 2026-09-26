@@ -5,6 +5,8 @@ import { useState, useRef, useMemo } from 'react'
 import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
+import { CLOSED_SHAPES } from '../utils/shapeGeometry'
+import { SHAPES } from '../utils/shapeUtils'
 
 const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
@@ -1811,7 +1813,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                       {current ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, padding: 8, borderRadius: 6, background: 'rgba(217,70,239,0.08)', border: '1px solid rgba(217,70,239,0.35)' }}>
                           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            Recording: move, resize, turn or recolor the element to change this state. Default or Esc stops.
+                            Recording: move, resize, turn or recolor the element{el.type === 'shape' ? ', or change its shape,' : ''} to change this state. Default or Esc stops.
                           </div>
                           <input className="prop-input" aria-label="State name" value={current.name || ''} onChange={e => patchState({ name: e.target.value })} />
                           <div style={row}>
@@ -1835,6 +1837,15 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                                 onChange={e => onUpdateElement({ scale: Math.max(0.1, Math.min(10, Number(e.target.value) || 1)) })} style={{ width: 56 }} />
                             </label>
                           </div>
+                          {el.type === 'shape' && CLOSED_SHAPES.includes(slide.elements?.find(e => e.id === el.id)?.shape || 'rect') && (
+                            <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)' }}>
+                              Shape
+                              <select className="prop-input" aria-label="Shape in this state" value={el.shape || 'rect'} onChange={e => onUpdateElement({ shape: e.target.value })}
+                                style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                                {SHAPES.filter(sh => CLOSED_SHAPES.includes(sh.id)).map(sh => <option key={sh.id} value={sh.id}>{sh.icon} {sh.name}</option>)}
+                              </select>
+                            </label>
+                          )}
                           {el.type !== 'shape' && (
                             <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)' }}>
                               Opacity

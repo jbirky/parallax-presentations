@@ -38,6 +38,7 @@ import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
+import { shapeParts } from '../utils/shapeGeometry'
 
 const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }
 // A click that puts elements in states, and shows or hides nothing
@@ -2204,53 +2205,15 @@ function TableRenderer({ element, isEditing }) {
 
 export function ShapeRenderer({ element }) {
   const w = element.width, h = element.height
-  const fill = element.fill || '#6366f1'
-  const stroke = element.stroke || 'none'
-  const sw = element.strokeWidth || 0
   const shape = element.shape || 'rect'
-  const sda = element.strokeDasharray === 'dashed' ? `${sw*3} ${sw*2}` : element.strokeDasharray === 'dotted' ? `${sw} ${sw*1.5}` : undefined
 
+  // The same drawing as presented decks (utils/shapeGeometry.js)
   const renderShape = () => {
-    if (shape === 'line') {
-      const lw = element.strokeWidth || 3
-      const lineColor = element.stroke && element.stroke !== 'none' ? element.stroke : (element.fill || '#ffffff')
-      const lsda = element.strokeDasharray === 'dashed' ? `${lw*3} ${lw*2}` : element.strokeDasharray === 'dotted' ? `${lw} ${lw*1.5}` : undefined
-      return <line x1={lw} y1={h/2} x2={w-lw} y2={h/2} stroke={lineColor} strokeWidth={lw} strokeDasharray={lsda} fill="none" />
-    }
-    if (shape === 'line-arrow') {
-      const lw = element.strokeWidth || 3
-      const lineColor = element.stroke && element.stroke !== 'none' ? element.stroke : (element.fill || '#ffffff')
-      const lsda = element.strokeDasharray === 'dashed' ? `${lw*3} ${lw*2}` : element.strokeDasharray === 'dotted' ? `${lw} ${lw*1.5}` : undefined
-      const hs = Math.max(lw * 3, h * 0.3)
-      return <>
-        <line x1={lw} y1={h/2} x2={w-lw} y2={h/2} stroke={lineColor} strokeWidth={lw} strokeDasharray={lsda} fill="none" />
-        <polyline points={`${w-lw-hs},${h/2-hs} ${w-lw},${h/2} ${w-lw-hs},${h/2+hs}`} stroke={lineColor} strokeWidth={lw} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </>
-    }
-    const gProps = { fill, stroke, strokeWidth: sw, strokeDasharray: sda }
-    switch(shape) {
-      case 'rect':
-        return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} rx={element.borderRadius || 0} /></g>
-      case 'rounded-rect':
-        return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} rx={Math.min(w,h)*0.15} /></g>
-      case 'circle':
-        return <g {...gProps}><ellipse cx={w/2} cy={h/2} rx={Math.max(0,w/2-sw/2)} ry={Math.max(0,h/2-sw/2)} /></g>
-      case 'triangle':
-        return <g {...gProps}><polygon points={`${w/2},${sw} ${w-sw},${h-sw} ${sw},${h-sw}`} /></g>
-      case 'diamond':
-        return <g {...gProps}><polygon points={`${w/2},${sw} ${w-sw},${h/2} ${w/2},${h-sw} ${sw},${h/2}`} /></g>
-      case 'arrow-right':
-        return <g {...gProps}><polygon points={`${sw},${h*0.35} ${w*0.6},${h*0.35} ${w*0.6},${sw} ${w-sw},${h/2} ${w*0.6},${h-sw} ${w*0.6},${h*0.65} ${sw},${h*0.65}`} /></g>
-      case 'star': {
-        const cx = element.starCx != null ? element.starCx : w/2
-        const cy = element.starCy != null ? element.starCy : h/2
-        const outerR = element.starOuterR != null ? element.starOuterR : Math.min(w,h)/2-sw
-        const innerR = element.starInnerR != null ? element.starInnerR : outerR*0.4
-        const pts=[]; for(let i=0;i<10;i++){const a=(Math.PI/5)*i-Math.PI/2;const r=i%2===0?outerR:innerR;pts.push(`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`)}
-        return <g {...gProps}><polygon points={pts.join(' ')} /></g>
-      }
-      default: return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} /></g>
-    }
+    const parts = shapeParts(element)
+    const props = attrs => Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))
+    if (parts.lines) return <>{parts.lines.map(({ tag: Tag, attrs }, i) => <Tag key={i} {...props(attrs)} />)}</>
+    const Body = parts.body.tag
+    return <g {...props(parts.group)}><Body {...props(parts.body.attrs)} /></g>
   }
 
   return (

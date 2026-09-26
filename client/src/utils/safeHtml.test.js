@@ -36,7 +36,10 @@ describe('HTML from a deck, shown in the editor', () => {
     expect(safeHtml(shapeSvgString(shape))).toContain('<text x="50" y="40"')
     const out = safeHtml(shapeSvgString({ ...shape, text: '<image href="x" onerror="steal()"/>', fill: '"/><image href="x" onerror="steal()"/><g x="' }))
     expect(out).toContain('<polygon points=')
-    expect(out).not.toMatch(/onerror|steal/)
+    // The label and color are written as text, and stay text
+    const page = new DOMParser().parseFromString(out, 'text/html')
+    expect(page.querySelectorAll('image, [onerror]')).toHaveLength(0)
+    expect(page.querySelector('text').textContent).toBe('<image href="x" onerror="steal()"/>')
   })
 
   it('keeps a TikZ diagram’s math, and drops what could run in it', () => {

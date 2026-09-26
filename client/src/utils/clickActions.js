@@ -21,7 +21,9 @@
 //   el.hoverAction = { type: 'visibility', show: [elementId], hide: [...], set: [{ id, state }] },
 //                    undone when the hover ends
 //   el.states = [{ id, name, duration (ms), easing, ...overrides }]: up to
-//                    MAX_STATES looks, each overriding some of STATE_PROPS
+//                    MAX_STATES looks, each overriding some of STATE_PROPS. A
+//                    shape whose states change its outline (its shape, size or
+//                    corners) morphs between them.
 //   el.initialState = a state's id: the one it's in each time its slide opens,
 //                    rather than its default (its own properties)
 //   el.backfaceHidden = true: unseen while turned over by a state's flip
@@ -34,6 +36,8 @@
 // pages it builds (share links, GitHub and Zenodo exports), written by
 // scripts/copy-click-actions.js.
 
+import { CLOSED_SHAPES, shapeOutline, outlinePath, shapeSvgString } from './shapeGeometry'
+
 export const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 export const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
 const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
@@ -43,7 +47,7 @@ const HOVER_KEYS = ['show', 'hide']
 // What a state can change, and how it moves there
 export const MAX_STATES = 8
 export const STATE_PROPS = ['x', 'y', 'width', 'height', 'rotation', 'scale', 'flipX', 'flipY', 'opacity', 'zIndex',
-  'fill', 'stroke', 'textColor', 'filterBrightness', 'filterContrast', 'filterGrayscale']
+  'fill', 'stroke', 'textColor', 'filterBrightness', 'filterContrast', 'filterGrayscale', 'shape', 'borderRadius']
 export const STATE_EASINGS = {
   ease: 'ease', 'ease-in-out': 'ease-in-out', 'ease-out': 'ease-out', 'ease-in': 'ease-in', linear: 'linear',
   spring: 'cubic-bezier(0.34,1.56,0.64,1)',
@@ -76,6 +80,7 @@ function stateValues(st) {
     fill: color(st.fill), stroke: color(st.stroke), textColor: color(st.textColor),
     filterBrightness: clamp(st.filterBrightness, 0, 400), filterContrast: clamp(st.filterContrast, 0, 400),
     filterGrayscale: clamp(st.filterGrayscale, 0, 100),
+    shape: CLOSED_SHAPES.includes(st.shape) ? st.shape : null, borderRadius: clamp(st.borderRadius, 0, 10000),
     duration: Math.round(clamp(st.duration, 0, 10000) ?? DEFAULT_STATE_DURATION),
     easing: STATE_EASINGS[st.easing] || 'ease',
   }
@@ -178,6 +183,40 @@ function visibilityAttrs(el, targets) {
   const start = states.some(st => st.id === el.initialState) ? el.initialState : ''
   const st = states.length ? ` data-st-list="${states.map(s => s.id).join(' ')}" data-st="${start}" data-st-start="${start}"` : ''
   return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}${st}`
+}
+
+// A shape element's outline in each of its states, when some state changes
+// it ('' for its default), or null: lines don't morph
+function stateOutlines(el) {
+  const shape = el?.shape || 'rect'
+  if (el?.type !== 'shape' || !CLOSED_SHAPES.includes(shape)) return null
+  const states = elementStates(el)
+  const values = states.map(stateValues)
+  if (!values.some(v => (v.shape && v.shape !== shape) || v.width != null || v.height != null || v.borderRadius != null)) return null
+  const outlines = [['', shapeOutline(el)]]
+  states.forEach((st, i) => {
+    const v = values[i]
+    const w = v.width ?? el.width, h = v.height ?? el.height
+    // A star's own center and sizes grow with its box
+    const sx = w / (el.width || 1), sy = h / (el.height || 1)
+    const star = ['starCx', 'starCy', 'starOuterR', 'starInnerR'].filter(k => el[k] != null)
+      .reduce((o, k) => ({ ...o, [k]: el[k] * (k === 'starCx' ? sx : k === 'starCy' ? sy : Math.min(sx, sy)) }), {})
+    outlines.push([st.id, shapeOutline({ ...el, ...star, shape: v.shape || shape, width: w, height: h, borderRadius: v.borderRadius ?? el.borderRadius })])
+  })
+  return outlines
+}
+
+// The SVG for a shape element in a presented deck. One whose states change
+// its outline is a path, which the page script morphs (data-morph holds
+// each state's outline, as "id:x,y x,y …|…").
+export function shapeSvg(el) {
+  const outlines = stateOutlines(el)
+  if (!outlines) return shapeSvgString(el)
+  const start = elementStates(el).some(st => st.id === el.initialState) ? el.initialState : ''
+  return shapeSvgString(el, {
+    d: outlinePath(outlines.find(([id]) => id === start)[1]),
+    outlines: outlines.map(([id, points]) => `${id}:${points.map(p => p.join(',')).join(' ')}`).join('|'),
+  })
 }
 
 // The page CSS for the states of a deck's elements, from checked values only.
@@ -365,6 +404,52 @@ export const CLICK_ACTION_SCRIPT = `
           && a.getAttribute('data-hover-set') === b.getAttribute('data-hover-set'));
       }
       function stateOf(el) { return el.hasAttribute('data-hover-st') ? el.getAttribute('data-hover-st') : el.getAttribute('data-st') || ''; }
+      // Morphing: a shape whose states change its outline moves its path's
+      // points to the new state's, over the time the state moves in
+      var CURVES = { ease: [0.25, 0.1, 0.25, 1], 'ease-in': [0.42, 0, 1, 1], 'ease-out': [0, 0, 0.58, 1], 'ease-in-out': [0.42, 0, 0.58, 1], linear: [0, 0, 1, 1] };
+      function curve(css) {
+        var m = /cubic-bezier[(]([^)]+)[)]/.exec(css || ''), c = m ? m[1].split(',').map(Number) : CURVES[(css || '').trim()] || CURVES.ease;
+        var at = function(t, a, b) { return 3 * a * t * (1 - t) * (1 - t) + 3 * b * t * t * (1 - t) + t * t * t; };
+        return function(x) {
+          var lo = 0, hi = 1, t = x;
+          for (var i = 0; i < 24; i++) { t = (lo + hi) / 2; if (at(t, c[0], c[2]) < x) lo = t; else hi = t; }
+          return at(t, c[1], c[3]);
+        };
+      }
+      function outlines(path) {
+        if (!path._outlines) {
+          path._outlines = {};
+          (path.getAttribute('data-morph') || '').split('|').forEach(function(entry) {
+            var at = entry.indexOf(':');
+            path._outlines[entry.slice(0, at)] = entry.slice(at + 1).split(' ').map(function(p) { return p.split(',').map(Number); });
+          });
+        }
+        return path._outlines;
+      }
+      function draw(path, points) {
+        path._points = points;
+        path.setAttribute('d', 'M' + points.map(function(p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }).join('L') + 'Z');
+      }
+      function morph(el) {
+        var path = el.querySelector('path[data-morph]');
+        if (!path) return;
+        var all = outlines(path), to = all[stateOf(el)] || all[''];
+        var from = path._points || all[el.getAttribute('data-st-start') || ''] || to;
+        if (!to || from.length !== to.length) return;
+        window.cancelAnimationFrame(path._frame);
+        var cs = window.getComputedStyle(el), time = (cs.getPropertyValue('--st-dur') || '').trim();
+        var ms = !time ? 400 : /ms$/.test(time) ? parseFloat(time) : parseFloat(time) * 1000;
+        var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!(ms > 0) || still) return draw(path, to);
+        var ease = curve(cs.getPropertyValue('--st-ease')), began = null;
+        var step = function(now) {
+          if (began === null) began = now;
+          var k = ease(Math.min(1, (now - began) / ms));
+          draw(path, from.map(function(p, i) { return [p[0] + (to[i][0] - p[0]) * k, p[1] + (to[i][1] - p[1]) * k]; }));
+          if (now - began < ms) path._frame = window.requestAnimationFrame(step);
+        };
+        path._frame = window.requestAnimationFrame(step);
+      }
       function changeState(el, attr, value) {
         var before = stateOf(el), dur = '', ease = '';
         if (before) { var cs = window.getComputedStyle(el); dur = cs.getPropertyValue('--st-dur'); ease = cs.getPropertyValue('--st-ease'); }
@@ -373,6 +458,7 @@ export const CLICK_ACTION_SCRIPT = `
         if (after === before) return;
         if (after || !dur) { el.style.removeProperty('--st-dur'); el.style.removeProperty('--st-ease'); }
         else { el.style.setProperty('--st-dur', dur); el.style.setProperty('--st-ease', ease); }
+        morph(el);
       }
       function stateTarget(slide, id) {
         var els = slide.querySelectorAll('[data-st-list]');
@@ -400,7 +486,7 @@ export const CLICK_ACTION_SCRIPT = `
           els[i].setAttribute('data-st', els[i].getAttribute('data-st-start') || '');
         }
         if (els.length) els[0].offsetWidth;
-        for (var j = 0; j < els.length; j++) { els[j].style.removeProperty('--st-dur'); els[j].style.removeProperty('--st-ease'); }
+        for (var j = 0; j < els.length; j++) { morph(els[j]); els[j].style.removeProperty('--st-dur'); els[j].style.removeProperty('--st-ease'); }
       }
       function layer() {
         var old = document.querySelectorAll('.reveal .slides [data-hover-shown], .reveal .slides [data-hover-hidden]');

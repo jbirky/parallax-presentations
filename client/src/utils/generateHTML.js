@@ -10,7 +10,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
@@ -186,7 +186,7 @@ export function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`

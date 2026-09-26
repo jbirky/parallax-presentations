@@ -77,6 +77,24 @@ describe('the self-hosted version', () => {
     assert.deepEqual(tab.clickAction, { type: 'visibility', show: [panel.id] })
   })
 
+  it('presents a deck with states and a morphing shape', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'States' })).body
+    const shape = { id: 'dot', type: 'shape', shape: 'circle', x: 0, y: 0, width: 80, height: 80, text: '<b>x</b>',
+      states: [{ id: 'st_star', name: 'Star', shape: 'star', fill: '#ff0000', duration: 300 }, { id: 'bad"id', fill: 'red' }] }
+    const button = { id: 'go', type: 'shape', shape: 'line-arrow', width: 80, height: 20, strokeDasharray: 'dashed', clickAction: { type: 'visibility', set: [{ id: 'dot', state: 'st_star', mode: 'toggle' }] } }
+    await call('PUT', `/api/presentations/${id}`, { slides: [{ id: 's1', elements: [shape, button] }] })
+    const res = await fetch(`${base}/api/presentations/${id}/present`)
+    const html = await res.text()
+    assert.equal(res.status, 200)
+    assert.match(html, /data-el="dot" data-st-list="st_star" data-st="" data-st-start=""/)
+    assert.match(html, /data-action-set="dot:st_star:toggle"/)
+    assert.match(html, /<path d="M[^"]+" data-morph=":[^"|]+\|st_star:[^"]+" \/>/)
+    assert.match(html, /:where\(\[data-el="dot"\]\[data-st="st_star"\][^{]*\{ --st-dur:300ms/)
+    assert.match(html, /<polyline points=/) // line arrows, which the server's own copy used to leave out
+    assert.match(html, /stroke-dasharray="/)
+    assert.doesNotMatch(html, /bad"id|<b>x<\/b>/)
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [
