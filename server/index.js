@@ -1478,6 +1478,9 @@ ${(() => {
         wrap.appendChild(num);
         if (srcEl) {
           var clone = srcEl.cloneNode(true);
+          // A picture only: its clickable and hoverable copies can't be tabbed to
+          clone.setAttribute('inert', '');
+          clone.setAttribute('aria-hidden', 'true');
           clone.style.cssText = 'position:absolute;top:0;left:0;width:' + slideW + 'px;height:' + slideH + 'px;transform:scale(' + (THUMB_W/slideW) + ');transform-origin:top left;pointer-events:none;overflow:hidden;';
           clone.querySelectorAll('.reveal-footer').forEach(function(f) { f.remove(); });
           clone.querySelectorAll('iframe').forEach(function(f) { f.remove(); });
