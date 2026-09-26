@@ -192,7 +192,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Images', link: 'tutorials/images' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
       { text: 'LaTeX & Math', link: 'features/latex' },
-      { text: 'Links & Click Actions', link: 'tutorials/interactive-slides' },
+      { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },

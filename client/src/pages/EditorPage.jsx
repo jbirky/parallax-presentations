@@ -50,7 +50,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, canvasClickPreview, previewForSelection, elementLabels } from '../utils/clickActions'
+import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, canvasClickPreview, previewForSelection, elementLabels, hoverPreview } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -709,15 +709,15 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const slideW = presentation?.slideWidth || 960
   const slideH = presentation?.slideHeight || 540
 
-  // Previewing a slide's clicks on the canvas (utils/clickActions.js), chosen
-  // per slide while editing
+  // Previewing a slide's clicks and hovers on the canvas (utils/clickActions.js),
+  // chosen per slide while editing
   const [clickPreview, setClickPreview] = useState({})
   const preview = canvasClickPreview(currentSlide?.elements, currentSlide ? clickPreview[currentSlide.id] : null, selectedElementIds)
   const canvasSlide = currentSlide && preview.elements !== currentSlide.elements ? { ...currentSlide, elements: preview.elements } : currentSlide
   const setPreviewMode = mode => { if (currentSlide) setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode })) }
 
-  // Selecting a tab previews its click, and selecting something the preview
-  // hides switches to a click that shows it
+  // Selecting a tab or hotspot previews its click or hover, and selecting
+  // something the preview hides switches to a click or hover that shows it
   useEffect(() => {
     if (!currentSlide || selectedElementIds.length !== 1) return
     const mode = previewForSelection(currentSlide.elements, selectedElementIds[0], preview.mode)
@@ -1421,6 +1421,23 @@ function draw() {
       }
     })
     setSelectedElementIds([newElements[1].id])
+  }, [currentSlide, slideW, slideH])
+
+  // A hotspot: a marker whose hover shows a card; the marker is selected, so
+  // its On hover shows how
+  const addHotspot = useCallback(() => {
+    const top = Math.max(0, ...(currentSlide?.elements || []).map(el => el.zIndex || 0))
+    const newElements = buildHotspot({ slideW, slideH, zIndex: top + 1, makeId: () => crypto.randomUUID() })
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...newElements] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newElements[0].id])
   }, [currentSlide, slideW, slideH])
 
   const addModularGrid = useCallback((moduleShape, cols, rows, gap) => {
@@ -3607,6 +3624,7 @@ function draw() {
             onAddKineticText={() => setShowKineticModal(true)}
             onAddMathGrid={() => setShowMathGridModal(true)}
             onAddTabs={addTabs}
+            onAddHotspot={addHotspot}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddDiagram={() => setShowDiagramModal(true)}
@@ -3675,8 +3693,9 @@ function draw() {
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
             {!isViewingReferences && preview.canPreview && (() => {
               const labels = elementLabels(currentSlide.elements)
-              const modes = [['start', 'As it opens', 'The slide as it opens, before any clicks'],
+              const modes = [['start', 'As it opens', 'The slide as it opens, before any clicks or hovers'],
                 ...preview.clickers.map(c => [c.id, labels.get(c.id), `The slide after clicking “${labels.get(c.id)}”`]),
+                ...preview.hovers.map(h => [hoverPreview(h.id), `Hover: ${labels.get(h.id)}`, `The slide while the pointer is over “${labels.get(h.id)}”`]),
                 ['all', 'Everything', 'Everything on the slide, with what starts hidden faded']]
               return (
                 <div role="toolbar" aria-label="Show on the canvas" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>

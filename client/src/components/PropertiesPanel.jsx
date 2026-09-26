@@ -1591,25 +1591,28 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             )
           })()}
 
-          {/* Interaction when presented: a click action, and being shown or hidden by one */}
+          {/* Interactions when presented: what a click or hover on it does, and being shown or hidden by one */}
           {onUpdateWithGroup && (() => {
             const el = selectedElement
             const action = el.clickAction || null
+            const hover = el.hoverAction || null
             const slides = presentation?.slides || []
             const elements = slide.elements || []
-            const canClick = supportsClickAction(el)
+            const canAct = supportsClickAction(el)
             const imageClick = el.type === 'image' && (el.clickToExpand || el.popupText)
             const setAction = clickAction => onUpdateWithGroup({ clickAction })
+            const setHover = hoverAction => onUpdateWithGroup({ hoverAction })
             const setType = type => setAction(
               type === 'none' ? null
                 : type === 'slide' ? { type, slideId: action?.slideId || slides.find(s => s.id && s.id !== slide.id)?.id || null }
                 : type === 'url' ? { type, url: action?.url || '', newTab: action?.newTab ?? true }
                 : type === 'visibility' ? { type, show: action?.show || [], hide: action?.hide || [], toggle: action?.toggle || [] }
                 : { type })
+            const setHoverType = type => setHover(type === 'visibility' ? { type, show: hover?.show || [], hide: hover?.hide || [] } : null)
             const missing = action?.type === 'slide' && !slides.some(s => s.id && s.id === action.slideId)
             const badUrl = action?.type === 'url' && !!action.url?.trim() && !safeActionUrl(action.url)
 
-            // What a click can show or hide: each group counts as one
+            // What a click or hover can show or hide: each group counts as one
             const labels = elementLabels(elements)
             const entries = []
             const seenGroups = new Set()
@@ -1621,110 +1624,136 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               const named = members.find(m => m.type === 'text') || members[0]
               entries.push({ key: e.groupId, ids: members.map(m => m.id), label: `Group: ${labels.get(named.id)}` })
             }
-            const VIS = ['show', 'hide', 'toggle']
-            const stateOf = entry => VIS.find(k => entry.ids.every(id => (action?.[k] || []).includes(id))) || 'none'
-            const setState = (entry, state) => {
-              const exists = id => elements.some(e => e.id === id)
-              const next = { ...action }
-              for (const k of VIS) next[k] = (action?.[k] || []).filter(id => !entry.ids.includes(id) && exists(id))
-              if (state !== 'none') next[state] = [...next[state], ...entry.ids]
-              setAction(next)
-            }
             const hiddenAtStart = entry => entry.ids.every(id => elements.find(e => e.id === id)?.startHidden)
-            const shownByAClick = elements.some(e => e.clickAction?.type === 'visibility'
-              && ['show', 'toggle'].some(k => (e.clickAction[k] || []).includes(el.id)))
+            const shownByAnAction = elements.some(e =>
+              (e.clickAction?.type === 'visibility' && ['show', 'toggle'].some(k => (e.clickAction[k] || []).includes(el.id)))
+              || (e.hoverAction?.type === 'visibility' && (e.hoverAction.show || []).includes(el.id)))
+
+            // Each entry with a choice of what `act` does to it: — or one of `keys`
+            const CHOICES = { show: 'Show', hide: 'Hide', toggle: 'Toggle' }
+            const targetList = (act, keys, set, name, list) => {
+              const stateOf = entry => keys.find(k => entry.ids.every(id => (act?.[k] || []).includes(id))) || 'none'
+              const setState = (entry, state) => {
+                const exists = id => elements.some(e => e.id === id)
+                const next = { ...act }
+                for (const k of keys) next[k] = (act?.[k] || []).filter(id => !entry.ids.includes(id) && exists(id))
+                if (state !== 'none') next[state] = [...next[state], ...entry.ids]
+                set(next)
+              }
+              return (
+                <div role="group" aria-label={`What ${name} shows or hides`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {list.map(entry => (
+                    <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button onClick={() => onSelectElement?.(entry.ids[0])} title="Select it"
+                        style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {entry.label}{entry.ids.includes(el.id) ? ' (this)' : ''}
+                        {hiddenAtStart(entry) && <span style={{ color: 'var(--text-muted)' }}> · hidden at start</span>}
+                      </button>
+                      <select className="prop-input" value={stateOf(entry)} onChange={e => setState(entry, e.target.value)}
+                        aria-label={`${entry.label}: on ${name}`} style={{ width: 84, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
+                        <option value="none">—</option>
+                        {keys.map(k => <option key={k} value={k}>{CHOICES[k]}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  {list.length ? <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Click a name to select it.</div>
+                    : <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Nothing else is on this slide yet.</div>}
+                </div>
+              )
+            }
+            const rowLabel = text => <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 54, flexShrink: 0 }}>{text}</span>
 
             return (
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>On click</div>
-                {!canClick ? (
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Interactions</div>
+                {!canAct ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                    This element takes its own clicks, but a click on something else can still show or hide it.
-                  </p>
-                ) : imageClick ? (
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                    This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                    This element takes its own clicks and hovers, but a click or hover on something else can still show or hide it.
                   </p>
                 ) : (<>
-                  <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
-                    aria-label="On click" style={{ padding: '4px 6px', marginBottom: 6 }}>
-                    <option value="none">Nothing</option>
-                    <option value="slide">Go to slide</option>
-                    <option value="next">Next slide</option>
-                    <option value="prev">Previous slide</option>
-                    <option value="visibility">Show or hide elements</option>
-                    <option value="url">Open web page</option>
-                  </select>
-                  {action?.type === 'slide' && (
-                    <select className="prop-input" value={missing ? '' : action.slideId}
-                      onChange={e => setAction({ type: 'slide', slideId: e.target.value })}
-                      aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
-                      {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
-                      {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
-                    </select>
-                  )}
-                  {action?.type === 'visibility' && (
-                    <div role="group" aria-label="What a click shows or hides" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {entries.map(entry => (
-                        <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button onClick={() => onSelectElement?.(entry.ids[0])} title="Select it"
-                            style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {entry.label}{entry.ids.includes(el.id) ? ' (this)' : ''}
-                            {hiddenAtStart(entry) && <span style={{ color: 'var(--text-muted)' }}> · hidden at start</span>}
-                          </button>
-                          <select className="prop-input" value={stateOf(entry)} onChange={e => setState(entry, e.target.value)}
-                            aria-label={`${entry.label}: on click`} style={{ width: 84, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
-                            <option value="none">—</option>
-                            <option value="show">Show</option>
-                            <option value="hide">Hide</option>
-                            <option value="toggle">Toggle</option>
-                          </select>
-                        </div>
-                      ))}
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Click a name to select it.</div>
-                    </div>
-                  )}
-                  {action?.type === 'url' && (<>
-                    <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
-                      onChange={e => setAction({ ...action, url: e.target.value })}
-                      aria-label="Web address" aria-invalid={badUrl} />
-                    <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
-                      Opens https://, http:// and mailto: addresses.
-                    </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
-                      <input type="checkbox" checked={action.newTab !== false}
-                        onChange={e => setAction({ ...action, newTab: e.target.checked })}
-                        style={{ accentColor: 'var(--accent)' }} />
-                      Open in a new tab
-                    </label>
-                  </>)}
-                  {action && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>On hover</span>
-                      <select className="prop-input" value={el.hoverEffect || 'brighten'}
-                        onChange={e => onUpdateWithGroup({ hoverEffect: e.target.value === 'brighten' ? null : e.target.value })}
-                        aria-label="On hover" style={{ padding: '2px 6px', fontSize: 11 }}>
-                        <option value="brighten">Brighten</option>
-                        <option value="lift">Lift</option>
-                        <option value="grow">Grow</option>
+                  {imageClick ? (<>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>{rowLabel('On click')}</div>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                      This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                    </p>
+                  </>) : (<>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      {rowLabel('On click')}
+                      <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
+                        aria-label="On click" style={{ flex: 1, minWidth: 0, padding: '4px 6px' }}>
                         <option value="none">Nothing</option>
+                        <option value="slide">Go to slide</option>
+                        <option value="next">Next slide</option>
+                        <option value="prev">Previous slide</option>
+                        <option value="visibility">Show or hide elements</option>
+                        <option value="url">Open web page</option>
                       </select>
                     </div>
-                  )}
+                    {action?.type === 'slide' && (
+                      <select className="prop-input" value={missing ? '' : action.slideId}
+                        onChange={e => setAction({ type: 'slide', slideId: e.target.value })}
+                        aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
+                        {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
+                        {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
+                      </select>
+                    )}
+                    {action?.type === 'visibility' && targetList(action, ['show', 'hide', 'toggle'], setAction, 'click', entries)}
+                    {action?.type === 'url' && (<>
+                      <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
+                        onChange={e => setAction({ ...action, url: e.target.value })}
+                        aria-label="Web address" aria-invalid={badUrl} />
+                      <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
+                        Opens https://, http:// and mailto: addresses.
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
+                        <input type="checkbox" checked={action.newTab !== false}
+                          onChange={e => setAction({ ...action, newTab: e.target.checked })}
+                          style={{ accentColor: 'var(--accent)' }} />
+                        Open in a new tab
+                      </label>
+                    </>)}
+                    {action && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>Hover style</span>
+                        <select className="prop-input" value={el.hoverEffect || 'brighten'}
+                          onChange={e => onUpdateWithGroup({ hoverEffect: e.target.value === 'brighten' ? null : e.target.value })}
+                          aria-label="Hover style" style={{ padding: '2px 6px', fontSize: 11 }}>
+                          <option value="brighten">Brighten</option>
+                          <option value="lift">Lift</option>
+                          <option value="grow">Grow</option>
+                          <option value="none">Nothing</option>
+                        </select>
+                      </div>
+                    )}
+                  </>)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 6px' }}>
+                    {rowLabel('On hover')}
+                    <select className="prop-input" value={hover?.type === 'visibility' ? 'visibility' : 'none'} onChange={e => setHoverType(e.target.value)}
+                      aria-label="On hover" style={{ flex: 1, minWidth: 0, padding: '4px 6px' }}>
+                      <option value="none">Nothing</option>
+                      <option value="visibility">Show or hide elements</option>
+                    </select>
+                  </div>
+                  {hover?.type === 'visibility' && (<>
+                    {targetList(hover, ['show', 'hide'], setHover, 'hover', entries.filter(entry => !entry.ids.includes(el.id)))}
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Undone when the pointer moves off it and what it shows. On touch screens a tap turns it on and off{action ? ', unless it has a click action' : ''}.
+                    </div>
+                  </>)}
                 </>)}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 8 }}>
                   <input type="checkbox" checked={!!el.startHidden}
                     onChange={e => onUpdateWithGroup({ startHidden: e.target.checked || null })}
                     style={{ accentColor: 'var(--accent)' }} />
-                  Hidden until a click shows it
+                  Hidden until a click or hover shows it
                 </label>
-                {el.startHidden && !shownByAClick && (
+                {el.startHidden && !shownByAnAction && (
                   <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>Nothing on this slide shows it yet.</div>
                 )}
-                {(action || el.startHidden) && el.groupId && (
+                {(action || hover || el.startHidden) && el.groupId && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Applies to the whole group.</div>
                 )}
-                {(action || el.startHidden) && (
+                {(action || hover || el.startHidden) && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Works when presenting, in exported HTML and on share links.</div>
                 )}
               </div>

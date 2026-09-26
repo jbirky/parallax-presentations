@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// Click actions and slide links. In a presented deck, an element with a click
-// action goes to a slide, to the next or previous one, opens a web page, or
-// shows and hides elements on its slide (tabs, click-to-reveal), and text can
-// link to a slide. Slides are addressed by id, as #/s-<slide id>: each slide's
-// section has that id, which reveal.js resolves (and shows in the address
-// bar), so links and shared URLs keep their slide when slides move.
+// Click and hover actions, and slide links. In a presented deck, an element
+// with a click action goes to a slide, to the next or previous one, opens a
+// web page, or shows and hides elements on its slide (tabs, click-to-reveal);
+// one with a hover action shows and hides elements while the pointer is over
+// it (hotspots); and text can link to a slide. Slides are addressed by id, as
+// #/s-<slide id>: each slide's section has that id, which reveal.js resolves
+// (and shows in the address bar), so links and shared URLs keep their slide
+// when slides move.
 //
 //   el.clickAction = { type: 'slide', slideId } | { type: 'next' } | { type: 'prev' }
 //                  | { type: 'url', url, newTab }
 //                  | { type: 'visibility', show: [elementId], hide: [...], toggle: [...] }
-//   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none'
-//   el.startHidden = true: hidden each time its slide opens, until a click shows it
+//   el.hoverAction = { type: 'visibility', show: [elementId], hide: [...] }, undone
+//                    when the hover ends
+//   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none': how a
+//                    clickable element looks under the pointer
+//   el.startHidden = true: hidden each time its slide opens, until a click or
+//                    hover shows it
 //
 // The server has a copy of everything above "Editor helpers" below, for the
 // pages it builds (share links, GitHub and Zenodo exports), written by
@@ -21,6 +27,7 @@
 export const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 export const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
 const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
+const HOVER_KEYS = ['show', 'hide']
 
 // Embeds, players and drawings take their own clicks, or none
 const NO_CLICK_ACTION = new Set(['html', 'p5', 'video', 'audio', 'drawing'])
@@ -44,20 +51,26 @@ const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 // Element ids in a show/hide list; the page separates them with spaces
 const idList = list => (Array.isArray(list) ? list : []).filter(id => typeof id === 'string' && id && !/\s/.test(id))
 
-// The ids of the elements on `slide` that a click shows, hides or toggles
+// The ids of the elements on `slide` that a click or hover shows, hides or toggles
 export function visibilityTargets(slide) {
   const targets = new Set()
   for (const el of slide?.elements || []) {
-    if (el.clickAction?.type !== 'visibility') continue
-    for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+    if (el.clickAction?.type === 'visibility') {
+      for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+    }
+    if (el.hoverAction?.type === 'visibility') {
+      for (const key of HOVER_KEYS) idList(el.hoverAction[key]).forEach(id => targets.add(id))
+    }
   }
   return targets
 }
 
-// The attributes that make an element clickable in a presented deck, and that
-// let a click on its slide show or hide it (`targets`, from visibilityTargets)
+// The attributes that make an element clickable or hoverable in a presented
+// deck, and that let a click or hover on its slide show or hide it (`targets`,
+// from visibilityTargets)
 export function clickActionAttrs(el, targets = new Set()) {
-  return actionAttrs(el) + visibilityAttrs(el, targets)
+  const click = actionAttrs(el)
+  return click + hoverAttrs(el, !click) + visibilityAttrs(el, targets)
 }
 
 function actionAttrs(el) {
@@ -82,7 +95,17 @@ function actionAttrs(el) {
   return ` data-action="${action.type}"${target}${hover} role="${action.type === 'url' ? 'link' : 'button'}" tabindex="0"`
 }
 
-// Any element, embeds included, can be shown or hidden by a click
+// What a hover shows and hides; `focusable` for an element with no click
+// action, so the keyboard can reach it too
+function hoverAttrs(el, focusable) {
+  const action = el?.hoverAction
+  if (action?.type !== 'visibility' || !supportsClickAction(el)) return ''
+  const attrs = HOVER_KEYS.map(key => [key, idList(action[key])]).filter(([, ids]) => ids.length)
+    .map(([key, ids]) => ` data-hover-${key}="${escapeAttr(ids.join(' '))}"`).join('')
+  return attrs && focusable ? `${attrs} tabindex="0"` : attrs
+}
+
+// Any element, embeds included, can be shown or hidden by a click or hover
 function visibilityAttrs(el, targets) {
   if (!el?.id || !(targets.has(el.id) || el.startHidden)) return ''
   return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}`
@@ -114,18 +137,25 @@ export function remapSlideLinks(slides, idMap) {
   return slides.map(slide => ({ ...slide, elements: (slide.elements || []).map(remapElement) }))
 }
 
-// `elements` with their show/hide actions pointed at new element ids, for a
-// slide's elements copied under new ids. Ids not in `idMap` are left as they are.
+// `elements` with their show/hide actions, on click and on hover, pointed at
+// new element ids, for a slide's elements copied under new ids. Ids not in
+// `idMap` are left as they are.
 export function remapElementRefs(elements, idMap) {
   const map = idMap instanceof Map ? idMap : new Map(Object.entries(idMap))
-  return elements.map(el => {
-    const action = el.clickAction
-    if (action?.type !== 'visibility') return el
+  const remap = action => {
+    if (action?.type !== 'visibility') return action
     const next = { ...action }
     for (const key of VISIBILITY_KEYS) {
       if (Array.isArray(action[key])) next[key] = action[key].map(id => map.get(id) ?? id)
     }
-    return { ...el, clickAction: next }
+    return next
+  }
+  return elements.map(el => {
+    if (el.clickAction?.type !== 'visibility' && el.hoverAction?.type !== 'visibility') return el
+    const next = { ...el }
+    if (el.clickAction) next.clickAction = remap(el.clickAction)
+    if (el.hoverAction) next.hoverAction = remap(el.hoverAction)
+    return next
   })
 }
 
@@ -171,16 +201,99 @@ export const CLICK_ACTION_CSS = `
     .reveal .slides [data-action][data-hover]:hover { filter:none; }
     .reveal .slides [data-action][data-hover="lift"]:hover { translate:0 -4px; box-shadow:0 10px 24px rgba(0,0,0,0.35); }
     .reveal .slides [data-action][data-hover="grow"]:hover { scale:1.04; }
-    .reveal .slides [data-action]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
+    .reveal .slides [data-action]:focus-visible, .reveal .slides [data-hover-show]:focus-visible, .reveal .slides [data-hover-hide]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
     .reveal .slides [data-action] iframe { pointer-events:none; }
-    .reveal .slides [data-el][data-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
+    .reveal .slides [data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
 
 // Page script for presented decks, after reveal.js has loaded. Slide links
 // move within the page, even ones saved to open in a new tab; an element's
 // action runs on click, or on Enter or Space once it has focus. Each time a
 // slide opens, what its clicks showed or hid goes back to how it started.
+//
+// A hover lasts while the pointer is over the element or over something its
+// hover shows, and a moment after (so the pointer can cross a gap onto a
+// pop-up card), or while it has keyboard focus; on a touch screen a tap turns
+// it on and off, unless the element has a click action, which wins. What
+// hovers show and hide lies over what clicks did (data-hover-shown,
+// data-hover-hidden), and goes when the hover ends or the slide changes.
 export const CLICK_ACTION_SCRIPT = `
     (function() {
+      var HOVER = '.reveal .slides [data-hover-show], .reveal .slides [data-hover-hide]';
+      var hovered = [], focused = null, tapped = null, pointerType = 'mouse', keyboard = false, ending = null;
+      function ids(el, key) { return (el.getAttribute(key) || '').split(' '); }
+      function shownBy(source, node) {
+        var shown = ids(source, 'data-hover-show');
+        var slide = source.closest('section');
+        for (var t = node; t && t !== slide && t.getAttribute; t = t.parentElement) {
+          if (shown.indexOf(t.getAttribute('data-el')) !== -1) return true;
+        }
+        return false;
+      }
+      function sameHover(a, b) {
+        return a === b || !!(a && b && a.closest('section') === b.closest('section')
+          && a.getAttribute('data-hover-show') === b.getAttribute('data-hover-show')
+          && a.getAttribute('data-hover-hide') === b.getAttribute('data-hover-hide'));
+      }
+      function layer() {
+        var old = document.querySelectorAll('.reveal .slides [data-hover-shown], .reveal .slides [data-hover-hidden]');
+        for (var i = 0; i < old.length; i++) { old[i].removeAttribute('data-hover-shown'); old[i].removeAttribute('data-hover-hidden'); }
+        var sources = [focused, tapped].concat(hovered);
+        for (var s = 0; s < sources.length; s++) {
+          var source = sources[s], slide = source && source.closest('section');
+          if (!slide) continue;
+          var hide = ids(source, 'data-hover-hide'), show = ids(source, 'data-hover-show');
+          var els = slide.querySelectorAll('[data-el]');
+          for (var j = 0; j < els.length; j++) {
+            var id = els[j].getAttribute('data-el');
+            if (show.indexOf(id) !== -1) { els[j].setAttribute('data-hover-shown', ''); els[j].removeAttribute('data-hover-hidden'); }
+            else if (hide.indexOf(id) !== -1) { els[j].setAttribute('data-hover-hidden', ''); els[j].removeAttribute('data-hover-shown'); }
+          }
+        }
+      }
+      function unhover() { clearTimeout(ending); ending = null; hovered = []; focused = null; tapped = null; layer(); }
+      function hover(next) {
+        clearTimeout(ending);
+        ending = null;
+        if (next.length === hovered.length && next.every(function(el, i) { return el === hovered[i]; })) return;
+        if (next.every(function(el) { return hovered.indexOf(el) !== -1; })) {
+          ending = setTimeout(function() { ending = null; hovered = next; layer(); }, 200);
+          return;
+        }
+        hovered = next;
+        layer();
+      }
+      document.addEventListener('pointerover', function(e) {
+        pointerType = e.pointerType || 'mouse';
+        if (pointerType === 'touch' || !e.target.closest) return;
+        var next = hovered.filter(function(source) { return shownBy(source, e.target); });
+        var source = e.target.closest(HOVER);
+        if (source && next.indexOf(source) === -1) next.push(source);
+        hover(next);
+      });
+      document.addEventListener('pointerout', function(e) {
+        if (!e.relatedTarget && e.pointerType !== 'touch') hover([]);
+      });
+      document.addEventListener('pointerdown', function(e) { pointerType = e.pointerType || 'mouse'; keyboard = false; }, true);
+      window.addEventListener('keydown', function() { keyboard = true; }, true);
+      document.addEventListener('focusin', function(e) {
+        var source = keyboard && e.target.closest ? e.target.closest(HOVER) : null;
+        if (source === focused) return;
+        focused = source;
+        layer();
+      });
+      document.addEventListener('focusout', function() {
+        if (!focused) return;
+        focused = null;
+        layer();
+      });
+      function tap(target) {
+        var source = target.closest(HOVER);
+        var next = source && !source.hasAttribute('data-action') ? (sameHover(source, tapped) ? null : source)
+          : tapped && shownBy(tapped, target) ? tapped : null;
+        if (next === tapped) return;
+        tapped = next;
+        layer();
+      }
       function hide(el, hidden) {
         if (hidden) el.setAttribute('data-hidden', ''); else el.removeAttribute('data-hidden');
       }
@@ -219,6 +332,7 @@ export const CLICK_ACTION_SCRIPT = `
       }
       document.addEventListener('click', function(e) {
         if (!e.target.closest) return;
+        if (pointerType === 'touch') tap(e.target);
         var link = e.target.closest('.reveal .slides a[href^="#/"]');
         if (link) { e.preventDefault(); window.location.hash = link.getAttribute('href'); return; }
         if (e.target.closest('a[href]')) return;
@@ -235,7 +349,7 @@ export const CLICK_ACTION_SCRIPT = `
         e.stopPropagation();
         run(el);
       }, true);
-      Reveal.on('slidechanged', function(e) { reset(e.currentSlide); });
+      Reveal.on('slidechanged', function(e) { unhover(); reset(e.currentSlide); });
     })();`
 
 // ── Editor helpers ─────────────────────────────────────────────────────────
@@ -284,18 +398,31 @@ export function elementLabels(elements) {
   return labels
 }
 
-// The elements of a slide whose click shows or hides something, one per
-// group, for previewing their clicks in the editor
-export function visibilityClickers(elements) {
+// The first element of each group, and each ungrouped one, that `keep` keeps
+function onePerGroup(elements, keep) {
   const groups = new Set()
   return (elements || []).filter(el => {
-    if (el.clickAction?.type !== 'visibility' || !supportsClickAction(el)) return false
+    if (!keep(el)) return false
     if (!el.groupId) return true
     if (groups.has(el.groupId)) return false
     groups.add(el.groupId)
     return true
   })
 }
+
+// The elements of a slide whose click shows or hides something, one per
+// group, for previewing their clicks in the editor
+export function visibilityClickers(elements) {
+  return onePerGroup(elements, el => el.clickAction?.type === 'visibility' && supportsClickAction(el))
+}
+
+// The elements of a slide whose hover shows or hides something, one per group
+export function hoverSources(elements) {
+  return onePerGroup(elements, el => el.hoverAction?.type === 'visibility' && supportsClickAction(el))
+}
+
+// The canvas preview of the slide while the pointer is over `id`'s element
+export const hoverPreview = id => `hover:${id}`
 
 // The ids of the elements on a slide that are hidden once it opens and
 // `clickerId`'s element is clicked (or as it opens, with no clicker)
@@ -310,22 +437,38 @@ export function hiddenAfterClick(elements, clickerId = null) {
   return hidden
 }
 
-// What the editor's canvas shows of a slide while previewing its clicks.
-// `mode` is 'all' (everything, with what starts hidden faded), 'start' (the
-// slide as it opens) or a clicker's id (the slide after that click); slides
-// with show/hide preview 'start' unless told otherwise, so tab panels don't
+// The ids of the elements on a slide that are hidden in a canvas preview:
+// 'start', a clicker's id, or hoverPreview(id) for the slide as it opens with
+// the pointer over that element
+export function hiddenInPreview(elements, mode) {
+  if (!mode?.startsWith?.('hover:')) return hiddenAfterClick(elements, mode === 'start' ? null : mode)
+  const hidden = hiddenAfterClick(elements)
+  const action = (elements || []).find(el => hoverPreview(el.id) === mode)?.hoverAction
+  if (action?.type === 'visibility') {
+    idList(action.hide).forEach(id => hidden.add(id))
+    idList(action.show).forEach(id => hidden.delete(id))
+  }
+  return hidden
+}
+
+// What the editor's canvas shows of a slide while previewing its clicks and
+// hovers. `mode` is 'all' (everything, with what starts hidden faded), 'start'
+// (the slide as it opens), a clicker's id (the slide after that click) or
+// hoverPreview(id) (the slide while that element is hovered); slides with
+// show/hide preview 'start' unless told otherwise, so tab panels don't
 // overlap. Selected elements stay on the canvas, faded if the preview hides them.
 export function canvasClickPreview(elements, mode, selectedIds = []) {
   const all = elements || []
   const clickers = visibilityClickers(all)
-  const canPreview = clickers.length > 0 || all.some(el => el.startHidden)
+  const hovers = hoverSources(all)
+  const canPreview = clickers.length > 0 || hovers.length > 0 || all.some(el => el.startHidden)
   const current = !canPreview ? 'all'
-    : mode === 'all' || clickers.some(c => c.id === mode) ? mode
+    : mode === 'all' || clickers.some(c => c.id === mode) || hovers.some(h => hoverPreview(h.id) === mode) ? mode
     : 'start'
-  const hidden = current === 'all' ? new Set() : hiddenAfterClick(all, current === 'start' ? null : current)
+  const hidden = current === 'all' ? new Set() : hiddenInPreview(all, current)
   const selected = new Set(selectedIds)
   return {
-    canPreview, clickers, mode: current,
+    canPreview, clickers, hovers, mode: current,
     elements: hidden.size ? all.filter(el => !hidden.has(el.id) || selected.has(el.id)) : all,
     fadedIds: new Set(current === 'all'
       ? all.filter(el => el.startHidden && !selected.has(el.id)).map(el => el.id)
@@ -334,16 +477,23 @@ export function canvasClickPreview(elements, mode, selectedIds = []) {
 }
 
 // The preview to switch to when `selectedId` is selected: its own click if
-// it's a clicker (or in a clicker's group), or a click that shows it if the
-// current preview hides it; null to stay
+// it's a clicker (or in a clicker's group), else its own hover, or a click or
+// hover that shows it if the current preview hides it; null to stay
 export function previewForSelection(elements, selectedId, mode) {
   const el = (elements || []).find(e => e.id === selectedId)
   if (!el) return null
+  const own = c => c.id === el.id || (el.groupId && c.groupId === el.groupId)
   const clickers = visibilityClickers(elements)
-  const clicker = clickers.find(c => c.id === el.id || (el.groupId && c.groupId === el.groupId))
-  if (clicker) return clicker.id === mode ? null : clicker.id
-  if (mode === 'all' || !hiddenAfterClick(elements, mode === 'start' ? null : mode).has(el.id)) return null
-  return clickers.find(c => ['show', 'toggle'].some(k => idList(c.clickAction[k]).includes(el.id)))?.id || null
+  const hovers = hoverSources(elements)
+  const clicker = clickers.find(own)
+  const hover = hovers.find(own)
+  const ownMode = clicker ? clicker.id : hover ? hoverPreview(hover.id) : null
+  if (ownMode) return ownMode === mode ? null : ownMode
+  if (mode === 'all' || !hiddenInPreview(elements, mode).has(el.id)) return null
+  const shower = clickers.find(c => ['show', 'toggle'].some(k => idList(c.clickAction[k]).includes(el.id)))
+  if (shower) return shower.id
+  const hoverShower = hovers.find(h => idList(h.hoverAction.show).includes(el.id))
+  return hoverShower ? hoverPreview(hoverShower.id) : null
 }
 
 // A tabs component for a slide: a row of tab buttons over a panel, with each
@@ -380,6 +530,35 @@ export function buildTabs(count, { slideW = 960, slideH = 540, zIndex = 1, makeI
     tab.clickAction = { type: 'visibility', show: own, hide: switched.filter(id => !own.includes(id)) }
   })
   return [background, ...tabs, ...bars, ...panels]
+}
+
+// A hotspot for a slide: a round marker, and a card that shows while the
+// pointer is over the marker (or, on a touch screen, once it's tapped). The
+// card's box and text are grouped; the marker is selected after inserting
+// it, so its On hover shows how.
+export function buildHotspot({ slideW = 960, slideH = 540, zIndex = 1, makeId }) {
+  const size = 36
+  const cardW = Math.min(280, slideW - 120), cardH = 100
+  const x = Math.round(slideW * 0.3), y = Math.round(slideH * 0.4)
+  const cardX = Math.min(x + size + 12, slideW - cardW - 20)
+  const cardY = Math.max(20, Math.min(y - 16, slideH - cardH - 20))
+  const groupId = makeId()
+  const marker = {
+    id: makeId(), type: 'shape', shape: 'circle', x, y, width: size, height: size, zIndex,
+    fill: '#6366f1', stroke: '#ffffff', strokeWidth: 2, opacity: 1, text: 'i', fontSize: 18, textColor: '#ffffff',
+  }
+  const box = {
+    id: makeId(), type: 'shape', shape: 'rect', x: cardX, y: cardY, width: cardW, height: cardH, zIndex: zIndex + 1,
+    fill: '#1e293b', stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1, borderRadius: 8, opacity: 1, text: '', fontSize: 16, textColor: '#ffffff',
+    groupId, startHidden: true,
+  }
+  const text = {
+    id: makeId(), type: 'text', x: cardX + 4, y: cardY + 4, width: cardW - 8, height: cardH - 8, zIndex: zIndex + 2,
+    content: '<p><span style="font-size: 20px">Hotspot text</span></p>',
+    groupId, startHidden: true,
+  }
+  marker.hoverAction = { type: 'visibility', show: [box.id, text.id] }
+  return [marker, box, text]
 }
 
 // ── PDF ────────────────────────────────────────────────────────────────────

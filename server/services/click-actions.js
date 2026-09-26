@@ -4,18 +4,24 @@
 // Written by scripts/copy-click-actions.js from client/src/utils/clickActions.js;
 // edit that, then run the script.
 
-// Click actions and slide links. In a presented deck, an element with a click
-// action goes to a slide, to the next or previous one, opens a web page, or
-// shows and hides elements on its slide (tabs, click-to-reveal), and text can
-// link to a slide. Slides are addressed by id, as #/s-<slide id>: each slide's
-// section has that id, which reveal.js resolves (and shows in the address
-// bar), so links and shared URLs keep their slide when slides move.
+// Click and hover actions, and slide links. In a presented deck, an element
+// with a click action goes to a slide, to the next or previous one, opens a
+// web page, or shows and hides elements on its slide (tabs, click-to-reveal);
+// one with a hover action shows and hides elements while the pointer is over
+// it (hotspots); and text can link to a slide. Slides are addressed by id, as
+// #/s-<slide id>: each slide's section has that id, which reveal.js resolves
+// (and shows in the address bar), so links and shared URLs keep their slide
+// when slides move.
 //
 //   el.clickAction = { type: 'slide', slideId } | { type: 'next' } | { type: 'prev' }
 //                  | { type: 'url', url, newTab }
 //                  | { type: 'visibility', show: [elementId], hide: [...], toggle: [...] }
-//   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none'
-//   el.startHidden = true: hidden each time its slide opens, until a click shows it
+//   el.hoverAction = { type: 'visibility', show: [elementId], hide: [...] }, undone
+//                    when the hover ends
+//   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none': how a
+//                    clickable element looks under the pointer
+//   el.startHidden = true: hidden each time its slide opens, until a click or
+//                    hover shows it
 //
 // The server has a copy of everything above "Editor helpers" below, for the
 // pages it builds (share links, GitHub and Zenodo exports), written by
@@ -24,6 +30,7 @@
 const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
 const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
+const HOVER_KEYS = ['show', 'hide']
 
 // Embeds, players and drawings take their own clicks, or none
 const NO_CLICK_ACTION = new Set(['html', 'p5', 'video', 'audio', 'drawing'])
@@ -47,20 +54,26 @@ const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 // Element ids in a show/hide list; the page separates them with spaces
 const idList = list => (Array.isArray(list) ? list : []).filter(id => typeof id === 'string' && id && !/\s/.test(id))
 
-// The ids of the elements on `slide` that a click shows, hides or toggles
+// The ids of the elements on `slide` that a click or hover shows, hides or toggles
 function visibilityTargets(slide) {
   const targets = new Set()
   for (const el of slide?.elements || []) {
-    if (el.clickAction?.type !== 'visibility') continue
-    for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+    if (el.clickAction?.type === 'visibility') {
+      for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+    }
+    if (el.hoverAction?.type === 'visibility') {
+      for (const key of HOVER_KEYS) idList(el.hoverAction[key]).forEach(id => targets.add(id))
+    }
   }
   return targets
 }
 
-// The attributes that make an element clickable in a presented deck, and that
-// let a click on its slide show or hide it (`targets`, from visibilityTargets)
+// The attributes that make an element clickable or hoverable in a presented
+// deck, and that let a click or hover on its slide show or hide it (`targets`,
+// from visibilityTargets)
 function clickActionAttrs(el, targets = new Set()) {
-  return actionAttrs(el) + visibilityAttrs(el, targets)
+  const click = actionAttrs(el)
+  return click + hoverAttrs(el, !click) + visibilityAttrs(el, targets)
 }
 
 function actionAttrs(el) {
@@ -85,7 +98,17 @@ function actionAttrs(el) {
   return ` data-action="${action.type}"${target}${hover} role="${action.type === 'url' ? 'link' : 'button'}" tabindex="0"`
 }
 
-// Any element, embeds included, can be shown or hidden by a click
+// What a hover shows and hides; `focusable` for an element with no click
+// action, so the keyboard can reach it too
+function hoverAttrs(el, focusable) {
+  const action = el?.hoverAction
+  if (action?.type !== 'visibility' || !supportsClickAction(el)) return ''
+  const attrs = HOVER_KEYS.map(key => [key, idList(action[key])]).filter(([, ids]) => ids.length)
+    .map(([key, ids]) => ` data-hover-${key}="${escapeAttr(ids.join(' '))}"`).join('')
+  return attrs && focusable ? `${attrs} tabindex="0"` : attrs
+}
+
+// Any element, embeds included, can be shown or hidden by a click or hover
 function visibilityAttrs(el, targets) {
   if (!el?.id || !(targets.has(el.id) || el.startHidden)) return ''
   return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}`
@@ -117,18 +140,25 @@ function remapSlideLinks(slides, idMap) {
   return slides.map(slide => ({ ...slide, elements: (slide.elements || []).map(remapElement) }))
 }
 
-// `elements` with their show/hide actions pointed at new element ids, for a
-// slide's elements copied under new ids. Ids not in `idMap` are left as they are.
+// `elements` with their show/hide actions, on click and on hover, pointed at
+// new element ids, for a slide's elements copied under new ids. Ids not in
+// `idMap` are left as they are.
 function remapElementRefs(elements, idMap) {
   const map = idMap instanceof Map ? idMap : new Map(Object.entries(idMap))
-  return elements.map(el => {
-    const action = el.clickAction
-    if (action?.type !== 'visibility') return el
+  const remap = action => {
+    if (action?.type !== 'visibility') return action
     const next = { ...action }
     for (const key of VISIBILITY_KEYS) {
       if (Array.isArray(action[key])) next[key] = action[key].map(id => map.get(id) ?? id)
     }
-    return { ...el, clickAction: next }
+    return next
+  }
+  return elements.map(el => {
+    if (el.clickAction?.type !== 'visibility' && el.hoverAction?.type !== 'visibility') return el
+    const next = { ...el }
+    if (el.clickAction) next.clickAction = remap(el.clickAction)
+    if (el.hoverAction) next.hoverAction = remap(el.hoverAction)
+    return next
   })
 }
 
@@ -174,16 +204,99 @@ const CLICK_ACTION_CSS = `
     .reveal .slides [data-action][data-hover]:hover { filter:none; }
     .reveal .slides [data-action][data-hover="lift"]:hover { translate:0 -4px; box-shadow:0 10px 24px rgba(0,0,0,0.35); }
     .reveal .slides [data-action][data-hover="grow"]:hover { scale:1.04; }
-    .reveal .slides [data-action]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
+    .reveal .slides [data-action]:focus-visible, .reveal .slides [data-hover-show]:focus-visible, .reveal .slides [data-hover-hide]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
     .reveal .slides [data-action] iframe { pointer-events:none; }
-    .reveal .slides [data-el][data-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
+    .reveal .slides [data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
 
 // Page script for presented decks, after reveal.js has loaded. Slide links
 // move within the page, even ones saved to open in a new tab; an element's
 // action runs on click, or on Enter or Space once it has focus. Each time a
 // slide opens, what its clicks showed or hid goes back to how it started.
+//
+// A hover lasts while the pointer is over the element or over something its
+// hover shows, and a moment after (so the pointer can cross a gap onto a
+// pop-up card), or while it has keyboard focus; on a touch screen a tap turns
+// it on and off, unless the element has a click action, which wins. What
+// hovers show and hide lies over what clicks did (data-hover-shown,
+// data-hover-hidden), and goes when the hover ends or the slide changes.
 const CLICK_ACTION_SCRIPT = `
     (function() {
+      var HOVER = '.reveal .slides [data-hover-show], .reveal .slides [data-hover-hide]';
+      var hovered = [], focused = null, tapped = null, pointerType = 'mouse', keyboard = false, ending = null;
+      function ids(el, key) { return (el.getAttribute(key) || '').split(' '); }
+      function shownBy(source, node) {
+        var shown = ids(source, 'data-hover-show');
+        var slide = source.closest('section');
+        for (var t = node; t && t !== slide && t.getAttribute; t = t.parentElement) {
+          if (shown.indexOf(t.getAttribute('data-el')) !== -1) return true;
+        }
+        return false;
+      }
+      function sameHover(a, b) {
+        return a === b || !!(a && b && a.closest('section') === b.closest('section')
+          && a.getAttribute('data-hover-show') === b.getAttribute('data-hover-show')
+          && a.getAttribute('data-hover-hide') === b.getAttribute('data-hover-hide'));
+      }
+      function layer() {
+        var old = document.querySelectorAll('.reveal .slides [data-hover-shown], .reveal .slides [data-hover-hidden]');
+        for (var i = 0; i < old.length; i++) { old[i].removeAttribute('data-hover-shown'); old[i].removeAttribute('data-hover-hidden'); }
+        var sources = [focused, tapped].concat(hovered);
+        for (var s = 0; s < sources.length; s++) {
+          var source = sources[s], slide = source && source.closest('section');
+          if (!slide) continue;
+          var hide = ids(source, 'data-hover-hide'), show = ids(source, 'data-hover-show');
+          var els = slide.querySelectorAll('[data-el]');
+          for (var j = 0; j < els.length; j++) {
+            var id = els[j].getAttribute('data-el');
+            if (show.indexOf(id) !== -1) { els[j].setAttribute('data-hover-shown', ''); els[j].removeAttribute('data-hover-hidden'); }
+            else if (hide.indexOf(id) !== -1) { els[j].setAttribute('data-hover-hidden', ''); els[j].removeAttribute('data-hover-shown'); }
+          }
+        }
+      }
+      function unhover() { clearTimeout(ending); ending = null; hovered = []; focused = null; tapped = null; layer(); }
+      function hover(next) {
+        clearTimeout(ending);
+        ending = null;
+        if (next.length === hovered.length && next.every(function(el, i) { return el === hovered[i]; })) return;
+        if (next.every(function(el) { return hovered.indexOf(el) !== -1; })) {
+          ending = setTimeout(function() { ending = null; hovered = next; layer(); }, 200);
+          return;
+        }
+        hovered = next;
+        layer();
+      }
+      document.addEventListener('pointerover', function(e) {
+        pointerType = e.pointerType || 'mouse';
+        if (pointerType === 'touch' || !e.target.closest) return;
+        var next = hovered.filter(function(source) { return shownBy(source, e.target); });
+        var source = e.target.closest(HOVER);
+        if (source && next.indexOf(source) === -1) next.push(source);
+        hover(next);
+      });
+      document.addEventListener('pointerout', function(e) {
+        if (!e.relatedTarget && e.pointerType !== 'touch') hover([]);
+      });
+      document.addEventListener('pointerdown', function(e) { pointerType = e.pointerType || 'mouse'; keyboard = false; }, true);
+      window.addEventListener('keydown', function() { keyboard = true; }, true);
+      document.addEventListener('focusin', function(e) {
+        var source = keyboard && e.target.closest ? e.target.closest(HOVER) : null;
+        if (source === focused) return;
+        focused = source;
+        layer();
+      });
+      document.addEventListener('focusout', function() {
+        if (!focused) return;
+        focused = null;
+        layer();
+      });
+      function tap(target) {
+        var source = target.closest(HOVER);
+        var next = source && !source.hasAttribute('data-action') ? (sameHover(source, tapped) ? null : source)
+          : tapped && shownBy(tapped, target) ? tapped : null;
+        if (next === tapped) return;
+        tapped = next;
+        layer();
+      }
       function hide(el, hidden) {
         if (hidden) el.setAttribute('data-hidden', ''); else el.removeAttribute('data-hidden');
       }
@@ -222,6 +335,7 @@ const CLICK_ACTION_SCRIPT = `
       }
       document.addEventListener('click', function(e) {
         if (!e.target.closest) return;
+        if (pointerType === 'touch') tap(e.target);
         var link = e.target.closest('.reveal .slides a[href^="#/"]');
         if (link) { e.preventDefault(); window.location.hash = link.getAttribute('href'); return; }
         if (e.target.closest('a[href]')) return;
@@ -238,7 +352,7 @@ const CLICK_ACTION_SCRIPT = `
         e.stopPropagation();
         run(el);
       }, true);
-      Reveal.on('slidechanged', function(e) { reset(e.currentSlide); });
+      Reveal.on('slidechanged', function(e) { unhover(); reset(e.currentSlide); });
     })();`
 
 module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, renewSlideIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }

@@ -38,6 +38,8 @@ import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
+
+const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
@@ -1749,14 +1751,14 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
         </div>
       )}
 
-      {/* Click action badge: what the element does when clicked while presenting */}
-      {element.clickAction && supportsClickAction(element) && (
+      {/* Action badge: what the element does when clicked or hovered while presenting */}
+      {(element.clickAction || element.hoverAction) && supportsClickAction(element) && (
         <div style={{
           position: 'absolute', bottom: -18, right: 0, zIndex: 101, pointerEvents: 'none',
           background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
           padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
         }}>
-          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }[element.clickAction.type] || '↗'}
+          {[element.clickAction && (CLICK_BADGES[element.clickAction.type] || '↗'), element.hoverAction && '◑ Hover'].filter(Boolean).join(' · ')}
         </div>
       )}
 

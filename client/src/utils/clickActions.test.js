@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRequire } from 'module'
 import { readFileSync } from 'fs'
 import { Window } from 'happy-dom'
@@ -92,6 +92,35 @@ describe('showing and hiding', () => {
     expect(client.clickActionAttrs(text('x', { clickAction: { type: 'visibility', show: [] } }))).toBe('')
   })
 
+  it('marks what a hover shows or hides, and lets the keyboard reach it', () => {
+    const els = [
+      text('spot', { hoverAction: { type: 'visibility', show: ['card', 'bad id'], hide: ['plain'] } }),
+      text('both', { clickAction: { type: 'next' }, hoverAction: { type: 'visibility', show: ['card'] } }),
+      text('card', { startHidden: true }),
+      text('plain'),
+      { id: 'embed', type: 'html', hoverAction: { type: 'visibility', show: ['card'] } },
+    ]
+    const targets = client.visibilityTargets({ elements: els })
+    expect([...targets].sort()).toEqual(['card', 'plain'])
+    const attrs = id => client.clickActionAttrs(els.find(e => e.id === id), targets)
+    expect(attrs('spot')).toBe(' data-hover-show="card" data-hover-hide="plain" tabindex="0"')
+    expect(attrs('both')).toBe(' data-action="next" role="button" tabindex="0" data-hover-show="card"')
+    expect(attrs('card')).toBe(' data-el="card" data-start-hidden data-hidden')
+    expect(attrs('plain')).toBe(' data-el="plain"')
+    expect(attrs('embed')).toBe('') // takes its own pointer
+    expect(client.clickActionAttrs(text('x', { hoverAction: { type: 'visibility', show: [] } }))).toBe('')
+    expect(client.clickActionAttrs(text('x', { hoverAction: { type: 'spin', show: ['a'] } }))).toBe('')
+  })
+
+  it('keeps hovers pointing at the right elements when they get new ids', () => {
+    const els = [text('spot', { hoverAction: { type: 'visibility', show: ['card'], hide: ['spot', 'gone'] } }), text('card')]
+    let n = 0
+    const renewed = client.renewElementIds(els, () => `new${++n}`)
+    expect(renewed[0].hoverAction).toEqual({ type: 'visibility', show: ['new2'], hide: ['new1', 'gone'] })
+    expect(client.copyElement(els[0], 'copy').hoverAction.hide).toEqual(['copy', 'gone'])
+    expect(els[0].hoverAction.hide).toEqual(['spot', 'gone'])
+  })
+
   it('writes hover styles other than the default', () => {
     for (const [hoverEffect, attr] of [['lift', ' data-hover="lift"'], ['grow', ' data-hover="grow"'], ['none', ' data-hover="none"'], ['brighten', ''], ['spin', ''], [undefined, '']]) {
       const attrs = client.clickActionAttrs(text('x', { clickAction: { type: 'next' }, hoverEffect }))
@@ -180,6 +209,50 @@ describe('previewing clicks on the canvas', () => {
     ]
     expect([...client.hiddenAfterClick(slide)].sort()).toEqual(['s', 't'])
     expect([...client.hiddenAfterClick(slide, 'c')].sort()).toEqual(['u', 'v'])
+  })
+})
+
+describe('previewing hovers on the canvas', () => {
+  let n = 0
+  const [marker, box, words] = client.buildHotspot({ makeId: () => `h${++n}` })
+  const tab = text('tab', { clickAction: { type: 'visibility', show: ['words'] }, hoverAction: { type: 'visibility', hide: [marker.id] } })
+  const els = [marker, box, words, tab]
+
+  it('lists each hover, after the clicks', () => {
+    const preview = client.canvasClickPreview(els, null)
+    expect(preview.canPreview).toBe(true)
+    expect(preview.hovers.map(h => h.id)).toEqual([marker.id, tab.id])
+    expect(preview.mode).toBe('start')
+    expect(preview.elements).toEqual([marker, tab]) // the card starts hidden
+    expect(client.canvasClickPreview([text('a', { hoverAction: { type: 'visibility', hide: ['b'] } }), text('b')], null).canPreview).toBe(true)
+  })
+
+  it('shows the slide while an element is hovered', () => {
+    expect(client.canvasClickPreview(els, client.hoverPreview(marker.id)).elements).toEqual(els)
+    expect(client.canvasClickPreview(els, client.hoverPreview(tab.id)).elements).toEqual([tab])
+    expect(client.canvasClickPreview(els, client.hoverPreview('nope')).mode).toBe('start')
+    expect([...client.hiddenInPreview(els, client.hoverPreview(tab.id))].sort()).toEqual([marker.id, box.id, words.id].sort())
+    expect([...client.hiddenInPreview(els, 'start')].sort()).toEqual([box.id, words.id].sort())
+  })
+
+  it('switches to a hotspot’s hover when it’s selected, or to one that shows what’s selected', () => {
+    expect(client.previewForSelection(els, marker.id, 'start')).toBe(client.hoverPreview(marker.id))
+    expect(client.previewForSelection(els, marker.id, client.hoverPreview(marker.id))).toBeNull()
+    expect(client.previewForSelection(els, words.id, 'start')).toBe(client.hoverPreview(marker.id))
+    expect(client.previewForSelection(els, tab.id, 'start')).toBe(tab.id) // its click comes first
+  })
+
+  it('makes a marker whose hover shows a grouped card', () => {
+    expect(marker).toMatchObject({ type: 'shape', shape: 'circle', hoverAction: { type: 'visibility', show: [box.id, words.id] } })
+    expect(box.groupId).toBeTruthy()
+    expect(words.groupId).toBe(box.groupId)
+    expect([box.startHidden, words.startHidden, marker.startHidden]).toEqual([true, true, undefined])
+    for (const el of [marker, box, words]) {
+      expect(el.x + el.width).toBeLessThanOrEqual(960)
+      expect(el.y + el.height).toBeLessThanOrEqual(540)
+    }
+    const small = client.buildHotspot({ slideW: 400, slideH: 300, makeId: () => `s${++n}` })
+    for (const el of small) expect([el.x >= 0, el.x + el.width <= 400, el.y >= 0, el.y + el.height <= 300]).toEqual([true, true, true, true])
   })
 })
 
@@ -301,6 +374,7 @@ describe('the server’s copy', () => {
     const tabs = { elements: [
       text('a', { clickAction: { type: 'visibility', show: ['b'], toggle: ['c'] }, hoverEffect: 'grow' }),
       text('b', { startHidden: true }), { id: 'c', type: 'video' },
+      text('d', { hoverAction: { type: 'visibility', show: ['b'], hide: ['c'] } }),
     ] }
     const targets = client.visibilityTargets(tabs)
     expect([...server.visibilityTargets(tabs)]).toEqual([...targets])
@@ -413,6 +487,154 @@ describe('presented decks', () => {
     click(doc.getElementById('tabB'))
     Reveal.emit('slidechanged', { currentSlide: doc.getElementById('one') })
     expect([hidden('one', 'a'), hidden('one', 'b'), hidden('one', 'note')]).toEqual([false, true, true])
+  })
+})
+
+describe('hovering in presented decks', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  const later = () => vi.advanceTimersByTime(200)
+
+  function page(body) {
+    const win = new Window({ url: 'http://localhost/deck.html' })
+    win.document.body.innerHTML = `<div class="reveal"><div class="slides">${body}</div></div>`
+    const handlers = {}
+    const Reveal = { next: vi.fn(), on: (name, fn) => { handlers[name] = fn }, emit: (name, e) => handlers[name]?.(e) }
+    new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+    const doc = win.document
+    const $ = sel => doc.querySelector(sel)
+    const pointer = (type, el, extra = {}) => el.dispatchEvent(new win.PointerEvent(type, { bubbles: true, pointerType: 'mouse', ...extra }))
+    const over = (el, pointerType = 'mouse') => pointer('pointerover', el, { pointerType })
+    const tap = el => { pointer('pointerdown', el, { pointerType: 'touch' }); el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true })) }
+    // Whether the page's CSS would hide the element: hidden by a click and not shown by a hover, or hidden by a hover
+    const hidden = sel => { const el = $(sel); return (el.hasAttribute('data-hidden') && !el.hasAttribute('data-hover-shown')) || el.hasAttribute('data-hover-hidden') }
+    return { win, doc, $, Reveal, pointer, over, tap, hidden }
+  }
+  const slide = `
+    <section id="one">
+      <div id="spot" data-hover-show="card" data-hover-hide="note" tabindex="0"><p>i</p></div>
+      <div id="card" data-el="card" data-start-hidden data-hidden><p id="inside">Card</p></div>
+      <div id="note" data-el="note"></div>
+      <div id="bg"></div>
+      <div id="tab" data-action="visibility" data-action-toggle="note" data-hover-show="card" tabindex="0"></div>
+    </section>
+    <section id="two"><div data-el="card" data-hidden></div></section>`
+
+  it('shows and hides while the pointer is over the element, then puts them back', () => {
+    const { $, over, hidden } = page(slide)
+    over($('#spot p'))
+    expect([hidden('#card'), hidden('#note'), hidden('#two [data-el]')]).toEqual([false, true, true])
+    expect($('#card').hasAttribute('data-hidden')).toBe(true) // what clicks did is left alone underneath
+    over($('#bg'))
+    expect(hidden('#card')).toBe(false) // for a moment
+    later()
+    expect([hidden('#card'), hidden('#note')]).toEqual([true, false])
+  })
+
+  it('keeps a card shown while the pointer crosses onto it and stays there, and ends when the pointer leaves the page', () => {
+    const { $, doc, over, pointer, hidden } = page(slide)
+    over($('#spot'))
+    over($('#bg')) // a gap between the marker and the card
+    over($('#inside'))
+    later()
+    expect(hidden('#card')).toBe(false)
+    pointer('pointerout', $('#inside'), { relatedTarget: null })
+    later()
+    expect(hidden('#card')).toBe(true)
+    over($('#spot'))
+    pointer('pointerout', $('#spot'), { relatedTarget: $('#bg') })
+    later()
+    expect(hidden('#card')).toBe(false) // pointerover on what it moved to decides
+    over($('#inside'))
+    over($('#bg'))
+    later()
+    expect(hidden('#card')).toBe(true)
+    expect(doc.querySelectorAll('[data-hover-shown], [data-hover-hidden]')).toHaveLength(0)
+  })
+
+  it('switches straight to another hover', () => {
+    const { $, over, hidden } = page(`<section>
+      <div id="a" data-hover-show="x"></div><div id="b" data-hover-show="y"></div>
+      <div data-el="x" id="x" data-hidden></div><div data-el="y" id="y" data-hidden></div></section>`)
+    over($('#a'))
+    over($('#b'))
+    expect([hidden('#x'), hidden('#y')]).toEqual([true, false])
+  })
+
+  it('lies over a click, which shows through again when the hover ends', () => {
+    const { $, over, hidden, win } = page(slide)
+    over($('#spot'))
+    const click = () => $('#tab').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }))
+    click() // hides the note underneath the hover's hiding it
+    expect(hidden('#note')).toBe(true)
+    over($('#bg'))
+    later()
+    expect(hidden('#note')).toBe(true) // the click hid it
+    click()
+    over($('#spot'))
+    expect(hidden('#note')).toBe(true) // the hover hides it over the click's showing it
+    over($('#bg'))
+    later()
+    expect(hidden('#note')).toBe(false)
+    over($('#tab'))
+    expect(hidden('#card')).toBe(false) // a clickable element can have a hover too
+  })
+
+  it('shows on keyboard focus, not on a click’s focus', () => {
+    const { $, win, pointer, hidden } = page(slide)
+    const focus = (type, el) => el.dispatchEvent(new win.FocusEvent(type, { bubbles: true }))
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Tab' }))
+    focus('focusin', $('#spot'))
+    expect(hidden('#card')).toBe(false)
+    focus('focusout', $('#spot'))
+    expect(hidden('#card')).toBe(true)
+    pointer('pointerdown', $('#spot'))
+    focus('focusin', $('#spot'))
+    expect(hidden('#card')).toBe(true)
+  })
+
+  it('turns on and off with a tap on a touch screen, unless the element has a click action', () => {
+    const { $, over, tap, hidden } = page(slide)
+    over($('#spot'), 'touch')
+    expect(hidden('#card')).toBe(true) // touch doesn't hover
+    tap($('#spot'))
+    expect(hidden('#card')).toBe(false)
+    tap($('#inside'))
+    expect(hidden('#card')).toBe(false) // a tap on the card keeps it
+    tap($('#spot p'))
+    expect(hidden('#card')).toBe(true)
+    tap($('#spot'))
+    tap($('#bg'))
+    expect(hidden('#card')).toBe(true) // a tap elsewhere ends it
+    tap($('#tab'))
+    expect([hidden('#card'), hidden('#note')]).toEqual([true, true]) // the click action ran instead
+  })
+
+  it('treats a group’s parts as one hover on touch', () => {
+    const { $, tap, hidden } = page(`<section>
+      <div id="a" data-hover-show="card"></div><div id="b" data-hover-show="card"></div>
+      <div id="card" data-el="card" data-hidden></div></section>`)
+    tap($('#a'))
+    expect(hidden('#card')).toBe(false)
+    tap($('#b'))
+    expect(hidden('#card')).toBe(true)
+  })
+
+  it('ends when the slide changes', () => {
+    const { $, doc, over, Reveal, hidden } = page(slide)
+    over($('#spot'))
+    Reveal.emit('slidechanged', { currentSlide: doc.getElementById('two') })
+    expect(hidden('#card')).toBe(true)
+    expect(doc.querySelectorAll('[data-hover-shown], [data-hover-hidden]')).toHaveLength(0)
+  })
+
+  it('writes the page CSS so a hover wins over a click', () => {
+    expect(client.CLICK_ACTION_CSS).toContain('[data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important')
+    const html = generateRevealHTML({ id: 'p', slides: [{ id: 's1', elements: [
+      text('spot', { hoverAction: { type: 'visibility', show: ['card'] } }), text('card', { startHidden: true }),
+    ] }] })
+    expect(html).toContain('data-hover-show="card" tabindex="0"')
+    expect(html).toContain('data-el="card" data-start-hidden data-hidden')
   })
 })
 

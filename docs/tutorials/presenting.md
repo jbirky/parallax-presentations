@@ -16,7 +16,7 @@ Click the **Present** button (play icon) in the top-right toolbar to open the fu
 | `O` | Overview / slide grid |
 | `D` | Open the pen toolbar to draw on slides |
 
-Drawing on slides, and keeping each session's ink, is covered in **Drawing on Slides**. Buttons and links that respond to clicks are covered in **Links & Click Actions**. On a slide taller than the screen, `Space` and `↓` scroll it before moving on, as described in **Scrolling Slides**.
+Drawing on slides, and keeping each session's ink, is covered in **Drawing on Slides**. Buttons and links that respond to clicks and hovers are covered in **Links, Click & Hover Actions**. On a slide taller than the screen, `Space` and `↓` scroll it before moving on, as described in **Scrolling Slides**.
 
 ## Preview a single slide
 
