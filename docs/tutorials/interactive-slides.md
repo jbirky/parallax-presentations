@@ -25,7 +25,7 @@ Any element can do something when it's clicked while presenting:
 | Show or hide elements | Shows, hides or toggles other elements on the same slide |
 | Open web page | Opens an `https://`, `http://` or `mailto:` address, in a new tab unless you untick **Open in a new tab** |
 
-Elements with a click action have a small blue badge on the canvas, such as **↗ Slide** or **◐ Show/hide**.
+Elements with a click action have a small blue badge on the canvas, such as **↗ Slide** or **◐ Show/hide**, and ones with a hover action say **◑ Hover**.
 
 When presenting, clickable elements show a pointer and respond when you hover over them. **Hover style** sets how: **Brighten** (the default), **Lift**, **Grow** or **Nothing**. They can also be reached with `Tab` and clicked with `Enter` or `Space`.
 

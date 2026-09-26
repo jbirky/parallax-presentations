@@ -1320,7 +1320,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
   )
 }
 
-function CanvasElement({ element, faded, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export function CanvasElement({ element, faded, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1369,7 +1369,6 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
         opacity: faded && !isEditing ? 0.45 : undefined,
         cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
-        overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         boxSizing: 'border-box',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
         transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
@@ -1382,221 +1381,260 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {element.animationEnter && element.animationEnter !== 'none' && !isEditing && (
-        <div style={{ position: 'absolute', top: 3, right: 3, zIndex: 20, background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
-          ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
-        </div>
-      )}
-      {element.type === 'text' && !isEditing && (
-        <div
-          ref={contentRef}
-          className="slide-text-content"
-          style={{
-            width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
-            color: 'white', padding: '8px 12px', boxSizing: 'border-box',
+      {/* The element's content, clipped to its box; what's drawn outside the
+          box (badges, handles, others' outlines) comes after, unclipped */}
+      <div style={{
+        position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
+        overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
+        borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
+      }}>
+        {element.animationEnter && element.animationEnter !== 'none' && !isEditing && (
+          <div style={{ position: 'absolute', top: 3, right: 3, zIndex: 20, background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
+            ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
+          </div>
+        )}
+        {element.type === 'text' && !isEditing && (
+          <div
+            ref={contentRef}
+            className="slide-text-content"
+            style={{
+              width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
+              color: 'white', padding: '8px 12px', boxSizing: 'border-box',
+              fontFamily: globalFont || undefined,
+              lineHeight: element.lineHeight ?? 1.5,
+              letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
+              wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
+            }}
+            dangerouslySetInnerHTML={{ __html: safeHtml(element.content) }}
+          />
+        )}
+        {element.type === 'text' && isEditing && (
+          <EditorContent editor={editor} style={{
+            width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
             fontFamily: globalFont || undefined,
-            lineHeight: element.lineHeight ?? 1.5,
+            lineHeight: element.lineHeight || undefined,
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-          }}
-          dangerouslySetInnerHTML={{ __html: safeHtml(element.content) }}
-        />
-      )}
-      {element.type === 'text' && isEditing && (
-        <EditorContent editor={editor} style={{
-          width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
-          fontFamily: globalFont || undefined,
-          lineHeight: element.lineHeight || undefined,
-          letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
-          wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-        }} />
-      )}
-      {element.type === 'image' && (() => {
-        const imgFilter = [
-          (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
-          (element.filterContrast != null && element.filterContrast !== 100) ? `contrast(${element.filterContrast}%)` : '',
-          element.filterGrayscale ? `grayscale(${element.filterGrayscale}%)` : '',
-        ].filter(Boolean).join(' ') || undefined
-        const hasCiteText = element.citationText || element.citationLink
-        return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', overflow: (isCropping || hasCiteText) ? 'visible' : 'hidden' }}>
-          <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-          <img
-            src={element.src} alt={element.alt || ''}
-            style={element.imageW != null ? {
-              position: 'absolute',
-              left: element.imageOffsetX ?? 0,
-              top: element.imageOffsetY ?? 0,
-              width: element.imageW,
-              height: element.imageH,
-              maxWidth: 'none',
-              maxHeight: 'none',
-              objectFit: element.objectFit || 'contain',
-              pointerEvents: 'none',
-              filter: imgFilter,
-            } : {
-              width: '100%', height: '100%',
-              objectFit: element.objectFit || 'contain',
-              display: 'block', pointerEvents: 'none',
-              filter: imgFilter,
-            }}
-            draggable={false}
-          />
-          </div>
-          {(element.clickToExpand || element.popupText || element.citationText || element.citationLink) && (
-            <div style={{ position: 'absolute', bottom: 3, right: 3, zIndex: 20, display: 'flex', gap: 3, pointerEvents: 'none' }}>
-              {(element.citationText || element.citationLink) && (
-                <div style={{ background: 'rgba(34,197,94,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 21H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3"/><path d="M15 3h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3"/><path d="M6 7v14"/><path d="M15 3v14"/></svg>
-                  CITE
-                </div>
-              )}
-              {element.popupText && (
-                <div style={{ background: 'rgba(251,191,36,0.9)', color: '#000', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  POPUP
-                </div>
-              )}
-              {element.clickToExpand && (
-                <div style={{ background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                  EXPAND
-                </div>
-              )}
-            </div>
-          )}
-          {hasCiteText && (
-            <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize: citationFontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily: citationFontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
-              {element.citationText || element.citationLink}
-            </div>
-          )}
-          {isCropping && cropState && (
-            <CropOverlay
-              crop={cropState}
-              elW={element.width}
-              elH={element.height}
-              onHandleDown={onCropHandleDown}
-              onCommit={onCommitCrop}
+          }} />
+        )}
+        {element.type === 'image' && (() => {
+          const imgFilter = [
+            (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
+            (element.filterContrast != null && element.filterContrast !== 100) ? `contrast(${element.filterContrast}%)` : '',
+            element.filterGrayscale ? `grayscale(${element.filterGrayscale}%)` : '',
+          ].filter(Boolean).join(' ') || undefined
+          const hasCiteText = element.citationText || element.citationLink
+          return (
+          <div style={{ position: 'relative', width: '100%', height: '100%', overflow: (isCropping || hasCiteText) ? 'visible' : 'hidden' }}>
+            <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+            <img
+              src={element.src} alt={element.alt || ''}
+              style={element.imageW != null ? {
+                position: 'absolute',
+                left: element.imageOffsetX ?? 0,
+                top: element.imageOffsetY ?? 0,
+                width: element.imageW,
+                height: element.imageH,
+                maxWidth: 'none',
+                maxHeight: 'none',
+                objectFit: element.objectFit || 'contain',
+                pointerEvents: 'none',
+                filter: imgFilter,
+              } : {
+                width: '100%', height: '100%',
+                objectFit: element.objectFit || 'contain',
+                display: 'block', pointerEvents: 'none',
+                filter: imgFilter,
+              }}
+              draggable={false}
             />
-          )}
-        </div>
-        )
-      })()}
-      {element.type === 'shape' && (
-        <ShapeRenderer element={element} />
-      )}
-      {element.type === 'html' && (
-        <iframe
-          key={`${element.id}-${element.width}-${element.height}`}
-          srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-          sandbox="allow-scripts"
-          title="HTML embed"
-        />
-      )}
-      {element.type === 'p5' && (
-        <iframe
-          key={`${element.id}-${element.width}-${element.height}-${element.content}`}
-          srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-          sandbox="allow-scripts"
-          title="p5.js sketch"
-        />
-      )}
-      {element.type === 'code' && (
-        <pre
-          className="hljs"
-          style={{
-            margin: 0, padding: '10px 14px',
-            width: '100%', height: '100%', overflow: 'hidden',
-            boxSizing: 'border-box',
-            fontFamily: "'Fira Code','JetBrains Mono','Courier New',monospace",
-            fontSize: element.fontSize || 14,
-            lineHeight: 1.5,
-            borderRadius: 0,
-          }}
-        >
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(element.content || '', element.language || 'plaintext') }} />
-        </pre>
-      )}
-      {element.type === 'video' && (
-        <video
-          ref={el => {
-            if (!el) return
-            el.playbackRate = element.playbackRate || 1
-            const start = element.startTime ?? 0
-            const end = element.endTime
-            if (start && el.currentTime < start) el.currentTime = start
-            el.ontimeupdate = () => {
-              if (end != null && el.currentTime >= end) {
-                if (element.loop) { el.currentTime = start || 0 }
-                else el.pause()
-              }
-            }
-            el.onplay = () => { if (start && el.currentTime < start) el.currentTime = start }
-          }}
-          controls={element.controls !== false}
-          muted={element.muted || false}
-          loop={false}
-          poster={element.poster || undefined}
-          style={{ width: '100%', height: '100%', objectFit: element.objectFit || 'contain', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-        >
-          <source src={element.src} type={/\.webm$/i.test(element.src) ? 'video/webm' : /\.og[gv]$/i.test(element.src) ? 'video/ogg' : 'video/mp4'} />
-        </video>
-      )}
-      {element.type === 'audio' && (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: 4 }}>
-          <audio
-            src={element.src}
-            controls
-            style={{ width: '90%', pointerEvents: isSelected ? 'auto' : 'none' }}
+            </div>
+            {(element.clickToExpand || element.popupText || element.citationText || element.citationLink) && (
+              <div style={{ position: 'absolute', bottom: 3, right: 3, zIndex: 20, display: 'flex', gap: 3, pointerEvents: 'none' }}>
+                {(element.citationText || element.citationLink) && (
+                  <div style={{ background: 'rgba(34,197,94,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 21H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3"/><path d="M15 3h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3"/><path d="M6 7v14"/><path d="M15 3v14"/></svg>
+                    CITE
+                  </div>
+                )}
+                {element.popupText && (
+                  <div style={{ background: 'rgba(251,191,36,0.9)', color: '#000', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    POPUP
+                  </div>
+                )}
+                {element.clickToExpand && (
+                  <div style={{ background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                    EXPAND
+                  </div>
+                )}
+              </div>
+            )}
+            {hasCiteText && (
+              <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize: citationFontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily: citationFontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
+                {element.citationText || element.citationLink}
+              </div>
+            )}
+            {isCropping && cropState && (
+              <CropOverlay
+                crop={cropState}
+                elW={element.width}
+                elH={element.height}
+                onHandleDown={onCropHandleDown}
+                onCommit={onCommitCrop}
+              />
+            )}
+          </div>
+          )
+        })()}
+        {element.type === 'shape' && (
+          <ShapeRenderer element={element} />
+        )}
+        {element.type === 'html' && (
+          <iframe
+            key={`${element.id}-${element.width}-${element.height}`}
+            srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="HTML embed"
           />
-        </div>
-      )}
-      {element.type === 'table' && (
-        <TableRenderer element={element} isEditing={isEditing} />
-      )}
-      {element.type === 'latex' && (
-        <LatexRenderer element={element} isSelected={isSelected} />
-      )}
-      {element.type === 'tikz' && (
-        <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-          dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(element)) }} />
-      )}
-      {element.type === 'markdown' && (
-        <MarkdownRenderer element={element} />
-      )}
-      {element.type === 'timeline' && (
-        <TimelineRenderer element={element} />
-      )}
-      {element.type === 'callout' && (
-        <CalloutRenderer element={element} />
-      )}
-      {element.type === 'icon' && (
-        <IconRenderer element={element} />
-      )}
+        )}
+        {element.type === 'p5' && (
+          <iframe
+            key={`${element.id}-${element.width}-${element.height}-${element.content}`}
+            srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="p5.js sketch"
+          />
+        )}
+        {element.type === 'code' && (
+          <pre
+            className="hljs"
+            style={{
+              margin: 0, padding: '10px 14px',
+              width: '100%', height: '100%', overflow: 'hidden',
+              boxSizing: 'border-box',
+              fontFamily: "'Fira Code','JetBrains Mono','Courier New',monospace",
+              fontSize: element.fontSize || 14,
+              lineHeight: 1.5,
+              borderRadius: 0,
+            }}
+          >
+            <code dangerouslySetInnerHTML={{ __html: highlightCode(element.content || '', element.language || 'plaintext') }} />
+          </pre>
+        )}
+        {element.type === 'video' && (
+          <video
+            ref={el => {
+              if (!el) return
+              el.playbackRate = element.playbackRate || 1
+              const start = element.startTime ?? 0
+              const end = element.endTime
+              if (start && el.currentTime < start) el.currentTime = start
+              el.ontimeupdate = () => {
+                if (end != null && el.currentTime >= end) {
+                  if (element.loop) { el.currentTime = start || 0 }
+                  else el.pause()
+                }
+              }
+              el.onplay = () => { if (start && el.currentTime < start) el.currentTime = start }
+            }}
+            controls={element.controls !== false}
+            muted={element.muted || false}
+            loop={false}
+            poster={element.poster || undefined}
+            style={{ width: '100%', height: '100%', objectFit: element.objectFit || 'contain', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+          >
+            <source src={element.src} type={/\.webm$/i.test(element.src) ? 'video/webm' : /\.og[gv]$/i.test(element.src) ? 'video/ogg' : 'video/mp4'} />
+          </video>
+        )}
+        {element.type === 'audio' && (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: 4 }}>
+            <audio
+              src={element.src}
+              controls
+              style={{ width: '90%', pointerEvents: isSelected ? 'auto' : 'none' }}
+            />
+          </div>
+        )}
+        {element.type === 'table' && (
+          <TableRenderer element={element} isEditing={isEditing} />
+        )}
+        {element.type === 'latex' && (
+          <LatexRenderer element={element} isSelected={isSelected} />
+        )}
+        {element.type === 'tikz' && (
+          <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+            dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(element)) }} />
+        )}
+        {element.type === 'markdown' && (
+          <MarkdownRenderer element={element} />
+        )}
+        {element.type === 'timeline' && (
+          <TimelineRenderer element={element} />
+        )}
+        {element.type === 'callout' && (
+          <CalloutRenderer element={element} />
+        )}
+        {element.type === 'icon' && (
+          <IconRenderer element={element} />
+        )}
 
-      {element.type === 'textpath' && !isEditing && (() => {
-        const pathSide = element.pathSide || 'bottom'
-        const fontSize = element.fontSize || 64
-        const w = element.width
-        const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+        {element.type === 'textpath' && !isEditing && (() => {
+          const pathSide = element.pathSide || 'bottom'
+          const fontSize = element.fontSize || 64
+          const w = element.width
+          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
 
-        // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
-        if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-          const pad = Math.ceil(fontSize * 0.6)
-          const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-          const svgH = element.height || 300
-          const lineH = fontSize * (element.lineHeight ?? 1.35)
-          const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
-          const lines = (element.content || '').split('\n')
-          const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-          const guideX2 = pathX0 + svgH * tanA
+          // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
+          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+            const pad = Math.ceil(fontSize * 0.6)
+            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+            const svgH = element.height || 300
+            const lineH = fontSize * (element.lineHeight ?? 1.35)
+            const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
+            const lines = (element.content || '').split('\n')
+            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+            const guideX2 = pathX0 + svgH * tanA
+            return (
+              <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
+                style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
+                {element.showPath !== false && (
+                  <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="rgba(34,211,238,0.4)" strokeWidth={1} />
+                )}
+                <text
+                  fontSize={fontSize}
+                  fontFamily={effectiveFont}
+                  fill={element.color || '#ffffff'}
+                  fontWeight={element.fontWeight || 'normal'}
+                  fontStyle={element.fontStyle || 'normal'}
+                  letterSpacing={element.letterSpacing || 0}
+                  wordSpacing={element.wordSpacing || undefined}
+                  textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}
+                >
+                  {lines.map((line, i) => (
+                    <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>                    {line || ' '}
+                    </tspan>
+                  ))}
+                </text>
+              </svg>
+            )
+          }
+
+          // Diagonal modes: text follows slanted path
+          const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
+          const pathId = `tp-${element.id}`
+          const capHeight = Math.round(fontSize * 0.72)
+          const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+          const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
           return (
             <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
               style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
+              <defs><path id={pathId} d={pathD} /></defs>
               {element.showPath !== false && (
-                <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="rgba(34,211,238,0.4)" strokeWidth={1} />
+                <use href={`#${pathId}`} stroke="rgba(34,211,238,0.4)" strokeWidth={1} fill="none" />
               )}
               <text
                 fontSize={fontSize}
@@ -1606,139 +1644,108 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
                 fontStyle={element.fontStyle || 'normal'}
                 letterSpacing={element.letterSpacing || 0}
                 wordSpacing={element.wordSpacing || undefined}
-                textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}
+                dy={textDy || undefined}
               >
-                {lines.map((line, i) => (
-                  <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>                    {line || ' '}
-                  </tspan>
-                ))}
+                <textPath href={`#${pathId}`} startOffset={`${element.startOffset || 0}%`} textAnchor={element.textAnchor || 'start'} side={tpSide}>
+                  {element.content || ''}
+                </textPath>
               </text>
             </svg>
           )
-        }
+        })()}
 
-        // Diagonal modes: text follows slanted path
-        const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
-        const pathId = `tp-${element.id}`
-        const capHeight = Math.round(fontSize * 0.72)
-        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-        return (
-          <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
-            style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
-            <defs><path id={pathId} d={pathD} /></defs>
-            {element.showPath !== false && (
-              <use href={`#${pathId}`} stroke="rgba(34,211,238,0.4)" strokeWidth={1} fill="none" />
-            )}
-            <text
-              fontSize={fontSize}
-              fontFamily={effectiveFont}
-              fill={element.color || '#ffffff'}
-              fontWeight={element.fontWeight || 'normal'}
-              fontStyle={element.fontStyle || 'normal'}
-              letterSpacing={element.letterSpacing || 0}
-              wordSpacing={element.wordSpacing || undefined}
-              dy={textDy || undefined}
-            >
-              <textPath href={`#${pathId}`} startOffset={`${element.startOffset || 0}%`} textAnchor={element.textAnchor || 'start'} side={tpSide}>
-                {element.content || ''}
-              </textPath>
-            </text>
-          </svg>
-        )
-      })()}
+        {element.type === 'textpath' && isEditing && (() => {
+          const pathSide = element.pathSide || 'bottom'
+          const fontSize = element.fontSize || 64
+          const w = element.width
+          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
 
-      {element.type === 'textpath' && isEditing && (() => {
-        const pathSide = element.pathSide || 'bottom'
-        const fontSize = element.fontSize || 64
-        const w = element.width
-        const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
-
-        const editOverlay = (svgH, svgPreview) => (
-          <div style={{ position: 'relative', width: w, height: svgH }}>
-            {svgPreview}
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}>
-              <textarea
-                autoFocus
-                defaultValue={element.content || ''}
-                onBlur={e => { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() }}
-                onClick={e => e.stopPropagation()}
-                onKeyDown={e => { if (e.key === 'Escape') { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() } e.stopPropagation() }}
-                style={{ width: '90%', background: 'rgba(15,15,30,0.95)', color: 'white', border: '1px solid #6366f1', borderRadius: 6, padding: '10px 14px', fontSize: 14, fontFamily: effectiveFont, resize: 'vertical', outline: 'none', minHeight: 48 }}
-                placeholder="Use Enter for new lines in edge mode"
-                rows={3}
-              />
+          const editOverlay = (svgH, svgPreview) => (
+            <div style={{ position: 'relative', width: w, height: svgH }}>
+              {svgPreview}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}>
+                <textarea
+                  autoFocus
+                  defaultValue={element.content || ''}
+                  onBlur={e => { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() }}
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => { if (e.key === 'Escape') { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() } e.stopPropagation() }}
+                  style={{ width: '90%', background: 'rgba(15,15,30,0.95)', color: 'white', border: '1px solid #6366f1', borderRadius: 6, padding: '10px 14px', fontSize: 14, fontFamily: effectiveFont, resize: 'vertical', outline: 'none', minHeight: 48 }}
+                  placeholder="Use Enter for new lines in edge mode"
+                  rows={3}
+                />
+              </div>
             </div>
-          </div>
-        )
+          )
 
-        if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-          const pad = Math.ceil(fontSize * 0.6)
-          const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-          const svgH = element.height || 300
-          const lineH = fontSize * (element.lineHeight ?? 1.35)
-          const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
-          const lines = (element.content || '').split('\n')
-          const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-          const guideX2 = pathX0 + svgH * tanA
+          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+            const pad = Math.ceil(fontSize * 0.6)
+            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+            const svgH = element.height || 300
+            const lineH = fontSize * (element.lineHeight ?? 1.35)
+            const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
+            const lines = (element.content || '').split('\n')
+            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+            const guideX2 = pathX0 + svgH * tanA
+            const preview = (
+              <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
+                style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
+                <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="#22d3ee" strokeWidth={1} />
+                <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'}
+                  letterSpacing={element.letterSpacing || 0} wordSpacing={element.wordSpacing || undefined}
+                  textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}>
+                  {lines.map((line, i) => (
+                    <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>{line || ' '}</tspan>
+                  ))}
+                </text>
+              </svg>
+            )
+            return editOverlay(svgH, preview)
+          }
+
+          const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
+          const pathId = `tp-edit-${element.id}`
+          const capHeight = Math.round(fontSize * 0.72)
+          const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+          const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
           const preview = (
             <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
               style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
-              <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="#22d3ee" strokeWidth={1} />
-              <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'}
-                letterSpacing={element.letterSpacing || 0} wordSpacing={element.wordSpacing || undefined}
-                textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}>
-                {lines.map((line, i) => (
-                  <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>{line || ' '}</tspan>
-                ))}
+              <defs><path id={pathId} d={pathD} /></defs>
+              <use href={`#${pathId}`} stroke="#22d3ee" strokeWidth={1} fill="none" />
+              <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'} dy={textDy || undefined}>
+                <textPath href={`#${pathId}`} side={tpSide}>{element.content || ''}</textPath>
               </text>
             </svg>
           )
           return editOverlay(svgH, preview)
-        }
+        })()}
 
-        const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
-        const pathId = `tp-edit-${element.id}`
-        const capHeight = Math.round(fontSize * 0.72)
-        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-        const preview = (
-          <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
-            style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
-            <defs><path id={pathId} d={pathD} /></defs>
-            <use href={`#${pathId}`} stroke="#22d3ee" strokeWidth={1} fill="none" />
-            <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'} dy={textDy || undefined}>
-              <textPath href={`#${pathId}`} side={tpSide}>{element.content || ''}</textPath>
-            </text>
-          </svg>
-        )
-        return editOverlay(svgH, preview)
-      })()}
-
-      {element.type?.startsWith('plugin:') && (() => {
-        const etDef = registry.getElementType(element.type)
-        const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
-        const slug = pluginEntry?.slug
-        const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
-          ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
-          : null
-        const hasExternalEditor = element.type === 'plugin:dynamical-system'
-        return (
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            <PluginSandbox
-              sandboxUrl={sandboxUrl}
-              pluginData={element.pluginData}
-              width={element.width}
-              height={element.height}
-              isSelected={isSelected && !hasExternalEditor}
-              onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
-            />
-            {hasExternalEditor && isSelected && (
-              <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
-            )}
-          </div>
-        )
-      })()}
+        {element.type?.startsWith('plugin:') && (() => {
+          const etDef = registry.getElementType(element.type)
+          const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
+          const slug = pluginEntry?.slug
+          const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
+            ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
+            : null
+          const hasExternalEditor = element.type === 'plugin:dynamical-system'
+          return (
+            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+              <PluginSandbox
+                sandboxUrl={sandboxUrl}
+                pluginData={element.pluginData}
+                width={element.width}
+                height={element.height}
+                isSelected={isSelected && !hasExternalEditor}
+                onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
+              />
+              {hasExternalEditor && isSelected && (
+                <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
+              )}
+            </div>
+          )
+        })()}
+      </div>
 
       {/* Fragment badge */}
       {element.fragment && (
