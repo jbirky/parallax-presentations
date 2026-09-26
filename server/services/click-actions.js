@@ -8,16 +8,26 @@
 // with a click action goes to a slide, to the next or previous one, opens a
 // web page, or shows and hides elements on its slide (tabs, click-to-reveal);
 // one with a hover action shows and hides elements while the pointer is over
-// it (hotspots); and text can link to a slide. Slides are addressed by id, as
+// it (hotspots). Clicks and hovers can also put elements in a state: a look
+// with its own position, size, turn, colors or opacity (flip cards, quiz
+// answers, click to zoom). And text can link to a slide. Slides are addressed by id, as
 // #/s-<slide id>: each slide's section has that id, which reveal.js resolves
 // (and shows in the address bar), so links and shared URLs keep their slide
 // when slides move.
 //
 //   el.clickAction = { type: 'slide', slideId } | { type: 'next' } | { type: 'prev' }
 //                  | { type: 'url', url, newTab }
-//                  | { type: 'visibility', show: [elementId], hide: [...], toggle: [...] }
-//   el.hoverAction = { type: 'visibility', show: [elementId], hide: [...] }, undone
-//                    when the hover ends
+//                  | { type: 'visibility', show: [elementId], hide: [...], toggle: [...],
+//                      set: [{ id: elementId, state: stateId or '' (its default), mode }] }
+//                    mode: 'set', 'toggle' (between the state and its default) or
+//                    'cycle' (to its next state, then back to the default)
+//   el.hoverAction = { type: 'visibility', show: [elementId], hide: [...], set: [{ id, state }] },
+//                    undone when the hover ends
+//   el.states = [{ id, name, duration (ms), easing, ...overrides }]: up to
+//                    MAX_STATES looks, each overriding some of STATE_PROPS
+//   el.initialState = a state's id: the one it's in each time its slide opens,
+//                    rather than its default (its own properties)
+//   el.backfaceHidden = true: unseen while turned over by a state's flip
 //   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none': how a
 //                    clickable element looks under the pointer
 //   el.startHidden = true: hidden each time its slide opens, until a click or
@@ -31,6 +41,54 @@ const CLICK_ACTION_TYPES = ['slide', 'next', 'prev', 'url', 'visibility']
 const HOVER_EFFECTS = ['brighten', 'lift', 'grow', 'none']
 const VISIBILITY_KEYS = ['show', 'hide', 'toggle']
 const HOVER_KEYS = ['show', 'hide']
+
+// ── States ──
+// What a state can change, and how it moves there
+const MAX_STATES = 8
+const STATE_PROPS = ['x', 'y', 'width', 'height', 'rotation', 'scale', 'flipX', 'flipY', 'opacity', 'zIndex',
+  'fill', 'stroke', 'textColor', 'filterBrightness', 'filterContrast', 'filterGrayscale']
+const STATE_EASINGS = {
+  ease: 'ease', 'ease-in-out': 'ease-in-out', 'ease-out': 'ease-out', 'ease-in': 'ease-in', linear: 'linear',
+  spring: 'cubic-bezier(0.34,1.56,0.64,1)',
+}
+const DEFAULT_STATE_DURATION = 400
+const SET_MODES = ['set', 'toggle', 'cycle']
+
+// Ids and values go into the page's CSS and selectors, so only these do
+const SAFE_ID = /^[A-Za-z0-9_-]+$/
+const COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i
+const clamp = (v, min, max) => typeof v === 'number' && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null
+const color = v => typeof v === 'string' && COLOR.test(v.trim()) ? v.trim() : null
+// Turned over (true, or -180 to turn the other way), in degrees
+const flip = v => v === true || v === 180 ? 180 : v === -180 ? -180 : 0
+
+// An element's states, the ones a page can use
+function elementStates(el) {
+  if (typeof el?.id !== 'string' || !SAFE_ID.test(el.id) || !Array.isArray(el.states)) return []
+  return el.states.filter(st => typeof st?.id === 'string' && SAFE_ID.test(st.id)).slice(0, MAX_STATES)
+}
+
+// A state's overrides, checked
+function stateValues(st) {
+  return {
+    x: clamp(st.x, -10000, 10000), y: clamp(st.y, -10000, 10000),
+    width: clamp(st.width, 1, 10000), height: clamp(st.height, 1, 10000),
+    rotation: clamp(st.rotation, -3600, 3600), scale: clamp(st.scale, 0.05, 20),
+    flipX: flip(st.flipX), flipY: flip(st.flipY),
+    opacity: clamp(st.opacity, 0, 1), zIndex: st.zIndex == null ? null : Math.round(clamp(st.zIndex, -1000, 100000) ?? 0),
+    fill: color(st.fill), stroke: color(st.stroke), textColor: color(st.textColor),
+    filterBrightness: clamp(st.filterBrightness, 0, 400), filterContrast: clamp(st.filterContrast, 0, 400),
+    filterGrayscale: clamp(st.filterGrayscale, 0, 100),
+    duration: Math.round(clamp(st.duration, 0, 10000) ?? DEFAULT_STATE_DURATION),
+    easing: STATE_EASINGS[st.easing] || 'ease',
+  }
+}
+
+// The state changes in a click or hover action, checked; a hover only sets
+function setList(action, modes = SET_MODES) {
+  return (Array.isArray(action?.set) ? action.set : []).filter(s => typeof s?.id === 'string' && SAFE_ID.test(s.id)
+    && (!s.state || (typeof s.state === 'string' && SAFE_ID.test(s.state))) && modes.includes(s.mode || 'set'))
+}
 
 // Embeds, players and drawings take their own clicks, or none
 const NO_CLICK_ACTION = new Set(['html', 'p5', 'video', 'audio', 'drawing'])
@@ -60,9 +118,11 @@ function visibilityTargets(slide) {
   for (const el of slide?.elements || []) {
     if (el.clickAction?.type === 'visibility') {
       for (const key of VISIBILITY_KEYS) idList(el.clickAction[key]).forEach(id => targets.add(id))
+      setList(el.clickAction).forEach(s => targets.add(s.id))
     }
     if (el.hoverAction?.type === 'visibility') {
       for (const key of HOVER_KEYS) idList(el.hoverAction[key]).forEach(id => targets.add(id))
+      setList(el.hoverAction, ['set']).forEach(s => targets.add(s.id))
     }
   }
   return targets
@@ -88,8 +148,10 @@ function actionAttrs(el) {
     if (!url) return ''
     target = ` data-action-url="${escapeAttr(url)}"${action.newTab === false ? '' : ' data-action-new-tab'}`
   } else if (action.type === 'visibility') {
+    const set = setList(action)
     target = VISIBILITY_KEYS.map(key => [key, idList(action[key])]).filter(([, ids]) => ids.length)
       .map(([key, ids]) => ` data-action-${key}="${escapeAttr(ids.join(' '))}"`).join('')
+      + (set.length ? ` data-action-set="${set.map(s => `${s.id}:${s.state || ''}:${s.mode || 'set'}`).join(' ')}"` : '')
     if (!target) return ''
   } else if (action.type !== 'next' && action.type !== 'prev') {
     return ''
@@ -103,15 +165,72 @@ function actionAttrs(el) {
 function hoverAttrs(el, focusable) {
   const action = el?.hoverAction
   if (action?.type !== 'visibility' || !supportsClickAction(el)) return ''
+  const set = setList(action, ['set'])
   const attrs = HOVER_KEYS.map(key => [key, idList(action[key])]).filter(([, ids]) => ids.length)
     .map(([key, ids]) => ` data-hover-${key}="${escapeAttr(ids.join(' '))}"`).join('')
+    + (set.length ? ` data-hover-set="${set.map(s => `${s.id}:${s.state || ''}`).join(' ')}"` : '')
   return attrs && focusable ? `${attrs} tabindex="0"` : attrs
 }
 
-// Any element, embeds included, can be shown or hidden by a click or hover
+// Any element, embeds included, can be shown or hidden by a click or hover,
+// and one with states can be put in them: data-st is the state it's in, ''
+// for its default
 function visibilityAttrs(el, targets) {
-  if (!el?.id || !(targets.has(el.id) || el.startHidden)) return ''
-  return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}`
+  const states = elementStates(el)
+  if (!el?.id || !(targets.has(el.id) || el.startHidden || states.length)) return ''
+  const start = states.some(st => st.id === el.initialState) ? el.initialState : ''
+  const st = states.length ? ` data-st-list="${states.map(s => s.id).join(' ')}" data-st="${start}" data-st-start="${start}"` : ''
+  return ` data-el="${escapeAttr(el.id)}"${el.startHidden ? ' data-start-hidden data-hidden' : ''}${st}`
+}
+
+// The page CSS for the states of a deck's elements, from checked values only.
+// Each state is a rule for the element while a click (or step) has put it in
+// that state and no hover has changed it, or while a hover has. The rules are
+// no more specific than a class, so the rule that hides elements still wins,
+// but a state's position, size, turn and opacity override the element's own.
+function statesCss(slides) {
+  const rules = []
+  for (const slide of slides || []) {
+    for (const el of slide?.elements || []) {
+      const states = elementStates(el)
+      if (!states.length) continue
+      const values = states.map(stateValues)
+      const base = `[data-el="${el.id}"]`
+      const where = sel => `.reveal .slides :where(${sel})`
+      // Turning and scaling animate between lists of the same functions
+      const turns = values.some(v => v.flipX || v.flipY || v.scale != null)
+      const transform = v => `perspective(1000px) rotateX(${v.flipY || 0}deg) rotateY(${v.flipX || 0}deg) scale(${v.scale ?? 1})`
+      const own = [turns && `transform:${transform({})}`, el.backfaceHidden === true && 'backface-visibility:hidden'].filter(Boolean)
+      if (own.length) rules.push(`${where(base)} { ${own.join('; ')}; }`)
+      const line = el.shape === 'line' || el.shape === 'line-arrow'
+      states.forEach((st, i) => {
+        const v = values[i]
+        const on = [`${base}[data-st="${st.id}"]:not([data-hover-st])`, `${base}[data-hover-st="${st.id}"]`]
+        const decl = [`--st-dur:${v.duration}ms`, `--st-ease:${v.easing}`]
+        for (const [key, prop] of [['x', 'left'], ['y', 'top'], ['width', 'width'], ['height', 'height']]) {
+          if (v[key] != null) decl.push(`${prop}:${v[key]}px !important`)
+        }
+        if (v.rotation != null) decl.push(`rotate:${v.rotation}deg !important`)
+        if (v.zIndex != null) decl.push(`z-index:${v.zIndex} !important`)
+        if (turns) decl.push(`transform:${transform(v)}`)
+        rules.push(`${where(on.join(', '))} { ${decl.join('; ')}; }`)
+        // Not while it's a fragment still to come
+        if (v.opacity != null) rules.push(`${where(on.map(s => `${s}:not(.fragment:not(.visible))`).join(', '))} { opacity:${v.opacity} !important; }`)
+        // A line is drawn in its stroke color, or its fill color when it has no stroke
+        const lineColor = v.stroke || (el.stroke && el.stroke !== 'none' ? null : v.fill)
+        const paint = (line ? [lineColor && `stroke:${lineColor}`] : [v.fill && `fill:${v.fill}`, v.stroke && `stroke:${v.stroke}`]).filter(Boolean)
+        if (paint.length) rules.push(`${where(on.join(', '))} > svg > ${line ? ':is(line, polyline)' : 'g'} { ${paint.join('; ')}; }`)
+        if (v.textColor) rules.push(`${where(on.join(', '))} > svg > text { fill:${v.textColor}; }`)
+        if (v.filterBrightness != null || v.filterContrast != null || v.filterGrayscale != null) {
+          const b = v.filterBrightness ?? clamp(el.filterBrightness, 0, 400) ?? 100
+          const c = v.filterContrast ?? clamp(el.filterContrast, 0, 400) ?? 100
+          const g = v.filterGrayscale ?? clamp(el.filterGrayscale, 0, 100) ?? 0
+          rules.push(`${where(on.join(', '))} img { filter:brightness(${b}%) contrast(${c}%) grayscale(${g}%) !important; }`)
+        }
+      })
+    }
+  }
+  return rules.map(r => `\n    ${r}`).join('')
 }
 
 // A slide section's id, for slide links
@@ -151,6 +270,7 @@ function remapElementRefs(elements, idMap) {
     for (const key of VISIBILITY_KEYS) {
       if (Array.isArray(action[key])) next[key] = action[key].map(id => map.get(id) ?? id)
     }
+    if (Array.isArray(action.set)) next.set = action.set.map(s => s && map.has(s.id) ? { ...s, id: map.get(s.id) } : s)
     return next
   }
   return elements.map(el => {
@@ -204,9 +324,12 @@ const CLICK_ACTION_CSS = `
     .reveal .slides [data-action][data-hover]:hover { filter:none; }
     .reveal .slides [data-action][data-hover="lift"]:hover { translate:0 -4px; box-shadow:0 10px 24px rgba(0,0,0,0.35); }
     .reveal .slides [data-action][data-hover="grow"]:hover { scale:1.04; }
-    .reveal .slides [data-action]:focus-visible, .reveal .slides [data-hover-show]:focus-visible, .reveal .slides [data-hover-hide]:focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
+    .reveal .slides [data-action]:focus-visible, .reveal .slides :is([data-hover-show], [data-hover-hide], [data-hover-set]):focus-visible { outline:2px solid #818cf8; outline-offset:2px; }
     .reveal .slides [data-action] iframe { pointer-events:none; }
-    .reveal .slides [data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }`
+    .reveal .slides [data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important; visibility:hidden !important; pointer-events:none; }
+    .reveal .slides [data-el][data-st-list]:not(.fragment) { transition-property:left, top, width, height, rotate, transform, opacity, visibility, filter, translate, scale, box-shadow; transition-duration:var(--st-dur, 0.4s); transition-timing-function:var(--st-ease, ease); }
+    .reveal .slides [data-st-list] > svg > *, .reveal .slides [data-st-list] img { transition:fill var(--st-dur, 0.4s) var(--st-ease, ease), stroke var(--st-dur, 0.4s) var(--st-ease, ease), filter var(--st-dur, 0.4s) var(--st-ease, ease); }
+    @media (prefers-reduced-motion: reduce) { .reveal .slides [data-st-list], .reveal .slides [data-st-list] * { transition-duration:0s !important; } }`
 
 // Page script for presented decks, after reveal.js has loaded. Slide links
 // move within the page, even ones saved to open in a new tab; an element's
@@ -219,9 +342,15 @@ const CLICK_ACTION_CSS = `
 // it on and off, unless the element has a click action, which wins. What
 // hovers show and hide lies over what clicks did (data-hover-shown,
 // data-hover-hidden), and goes when the hover ends or the slide changes.
+//
+// States work the same way: data-st is the state a click put an element in
+// ('' for its default), data-hover-st the one a hover has it in, over that.
+// A state moves in with its own duration and easing (statesCss), and back to
+// the default with the one it's leaving. Each time a slide opens, its
+// elements go back to their first state at once.
 const CLICK_ACTION_SCRIPT = `
     (function() {
-      var HOVER = '.reveal .slides [data-hover-show], .reveal .slides [data-hover-hide]';
+      var HOVER = '.reveal .slides [data-hover-show], .reveal .slides [data-hover-hide], .reveal .slides [data-hover-set]';
       var hovered = [], focused = null, tapped = null, pointerType = 'mouse', keyboard = false, ending = null;
       function ids(el, key) { return (el.getAttribute(key) || '').split(' '); }
       function shownBy(source, node) {
@@ -235,12 +364,51 @@ const CLICK_ACTION_SCRIPT = `
       function sameHover(a, b) {
         return a === b || !!(a && b && a.closest('section') === b.closest('section')
           && a.getAttribute('data-hover-show') === b.getAttribute('data-hover-show')
-          && a.getAttribute('data-hover-hide') === b.getAttribute('data-hover-hide'));
+          && a.getAttribute('data-hover-hide') === b.getAttribute('data-hover-hide')
+          && a.getAttribute('data-hover-set') === b.getAttribute('data-hover-set'));
+      }
+      function stateOf(el) { return el.hasAttribute('data-hover-st') ? el.getAttribute('data-hover-st') : el.getAttribute('data-st') || ''; }
+      function changeState(el, attr, value) {
+        var before = stateOf(el), dur = '', ease = '';
+        if (before) { var cs = window.getComputedStyle(el); dur = cs.getPropertyValue('--st-dur'); ease = cs.getPropertyValue('--st-ease'); }
+        if (value === null) el.removeAttribute(attr); else el.setAttribute(attr, value);
+        var after = stateOf(el);
+        if (after === before) return;
+        if (after || !dur) { el.style.removeProperty('--st-dur'); el.style.removeProperty('--st-ease'); }
+        else { el.style.setProperty('--st-dur', dur); el.style.setProperty('--st-ease', ease); }
+      }
+      function stateTarget(slide, id) {
+        var els = slide.querySelectorAll('[data-st-list]');
+        for (var i = 0; i < els.length; i++) if (els[i].getAttribute('data-el') === id) return els[i];
+        return null;
+      }
+      function hasState(el, state) { return !state || ids(el, 'data-st-list').indexOf(state) !== -1; }
+      function changeStates(el) {
+        var slide = el.closest('section');
+        var sets = ids(el, 'data-action-set');
+        for (var i = 0; slide && i < sets.length; i++) {
+          var parts = sets[i].split(':'), target = stateTarget(slide, parts[0]);
+          if (!target) continue;
+          var state = parts[1] || '', mode = parts[2], now = target.getAttribute('data-st') || '';
+          var cycle = [''].concat(ids(target, 'data-st-list'));
+          var next = mode === 'toggle' ? (now === state ? '' : state) : mode === 'cycle' ? cycle[(cycle.indexOf(now) + 1) % cycle.length] : state;
+          if (hasState(target, next)) changeState(target, 'data-st', next);
+        }
+      }
+      function resetStates(slide) {
+        var els = slide ? slide.querySelectorAll('[data-st-list]') : [];
+        for (var i = 0; i < els.length; i++) {
+          els[i].style.setProperty('--st-dur', '0s');
+          els[i].removeAttribute('data-hover-st');
+          els[i].setAttribute('data-st', els[i].getAttribute('data-st-start') || '');
+        }
+        if (els.length) els[0].offsetWidth;
+        for (var j = 0; j < els.length; j++) { els[j].style.removeProperty('--st-dur'); els[j].style.removeProperty('--st-ease'); }
       }
       function layer() {
         var old = document.querySelectorAll('.reveal .slides [data-hover-shown], .reveal .slides [data-hover-hidden]');
         for (var i = 0; i < old.length; i++) { old[i].removeAttribute('data-hover-shown'); old[i].removeAttribute('data-hover-hidden'); }
-        var sources = [focused, tapped].concat(hovered);
+        var sources = [focused, tapped].concat(hovered), stated = [], states = [];
         for (var s = 0; s < sources.length; s++) {
           var source = sources[s], slide = source && source.closest('section');
           if (!slide) continue;
@@ -251,7 +419,18 @@ const CLICK_ACTION_SCRIPT = `
             if (show.indexOf(id) !== -1) { els[j].setAttribute('data-hover-shown', ''); els[j].removeAttribute('data-hover-hidden'); }
             else if (hide.indexOf(id) !== -1) { els[j].setAttribute('data-hover-hidden', ''); els[j].removeAttribute('data-hover-shown'); }
           }
+          var sets = ids(source, 'data-hover-set');
+          for (var k = 0; k < sets.length; k++) {
+            var parts = sets[k].split(':'), target = stateTarget(slide, parts[0]);
+            if (!target || !hasState(target, parts[1] || '')) continue;
+            var at = stated.indexOf(target);
+            if (at === -1) { stated.push(target); states.push(parts[1] || ''); } else states[at] = parts[1] || '';
+          }
         }
+        // States change only where they differ, so they move rather than restart
+        var was = document.querySelectorAll('.reveal .slides [data-hover-st]');
+        for (var w = 0; w < was.length; w++) if (stated.indexOf(was[w]) === -1) changeState(was[w], 'data-hover-st', null);
+        for (var t = 0; t < stated.length; t++) if (stated[t].getAttribute('data-hover-st') !== states[t]) changeState(stated[t], 'data-hover-st', states[t]);
       }
       function unhover() { clearTimeout(ending); ending = null; hovered = []; focused = null; tapped = null; layer(); }
       function hover(next) {
@@ -317,7 +496,7 @@ const CLICK_ACTION_SCRIPT = `
       }
       function run(el) {
         var type = el.getAttribute('data-action');
-        if (type === 'visibility') return showHide(el);
+        if (type === 'visibility') { showHide(el); changeStates(el); return; }
         if (type === 'next') return Reveal.next();
         if (type === 'prev') return Reveal.prev();
         if (type === 'slide') {
@@ -352,7 +531,7 @@ const CLICK_ACTION_SCRIPT = `
         e.stopPropagation();
         run(el);
       }, true);
-      Reveal.on('slidechanged', function(e) { unhover(); reset(e.currentSlide); });
+      Reveal.on('slidechanged', function(e) { unhover(); reset(e.currentSlide); resetStates(e.currentSlide); });
     })();`
 
-module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, renewSlideIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }
+module.exports = { CLICK_ACTION_TYPES, HOVER_EFFECTS, MAX_STATES, STATE_PROPS, STATE_EASINGS, DEFAULT_STATE_DURATION, SET_MODES, elementStates, supportsClickAction, slideAnchor, slideHref, safeActionUrl, visibilityTargets, clickActionAttrs, statesCss, slideIdAttr, remapSlideLinks, remapElementRefs, renewElementIds, renewSlideIds, countLinksTo, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT }

@@ -37,7 +37,7 @@ const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, visibilityTargets, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
@@ -1191,7 +1191,7 @@ function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${scrollingDeck ? SCROLLING_CSS : ''}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
