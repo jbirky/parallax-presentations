@@ -40,6 +40,8 @@ import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
 
 const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }
+// A click that puts elements in states, and shows or hides nothing
+const clickChangesStatesOnly = action => action.type === 'visibility' && !['show', 'hide', 'toggle'].some(k => action[k]?.length) && action.set?.length > 0
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
@@ -1365,13 +1367,16 @@ export function CanvasElement({ element, faded, isSelected, isEditing, remote, i
         width: element.width, height: isAutoFit ? 'auto' : element.height,
         zIndex: element.zIndex || 1,
         outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : faded ? '1px dashed rgba(148,163,184,0.8)' : 'none',
-        // Hidden when presented, at least for now: faded here, so it can still be edited
-        opacity: faded && !isEditing ? 0.45 : undefined,
+        // Hidden when presented, at least for now: faded here, so it can still be
+        // edited. A shape draws its own opacity; others have one in a state.
+        opacity: faded && !isEditing ? 0.45 : element.type !== 'shape' && element.states?.length && element.opacity != null ? element.opacity : undefined,
         cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
         boxSizing: 'border-box',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
-        transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+        // A state's scale (utils/clickActions.js) scales the handles too
+        transform: [element.rotation && `rotate(${element.rotation}deg)`, element.scale != null && element.scale !== 1 && `scale(${element.scale})`]
+          .filter(Boolean).join(' ') || undefined,
         boxShadow: (element.shadowBlur || element.shadowX || element.shadowY)
           ? `${element.shadowX||0}px ${element.shadowY||0}px ${element.shadowBlur||0}px ${element.shadowColor||'rgba(0,0,0,0.5)'}`
           : undefined,
@@ -1387,6 +1392,8 @@ export function CanvasElement({ element, faded, isSelected, isEditing, remote, i
         position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
         overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
+        // A state's flip, shown mirrored; the badges and handles stay as they are
+        transform: element.flipX || element.flipY ? `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` : undefined,
       }}>
         {element.animationEnter && element.animationEnter !== 'none' && !isEditing && (
           <div style={{ position: 'absolute', top: 3, right: 3, zIndex: 20, background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
@@ -1765,7 +1772,18 @@ export function CanvasElement({ element, faded, isSelected, isEditing, remote, i
           background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
           padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
         }}>
-          {[element.clickAction && (CLICK_BADGES[element.clickAction.type] || '↗'), element.hoverAction && '◑ Hover'].filter(Boolean).join(' · ')}
+          {[element.clickAction && (clickChangesStatesOnly(element.clickAction) ? '◆ Change' : CLICK_BADGES[element.clickAction.type] || '↗'), element.hoverAction && '◑ Hover'].filter(Boolean).join(' · ')}
+        </div>
+      )}
+
+      {/* It has states */}
+      {element.states?.length > 0 && (
+        <div style={{
+          position: 'absolute', top: -18, left: element.fragment ? 30 : 0, zIndex: 101, pointerEvents: 'none',
+          background: '#d946ef', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          ◆ {element.states.length === 1 ? '1 state' : `${element.states.length} states`}
         </div>
       )}
 

@@ -1,6 +1,6 @@
 # Links, Click & Hover Actions
 
-Make slides that respond to clicks and hovers, like a website: buttons that jump to another slide, text that links to a slide, tabs that switch what's shown, elements that appear when clicked, and labels that appear while the pointer is over part of a diagram. Click and hover actions work when presenting, in exported HTML files and on share links.
+Make slides that respond to clicks and hovers, like a website: buttons that jump to another slide, text that links to a slide, tabs that switch what's shown, elements that appear when clicked, labels that appear while the pointer is over part of a diagram, and cards that flip over or answers that turn green. Click and hover actions work when presenting, in exported HTML files and on share links.
 
 ## Linking text to a slide
 
@@ -22,7 +22,7 @@ Any element can do something when it's clicked while presenting:
 |----------|--------------|
 | Go to slide | Jumps to the slide you pick |
 | Next slide, Previous slide | Moves one slide forward or back |
-| Show or hide elements | Shows, hides or toggles other elements on the same slide |
+| Show, hide or change elements | Shows, hides or toggles other elements on the same slide, or puts them in [states](#states) |
 | Open web page | Opens an `https://`, `http://` or `mailto:` address, in a new tab unless you untick **Open in a new tab** |
 
 Elements with a click action have a small blue badge on the canvas, such as **↗ Slide** or **◐ Show/hide**, and ones with a hover action say **◑ Hover**.
@@ -41,7 +41,7 @@ A few things to know:
 An element can also show or hide others while the pointer is over it:
 
 1. Select the element.
-2. In **Interactions**, set **On hover** to **Show or hide elements**.
+2. In **Interactions**, set **On hover** to **Show, hide or change elements**.
 3. Set each element in the list to **Show** or **Hide**.
 
 When presenting:
@@ -57,7 +57,7 @@ To add a hotspot that's already set up, open **Layout ▾** in the toolbar and c
 
 ## Showing and hiding elements
 
-**Show or hide elements** lists everything on the slide. Set each one to **Show**, **Hide** or **Toggle** (on click), or leave it at **—**. A group counts as one entry, and clicking a name selects that element. A hover's list leaves out the element itself.
+**Show, hide or change elements** lists everything on the slide. Set each one to **Show**, **Hide** or **Toggle** (on click), or leave it at **—**. A group counts as one entry, and clicking a name selects that element. A hover's list leaves out the element itself.
 
 To make something appear only when clicked or hovered, select it and tick **Hidden until a click or hover shows it**, for example on an answer that a "Show answer" button reveals. If nothing on the slide shows it, the panel says so.
 
@@ -76,16 +76,41 @@ This adds a row of tab buttons over a panel. Clicking a tab shows its own text, 
 - Double-click a tab's text to edit it.
 - To move the whole component, drag a selection box around it. Its parts aren't grouped, because a group shares one click action.
 
+## States
+
+An element can have states: other looks that a click or hover changes it to, moving there smoothly. A state can change the element's position, size, rotation, scale and opacity, turn it over, recolor a shape's fill, outline and label, change an image's filters, and bring it in front of everything else.
+
+### Recording a state
+
+1. Select the element.
+2. In **Interactions**, next to **States**, click **+ State**. A bar above the slide says the state is being recorded.
+3. Move, resize, turn or recolor the element on the canvas or in the Properties panel. These changes go into the state, and the element itself stays as it was. The state's box also sets how long it **Takes**, its easing (**Spring** overshoots a little), **Flip across**, **Flip over**, **Scale** and **In front of everything**.
+4. Click **Default**, click **Done**, or press `Esc` to stop.
+
+Click a state's name to record more changes to it, and **Default** to edit the element itself. **Starts as** sets the state it's in each time its slide opens. **Clear changes** empties a state, and **Delete state** removes it. An element can have up to 8 states.
+
+### Putting elements in states
+
+With **On click** or **On hover** set to **Show, hide or change elements**, the list under it has a **States** part with each element that has states, including this one. Choose the state a click or hover puts it in, or **Default**. A click can also **Toggle** a state (between it and **Default**) or go to the **Next state** in turn. A hover's state goes back when the hover ends, like what it shows and hides.
+
+When presenting, each state moves in with its own time and easing, and back to **Default** with the time of the state it's leaving. Each time you come back to a slide its elements start over in their first state. With reduced motion turned on in the viewer's system settings, states change at once.
+
+### Presets with states
+
+- **Layout ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped; change their labels with **Label Text**.
+- **Layout ▾ → Quiz answers** adds a question and three answers. Clicking the first turns it green, and the others turn red.
+- **Zoom in when clicked**, under **States** for an element that has none, adds a **Zoomed** state that brings the element to the middle of the slide, larger and in front, and a click that toggles it.
+
 ## Editing slides with hidden elements
 
-On a slide where clicks or hovers show or hide things, the **Show on canvas** bar above the slide sets what the canvas shows:
+On a slide where clicks or hovers show or hide things or change states, the **Show on canvas** bar above the slide sets what the canvas shows:
 
 - **As it opens**: the slide before any clicks or hovers, which is the default
 - A clickable element's name, such as **Tab 2**: the slide after that click
 - **Hover:** and an element's name, such as **Hover: i**: the slide while the pointer is over that element
-- **Everything**: every element, with the ones that start hidden faded
+- **Everything**: every element, with the ones that start hidden faded, and each as it is rather than in a state
 
-Selecting a tab or a hotspot's marker switches to its view, so you can edit each tab's text, or a hotspot's card, without the others on top of it. This only changes what the editor shows and isn't saved with the deck.
+Elements show in the state they'd be in, except the one you've selected, which shows as it is so you can edit it. Selecting a tab or a hotspot's marker switches to its view, so you can edit each tab's text, or a hotspot's card, without the others on top of it. This only changes what the editor shows and isn't saved with the deck.
 
 ## Where click and hover actions work
 
@@ -94,7 +119,7 @@ Selecting a tab or a hotspot's marker switches to its view, so you can edit each
 | Present | Yes |
 | Export HTML, Export Offline HTML | Yes |
 | Share links, GitHub Pages | Yes |
-| Export PDF | Slide links and click actions link to the right page, and web page actions become web links. Each slide is printed as it opens, with no hovers. |
+| Export PDF | Slide links and click actions link to the right page, and web page actions become web links. Each slide is printed as it opens, with no hovers, and each element in its first state. |
 | Export PPTX | No |
 
 **Preview Slide** shows only the current slide, so it's good for trying show and hide, but links to other slides can't go anywhere there.

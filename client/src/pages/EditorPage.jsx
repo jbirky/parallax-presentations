@@ -50,7 +50,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, canvasClickPreview, previewForSelection, elementLabels, hoverPreview } from '../utils/clickActions'
+import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -238,6 +238,11 @@ const SLIDE_TEMPLATES = {
   },
 }
 
+// An element with `updates`, or, while one of its states is being recorded
+// (`recording`), with what a state can change going into that state
+const editElement = (recording, el, updates) =>
+  recording?.elementId === el.id ? recordIntoState(el, recording.stateId, updates) : { ...el, ...updates }
+
 const migrateSlide = (slide) => {
   if (!slide.elements) {
     return {
@@ -262,6 +267,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [loading, setLoading] = useState(true)
   const [selectedElementIds, setSelectedElementIds] = useState([])
   const [editingElementId, setEditingElementId] = useState(null)
+  // The element state being recorded, { elementId, stateId }: moving,
+  // resizing, turning or recoloring the element changes that state
+  const [recording, setRecording] = useState(null)
+  const recordingRef = useRef(null)
+  recordingRef.current = recording
 
   // Derived from selectedElementIds — must be declared before any useEffect that references it
   const selectedElementId = selectedElementIds[selectedElementIds.length - 1] ?? null
@@ -643,7 +653,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -667,6 +677,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     if (openElementId === editingElementId) {
       stopEditingElement()
       showNotice(`${peer.self ? 'Your other tab' : peer.name} started editing this at the same moment`)
+    } else if (openElementId === recording?.elementId) {
+      setRecording(null)
+      showNotice(`${peer.self ? 'Your other tab' : peer.name} opened this at the same moment, so recording its state stopped`)
     } else if (warnedRef.current !== openElementId) {
       warnedRef.current = openElementId
       showNotice(`${peer.self ? 'Your other tab' : peer.name} opened this at the same moment. Whoever saves last replaces the other's changes.`)
@@ -713,7 +726,19 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // chosen per slide while editing
   const [clickPreview, setClickPreview] = useState({})
   const preview = canvasClickPreview(currentSlide?.elements, currentSlide ? clickPreview[currentSlide.id] : null, selectedElementIds)
-  const canvasSlide = currentSlide && preview.elements !== currentSlide.elements ? { ...currentSlide, elements: preview.elements } : currentSlide
+  // The element whose state is being recorded shows in that state
+  const canvasElements = recording ? preview.elements.map(el => el.id === recording.elementId ? withState(el, recording.stateId) : el) : preview.elements
+  const canvasSlide = currentSlide && canvasElements !== currentSlide.elements ? { ...currentSlide, elements: canvasElements } : currentSlide
+  const canvasFadedIds = recording && preview.fadedIds.has(recording.elementId) ? new Set([...preview.fadedIds].filter(id => id !== recording.elementId)) : preview.fadedIds
+
+  // Recording stops when something else is selected, or the element or its
+  // state goes (deleted here or by someone else, or undone)
+  useEffect(() => {
+    if (!recording) return
+    const el = currentSlide?.elements?.find(e => e.id === recording.elementId)
+    const only = selectedElementIds.length === 1 && selectedElementIds[0] === recording.elementId
+    if (!only || !el?.states?.some(st => st.id === recording.stateId)) setRecording(null)
+  }, [recording, selectedElementIds, currentSlide])
   const setPreviewMode = mode => { if (currentSlide) setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode })) }
 
   // Selecting a tab or hotspot previews its click or hover, and selecting
@@ -879,7 +904,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
           i === currentSlideIndexRef.current ? {
             ...s,
             elements: s.elements.map(el =>
-              el.id === id ? { ...el, ...updates } : el
+              el.id === id ? editElement(recordingRef.current, el, updates) : el
             )
           } : s
         )
@@ -1440,6 +1465,23 @@ function draw() {
     setSelectedElementIds([newElements[0].id])
   }, [currentSlide, slideW, slideH])
 
+  // Presets with states: a flip card (its front selected) and quiz answers
+  // (the first answer selected), so their On click shows how
+  const addStatePreset = useCallback((build, pick) => {
+    const top = Math.max(0, ...(currentSlide?.elements || []).map(el => el.zIndex || 0))
+    const newElements = build({ slideW, slideH, zIndex: top + 1, makeId: () => crypto.randomUUID() })
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...newElements] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newElements[pick].id])
+  }, [currentSlide, slideW, slideH])
+
   const addModularGrid = useCallback((moduleShape, cols, rows, gap) => {
     const mx = 32, my = 32
     const usableW = slideW - 2 * mx
@@ -1618,12 +1660,14 @@ function draw() {
   }, [])
 
   const bringElementForward = useCallback((id) => {
+    if (recordingRef.current) return
     updateElement(id, {
       zIndex: (currentSlide?.elements?.find(el => el.id === id)?.zIndex || 1) + 1
     })
   }, [currentSlide, updateElement])
 
   const sendElementBackward = useCallback((id) => {
+    if (recordingRef.current) return
     updateElement(id, {
       zIndex: Math.max(1, (currentSlide?.elements?.find(el => el.id === id)?.zIndex || 1) - 1)
     })
@@ -1652,6 +1696,7 @@ function draw() {
       if (e.key === 'Escape') {
         if (drawTool) { setDrawTool(null); e.preventDefault(); return }
         if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
+        if (recordingRef.current) { setRecording(null); e.preventDefault(); return }
         if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
       }
       if (editingElementId) return
@@ -1739,7 +1784,9 @@ function draw() {
     return () => { style.textContent = '' }
   }, [presentation?.customCSS])
 
-  const selectedElement = currentSlide?.elements?.find(el => el.id === selectedElementId) || null
+  const selectedBase = currentSlide?.elements?.find(el => el.id === selectedElementId) || null
+  // The Properties panel shows the state being recorded
+  const selectedElement = selectedBase && recording?.elementId === selectedBase.id ? withState(selectedBase, recording.stateId) : selectedBase
 
   const toggleElementSelection = useCallback((id, multi = false) => {
     if (!id) { setSelectedElementIds([]); return }
@@ -1768,7 +1815,7 @@ function draw() {
         slides: prev.slides.map((s, i) => {
           if (i !== currentSlideIndexRef.current) return s
           const groupId = s.elements.find(el => el.id === id)?.groupId
-          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? { ...el, ...updates } : el) }
+          return { ...s, elements: s.elements.map(el => el.id === id || (groupId && el.groupId === groupId) ? editElement(recordingRef.current, el, updates) : el) }
         })
       }
     })
@@ -1782,7 +1829,7 @@ function draw() {
       return {
         ...prev,
         slides: prev.slides.map((s, i) =>
-          i === currentSlideIndexRef.current ? { ...s, elements: s.elements.map(el => map[el.id] ? { ...el, ...map[el.id] } : el) } : s
+          i === currentSlideIndexRef.current ? { ...s, elements: s.elements.map(el => map[el.id] ? editElement(recordingRef.current, el, map[el.id]) : el) } : s
         )
       }
     })
@@ -1809,6 +1856,7 @@ function draw() {
   }, [])
 
   const groupElements = useCallback(() => {
+    if (recordingRef.current) return
     const ids = selectedElementIdsRef.current
     if (ids.length < 2) return
     const groupId = crypto.randomUUID()
@@ -1844,6 +1892,7 @@ function draw() {
   }, [])
 
   const alignElements = useCallback((type) => {
+    if (recordingRef.current) return
     const ids = selectedElementIdsRef.current
     if (ids.length < 2) return
     setPresentation(prev => {
@@ -3625,6 +3674,8 @@ function draw() {
             onAddMathGrid={() => setShowMathGridModal(true)}
             onAddTabs={addTabs}
             onAddHotspot={addHotspot}
+            onAddFlipCard={() => addStatePreset(buildFlipCard, 0)}
+            onAddQuiz={() => addStatePreset(buildQuiz, 1)}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddDiagram={() => setShowDiagramModal(true)}
@@ -3691,7 +3742,21 @@ function draw() {
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
-            {!isViewingReferences && preview.canPreview && (() => {
+            {!isViewingReferences && recording && (() => {
+              const el = currentSlide?.elements?.find(e => e.id === recording.elementId)
+              const name = el?.states?.find(st => st.id === recording.stateId)?.name || 'State'
+              return (
+                <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#d946ef', flexShrink: 0 }} />
+                  <span>Recording “{name}” of {elementLabels(currentSlide.elements).get(recording.elementId)}: moving, resizing, turning or recoloring it changes this state.</span>
+                  <button onClick={() => setRecording(null)} title="Stop recording (Esc)"
+                    style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: 'var(--accent)', color: '#fff' }}>
+                    Done
+                  </button>
+                </div>
+              )
+            })()}
+            {!isViewingReferences && !recording && preview.canPreview && (() => {
               const labels = elementLabels(currentSlide.elements)
               const modes = [['start', 'As it opens', 'The slide as it opens, before any clicks or hovers'],
                 ...preview.clickers.map(c => [c.id, labels.get(c.id), `The slide after clicking “${labels.get(c.id)}”`]),
@@ -3736,7 +3801,7 @@ function draw() {
               editor={editor}
               slide={canvasSlide}
               remoteUse={remoteUse}
-              fadedIds={preview.fadedIds}
+              fadedIds={canvasFadedIds}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
               showGrid={showGrid}
@@ -3837,6 +3902,8 @@ function draw() {
         <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
+          recordingState={recording?.elementId === selectedElementId ? recording.stateId : null}
+          onRecordState={stateId => setRecording(stateId && selectedElementId ? { elementId: selectedElementId, stateId } : null)}
           onUpdateSlide={updateCurrentSlide}
           onUpdateElement={(updates) => selectedElementId && updateElement(selectedElementId, updates)}
           onUpdateWithGroup={updates => selectedElementId && updateWithGroup(selectedElementId, updates)}
