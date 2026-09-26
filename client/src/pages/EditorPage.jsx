@@ -1690,13 +1690,26 @@ function draw() {
     if (deck) setCurrentSlideIndex(ci => Math.max(0, Math.min(ci, deck.slides.length - 1)))
   }, [])
 
+  // Esc stops recording a state, and does nothing else: it's caught before
+  // the canvas, which would unselect the element
+  useEffect(() => {
+    if (!recording) return
+    const onKeyDown = e => {
+      if (e.key !== 'Escape') return
+      setRecording(null)
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [recording])
+
   // Cut / copy / paste / duplicate keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
         if (drawTool) { setDrawTool(null); e.preventDefault(); return }
         if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
-        if (recordingRef.current) { setRecording(null); e.preventDefault(); return }
         if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
       }
       if (editingElementId) return

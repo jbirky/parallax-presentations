@@ -27,6 +27,10 @@
 //   el.initialState = a state's id: the one it's in each time its slide opens,
 //                    rather than its default (its own properties)
 //   el.backfaceHidden = true: unseen while turned over by a state's flip
+//   el.stateSteps = { [step]: stateId or null }: at that step of its slide (a
+//                    press of → or a clicker, counted with its fragments), it
+//                    goes to that state, or its default for null; stepping
+//                    back undoes it
 //   el.hoverEffect = 'brighten' (the default) | 'lift' | 'grow' | 'none': how a
 //                    clickable element looks under the pointer
 //   el.startHidden = true: hidden each time its slide opens, until a click or
@@ -219,6 +223,30 @@ export function shapeSvg(el) {
   })
 }
 
+// The steps at which a slide's elements change state, checked, in order:
+// [[step, [[elementId, stateId or '' for its default], …]], …]
+export function stateSteps(slide) {
+  const steps = new Map()
+  for (const el of slide?.elements || []) {
+    const ids = elementStates(el).map(st => st.id)
+    if (!ids.length || !el.stateSteps || typeof el.stateSteps !== 'object') continue
+    for (const [key, state] of Object.entries(el.stateSteps)) {
+      const step = Number(key)
+      if (!Number.isInteger(step) || step < 1 || step > 1000 || (state && !ids.includes(state))) continue
+      if (!steps.has(step)) steps.set(step, [])
+      steps.get(step).push([el.id, state || ''])
+    }
+  }
+  return [...steps.entries()].sort((a, b) => a[0] - b[0])
+}
+
+// For a slide's section: an invisible fragment per step at which elements
+// change state, which reveal.js counts with the slide's other fragments
+export function stepMarkers(slide) {
+  return stateSteps(slide).map(([step, changes]) =>
+    `<span class="fragment" data-fragment-index="${step}" data-st-steps="${changes.map(([id, st]) => `${id}:${st}`).join(' ')}" aria-hidden="true" style="position:absolute;"></span>`).join('')
+}
+
 // The page CSS for the states of a deck's elements, from checked values only.
 // Each state is a rule for the element while a click (or step) has put it in
 // that state and no hover has changed it, or while a hover has. The rules are
@@ -383,7 +411,10 @@ export const CLICK_ACTION_CSS = `
 // ('' for its default), data-hover-st the one a hover has it in, over that.
 // A state moves in with its own duration and easing (statesCss), and back to
 // the default with the one it's leaving. Each time a slide opens, its
-// elements go back to their first state at once.
+// elements go back to their first state at once. Steps (stepMarkers) put
+// elements in states as their marker fragments are shown, and back as
+// they're hidden: an element is in the state of its latest marker shown, or
+// its first state.
 export const CLICK_ACTION_SCRIPT = `
     (function() {
       var HOVER = '.reveal .slides [data-hover-show], .reveal .slides [data-hover-hide], .reveal .slides [data-hover-set]';
@@ -478,6 +509,30 @@ export const CLICK_ACTION_SCRIPT = `
           if (hasState(target, next)) changeState(target, 'data-st', next);
         }
       }
+      function stepped(slide) {
+        var markers = Array.prototype.slice.call(slide ? slide.querySelectorAll('.fragment[data-st-steps]') : []);
+        markers.sort(function(a, b) { return (+a.getAttribute('data-fragment-index') || 0) - (+b.getAttribute('data-fragment-index') || 0); });
+        var states = {};
+        for (var i = 0; i < markers.length; i++) {
+          var shown = markers[i].classList.contains('visible'), changes = ids(markers[i], 'data-st-steps');
+          for (var j = 0; j < changes.length; j++) {
+            var parts = changes[j].split(':');
+            if (shown) states[parts[0]] = parts[1] || '';
+            else if (!(parts[0] in states)) states[parts[0]] = null; // not reached yet: its first state
+          }
+        }
+        return states;
+      }
+      function stepStates(slide, now) {
+        var states = stepped(slide);
+        for (var id in states) {
+          var el = stateTarget(slide, id);
+          if (!el) continue;
+          var next = states[id] === null ? el.getAttribute('data-st-start') || '' : states[id];
+          if (!hasState(el, next) || (el.getAttribute('data-st') || '') === next) continue;
+          if (now) el.setAttribute('data-st', next); else changeState(el, 'data-st', next);
+        }
+      }
       function resetStates(slide) {
         var els = slide ? slide.querySelectorAll('[data-st-list]') : [];
         for (var i = 0; i < els.length; i++) {
@@ -485,6 +540,7 @@ export const CLICK_ACTION_SCRIPT = `
           els[i].removeAttribute('data-hover-st');
           els[i].setAttribute('data-st', els[i].getAttribute('data-st-start') || '');
         }
+        stepStates(slide, true);
         if (els.length) els[0].offsetWidth;
         for (var j = 0; j < els.length; j++) { morph(els[j]); els[j].style.removeProperty('--st-dur'); els[j].style.removeProperty('--st-ease'); }
       }
@@ -615,6 +671,8 @@ export const CLICK_ACTION_SCRIPT = `
         run(el);
       }, true);
       Reveal.on('slidechanged', function(e) { unhover(); reset(e.currentSlide); resetStates(e.currentSlide); });
+      Reveal.on('fragmentshown', function() { stepStates(Reveal.getCurrentSlide()); });
+      Reveal.on('fragmenthidden', function() { stepStates(Reveal.getCurrentSlide()); });
     })();`
 
 // ── Editor helpers ─────────────────────────────────────────────────────────
@@ -761,6 +819,19 @@ export function statesInPreview(elements, mode) {
   for (const s of sets) {
     const target = all.find(el => el.id === s.id)
     if (target) states.set(target.id, nextState(elementStates(target).map(st => st.id), states.get(target.id) || '', s.state || '', hovering ? 'set' : s.mode || 'set'))
+  }
+  return states
+}
+
+// Each element's state after `step` steps of `slide` (0 as it opens), for
+// the elements whose steps change it; '' for its default
+export function statesAtStep(slide, step) {
+  const states = new Map()
+  for (const [at, changes] of stateSteps(slide)) {
+    for (const [id, state] of changes) {
+      if (at <= step) states.set(id, state)
+      else if (!states.has(id)) states.set(id, (slide.elements.find(el => el.id === id)?.initialState) || '')
+    }
   }
   return states
 }

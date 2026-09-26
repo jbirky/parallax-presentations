@@ -79,7 +79,7 @@ describe('the self-hosted version', () => {
 
   it('presents a deck with states and a morphing shape', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'States' })).body
-    const shape = { id: 'dot', type: 'shape', shape: 'circle', x: 0, y: 0, width: 80, height: 80, text: '<b>x</b>',
+    const shape = { id: 'dot', type: 'shape', shape: 'circle', x: 0, y: 0, width: 80, height: 80, text: '<b>x</b>', stateSteps: { 2: 'st_star' },
       states: [{ id: 'st_star', name: 'Star', shape: 'star', fill: '#ff0000', duration: 300 }, { id: 'bad"id', fill: 'red' }] }
     const button = { id: 'go', type: 'shape', shape: 'line-arrow', width: 80, height: 20, strokeDasharray: 'dashed', clickAction: { type: 'visibility', set: [{ id: 'dot', state: 'st_star', mode: 'toggle' }] } }
     await call('PUT', `/api/presentations/${id}`, { slides: [{ id: 's1', elements: [shape, button] }] })
@@ -93,6 +93,7 @@ describe('the self-hosted version', () => {
     assert.match(html, /<polyline points=/) // line arrows, which the server's own copy used to leave out
     assert.match(html, /stroke-dasharray="/)
     assert.doesNotMatch(html, /bad"id|<b>x<\/b>/)
+    assert.match(html, /<span class="fragment" data-fragment-index="2" data-st-steps="dot:st_star" aria-hidden="true"/)
   })
 
   it('has no editing with others', async () => {

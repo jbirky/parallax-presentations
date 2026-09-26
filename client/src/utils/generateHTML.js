@@ -10,7 +10,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
@@ -483,7 +483,8 @@ export function generateRevealHTML(presentation, opts = {}) {
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
     const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
-    const bodyHtml = scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml
+    // With the steps that put elements in states (utils/clickActions.js)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -1177,9 +1178,10 @@ function generatePrintHTML(presentation) {
       for (let screen = 0; screen < screens; screen++) pages.push({ slide, slideIndex, maxIdx: Infinity, screen, first: screen === 0 })
       return
     }
-    const fragIndices = [...new Set(
-      (slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1)
-    )].sort((a, b) => a - b)
+    const fragIndices = [...new Set([
+      ...(slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1),
+      ...stateSteps(slide).map(([step]) => step),
+    ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
   })
@@ -1187,8 +1189,10 @@ function generatePrintHTML(presentation) {
 
   const pagesHtml = pages.map(({ slide, slideIndex, maxIdx, screen, first }, pageIndex) => {
     // As the slide opens: fragments up to this step, without what a click
-    // shows, and each element in its first state
-    const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden || hiddenByState(el, el.initialState)
+    // shows, and each element in its first state or the one a step put it in
+    const stepped = statesAtStep(slide, maxIdx)
+    const stateOnPage = el => stepped.has(el.id) ? stepped.get(el.id) : el.initialState
+    const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden || hiddenByState(el, stateOnPage(el))
     const canvasH = getCanvasHeight(slide, slideH)
     const scrolling = canvasH > slideH
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
@@ -1199,7 +1203,7 @@ function generatePrintHTML(presentation) {
     const renderedElements = sortedElements
       .map(base => {
         const isHidden = hiddenOnPage(base)
-        const el = withState(base, base.initialState)
+        const el = withState(base, stateOnPage(base))
         const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
         const rotationStyleP = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`

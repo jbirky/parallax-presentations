@@ -1877,6 +1877,45 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                           </select>
                         </div>
                       )}
+                      {states.length > 0 && (() => {
+                        // Steps: at a press of → or a clicker, counted with the slide's fragments
+                        const steps = Object.entries(el.stateSteps || {}).map(([k, v]) => [Number(k), v])
+                          .filter(([k]) => Number.isInteger(k) && k > 0).sort((a, b) => a[0] - b[0])
+                        const byStep = Object.fromEntries(steps)
+                        const setSteps = next => onUpdateElement({ stateSteps: Object.keys(next).length ? next : null })
+                        const used = (slide.elements || []).flatMap(e => [...(e.fragment ? [e.fragmentIndex || 1] : []), ...Object.keys(e.stateSteps || {}).map(Number)])
+                        const nextStep = Math.max(0, ...used.filter(Number.isFinite)) + 1
+                        const moveStep = (from, to) => {
+                          if (!Number.isInteger(to) || to < 1 || to === from || byStep[to] !== undefined) return
+                          const next = { ...byStep }
+                          delete next[from]
+                          setSteps({ ...next, [to]: byStep[from] })
+                        }
+                        return (
+                          <div style={{ marginTop: 6 }}>
+                            {steps.map(([step, state]) => (
+                              <div key={step} style={{ ...row, marginBottom: 4 }}>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>At step</span>
+                                <input className="prop-input" type="number" min={1} max={1000} aria-label={`Step ${step}`} value={step}
+                                  onChange={e => moveStep(step, Math.round(Number(e.target.value)))} style={{ width: 52 }} />
+                                <select className="prop-input" aria-label={`State at step ${step}`} value={states.some(st => st.id === state) ? state : ''}
+                                  onChange={e => setSteps({ ...byStep, [step]: e.target.value || null })} style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                                  <option value="">Default</option>
+                                  {states.map(st => <option key={st.id} value={st.id}>{st.name || 'State'}</option>)}
+                                </select>
+                                <button onClick={() => { const next = { ...byStep }; delete next[step]; setSteps(next) }} title="Remove this step" aria-label={`Remove step ${step}`}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>×</button>
+                              </div>
+                            ))}
+                            <button onClick={() => setSteps({ ...byStep, [nextStep]: states[0].id })} title="Change state when the slide steps on, with → or a clicker" style={chip(false)}>+ Step</button>
+                            {steps.length > 0 && (
+                              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                                Steps count with the slide's fragments: step 1 is the first press of → or a clicker. Going back undoes them.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
                       {states.some(st => st.flipX || st.flipY) && (
                         <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
                           <input type="checkbox" checked={!!el.backfaceHidden} onChange={e => onUpdateElement({ backfaceHidden: e.target.checked || null })} style={{ accentColor: 'var(--accent)' }} />

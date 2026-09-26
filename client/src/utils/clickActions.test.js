@@ -423,6 +423,66 @@ describe('morphing shapes', () => {
   })
 })
 
+describe('states on steps', () => {
+  const dot = text('dot', { states: [{ id: 'a', x: 100 }, { id: 'b', x: 200 }], stateSteps: { 2: 'a', 4: null, 5: 'gone', x: 'a', 0: 'b', 3.5: 'a' } })
+  const other = text('other', { states: [{ id: 'c', x: 5 }], stateSteps: { 2: 'c' }, initialState: 'c' })
+  const slide = { elements: [dot, other, text('plain', { stateSteps: { 1: 'x' } })] }
+
+  it('lists the steps that change states, checked, in order', () => {
+    expect(client.stateSteps(slide)).toEqual([[2, [['dot', 'a'], ['other', 'c']]], [4, [['dot', '']]]])
+  })
+
+  it('writes an invisible fragment for each step', () => {
+    expect(client.stepMarkers(slide)).toBe(
+      '<span class="fragment" data-fragment-index="2" data-st-steps="dot:a other:c" aria-hidden="true" style="position:absolute;"></span>'
+      + '<span class="fragment" data-fragment-index="4" data-st-steps="dot:" aria-hidden="true" style="position:absolute;"></span>')
+    expect(client.stepMarkers({ elements: [text('x')] })).toBe('')
+  })
+
+  it('works out each element’s state at a step', () => {
+    expect([...client.statesAtStep(slide, 0)]).toEqual([['dot', ''], ['other', 'c']])
+    expect([...client.statesAtStep(slide, 3)]).toEqual([['dot', 'a'], ['other', 'c']])
+    expect(client.statesAtStep(slide, 4).get('dot')).toBe('')
+  })
+
+  it('changes states as the slide steps on and back', () => {
+    vi.useFakeTimers()
+    try {
+      const win = new Window({ url: 'http://localhost/deck.html' })
+      win.document.body.innerHTML = `<div class="reveal"><div class="slides"><section id="one">
+        <div data-el="dot" data-st-list="a b" data-st="" data-st-start=""></div>
+        <div data-el="other" data-st-list="c" data-st="c" data-st-start="c"></div>
+        ${client.stepMarkers(slide)}</section></div></div>`
+      const handlers = {}
+      const section = win.document.getElementById('one')
+      const Reveal = { on: (name, fn) => { handlers[name] = fn }, getCurrentSlide: () => section }
+      win.matchMedia = () => ({ matches: false })
+      new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+      const markers = win.document.querySelectorAll('[data-st-steps]')
+      const st = id => win.document.querySelector(`[data-el="${id}"]`).getAttribute('data-st')
+      const show = (i, on) => { markers[i].classList.toggle('visible', on); handlers[on ? 'fragmentshown' : 'fragmenthidden']({}) }
+      show(0, true)
+      expect([st('dot'), st('other')]).toEqual(['a', 'c'])
+      show(1, true)
+      expect(st('dot')).toBe('')
+      show(1, false)
+      expect(st('dot')).toBe('a') // back a step
+      show(0, false)
+      expect(st('dot')).toBe('') // before its first step: its first state
+      // Coming back to a slide with its fragments shown puts it in their states at once
+      markers.forEach(m => m.classList.add('visible'))
+      win.document.querySelector('[data-el="dot"]').setAttribute('data-st', 'b')
+      handlers.slidechanged({ currentSlide: section })
+      expect(st('dot')).toBe('')
+      markers[1].classList.remove('visible')
+      handlers.slidechanged({ currentSlide: section })
+      expect(st('dot')).toBe('a')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('the state presets', () => {
   let n = 0
   const makeId = () => `p${++n}`
@@ -932,6 +992,25 @@ describe('PDF export', () => {
       const faceOf = word => new RegExp(`<div style="([^"]*)">(?:(?!<div)[\\s\\S])*${word}`).exec(html)?.[1]
       expect(faceOf('BACK')).toContain('visibility:hidden;')
       expect(faceOf('FRONT')).not.toContain('visibility:hidden;')
+    } finally {
+      vi.useRealTimers()
+      createObjectURL.mockRestore()
+      vi.restoreAllMocks()
+    }
+  })
+  it('prints a page for each step, with its states', async () => {
+    let blob = null
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => { blob = b; return 'blob:x' })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    globalThis.window.open = vi.fn()
+    vi.useFakeTimers()
+    try {
+      exportPDF({ id: 'p', slides: [{ id: 's1', elements: [
+        text('mover', { content: '<p>MOVER</p>', x: 5, states: [{ id: 'far', x: 700 }], stateSteps: { 1: 'far', 2: null } }),
+      ] }] })
+      const html = await blob.text()
+      const lefts = [...html.matchAll(/left:(\d+)px;[^>]*>\s*<p>MOVER/g)].map(m => +m[1])
+      expect(lefts).toEqual([5, 700, 5]) // as it opens, after step 1, after step 2
     } finally {
       vi.useRealTimers()
       createObjectURL.mockRestore()

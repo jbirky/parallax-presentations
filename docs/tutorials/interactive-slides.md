@@ -95,6 +95,16 @@ With **On click** or **On hover** set to **Show, hide or change elements**, the 
 
 When presenting, each state moves in with its own time and easing, and back to **Default** with the time of the state it's leaving. Each time you come back to a slide its elements start over in their first state. With reduced motion turned on in the viewer's system settings, states change at once.
 
+### Changing states step by step
+
+An element can also change state as you step through the slide with `→`, `Space` or a clicker, like a fragment:
+
+1. Select the element, which needs at least one state.
+2. Under **States**, click **+ Step**. A row **At step 1 → State** appears.
+3. Set the step number and the state it goes to at that step, or **Default**.
+
+Steps count with the slide's fragments: an element that changes state at step 2 does so on the same press as the fragments numbered 2. A step with no fragments gets a press of its own. Stepping back undoes the change, and coming back to the slide from the next one shows it as it was at the end. The **Timeline** lists state changes with each step's fragments, marked ◆, and a PDF has a page for each step with the elements in their states then.
+
 ### Presets with states
 
 - **Layout ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped; change their labels with **Label Text**.
@@ -119,7 +129,7 @@ Elements show in the state they'd be in, except the one you've selected, which s
 | Present | Yes |
 | Export HTML, Export Offline HTML | Yes |
 | Share links, GitHub Pages | Yes |
-| Export PDF | Slide links and click actions link to the right page, and web page actions become web links. Each slide is printed as it opens, with no hovers, and each element in its first state. |
+| Export PDF | Slide links and click actions link to the right page, and web page actions become web links. Each slide is printed as it opens, with no hovers, and each element in its first state; each step gets a page. |
 | Export PPTX | No |
 
 **Preview Slide** shows only the current slide, so it's good for trying show and hide, but links to other slides can't go anywhere there.

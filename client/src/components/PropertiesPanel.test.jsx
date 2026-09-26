@@ -96,3 +96,16 @@ describe('States in the Properties panel', () => {
     expect(html).toContain('<option value="cycle:">Next state</option>')
   })
 })
+
+describe('Steps in the Properties panel', () => {
+  it('lists the steps that change its state, and adds one after the slide’s last', () => {
+    const el = text('Dot', { states: [{ id: 'st_a', name: 'Moved' }], stateSteps: { 3: 'st_a', 5: null } })
+    const slide = { id: 's1', elements: [el, text('Frag', { fragment: true, fragmentIndex: 6 })] }
+    const { html, chosen, lines } = panel(slide, el)
+    expect(html).toMatch(/aria-label="Step 3"[^>]*value="3"/)
+    expect(html).toMatch(/aria-label="Step 5"[^>]*value="5"/)
+    expect(chosen).toEqual(expect.arrayContaining(['Moved', 'Default']))
+    expect(lines).toContain('+ Step')
+    expect(html).toContain('step 1 is the first press of → or a clicker. Going back undoes them.')
+  })
+})
