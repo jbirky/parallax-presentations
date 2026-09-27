@@ -51,6 +51,15 @@ const DATA_DIR = process.env.SLIDES_DATA_DIR || path.join(__dirname, 'data')
 const UPLOADS_BASE = process.env.SLIDES_UPLOADS_DIR || path.join(__dirname, 'uploads')
 const UPLOADS_DIR = UPLOADS_BASE
 
+// The file in the uploads folder that a deck's /uploads/<relativePath> names,
+// or null for one that leads out of it (/uploads/../../proc/self/environ):
+// publishing reads what a deck points at and puts it in the owner's repo
+function uploadsFile(relativePath) {
+  const root = path.resolve(UPLOADS_DIR)
+  const filePath = path.resolve(root, relativePath)
+  return filePath.startsWith(root + path.sep) ? filePath : null
+}
+
 fs.ensureDirSync(DATA_DIR)
 fs.ensureDirSync(UPLOADS_DIR)
 
@@ -2966,8 +2975,8 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
           for await (const chunk of body) chunks.push(chunk)
           fileBuffer = Buffer.concat(chunks)
         } else {
-          const filePath = path.join(UPLOADS_DIR, relativePath)
-          if (!fs.existsSync(filePath)) continue
+          const filePath = uploadsFile(relativePath)
+          if (!filePath || !fs.existsSync(filePath)) continue
           fileBuffer = fs.readFileSync(filePath)
         }
         await zenUploadFile(`assets_${assetName(uploadPath)}`, fileBuffer, contentType)
@@ -3152,8 +3161,8 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
           for await (const chunk of body) chunks.push(chunk)
           fileBuffer = Buffer.concat(chunks)
         } else {
-          const filePath = path.join(UPLOADS_DIR, relativePath)
-          if (!fs.existsSync(filePath)) return null
+          const filePath = uploadsFile(relativePath)
+          if (!filePath || !fs.existsSync(filePath)) return null
           fileBuffer = fs.readFileSync(filePath)
         }
         const blob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
