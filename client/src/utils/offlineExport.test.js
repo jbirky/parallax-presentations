@@ -44,6 +44,18 @@ describe('offline HTML', () => {
     expect(html).not.toMatch(/<script[^>]*\ssrc=["']https:\/\/cdn\.jsdelivr\.net\/npm\/(reveal\.js|katex|gsap)@/)
   })
 
+  it('fetches uploads to inline, but nothing outside /uploads/', async () => {
+    const fetched = []
+    vi.stubGlobal('fetch', async url => {
+      fetched.push(url)
+      return { ok: true, text: async () => '', blob: async () => new Blob(['png'], { type: 'image/png' }) }
+    })
+    const html = await generateOfflineHTML('<img src="/uploads/p/a.png"><p>/uploads/../api/presentations /uploads/%2e%2e/api/me /uploads/./x</p>')
+    const uploads = fetched.filter(url => url.includes('/uploads/'))
+    expect(uploads).toEqual(['/uploads/p/a.png'])
+    expect(html).toContain('/uploads/../api/presentations')
+  })
+
   it('exports a session’s ink as a page whose scripts all run', async () => {
     serveVendorFiles()
     const deck = { id: 'p1', title: 'T', slides: [{ id: 's1', elements: [] }], annotationSets: [] }
