@@ -116,7 +116,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
       }
       const arrayBuffer = await file.arrayBuffer()
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      // Without eval: pdf.js 3.x can be made to run a PDF's code as the
+      // editor when it compiles fonts with it (CVE-2024-4367)
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise
       const pages = []
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
