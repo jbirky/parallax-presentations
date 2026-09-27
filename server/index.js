@@ -7,7 +7,7 @@ const path = require('path')
 const fs = require('fs-extra')
 const multer = require('multer')
 const { v4: uuidv4 } = require('uuid')
-const { execFileSync } = require('child_process')
+const { execFile } = require('child_process')
 const crypto = require('crypto')
 const os = require('os')
 
@@ -587,14 +587,37 @@ if (IS_CLOUD && stripeService.isEnabled()) {
 // Transcode a video file to H.264 MP4 if its codec isn't web-compatible.
 // Returns the (possibly new) filename. Deletes the original on success.
 const WEB_VIDEO_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1', 'hevc', 'vp08', 'vp09'])
-function videoNeedsTranscode(filePath) {
+// ffmpeg, LibreOffice and pdftoppm on an uploaded file: in a child process
+// the server doesn't wait on (a synchronous one held every request and live
+// editing connection until it finished), killed after `timeout`, two at a
+// time, and with none of the server's environment (its database, storage and
+// sign-in keys), since they parse whatever was uploaded
+const TOOL_ENV = { PATH: process.env.PATH, HOME: '/tmp', LANG: 'C.UTF-8' }
+const TOOLS_AT_ONCE = 2
+let toolsRunning = 0
+const toolQueue = []
+
+async function runTool(cmd, args, { timeout }) {
+  if (toolsRunning >= TOOLS_AT_ONCE) await new Promise(resolve => toolQueue.push(resolve))
+  toolsRunning++
   try {
-    const codec = execFileSync('ffprobe', [
+    return await new Promise((resolve, reject) => {
+      execFile(cmd, args, { timeout, killSignal: 'SIGKILL', env: TOOL_ENV, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => err ? reject(err) : resolve(stdout))
+    })
+  } finally {
+    toolsRunning--
+    toolQueue.shift()?.()
+  }
+}
+
+async function videoNeedsTranscode(filePath) {
+  try {
+    const codec = String(await runTool('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0',
       '-show_entries', 'stream=codec_name',
       '-of', 'default=noprint_wrappers=1:nokey=1',
       filePath
-    ], { encoding: 'utf8' }).trim().toLowerCase()
+    ], { timeout: 30000 })).trim().toLowerCase()
     return !!codec && !WEB_VIDEO_CODECS.has(codec)
   } catch (e) {
     console.error('Video probe error:', e.message)
@@ -604,32 +627,35 @@ function videoNeedsTranscode(filePath) {
 
 // Converts an uploaded video if needed, recording the conversion as the
 // uploader's processing time
-function convertUploadedVideo(req, filePath) {
+async function convertUploadedVideo(req, filePath) {
   const started = Date.now()
-  const converted = transcodeVideoIfNeeded(filePath)
+  const converted = await transcodeVideoIfNeeded(filePath)
   if (converted !== filePath) {
     recordUsage(storage, { userId: req.userId, kind: 'video_conversion', durationMs: Date.now() - started, bytes: req.file.size })
   }
   return converted
 }
 
-function transcodeVideoIfNeeded(filePath) {
-  if (!videoNeedsTranscode(filePath)) return filePath
+// The video as MP4/H.264, or as it was if it plays already, or if ffmpeg
+// fails or takes over 10 minutes
+async function transcodeVideoIfNeeded(filePath) {
+  if (!await videoNeedsTranscode(filePath)) return filePath
+  const dir = path.dirname(filePath)
+  const base = path.basename(filePath, path.extname(filePath))
+  const outPath = path.join(dir, `${base}.mp4`)
   try {
-    const dir = path.dirname(filePath)
-    const base = path.basename(filePath, path.extname(filePath))
-    const outPath = path.join(dir, `${base}.mp4`)
-    execFileSync('ffmpeg', [
+    await runTool('ffmpeg', [
       '-i', filePath,
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
       '-c:a', 'aac',
       '-movflags', '+faststart',
       '-y', outPath
-    ])
+    ], { timeout: 10 * 60 * 1000 })
     if (outPath !== filePath) fs.removeSync(filePath)
     return outPath
   } catch (e) {
     console.error('Video transcode error:', e.message)
+    if (outPath !== filePath) fs.removeSync(outPath)
     return filePath
   }
 }
@@ -2148,11 +2174,11 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
   try {
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      if (req.isGuest && videoNeedsTranscode(filePath)) {
+      if (req.isGuest && await videoNeedsTranscode(filePath)) {
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = convertUploadedVideo(req, filePath)
+      filePath = await convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, {
@@ -2174,11 +2200,11 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      if (req.isGuest && videoNeedsTranscode(filePath)) {
+      if (req.isGuest && await videoNeedsTranscode(filePath)) {
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = convertUploadedVideo(req, filePath)
+      filePath = await convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, {
@@ -2205,15 +2231,15 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     const started = Date.now()
 
     // Convert PPTX → PDF
-    execFileSync('libreoffice', [
+    await runTool('libreoffice', [
       '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpDir, pptxPath
-    ], { timeout: 120000, env: { ...process.env, HOME: '/tmp' } })
+    ], { timeout: 120000 })
 
     const pdfPath = path.join(tmpDir, 'presentation.pdf')
     if (!fs.existsSync(pdfPath)) throw new Error('LibreOffice PDF conversion failed')
 
     // Convert PDF pages → PNG images at 150 dpi
-    execFileSync('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
+    await runTool('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
     recordUsage(storage, { userId: req.userId, kind: 'powerpoint_import', durationMs: Date.now() - started, bytes: req.file.size })
 
     const pngFiles = fs.readdirSync(tmpDir)
