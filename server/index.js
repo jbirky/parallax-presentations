@@ -2442,13 +2442,14 @@ app.post('/api/presentations/:id/live/stop', requireValidId(), async (req, res) 
   res.json({ ok: true })
 })
 
-// POST /api/live/:sessionId/slide — presenter updates current slide
+// POST /api/live/:sessionId/slide — presenter updates current slide. Only
+// whoever started the session: its code is given to the audience
 app.post('/api/live/:sessionId/slide', async (req, res) => {
   const session = liveSessions.get(req.params.sessionId)
-  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (!session || session.userId !== req.userId) return res.status(404).json({ error: 'Session not found' })
 
   const { flatIndex } = req.body
-  if (typeof flatIndex !== 'number') return res.status(400).json({ error: 'flatIndex required' })
+  if (!Number.isInteger(flatIndex) || flatIndex < 0) return res.status(400).json({ error: 'flatIndex required' })
 
   session.currentSlide = flatIndex
   session.unlockedSlides.add(flatIndex)

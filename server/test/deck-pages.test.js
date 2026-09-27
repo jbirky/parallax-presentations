@@ -54,9 +54,16 @@ describe('pages built from a deck', { skip }, () => {
     assert.match(Buffer.from(value).toString(), /^data: \{"type":"init","currentSlide":0/)
     stop.abort()
 
-    // Moving the slides still takes signing in
+    // Moving the slides takes signing in, as whoever started the session
     const move = await fetch(`${t.base}/api/live/${sessionId}/slide`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"flatIndex":1}' })
     assert.equal(move.status, 401)
+    const slide = `/api/live/${sessionId}/slide`
+    assert.equal((await t.call(t.user('audience'), 'POST', slide, { flatIndex: 1 })).status, 404)
+    assert.equal((await t.call(owner, 'POST', slide, { flatIndex: -1 })).status, 400)
+    assert.equal((await t.call(owner, 'POST', slide, { flatIndex: 1.5 })).status, 400)
+    assert.equal((await t.call(owner, 'POST', slide, { flatIndex: 1 })).status, 200)
+    const after = await (await fetch(`${t.base}/api/live/${sessionId}/status`)).json()
+    assert.equal(after.currentSlide, 1)
     await t.call(owner, 'POST', `/api/presentations/${deck}/live/stop`, { sessionId })
   })
 
