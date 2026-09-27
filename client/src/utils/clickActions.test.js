@@ -968,6 +968,9 @@ describe('hovering in presented decks', () => {
   })
 })
 
+// The page a deck's window runs in its sandboxed frame (openDeckWindow)
+const deckIn = html => JSON.parse(html.match(/frame\.srcdoc = (".*");/)[1])
+
 describe('PDF export', () => {
   it('links clickable elements and slide links to the slides’ pages, and leaves out what starts hidden', async () => {
     let blob = null
@@ -987,7 +990,7 @@ describe('PDF export', () => {
         ] },
         { id: 's2', elements: [text('later', { fragment: true, fragmentIndex: 1, clickAction: { type: 'prev' } })] },
       ] })
-      const html = await blob.text()
+      const html = deckIn(await blob.text())
       expect(html).toContain('<div class="slide-page" id="s-s1"')
       expect(html.match(/id="s-s2"/g)).toHaveLength(1) // only the slide's first page
       expect(html).toContain('<a href="#s-s2" style="position:absolute;left:10px;top:20px;width:30px;height:40px;')
@@ -1014,7 +1017,7 @@ describe('PDF export', () => {
         { ...front, text: 'FRONT' }, { ...back, text: 'BACK' },
         text('moved', { content: '<p>MOVED</p>', x: 5, states: [{ id: 'm', x: 400 }], initialState: 'm' }),
       ] }] })
-      const html = await blob.text()
+      const html = deckIn(await blob.text())
       expect(html).toMatch(/left:400px;[^>]*>\s*<p>MOVED/)
       // The back starts turned away, with its back hidden
       const faceOf = word => new RegExp(`<div style="([^"]*)">(?:(?!<div)[\\s\\S])*${word}`).exec(html)?.[1]
@@ -1036,7 +1039,7 @@ describe('PDF export', () => {
       exportPDF({ id: 'p', slides: [{ id: 's1', elements: [
         text('mover', { content: '<p>MOVER</p>', x: 5, states: [{ id: 'far', x: 700 }], stateSteps: { 1: 'far', 2: null } }),
       ] }] })
-      const html = await blob.text()
+      const html = deckIn(await blob.text())
       const lefts = [...html.matchAll(/left:(\d+)px;[^>]*>\s*<p>MOVER/g)].map(m => +m[1])
       expect(lefts).toEqual([5, 700, 5]) // as it opens, after step 1, after step 2
     } finally {

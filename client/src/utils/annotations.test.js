@@ -201,7 +201,9 @@ describe('present-mode HTML', () => {
     expect(generateRevealHTML(deck)).not.toContain('pp-shield')
     const html = generateRevealHTML(deck, { annotate: { set: set('a') } })
     expect(html).toContain('pp-shield')
-    expect(html).toContain(`"backupKey":"${backupKey('p1', 'a')}"`)
+    expect(html).toContain('"message":"parallax-annotations"')
+    // The page around the deck keeps the copy on this device, not the deck
+    expect(html).not.toContain(backupKey('p1', 'a'))
   })
 
   it('keeps a set’s text from closing the script', () => {

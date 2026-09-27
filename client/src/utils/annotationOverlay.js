@@ -9,7 +9,8 @@
 // must use nothing from outside its own body. The data it edits is described
 // in utils/annotations.js.
 //
-// config: { presentationId, set, slideW, slideH, backupKey, message }
+// config: { set, slideW, slideH, message, origin }: origin is the editor's,
+// which the page around the deck has (relayAnnotations)
 
 export function installAnnotations(config) {
   const NS = 'http://www.w3.org/2000/svg'
@@ -27,7 +28,6 @@ export function installAnnotations(config) {
   let penSeen = false // once a stylus draws, fingers go back to changing slides
   let active = null // the stroke or erase in progress
   let sent = false
-  let saveTimer = null
   const undoStacks = {}
 
   // ── Pages: slides and boards ─────────────────────────────────────────────
@@ -202,32 +202,26 @@ export function installAnnotations(config) {
   }
 
   // ── Saving ───────────────────────────────────────────────────────────────
+  // The deck runs in a sandbox, with no storage of this site and no way to the
+  // editor, so each change goes at once to the page around it, which keeps a
+  // copy on this device and sends it on (relayAnnotations), and says how that went
   const hasInk = () => Object.values(set.slides).some(s => s.paths.length) || set.boards.length > 0
   function scheduleSave() {
     status('Saving…')
-    clearTimeout(saveTimer)
-    saveTimer = setTimeout(flush, 600)
+    flush()
   }
-  // Keeps a copy on this device, and sends the set to the editor, which saves it
   function flush() {
-    clearTimeout(saveTimer)
-    saveTimer = null
     if (!hasInk() && !sent) return status('')
-    for (const key of Object.keys(set.slides)) if (!set.slides[key].paths.length) delete set.slides[key]
     set.updatedAt = new Date().toISOString()
-    const data = JSON.stringify(set)
-    try { localStorage.setItem(config.backupKey, data) } catch {}
-    const editor = window.opener
-    if (editor && !editor.closed) {
-      try {
-        editor.postMessage({ type: config.message, presentationId: config.presentationId, set: JSON.parse(data) }, window.location.origin)
-        sent = true
-        return status('Saved')
-      } catch {}
-    }
-    status('Kept on this device. It saves when you next open the presentation.')
+    // Without the slides that have no ink
+    const slides = Object.fromEntries(Object.entries(set.slides).filter(([, s]) => s.paths.length))
+    window.parent.postMessage({ type: config.message, set: { ...set, slides } }, config.origin)
+    sent = true
   }
-  window.addEventListener('pagehide', () => { if (saveTimer) flush() })
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || e.data?.type !== `${config.message}:status`) return
+    status(e.data.saved ? 'Saved' : 'Kept on this device. It saves when you next open the presentation.')
+  })
 
   // ── Input ────────────────────────────────────────────────────────────────
   // While a tool is on, this layer takes pointer input over the slides (embeds
@@ -445,4 +439,43 @@ export function installAnnotations(config) {
   })
   refresh()
   return { flush, setTool, get set() { return set } }
+}
+
+// The page around a deck presented with drawing on (openDeckWindow in
+// generateHTML.js), which has this site's origin: it keeps the ink the deck
+// sends on this device and sends it to the editor, 600 ms after the last
+// change and at once when the window closes. Only its own frame is heard, and
+// only for the set it was opened with. Injected as source text, like
+// installAnnotations.
+//
+// config: { presentationId, setId, backupKey, message }
+export function relayAnnotations(config, frame) {
+  let pending = null
+  let timer = null
+  function flush() {
+    clearTimeout(timer)
+    timer = null
+    if (!pending) return
+    const data = JSON.stringify({ ...pending, id: config.setId })
+    pending = null
+    try { localStorage.setItem(config.backupKey, data) } catch {}
+    const editor = window.opener
+    let saved = false
+    if (editor && !editor.closed) {
+      try {
+        editor.postMessage({ type: config.message, presentationId: config.presentationId, set: JSON.parse(data) }, window.location.origin)
+        saved = true
+      } catch {}
+    }
+    try { frame.contentWindow.postMessage({ type: `${config.message}:status`, saved }, '*') } catch {}
+  }
+  window.addEventListener('message', e => {
+    if (e.source !== frame.contentWindow || e.data?.type !== config.message) return
+    if (!e.data.set || typeof e.data.set !== 'object') return
+    pending = e.data.set
+    clearTimeout(timer)
+    timer = setTimeout(flush, 600)
+  })
+  window.addEventListener('pagehide', flush)
+  return { flush }
 }

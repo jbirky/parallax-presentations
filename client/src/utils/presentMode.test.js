@@ -837,21 +837,22 @@ describe('presenter mode — layout structure', () => {
 })
 
 describe('presenter mode — iframe embed', () => {
-  it('embeds the presentation in an iframe', () => {
+  it('embeds the presentation in a sandboxed iframe, with an origin of its own', () => {
     const doc = parseHTML(generatePresenterHTML(makePresenterPres()))
-    const iframe = doc.getElementById('pv-iframe')
-    expect(iframe).toBeTruthy()
+    const iframe = doc.getElementById('deck')
     expect(iframe.tagName.toLowerCase()).toBe('iframe')
+    const sandbox = iframe.getAttribute('sandbox').split(' ')
+    expect(sandbox).toContain('allow-scripts')
+    expect(sandbox).not.toContain('allow-same-origin')
+    expect(sandbox).not.toContain('allow-top-navigation')
   })
 
-  it('iframe src is a data URL containing the reveal HTML', () => {
-    const doc = parseHTML(generatePresenterHTML(makePresenterPres()))
-    const iframe = doc.getElementById('pv-iframe')
-    const src = iframe.getAttribute('src')
-    expect(src).toMatch(/^data:text\/html;charset=utf-8,/)
-    const decoded = decodeURIComponent(src.replace('data:text/html;charset=utf-8,', ''))
-    expect(decoded).toContain('Reveal.initialize')
-    expect(decoded).toContain('reveal.js')
+  it('fills the iframe with the reveal HTML, which reports its slide', () => {
+    const html = generatePresenterHTML(makePresenterPres())
+    const deck = JSON.parse(html.match(/frame\.srcdoc = (".*");/)[1])
+    expect(deck).toContain('Reveal.initialize')
+    expect(deck).toContain('reveal.js')
+    expect(deck).toContain("type: 'parallax-deck'")
   })
 })
 
@@ -965,10 +966,10 @@ describe('presenter mode — navigation JS', () => {
     expect(html).toContain("e.key === 'ArrowUp'")
   })
 
-  it('has goFlat function that calls Reveal.slide', () => {
+  it('has goFlat function that asks the deck for the slide', () => {
     const html = generatePresenterHTML(makePresenterPres())
     expect(html).toContain('function goFlat')
-    expect(html).toContain('Reveal.slide(idx.h, idx.v)')
+    expect(html).toContain("iframe.contentWindow.postMessage({ type: 'parallax-deck-go', slide: fi }, '*')")
   })
 
   it('has click handlers on prev/next buttons', () => {
@@ -988,11 +989,10 @@ describe('presenter mode — navigation JS', () => {
     expect(html).toContain("Reveal.on('slidechanged'")
   })
 
-  it('builds a flat index map from Reveal slides', () => {
+  it('follows the slide the deck reports, heard only from the deck', () => {
     const html = generatePresenterHTML(makePresenterPres())
-    expect(html).toContain('Reveal.getSlides()')
-    expect(html).toContain('Reveal.getIndices')
-    expect(html).toContain('flatMap')
+    expect(html).toContain("e.source !== iframe.contentWindow || !e.data || e.data.type !== 'parallax-deck'")
+    expect(html).toContain('updateState(e.data.slide)')
   })
 })
 
@@ -1070,6 +1070,25 @@ describe('presenter mode — escaping', () => {
       slides: [{ id: 's1', elements: [], notes: 'Use <b>bold</b> & "quotes"' }],
     })
     const html = generatePresenterHTML(pres)
-    expect(html).toContain('Use <b>bold</b>')
+    expect(html).toContain('Use \\u003cb>bold\\u003c/b>')
+  })
+
+  it('writes the slide size into its script as numbers only', () => {
+    const html = generatePresenterHTML(makePresenterPres({ slideWidth: '1;alert(1)//', slideHeight: '540' }))
+    expect(html).toContain('var aspect = 960 / 540;')
+    expect(html).not.toContain('alert(1)')
+  })
+
+  it('keeps notes from closing the script', () => {
+    const pres = makePresenterPres({ slides: [{ id: 's1', elements: [], notes: '</script><script>alert(1)</script>' }] })
+    expect(generatePresenterHTML(pres)).not.toContain('</script><script>alert(1)')
+  })
+
+  it('keeps a slide background from leaving its style attribute', () => {
+    const pres = makePresenterPres({ slides: [{ id: 's1', elements: [], background: { type: 'color', color: 'red" onmouseover="alert(1)' } }] })
+    const doc = parseHTML(generatePresenterHTML(pres))
+    const thumb = doc.querySelector('.pv-thumb')
+    expect(thumb.getAttribute('onmouseover')).toBeNull()
+    expect(thumb.getAttribute('style')).toContain('red" onmouseover')
   })
 })

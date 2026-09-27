@@ -8,13 +8,17 @@ import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
-import { installAnnotations } from './annotationOverlay'
+import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
+// In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
+// where the deck can't reach into the embed, as in a sandbox
+const EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});"
+
 function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle
   if (/<head[^>]*>/i.test(userHtml))
@@ -75,10 +79,12 @@ function getSlideColumns(slides, presentation = {}) {
 const CUSTOM_TRANSITIONS = ['differential-rotation']
 
 // opts.annotate: { set } adds the Present window's drawing layer, saving into
-// that annotation set (see utils/annotationOverlay.js)
+// that annotation set (see utils/annotationOverlay.js); opts.bridge lets the
+// page it's framed in follow and change its slide (DECK_BRIDGE_SCRIPT)
 export function generateRevealHTML(presentation, opts = {}) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -197,7 +203,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'p5') {
-          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${el.content || ''}<\/script></body></html>`
+          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -740,7 +746,8 @@ ${slidesHtml}
     function notifyIframes(slide) {
       if (!slide) return;
       slide.querySelectorAll('iframe').forEach(function(fr) {
-        try { fr.contentWindow.dispatchEvent(new Event('resize')); } catch(ex) {}
+        try { fr.contentWindow.dispatchEvent(new Event('resize')); }
+        catch(ex) { try { fr.contentWindow.postMessage('parallax-resize', '*'); } catch(ex2) {} }
       });
     }
     Reveal.on('ready',        function(e) { notifyIframes(e.currentSlide); });
@@ -1057,6 +1064,7 @@ ${showTimeWidget ? `
 ` : ''}
   </script>
 ${opts.annotate ? annotationScript(presentation, opts.annotate.set) : ''}
+${opts.bridge ? DECK_BRIDGE_SCRIPT : ''}
 </body>
 </html>`
 }
@@ -1064,7 +1072,7 @@ ${opts.annotate ? annotationScript(presentation, opts.annotate.set) : ''}
 // The drawing layer's source, started once reveal.js is ready
 function annotationScript(presentation, set) {
   const config = {
-    presentationId: presentation.id, set, message: ANNOTATION_MESSAGE, backupKey: backupKey(presentation.id, set.id),
+    set, message: ANNOTATION_MESSAGE, origin: globalThis.location?.origin || '*',
     slideW: presentation.slideWidth || 960, slideH: presentation.slideHeight || 540,
   }
   // Written into a <script>: no "</script>" or "<!--" can come from the data
@@ -1123,11 +1131,7 @@ export function previewSlideInWindow(presentation, slideIndex) {
   const slide = presentation.slides[slideIndex]
   if (!slide) return
   const singleSlide = { ...presentation, slides: [slide] }
-  const html = localizeLibraries(generateRevealHTML(singleSlide))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  openDeckWindow(localizeLibraries(generateRevealHTML(singleSlide)), { title: presentation.title })
 }
 
 // ─── PDF export (print-ready HTML, one page per fragment state) ───────────────
@@ -1144,8 +1148,9 @@ function getBgPrintStyle(bg) {
 }
 
 function generatePrintHTML(presentation) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -1451,82 +1456,147 @@ ${pagesHtml}
       });
       setTimeout(function() { window.print(); }, 1000);
     });
+    // Printing these pages, not the one frame of them the window around shows
+    window.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
+    });
+    window.addEventListener('message', function(e) {
+      if (e.source === window.parent && e.data === 'parallax-print') window.print();
+    });
   </script>
 </body>
 </html>`
 }
 
 export function exportPDF(presentation) {
-  const html = localizeLibraries(generatePrintHTML(presentation))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 120000)
+  // Ctrl/Cmd+P prints the deck's pages, not the window's one frame of them
+  const print = `window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); frame.contentWindow.postMessage('parallax-print', '*') }
+  })`
+  openDeckWindow(localizeLibraries(generatePrintHTML(presentation)), { title: presentation.title, script: print })
 }
+
+// ─── Windows opened from the editor ──────────────────────────────────────────
+// Present, Presenter Mode, a slide preview and the PDF open in windows of
+// their own: blob: pages with this site's origin and the editor as
+// window.opener. A deck runs its author's code (HTML embeds, and whatever its
+// text holds), and the author may be a collaborator, so each window is a
+// small page of ours that runs the deck in a sandboxed frame, with an origin
+// of its own: no cookies or storage of this site, and no way into the editor.
+// What the deck needs from outside (saving ink, the live slide) it asks the
+// page for by postMessage.
+
+// The same as share links' (server/index.js DECK_PAGE_SANDBOX); never
+// allow-same-origin
+export const DECK_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+
+// A value written into a <script> as JavaScript: no "</script>" or "<!--" can
+// come from it
+const scriptValue = value => JSON.stringify(value).replace(/</g, '\\u003c')
+
+// A deck's frame, and the script that fills it; `script` runs after, with
+// `frame` in scope. A srcdoc page's links resolve against the page around it,
+// a blob: URL, so slide links (#/s-…) and reveal.js's own would leave the
+// deck: they resolve against the deck itself (its other URLs are absolute).
+function deckFrameHTML(deckHtml, script = '') {
+  const base = '<base href="about:srcdoc">'
+  deckHtml = /<head[^>]*>/i.test(deckHtml) ? deckHtml.replace(/<head[^>]*>/i, m => m + base) : base + deckHtml
+  return {
+    frame: `<iframe id="deck" sandbox="${DECK_SANDBOX}" allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`,
+    script: `<script>
+  (function () {
+    var frame = document.getElementById('deck');
+    frame.addEventListener('load', function () { frame.focus() });
+    frame.srcdoc = ${scriptValue(deckHtml)};
+    ${script}
+  })()
+  </script>`,
+  }
+}
+
+// The page of a deck's window: the deck filling it
+export function deckWindowHTML(deckHtml, { title = 'Presentation', script = '' } = {}) {
+  const deck = deckFrameHTML(deckHtml, script)
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title || 'Presentation')}</title>
+  <style>html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; } #deck { display: block; width: 100%; height: 100%; border: 0; }</style>
+</head>
+<body>
+  ${deck.frame}
+  ${deck.script}
+</body>
+</html>`
+}
+
+function openDeckWindow(deckHtml, options) {
+  const blob = new Blob([deckWindowHTML(deckHtml, options)], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const win = window.open(url, '_blank')
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  return win
+}
+
+// In a deck framed by one of those pages (opts.bridge): tells the page which
+// slide is shown, as its index in Reveal.getSlides(), and goes to the slide it
+// asks for. Only the page around the deck is heard.
+const DECK_BRIDGE_SCRIPT = `  <script>
+  (function () {
+    function send() {
+      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(Reveal.getCurrentSlide()), total: Reveal.getTotalSlides() }, '*');
+    }
+    window.addEventListener('message', function (e) {
+      if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;
+      var s = Reveal.getSlides()[e.data.slide];
+      if (s) { var i = Reveal.getIndices(s); Reveal.slide(i.h, i.v); }
+    });
+    if (Reveal.isReady()) send(); else Reveal.on('ready', send);
+    Reveal.on('slidechanged', send);
+  })()
+  </script>`
 
 // With an annotation set, the window can be drawn on and saves into that set
 export function presentInWindow(presentation, { annotationSet } = {}) {
-  const html = localizeLibraries(generateRevealHTML(presentation, annotationSet ? { annotate: { set: annotationSet } } : {}))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  const set = annotationSet
+  const deck = localizeLibraries(generateRevealHTML(presentation, set ? { annotate: { set } } : {}))
+  const relay = set ? `(${relayAnnotations.toString()})(${scriptValue({
+    presentationId: presentation.id, setId: set.id, backupKey: backupKey(presentation.id, set.id), message: ANNOTATION_MESSAGE,
+  })}, frame)` : ''
+  openDeckWindow(deck, { title: presentation.title, script: relay })
+}
+
+// The page around a live-presented deck, which is signed in (its origin is
+// this site's): tells the server each slide the deck shows, and shows how many
+// are watching, here and in the editor (window.__liveViewerCount). Injected
+// as source text.
+export function relayLiveSlides(config, frame) {
+  const badge = document.createElement('div')
+  badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
+  badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pp-live-pulse 1.5s infinite;display:inline-block"></span> LIVE <span class="pp-live-count" style="opacity:0.8">0 viewers</span>'
+  const style = document.createElement('style')
+  style.textContent = '@keyframes pp-live-pulse{0%,100%{opacity:1}50%{opacity:0.4}}'
+  document.head.appendChild(style)
+  document.body.appendChild(badge)
+  window.addEventListener('message', e => {
+    if (e.source !== frame.contentWindow || e.data?.type !== 'parallax-deck' || !Number.isInteger(e.data.slide) || e.data.slide < 0) return
+    fetch(`${window.location.origin}/api/live/${encodeURIComponent(config.sessionId)}/slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flatIndex: e.data.slide }),
+    }).then(r => r.json()).then(data => {
+      const n = data.viewers || 0
+      badge.querySelector('.pp-live-count').textContent = `${n} viewer${n !== 1 ? 's' : ''}`
+      try { if (window.opener && window.opener.__liveViewerCount) window.opener.__liveViewerCount(n) } catch {}
+    }).catch(() => {})
+  })
 }
 
 export function livePresentInWindow(presentation, sessionId, onViewerCount) {
-  const origin = window.location.origin
-  const baseHtml = localizeLibraries(generateRevealHTML(presentation))
-  const liveScript = `
-  <script>
-  (function() {
-    var sessionId = '${sessionId}';
-    var origin = '${origin}';
-    var badge = document.createElement('div');
-    badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;';
-    badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pulse 1.5s infinite;display:inline-block"></span> LIVE <span id="live-count" style="opacity:0.8">0 viewers</span>';
-    document.body.appendChild(badge);
-    var style = document.createElement('style');
-    style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}';
-    document.head.appendChild(style);
-
-    var flatMap = [];
-    Reveal.on('ready', function() {
-      Reveal.getSlides().forEach(function(s) { flatMap.push(Reveal.getIndices(s)); });
-      sendSlide();
-    });
-
-    function currentFlat() {
-      var idx = Reveal.getIndices();
-      for (var i = 0; i < flatMap.length; i++) {
-        if (flatMap[i].h === idx.h && flatMap[i].v === idx.v) return i;
-      }
-      return 0;
-    }
-
-    function sendSlide() {
-      fetch(origin + '/api/live/' + sessionId + '/slide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flatIndex: currentFlat() })
-      }).then(function(r) { return r.json(); }).then(function(data) {
-        var el = document.getElementById('live-count');
-        if (el) el.textContent = (data.viewers || 0) + ' viewer' + ((data.viewers || 0) !== 1 ? 's' : '');
-        if (window.opener && window.opener.__liveViewerCount) window.opener.__liveViewerCount(data.viewers || 0);
-      }).catch(function() {});
-    }
-
-    Reveal.on('slidechanged', sendSlide);
-  })();
-  <\\/script>`
-  const lastBodyIdx = baseHtml.lastIndexOf('</body>')
-  const html = lastBodyIdx >= 0
-    ? baseHtml.slice(0, lastBodyIdx) + liveScript + '\n</body>' + baseHtml.slice(lastBodyIdx + 7)
-    : baseHtml + liveScript
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  const win = window.open(url, '_blank')
+  const deck = localizeLibraries(generateRevealHTML(presentation, { bridge: true }))
+  const win = openDeckWindow(deck, { title: presentation.title, script: `(${relayLiveSlides.toString()})(${scriptValue({ sessionId })}, frame)` })
   if (onViewerCount) window.__liveViewerCount = onViewerCount
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
   return win
 }
 
@@ -1539,33 +1609,31 @@ export function presenterInWindow(presentation) {
 }
 
 export function generatePresenterHTML(presentation) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const slides = presentation.slides || []
 
-  const slideMeta = JSON.stringify(slides.map(s => ({
+  const slideMeta = scriptValue(slides.map(s => ({
     notes: s.notes || '',
     section: s.section || '',
   })))
 
-  // Localized before it becomes a data: URL, where links can't be found
-  const revealHTML = localizeLibraries(generateRevealHTML({
-    ...presentation,
-    _presenterEmbed: true,
-  }))
-  const revealDataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(revealHTML)}`
+  // The deck in a sandbox (deckFrameHTML), telling this page its slide
+  const deck = deckFrameHTML(localizeLibraries(generateRevealHTML(presentation, { bridge: true })))
 
   const thumbScale = 140 / slideW
   const thumbH = Math.round(140 * slideH / slideW)
   const thumbEntries = slides.map((slide, i) => {
-    const bgStyle = (() => {
+    // Escaped: this page has this site's origin
+    const bgStyle = escapeHtml((() => {
       const bg = slide.background
       if (!bg) return 'background:#1e1e2e;'
       if (bg.type === 'color') return `background:${bg.color || '#1e1e2e'};`
       if (bg.type === 'gradient') return `background:${bg.gradient || '#1e1e2e'};`
       if (bg.type === 'image' && bg.image) return `background-image:url(${absoluteSrc(bg.image)});background-size:${bg.size||'cover'};background-position:${bg.position||'center'};`
       return 'background:#1e1e2e;'
-    })()
+    })())
     const textEls = (slide.elements || [])
       .filter(el => el.type === 'text')
       .sort((a, b) => a.y - b.y)
@@ -1592,7 +1660,7 @@ export function generatePresenterHTML(presentation) {
     .pv-header-slide { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 600; }
     .pv-header-time { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
     .pv-iframe-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px; overflow: hidden; }
-    .pv-iframe-wrap iframe { border: none; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    .pv-iframe-wrap iframe { border: none; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); background: #000; }
     .pv-sidebar { width: 320px; min-width: 260px; max-width: 400px; display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.06); background: #111119; overflow: hidden; resize: horizontal; }
     .pv-notes { flex: 1; overflow-y: auto; padding: 16px; min-height: 0; }
     .pv-notes-label { font-size: 10px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
@@ -1626,7 +1694,7 @@ export function generatePresenterHTML(presentation) {
         </div>
       </div>
       <div class="pv-iframe-wrap" id="pv-iframe-wrap">
-        <iframe id="pv-iframe" src="${revealDataUrl}"></iframe>
+        ${deck.frame}
       </div>
     </div>
     <div class="pv-sidebar">
@@ -1642,16 +1710,16 @@ export function generatePresenterHTML(presentation) {
       </div>
     </div>
   </div>
+  ${deck.script}
   <script>
     var SLIDES = ${slideMeta};
     var TOTAL = SLIDES.length;
     var currentFlat = 0;
-    var iframe = document.getElementById('pv-iframe');
+    var iframe = document.getElementById('deck');
     var notesText = document.getElementById('pv-notes-text');
     var indicator = document.getElementById('pv-slide-indicator');
     var elapsedEl = document.getElementById('pv-elapsed');
     var thumbs = document.querySelectorAll('.pv-thumb');
-    var Reveal = null;
     var startTime = Date.now();
 
     // Elapsed timer
@@ -1677,6 +1745,7 @@ export function generatePresenterHTML(presentation) {
       iframe.style.height = h + 'px';
     }
     window.addEventListener('resize', sizeIframe);
+    sizeIframe();
 
     function updateState(flatIdx) {
       currentFlat = flatIdx;
@@ -1695,46 +1764,19 @@ export function generatePresenterHTML(presentation) {
       if (activeThumb) activeThumb.scrollIntoView({ inline: 'nearest', behavior: 'smooth' });
     }
 
-    // Build flat index map from Reveal's h,v coordinates
-    var flatMap = {}; // "h,v" -> flatIdx
-    iframe.addEventListener('load', function() {
-      sizeIframe();
-      try {
-        var iWin = iframe.contentWindow;
-        Reveal = iWin.Reveal;
-        // Wait for Reveal to be ready
-        function tryInit() {
-          if (!Reveal || !Reveal.isReady || !Reveal.isReady()) {
-            setTimeout(tryInit, 100);
-            return;
-          }
-          // Build flat map
-          var slides = Reveal.getSlides();
-          slides.forEach(function(s, i) {
-            var idx = Reveal.getIndices(s);
-            flatMap[idx.h + ',' + idx.v] = i;
-          });
-          Reveal.on('slidechanged', function(e) {
-            var key = (e.indexh || 0) + ',' + (e.indexv || 0);
-            var fi = flatMap[key];
-            if (fi != null) updateState(fi);
-          });
-          updateState(0);
-        }
-        tryInit();
-      } catch(e) { console.warn('Presenter: could not access iframe Reveal', e); }
+    // The deck says which slide it shows (DECK_BRIDGE_SCRIPT), as its index
+    // in Reveal.getSlides(); only the deck's own frame is heard
+    iframe.addEventListener('load', sizeIframe);
+    window.addEventListener('message', function(e) {
+      if (e.source !== iframe.contentWindow || !e.data || e.data.type !== 'parallax-deck') return;
+      if (typeof e.data.slide === 'number' && e.data.slide >= 0) updateState(e.data.slide);
     });
+    updateState(0);
 
     // Navigation
     function goFlat(fi) {
       fi = Math.max(0, Math.min(TOTAL - 1, fi));
-      if (Reveal) {
-        var slides = Reveal.getSlides();
-        if (slides[fi]) {
-          var idx = Reveal.getIndices(slides[fi]);
-          Reveal.slide(idx.h, idx.v);
-        }
-      }
+      iframe.contentWindow.postMessage({ type: 'parallax-deck-go', slide: fi }, '*');
     }
     document.getElementById('pv-prev').onclick = function() { goFlat(currentFlat - 1); };
     document.getElementById('pv-next').onclick = function() { goFlat(currentFlat + 1); };

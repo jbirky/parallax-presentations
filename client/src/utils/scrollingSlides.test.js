@@ -300,6 +300,9 @@ describe('the scrolling script', () => {
   })
 })
 
+// The page a deck's window runs in its sandboxed frame (openDeckWindow)
+const deckIn = html => JSON.parse(html.match(/frame\.srcdoc = (".*");/)[1])
+
 describe('PDF export of a scrolling slide', () => {
   async function printed(deck) {
     let blob = null
@@ -309,7 +312,7 @@ describe('PDF export of a scrolling slide', () => {
     vi.useFakeTimers()
     try {
       exportPDF(deck)
-      return await blob.text()
+      return deckIn(await blob.text())
     } finally {
       vi.useRealTimers()
       createObjectURL.mockRestore()
