@@ -53,7 +53,7 @@ When presenting:
 
 ### Hotspots
 
-To add a hotspot that's already set up, open **Layout ▾** in the toolbar and click **Hotspot**. This adds a round marker and a card that shows while the pointer is over the marker. Double-click the card's text to edit it, and drag the marker and the card where you want them. The card's box and text are grouped, so they move together.
+To add a hotspot that's already set up, open **Interactive ▾** in the toolbar and click **Hotspot**. This adds a round marker and a card that shows while the pointer is over the marker. Double-click the card's text to edit it, and drag the marker and the card where you want them. The card's box and text are grouped, so they move together.
 
 ## Showing and hiding elements
 
@@ -67,7 +67,7 @@ When presenting, elements fade in and out, and each time you come back to a slid
 
 To add tabs that are already set up:
 
-1. Open **Layout ▾** in the toolbar.
+1. Open **Interactive ▾** in the toolbar.
 2. Next to **Tabs**, click **2**, **3** or **4**.
 
 This adds a row of tab buttons over a panel. Clicking a tab shows its own text, with a bar under the tab, and hides the other tabs' text. Tab 1 shows first.
@@ -107,8 +107,8 @@ Steps count with the slide's fragments: an element that changes state at step 2 
 
 ### Presets with states
 
-- **Layout ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped, and clicking the card selects the face you see: change its words with **Label Text**. To edit the back, pick the card's name under **Show on canvas**, which shows the slide after the card is clicked.
-- **Layout ▾ → Quiz answers** adds a question and three answers. Clicking the first turns it green, and the others turn red.
+- **Interactive ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped, and clicking the card selects the face you see: change its words with **Label Text**. To edit the back, pick the card's name under **Show on canvas**, which shows the slide after the card is clicked.
+- **Interactive ▾ → Quiz answers** adds a question and three answers. Clicking the first turns it green, and the others turn red.
 - **Zoom in when clicked**, under **States** for an element that has none, adds a **Zoomed** state that brings the element to the middle of the slide, larger and in front, and a click that toggles it.
 
 ## Editing slides with hidden elements
