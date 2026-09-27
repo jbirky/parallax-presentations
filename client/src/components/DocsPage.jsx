@@ -102,6 +102,9 @@ function renderMarkdown(md) {
   return html
 }
 
+const DOC_LINK = /^[a-z0-9_-]+\/[a-z0-9_-]+$/i
+const NOT_FOUND = '# Not Found\n\nThis documentation page could not be loaded.'
+
 const SECTION_META = {
   guide: { label: 'Guide', icon: Book, group: 'Getting Started' },
   features: { label: 'Features', icon: FileText, group: 'Features' },
@@ -125,9 +128,12 @@ export default function DocsPage({ initialPage }) {
   const loadPage = useCallback((link) => {
     setActivePage(link)
     setLoading(true)
-    const [section, page] = link.split('/')
-    fetch(`/api/docs/${section}/${page}`)
-      .then(r => r.ok ? r.text() : '# Not Found\n\nThis documentation page could not be loaded.')
+    // Only docs pages, which the docs route sends as text: a link from the
+    // URL like #docs/../presentations would fetch another API route, and
+    // its JSON (deck titles and all) would go into the page as HTML
+    if (!DOC_LINK.test(link)) { setContent(renderMarkdown(NOT_FOUND)); setLoading(false); return }
+    fetch(`/api/docs/${link}`)
+      .then(r => r.ok && (r.headers.get('content-type') || '').startsWith('text/plain') ? r.text() : NOT_FOUND)
       .then(md => { setContent(renderMarkdown(md)); setLoading(false) })
       .catch(() => { setContent('<p>Failed to load documentation.</p>'); setLoading(false) })
   }, [])
