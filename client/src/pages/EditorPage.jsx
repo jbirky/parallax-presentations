@@ -50,7 +50,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
+import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
@@ -739,7 +739,12 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     const only = selectedElementIds.length === 1 && selectedElementIds[0] === recording.elementId
     if (!only || !el?.states?.some(st => st.id === recording.stateId)) setRecording(null)
   }, [recording, selectedElementIds, currentSlide])
-  const setPreviewMode = mode => { if (currentSlide) setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode })) }
+  // A selected flip card is edited on the face the new preview shows
+  const setPreviewMode = mode => {
+    if (!currentSlide) return
+    setClickPreview(prev => ({ ...prev, [currentSlide.id]: mode }))
+    setSelectedElementIds(ids => seenLast(currentSlide.elements, ids, mode))
+  }
 
   // Selecting a tab or hotspot previews its click or hover, and selecting
   // something the preview hides switches to a click or hover that shows it
@@ -1479,7 +1484,9 @@ function draw() {
         )
       }
     })
-    setSelectedElementIds([newElements[pick].id])
+    // With the rest of its group, as clicking it would
+    const picked = newElements[pick]
+    setSelectedElementIds([...newElements.filter(el => picked.groupId && el.groupId === picked.groupId && el !== picked).map(el => el.id), picked.id])
   }, [currentSlide, slideW, slideH])
 
   const addModularGrid = useCallback((moduleShape, cols, rows, gap) => {
@@ -1806,12 +1813,13 @@ function draw() {
     if (multi) {
       setSelectedElementIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
     } else {
-      // If element is in a group, select all group members
+      // If element is in a group, select all group members, with the one
+      // clicked last for the Properties panel to edit
       const slide = presentation?.slides[currentSlideIndexRef.current]
       const el = slide?.elements?.find(e => e.id === id)
       if (el?.groupId) {
-        const groupIds = (slide?.elements || []).filter(e => e.groupId === el.groupId).map(e => e.id)
-        setSelectedElementIds(groupIds)
+        const groupIds = (slide?.elements || []).filter(e => e.groupId === el.groupId && e.id !== id).map(e => e.id)
+        setSelectedElementIds([...groupIds, id])
       } else {
         setSelectedElementIds([id])
       }
@@ -3815,6 +3823,7 @@ function draw() {
               slide={canvasSlide}
               remoteUse={remoteUse}
               fadedIds={canvasFadedIds}
+              unseenIds={preview.unseenIds}
               selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
               showGrid={showGrid}

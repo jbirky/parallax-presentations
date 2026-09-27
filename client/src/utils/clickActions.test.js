@@ -349,6 +349,34 @@ describe('previewing states on the canvas', () => {
   it('shows what’s selected as it is, to be edited', () => {
     const preview = client.canvasClickPreview(els, null, [back.id])
     expect(preview.elements.find(e => e.id === back.id)).toBe(back)
+    expect(preview.unseenIds.size).toBe(0)
+  })
+
+  it('keeps a selected flip card’s turned-away face unseen, for the face being edited', () => {
+    // The front clicked, so edited: the back is there, to move with it, but unseen
+    const start = client.canvasClickPreview(els, null, [back.id, front.id])
+    expect(start.elements.map(e => e.id)).toEqual([front.id, back.id])
+    expect([...start.unseenIds]).toEqual([back.id])
+    expect(start.fadedIds.size).toBe(0)
+    // After the click, the other way round
+    expect([...client.canvasClickPreview(els, front.id, [front.id, back.id]).unseenIds]).toEqual([front.id])
+    expect(client.canvasClickPreview(els, 'all', [back.id, front.id]).unseenIds.size).toBe(0)
+  })
+
+  it('edits the face of a selected flip card that the preview shows', () => {
+    expect(client.seenLast(els, [back.id, front.id], front.id)).toEqual([front.id, back.id])
+    expect(client.seenLast(els, [front.id, back.id], 'start')).toEqual([back.id, front.id])
+    const kept = [back.id, front.id]
+    expect(client.seenLast(els, kept, 'start')).toBe(kept)
+    expect(client.seenLast(els, kept, 'all')).toBe(kept)
+    const alone = [back.id]
+    expect(client.seenLast(els, alone, 'start')).toBe(alone) // nothing seen to swap to
+    expect(client.seenLast(els, [], 'start')).toEqual([])
+  })
+
+  it('doesn’t preview a click that turns over what’s selected', () => {
+    expect(client.previewForSelection(els, front.id, 'start')).toBeNull()
+    expect(client.previewForSelection(els, back.id, front.id)).toBeNull()
   })
 
   it('previews a hover’s state, and a cycle of states', () => {

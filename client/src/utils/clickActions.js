@@ -865,16 +865,25 @@ export function canvasClickPreview(elements, mode, selectedIds = []) {
     : mode === 'all' || clickers.some(c => c.id === mode) || hovers.some(h => hoverPreview(h.id) === mode) ? mode
     : 'start'
   const selected = new Set(selectedIds)
-  // What's selected shows as it is, to be edited; the rest in their states
+  const editing = selectedIds[selectedIds.length - 1]
+  // What's selected shows as it is, to be edited; the rest in their states.
+  // What else is selected with the element being edited and turned away by
+  // its state stays on the canvas unseen, to move with it: a flip card's back
   const states = current === 'all' ? new Map() : statesInPreview(all, current)
   const hidden = current === 'all' ? new Set() : hiddenInPreview(all, current)
+  const unseen = new Set()
   const shown = !states.size ? all : all.map(el => {
-    if (!states.get(el.id) || selected.has(el.id)) return el
-    if (hiddenByState(el, states.get(el.id))) hidden.add(el.id)
-    return withState(el, states.get(el.id))
+    const state = states.get(el.id)
+    if (!state) return el
+    if (selected.has(el.id)) {
+      if (el.id !== editing && hiddenByState(el, state)) unseen.add(el.id)
+      return el
+    }
+    if (hiddenByState(el, state)) hidden.add(el.id)
+    return withState(el, state)
   })
   return {
-    canPreview, clickers, hovers, mode: current, states,
+    canPreview, clickers, hovers, mode: current, states, unseenIds: unseen,
     elements: hidden.size ? shown.filter(el => !hidden.has(el.id) || selected.has(el.id)) : shown,
     fadedIds: new Set(current === 'all'
       ? all.filter(el => el.startHidden && !selected.has(el.id)).map(el => el.id)
@@ -882,9 +891,26 @@ export function canvasClickPreview(elements, mode, selectedIds = []) {
   }
 }
 
+// Whether the canvas preview `mode` turns `el` away with its state
+function turnedAwayIn(elements, mode, el) {
+  const state = mode === 'all' ? '' : statesInPreview(elements, mode).get(el.id)
+  return !!state && hiddenByState(el, state)
+}
+
+// `selectedIds` for the preview `mode`, with one it shows last, to be edited,
+// if it turns the last away: the face of a selected flip card that's seen
+export function seenLast(elements, selectedIds, mode) {
+  const all = elements || []
+  const away = id => { const el = all.find(e => e.id === id); return !!el && turnedAwayIn(all, mode, el) }
+  if (!selectedIds.length || !away(selectedIds[selectedIds.length - 1])) return selectedIds
+  const seen = [...selectedIds].reverse().find(id => !away(id))
+  return seen ? [...selectedIds.filter(id => id !== seen), seen] : selectedIds
+}
+
 // The preview to switch to when `selectedId` is selected: its own click if
-// it's a clicker (or in a clicker's group), else its own hover, or a click or
-// hover that shows it if the current preview hides it; null to stay
+// it's a clicker (or in a clicker's group) and the click doesn't turn it away
+// (a flip card's front), else its own hover, or a click or hover that shows
+// it if the current preview hides it; null to stay
 export function previewForSelection(elements, selectedId, mode) {
   const el = (elements || []).find(e => e.id === selectedId)
   if (!el) return null
@@ -894,7 +920,7 @@ export function previewForSelection(elements, selectedId, mode) {
   const clicker = clickers.find(own)
   const hover = hovers.find(own)
   const ownMode = clicker ? clicker.id : hover ? hoverPreview(hover.id) : null
-  if (ownMode) return ownMode === mode ? null : ownMode
+  if (ownMode && !turnedAwayIn(elements, ownMode, el)) return ownMode === mode ? null : ownMode
   if (mode === 'all' || !hiddenInPreview(elements, mode).has(el.id)) return null
   const shower = clickers.find(c => ['show', 'toggle'].some(k => idList(c.clickAction[k]).includes(el.id)))
   if (shower) return shower.id

@@ -107,7 +107,7 @@ Steps count with the slide's fragments: an element that changes state at step 2 
 
 ### Presets with states
 
-- **Layout ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped; change their labels with **Label Text**.
+- **Layout ▾ → Flip card** adds a front and a back that turn over, in 3D, when clicked. They're grouped, and clicking the card selects the face you see: change its words with **Label Text**. To edit the back, pick the card's name under **Show on canvas**, which shows the slide after the card is clicked.
 - **Layout ▾ → Quiz answers** adds a question and three answers. Clicking the first turns it green, and the others turn red.
 - **Zoom in when clicked**, under **States** for an element that has none, adds a **Zoomed** state that brings the element to the middle of the slide, larger and in front, and a click that toggles it.
 
