@@ -24,7 +24,7 @@ describe('pages built from a deck', { skip }, () => {
     t = await startCloudServer()
     owner = t.user('owner')
     deck = await t.createDeck(owner, 'Sandboxed talk', {
-      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 100, height: 40, content: '<p>Hi</p>' }] }, { id: 's2', elements: [] }],
+      slides: [{ id: 's1', notes: 'SPEAKER ONLY', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 100, height: 40, content: '<p>Hi</p>' }] }, { id: 's2', elements: [] }],
     })
   })
   after(() => t?.stop())
@@ -33,12 +33,20 @@ describe('pages built from a deck', { skip }, () => {
     const { token } = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body
     const res = await fetch(`${t.base}/share/${token}`)
     assertSandboxed(res)
-    assert.match(await res.text(), /<p>Hi<\/p>/)
+    const html = await res.text()
+    assert.match(html, /<p>Hi<\/p>/)
+    // Speaker notes stay with whoever presents: anyone with the link opens this
+    assert.doesNotMatch(html, /SPEAKER ONLY/)
+    const own = await fetch(`${t.base}/api/presentations/${deck}/present`, { headers: { 'X-Test-User': owner } })
+    assert.match(await own.text(), /SPEAKER ONLY/)
   })
 
   it('serves a live session in a sandbox, and its slide feed to anyone', async () => {
     const { sessionId } = (await t.call(owner, 'POST', `/api/presentations/${deck}/live/start`)).body
-    assertSandboxed(await fetch(`${t.base}/live/${sessionId}`))
+    assert.match(sessionId, /^[a-z2-9]{6}$/)
+    const page = await fetch(`${t.base}/live/${sessionId}`)
+    assertSandboxed(page)
+    assert.doesNotMatch(await page.text(), /SPEAKER ONLY/)
 
     // As the sandboxed page asks: from origin null, not signed in
     const status = await fetch(`${t.base}/api/live/${sessionId}/status`, { headers: { Origin: 'null' } })

@@ -8,6 +8,7 @@ const fs = require('fs-extra')
 const multer = require('multer')
 const { v4: uuidv4 } = require('uuid')
 const { execFileSync } = require('child_process')
+const crypto = require('crypto')
 const os = require('os')
 
 const app = express()
@@ -41,7 +42,7 @@ const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plu
 const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
   safeErrorMessage,
@@ -648,7 +649,8 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
   return injection + userHtml
 }
 
-// Generate reveal.js HTML
+// Generate reveal.js HTML. opts.notes: false leaves speaker notes out, for
+// pages anyone with a link can open (share links, live sessions)
 function generateRevealHTML(presentation, opts = {}) {
   const customFonts = opts.customFonts || []
   const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
@@ -688,7 +690,7 @@ function generateRevealHTML(presentation, opts = {}) {
 
   const slideEntries = (presentation.slides || []).map((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background)
-    const notes = slide.notes ? `<aside class="notes">${slide.notes}</aside>` : ''
+    const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
@@ -2398,12 +2400,12 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
   }
 })
 
-app.get('/share/:token', requireValidId('token'), async (req, res) => {
+app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false })))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2413,10 +2415,11 @@ app.get('/share/:token', requireValidId('token'), async (req, res) => {
 
 const liveSessions = new Map()
 
+// Anyone with the code can watch, so it comes from crypto, not Math.random
 function generateSessionCode() {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789'
   let code = ''
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
+  for (let i = 0; i < 6; i++) code += chars[crypto.randomInt(chars.length)]
   return code
 }
 
@@ -2521,7 +2524,7 @@ app.get('/api/live/:sessionId/status', (req, res) => {
 })
 
 // GET /live/:sessionId — serve viewer page (public, no auth)
-app.get('/live/:id', async (req, res) => {
+app.get('/live/:id', deckPageLimiter, async (req, res) => {
   const session = liveSessions.get(req.params.id)
   if (!session) return res.status(404).send('Live session not found or has ended.')
 
@@ -2529,7 +2532,7 @@ app.get('/live/:id', async (req, res) => {
     const presentation = await storage.getPresentation(session.presentationId, session.userId)
     if (!presentation) return res.status(404).send('Presentation not found')
 
-    const baseHtml = localizeLibraries(generateRevealHTML(presentation))
+    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false }))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────

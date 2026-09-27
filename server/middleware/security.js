@@ -77,6 +77,18 @@ const authLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
 })
 
+// Pages built from a deck (share links, live sessions): outside /api, each
+// builds the whole deck. Per address, with room for a class behind one NAT
+const deckPageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_CLOUD ? 600 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+  skip: () => !IS_CLOUD,
+  message: 'Too many requests, please try again later',
+})
+
 // --- Validation helpers ---
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -200,6 +212,7 @@ module.exports = {
   clientIpKey,
   apiLimiter,
   uploadLimiter,
+  deckPageLimiter,
   authLimiter,
   requireValidId,
   requireValidSlug,
