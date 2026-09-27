@@ -8,12 +8,17 @@ import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
 import { tikzDiagramSvg } from './tikzDiagram'
-import { installAnnotations } from './annotationOverlay'
+import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { clickActionAttrs, slideIdAttr, visibilityTargets, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
+import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
+
+// In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
+// where the deck can't reach into the embed, as in a sandbox
+const EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});"
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
+  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle
   if (/<head[^>]*>/i.test(userHtml))
@@ -74,10 +79,12 @@ function getSlideColumns(slides, presentation = {}) {
 const CUSTOM_TRANSITIONS = ['differential-rotation']
 
 // opts.annotate: { set } adds the Present window's drawing layer, saving into
-// that annotation set (see utils/annotationOverlay.js)
+// that annotation set (see utils/annotationOverlay.js); opts.bridge lets the
+// page it's framed in follow and change its slide (DECK_BRIDGE_SCRIPT)
 export function generateRevealHTML(presentation, opts = {}) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -121,15 +128,20 @@ export function generateRevealHTML(presentation, opts = {}) {
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
     const clickTargets = visibilityTargets(slide)
-    const elementsHtml = (slide.elements || [])
+    const canvasH = getCanvasHeight(slide, slideH)
+    const scrolling = canvasH > slideH
+    const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    const renderedElements = sortedElements
       .map(el => {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
           ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
           : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+        // The rotate property, not transform, so that fragment, entry and
+        // auto-animate transitions and hover styles leave the rotation alone
+        const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
         const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
@@ -180,7 +192,7 @@ export function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
@@ -191,7 +203,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'p5') {
-          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${el.content || ''}<\/script></body></html>`
+          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -391,7 +403,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const dyAttr = textDy ? ` dy="${textDy}"` : ''
             svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
           }
-          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `transform:rotate(${el.rotation}deg);` : ''}`
+          const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `rotate:${el.rotation}deg;` : ''}`
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
         }
         if (el.type === 'drawing') {
@@ -399,7 +411,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = registry.getSandboxHtml(el.type)
@@ -411,7 +423,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         return ''
-      }).join('\n')
+      })
+    // On a scrolling slide, pinned elements stay on the screen, outside the canvas
+    const pinned = i => scrolling && isPinned(sortedElements[i])
+    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
+    const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
 
     let sideCitationsHtml = ''
     if (sideCitations.length > 0) {
@@ -471,8 +487,13 @@ export function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : slide.transition}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
+    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
+    // With the steps that put elements in states (utils/clickActions.js)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
+  const scrollingDeck = hasScrollingSlides(presentation)
 
   // Group into columns for 2D output
   const columns = getSlideColumns(presentation.slides, presentation)
@@ -587,7 +608,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -642,7 +663,6 @@ ${slidesHtml}
   <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
   <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
-  <script src="${libUrl('gsap', 'dist/gsap.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = '${presentation.transition || 'slide'}';
@@ -656,6 +676,7 @@ ${slidesHtml}
       maxScale: 10,
       center: false,
       transition: _isGlobalCustom ? 'none' : _globalTransition,
+      autoAnimateStyles: ['opacity', 'color', 'background-color', 'padding', 'font-size', 'line-height', 'letter-spacing', 'border-width', 'border-color', 'border-radius', 'outline', 'outline-offset', 'rotate'],
       plugins: [ RevealNotes, RevealHighlight ]
     });
     Reveal.on('ready', function() {
@@ -682,30 +703,39 @@ ${slidesHtml}
       });
     });
 
-    // ── GSAP element entry animations ─────────────────────────────────────────
-    var GSAP_PRESETS = {
-      fadeIn:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0 },                              { opacity: 1,            duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity' }); },
-      fadeUp:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, y: 48 },                       { opacity: 1, y: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeDown:   function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, y: -48 },                      { opacity: 1, y: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeLeft:   function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, x: 48 },                       { opacity: 1, x: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      fadeRight:  function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, x: -48 },                      { opacity: 1, x: 0,      duration: dur, delay: delay, ease: 'power3.out', clearProps: 'opacity,transform' }); },
-      zoomIn:     function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, scale: 0.7 },                  { opacity: 1, scale: 1,  duration: dur, delay: delay, ease: 'back.out(1.4)', clearProps: 'opacity,transform' }); },
-      zoomOut:    function(el, dur, delay) { gsap.fromTo(el, { opacity: 0, scale: 1.3 },                  { opacity: 1, scale: 1,  duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
-      slideUp:    function(el, dur, delay) { gsap.fromTo(el, { y: 560 },                                  { y: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideDown:  function(el, dur, delay) { gsap.fromTo(el, { y: -560 },                                 { y: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideLeft:  function(el, dur, delay) { gsap.fromTo(el, { x: 980 },                                  { x: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      slideRight: function(el, dur, delay) { gsap.fromTo(el, { x: -980 },                                 { x: 0,                  duration: dur, delay: delay, ease: 'power3.out', clearProps: 'transform' }); },
-      flipX:      function(el, dur, delay) { gsap.fromTo(el, { rotationX: 90, opacity: 0, transformPerspective: 600 }, { rotationX: 0, opacity: 1, duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
-      flipY:      function(el, dur, delay) { gsap.fromTo(el, { rotationY: 90, opacity: 0, transformPerspective: 600 }, { rotationY: 0, opacity: 1, duration: dur, delay: delay, ease: 'power2.out', clearProps: 'opacity,transform' }); },
+    // ── Element entry animations ──────────────────────────────────────────────
+    // Web Animations on translate, scale and opacity, from each preset's start
+    // to the element's own style: its rotation, and anything else set on it,
+    // stays as it is, and nothing is left on the element afterwards.
+    var OUT2 = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', OUT3 = 'cubic-bezier(0.215, 0.61, 0.355, 1)', BACK = 'cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    var ENTRY_PRESETS = {
+      fadeIn:     [OUT2, { opacity: 0 }],
+      fadeUp:     [OUT3, { opacity: 0, translate: '0 48px' }],
+      fadeDown:   [OUT3, { opacity: 0, translate: '0 -48px' }],
+      fadeLeft:   [OUT3, { opacity: 0, translate: '48px 0' }],
+      fadeRight:  [OUT3, { opacity: 0, translate: '-48px 0' }],
+      zoomIn:     [BACK, { opacity: 0, scale: '0.7' }],
+      zoomOut:    [OUT2, { opacity: 0, scale: '1.3' }],
+      slideUp:    [OUT3, { translate: '0 560px' }],
+      slideDown:  [OUT3, { translate: '0 -560px' }],
+      slideLeft:  [OUT3, { translate: '980px 0' }],
+      slideRight: [OUT3, { translate: '-980px 0' }],
+      flipX:      [OUT2, { opacity: 0, transform: 'perspective(600px) rotateX(90deg)' }, { transform: 'perspective(600px) rotateX(0deg)' }],
+      flipY:      [OUT2, { opacity: 0, transform: 'perspective(600px) rotateY(90deg)' }, { transform: 'perspective(600px) rotateY(0deg)' }],
     };
     function runSlideAnimations(slide) {
       if (!slide) return;
       slide.querySelectorAll('[data-gsap-enter]').forEach(function(el) {
-        var type     = el.getAttribute('data-gsap-enter');
-        var delay    = parseFloat(el.getAttribute('data-gsap-delay')    || 0)   / 1000;
-        var duration = parseFloat(el.getAttribute('data-gsap-duration') || 600) / 1000;
-        var fn = GSAP_PRESETS[type];
-        if (fn) fn(el, duration, delay);
+        var preset = ENTRY_PRESETS[el.getAttribute('data-gsap-enter')];
+        if (!preset || !el.animate) return;
+        var from = Object.assign({ offset: 0 }, preset[1]);
+        if (el._entry) el._entry.cancel();
+        el._entry = el.animate(preset[2] ? [from, preset[2]] : [from], {
+          duration: parseFloat(el.getAttribute('data-gsap-duration') || 600),
+          delay: parseFloat(el.getAttribute('data-gsap-delay') || 0),
+          easing: preset[0],
+          fill: 'backwards',
+        });
       });
     }
     Reveal.on('ready',        function(e) { runSlideAnimations(e.currentSlide); });
@@ -716,7 +746,8 @@ ${slidesHtml}
     function notifyIframes(slide) {
       if (!slide) return;
       slide.querySelectorAll('iframe').forEach(function(fr) {
-        try { fr.contentWindow.dispatchEvent(new Event('resize')); } catch(ex) {}
+        try { fr.contentWindow.dispatchEvent(new Event('resize')); }
+        catch(ex) { try { fr.contentWindow.postMessage('parallax-resize', '*'); } catch(ex2) {} }
       });
     }
     Reveal.on('ready',        function(e) { notifyIframes(e.currentSlide); });
@@ -842,7 +873,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -918,6 +949,9 @@ ${(() => {
         wrap.appendChild(num);
         if (srcEl) {
           var clone = srcEl.cloneNode(true);
+          // A picture only: its clickable and hoverable copies can't be tabbed to
+          clone.setAttribute('inert', '');
+          clone.setAttribute('aria-hidden', 'true');
           clone.style.cssText = 'position:absolute;top:0;left:0;width:' + slideW + 'px;height:' + slideH + 'px;transform:scale(' + (THUMB_W/slideW) + ');transform-origin:top left;pointer-events:none;overflow:hidden;';
           clone.querySelectorAll('.reveal-footer').forEach(function(f) { f.remove(); });
           clone.querySelectorAll('iframe').forEach(function(f) { f.remove(); });
@@ -1030,6 +1064,7 @@ ${showTimeWidget ? `
 ` : ''}
   </script>
 ${opts.annotate ? annotationScript(presentation, opts.annotate.set) : ''}
+${opts.bridge ? DECK_BRIDGE_SCRIPT : ''}
 </body>
 </html>`
 }
@@ -1037,7 +1072,7 @@ ${opts.annotate ? annotationScript(presentation, opts.annotate.set) : ''}
 // The drawing layer's source, started once reveal.js is ready
 function annotationScript(presentation, set) {
   const config = {
-    presentationId: presentation.id, set, message: ANNOTATION_MESSAGE, backupKey: backupKey(presentation.id, set.id),
+    set, message: ANNOTATION_MESSAGE, origin: globalThis.location?.origin || '*',
     slideW: presentation.slideWidth || 960, slideH: presentation.slideHeight || 540,
   }
   // Written into a <script>: no "</script>" or "<!--" can come from the data
@@ -1096,11 +1131,7 @@ export function previewSlideInWindow(presentation, slideIndex) {
   const slide = presentation.slides[slideIndex]
   if (!slide) return
   const singleSlide = { ...presentation, slides: [slide] }
-  const html = localizeLibraries(generateRevealHTML(singleSlide))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  openDeckWindow(localizeLibraries(generateRevealHTML(singleSlide)), { title: presentation.title })
 }
 
 // ─── PDF export (print-ready HTML, one page per fragment state) ───────────────
@@ -1117,8 +1148,9 @@ function getBgPrintStyle(bg) {
 }
 
 function generatePrintHTML(presentation) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -1141,27 +1173,42 @@ function generatePrintHTML(presentation) {
     return footerTimeMode === 'timer-down' ? `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : '00:00'
   })()
 
-  // Expand each slide into one page per fragment step (initial + one per unique index)
+  // Expand each slide into one page per fragment step (initial + one per unique index).
+  // A scrolling slide has a page per screen instead, with its fragments shown.
   const pages = []
   let printPageCounter = 0
   presentation.slides.forEach((slide, slideIndex) => {
-    const fragIndices = [...new Set(
-      (slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1)
-    )].sort((a, b) => a - b)
-    pages.push({ slide, slideIndex, maxIdx: -Infinity })           // initial: no fragments
+    const screens = getScreenCount(slide, slideH)
+    if (screens > 1) {
+      for (let screen = 0; screen < screens; screen++) pages.push({ slide, slideIndex, maxIdx: Infinity, screen, first: screen === 0 })
+      return
+    }
+    const fragIndices = [...new Set([
+      ...(slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1),
+      ...stateSteps(slide).map(([step]) => step),
+    ])].sort((a, b) => a - b)
+    pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
   })
   const totalPages = pages.length
 
-  const pagesHtml = pages.map(({ slide, slideIndex, maxIdx }, pageIndex) => {
-    const bgStyle = getBgPrintStyle(slide.background)
-    // As the slide opens: fragments up to this step, without what a click shows
-    const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden
+  const pagesHtml = pages.map(({ slide, slideIndex, maxIdx, screen, first }, pageIndex) => {
+    // As the slide opens: fragments up to this step, without what a click
+    // shows, and each element in its first state or the one a step put it in
+    const stepped = statesAtStep(slide, maxIdx)
+    const stateOnPage = el => stepped.has(el.id) ? stepped.get(el.id) : el.initialState
+    const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden || hiddenByState(el, stateOnPage(el))
+    const canvasH = getCanvasHeight(slide, slideH)
+    const scrolling = canvasH > slideH
+    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
+    const bgStyle = canvasBg ? getBgPrintStyle(null) : getBgPrintStyle(slide.background)
 
-    const elementsHtml = (slide.elements || [])
+    const sortedElements = (slide.elements || [])
       .slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
-      .map(el => {
-        const isHidden = hiddenOnPage(el)
+    const renderedElements = sortedElements
+      .map(base => {
+        const isHidden = hiddenOnPage(base)
+        const el = withState(base, stateOnPage(base))
         const borderRadiusStyleP = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
         const rotationStyleP = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
@@ -1284,18 +1331,20 @@ function generatePrintHTML(presentation) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
-      }).join('\n')
+      })
+    const pinned = i => scrolling && isPinned(sortedElements[i])
+    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
 
     // Per-slide page numbering
     const slideHasPageNum = slide.showPageNumber !== false
-    if (slideHasPageNum && maxIdx === -Infinity) printPageCounter++ // only increment on initial page of each slide
+    if (slideHasPageNum && first) printPageCounter++ // only increment on the first page of each slide
     const pageLabel = showPageNumbers && slideHasPageNum
       ? (pageNumberFormat === 'c/t' ? `${printPageCounter} / ${(presentation.slides || []).filter(s => s.showPageNumber !== false).length}` : `${printPageCounter}`)
       : ''
@@ -1326,9 +1375,19 @@ function generatePrintHTML(presentation) {
     }
 
     // Slide links and clickable elements link to the slides' first pages
-    const anchor = maxIdx === -Infinity ? slideIdAttr(slide) : ''
+    const anchor = first ? slideIdAttr(slide) : ''
     const linksHtml = printActionLinks(presentation.slides, slideIndex, hiddenOnPage)
-    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${printSlideLinks(elementsHtml)}\n${linksHtml}\n${footerHtml}\n</div>`
+    let bodyHtml = `${printSlideLinks(elementsHtml)}\n${linksHtml}`
+    if (scrolling) {
+      // This page's screen of the canvas, whose links move with it, under the pinned elements
+      const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
+      bodyHtml = printScreenBody({
+        slideW, slideH, canvasH, screen, background: canvasBg,
+        elementsHtml: `${printSlideLinks(elementsHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || isPinned(el))}`,
+        pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
+      })
+    }
+    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n')
 
   const title = escapeHtml(presentation.title || 'Presentation')
@@ -1397,82 +1456,147 @@ ${pagesHtml}
       });
       setTimeout(function() { window.print(); }, 1000);
     });
+    // Printing these pages, not the one frame of them the window around shows
+    window.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }
+    });
+    window.addEventListener('message', function(e) {
+      if (e.source === window.parent && e.data === 'parallax-print') window.print();
+    });
   </script>
 </body>
 </html>`
 }
 
 export function exportPDF(presentation) {
-  const html = localizeLibraries(generatePrintHTML(presentation))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 120000)
+  // Ctrl/Cmd+P prints the deck's pages, not the window's one frame of them
+  const print = `window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); frame.contentWindow.postMessage('parallax-print', '*') }
+  })`
+  openDeckWindow(localizeLibraries(generatePrintHTML(presentation)), { title: presentation.title, script: print })
 }
+
+// ─── Windows opened from the editor ──────────────────────────────────────────
+// Present, Presenter Mode, a slide preview and the PDF open in windows of
+// their own: blob: pages with this site's origin and the editor as
+// window.opener. A deck runs its author's code (HTML embeds, and whatever its
+// text holds), and the author may be a collaborator, so each window is a
+// small page of ours that runs the deck in a sandboxed frame, with an origin
+// of its own: no cookies or storage of this site, and no way into the editor.
+// What the deck needs from outside (saving ink, the live slide) it asks the
+// page for by postMessage.
+
+// The same as share links' (server/index.js DECK_PAGE_SANDBOX); never
+// allow-same-origin
+export const DECK_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+
+// A value written into a <script> as JavaScript: no "</script>" or "<!--" can
+// come from it
+const scriptValue = value => JSON.stringify(value).replace(/</g, '\\u003c')
+
+// A deck's frame, and the script that fills it; `script` runs after, with
+// `frame` in scope. A srcdoc page's links resolve against the page around it,
+// a blob: URL, so slide links (#/s-…) and reveal.js's own would leave the
+// deck: they resolve against the deck itself (its other URLs are absolute).
+function deckFrameHTML(deckHtml, script = '') {
+  const base = '<base href="about:srcdoc">'
+  deckHtml = /<head[^>]*>/i.test(deckHtml) ? deckHtml.replace(/<head[^>]*>/i, m => m + base) : base + deckHtml
+  return {
+    frame: `<iframe id="deck" sandbox="${DECK_SANDBOX}" allow="fullscreen; autoplay; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`,
+    script: `<script>
+  (function () {
+    var frame = document.getElementById('deck');
+    frame.addEventListener('load', function () { frame.focus() });
+    frame.srcdoc = ${scriptValue(deckHtml)};
+    ${script}
+  })()
+  </script>`,
+  }
+}
+
+// The page of a deck's window: the deck filling it
+export function deckWindowHTML(deckHtml, { title = 'Presentation', script = '' } = {}) {
+  const deck = deckFrameHTML(deckHtml, script)
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title || 'Presentation')}</title>
+  <style>html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; } #deck { display: block; width: 100%; height: 100%; border: 0; }</style>
+</head>
+<body>
+  ${deck.frame}
+  ${deck.script}
+</body>
+</html>`
+}
+
+function openDeckWindow(deckHtml, options) {
+  const blob = new Blob([deckWindowHTML(deckHtml, options)], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const win = window.open(url, '_blank')
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  return win
+}
+
+// In a deck framed by one of those pages (opts.bridge): tells the page which
+// slide is shown, as its index in Reveal.getSlides(), and goes to the slide it
+// asks for. Only the page around the deck is heard.
+const DECK_BRIDGE_SCRIPT = `  <script>
+  (function () {
+    function send() {
+      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(Reveal.getCurrentSlide()), total: Reveal.getTotalSlides() }, '*');
+    }
+    window.addEventListener('message', function (e) {
+      if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;
+      var s = Reveal.getSlides()[e.data.slide];
+      if (s) { var i = Reveal.getIndices(s); Reveal.slide(i.h, i.v); }
+    });
+    if (Reveal.isReady()) send(); else Reveal.on('ready', send);
+    Reveal.on('slidechanged', send);
+  })()
+  </script>`
 
 // With an annotation set, the window can be drawn on and saves into that set
 export function presentInWindow(presentation, { annotationSet } = {}) {
-  const html = localizeLibraries(generateRevealHTML(presentation, annotationSet ? { annotate: { set: annotationSet } } : {}))
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  window.open(url, '_blank')
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
+  const set = annotationSet
+  const deck = localizeLibraries(generateRevealHTML(presentation, set ? { annotate: { set } } : {}))
+  const relay = set ? `(${relayAnnotations.toString()})(${scriptValue({
+    presentationId: presentation.id, setId: set.id, backupKey: backupKey(presentation.id, set.id), message: ANNOTATION_MESSAGE,
+  })}, frame)` : ''
+  openDeckWindow(deck, { title: presentation.title, script: relay })
+}
+
+// The page around a live-presented deck, which is signed in (its origin is
+// this site's): tells the server each slide the deck shows, and shows how many
+// are watching, here and in the editor (window.__liveViewerCount). Injected
+// as source text.
+export function relayLiveSlides(config, frame) {
+  const badge = document.createElement('div')
+  badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
+  badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pp-live-pulse 1.5s infinite;display:inline-block"></span> LIVE <span class="pp-live-count" style="opacity:0.8">0 viewers</span>'
+  const style = document.createElement('style')
+  style.textContent = '@keyframes pp-live-pulse{0%,100%{opacity:1}50%{opacity:0.4}}'
+  document.head.appendChild(style)
+  document.body.appendChild(badge)
+  window.addEventListener('message', e => {
+    if (e.source !== frame.contentWindow || e.data?.type !== 'parallax-deck' || !Number.isInteger(e.data.slide) || e.data.slide < 0) return
+    fetch(`${window.location.origin}/api/live/${encodeURIComponent(config.sessionId)}/slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flatIndex: e.data.slide }),
+    }).then(r => r.json()).then(data => {
+      const n = data.viewers || 0
+      badge.querySelector('.pp-live-count').textContent = `${n} viewer${n !== 1 ? 's' : ''}`
+      try { if (window.opener && window.opener.__liveViewerCount) window.opener.__liveViewerCount(n) } catch {}
+    }).catch(() => {})
+  })
 }
 
 export function livePresentInWindow(presentation, sessionId, onViewerCount) {
-  const origin = window.location.origin
-  const baseHtml = localizeLibraries(generateRevealHTML(presentation))
-  const liveScript = `
-  <script>
-  (function() {
-    var sessionId = '${sessionId}';
-    var origin = '${origin}';
-    var badge = document.createElement('div');
-    badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;';
-    badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pulse 1.5s infinite;display:inline-block"></span> LIVE <span id="live-count" style="opacity:0.8">0 viewers</span>';
-    document.body.appendChild(badge);
-    var style = document.createElement('style');
-    style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}';
-    document.head.appendChild(style);
-
-    var flatMap = [];
-    Reveal.on('ready', function() {
-      Reveal.getSlides().forEach(function(s) { flatMap.push(Reveal.getIndices(s)); });
-      sendSlide();
-    });
-
-    function currentFlat() {
-      var idx = Reveal.getIndices();
-      for (var i = 0; i < flatMap.length; i++) {
-        if (flatMap[i].h === idx.h && flatMap[i].v === idx.v) return i;
-      }
-      return 0;
-    }
-
-    function sendSlide() {
-      fetch(origin + '/api/live/' + sessionId + '/slide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flatIndex: currentFlat() })
-      }).then(function(r) { return r.json(); }).then(function(data) {
-        var el = document.getElementById('live-count');
-        if (el) el.textContent = (data.viewers || 0) + ' viewer' + ((data.viewers || 0) !== 1 ? 's' : '');
-        if (window.opener && window.opener.__liveViewerCount) window.opener.__liveViewerCount(data.viewers || 0);
-      }).catch(function() {});
-    }
-
-    Reveal.on('slidechanged', sendSlide);
-  })();
-  <\\/script>`
-  const lastBodyIdx = baseHtml.lastIndexOf('</body>')
-  const html = lastBodyIdx >= 0
-    ? baseHtml.slice(0, lastBodyIdx) + liveScript + '\n</body>' + baseHtml.slice(lastBodyIdx + 7)
-    : baseHtml + liveScript
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-  const win = window.open(url, '_blank')
+  const deck = localizeLibraries(generateRevealHTML(presentation, { bridge: true }))
+  const win = openDeckWindow(deck, { title: presentation.title, script: `(${relayLiveSlides.toString()})(${scriptValue({ sessionId })}, frame)` })
   if (onViewerCount) window.__liveViewerCount = onViewerCount
-  setTimeout(() => URL.revokeObjectURL(url), 60000)
   return win
 }
 
@@ -1485,33 +1609,31 @@ export function presenterInWindow(presentation) {
 }
 
 export function generatePresenterHTML(presentation) {
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
+  // Numbers: they're written into pages' scripts and styles
+  const slideW = Number(presentation.slideWidth) || 960
+  const slideH = Number(presentation.slideHeight) || 540
   const slides = presentation.slides || []
 
-  const slideMeta = JSON.stringify(slides.map(s => ({
+  const slideMeta = scriptValue(slides.map(s => ({
     notes: s.notes || '',
     section: s.section || '',
   })))
 
-  // Localized before it becomes a data: URL, where links can't be found
-  const revealHTML = localizeLibraries(generateRevealHTML({
-    ...presentation,
-    _presenterEmbed: true,
-  }))
-  const revealDataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(revealHTML)}`
+  // The deck in a sandbox (deckFrameHTML), telling this page its slide
+  const deck = deckFrameHTML(localizeLibraries(generateRevealHTML(presentation, { bridge: true })))
 
   const thumbScale = 140 / slideW
   const thumbH = Math.round(140 * slideH / slideW)
   const thumbEntries = slides.map((slide, i) => {
-    const bgStyle = (() => {
+    // Escaped: this page has this site's origin
+    const bgStyle = escapeHtml((() => {
       const bg = slide.background
       if (!bg) return 'background:#1e1e2e;'
       if (bg.type === 'color') return `background:${bg.color || '#1e1e2e'};`
       if (bg.type === 'gradient') return `background:${bg.gradient || '#1e1e2e'};`
       if (bg.type === 'image' && bg.image) return `background-image:url(${absoluteSrc(bg.image)});background-size:${bg.size||'cover'};background-position:${bg.position||'center'};`
       return 'background:#1e1e2e;'
-    })()
+    })())
     const textEls = (slide.elements || [])
       .filter(el => el.type === 'text')
       .sort((a, b) => a.y - b.y)
@@ -1538,7 +1660,7 @@ export function generatePresenterHTML(presentation) {
     .pv-header-slide { font-size: 12px; color: rgba(255,255,255,0.7); font-weight: 600; }
     .pv-header-time { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
     .pv-iframe-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px; overflow: hidden; }
-    .pv-iframe-wrap iframe { border: none; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+    .pv-iframe-wrap iframe { border: none; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); background: #000; }
     .pv-sidebar { width: 320px; min-width: 260px; max-width: 400px; display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.06); background: #111119; overflow: hidden; resize: horizontal; }
     .pv-notes { flex: 1; overflow-y: auto; padding: 16px; min-height: 0; }
     .pv-notes-label { font-size: 10px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
@@ -1572,7 +1694,7 @@ export function generatePresenterHTML(presentation) {
         </div>
       </div>
       <div class="pv-iframe-wrap" id="pv-iframe-wrap">
-        <iframe id="pv-iframe" src="${revealDataUrl}"></iframe>
+        ${deck.frame}
       </div>
     </div>
     <div class="pv-sidebar">
@@ -1588,16 +1710,16 @@ export function generatePresenterHTML(presentation) {
       </div>
     </div>
   </div>
+  ${deck.script}
   <script>
     var SLIDES = ${slideMeta};
     var TOTAL = SLIDES.length;
     var currentFlat = 0;
-    var iframe = document.getElementById('pv-iframe');
+    var iframe = document.getElementById('deck');
     var notesText = document.getElementById('pv-notes-text');
     var indicator = document.getElementById('pv-slide-indicator');
     var elapsedEl = document.getElementById('pv-elapsed');
     var thumbs = document.querySelectorAll('.pv-thumb');
-    var Reveal = null;
     var startTime = Date.now();
 
     // Elapsed timer
@@ -1623,6 +1745,7 @@ export function generatePresenterHTML(presentation) {
       iframe.style.height = h + 'px';
     }
     window.addEventListener('resize', sizeIframe);
+    sizeIframe();
 
     function updateState(flatIdx) {
       currentFlat = flatIdx;
@@ -1641,46 +1764,19 @@ export function generatePresenterHTML(presentation) {
       if (activeThumb) activeThumb.scrollIntoView({ inline: 'nearest', behavior: 'smooth' });
     }
 
-    // Build flat index map from Reveal's h,v coordinates
-    var flatMap = {}; // "h,v" -> flatIdx
-    iframe.addEventListener('load', function() {
-      sizeIframe();
-      try {
-        var iWin = iframe.contentWindow;
-        Reveal = iWin.Reveal;
-        // Wait for Reveal to be ready
-        function tryInit() {
-          if (!Reveal || !Reveal.isReady || !Reveal.isReady()) {
-            setTimeout(tryInit, 100);
-            return;
-          }
-          // Build flat map
-          var slides = Reveal.getSlides();
-          slides.forEach(function(s, i) {
-            var idx = Reveal.getIndices(s);
-            flatMap[idx.h + ',' + idx.v] = i;
-          });
-          Reveal.on('slidechanged', function(e) {
-            var key = (e.indexh || 0) + ',' + (e.indexv || 0);
-            var fi = flatMap[key];
-            if (fi != null) updateState(fi);
-          });
-          updateState(0);
-        }
-        tryInit();
-      } catch(e) { console.warn('Presenter: could not access iframe Reveal', e); }
+    // The deck says which slide it shows (DECK_BRIDGE_SCRIPT), as its index
+    // in Reveal.getSlides(); only the deck's own frame is heard
+    iframe.addEventListener('load', sizeIframe);
+    window.addEventListener('message', function(e) {
+      if (e.source !== iframe.contentWindow || !e.data || e.data.type !== 'parallax-deck') return;
+      if (typeof e.data.slide === 'number' && e.data.slide >= 0) updateState(e.data.slide);
     });
+    updateState(0);
 
     // Navigation
     function goFlat(fi) {
       fi = Math.max(0, Math.min(TOTAL - 1, fi));
-      if (Reveal) {
-        var slides = Reveal.getSlides();
-        if (slides[fi]) {
-          var idx = Reveal.getIndices(slides[fi]);
-          Reveal.slide(idx.h, idx.v);
-        }
-      }
+      iframe.contentWindow.postMessage({ type: 'parallax-deck-go', slide: fi }, '*');
     }
     document.getElementById('pv-prev').onclick = function() { goFlat(currentFlat - 1); };
     document.getElementById('pv-next').onclick = function() { goFlat(currentFlat + 1); };

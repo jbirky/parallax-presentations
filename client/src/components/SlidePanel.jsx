@@ -4,9 +4,11 @@
 import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
+import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
+import { getCanvasHeight } from '../utils/scrollingSlides'
 
 const THUMB_W = 150
 
@@ -21,6 +23,8 @@ function getBgStyle(bg) {
 function SlideThumbnail({ slide, slideW, slideH }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
+  // A scrolling slide shows its first screen, and a badge for how many it has
+  const canvasH = getCanvasHeight(slide, slideH)
 
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', flexShrink: 0, borderRadius: 3 }}>
@@ -48,7 +52,7 @@ function SlideThumbnail({ slide, slideW, slideH }) {
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: el.content || '' }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
               )}
               {el.type === 'image' && (() => {
                 const imgFilter = [
@@ -82,10 +86,10 @@ function SlideThumbnail({ slide, slideW, slideH }) {
               })()}
               {el.type === 'shape' && (
                 <div style={{ width: '100%', height: '100%', position: 'relative', opacity: el.opacity ?? 1 }}
-                  dangerouslySetInnerHTML={{ __html: shapeSvgString(el) }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(shapeSvgString(el)) }} />
               )}
               {el.type === 'tikz' && (
-                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(el) }} />
+                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(el)) }} />
               )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
@@ -127,6 +131,13 @@ function SlideThumbnail({ slide, slideW, slideH }) {
           ))
         }
       </div>
+      {canvasH > slideH && (
+        <div title="Scrolling slide" style={{
+          position: 'absolute', bottom: 2, right: 2, pointerEvents: 'none',
+          background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: 8, fontWeight: 600,
+          padding: '1px 4px', borderRadius: 2, letterSpacing: 0.2,
+        }}>&#8597; {+(canvasH / slideH).toFixed(2)}&times;</div>
+      )}
     </div>
   )
 }

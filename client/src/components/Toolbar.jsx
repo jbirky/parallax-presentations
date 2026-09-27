@@ -34,6 +34,7 @@ import {
   HelpCircle,
   Puzzle,
   Clock,
+  MousePointerClick,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -71,13 +72,14 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
   const [showShapeMenu, setShowShapeMenu] = useState(false)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
+  const [showInteractiveMenu, setShowInteractiveMenu] = useState(false)
   const [showNonobjectiveMenu, setShowNonobjectiveMenu] = useState(false)
   const [showModularMenu, setShowModularMenu] = useState(false)
   const [showTableMenu, setShowTableMenu] = useState(false)
@@ -114,7 +116,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
       }
       const arrayBuffer = await file.arrayBuffer()
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      // Without eval: pdf.js 3.x can be made to run a PDF's code as the
+      // editor when it compiles fonts with it (CVE-2024-4367)
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise
       const pages = []
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
@@ -712,20 +716,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <button onClick={() => { setShowLayoutMenu(false); onAddMathGrid?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left', marginTop: 4 }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
                 <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x222E;</span> Math Grid
               </button>
-              {onAddTabs && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', padding: '4px 0', marginTop: 4 }}>
-                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x2395;</span> Tabs
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                    {[2, 3, 4].map(n => (
-                      <button key={n} title={`Insert ${n} tabs that switch between panels when presenting`}
-                        onClick={() => { setShowLayoutMenu(false); onAddTabs(n) }}
-                        style={{ minWidth: 26, padding: '2px 6px', fontSize: 12, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                        {n}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-              )}
             </div>
 
             {selectedCount >= 2 && (
@@ -749,6 +739,48 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           </div>
         </>)}
       </div>
+
+      {/* Interactive presets: parts of a slide that respond to clicks and hovers */}
+      {(onAddTabs || onAddHotspot || onAddFlipCard || onAddQuiz) && (
+        <div style={{ position: 'relative' }}>
+          <button className="btn-icon" onClick={() => setShowInteractiveMenu(v => !v)} title="Tabs, hotspots, flip cards and quizzes" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+            <MousePointerClick size={14} /> Interactive <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+          </button>
+          {showInteractiveMenu && (<>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowInteractiveMenu(false)} />
+            <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, width: 240, padding: 12 }}>
+              {onAddTabs && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', padding: '4px 0' }}>
+                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x2395;</span> Tabs
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                    {[2, 3, 4].map(n => (
+                      <button key={n} title={`Insert ${n} tabs that switch between panels when presenting`}
+                        onClick={() => { setShowInteractiveMenu(false); onAddTabs(n) }}
+                        style={{ minWidth: 26, padding: '2px 6px', fontSize: 12, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                        {n}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+              )}
+              {[
+                [onAddHotspot, '\u24D8', 'Hotspot', 'Insert a marker that shows a card while the pointer is over it when presenting'],
+                [onAddFlipCard, '\u21BB', 'Flip card', 'Insert a card that turns over to its back when clicked'],
+                [onAddQuiz, '\u2713', 'Quiz answers', 'Insert a question with answers that turn green or red when clicked'],
+              ].filter(([add]) => add).map(([add, icon, label, title]) => (
+                <button key={label} onClick={() => { setShowInteractiveMenu(false); add() }} title={title}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left', marginTop: 4 }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
+                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>{icon}</span> {label}
+                </button>
+              ))}
+              <div style={{ height: 1, background: 'var(--border)', margin: '8px 0 4px' }} />
+              <a href={`${DOCS_BASE}interactive-slides`} target="_blank" rel="noopener noreferrer" onClick={() => setShowInteractiveMenu(false)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '4px 0', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'none', background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+                <HelpCircle size={12} /> How to use
+              </a>
+            </div>
+          </>)}
+        </div>
+      )}
 
       {/* Table docs - handled inline */}
 

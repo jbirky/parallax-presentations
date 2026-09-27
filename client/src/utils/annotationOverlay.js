@@ -3,12 +3,14 @@
 
 // The drawing layer of the editor's Present window: a pen toolbar, ink kept in
 // an SVG inside each slide (in slide coordinates, so it scales and moves with
-// the slide), whiteboard pages, and saving through the editor. It runs in the
+// the slide; on a scrolling slide, in the canvas and its coordinates, so it
+// scrolls with what it marks), whiteboard pages, and saving through the editor. It runs in the
 // presented page, where generateRevealHTML injects it as source text, so it
 // must use nothing from outside its own body. The data it edits is described
 // in utils/annotations.js.
 //
-// config: { presentationId, set, slideW, slideH, backupKey, message }
+// config: { set, slideW, slideH, message, origin }: origin is the editor's,
+// which the page around the deck has (relayAnnotations)
 
 export function installAnnotations(config) {
   const NS = 'http://www.w3.org/2000/svg'
@@ -26,7 +28,6 @@ export function installAnnotations(config) {
   let penSeen = false // once a stylus draws, fingers go back to changing slides
   let active = null // the stroke or erase in progress
   let sent = false
-  let saveTimer = null
   const undoStacks = {}
 
   // ── Pages: slides and boards ─────────────────────────────────────────────
@@ -43,15 +44,20 @@ export function installAnnotations(config) {
     const s = window.Reveal && Reveal.getCurrentSlide()
     return keyOf(s) ? s : null
   }
+  // What ink goes on: a scrolling slide's canvas (utils/scrollingSlides.js), or the slide
+  const scrollerOf = section => section && section.querySelector(':scope > .slide-scroller')
+  const surfaceOf = section => scrollerOf(section)?.querySelector(':scope > .slide-scroll-inner') || section
+  const heightOf = section => Number(section.getAttribute('data-scroll-height')) || H
 
   // ── Drawing ──────────────────────────────────────────────────────────────
   function layerOf(section) {
-    let svg = section.querySelector(':scope > svg.pp-ink')
+    const surface = surfaceOf(section)
+    let svg = surface.querySelector(':scope > svg.pp-ink')
     if (!svg) {
       svg = document.createElementNS(NS, 'svg')
       svg.setAttribute('class', 'pp-ink')
-      svg.setAttribute('viewBox', `0 0 ${W} ${H}`)
-      section.appendChild(svg)
+      svg.setAttribute('viewBox', `0 0 ${W} ${heightOf(section)}`)
+      surface.appendChild(svg)
     }
     return svg
   }
@@ -82,9 +88,9 @@ export function installAnnotations(config) {
     for (const p of pathsOf(section)) layer.appendChild(pathElement(p))
   }
   function toSlide(e, section) {
-    const r = section.getBoundingClientRect()
+    const r = surfaceOf(section).getBoundingClientRect()
     const round = v => Math.round(v * 10) / 10
-    return [round((e.clientX - r.left) * W / r.width), round((e.clientY - r.top) * H / r.height)]
+    return [round((e.clientX - r.left) * W / r.width), round((e.clientY - r.top) * heightOf(section) / r.height)]
   }
   // Ramer–Douglas–Peucker, to keep strokes small
   function simplify(points, tolerance) {
@@ -196,32 +202,26 @@ export function installAnnotations(config) {
   }
 
   // ── Saving ───────────────────────────────────────────────────────────────
+  // The deck runs in a sandbox, with no storage of this site and no way to the
+  // editor, so each change goes at once to the page around it, which keeps a
+  // copy on this device and sends it on (relayAnnotations), and says how that went
   const hasInk = () => Object.values(set.slides).some(s => s.paths.length) || set.boards.length > 0
   function scheduleSave() {
     status('Saving…')
-    clearTimeout(saveTimer)
-    saveTimer = setTimeout(flush, 600)
+    flush()
   }
-  // Keeps a copy on this device, and sends the set to the editor, which saves it
   function flush() {
-    clearTimeout(saveTimer)
-    saveTimer = null
     if (!hasInk() && !sent) return status('')
-    for (const key of Object.keys(set.slides)) if (!set.slides[key].paths.length) delete set.slides[key]
     set.updatedAt = new Date().toISOString()
-    const data = JSON.stringify(set)
-    try { localStorage.setItem(config.backupKey, data) } catch {}
-    const editor = window.opener
-    if (editor && !editor.closed) {
-      try {
-        editor.postMessage({ type: config.message, presentationId: config.presentationId, set: JSON.parse(data) }, window.location.origin)
-        sent = true
-        return status('Saved')
-      } catch {}
-    }
-    status('Kept on this device. It saves when you next open the presentation.')
+    // Without the slides that have no ink
+    const slides = Object.fromEntries(Object.entries(set.slides).filter(([, s]) => s.paths.length))
+    window.parent.postMessage({ type: config.message, set: { ...set, slides } }, config.origin)
+    sent = true
   }
-  window.addEventListener('pagehide', () => { if (saveTimer) flush() })
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || e.data?.type !== `${config.message}:status`) return
+    status(e.data.saved ? 'Saved' : 'Kept on this device. It saves when you next open the presentation.')
+  })
 
   // ── Input ────────────────────────────────────────────────────────────────
   // While a tool is on, this layer takes pointer input over the slides (embeds
@@ -293,6 +293,37 @@ export function installAnnotations(config) {
       if (tool && (stylus || !penSeen)) { e.preventDefault(); e.stopPropagation() }
     }, { passive: false })
   }
+  // The layer is over a scrolling slide's canvas, so it scrolls the canvas for
+  // the wheel, and for a finger dragged up or down once a stylus draws. A
+  // sideways drag still reaches reveal.js, to change slides.
+  shield.addEventListener('wheel', e => {
+    const scroller = scrollerOf(currentPage())
+    if (!scroller) return
+    e.preventDefault()
+    scroller.scrollTop += e.deltaY
+  }, { passive: false })
+  let drag = null
+  shield.addEventListener('touchstart', e => {
+    const scroller = scrollerOf(currentPage())
+    const t = e.touches[0]
+    drag = tool && penSeen && scroller && e.touches.length === 1 && t.touchType !== 'stylus'
+      ? { scroller, x: t.clientX, y: t.clientY, vertical: null } : null
+  }, { passive: true })
+  shield.addEventListener('touchmove', e => {
+    if (!drag) return
+    const t = e.touches[0]
+    if (drag.vertical === null) {
+      const dx = t.clientX - drag.x, dy = t.clientY - drag.y
+      if (Math.hypot(dx, dy) < 8) return
+      drag.vertical = Math.abs(dy) > Math.abs(dx)
+    }
+    if (!drag.vertical) return
+    e.stopPropagation()
+    const scale = drag.scroller.clientHeight / (drag.scroller.getBoundingClientRect().height || 1)
+    drag.scroller.scrollTop -= (t.clientY - drag.y) * scale
+    drag.y = t.clientY
+  }, { passive: true })
+  shield.addEventListener('touchend', () => { drag = null })
 
   // ── Toolbar ──────────────────────────────────────────────────────────────
   const style = document.createElement('style')
@@ -408,4 +439,43 @@ export function installAnnotations(config) {
   })
   refresh()
   return { flush, setTool, get set() { return set } }
+}
+
+// The page around a deck presented with drawing on (openDeckWindow in
+// generateHTML.js), which has this site's origin: it keeps the ink the deck
+// sends on this device and sends it to the editor, 600 ms after the last
+// change and at once when the window closes. Only its own frame is heard, and
+// only for the set it was opened with. Injected as source text, like
+// installAnnotations.
+//
+// config: { presentationId, setId, backupKey, message }
+export function relayAnnotations(config, frame) {
+  let pending = null
+  let timer = null
+  function flush() {
+    clearTimeout(timer)
+    timer = null
+    if (!pending) return
+    const data = JSON.stringify({ ...pending, id: config.setId })
+    pending = null
+    try { localStorage.setItem(config.backupKey, data) } catch {}
+    const editor = window.opener
+    let saved = false
+    if (editor && !editor.closed) {
+      try {
+        editor.postMessage({ type: config.message, presentationId: config.presentationId, set: JSON.parse(data) }, window.location.origin)
+        saved = true
+      } catch {}
+    }
+    try { frame.contentWindow.postMessage({ type: `${config.message}:status`, saved }, '*') } catch {}
+  }
+  window.addEventListener('message', e => {
+    if (e.source !== frame.contentWindow || e.data?.type !== config.message) return
+    if (!e.data.set || typeof e.data.set !== 'object') return
+    pending = e.data.set
+    clearTimeout(timer)
+    timer = setTimeout(flush, 600)
+  })
+  window.addEventListener('pagehide', flush)
+  return { flush }
 }

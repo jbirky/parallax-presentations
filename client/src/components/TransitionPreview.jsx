@@ -113,6 +113,9 @@ setTimeout(()=>Reveal.next(),800);
             key={key}
             ref={iframeRef}
             srcDoc={localizeLibraries(html)}
+            // The slides' text goes in as saved, and may be a collaborator's:
+            // never this site's origin
+            sandbox="allow-scripts"
             style={{ width: slideW, height: slideH, border: 'none', transform: 'scale(0.6)', transformOrigin: 'top left' }}
             title="Transition Preview"
           />

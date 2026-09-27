@@ -1,5 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
+import { getScreenCount, isScrolling, isPinned } from './scrollingSlides'
 
 function stripHtml(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
@@ -25,8 +26,15 @@ export function exportToPptx(presentation) {
   pptx.layout = 'CUSTOM'
   pptx.title = presentation.title || 'Presentation'
 
-  for (const slide of (presentation.slides || [])) {
+  // PowerPoint can't scroll, so a scrolling slide gives a slide per screen, as
+  // the PDF does, with its pinned elements on each
+  const slideH = presentation.slideHeight || 540
+  const pages = (presentation.slides || []).flatMap(slide =>
+    Array.from({ length: getScreenCount(slide, slideH) }, (_, screen) => ({ slide, screen })))
+
+  for (const { slide, screen } of pages) {
     const pptSlide = pptx.addSlide()
+    const scrolling = isScrolling(slide, slideH)
 
     // Background
     const bg = slide.background
@@ -40,8 +48,10 @@ export function exportToPptx(presentation) {
     const elements = [...(slide.elements || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
 
     for (const el of elements) {
+      const elY = scrolling && !isPinned(el) ? el.y - screen * slideH : el.y
+      if (scrolling && (elY + el.height <= 0 || elY >= slideH)) continue
       const x = el.x * SCALE_X
-      const y = el.y * SCALE_Y
+      const y = elY * SCALE_Y
       const w = el.width * SCALE_X
       const h = el.height * SCALE_Y
       const rotation = el.rotation || 0
@@ -137,7 +147,7 @@ export function exportToPptx(presentation) {
     }
 
     // Speaker notes
-    if (slide.notes) {
+    if (slide.notes && screen === 0) {
       pptSlide.addNotes(slide.notes)
     }
   }

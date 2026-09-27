@@ -20,6 +20,7 @@ const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
+const { setUploadHeaders } = require('./utils/upload-headers')
 const { libUrl, localizeLibraries } = require('./services/libraries')
 const { tikzDiagramSvg } = require('./services/tikz-diagram')
 const {
@@ -37,7 +38,8 @@ const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, visibilityTargets, remapSlideLinks, renewElementIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
+const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
@@ -104,7 +106,13 @@ async function userIdForToken(token) {
 }
 
 app.use(helmetConfig())
-app.use(cors(corsConfig()))
+// Library files, uploads and a live session's slide feed are public, and the
+// pages that use them are sandboxed (sendDeckPage), so their requests come
+// from origin null: those answer any origin, without credentials
+const PUBLIC_CORS = /^\/(vendor|uploads)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+const publicCors = cors()
+const appCors = cors(corsConfig())
+app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
 
 // Stripe webhook — must be before express.json() to get raw body
 const stripeService = require('./services/stripe')
@@ -133,8 +141,9 @@ if (isR2Enabled()) {
         [urlPath]
       )
       if (!rows.length) return res.status(404).send('Not found')
-      const { body, contentType, contentLength } = await streamFromR2(rows[0].storage_key)
-      res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
+      const { body, contentLength } = await streamFromR2(rows[0].storage_key)
+      // By its name, not the type it was stored with (utils/upload-headers.js)
+      setUploadHeaders(res, urlPath)
       if (contentLength) res.setHeader('Content-Length', contentLength)
       // Guest files are deleted with their session, so nothing may cache them
       res.setHeader('Cache-Control', rows[0].storage_key.startsWith('guest/') ? 'private, no-store' : 'public, max-age=31536000, immutable')
@@ -146,14 +155,7 @@ if (isR2Enabled()) {
   })
 } else {
   app.use('/uploads', express.static(UPLOADS_DIR, {
-    setHeaders(res, filePath) {
-      res.setHeader('X-Content-Type-Options', 'nosniff')
-      const ext = path.extname(filePath).toLowerCase()
-      if (ext === '.html' || ext === '.htm' || ext === '.svg') {
-        res.setHeader('Content-Type', 'application/octet-stream')
-        res.setHeader('Content-Disposition', 'attachment')
-      }
-    }
+    setHeaders(res, filePath) { setUploadHeaders(res, filePath) }
   }))
 }
 
@@ -185,9 +187,10 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Images', link: 'tutorials/images' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
       { text: 'LaTeX & Math', link: 'features/latex' },
-      { text: 'Links & Click Actions', link: 'tutorials/interactive-slides' },
+      { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
+      { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
       { text: 'Shapes & Elements', link: 'features/shapes' },
       { text: 'Text & Formatting', link: 'features/text-formatting' },
@@ -387,8 +390,10 @@ if (IS_CLOUD) {
   })
 }
 
-// Protect all /api routes in cloud mode
-app.use('/api', requireUser)
+// Protect all /api routes in cloud mode, but for the slide feed of a live
+// session, which its audience follows without signing in
+const LIVE_FEED = /^\/live\/[^/]+\/(stream|status)$/
+app.use('/api', (req, res, next) => (LIVE_FEED.test(req.path) ? next() : requireUser(req, res, next)))
 app.use('/api', apiLimiter)
 
 // Plan quota check helper
@@ -621,43 +626,6 @@ function transcodeVideoIfNeeded(filePath) {
 
 
 // Shape SVG rendering helper (mirrors client/src/utils/shapeUtils.js)
-function shapeSvgString(el) {
-  const w = el.width, h = el.height
-  const fill = sanitizeCSSValue(el.fill) || '#6366f1'
-  const stroke = sanitizeCSSValue(el.stroke) || 'none'
-  const sw = el.strokeWidth || 0
-  const shape = el.shape || 'rect'
-  let inner = ''
-  if (shape === 'line') {
-    const lw = el.strokeWidth || 3
-    inner = `<line x1="${lw}" y1="${h/2}" x2="${w-lw}" y2="${h/2}" stroke="${fill}" stroke-width="${lw}" fill="none" />`
-  } else {
-    let shapeEl = ''
-    switch(shape) {
-      case 'rect': shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" rx="${el.borderRadius||0}" />`; break
-      case 'rounded-rect': shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" rx="${Math.min(w,h)*0.15}" />`; break
-      case 'circle': shapeEl = `<ellipse cx="${w/2}" cy="${h/2}" rx="${Math.max(0,w/2-sw/2)}" ry="${Math.max(0,h/2-sw/2)}" />`; break
-      case 'triangle': shapeEl = `<polygon points="${w/2},${sw} ${w-sw},${h-sw} ${sw},${h-sw}" />`; break
-      case 'diamond': shapeEl = `<polygon points="${w/2},${sw} ${w-sw},${h/2} ${w/2},${h-sw} ${sw},${h/2}" />`; break
-      case 'arrow-right': shapeEl = `<polygon points="${sw},${h*0.35} ${w*0.6},${h*0.35} ${w*0.6},${sw} ${w-sw},${h/2} ${w*0.6},${h-sw} ${w*0.6},${h*0.65} ${sw},${h*0.65}" />`; break
-      case 'star': {
-        const cx=w/2,cy=h/2,outerR=Math.min(w,h)/2-sw,innerR=outerR*0.4,pts=[]
-        for(let i=0;i<10;i++){const a=(Math.PI/5)*i-Math.PI/2;const r=i%2===0?outerR:innerR;pts.push(`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`)}
-        shapeEl = `<polygon points="${pts.join(' ')}" />`; break
-      }
-      default: shapeEl = `<rect x="${sw/2}" y="${sw/2}" width="${w-sw}" height="${h-sw}" />`
-    }
-    inner = `<g fill="${fill}" stroke="${stroke}" stroke-width="${sw}">${shapeEl}</g>`
-  }
-  let textEl = ''
-  if (el.text) {
-    const fs = el.fontSize || 16
-    const tc = sanitizeCSSValue(el.textColor) || '#ffffff'
-    textEl = `<text x="${w/2}" y="${h/2}" dominant-baseline="middle" text-anchor="middle" font-size="${fs}" fill="${tc}">${escapeHtml(el.text)}</text>`
-  }
-  return `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="position:absolute;inset:0;overflow:visible;">${inner}${textEl}</svg>`
-}
-
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
@@ -718,14 +686,19 @@ function generateRevealHTML(presentation, opts = {}) {
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
     const clickTargets = visibilityTargets(slide)
-    const elementsHtml = (slide.elements || [])
+    const canvasH = getCanvasHeight(slide, slideH)
+    const scrolling = canvasH > slideH
+    const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    const renderedElements = sortedElements
       .map(el => {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
           ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${sanitizeCSSValue(el.shadowColor)||'rgba(0,0,0,0.5)'};` : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        const rotationStyle = el.rotation ? `transform:rotate(${el.rotation}deg);` : ''
+        // The rotate property, not transform, so that fragment transitions and
+        // hover styles leave the rotation alone
+        const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
@@ -775,7 +748,7 @@ function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvgString(el)}</div>`
+          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
           return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
@@ -952,7 +925,11 @@ function generateRevealHTML(presentation, opts = {}) {
           return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
-      }).join('\n')
+      })
+    // On a scrolling slide, pinned elements stay on the screen, outside the canvas
+    const pinned = i => scrolling && isPinned(sortedElements[i])
+    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
+    const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
 
     let sideCitationsHtml = ''
     if (sideCitations.length > 0) {
@@ -1012,8 +989,13 @@ function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${_isCustom ? 'none' : slide.transition}"` : ''
     const customTransAttr = _isCustom ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    return { slideIndex, html: `    <section${slideIdAttr(slide)}${bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${elementsHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
+    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
+    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background) : ''
+    // With the steps that put elements in states (utils/clickActions.js)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
+    return { slideIndex, html: `    <section${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
   })
+  const scrollingDeck = hasScrollingSlides(presentation)
 
   // Group slides into 2D columns (section-based or column-based)
   const allSlides = presentation.slides || []
@@ -1168,7 +1150,7 @@ function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -1382,7 +1364,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
   const slideCoords = {}
@@ -1455,6 +1437,9 @@ ${(() => {
         wrap.appendChild(num);
         if (srcEl) {
           var clone = srcEl.cloneNode(true);
+          // A picture only: its clickable and hoverable copies can't be tabbed to
+          clone.setAttribute('inert', '');
+          clone.setAttribute('aria-hidden', 'true');
           clone.style.cssText = 'position:absolute;top:0;left:0;width:' + slideW + 'px;height:' + slideH + 'px;transform:scale(' + (THUMB_W/slideW) + ');transform-origin:top left;pointer-events:none;overflow:hidden;';
           clone.querySelectorAll('.reveal-footer').forEach(function(f) { f.remove(); });
           clone.querySelectorAll('iframe').forEach(function(f) { f.remove(); });
@@ -1631,20 +1616,14 @@ app.post('/api/presentations', async (req, res) => {
       const template = await storage.getTemplate(templateId, req.userId)
       if (template) {
         const cloned = JSON.parse(JSON.stringify(template))
-        // New slide ids, with the template's slide links following them
-        const slideIds = new Map()
-        const slides = (cloned.slides || []).map(s => {
-          const id = uuidv4()
-          if (s.id) slideIds.set(s.id, id)
-          return { ...s, id, elements: renewElementIds(s.elements, uuidv4) }
-        })
         presentation = {
           ...cloned,
           id: uuidv4(),
           title: title || cloned.title || 'Untitled Presentation',
           createdAt: now,
           updatedAt: now,
-          slides: remapSlideLinks(slides, slideIds),
+          // New slide and element ids, with the template's links following them
+          slides: renewSlideIds(cloned.slides, uuidv4),
         }
         // Remove template-specific fields
         delete presentation.isTemplate
@@ -2055,13 +2034,14 @@ app.get('/api/fonts/file/:filename', async (req, res) => {
         [`fonts/${filename}`]
       )
       if (!rows.length) return res.status(404).send('Not found')
-      const { body, contentType } = await streamFromR2(rows[0].storage_key)
-      res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
+      const { body } = await streamFromR2(rows[0].storage_key)
+      setUploadHeaders(res, filename)
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
       body.pipe(res)
     } else {
       const filePath = path.join(UPLOADS_DIR, 'fonts', filename)
       if (!fs.existsSync(filePath)) return res.status(404).send('Not found')
+      setUploadHeaders(res, filename)
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
       res.sendFile(filePath)
     }
@@ -2150,7 +2130,7 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
       filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
-      const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
+      const result = await r2Upload(filePath, req.file.originalname, {
         presentationId: null, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
@@ -2176,7 +2156,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
       filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
-      const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
+      const result = await r2Upload(filePath, req.file.originalname, {
         presentationId: req.params.id, userId: req.deck.ownerId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
@@ -2221,7 +2201,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     if (isR2Enabled()) {
       const urls = []
       for (const f of pngFiles) {
-        const result = await r2Upload(path.join(tmpDir, f), f, 'image/png', {
+        const result = await r2Upload(path.join(tmpDir, f), f, {
           presentationId: req.params.id, userId: req.deck.ownerId, storage,
         })
         urls.push(result.url)
@@ -2260,14 +2240,23 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
   }
 })
 
+// A page built from a deck, in a sandbox. A deck runs its author's code (HTML
+// embeds, and anything in its text), so its page gets an origin of its own,
+// null: it can't read this site's cookies or storage, or use the API as
+// whoever opened it. Links and web page actions open outside the sandbox.
+const DECK_PAGE_SANDBOX = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+function sendDeckPage(res, html) {
+  res.setHeader('Content-Type', 'text/html')
+  res.setHeader('Content-Security-Policy', DECK_PAGE_SANDBOX)
+  res.send(html)
+}
+
 // GET /api/presentations/:id/present - serve in browser
 app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async (req, res) => {
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = localizeLibraries(generateRevealHTML(presentation))
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2394,9 +2383,7 @@ app.get('/share/:token', requireValidId('token'), async (req, res) => {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    const html = localizeLibraries(generateRevealHTML(presentation))
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2451,13 +2438,14 @@ app.post('/api/presentations/:id/live/stop', requireValidId(), async (req, res) 
   res.json({ ok: true })
 })
 
-// POST /api/live/:sessionId/slide — presenter updates current slide
+// POST /api/live/:sessionId/slide — presenter updates current slide. Only
+// whoever started the session: its code is given to the audience
 app.post('/api/live/:sessionId/slide', async (req, res) => {
   const session = liveSessions.get(req.params.sessionId)
-  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (!session || session.userId !== req.userId) return res.status(404).json({ error: 'Session not found' })
 
   const { flatIndex } = req.body
-  if (typeof flatIndex !== 'number') return res.status(400).json({ error: 'flatIndex required' })
+  if (!Number.isInteger(flatIndex) || flatIndex < 0) return res.status(400).json({ error: 'flatIndex required' })
 
   session.currentSlide = flatIndex
   session.unlockedSlides.add(flatIndex)
@@ -2542,7 +2530,9 @@ app.get('/live/:id', async (req, res) => {
           data.unlocked.forEach(function(i) { unlocked.add(i); });
           maxUnlocked = Math.max.apply(null, Array.from(unlocked));
           if (data.type === 'init') {
-            Reveal.slide(flatToHV(data.currentSlide));
+            // Join on the presenter's slide, once the deck is ready
+            var join = function() { var at = flatToHV(data.currentSlide); Reveal.slide(at.h, at.v); };
+            if (Reveal.isReady()) join(); else Reveal.on('ready', join);
           }
         }
         if (data.type === 'ended') {
@@ -2594,8 +2584,7 @@ app.get('/live/:id', async (req, res) => {
     const html = lastBodyIdx >= 0
       ? baseHtml.slice(0, lastBodyIdx) + liveScript + '\n</body>' + baseHtml.slice(lastBodyIdx + 7)
       : baseHtml + liveScript
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
+    sendDeckPage(res, html)
   } catch (err) {
     res.status(500).send('Error loading presentation')
   }
@@ -3451,11 +3440,8 @@ app.post('/api/presentations/fork', async (req, res) => {
     delete forkedPres.updatedAt
     delete forkedPres.expiresAt
     forkedPres.title = (forkedPres.title || 'Untitled') + ' (fork)'
-    forkedPres.slides = (forkedPres.slides || []).map(s => ({
-      ...s,
-      id: uuidv4(),
-      elements: (s.elements || []).map(el => ({ ...el, id: uuidv4() }))
-    }))
+    // New slide and element ids, with links and show/hide following them
+    forkedPres.slides = renewSlideIds(forkedPres.slides, uuidv4)
 
     const { expirationDays } = planFor(req.userPlan)
     const expiresAt = IS_CLOUD && expirationDays

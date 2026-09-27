@@ -4,8 +4,13 @@
 import { useState, useRef, useMemo } from 'react'
 import katex from 'katex'
 import { api } from '../utils/api'
-import { supportsClickAction, safeActionUrl, slideLabel, elementLabels } from '../utils/clickActions'
+import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
+import { CLOSED_SHAPES } from '../utils/shapeGeometry'
+import { SHAPES } from '../utils/shapeUtils'
+
+const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
+import { getCanvasHeight, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -145,9 +150,9 @@ function CopyTikzButton({ tikz }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
-  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
+  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
     <h3 onClick={() => setCollapsed(p => ({ ...p, [k]: !p[k] }))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
       {children} <span style={{ fontSize: 10, opacity: 0.5 }}>{collapsed[k] ? '▸' : '▾'}</span>
@@ -1362,6 +1367,33 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </div>
           )}
 
+          {/* Pinned on a scrolling slide */}
+          {(() => {
+            const vh = presentation?.slideHeight || 540
+            if (getCanvasHeight(slide, vh) <= vh) return null
+            return (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={isPinned(selectedElement)}
+                    onChange={e => {
+                      if (!e.target.checked) { onUpdateElement({ scrollBehavior: undefined }); return }
+                      // A pinned element's y is on the screen, so it has to be within the first one
+                      const maxY = Math.max(0, vh - (selectedElement.height || 0))
+                      onUpdateElement({ scrollBehavior: 'pin', y: Math.min(selectedElement.y ?? 0, maxY) })
+                    }}
+                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Pin while scrolling</span>
+                </label>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  Stays on the screen while the rest of the slide scrolls past, so it sits within the first screen.
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Slide entry animation (GSAP) */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Slide Entry Animation</div>
@@ -1563,25 +1595,28 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             )
           })()}
 
-          {/* Interaction when presented: a click action, and being shown or hidden by one */}
+          {/* Interactions when presented: what a click or hover on it does, and being shown or hidden by one */}
           {onUpdateWithGroup && (() => {
             const el = selectedElement
             const action = el.clickAction || null
+            const hover = el.hoverAction || null
             const slides = presentation?.slides || []
             const elements = slide.elements || []
-            const canClick = supportsClickAction(el)
+            const canAct = supportsClickAction(el)
             const imageClick = el.type === 'image' && (el.clickToExpand || el.popupText)
             const setAction = clickAction => onUpdateWithGroup({ clickAction })
+            const setHover = hoverAction => onUpdateWithGroup({ hoverAction })
             const setType = type => setAction(
               type === 'none' ? null
                 : type === 'slide' ? { type, slideId: action?.slideId || slides.find(s => s.id && s.id !== slide.id)?.id || null }
                 : type === 'url' ? { type, url: action?.url || '', newTab: action?.newTab ?? true }
-                : type === 'visibility' ? { type, show: action?.show || [], hide: action?.hide || [], toggle: action?.toggle || [] }
+                : type === 'visibility' ? { type, show: action?.show || [], hide: action?.hide || [], toggle: action?.toggle || [], set: action?.set || [] }
                 : { type })
+            const setHoverType = type => setHover(type === 'visibility' ? { type, show: hover?.show || [], hide: hover?.hide || [], set: hover?.set || [] } : null)
             const missing = action?.type === 'slide' && !slides.some(s => s.id && s.id === action.slideId)
             const badUrl = action?.type === 'url' && !!action.url?.trim() && !safeActionUrl(action.url)
 
-            // What a click can show or hide: each group counts as one
+            // What a click or hover can show or hide: each group counts as one
             const labels = elementLabels(elements)
             const entries = []
             const seenGroups = new Set()
@@ -1593,121 +1628,335 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               const named = members.find(m => m.type === 'text') || members[0]
               entries.push({ key: e.groupId, ids: members.map(m => m.id), label: `Group: ${labels.get(named.id)}` })
             }
-            const VIS = ['show', 'hide', 'toggle']
-            const stateOf = entry => VIS.find(k => entry.ids.every(id => (action?.[k] || []).includes(id))) || 'none'
-            const setState = (entry, state) => {
-              const exists = id => elements.some(e => e.id === id)
-              const next = { ...action }
-              for (const k of VIS) next[k] = (action?.[k] || []).filter(id => !entry.ids.includes(id) && exists(id))
-              if (state !== 'none') next[state] = [...next[state], ...entry.ids]
-              setAction(next)
-            }
             const hiddenAtStart = entry => entry.ids.every(id => elements.find(e => e.id === id)?.startHidden)
-            const shownByAClick = elements.some(e => e.clickAction?.type === 'visibility'
-              && ['show', 'toggle'].some(k => (e.clickAction[k] || []).includes(el.id)))
+            const shownByAnAction = elements.some(e =>
+              (e.clickAction?.type === 'visibility' && ['show', 'toggle'].some(k => (e.clickAction[k] || []).includes(el.id)))
+              || (e.hoverAction?.type === 'visibility' && (e.hoverAction.show || []).includes(el.id)))
+
+            // Each entry with a choice of what `act` does to it: — or one of `keys`
+            const CHOICES = { show: 'Show', hide: 'Hide', toggle: 'Toggle' }
+            // Each entry with a choice of what `act` does to it, and each
+            // element with states with a choice of the state it puts it in
+            const targetList = (act, keys, update, name, list, modes) => {
+              const exists = id => elements.some(e => e.id === id)
+              const stateOf = entry => keys.find(k => entry.ids.every(id => (act?.[k] || []).includes(id))) || 'none'
+              const setState = (entry, state) => {
+                const next = { ...act }
+                for (const k of keys) next[k] = (act?.[k] || []).filter(id => !entry.ids.includes(id) && exists(id))
+                if (state !== 'none') next[state] = [...next[state], ...entry.ids]
+                update(next)
+              }
+              const stated = elements.filter(e => (e.states || []).length)
+              const setValue = id => {
+                const entry = (act?.set || []).find(s => s.id === id)
+                return entry ? `${entry.mode || 'set'}:${entry.state || ''}` : ''
+              }
+              const changeSet = (id, value) => {
+                const next = (act?.set || []).filter(s => s.id !== id && exists(s.id))
+                if (value) { const [mode, state] = value.split(':'); next.push({ id, state, mode }) }
+                update({ ...act, set: next })
+              }
+              return (
+                <div role="group" aria-label={`What ${name} shows or hides`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {list.map(entry => (
+                    <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button onClick={() => onSelectElement?.(entry.ids[0])} title="Select it"
+                        style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {entry.label}{entry.ids.includes(el.id) ? ' (this)' : ''}
+                        {hiddenAtStart(entry) && <span style={{ color: 'var(--text-muted)' }}> · hidden at start</span>}
+                      </button>
+                      <select className="prop-input" value={stateOf(entry)} onChange={e => setState(entry, e.target.value)}
+                        aria-label={`${entry.label}: on ${name}`} style={{ width: 84, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
+                        <option value="none">—</option>
+                        {keys.map(k => <option key={k} value={k}>{CHOICES[k]}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  {stated.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>States</div>}
+                  {stated.map(e => {
+                    const value = setValue(e.id)
+                    const known = ['', 'set:', 'cycle:', ...e.states.flatMap(st => [`set:${st.id}`, `toggle:${st.id}`])]
+                    return (
+                    <div key={`st-${e.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button onClick={() => onSelectElement?.(e.id)} title="Select it"
+                        style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {labels.get(e.id)}{e.id === el.id ? ' (this)' : ''}
+                      </button>
+                      <select className="prop-input" value={value} onChange={ev => changeSet(e.id, ev.target.value)}
+                        aria-label={`${labels.get(e.id)}: state on ${name}`} style={{ width: 118, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
+                        <option value="">—</option>
+                        <option value="set:">Default</option>
+                        {e.states.map(st => <option key={st.id} value={`set:${st.id}`}>{st.name || 'State'}</option>)}
+                        {modes.includes('toggle') && e.states.map(st => <option key={`t-${st.id}`} value={`toggle:${st.id}`}>Toggle {st.name || 'State'}</option>)}
+                        {modes.includes('cycle') && e.states.length > 1 && <option value="cycle:">Next state</option>}
+                        {!known.includes(value) && <option value={value}>State was deleted</option>}
+                      </select>
+                    </div>
+                    )
+                  })}
+                  {list.length || stated.length ? <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Click a name to select it.</div>
+                    : <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Nothing else is on this slide yet.</div>}
+                </div>
+              )
+            }
+            const rowLabel = text => <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 54, flexShrink: 0 }}>{text}</span>
 
             return (
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>On click</div>
-                {!canClick ? (
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Interactions</div>
+                {!canAct ? (
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                    This element takes its own clicks, but a click on something else can still show or hide it.
-                  </p>
-                ) : imageClick ? (
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                    This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                    This element takes its own clicks and hovers, but a click or hover on something else can still show or hide it.
                   </p>
                 ) : (<>
-                  <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
-                    aria-label="On click" style={{ padding: '4px 6px', marginBottom: 6 }}>
-                    <option value="none">Nothing</option>
-                    <option value="slide">Go to slide</option>
-                    <option value="next">Next slide</option>
-                    <option value="prev">Previous slide</option>
-                    <option value="visibility">Show or hide elements</option>
-                    <option value="url">Open web page</option>
-                  </select>
-                  {action?.type === 'slide' && (
-                    <select className="prop-input" value={missing ? '' : action.slideId}
-                      onChange={e => setAction({ type: 'slide', slideId: e.target.value })}
-                      aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
-                      {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
-                      {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
-                    </select>
-                  )}
-                  {action?.type === 'visibility' && (
-                    <div role="group" aria-label="What a click shows or hides" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {entries.map(entry => (
-                        <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button onClick={() => onSelectElement?.(entry.ids[0])} title="Select it"
-                            style={{ all: 'unset', flex: 1, minWidth: 0, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {entry.label}{entry.ids.includes(el.id) ? ' (this)' : ''}
-                            {hiddenAtStart(entry) && <span style={{ color: 'var(--text-muted)' }}> · hidden at start</span>}
-                          </button>
-                          <select className="prop-input" value={stateOf(entry)} onChange={e => setState(entry, e.target.value)}
-                            aria-label={`${entry.label}: on click`} style={{ width: 84, flexShrink: 0, padding: '2px 4px', fontSize: 11 }}>
-                            <option value="none">—</option>
-                            <option value="show">Show</option>
-                            <option value="hide">Hide</option>
-                            <option value="toggle">Toggle</option>
-                          </select>
-                        </div>
-                      ))}
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Click a name to select it.</div>
-                    </div>
-                  )}
-                  {action?.type === 'url' && (<>
-                    <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
-                      onChange={e => setAction({ ...action, url: e.target.value })}
-                      aria-label="Web address" aria-invalid={badUrl} />
-                    <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
-                      Opens https://, http:// and mailto: addresses.
-                    </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
-                      <input type="checkbox" checked={action.newTab !== false}
-                        onChange={e => setAction({ ...action, newTab: e.target.checked })}
-                        style={{ accentColor: 'var(--accent)' }} />
-                      Open in a new tab
-                    </label>
-                  </>)}
-                  {action && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>On hover</span>
-                      <select className="prop-input" value={el.hoverEffect || 'brighten'}
-                        onChange={e => onUpdateWithGroup({ hoverEffect: e.target.value === 'brighten' ? null : e.target.value })}
-                        aria-label="On hover" style={{ padding: '2px 6px', fontSize: 11 }}>
-                        <option value="brighten">Brighten</option>
-                        <option value="lift">Lift</option>
-                        <option value="grow">Grow</option>
+                  {imageClick ? (<>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>{rowLabel('On click')}</div>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                      This image expands or shows its pop-up text when clicked. Turn those off above to give it another click action.
+                    </p>
+                  </>) : (<>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      {rowLabel('On click')}
+                      <select className="prop-input" value={action?.type || 'none'} onChange={e => setType(e.target.value)}
+                        aria-label="On click" style={{ flex: 1, minWidth: 0, padding: '4px 6px' }}>
                         <option value="none">Nothing</option>
+                        <option value="slide">Go to slide</option>
+                        <option value="next">Next slide</option>
+                        <option value="prev">Previous slide</option>
+                        <option value="visibility">Show, hide or change elements</option>
+                        <option value="url">Open web page</option>
                       </select>
                     </div>
-                  )}
+                    {action?.type === 'slide' && (
+                      <select className="prop-input" value={missing ? '' : action.slideId}
+                        onChange={e => setAction({ type: 'slide', slideId: e.target.value })}
+                        aria-label="Slide to go to" style={{ padding: '4px 6px' }}>
+                        {missing && <option value="">{action.slideId ? 'Slide was deleted' : 'Choose a slide'}</option>}
+                        {slides.map((s, i) => s.id && <option key={s.id} value={s.id}>{slideLabel(s, i)}</option>)}
+                      </select>
+                    )}
+                    {action?.type === 'visibility' && targetList(action, ['show', 'hide', 'toggle'], setAction, 'click', entries, ['set', 'toggle', 'cycle'])}
+                    {action?.type === 'url' && (<>
+                      <input className="prop-input" type="url" placeholder="https://…" value={action.url || ''}
+                        onChange={e => setAction({ ...action, url: e.target.value })}
+                        aria-label="Web address" aria-invalid={badUrl} />
+                      <div style={{ fontSize: 11, color: badUrl ? 'var(--danger)' : 'var(--text-muted)', marginTop: 3 }}>
+                        Opens https://, http:// and mailto: addresses.
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
+                        <input type="checkbox" checked={action.newTab !== false}
+                          onChange={e => setAction({ ...action, newTab: e.target.checked })}
+                          style={{ accentColor: 'var(--accent)' }} />
+                        Open in a new tab
+                      </label>
+                    </>)}
+                    {action && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>Hover style</span>
+                        <select className="prop-input" value={el.hoverEffect || 'brighten'}
+                          onChange={e => onUpdateWithGroup({ hoverEffect: e.target.value === 'brighten' ? null : e.target.value })}
+                          aria-label="Hover style" style={{ padding: '2px 6px', fontSize: 11 }}>
+                          <option value="brighten">Brighten</option>
+                          <option value="lift">Lift</option>
+                          <option value="grow">Grow</option>
+                          <option value="none">Nothing</option>
+                        </select>
+                      </div>
+                    )}
+                  </>)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 6px' }}>
+                    {rowLabel('On hover')}
+                    <select className="prop-input" value={hover?.type === 'visibility' ? 'visibility' : 'none'} onChange={e => setHoverType(e.target.value)}
+                      aria-label="On hover" style={{ flex: 1, minWidth: 0, padding: '4px 6px' }}>
+                      <option value="none">Nothing</option>
+                      <option value="visibility">Show, hide or change elements</option>
+                    </select>
+                  </div>
+                  {hover?.type === 'visibility' && (<>
+                    {targetList(hover, ['show', 'hide'], setHover, 'hover', entries.filter(entry => !entry.ids.includes(el.id)), ['set'])}
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Undone when the pointer moves off it and what it shows. On touch screens a tap turns it on and off{action ? ', unless it has a click action' : ''}.
+                    </div>
+                  </>)}
                 </>)}
+                {/* States: looks it can be put in, each recorded by choosing it */}
+                {(() => {
+                  const states = el.states || []
+                  const current = states.find(st => st.id === recordingState) || null
+                  const setStates = next => onUpdateElement({ states: next })
+                  const patchState = patch => setStates(states.map(st => st.id === current.id ? { ...st, ...patch } : st))
+                  const addState = () => {
+                    const st = { id: newStateId(), name: `State ${states.length + 1}`, duration: DEFAULT_STATE_DURATION, easing: 'ease' }
+                    setStates([...states, st])
+                    onRecordState?.(st.id)
+                  }
+                  const deleteState = () => {
+                    onRecordState?.(null)
+                    onUpdateElement({ states: states.filter(st => st.id !== current.id), ...(el.initialState === current.id ? { initialState: null } : {}) })
+                  }
+                  const clearState = () => setStates(states.map(st => st.id === current.id ? { id: st.id, name: st.name, duration: st.duration, easing: st.easing } : st))
+                  const zoomed = !states.length && !imageClick && withClickToZoom(el, { slideW: presentation?.slideWidth || 960, slideH: presentation?.slideHeight || 540 })
+                  const chip = active => ({ padding: '2px 8px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 11, cursor: 'pointer', background: active ? '#d946ef' : 'var(--bg-hover)', color: active ? '#fff' : 'var(--text-secondary)' })
+                  const row = { display: 'flex', alignItems: 'center', gap: 6 }
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ ...row, alignItems: 'flex-start' }}>
+                        {rowLabel('States')}
+                        <div role="group" aria-label="States" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>
+                          <button aria-pressed={!current} onClick={() => onRecordState?.(null)} style={chip(!current)}>Default</button>
+                          {states.map(st => (
+                            <button key={st.id} aria-pressed={current?.id === st.id} onClick={() => onRecordState?.(st.id)} style={chip(current?.id === st.id)}>{st.name || 'State'}</button>
+                          ))}
+                          {states.length < MAX_STATES && <button onClick={addState} title="Add a state and record how the element looks in it" style={chip(false)}>+ State</button>}
+                        </div>
+                      </div>
+                      {current ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, padding: 8, borderRadius: 6, background: 'rgba(217,70,239,0.08)', border: '1px solid rgba(217,70,239,0.35)' }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                            Recording: move, resize, turn or recolor the element{el.type === 'shape' ? ', or change its shape,' : ''} to change this state. Default or Esc stops.
+                          </div>
+                          <input className="prop-input" aria-label="State name" value={current.name || ''} onChange={e => patchState({ name: e.target.value })} />
+                          <div style={row}>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Takes</span>
+                            <input className="prop-input" type="number" min={0} max={10000} step={50} aria-label="Duration in milliseconds" value={current.duration ?? DEFAULT_STATE_DURATION}
+                              onChange={e => patchState({ duration: Math.max(0, Math.min(10000, Number(e.target.value) || 0)) })} style={{ width: 70 }} />
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ms</span>
+                            <select className="prop-input" aria-label="Easing" value={current.easing || 'ease'} onChange={e => patchState({ easing: e.target.value })} style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                              {Object.keys(STATE_EASINGS).map(k => <option key={k} value={k}>{EASING_NAMES[k]}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ ...row, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-muted)' }}>
+                            <label style={{ ...row, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!el.flipX} onChange={e => onUpdateElement({ flipX: e.target.checked })} style={{ accentColor: '#d946ef' }} /> Flip across
+                            </label>
+                            <label style={{ ...row, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!el.flipY} onChange={e => onUpdateElement({ flipY: e.target.checked })} style={{ accentColor: '#d946ef' }} /> Flip over
+                            </label>
+                            <label style={row}>
+                              Scale <input className="prop-input" type="number" min={0.1} max={10} step={0.1} aria-label="Scale" value={el.scale ?? 1}
+                                onChange={e => onUpdateElement({ scale: Math.max(0.1, Math.min(10, Number(e.target.value) || 1)) })} style={{ width: 56 }} />
+                            </label>
+                          </div>
+                          {el.type === 'shape' && CLOSED_SHAPES.includes(slide.elements?.find(e => e.id === el.id)?.shape || 'rect') && (
+                            <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)' }}>
+                              Shape
+                              <select className="prop-input" aria-label="Shape in this state" value={el.shape || 'rect'} onChange={e => onUpdateElement({ shape: e.target.value })}
+                                style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                                {SHAPES.filter(sh => CLOSED_SHAPES.includes(sh.id)).map(sh => <option key={sh.id} value={sh.id}>{sh.icon} {sh.name}</option>)}
+                              </select>
+                            </label>
+                          )}
+                          {el.type !== 'shape' && (
+                            <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)' }}>
+                              Opacity
+                              <input type="range" min={0} max={1} step={0.05} aria-label="Opacity in this state" value={el.opacity ?? 1}
+                                onChange={e => onUpdateElement({ opacity: Number(e.target.value) })} style={{ flex: 1, accentColor: '#d946ef' }} />
+                            </label>
+                          )}
+                          <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={current.zIndex != null} onChange={e => onUpdateElement({ zIndex: e.target.checked ? 9000 : null })} style={{ accentColor: '#d946ef' }} />
+                            In front of everything
+                          </label>
+                          <div style={row}>
+                            <button className="btn btn-secondary" onClick={clearState} style={{ flex: 1, fontSize: 11, padding: '4px 6px', justifyContent: 'center' }}>Clear changes</button>
+                            <button className="btn btn-danger" onClick={deleteState} style={{ flex: 1, fontSize: 11, padding: '4px 6px', justifyContent: 'center' }}>Delete state</button>
+                          </div>
+                        </div>
+                      ) : states.length > 0 ? (
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                          Choose a state to record how the element looks in it. A click or hover puts it in a state (see On click and On hover).
+                        </p>
+                      ) : null}
+                      {states.length > 0 && (
+                        <div style={{ ...row, marginTop: 6 }}>
+                          {rowLabel('Starts as')}
+                          <select className="prop-input" aria-label="Starts as" value={states.some(st => st.id === el.initialState) ? el.initialState : ''}
+                            onChange={e => onUpdateElement({ initialState: e.target.value || null })} style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                            <option value="">Default</option>
+                            {states.map(st => <option key={st.id} value={st.id}>{st.name || 'State'}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {states.length > 0 && (() => {
+                        // Steps: at a press of → or a clicker, counted with the slide's fragments
+                        const steps = Object.entries(el.stateSteps || {}).map(([k, v]) => [Number(k), v])
+                          .filter(([k]) => Number.isInteger(k) && k > 0).sort((a, b) => a[0] - b[0])
+                        const byStep = Object.fromEntries(steps)
+                        const setSteps = next => onUpdateElement({ stateSteps: Object.keys(next).length ? next : null })
+                        const used = (slide.elements || []).flatMap(e => [...(e.fragment ? [e.fragmentIndex || 1] : []), ...Object.keys(e.stateSteps || {}).map(Number)])
+                        const nextStep = Math.max(0, ...used.filter(Number.isFinite)) + 1
+                        const moveStep = (from, to) => {
+                          if (!Number.isInteger(to) || to < 1 || to === from || byStep[to] !== undefined) return
+                          const next = { ...byStep }
+                          delete next[from]
+                          setSteps({ ...next, [to]: byStep[from] })
+                        }
+                        return (
+                          <div style={{ marginTop: 6 }}>
+                            {steps.map(([step, state]) => (
+                              <div key={step} style={{ ...row, marginBottom: 4 }}>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>At step</span>
+                                <input className="prop-input" type="number" min={1} max={1000} aria-label={`Step ${step}`} value={step}
+                                  onChange={e => moveStep(step, Math.round(Number(e.target.value)))} style={{ width: 52 }} />
+                                <select className="prop-input" aria-label={`State at step ${step}`} value={states.some(st => st.id === state) ? state : ''}
+                                  onChange={e => setSteps({ ...byStep, [step]: e.target.value || null })} style={{ flex: 1, minWidth: 0, padding: '2px 4px', fontSize: 11 }}>
+                                  <option value="">Default</option>
+                                  {states.map(st => <option key={st.id} value={st.id}>{st.name || 'State'}</option>)}
+                                </select>
+                                <button onClick={() => { const next = { ...byStep }; delete next[step]; setSteps(next) }} title="Remove this step" aria-label={`Remove step ${step}`}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, padding: '0 2px' }}>×</button>
+                              </div>
+                            ))}
+                            <button onClick={() => setSteps({ ...byStep, [nextStep]: states[0].id })} title="Change state when the slide steps on, with → or a clicker" style={chip(false)}>+ Step</button>
+                            {steps.length > 0 && (
+                              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                                Steps count with the slide's fragments: step 1 is the first press of → or a clicker. Going back undoes them.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {states.some(st => st.flipX || st.flipY) && (
+                        <label style={{ ...row, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 6 }}>
+                          <input type="checkbox" checked={!!el.backfaceHidden} onChange={e => onUpdateElement({ backfaceHidden: e.target.checked || null })} style={{ accentColor: 'var(--accent)' }} />
+                          Can't be seen while turned over (for flip cards)
+                        </label>
+                      )}
+                      {zoomed && (
+                        <button className="btn btn-secondary" onClick={() => { onUpdateElement({ states: zoomed.states }); onUpdateWithGroup({ clickAction: zoomed.clickAction }) }}
+                          title="Add a Zoomed state, and a click that toggles it" style={{ width: '100%', fontSize: 11, padding: '4px 6px', justifyContent: 'center', marginTop: 6 }}>
+                          Zoom in when clicked
+                        </button>
+                      )}
+                    </div>
+                  )
+                })()}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', marginTop: 8 }}>
                   <input type="checkbox" checked={!!el.startHidden}
                     onChange={e => onUpdateWithGroup({ startHidden: e.target.checked || null })}
                     style={{ accentColor: 'var(--accent)' }} />
-                  Hidden until a click shows it
+                  Hidden until a click or hover shows it
                 </label>
-                {el.startHidden && !shownByAClick && (
+                {el.startHidden && !shownByAnAction && (
                   <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>Nothing on this slide shows it yet.</div>
                 )}
-                {(action || el.startHidden) && el.groupId && (
+                {(action || hover || el.startHidden) && el.groupId && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Applies to the whole group.</div>
                 )}
-                {(action || el.startHidden) && (
+                {(action || hover || el.startHidden || el.states?.length > 0) && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Works when presenting, in exported HTML and on share links.</div>
                 )}
               </div>
             )
           })()}
 
-          {/* Layer buttons */}
+          {/* Layer buttons, not while recording a state */}
+          {!recordingState && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
             <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onBringForward}>↑ Forward</button>
             <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onSendBackward}>↓ Backward</button>
           </div>
+          )}
 
           {/* Delete */}
           <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={onDeleteElement}>
@@ -1859,6 +2108,60 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           </div>
         </div>
         </>)}
+      </div>
+
+      {/* Scrolling: a canvas taller than the screen */}
+      <div className="prop-section">
+        <SectionHead k="scroll">Scrolling</SectionHead>
+        {!collapsed.scroll && (() => {
+          const vh = presentation?.slideHeight || 540
+          const canvasH = getCanvasHeight(slide, vh)
+          const screens = canvasH / vh
+          const setHeight = h => onUpdateSlide({ scrollHeight: h > vh ? Math.min(Math.round(h), vh * MAX_SCREENS) : undefined })
+          const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && (el.y ?? 0) >= canvasH).length
+          return (<>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas height</div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {[1, 1.5, 2, 3].map(k => (
+                <button
+                  key={k}
+                  className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                  onClick={() => setHeight(vh * k)}
+                >
+                  {k === 1 ? 'Off' : `${k}\u00d7`}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Height (px)</div>
+                {/* Set on Enter or leaving the field: a height typed a digit at a
+                    time would turn scrolling off and on as it went */}
+                <input className="prop-input" type="number" min={vh} max={vh * MAX_SCREENS} step={20}
+                  key={`${slide?.id}:${canvasH}`}
+                  defaultValue={canvasH}
+                  onBlur={e => setHeight(Number(e.target.value) || 0)}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
+                <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {canvasH > vh
+                ? 'Presenting shows one screen at a time. \u2193 and Space scroll down, showing fragments as they come into view, then go on to the next slide. PDF and PowerPoint export give a page per screen.'
+                : 'Make the canvas taller than the screen to scroll through this slide while presenting.'}
+            </div>
+            {offCanvas > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>
+                {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} below the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
+              </div>
+            )}
+          </>)
+        })()}
       </div>
 
       {/* Present Grid per-slide override */}

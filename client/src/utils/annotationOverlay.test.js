@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from 'vitest'
-import { installAnnotations } from './annotationOverlay'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { installAnnotations, relayAnnotations } from './annotationOverlay'
+
+// Saves what's waiting to be saved while the page is still here, as leaving
+// it does, so no save runs after the test environment is gone
+afterEach(() => {
+  window.dispatchEvent(new Event('pagehide'))
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 
 const KEY = 'parallax-annotations:p1:set1'
 
@@ -23,13 +31,13 @@ function present(set = { id: 'set1', name: 'S', createdAt: '2026-09-24T10:00:00.
     slide: h => { current = pages()[h]; (handlers.slidechanged || []).forEach(f => f()) },
     prev: () => { current = pages()[Math.max(0, pages().indexOf(current) - 1)] },
   }
-  const opener = { closed: false, postMessage: vi.fn() }
-  Object.defineProperty(window, 'opener', { value: opener, configurable: true })
+  // What the deck sends to the page around it (here, with no frame, itself)
+  const sent = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
   window.confirm = () => true
-  localStorage.clear()
-  const api = installAnnotations({ presentationId: 'p1', set, slideW: 960, slideH: 540, backupKey: KEY, message: 'parallax-annotations' })
-  return { api, set, opener, pages, shield: document.querySelector('.pp-shield'), goTo: i => { current = pages()[i] } }
+  const api = installAnnotations({ set, slideW: 960, slideH: 540, message: 'parallax-annotations', origin: '*' })
+  return { api, set, sent, pages, shield: document.querySelector('.pp-shield'), goTo: i => { current = pages()[i] } }
 }
+const fromAround = data => window.dispatchEvent(new MessageEvent('message', { data, source: window.parent }))
 
 let nextPointer = 1
 function stroke(shield, points, pointerType = 'mouse') {
@@ -67,35 +75,34 @@ describe('drawing while presenting', () => {
     expect(set.slides.s1).toBeUndefined()
   })
 
-  it('saves to the editor and keeps a copy on this device', () => {
-    const { api, opener, shield } = present()
+  it('sends each change to the page around the deck', () => {
+    const { sent, shield } = present()
     press('d')
     stroke(shield, across)
-    api.flush()
-    expect(opener.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'parallax-annotations', presentationId: 'p1', set: expect.objectContaining({ id: 'set1' }) }),
-      window.location.origin)
-    const copy = JSON.parse(localStorage.getItem(KEY))
-    expect(copy.slides.s1.paths).toHaveLength(1)
-    expect(copy.updatedAt).toBeTruthy()
+    expect(sent).toHaveBeenCalledTimes(1)
+    const [message, origin] = sent.mock.calls[0]
+    expect(message).toMatchObject({ type: 'parallax-annotations', set: { id: 'set1' } })
+    expect(message.set.slides.s1.paths).toHaveLength(1)
+    expect(message.set.updatedAt).toBeTruthy()
+    expect(origin).toBe('*')
+    expect(document.querySelector('.pp-status').textContent).toBe('Saving…')
   })
 
-  it('keeps the ink on this device when the editor is closed', () => {
-    const { api, opener, shield } = present()
-    opener.closed = true
-    press('d')
-    stroke(shield, across)
-    api.flush()
-    expect(opener.postMessage).not.toHaveBeenCalled()
-    expect(JSON.parse(localStorage.getItem(KEY)).slides.s1.paths).toHaveLength(1)
-    expect(document.querySelector('.pp-status').textContent).toMatch(/Kept on this device/)
+  it('shows what the page around it did with the ink', () => {
+    present()
+    const status = () => document.querySelector('.pp-status').textContent
+    fromAround({ type: 'parallax-annotations:status', saved: true })
+    expect(status()).toBe('Saved')
+    fromAround({ type: 'parallax-annotations:status', saved: false })
+    expect(status()).toMatch(/Kept on this device/)
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'parallax-annotations:status', saved: true }, source: null }))
+    expect(status()).toMatch(/Kept on this device/) // only the page around it is heard
   })
 
-  it('doesn’t save a session with no ink', () => {
-    const { api, opener } = present()
+  it('doesn’t send a session with no ink', () => {
+    const { api, sent } = present()
     api.flush()
-    expect(opener.postMessage).not.toHaveBeenCalled()
-    expect(localStorage.getItem(KEY)).toBeNull()
+    expect(sent).not.toHaveBeenCalled()
   })
 
   it('lets fingers change slides once a stylus has drawn', () => {
@@ -166,5 +173,64 @@ describe('continuing a saved session', () => {
     expect(pages()[0].querySelector('svg.pp-ink')).toBeNull()
     expect(pages()[1].querySelector('svg.pp-ink path').getAttribute('stroke')).toBe('#22c55e')
     expect(pages()[2].querySelectorAll('svg.pp-ink path')).toHaveLength(1)
+  })
+})
+
+describe('saving from the page around the deck', () => {
+  const ink = (id = 'set1') => ({ id, name: 'S', slides: { s1: { paths: [{ points: [[0, 0], [9, 9]] }] } }, boards: [] })
+  function relay() {
+    vi.useFakeTimers()
+    const deck = { postMessage: vi.fn() }
+    const opener = { closed: false, postMessage: vi.fn() }
+    Object.defineProperty(window, 'opener', { value: opener, configurable: true })
+    localStorage.clear()
+    relayAnnotations({ presentationId: 'p1', setId: 'set1', backupKey: KEY, message: 'parallax-annotations' }, { contentWindow: deck })
+    const send = (data, source = deck) => window.dispatchEvent(new MessageEvent('message', { data, source }))
+    return { deck, opener, send }
+  }
+
+  it('keeps a copy on this device and sends it to the editor, once changes stop', () => {
+    const { deck, opener, send } = relay()
+    send({ type: 'parallax-annotations', set: ink() })
+    vi.advanceTimersByTime(300)
+    send({ type: 'parallax-annotations', set: ink() })
+    vi.advanceTimersByTime(300)
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(300)
+    expect(opener.postMessage).toHaveBeenCalledTimes(1)
+    expect(opener.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'parallax-annotations', presentationId: 'p1', set: expect.objectContaining({ id: 'set1' }) }),
+      window.location.origin)
+    expect(JSON.parse(localStorage.getItem(KEY)).slides.s1.paths).toHaveLength(1)
+    expect(deck.postMessage).toHaveBeenCalledWith({ type: 'parallax-annotations:status', saved: true }, '*')
+  })
+
+  it('saves at once when the window closes', () => {
+    const { opener, send } = relay()
+    send({ type: 'parallax-annotations', set: ink() })
+    window.dispatchEvent(new Event('pagehide'))
+    expect(opener.postMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the ink on this device when the editor is closed', () => {
+    const { deck, opener, send } = relay()
+    opener.closed = true
+    send({ type: 'parallax-annotations', set: ink() })
+    vi.advanceTimersByTime(600)
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem(KEY)).slides.s1.paths).toHaveLength(1)
+    expect(deck.postMessage).toHaveBeenCalledWith({ type: 'parallax-annotations:status', saved: false }, '*')
+  })
+
+  it('hears only its own deck, and saves only into the set it was opened with', () => {
+    const { opener, send } = relay()
+    send({ type: 'parallax-annotations', set: ink() }, { postMessage() {} })
+    send({ type: 'parallax-annotations', set: 'not a set' })
+    vi.advanceTimersByTime(600)
+    expect(opener.postMessage).not.toHaveBeenCalled()
+    send({ type: 'parallax-annotations', set: ink('someone-elses') })
+    vi.advanceTimersByTime(600)
+    expect(opener.postMessage.mock.calls[0][0].set.id).toBe('set1')
+    expect(JSON.parse(localStorage.getItem(KEY)).id).toBe('set1')
   })
 })

@@ -4,6 +4,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
+import { getCanvasHeight, isPinned } from '../utils/scrollingSlides'
 
 // Editor only: hand the slide panel a still of this embed once it has settled,
 // so thumbnails need no second run of the embed's script. Serialising an SVG is
@@ -37,8 +38,14 @@ import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
+import { shapeParts } from '../utils/shapeGeometry'
+
+const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }
+// A click that puts elements in states, and shows or hides nothing
+const clickChangesStatesOnly = action => action.type === 'visibility' && !['show', 'hide', 'toggle'].some(k => action[k]?.length) && action.set?.length > 0
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
+import { safeHtml, safeSvg } from '../utils/safeHtml'
 
 function highlightCode(code, language) {
   try {
@@ -233,9 +240,13 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
+  // A scrolling slide is laid out on a canvas taller than the screen, SLIDE_H;
+  // its pinned elements stay on the screen, so they keep to the first one
+  const CANVAS_H = getCanvasHeight(slide, slideH)
+  const scrolling = CANVAS_H > SLIDE_H
   const containerRef = useRef(null)
   const canvasRef = useRef(null)
   const [scale, setScale] = useState(1)
@@ -300,6 +311,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
   useEffect(() => { scaleRef.current = scale }, [scale])
   useEffect(() => { selectedElementIdsRef.current = selectedElementIds }, [selectedElementIds])
   useEffect(() => { smartGuidesRef.current = smartGuidesEnabled }, [smartGuidesEnabled])
+  const canvasHRef = useRef(CANVAS_H)
+  useEffect(() => { canvasHRef.current = CANVAS_H }, [CANVAS_H])
   const slideRef = useRef(slide)
   useEffect(() => { slideRef.current = slide }, [slide])
   const persistentGuidesRef = useRef(persistentGuides)
@@ -321,7 +334,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const x = Math.max(0, Math.min(SLIDE_W, (e.clientX - rect.left) / scaleRef.current))
-      const y = Math.max(0, Math.min(SLIDE_H, (e.clientY - rect.top) / scaleRef.current))
+      const y = Math.max(0, Math.min(canvasHRef.current, (e.clientY - rect.top) / scaleRef.current))
       drawPointsRef.current.push({ x, y })
       setLiveStroke(prev => prev ? { ...prev, points: [...drawPointsRef.current] } : null)
     }
@@ -348,13 +361,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
     const update = () => {
       if (!containerRef.current) return
       const { clientWidth: w, clientHeight: h } = containerRef.current
-      setScale(Math.max(Math.min((w - 24) / SLIDE_W, (h - 24) / SLIDE_H), 0.1))
+      setScale(Math.max(Math.min((w - 24) / SLIDE_W, (h - 24) / CANVAS_H), 0.1))
     }
     update()
     const ro = new ResizeObserver(update)
     if (containerRef.current) ro.observe(containerRef.current)
     return () => ro.disconnect()
-  }, [])
+  }, [SLIDE_W, CANVAS_H])
 
   // Global mouse move/up for element drag + crop drag
   useEffect(() => {
@@ -456,7 +469,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         const rect = canvasRef.current.getBoundingClientRect()
         const pos = dg.axis === 'x'
           ? Math.max(0, Math.min(SLIDE_W, Math.round((e.clientX - rect.left) / scaleRef.current)))
-          : Math.max(0, Math.min(SLIDE_H, Math.round((e.clientY - rect.top) / scaleRef.current)))
+          : Math.max(0, Math.min(canvasHRef.current, Math.round((e.clientY - rect.top) / scaleRef.current)))
         onUpdateGuide?.(dg.index, pos)
         return
       }
@@ -467,7 +480,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         const rect = canvasRef.current.getBoundingClientRect()
         const pos = da.axis === 'x'
           ? Math.max(0, Math.min(SLIDE_W, Math.round((e.clientX - rect.left) / scaleRef.current)))
-          : Math.max(0, Math.min(SLIDE_H, Math.round((e.clientY - rect.top) / scaleRef.current)))
+          : Math.max(0, Math.min(canvasHRef.current, Math.round((e.clientY - rect.top) / scaleRef.current)))
         const updated = (slideRef.current?.axisLines || []).map(a => a.id === da.id ? { ...a, position: pos } : a)
         onUpdateAxisLines?.(updated)
         return
@@ -497,6 +510,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       }
       const drag = draggingRef.current
       if (!drag || !canvasRef.current) return
+      // How far down an element can go: the canvas, or for a pinned one the screen
+      const boundH = id => {
+        const el = (slideRef.current?.elements || []).find(el => el.id === id)
+        return isPinned(el) ? SLIDE_H : canvasHRef.current
+      }
+      const bh = boundH(drag.elementId)
       const rect = canvasRef.current.getBoundingClientRect()
       const mouseX = (e.clientX - rect.left) / scaleRef.current
       const mouseY = (e.clientY - rect.top) / scaleRef.current
@@ -507,50 +526,50 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           const updates = drag.startEls.map(sel => ({
             id: sel.id,
             x: Math.max(0, Math.min(SLIDE_W - sel.width, sel.x + dx)),
-            y: Math.max(0, Math.min(SLIDE_H - sel.height, sel.y + dy)),
+            y: Math.max(0, Math.min(boundH(sel.id) - sel.height, sel.y + dy)),
           }))
           onUpdateElements(updates)
         } else {
           const rawX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, drag.startEl.x + dx))
-          const rawY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, drag.startEl.y + dy))
+          const rawY = Math.max(0, Math.min(bh - drag.startEl.height, drag.startEl.y + dy))
           let newX, newY
           if (showGridRef.current) {
             const { x: snappedX, y: snappedY } = snapWithRef(rawX, rawY, drag.startEl.width, drag.startEl.height, drag.startEl.snapRef || 'ul', snap)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, snappedX))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, snappedY))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, snappedY))
             // Custom guides override grid snap when closer
             const { x: gx, y: gy, didX, didY } = guideSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (didX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, gx))
-            if (didY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, gy))
+            if (didY) newY = Math.max(0, Math.min(bh - drag.startEl.height, gy))
             // Layout grid + axis lines override when closer
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           } else if (persistentGuidesRef.current.length > 0) {
             const { x: gx, y: gy } = guideSnap(rawX, rawY, drag.startEl.width, drag.startEl.height)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, gx))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, gy))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, gy))
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           } else if (smartGuidesRef.current) {
             const allEls = (slideRef.current?.elements || [])
             const draggedEl = { id: drag.elementId, x: rawX, y: rawY, width: drag.startEl.width, height: drag.startEl.height }
-            const { guides, snappedX, snappedY } = calculateGuides(draggedEl, allEls, SLIDE_W, SLIDE_H)
+            const { guides, snappedX, snappedY } = calculateGuides(draggedEl, allEls, SLIDE_W, canvasHRef.current)
             newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, snappedX))
-            newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, snappedY))
+            newY = Math.max(0, Math.min(bh - drag.startEl.height, snappedY))
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(newX, newY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides(guides)
           } else {
             newX = rawX
             newY = rawY
             const { x: lgx, y: lgy, didX: lgDidX, didY: lgDidY } = layoutGridSnap(rawX, rawY, drag.startEl.width, drag.startEl.height)
             if (lgDidX) newX = Math.max(0, Math.min(SLIDE_W - drag.startEl.width, lgx))
-            if (lgDidY) newY = Math.max(0, Math.min(SLIDE_H - drag.startEl.height, lgy))
+            if (lgDidY) newY = Math.max(0, Math.min(bh - drag.startEl.height, lgy))
             setActiveGuides([])
           }
           onUpdateElement(drag.elementId, { x: newX, y: newY })
@@ -572,7 +591,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         updates.x = snap(Math.max(0, updates.x))
         updates.y = snap(Math.max(0, updates.y))
         updates.width = snap(Math.min(SLIDE_W - updates.x, updates.width))
-        updates.height = snap(Math.min(SLIDE_H - updates.y, updates.height))
+        updates.height = snap(Math.min(bh - updates.y, updates.height))
         // Snap resize edges to custom guides
         if (persistentGuidesRef.current.length > 0) {
           const { x: gx, y: gy, didX, didY } = guideSnap(updates.x, updates.y, updates.width, updates.height)
@@ -757,13 +776,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
       : (me.clientY - rect.top) / scaleRef.current
     const onMove = (me) => {
       const pos = getPos(me)
-      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : SLIDE_H)) {
+      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : CANVAS_H)) {
         setPreviewGuide({ axis, position: Math.round(pos) })
       }
     }
     const onUp = (me) => {
       const pos = getPos(me)
-      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : SLIDE_H)) {
+      if (pos >= 0 && pos <= (axis === 'x' ? SLIDE_W : CANVAS_H)) {
         onAddGuide?.({ axis, position: Math.round(pos) })
       }
       setPreviewGuide(null)
@@ -804,13 +823,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             style={{
               position: 'absolute', left: 0, top: '50%',
               transform: `translateY(calc(-50% * 1)) scale(${scale})`, transformOrigin: 'left center',
-              width: 20, height: SLIDE_H, background: 'rgba(30,30,46,0.9)', zIndex: 100,
+              width: 20, height: CANVAS_H, background: 'rgba(30,30,46,0.9)', zIndex: 100,
               cursor: 'crosshair', overflow: 'hidden', borderRight: '1px solid var(--border)',
               userSelect: 'none', fontSize: 8, color: 'rgba(255,255,255,0.4)',
             }}
             onMouseDown={e => handleRulerMouseDown('y', e)}
           >
-            {Array.from({ length: Math.ceil(SLIDE_H / 50) }, (_, i) => (
+            {Array.from({ length: Math.ceil(CANVAS_H / 50) }, (_, i) => (
               <div key={i} style={{ position: 'absolute', top: i * 50, left: 0, borderTop: '1px solid rgba(255,255,255,0.2)', width: '100%', paddingLeft: 2, paddingTop: 1 }}>
                 {i * 50}
               </div>
@@ -822,7 +841,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         ref={canvasRef}
         className="slide-canvas"
         style={{
-          width: SLIDE_W, height: SLIDE_H,
+          width: SLIDE_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
           flexShrink: 0, position: 'relative', fontSize: '42px',
           outline: dragOver ? '3px dashed #6366f1' : 'none',
@@ -835,7 +854,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           const rect = canvasRef.current?.getBoundingClientRect()
           if (!rect) return
           const x = Math.max(0, Math.min(SLIDE_W, (e.clientX - rect.left) / scaleRef.current))
-          const y = Math.max(0, Math.min(SLIDE_H, (e.clientY - rect.top) / scaleRef.current))
+          const y = Math.max(0, Math.min(canvasHRef.current, (e.clientY - rect.top) / scaleRef.current))
           drawingActiveRef.current = true
           drawPointsRef.current = [{ x, y }]
           setLiveStroke({ ...drawToolRef.current, points: [{ x, y }] })
@@ -857,6 +876,28 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             backgroundImage: 'linear-gradient(to right, rgba(99,102,241,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(99,102,241,0.18) 1px, transparent 1px)',
             backgroundSize: `${gridSize}px ${gridSize}px`
           }} />
+        )}
+
+        {/* Where each screen of a scrolling slide ends, and which elements are
+            pinned to the screen. Labels are sized against the zoom, which is
+            small for a canvas several screens tall. */}
+        {scrolling && (
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 996 }}>
+            {Array.from({ length: Math.ceil(CANVAS_H / SLIDE_H) - 1 }, (_, i) => (
+              <div key={i} style={{ position: 'absolute', left: 0, top: (i + 1) * SLIDE_H, width: '100%', borderTop: `${Math.max(1, Math.round(2 / scale))}px dashed rgba(99,102,241,0.55)` }}>
+                <div style={{
+                  position: 'absolute', right: Math.round(4 / scale), top: Math.round(4 / scale), whiteSpace: 'nowrap',
+                  color: 'rgba(165,168,255,0.85)', fontSize: Math.round(11 / scale), fontWeight: 600, letterSpacing: 0.3,
+                }}>screen {i + 2}</div>
+              </div>
+            ))}
+            {(slide?.elements || []).filter(isPinned).map(el => (
+              <div key={el.id} style={{
+                position: 'absolute', left: el.x, top: Math.max(0, el.y - Math.round(15 / scale)), whiteSpace: 'nowrap',
+                color: 'rgba(165,168,255,0.9)', fontSize: Math.round(10 / scale), fontWeight: 600, letterSpacing: 0.3,
+              }}>PINNED</div>
+            ))}
+          </div>
         )}
 
         {/* Layout grid overlay (typographic columns/rows) */}
@@ -908,7 +949,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {persistentGuides.map((guide, i) => (
           guide.axis === 'x' ? (
             <div key={`pg${i}`} style={{
-              position: 'absolute', left: guide.position, top: 0, width: 9, height: SLIDE_H,
+              position: 'absolute', left: guide.position, top: 0, width: 9, height: CANVAS_H,
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
@@ -943,7 +984,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {(slide?.axisLines || []).filter(a => a.visible).map((axisLine) => (
           axisLine.axis === 'x' ? (
             <div key={axisLine.id} style={{
-              position: 'absolute', left: axisLine.position, top: 0, width: 9, height: SLIDE_H,
+              position: 'absolute', left: axisLine.position, top: 0, width: 9, height: CANVAS_H,
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
@@ -983,7 +1024,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {/* Preview guide while dragging from ruler */}
         {previewGuide && (
           previewGuide.axis === 'x' ? (
-            <div style={{ position: 'absolute', left: previewGuide.position, top: 0, width: 1, height: SLIDE_H, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', left: previewGuide.position, top: 0, width: 1, height: CANVAS_H, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
           ) : (
             <div style={{ position: 'absolute', top: previewGuide.position, left: 0, height: 1, width: SLIDE_W, background: 'rgba(34,211,238,0.5)', zIndex: 997, pointerEvents: 'none' }} />
           )
@@ -993,7 +1034,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
         {activeGuides.map((guide, i) => (
           guide.axis === 'x' ? (
             <div key={`g${i}`} style={{
-              position: 'absolute', left: guide.position, top: 0, width: 1, height: SLIDE_H,
+              position: 'absolute', left: guide.position, top: 0, width: 1, height: CANVAS_H,
               background: '#f59e0b', zIndex: 999, pointerEvents: 'none',
             }} />
           ) : (
@@ -1009,6 +1050,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             key={element.id}
             element={element}
             faded={!!fadedIds?.has(element.id)}
+            unseen={!!unseenIds?.has(element.id)}
             isSelected={selectedElementIds.includes(element.id)}
             isEditing={editingElementId === element.id}
             remote={remoteUse?.get(element.id)}
@@ -1063,6 +1105,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           />
         ))}
 
+        {/* Scrolling slide badge, under the auto-animate one when both show */}
+        {scrolling && (
+          <div style={{
+            position: 'absolute', top: slide?.autoAnimate ? 26 : 6, right: 6, zIndex: 999, pointerEvents: 'none',
+            background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: Math.round(9 / scale), fontWeight: 600,
+            padding: `${Math.round(2 / scale)}px ${Math.round(6 / scale)}px`, borderRadius: 3, letterSpacing: 0.3,
+          }}>SCROLL {+(CANVAS_H / SLIDE_H).toFixed(2)}&times;</div>
+        )}
+
         {/* Auto-animate badge */}
         {slide?.autoAnimate && (
           <div style={{
@@ -1072,11 +1123,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
           }}>MORPH</div>
         )}
 
-        {/* Footer overlay */}
+        {/* Footer overlay. On a scrolling slide it's at the foot of the first
+            screen: presenting, it stays at the foot of the screen as the canvas scrolls. */}
         {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && (
           footerMode === 'sequence' && sequenceSections.length > 0 ? (
             <div style={{
-              position: 'absolute', bottom: 6, left: 16, right: 16, zIndex: 900,
+              position: 'absolute', bottom: 6 + CANVAS_H - SLIDE_H, left: 16, right: 16, zIndex: 900,
               display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0,
               fontSize: footerFontSize, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
@@ -1108,7 +1160,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             </div>
           ) : (
             <div style={{
-              position: 'absolute', bottom: 8, left: 16, right: 16, zIndex: 900,
+              position: 'absolute', bottom: 8 + CANVAS_H - SLIDE_H, left: 16, right: 16, zIndex: 900,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               fontSize: footerFontSize, color: footerColor, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
@@ -1127,7 +1179,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
             <svg key={el.id}
               style={{
                 position: 'absolute', left: 0, top: 0,
-                width: SLIDE_W, height: SLIDE_H,
+                width: SLIDE_W, height: CANVAS_H,
                 zIndex: el.zIndex || 1,
                 overflow: 'visible',
                 pointerEvents: 'none',
@@ -1151,7 +1203,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
                 />
               ))}
               {selectedElementIds.includes(el.id) && (
-                <rect x={0} y={0} width={SLIDE_W} height={SLIDE_H}
+                <rect x={0} y={0} width={SLIDE_W} height={CANVAS_H}
                   fill="none" stroke="#6366f1" strokeWidth={2}
                   strokeDasharray="6 3" pointerEvents="none"
                 />
@@ -1162,7 +1214,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
 
         {/* Live stroke while drawing */}
         {liveStroke && liveStroke.points.length >= 2 && (
-          <svg style={{ position: 'absolute', left: 0, top: 0, width: SLIDE_W, height: SLIDE_H, pointerEvents: 'none', zIndex: 9998, overflow: 'visible' }}>
+          <svg style={{ position: 'absolute', left: 0, top: 0, width: SLIDE_W, height: CANVAS_H, pointerEvents: 'none', zIndex: 9998, overflow: 'visible' }}>
             <path
               d={pointsToPath(liveStroke.points, false)}
               stroke={liveStroke.color || '#ffffff'}
@@ -1272,7 +1324,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, selectedElementId
   )
 }
 
-function CanvasElement({ element, faded, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export function CanvasElement({ element, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1317,14 +1369,20 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
         width: element.width, height: isAutoFit ? 'auto' : element.height,
         zIndex: element.zIndex || 1,
         outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : faded ? '1px dashed rgba(148,163,184,0.8)' : 'none',
-        // Hidden when presented, at least for now: faded here, so it can still be edited
-        opacity: faded && !isEditing ? 0.45 : undefined,
+        // Hidden when presented, at least for now: faded here, so it can still be
+        // edited. A shape draws its own opacity; others have one in a state.
+        opacity: faded && !isEditing ? 0.45 : element.type !== 'shape' && element.states?.length && element.opacity != null ? element.opacity : undefined,
+        // Selected with its group but turned away in the preview: there to
+        // move with the group, not seen or clicked
+        visibility: unseen ? 'hidden' : undefined,
+        pointerEvents: unseen ? 'none' : undefined,
         cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
-        overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         boxSizing: 'border-box',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
-        transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+        // A state's scale (utils/clickActions.js) scales the handles too
+        transform: [element.rotation && `rotate(${element.rotation}deg)`, element.scale != null && element.scale !== 1 && `scale(${element.scale})`]
+          .filter(Boolean).join(' ') || undefined,
         boxShadow: (element.shadowBlur || element.shadowX || element.shadowY)
           ? `${element.shadowX||0}px ${element.shadowY||0}px ${element.shadowBlur||0}px ${element.shadowColor||'rgba(0,0,0,0.5)'}`
           : undefined,
@@ -1334,221 +1392,262 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {element.animationEnter && element.animationEnter !== 'none' && !isEditing && (
-        <div style={{ position: 'absolute', top: 3, right: 3, zIndex: 20, background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
-          ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
-        </div>
-      )}
-      {element.type === 'text' && !isEditing && (
-        <div
-          ref={contentRef}
-          className="slide-text-content"
-          style={{
-            width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
-            color: 'white', padding: '8px 12px', boxSizing: 'border-box',
+      {/* The element's content, clipped to its box; what's drawn outside the
+          box (badges, handles, others' outlines) comes after, unclipped */}
+      <div style={{
+        position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
+        overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
+        borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
+        // A state's flip, shown mirrored; the badges and handles stay as they are
+        transform: element.flipX || element.flipY ? `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` : undefined,
+      }}>
+        {element.animationEnter && element.animationEnter !== 'none' && !isEditing && (
+          <div style={{ position: 'absolute', top: 3, right: 3, zIndex: 20, background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, pointerEvents: 'none', letterSpacing: '0.04em', lineHeight: 1.5 }}>
+            ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
+          </div>
+        )}
+        {element.type === 'text' && !isEditing && (
+          <div
+            ref={contentRef}
+            className="slide-text-content"
+            style={{
+              width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
+              color: 'white', padding: '8px 12px', boxSizing: 'border-box',
+              fontFamily: globalFont || undefined,
+              lineHeight: element.lineHeight ?? 1.5,
+              letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
+              wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
+            }}
+            dangerouslySetInnerHTML={{ __html: safeHtml(element.content) }}
+          />
+        )}
+        {element.type === 'text' && isEditing && (
+          <EditorContent editor={editor} style={{
+            width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
             fontFamily: globalFont || undefined,
-            lineHeight: element.lineHeight ?? 1.5,
+            lineHeight: element.lineHeight || undefined,
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-          }}
-          dangerouslySetInnerHTML={{ __html: element.content || '' }}
-        />
-      )}
-      {element.type === 'text' && isEditing && (
-        <EditorContent editor={editor} style={{
-          width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
-          fontFamily: globalFont || undefined,
-          lineHeight: element.lineHeight || undefined,
-          letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
-          wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-        }} />
-      )}
-      {element.type === 'image' && (() => {
-        const imgFilter = [
-          (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
-          (element.filterContrast != null && element.filterContrast !== 100) ? `contrast(${element.filterContrast}%)` : '',
-          element.filterGrayscale ? `grayscale(${element.filterGrayscale}%)` : '',
-        ].filter(Boolean).join(' ') || undefined
-        const hasCiteText = element.citationText || element.citationLink
-        return (
-        <div style={{ position: 'relative', width: '100%', height: '100%', overflow: (isCropping || hasCiteText) ? 'visible' : 'hidden' }}>
-          <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-          <img
-            src={element.src} alt={element.alt || ''}
-            style={element.imageW != null ? {
-              position: 'absolute',
-              left: element.imageOffsetX ?? 0,
-              top: element.imageOffsetY ?? 0,
-              width: element.imageW,
-              height: element.imageH,
-              maxWidth: 'none',
-              maxHeight: 'none',
-              objectFit: element.objectFit || 'contain',
-              pointerEvents: 'none',
-              filter: imgFilter,
-            } : {
-              width: '100%', height: '100%',
-              objectFit: element.objectFit || 'contain',
-              display: 'block', pointerEvents: 'none',
-              filter: imgFilter,
-            }}
-            draggable={false}
-          />
-          </div>
-          {(element.clickToExpand || element.popupText || element.citationText || element.citationLink) && (
-            <div style={{ position: 'absolute', bottom: 3, right: 3, zIndex: 20, display: 'flex', gap: 3, pointerEvents: 'none' }}>
-              {(element.citationText || element.citationLink) && (
-                <div style={{ background: 'rgba(34,197,94,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 21H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3"/><path d="M15 3h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3"/><path d="M6 7v14"/><path d="M15 3v14"/></svg>
-                  CITE
-                </div>
-              )}
-              {element.popupText && (
-                <div style={{ background: 'rgba(251,191,36,0.9)', color: '#000', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  POPUP
-                </div>
-              )}
-              {element.clickToExpand && (
-                <div style={{ background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                  EXPAND
-                </div>
-              )}
-            </div>
-          )}
-          {hasCiteText && (
-            <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize: citationFontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily: citationFontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
-              {element.citationText || element.citationLink}
-            </div>
-          )}
-          {isCropping && cropState && (
-            <CropOverlay
-              crop={cropState}
-              elW={element.width}
-              elH={element.height}
-              onHandleDown={onCropHandleDown}
-              onCommit={onCommitCrop}
+          }} />
+        )}
+        {element.type === 'image' && (() => {
+          const imgFilter = [
+            (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
+            (element.filterContrast != null && element.filterContrast !== 100) ? `contrast(${element.filterContrast}%)` : '',
+            element.filterGrayscale ? `grayscale(${element.filterGrayscale}%)` : '',
+          ].filter(Boolean).join(' ') || undefined
+          const hasCiteText = element.citationText || element.citationLink
+          return (
+          <div style={{ position: 'relative', width: '100%', height: '100%', overflow: (isCropping || hasCiteText) ? 'visible' : 'hidden' }}>
+            <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+            <img
+              src={element.src} alt={element.alt || ''}
+              style={element.imageW != null ? {
+                position: 'absolute',
+                left: element.imageOffsetX ?? 0,
+                top: element.imageOffsetY ?? 0,
+                width: element.imageW,
+                height: element.imageH,
+                maxWidth: 'none',
+                maxHeight: 'none',
+                objectFit: element.objectFit || 'contain',
+                pointerEvents: 'none',
+                filter: imgFilter,
+              } : {
+                width: '100%', height: '100%',
+                objectFit: element.objectFit || 'contain',
+                display: 'block', pointerEvents: 'none',
+                filter: imgFilter,
+              }}
+              draggable={false}
             />
-          )}
-        </div>
-        )
-      })()}
-      {element.type === 'shape' && (
-        <ShapeRenderer element={element} />
-      )}
-      {element.type === 'html' && (
-        <iframe
-          key={`${element.id}-${element.width}-${element.height}`}
-          srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-          sandbox="allow-scripts"
-          title="HTML embed"
-        />
-      )}
-      {element.type === 'p5' && (
-        <iframe
-          key={`${element.id}-${element.width}-${element.height}-${element.content}`}
-          srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-          sandbox="allow-scripts"
-          title="p5.js sketch"
-        />
-      )}
-      {element.type === 'code' && (
-        <pre
-          className="hljs"
-          style={{
-            margin: 0, padding: '10px 14px',
-            width: '100%', height: '100%', overflow: 'hidden',
-            boxSizing: 'border-box',
-            fontFamily: "'Fira Code','JetBrains Mono','Courier New',monospace",
-            fontSize: element.fontSize || 14,
-            lineHeight: 1.5,
-            borderRadius: 0,
-          }}
-        >
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(element.content || '', element.language || 'plaintext') }} />
-        </pre>
-      )}
-      {element.type === 'video' && (
-        <video
-          ref={el => {
-            if (!el) return
-            el.playbackRate = element.playbackRate || 1
-            const start = element.startTime ?? 0
-            const end = element.endTime
-            if (start && el.currentTime < start) el.currentTime = start
-            el.ontimeupdate = () => {
-              if (end != null && el.currentTime >= end) {
-                if (element.loop) { el.currentTime = start || 0 }
-                else el.pause()
-              }
-            }
-            el.onplay = () => { if (start && el.currentTime < start) el.currentTime = start }
-          }}
-          controls={element.controls !== false}
-          muted={element.muted || false}
-          loop={false}
-          poster={element.poster || undefined}
-          style={{ width: '100%', height: '100%', objectFit: element.objectFit || 'contain', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
-        >
-          <source src={element.src} type={/\.webm$/i.test(element.src) ? 'video/webm' : /\.og[gv]$/i.test(element.src) ? 'video/ogg' : 'video/mp4'} />
-        </video>
-      )}
-      {element.type === 'audio' && (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: 4 }}>
-          <audio
-            src={element.src}
-            controls
-            style={{ width: '90%', pointerEvents: isSelected ? 'auto' : 'none' }}
+            </div>
+            {(element.clickToExpand || element.popupText || element.citationText || element.citationLink) && (
+              <div style={{ position: 'absolute', bottom: 3, right: 3, zIndex: 20, display: 'flex', gap: 3, pointerEvents: 'none' }}>
+                {(element.citationText || element.citationLink) && (
+                  <div style={{ background: 'rgba(34,197,94,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 21H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h3"/><path d="M15 3h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3"/><path d="M6 7v14"/><path d="M15 3v14"/></svg>
+                    CITE
+                  </div>
+                )}
+                {element.popupText && (
+                  <div style={{ background: 'rgba(251,191,36,0.9)', color: '#000', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    POPUP
+                  </div>
+                )}
+                {element.clickToExpand && (
+                  <div style={{ background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.04em', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                    EXPAND
+                  </div>
+                )}
+              </div>
+            )}
+            {hasCiteText && (
+              <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize: citationFontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily: citationFontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
+                {element.citationText || element.citationLink}
+              </div>
+            )}
+            {isCropping && cropState && (
+              <CropOverlay
+                crop={cropState}
+                elW={element.width}
+                elH={element.height}
+                onHandleDown={onCropHandleDown}
+                onCommit={onCommitCrop}
+              />
+            )}
+          </div>
+          )
+        })()}
+        {element.type === 'shape' && (
+          <ShapeRenderer element={element} />
+        )}
+        {element.type === 'html' && (
+          <iframe
+            key={`${element.id}-${element.width}-${element.height}`}
+            srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="HTML embed"
           />
-        </div>
-      )}
-      {element.type === 'table' && (
-        <TableRenderer element={element} isEditing={isEditing} />
-      )}
-      {element.type === 'latex' && (
-        <LatexRenderer element={element} isSelected={isSelected} />
-      )}
-      {element.type === 'tikz' && (
-        <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-          dangerouslySetInnerHTML={{ __html: tikzDiagramSvg(element) }} />
-      )}
-      {element.type === 'markdown' && (
-        <MarkdownRenderer element={element} />
-      )}
-      {element.type === 'timeline' && (
-        <TimelineRenderer element={element} />
-      )}
-      {element.type === 'callout' && (
-        <CalloutRenderer element={element} />
-      )}
-      {element.type === 'icon' && (
-        <IconRenderer element={element} />
-      )}
+        )}
+        {element.type === 'p5' && (
+          <iframe
+            key={`${element.id}-${element.width}-${element.height}-${element.content}`}
+            srcDoc={localizeLibraries(buildP5Srcdoc(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="p5.js sketch"
+          />
+        )}
+        {element.type === 'code' && (
+          <pre
+            className="hljs"
+            style={{
+              margin: 0, padding: '10px 14px',
+              width: '100%', height: '100%', overflow: 'hidden',
+              boxSizing: 'border-box',
+              fontFamily: "'Fira Code','JetBrains Mono','Courier New',monospace",
+              fontSize: element.fontSize || 14,
+              lineHeight: 1.5,
+              borderRadius: 0,
+            }}
+          >
+            <code dangerouslySetInnerHTML={{ __html: highlightCode(element.content || '', element.language || 'plaintext') }} />
+          </pre>
+        )}
+        {element.type === 'video' && (
+          <video
+            ref={el => {
+              if (!el) return
+              el.playbackRate = element.playbackRate || 1
+              const start = element.startTime ?? 0
+              const end = element.endTime
+              if (start && el.currentTime < start) el.currentTime = start
+              el.ontimeupdate = () => {
+                if (end != null && el.currentTime >= end) {
+                  if (element.loop) { el.currentTime = start || 0 }
+                  else el.pause()
+                }
+              }
+              el.onplay = () => { if (start && el.currentTime < start) el.currentTime = start }
+            }}
+            controls={element.controls !== false}
+            muted={element.muted || false}
+            loop={false}
+            poster={element.poster || undefined}
+            style={{ width: '100%', height: '100%', objectFit: element.objectFit || 'contain', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+          >
+            <source src={element.src} type={/\.webm$/i.test(element.src) ? 'video/webm' : /\.og[gv]$/i.test(element.src) ? 'video/ogg' : 'video/mp4'} />
+          </video>
+        )}
+        {element.type === 'audio' && (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: 4 }}>
+            <audio
+              src={element.src}
+              controls
+              style={{ width: '90%', pointerEvents: isSelected ? 'auto' : 'none' }}
+            />
+          </div>
+        )}
+        {element.type === 'table' && (
+          <TableRenderer element={element} isEditing={isEditing} />
+        )}
+        {element.type === 'latex' && (
+          <LatexRenderer element={element} isSelected={isSelected} />
+        )}
+        {element.type === 'tikz' && (
+          <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+            dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(element)) }} />
+        )}
+        {element.type === 'markdown' && (
+          <MarkdownRenderer element={element} />
+        )}
+        {element.type === 'timeline' && (
+          <TimelineRenderer element={element} />
+        )}
+        {element.type === 'callout' && (
+          <CalloutRenderer element={element} />
+        )}
+        {element.type === 'icon' && (
+          <IconRenderer element={element} />
+        )}
 
-      {element.type === 'textpath' && !isEditing && (() => {
-        const pathSide = element.pathSide || 'bottom'
-        const fontSize = element.fontSize || 64
-        const w = element.width
-        const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+        {element.type === 'textpath' && !isEditing && (() => {
+          const pathSide = element.pathSide || 'bottom'
+          const fontSize = element.fontSize || 64
+          const w = element.width
+          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
 
-        // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
-        if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-          const pad = Math.ceil(fontSize * 0.6)
-          const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-          const svgH = element.height || 300
-          const lineH = fontSize * (element.lineHeight ?? 1.35)
-          const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
-          const lines = (element.content || '').split('\n')
-          const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-          const guideX2 = pathX0 + svgH * tanA
+          // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
+          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+            const pad = Math.ceil(fontSize * 0.6)
+            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+            const svgH = element.height || 300
+            const lineH = fontSize * (element.lineHeight ?? 1.35)
+            const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
+            const lines = (element.content || '').split('\n')
+            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+            const guideX2 = pathX0 + svgH * tanA
+            return (
+              <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
+                style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
+                {element.showPath !== false && (
+                  <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="rgba(34,211,238,0.4)" strokeWidth={1} />
+                )}
+                <text
+                  fontSize={fontSize}
+                  fontFamily={effectiveFont}
+                  fill={element.color || '#ffffff'}
+                  fontWeight={element.fontWeight || 'normal'}
+                  fontStyle={element.fontStyle || 'normal'}
+                  letterSpacing={element.letterSpacing || 0}
+                  wordSpacing={element.wordSpacing || undefined}
+                  textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}
+                >
+                  {lines.map((line, i) => (
+                    <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>                    {line || ' '}
+                    </tspan>
+                  ))}
+                </text>
+              </svg>
+            )
+          }
+
+          // Diagonal modes: text follows slanted path
+          const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
+          const pathId = `tp-${element.id}`
+          const capHeight = Math.round(fontSize * 0.72)
+          const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+          const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
           return (
             <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
               style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
+              <defs><path id={pathId} d={pathD} /></defs>
               {element.showPath !== false && (
-                <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="rgba(34,211,238,0.4)" strokeWidth={1} />
+                <use href={`#${pathId}`} stroke="rgba(34,211,238,0.4)" strokeWidth={1} fill="none" />
               )}
               <text
                 fontSize={fontSize}
@@ -1558,139 +1657,108 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
                 fontStyle={element.fontStyle || 'normal'}
                 letterSpacing={element.letterSpacing || 0}
                 wordSpacing={element.wordSpacing || undefined}
-                textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}
+                dy={textDy || undefined}
               >
-                {lines.map((line, i) => (
-                  <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>                    {line || ' '}
-                  </tspan>
-                ))}
+                <textPath href={`#${pathId}`} startOffset={`${element.startOffset || 0}%`} textAnchor={element.textAnchor || 'start'} side={tpSide}>
+                  {element.content || ''}
+                </textPath>
               </text>
             </svg>
           )
-        }
+        })()}
 
-        // Diagonal modes: text follows slanted path
-        const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
-        const pathId = `tp-${element.id}`
-        const capHeight = Math.round(fontSize * 0.72)
-        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-        return (
-          <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
-            style={{ display: 'block', overflow: 'visible', pointerEvents: 'none' }}>
-            <defs><path id={pathId} d={pathD} /></defs>
-            {element.showPath !== false && (
-              <use href={`#${pathId}`} stroke="rgba(34,211,238,0.4)" strokeWidth={1} fill="none" />
-            )}
-            <text
-              fontSize={fontSize}
-              fontFamily={effectiveFont}
-              fill={element.color || '#ffffff'}
-              fontWeight={element.fontWeight || 'normal'}
-              fontStyle={element.fontStyle || 'normal'}
-              letterSpacing={element.letterSpacing || 0}
-              wordSpacing={element.wordSpacing || undefined}
-              dy={textDy || undefined}
-            >
-              <textPath href={`#${pathId}`} startOffset={`${element.startOffset || 0}%`} textAnchor={element.textAnchor || 'start'} side={tpSide}>
-                {element.content || ''}
-              </textPath>
-            </text>
-          </svg>
-        )
-      })()}
+        {element.type === 'textpath' && isEditing && (() => {
+          const pathSide = element.pathSide || 'bottom'
+          const fontSize = element.fontSize || 64
+          const w = element.width
+          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
 
-      {element.type === 'textpath' && isEditing && (() => {
-        const pathSide = element.pathSide || 'bottom'
-        const fontSize = element.fontSize || 64
-        const w = element.width
-        const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
-
-        const editOverlay = (svgH, svgPreview) => (
-          <div style={{ position: 'relative', width: w, height: svgH }}>
-            {svgPreview}
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}>
-              <textarea
-                autoFocus
-                defaultValue={element.content || ''}
-                onBlur={e => { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() }}
-                onClick={e => e.stopPropagation()}
-                onKeyDown={e => { if (e.key === 'Escape') { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() } e.stopPropagation() }}
-                style={{ width: '90%', background: 'rgba(15,15,30,0.95)', color: 'white', border: '1px solid #6366f1', borderRadius: 6, padding: '10px 14px', fontSize: 14, fontFamily: effectiveFont, resize: 'vertical', outline: 'none', minHeight: 48 }}
-                placeholder="Use Enter for new lines in edge mode"
-                rows={3}
-              />
+          const editOverlay = (svgH, svgPreview) => (
+            <div style={{ position: 'relative', width: w, height: svgH }}>
+              {svgPreview}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}>
+                <textarea
+                  autoFocus
+                  defaultValue={element.content || ''}
+                  onBlur={e => { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() }}
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => { if (e.key === 'Escape') { onUpdateContent?.(element.id, e.target.value); onStopEdit?.() } e.stopPropagation() }}
+                  style={{ width: '90%', background: 'rgba(15,15,30,0.95)', color: 'white', border: '1px solid #6366f1', borderRadius: 6, padding: '10px 14px', fontSize: 14, fontFamily: effectiveFont, resize: 'vertical', outline: 'none', minHeight: 48 }}
+                  placeholder="Use Enter for new lines in edge mode"
+                  rows={3}
+                />
+              </div>
             </div>
-          </div>
-        )
+          )
 
-        if (pathSide === 'leftedge' || pathSide === 'rightedge') {
-          const pad = Math.ceil(fontSize * 0.6)
-          const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
-          const svgH = element.height || 300
-          const lineH = fontSize * (element.lineHeight ?? 1.35)
-          const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
-          const lines = (element.content || '').split('\n')
-          const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
-          const guideX2 = pathX0 + svgH * tanA
+          if (pathSide === 'leftedge' || pathSide === 'rightedge') {
+            const pad = Math.ceil(fontSize * 0.6)
+            const pathX0 = pathSide === 'leftedge' ? pad : (w - pad)
+            const svgH = element.height || 300
+            const lineH = fontSize * (element.lineHeight ?? 1.35)
+            const tanA = Math.tan(((element.angle || 0) * Math.PI) / 180)
+            const lines = (element.content || '').split('\n')
+            const lineXAt = (i) => pathX0 + (fontSize + i * lineH) * tanA
+            const guideX2 = pathX0 + svgH * tanA
+            const preview = (
+              <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
+                style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
+                <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="#22d3ee" strokeWidth={1} />
+                <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'}
+                  letterSpacing={element.letterSpacing || 0} wordSpacing={element.wordSpacing || undefined}
+                  textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}>
+                  {lines.map((line, i) => (
+                    <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>{line || ' '}</tspan>
+                  ))}
+                </text>
+              </svg>
+            )
+            return editOverlay(svgH, preview)
+          }
+
+          const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
+          const pathId = `tp-edit-${element.id}`
+          const capHeight = Math.round(fontSize * 0.72)
+          const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
+          const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
           const preview = (
             <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
               style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
-              <line x1={pathX0} y1={0} x2={guideX2} y2={svgH} stroke="#22d3ee" strokeWidth={1} />
-              <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'}
-                letterSpacing={element.letterSpacing || 0} wordSpacing={element.wordSpacing || undefined}
-                textAnchor={pathSide === 'leftedge' ? 'start' : 'end'}>
-                {lines.map((line, i) => (
-                  <tspan key={i} x={lineXAt(i)} dy={i === 0 ? fontSize : lineH}>{line || ' '}</tspan>
-                ))}
+              <defs><path id={pathId} d={pathD} /></defs>
+              <use href={`#${pathId}`} stroke="#22d3ee" strokeWidth={1} fill="none" />
+              <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'} dy={textDy || undefined}>
+                <textPath href={`#${pathId}`} side={tpSide}>{element.content || ''}</textPath>
               </text>
             </svg>
           )
           return editOverlay(svgH, preview)
-        }
+        })()}
 
-        const { svgH, pathD } = textPathGeometry(w, element.angle, fontSize, element.pathShape, element.height)
-        const pathId = `tp-edit-${element.id}`
-        const capHeight = Math.round(fontSize * 0.72)
-        const textDy = (pathSide === 'left' || pathSide === 'right') ? capHeight : 0
-        const tpSide = (pathSide === 'top' || pathSide === 'right') ? 'right' : 'left'
-        const preview = (
-          <svg width={w} height={svgH} viewBox={`0 0 ${w} ${svgH}`}
-            style={{ display: 'block', overflow: 'visible', opacity: 0.25, pointerEvents: 'none' }}>
-            <defs><path id={pathId} d={pathD} /></defs>
-            <use href={`#${pathId}`} stroke="#22d3ee" strokeWidth={1} fill="none" />
-            <text fontSize={fontSize} fontFamily={effectiveFont} fill={element.color || '#ffffff'} dy={textDy || undefined}>
-              <textPath href={`#${pathId}`} side={tpSide}>{element.content || ''}</textPath>
-            </text>
-          </svg>
-        )
-        return editOverlay(svgH, preview)
-      })()}
-
-      {element.type?.startsWith('plugin:') && (() => {
-        const etDef = registry.getElementType(element.type)
-        const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
-        const slug = pluginEntry?.slug
-        const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
-          ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
-          : null
-        const hasExternalEditor = element.type === 'plugin:dynamical-system'
-        return (
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            <PluginSandbox
-              sandboxUrl={sandboxUrl}
-              pluginData={element.pluginData}
-              width={element.width}
-              height={element.height}
-              isSelected={isSelected && !hasExternalEditor}
-              onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
-            />
-            {hasExternalEditor && isSelected && (
-              <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
-            )}
-          </div>
-        )
-      })()}
+        {element.type?.startsWith('plugin:') && (() => {
+          const etDef = registry.getElementType(element.type)
+          const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
+          const slug = pluginEntry?.slug
+          const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
+            ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
+            : null
+          const hasExternalEditor = element.type === 'plugin:dynamical-system'
+          return (
+            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+              <PluginSandbox
+                sandboxUrl={sandboxUrl}
+                pluginData={element.pluginData}
+                width={element.width}
+                height={element.height}
+                isSelected={isSelected && !hasExternalEditor}
+                onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
+              />
+              {hasExternalEditor && isSelected && (
+                <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
+              )}
+            </div>
+          )
+        })()}
+      </div>
 
       {/* Fragment badge */}
       {element.fragment && (
@@ -1703,14 +1771,25 @@ function CanvasElement({ element, faded, isSelected, isEditing, remote, isCroppi
         </div>
       )}
 
-      {/* Click action badge: what the element does when clicked while presenting */}
-      {element.clickAction && supportsClickAction(element) && (
+      {/* Action badge: what the element does when clicked or hovered while presenting */}
+      {(element.clickAction || element.hoverAction) && supportsClickAction(element) && (
         <div style={{
           position: 'absolute', bottom: -18, right: 0, zIndex: 101, pointerEvents: 'none',
           background: '#0ea5e9', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
           padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
         }}>
-          {{ slide: '↗ Slide', next: '→ Next', prev: '← Back', url: '↗ Web', visibility: '◐ Show/hide' }[element.clickAction.type] || '↗'}
+          {[element.clickAction && (clickChangesStatesOnly(element.clickAction) ? '◆ Change' : CLICK_BADGES[element.clickAction.type] || '↗'), element.hoverAction && '◑ Hover'].filter(Boolean).join(' · ')}
+        </div>
+      )}
+
+      {/* It has states */}
+      {element.states?.length > 0 && (
+        <div style={{
+          position: 'absolute', top: -18, left: element.fragment ? 30 : 0, zIndex: 101, pointerEvents: 'none',
+          background: '#d946ef', color: 'white', fontSize: '9px', fontFamily: 'sans-serif',
+          padding: '1px 5px', borderRadius: 3, userSelect: 'none', whiteSpace: 'nowrap'
+        }}>
+          ◆ {element.states.length === 1 ? '1 state' : `${element.states.length} states`}
         </div>
       )}
 
@@ -1886,7 +1965,7 @@ function markdownToHtml(md) {
 }
 
 function MarkdownRenderer({ element }) {
-  const html = markdownToHtml(element.content || '')
+  const html = safeHtml(markdownToHtml(element.content || ''))
   return (
     <div
       style={{ width: '100%', height: '100%', overflow: 'auto', padding: '8px 12px', boxSizing: 'border-box', color: 'white', fontSize: '18px', lineHeight: 1.5 }}
@@ -2129,59 +2208,21 @@ function TableRenderer({ element, isEditing }) {
   )
 }
 
-function ShapeRenderer({ element }) {
+export function ShapeRenderer({ element }) {
   const w = element.width, h = element.height
-  const fill = element.fill || '#6366f1'
-  const stroke = element.stroke || 'none'
-  const sw = element.strokeWidth || 0
   const shape = element.shape || 'rect'
-  const sda = element.strokeDasharray === 'dashed' ? `${sw*3} ${sw*2}` : element.strokeDasharray === 'dotted' ? `${sw} ${sw*1.5}` : undefined
 
+  // The same drawing as presented decks (utils/shapeGeometry.js)
   const renderShape = () => {
-    if (shape === 'line') {
-      const lw = element.strokeWidth || 3
-      const lineColor = element.stroke && element.stroke !== 'none' ? element.stroke : (element.fill || '#ffffff')
-      const lsda = element.strokeDasharray === 'dashed' ? `${lw*3} ${lw*2}` : element.strokeDasharray === 'dotted' ? `${lw} ${lw*1.5}` : undefined
-      return <line x1={lw} y1={h/2} x2={w-lw} y2={h/2} stroke={lineColor} strokeWidth={lw} strokeDasharray={lsda} fill="none" />
-    }
-    if (shape === 'line-arrow') {
-      const lw = element.strokeWidth || 3
-      const lineColor = element.stroke && element.stroke !== 'none' ? element.stroke : (element.fill || '#ffffff')
-      const lsda = element.strokeDasharray === 'dashed' ? `${lw*3} ${lw*2}` : element.strokeDasharray === 'dotted' ? `${lw} ${lw*1.5}` : undefined
-      const hs = Math.max(lw * 3, h * 0.3)
-      return <>
-        <line x1={lw} y1={h/2} x2={w-lw} y2={h/2} stroke={lineColor} strokeWidth={lw} strokeDasharray={lsda} fill="none" />
-        <polyline points={`${w-lw-hs},${h/2-hs} ${w-lw},${h/2} ${w-lw-hs},${h/2+hs}`} stroke={lineColor} strokeWidth={lw} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </>
-    }
-    const gProps = { fill, stroke, strokeWidth: sw, strokeDasharray: sda }
-    switch(shape) {
-      case 'rect':
-        return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} rx={element.borderRadius || 0} /></g>
-      case 'rounded-rect':
-        return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} rx={Math.min(w,h)*0.15} /></g>
-      case 'circle':
-        return <g {...gProps}><ellipse cx={w/2} cy={h/2} rx={Math.max(0,w/2-sw/2)} ry={Math.max(0,h/2-sw/2)} /></g>
-      case 'triangle':
-        return <g {...gProps}><polygon points={`${w/2},${sw} ${w-sw},${h-sw} ${sw},${h-sw}`} /></g>
-      case 'diamond':
-        return <g {...gProps}><polygon points={`${w/2},${sw} ${w-sw},${h/2} ${w/2},${h-sw} ${sw},${h/2}`} /></g>
-      case 'arrow-right':
-        return <g {...gProps}><polygon points={`${sw},${h*0.35} ${w*0.6},${h*0.35} ${w*0.6},${sw} ${w-sw},${h/2} ${w*0.6},${h-sw} ${w*0.6},${h*0.65} ${sw},${h*0.65}`} /></g>
-      case 'star': {
-        const cx = element.starCx != null ? element.starCx : w/2
-        const cy = element.starCy != null ? element.starCy : h/2
-        const outerR = element.starOuterR != null ? element.starOuterR : Math.min(w,h)/2-sw
-        const innerR = element.starInnerR != null ? element.starInnerR : outerR*0.4
-        const pts=[]; for(let i=0;i<10;i++){const a=(Math.PI/5)*i-Math.PI/2;const r=i%2===0?outerR:innerR;pts.push(`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`)}
-        return <g {...gProps}><polygon points={pts.join(' ')} /></g>
-      }
-      default: return <g {...gProps}><rect x={sw/2} y={sw/2} width={w-sw} height={h-sw} /></g>
-    }
+    const parts = shapeParts(element)
+    const props = attrs => Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]))
+    if (parts.lines) return <>{parts.lines.map(({ tag: Tag, attrs }, i) => <Tag key={i} {...props(attrs)} />)}</>
+    const Body = parts.body.tag
+    return <g {...props(parts.group)}><Body {...props(parts.body.attrs)} /></g>
   }
 
   return (
-    <div style={{ position: 'absolute', inset: 0, opacity: element.opacity || 1 }}>
+    <div style={{ position: 'absolute', inset: 0, opacity: element.opacity ?? 1 }}>
       <svg
         width="100%" height="100%"
         viewBox={`0 0 ${w} ${h}`}

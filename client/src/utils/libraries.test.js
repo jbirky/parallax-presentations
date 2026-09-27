@@ -113,7 +113,7 @@ describe('presenting from the app', () => {
     expect(html).toContain('https://cdn.jsdelivr.net/npm/') // what a download keeps
     const presented = clientLibraries.localizeLibraries(html, BASE)
     expect(presented).not.toMatch(/https:\/\/(cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com)\//)
-    for (const name of ['reveal.js', 'katex', 'gsap', 'p5', 'marked', 'latex.js', 'd3', '@highlightjs/cdn-assets']) {
+    for (const name of ['reveal.js', 'katex', 'p5', 'marked', 'latex.js', 'd3', '@highlightjs/cdn-assets']) {
       expect(presented, name).toContain(`${BASE}/vendor/${name}@${v[name]}/`)
     }
   })

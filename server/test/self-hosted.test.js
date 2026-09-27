@@ -57,6 +57,66 @@ describe('the self-hosted version', () => {
     assert.ok((await call('GET', '/api/presentations')).body.some(p => p.id === id))
   })
 
+  it('makes a presentation from a template under new ids, with its links and show/hide following them', async () => {
+    const template = (await call('POST', '/api/templates', { title: 'Menu', slides: [
+      { id: 'menu', elements: [
+        { id: 'go', type: 'text', content: '<p><a href="#/s-end">End</a></p>', clickAction: { type: 'slide', slideId: 'end' } },
+        { id: 'tab', type: 'shape', clickAction: { type: 'visibility', show: ['panel'] } },
+        { id: 'panel', type: 'text', content: '<p>Hi</p>', startHidden: true },
+      ] },
+      { id: 'end', elements: [] },
+    ] })).body
+    const made = (await call('POST', '/api/presentations', { templateId: template.id })).body
+    const [menu, end] = made.slides
+    assert.notEqual(menu.id, 'menu')
+    assert.notEqual(end.id, 'end')
+    const [go, tab, panel] = menu.elements
+    assert.equal(go.content, `<p><a href="#/s-${end.id}">End</a></p>`)
+    assert.deepEqual(go.clickAction, { type: 'slide', slideId: end.id })
+    assert.notEqual(panel.id, 'panel')
+    assert.deepEqual(tab.clickAction, { type: 'visibility', show: [panel.id] })
+  })
+
+  it('presents a deck with states and a morphing shape', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'States' })).body
+    const shape = { id: 'dot', type: 'shape', shape: 'circle', x: 0, y: 0, width: 80, height: 80, text: '<b>x</b>', stateSteps: { 2: 'st_star' },
+      states: [{ id: 'st_star', name: 'Star', shape: 'star', fill: '#ff0000', duration: 300 }, { id: 'bad"id', fill: 'red' }] }
+    const button = { id: 'go', type: 'shape', shape: 'line-arrow', width: 80, height: 20, strokeDasharray: 'dashed', clickAction: { type: 'visibility', set: [{ id: 'dot', state: 'st_star', mode: 'toggle' }] } }
+    await call('PUT', `/api/presentations/${id}`, { slides: [{ id: 's1', elements: [shape, button] }] })
+    const res = await fetch(`${base}/api/presentations/${id}/present`)
+    const html = await res.text()
+    assert.equal(res.status, 200)
+    assert.match(html, /data-el="dot" data-st-list="st_star" data-st="" data-st-start=""/)
+    assert.match(html, /data-action-set="dot:st_star:toggle"/)
+    assert.match(html, /<path d="M[^"]+" data-morph=":[^"|]+\|st_star:[^"]+" \/>/)
+    assert.match(html, /:where\(\[data-el="dot"\]\[data-st="st_star"\][^{]*\{ --st-dur:300ms/)
+    assert.match(html, /<polyline points=/) // line arrows, which the server's own copy used to leave out
+    assert.match(html, /stroke-dasharray="/)
+    assert.doesNotMatch(html, /bad"id|<b>x<\/b>/)
+    assert.match(html, /<span class="fragment" data-fragment-index="2" data-st-steps="dot:st_star" aria-hidden="true"/)
+  })
+
+  it('serves uploads by their names, so none can run as this site', async () => {
+    const dir = process.env.SLIDES_UPLOADS_DIR
+    fs.writeFileSync(path.join(dir, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+    fs.writeFileSync(path.join(dir, 'fake.png'), '<script>alert(1)</script>')
+    fs.writeFileSync(path.join(dir, 'page.xhtml'), '<html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>')
+    fs.writeFileSync(path.join(dir, 'doc.pdf'), '%PDF-1.4')
+    const get = async name => (await fetch(`${base}/uploads/${name}`)).headers
+    const svg = await get('pic.svg')
+    assert.equal(svg.get('content-type'), 'image/svg+xml')
+    assert.equal(svg.get('content-security-policy'), 'sandbox')
+    const png = await get('fake.png')
+    assert.equal(png.get('content-type'), 'image/png')
+    assert.equal(png.get('x-content-type-options'), 'nosniff')
+    const page = await get('page.xhtml')
+    assert.equal(page.get('content-type'), 'application/octet-stream')
+    assert.equal(page.get('content-disposition'), 'attachment')
+    const pdf = await get('doc.pdf')
+    assert.equal(pdf.get('content-type'), 'application/pdf')
+    assert.equal(pdf.get('content-security-policy'), null) // PDF viewers won't open in a sandbox
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

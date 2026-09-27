@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRequire } from 'module'
+import { readFileSync } from 'fs'
 import { Window } from 'happy-dom'
 
 if (!globalThis.window) globalThis.window = {}
@@ -10,6 +11,7 @@ import { generateRevealHTML, exportPDF } from './generateHTML'
 
 const require = createRequire(import.meta.url)
 const server = require('../../../server/services/click-actions.js')
+const { serverCopy, COPIES } = require('../../../scripts/copy-click-actions.js')
 
 const text = (id, extra = {}) => ({ id, type: 'text', x: 0, y: 0, width: 100, height: 40, zIndex: 1, content: '<p>Go</p>', ...extra })
 
@@ -90,6 +92,35 @@ describe('showing and hiding', () => {
     expect(client.clickActionAttrs(text('x', { clickAction: { type: 'visibility', show: [] } }))).toBe('')
   })
 
+  it('marks what a hover shows or hides, and lets the keyboard reach it', () => {
+    const els = [
+      text('spot', { hoverAction: { type: 'visibility', show: ['card', 'bad id'], hide: ['plain'] } }),
+      text('both', { clickAction: { type: 'next' }, hoverAction: { type: 'visibility', show: ['card'] } }),
+      text('card', { startHidden: true }),
+      text('plain'),
+      { id: 'embed', type: 'html', hoverAction: { type: 'visibility', show: ['card'] } },
+    ]
+    const targets = client.visibilityTargets({ elements: els })
+    expect([...targets].sort()).toEqual(['card', 'plain'])
+    const attrs = id => client.clickActionAttrs(els.find(e => e.id === id), targets)
+    expect(attrs('spot')).toBe(' data-hover-show="card" data-hover-hide="plain" tabindex="0"')
+    expect(attrs('both')).toBe(' data-action="next" role="button" tabindex="0" data-hover-show="card"')
+    expect(attrs('card')).toBe(' data-el="card" data-start-hidden data-hidden')
+    expect(attrs('plain')).toBe(' data-el="plain"')
+    expect(attrs('embed')).toBe('') // takes its own pointer
+    expect(client.clickActionAttrs(text('x', { hoverAction: { type: 'visibility', show: [] } }))).toBe('')
+    expect(client.clickActionAttrs(text('x', { hoverAction: { type: 'spin', show: ['a'] } }))).toBe('')
+  })
+
+  it('keeps hovers pointing at the right elements when they get new ids', () => {
+    const els = [text('spot', { hoverAction: { type: 'visibility', show: ['card'], hide: ['spot', 'gone'] } }), text('card')]
+    let n = 0
+    const renewed = client.renewElementIds(els, () => `new${++n}`)
+    expect(renewed[0].hoverAction).toEqual({ type: 'visibility', show: ['new2'], hide: ['new1', 'gone'] })
+    expect(client.copyElement(els[0], 'copy').hoverAction.hide).toEqual(['copy', 'gone'])
+    expect(els[0].hoverAction.hide).toEqual(['spot', 'gone'])
+  })
+
   it('writes hover styles other than the default', () => {
     for (const [hoverEffect, attr] of [['lift', ' data-hover="lift"'], ['grow', ' data-hover="grow"'], ['none', ' data-hover="none"'], ['brighten', ''], ['spin', ''], [undefined, '']]) {
       const attrs = client.clickActionAttrs(text('x', { clickAction: { type: 'next' }, hoverEffect }))
@@ -105,6 +136,13 @@ describe('showing and hiding', () => {
     expect(renewed[1].clickAction.toggle).toEqual(['new5'])
     expect(slide.elements[0].clickAction.show).toEqual(['panelA']) // the originals are left alone
     expect(client.remapElementRefs([text('a', { clickAction: { type: 'next' } })], { a: 'b' })[0].clickAction).toEqual({ type: 'next' })
+  })
+
+  it('points a copy’s clicks on itself at the copy', () => {
+    const dismiss = text('note', { clickAction: { type: 'visibility', hide: ['note', 'other'] } })
+    expect(client.copyElement(dismiss, 'copy')).toEqual({ ...dismiss, id: 'copy', clickAction: { type: 'visibility', hide: ['copy', 'other'] } })
+    expect(dismiss.clickAction.hide).toEqual(['note', 'other'])
+    expect(client.copyElement(text('a', { clickAction: { type: 'next' } }), 'b')).toEqual(text('b', { clickAction: { type: 'next' } }))
   })
 
   it('names elements for the show/hide list', () => {
@@ -174,6 +212,338 @@ describe('previewing clicks on the canvas', () => {
   })
 })
 
+describe('previewing hovers on the canvas', () => {
+  let n = 0
+  const [marker, box, words] = client.buildHotspot({ makeId: () => `h${++n}` })
+  const tab = text('tab', { clickAction: { type: 'visibility', show: ['words'] }, hoverAction: { type: 'visibility', hide: [marker.id] } })
+  const els = [marker, box, words, tab]
+
+  it('lists each hover, after the clicks', () => {
+    const preview = client.canvasClickPreview(els, null)
+    expect(preview.canPreview).toBe(true)
+    expect(preview.hovers.map(h => h.id)).toEqual([marker.id, tab.id])
+    expect(preview.mode).toBe('start')
+    expect(preview.elements).toEqual([marker, tab]) // the card starts hidden
+    expect(client.canvasClickPreview([text('a', { hoverAction: { type: 'visibility', hide: ['b'] } }), text('b')], null).canPreview).toBe(true)
+  })
+
+  it('shows the slide while an element is hovered', () => {
+    expect(client.canvasClickPreview(els, client.hoverPreview(marker.id)).elements).toEqual(els)
+    expect(client.canvasClickPreview(els, client.hoverPreview(tab.id)).elements).toEqual([tab])
+    expect(client.canvasClickPreview(els, client.hoverPreview('nope')).mode).toBe('start')
+    expect([...client.hiddenInPreview(els, client.hoverPreview(tab.id))].sort()).toEqual([marker.id, box.id, words.id].sort())
+    expect([...client.hiddenInPreview(els, 'start')].sort()).toEqual([box.id, words.id].sort())
+  })
+
+  it('switches to a hotspot’s hover when it’s selected, or to one that shows what’s selected', () => {
+    expect(client.previewForSelection(els, marker.id, 'start')).toBe(client.hoverPreview(marker.id))
+    expect(client.previewForSelection(els, marker.id, client.hoverPreview(marker.id))).toBeNull()
+    expect(client.previewForSelection(els, words.id, 'start')).toBe(client.hoverPreview(marker.id))
+    expect(client.previewForSelection(els, tab.id, 'start')).toBe(tab.id) // its click comes first
+  })
+
+  it('makes a marker whose hover shows a grouped card', () => {
+    expect(marker).toMatchObject({ type: 'shape', shape: 'circle', hoverAction: { type: 'visibility', show: [box.id, words.id] } })
+    expect(box.groupId).toBeTruthy()
+    expect(words.groupId).toBe(box.groupId)
+    expect([box.startHidden, words.startHidden, marker.startHidden]).toEqual([true, true, undefined])
+    for (const el of [marker, box, words]) {
+      expect(el.x + el.width).toBeLessThanOrEqual(960)
+      expect(el.y + el.height).toBeLessThanOrEqual(540)
+    }
+    const small = client.buildHotspot({ slideW: 400, slideH: 300, makeId: () => `s${++n}` })
+    for (const el of small) expect([el.x >= 0, el.x + el.width <= 400, el.y >= 0, el.y + el.height <= 300]).toEqual([true, true, true, true])
+  })
+})
+
+describe('element states', () => {
+  const card = text('card', {
+    states: [
+      { id: 'st_big', name: 'Big', x: 10, y: 20, width: 300, height: 200, rotation: 15, scale: 1.5, opacity: 0.5, zIndex: 9000, fill: '#ff0000', stroke: 'rgb(1, 2, 3)', textColor: 'white', duration: 250, easing: 'spring' },
+      { id: 'st_flip', name: 'Flipped', flipX: true, duration: 99999, easing: 'bogus' },
+    ],
+    initialState: 'st_flip', backfaceHidden: true,
+  })
+
+  it('marks an element with states, starting in its first one', () => {
+    expect(client.clickActionAttrs(card, new Set())).toBe(' data-el="card" data-st-list="st_big st_flip" data-st="st_flip" data-st-start="st_flip"')
+    expect(client.clickActionAttrs({ ...card, initialState: 'gone' }, new Set())).toContain(' data-st="" data-st-start=""')
+    // Ids that can't go into the page safely leave the states out
+    expect(client.clickActionAttrs(text('bad"id', { states: card.states }), new Set())).toBe('')
+    expect(client.clickActionAttrs(text('x', { states: [{ id: 'a b' }, { id: 'ok' }] }), new Set())).toContain('data-st-list="ok"')
+  })
+
+  it('writes the state changes a click or hover makes', () => {
+    const click = text('b', { clickAction: { type: 'visibility', set: [
+      { id: 'card', state: 'st_big', mode: 'toggle' }, { id: 'card', mode: 'cycle' }, { id: 'card', state: '' }, { id: 'x"y', state: 'a' }, { id: 'card', state: 'a b' }, { id: 'card', state: 'z', mode: 'explode' },
+    ] } })
+    expect(client.clickActionAttrs(click)).toBe(' data-action="visibility" data-action-set="card:st_big:toggle card::cycle card::set" role="button" tabindex="0"')
+    const hover = text('h', { hoverAction: { type: 'visibility', set: [{ id: 'card', state: 'st_big', mode: 'toggle' }, { id: 'card', state: 'st_flip' }] } })
+    expect(client.clickActionAttrs(hover)).toBe(' data-hover-set="card:st_flip" tabindex="0"') // a hover only sets
+    expect([...client.visibilityTargets({ elements: [click, hover] })]).toEqual(['card'])
+  })
+
+  it('writes CSS from checked values only', () => {
+    const css = client.statesCss([{ elements: [card, text('plain')] }])
+    const on = id => `[data-el="card"][data-st="${id}"]:not([data-hover-st]), [data-el="card"][data-hover-st="${id}"]`
+    expect(css).toContain(`.reveal .slides :where([data-el="card"]) { transform:perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1); backface-visibility:hidden; }`)
+    expect(css).toContain(`.reveal .slides :where(${on('st_big')}) { --st-dur:250ms; --st-ease:cubic-bezier(0.34,1.56,0.64,1); left:10px !important; top:20px !important; width:300px !important; height:200px !important; rotate:15deg !important; z-index:9000 !important; transform:perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1.5); }`)
+    expect(css).toContain(`:not(.fragment:not(.visible))) { opacity:0.5 !important; }`)
+    expect(css).toContain(`> svg > g { fill:#ff0000; stroke:rgb(1, 2, 3); }`)
+    expect(css).toContain(`> svg > text { fill:white; }`)
+    expect(css).toContain(`.reveal .slides :where(${on('st_flip')}) { --st-dur:10000ms; --st-ease:ease; transform:perspective(1000px) rotateX(0deg) rotateY(180deg) scale(1); }`)
+    expect(css).not.toContain('plain')
+    const evil = text('e', { states: [{ id: 's', fill: 'red;} body{display:none', stroke: 'url(javascript:x)', textColor: '</style><script>', x: '10px;color:red', width: Infinity }] })
+    const evilCss = client.statesCss([{ elements: [evil] }])
+    expect(evilCss).not.toMatch(/display:none|javascript|script|color:red|Infinity|fill|stroke|left|width/)
+    expect(client.statesCss([{ elements: [text('i', { type: 'image', filterBrightness: 120, states: [{ id: 'g', filterGrayscale: 100 }] })] }]))
+      .toContain('img { filter:brightness(120%) contrast(100%) grayscale(100%) !important; }')
+    expect(client.statesCss([{ elements: [{ id: 'l', type: 'shape', shape: 'line', states: [{ id: 'c', fill: '#00ff00' }] }] }])).toContain('> svg > :is(line, polyline) { stroke:#00ff00; }')
+    expect(client.statesCss([{ elements: [{ id: 'l', type: 'shape', shape: 'line', stroke: '#fff', states: [{ id: 'c', fill: '#00ff00' }] }] }])).not.toContain('stroke')
+  })
+
+  it('keeps state changes pointing at the right elements when they get new ids', () => {
+    const els = [text('b', { clickAction: { type: 'visibility', set: [{ id: 'card', state: 'st_big', mode: 'set' }] }, hoverAction: { type: 'visibility', set: [{ id: 'b', state: 's' }] } }), card]
+    let n = 0
+    const renewed = client.renewElementIds(els, () => `n${++n}`)
+    expect(renewed[0].clickAction.set).toEqual([{ id: 'n2', state: 'st_big', mode: 'set' }])
+    expect(renewed[0].hoverAction.set).toEqual([{ id: 'n1', state: 's' }])
+  })
+
+  it('shows an element in a state, and records into one', () => {
+    expect(client.withState(card, 'st_big')).toMatchObject({ x: 10, y: 20, width: 300, fill: '#ff0000', scale: 1.5, states: card.states })
+    expect(client.withState(card, 'nope')).toBe(card)
+    expect(client.withState(card, null)).toBe(card)
+    const recorded = client.recordIntoState(card, 'st_flip', { x: 5, content: '<p>new</p>', zIndex: 3 })
+    expect(recorded.content).toBe('<p>new</p>')
+    expect(recorded.x).toBe(0)
+    expect(recorded.states[1]).toMatchObject({ id: 'st_flip', flipX: true, x: 5, zIndex: 3 })
+    expect(card.states[1].x).toBeUndefined()
+    expect(client.recordIntoState(card, 'nope', { x: 5 }).x).toBe(5)
+  })
+
+  it('knows when a state hides an element', () => {
+    expect(client.hiddenByState(card, 'st_flip')).toBe(true) // turned over with its back hidden
+    expect(client.hiddenByState({ ...card, backfaceHidden: false }, 'st_flip')).toBe(false)
+    expect(client.hiddenByState(text('o', { states: [{ id: 'gone', opacity: 0 }] }), 'gone')).toBe(true)
+    // An invisible shape can be a button; a state that leaves it invisible doesn't hide it
+    expect(client.hiddenByState({ id: 's', type: 'shape', opacity: 0, states: [{ id: 'a', fill: 'red' }] }, 'a')).toBe(false)
+  })
+})
+
+describe('previewing states on the canvas', () => {
+  let n = 0
+  const [front, back] = client.buildFlipCard({ makeId: () => `f${++n}` })
+  const els = [front, back]
+
+  it('shows elements in their first states as the slide opens, and after a click', () => {
+    const start = client.canvasClickPreview(els, null)
+    expect(start.canPreview).toBe(true)
+    expect(start.elements.map(e => e.id)).toEqual([front.id]) // the back starts turned away
+    const clicked = client.canvasClickPreview(els, front.id)
+    expect(clicked.elements.map(e => e.id)).toEqual([back.id])
+    expect(clicked.states.get(back.id)).toBe('')
+    expect(client.canvasClickPreview(els, 'all').elements).toEqual(els)
+  })
+
+  it('shows what’s selected as it is, to be edited', () => {
+    const preview = client.canvasClickPreview(els, null, [back.id])
+    expect(preview.elements.find(e => e.id === back.id)).toBe(back)
+    expect(preview.unseenIds.size).toBe(0)
+  })
+
+  it('keeps a selected flip card’s turned-away face unseen, for the face being edited', () => {
+    // The front clicked, so edited: the back is there, to move with it, but unseen
+    const start = client.canvasClickPreview(els, null, [back.id, front.id])
+    expect(start.elements.map(e => e.id)).toEqual([front.id, back.id])
+    expect([...start.unseenIds]).toEqual([back.id])
+    expect(start.fadedIds.size).toBe(0)
+    // After the click, the other way round
+    expect([...client.canvasClickPreview(els, front.id, [front.id, back.id]).unseenIds]).toEqual([front.id])
+    expect(client.canvasClickPreview(els, 'all', [back.id, front.id]).unseenIds.size).toBe(0)
+  })
+
+  it('edits the face of a selected flip card that the preview shows', () => {
+    expect(client.seenLast(els, [back.id, front.id], front.id)).toEqual([front.id, back.id])
+    expect(client.seenLast(els, [front.id, back.id], 'start')).toEqual([back.id, front.id])
+    const kept = [back.id, front.id]
+    expect(client.seenLast(els, kept, 'start')).toBe(kept)
+    expect(client.seenLast(els, kept, 'all')).toBe(kept)
+    const alone = [back.id]
+    expect(client.seenLast(els, alone, 'start')).toBe(alone) // nothing seen to swap to
+    expect(client.seenLast(els, [], 'start')).toEqual([])
+  })
+
+  it('doesn’t preview a click that turns over what’s selected', () => {
+    expect(client.previewForSelection(els, front.id, 'start')).toBeNull()
+    expect(client.previewForSelection(els, back.id, front.id)).toBeNull()
+  })
+
+  it('previews a hover’s state, and a cycle of states', () => {
+    const spot = text('spot', { hoverAction: { type: 'visibility', set: [{ id: 'dot', state: 'b' }] } })
+    const dot = text('dot', { states: [{ id: 'a', x: 1 }, { id: 'b', x: 2 }] })
+    const next = text('next', { clickAction: { type: 'visibility', set: [{ id: 'dot', mode: 'cycle' }] } })
+    expect(client.canvasClickPreview([spot, dot, next], client.hoverPreview('spot')).elements.find(e => e.id === 'dot').x).toBe(2)
+    expect(client.canvasClickPreview([spot, dot, next], 'next').elements.find(e => e.id === 'dot').x).toBe(1)
+    expect(client.statesInPreview([spot, { ...dot, initialState: 'b' }, next], 'next').get('dot')).toBe('')
+  })
+})
+
+describe('morphing shapes', () => {
+  const blob = { id: 'm', type: 'shape', shape: 'circle', x: 0, y: 0, width: 100, height: 100, fill: '#f00', text: 'Hi',
+    states: [{ id: 'star', name: 'Star', shape: 'star' }, { id: 'wide', name: 'Wide', width: 300, borderRadius: 4, duration: 400, easing: 'spring' }, { id: 'red', fill: '#0f0' }] }
+
+  it('draws a shape whose states change its outline as a path, with each state’s outline', () => {
+    const svg = client.shapeSvg(blob)
+    const outlines = /data-morph="([^"]+)"/.exec(svg)[1].split('|')
+    expect(outlines.map(o => o.slice(0, o.indexOf(':')))).toEqual(['', 'star', 'wide', 'red'])
+    for (const o of outlines) expect(o.slice(o.indexOf(':') + 1).split(' ')).toHaveLength(64)
+    expect(outlines[2]).toMatch(/:150,0 /) // the wide state's top middle
+    expect(svg).toMatch(/<path d="M50 0L/) // it starts as its default
+    expect(client.shapeSvg({ ...blob, initialState: 'star' })).toMatch(/<path d="M50 0L/)
+    expect(client.shapeSvg({ ...blob, initialState: 'wide' })).toMatch(/<path d="M150 0L/)
+  })
+
+  it('leaves a shape whose states only recolor it, and lines, as they are drawn', () => {
+    expect(client.shapeSvg({ ...blob, states: [blob.states[2]] })).toContain('<ellipse')
+    expect(client.shapeSvg({ ...blob, shape: 'line' })).toContain('<line')
+    expect(client.shapeSvg({ ...blob, states: [{ id: 'x', shape: 'squiggle' }] })).toContain('<ellipse')
+  })
+
+  it('moves the path’s points to the new state’s outline', () => {
+    vi.useFakeTimers()
+    try {
+      const win = new Window({ url: 'http://localhost/deck.html' })
+      const svg = client.shapeSvg(blob)
+      win.document.body.innerHTML = `<style>${client.statesCss([{ elements: [blob] }])}</style><div class="reveal"><div class="slides"><section>
+        <div id="go" data-action="visibility" data-action-set="m:wide:toggle"></div>
+        <div id="m" data-el="m" data-st-list="star wide red" data-st="" data-st-start="">${svg}</div></section></div></div>`
+      const Reveal = { on: () => {} }
+      let reduced = false
+      win.matchMedia = () => ({ matches: reduced })
+      win.requestAnimationFrame = fn => setTimeout(() => fn(Date.now()), 16)
+      win.cancelAnimationFrame = id => clearTimeout(id)
+      new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+      const path = win.document.querySelector('path')
+      const top = () => path.getAttribute('d').match(/^M([\d.]+) /)[1]
+      const click = () => win.document.getElementById('go').dispatchEvent(new win.MouseEvent('click', { bubbles: true }))
+      click()
+      vi.advanceTimersByTime(200)
+      expect(+top()).toBeGreaterThan(100) // on its way (a spring goes a little past)
+      expect(top()).not.toBe('150.00')
+      vi.advanceTimersByTime(400)
+      expect(top()).toBe('150.00')
+      // With the state's own easing, read from its CSS: a spring overshoots
+      expect(win.getComputedStyle(win.document.getElementById('m')).getPropertyValue('--st-ease')).toBe('cubic-bezier(0.34,1.56,0.64,1)')
+      const mid = []
+      click()
+      for (let i = 0; i < 30; i++) { vi.advanceTimersByTime(16); mid.push(+top()) }
+      expect(Math.min(...mid)).toBeLessThan(50) // past the default's top middle, then back
+      expect(top()).toBe('50.00')
+      click()
+      vi.advanceTimersByTime(1000)
+      reduced = true
+      click()
+      expect(top()).toBe('50.00') // at once, with reduced motion
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('states on steps', () => {
+  const dot = text('dot', { states: [{ id: 'a', x: 100 }, { id: 'b', x: 200 }], stateSteps: { 2: 'a', 4: null, 5: 'gone', x: 'a', 0: 'b', 3.5: 'a' } })
+  const other = text('other', { states: [{ id: 'c', x: 5 }], stateSteps: { 2: 'c' }, initialState: 'c' })
+  const slide = { elements: [dot, other, text('plain', { stateSteps: { 1: 'x' } })] }
+
+  it('lists the steps that change states, checked, in order', () => {
+    expect(client.stateSteps(slide)).toEqual([[2, [['dot', 'a'], ['other', 'c']]], [4, [['dot', '']]]])
+  })
+
+  it('writes an invisible fragment for each step', () => {
+    expect(client.stepMarkers(slide)).toBe(
+      '<span class="fragment" data-fragment-index="2" data-st-steps="dot:a other:c" aria-hidden="true" style="position:absolute;"></span>'
+      + '<span class="fragment" data-fragment-index="4" data-st-steps="dot:" aria-hidden="true" style="position:absolute;"></span>')
+    expect(client.stepMarkers({ elements: [text('x')] })).toBe('')
+  })
+
+  it('works out each element’s state at a step', () => {
+    expect([...client.statesAtStep(slide, 0)]).toEqual([['dot', ''], ['other', 'c']])
+    expect([...client.statesAtStep(slide, 3)]).toEqual([['dot', 'a'], ['other', 'c']])
+    expect(client.statesAtStep(slide, 4).get('dot')).toBe('')
+  })
+
+  it('changes states as the slide steps on and back', () => {
+    vi.useFakeTimers()
+    try {
+      const win = new Window({ url: 'http://localhost/deck.html' })
+      win.document.body.innerHTML = `<div class="reveal"><div class="slides"><section id="one">
+        <div data-el="dot" data-st-list="a b" data-st="" data-st-start=""></div>
+        <div data-el="other" data-st-list="c" data-st="c" data-st-start="c"></div>
+        ${client.stepMarkers(slide)}</section></div></div>`
+      const handlers = {}
+      const section = win.document.getElementById('one')
+      const Reveal = { on: (name, fn) => { handlers[name] = fn }, getCurrentSlide: () => section }
+      win.matchMedia = () => ({ matches: false })
+      new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+      const markers = win.document.querySelectorAll('[data-st-steps]')
+      const st = id => win.document.querySelector(`[data-el="${id}"]`).getAttribute('data-st')
+      const show = (i, on) => { markers[i].classList.toggle('visible', on); handlers[on ? 'fragmentshown' : 'fragmenthidden']({}) }
+      show(0, true)
+      expect([st('dot'), st('other')]).toEqual(['a', 'c'])
+      show(1, true)
+      expect(st('dot')).toBe('')
+      show(1, false)
+      expect(st('dot')).toBe('a') // back a step
+      show(0, false)
+      expect(st('dot')).toBe('') // before its first step: its first state
+      // Coming back to a slide with its fragments shown puts it in their states at once
+      markers.forEach(m => m.classList.add('visible'))
+      win.document.querySelector('[data-el="dot"]').setAttribute('data-st', 'b')
+      handlers.slidechanged({ currentSlide: section })
+      expect(st('dot')).toBe('')
+      markers[1].classList.remove('visible')
+      handlers.slidechanged({ currentSlide: section })
+      expect(st('dot')).toBe('a')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('the state presets', () => {
+  let n = 0
+  const makeId = () => `p${++n}`
+
+  it('makes a flip card whose parts turn over together', () => {
+    const [front, back] = client.buildFlipCard({ makeId })
+    expect(front.groupId).toBe(back.groupId)
+    expect([front.backfaceHidden, back.backfaceHidden]).toEqual([true, true])
+    expect(back.initialState).toBe(back.states[0].id)
+    expect([front.states[0].flipX, back.states[0].flipX]).toEqual([true, -180]) // both turn the same way
+    expect(front.clickAction).toEqual(back.clickAction)
+    expect(front.clickAction.set).toEqual([
+      { id: front.id, state: front.states[0].id, mode: 'toggle' }, { id: back.id, state: back.states[0].id, mode: 'toggle' },
+    ])
+  })
+
+  it('makes quiz answers that each set their own state', () => {
+    const [question, ...answers] = client.buildQuiz({ makeId })
+    expect(question.type).toBe('text')
+    expect(answers.map(a => a.states[0].name)).toEqual(['Right', 'Wrong', 'Wrong'])
+    for (const a of answers) expect(a.clickAction.set).toEqual([{ id: a.id, state: a.states[0].id, mode: 'set' }])
+  })
+
+  it('makes an element zoom to the middle of the slide and back', () => {
+    const el = text('z', { x: 0, y: 0, width: 96, height: 54, clickAction: { type: 'visibility', show: ['other'] } })
+    const zoomed = client.withClickToZoom(el)
+    expect(zoomed.states[0]).toMatchObject({ name: 'Zoomed', x: 432, y: 243, scale: 8.5, zIndex: 9000 })
+    expect(zoomed.clickAction).toEqual({ type: 'visibility', show: ['other'], set: [{ id: 'z', state: zoomed.states[0].id, mode: 'toggle' }] })
+    expect(client.withClickToZoom(text('n', { clickAction: { type: 'next' } }))).toBeNull()
+    expect(client.withClickToZoom({ id: 'h', type: 'html' })).toBeNull()
+  })
+})
+
 describe('the tabs insert', () => {
   let n = 0
   const makeId = () => `id${++n}`
@@ -238,6 +608,22 @@ describe('slide links under new ids', () => {
     expect(slides[0].elements[1].clickAction.slideId).toBe('old2') // the originals are left alone
   })
 
+  it('gives slides and their elements new ids, with links and show/hide following them', () => {
+    const deck = [...slides, { elements: [text('t', { clickAction: { type: 'visibility', show: ['p'] } }), text('p', { startHidden: true })] }]
+    let n = 0
+    const [a, b, c] = client.renewSlideIds(deck, () => `n${++n}`)
+    expect([a.id, b.id, c.id]).toEqual(['n1', 'n5', 'n7'])
+    expect(a.elements.map(e => e.id)).toEqual(['n2', 'n3', 'n4'])
+    expect(a.elements[0].content).toBe('<p><a href="#/s-n5">next</a> <a href="#/s-elsewhere">x</a> <a href="#/s-old22">y</a></p>')
+    expect(a.elements[1].clickAction).toEqual({ type: 'slide', slideId: 'n5' })
+    expect(a.elements[2].content).toBe('[back](#/s-n1)')
+    expect(c.elements[0].clickAction).toEqual({ type: 'visibility', show: ['n9'] })
+    expect(slides[0].id).toBe('old1') // the originals are left alone
+    expect(client.renewSlideIds(undefined, () => 'x')).toEqual([])
+    let m = 0
+    expect(server.renewSlideIds(deck, () => `n${++m}`)).toEqual(client.renewSlideIds(deck, (() => { let k = 0; return () => `n${++k}` })()))
+  })
+
   it('counts the links to a slide', () => {
     expect(client.countLinksTo(slides, 'old2')).toBe(2)
     expect(client.countLinksTo(slides, 'old1')).toBe(1)
@@ -254,6 +640,10 @@ describe('slide links under new ids', () => {
 })
 
 describe('the server’s copy', () => {
+  it('is up to date (if not, run node scripts/copy-click-actions.js)', () => {
+    for (const copy of COPIES) expect(readFileSync(copy.TARGET, 'utf8')).toBe(serverCopy(readFileSync(copy.SOURCE, 'utf8'), copy))
+  })
+
   it('writes the same pages', () => {
     const elements = [
       text('a', { clickAction: { type: 'slide', slideId: 's2' } }),
@@ -272,12 +662,18 @@ describe('the server’s copy', () => {
     const tabs = { elements: [
       text('a', { clickAction: { type: 'visibility', show: ['b'], toggle: ['c'] }, hoverEffect: 'grow' }),
       text('b', { startHidden: true }), { id: 'c', type: 'video' },
+      text('d', { hoverAction: { type: 'visibility', show: ['b'], hide: ['c'] } }),
     ] }
     const targets = client.visibilityTargets(tabs)
     expect([...server.visibilityTargets(tabs)]).toEqual([...targets])
     for (const el of tabs.elements) expect(server.clickActionAttrs(el, targets)).toBe(client.clickActionAttrs(el, targets))
     let a = 0, b = 0
     expect(server.renewElementIds(tabs.elements, () => `n${++a}`)).toEqual(client.renewElementIds(tabs.elements, () => `n${++b}`))
+    const flip = client.buildFlipCard({ makeId: () => `f${++a}` })
+    expect(server.statesCss([{ elements: flip }])).toBe(client.statesCss([{ elements: flip }]))
+    const morphing = { id: 'm', type: 'shape', shape: 'circle', width: 80, height: 80, states: [{ id: 'star', shape: 'star', width: 120 }] }
+    expect(server.shapeSvg(morphing)).toBe(client.shapeSvg(morphing))
+    for (const el of flip) expect(server.clickActionAttrs(el, targets)).toBe(client.clickActionAttrs(el, targets))
   })
 })
 
@@ -387,6 +783,194 @@ describe('presented decks', () => {
   })
 })
 
+describe('hovering in presented decks', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+  const later = () => vi.advanceTimersByTime(200)
+
+  function page(body) {
+    const win = new Window({ url: 'http://localhost/deck.html' })
+    win.document.body.innerHTML = `<div class="reveal"><div class="slides">${body}</div></div>`
+    const handlers = {}
+    const Reveal = { next: vi.fn(), on: (name, fn) => { handlers[name] = fn }, emit: (name, e) => handlers[name]?.(e) }
+    new Function('window', 'document', 'Reveal', client.CLICK_ACTION_SCRIPT)(win, win.document, Reveal)
+    const doc = win.document
+    const $ = sel => doc.querySelector(sel)
+    const pointer = (type, el, extra = {}) => el.dispatchEvent(new win.PointerEvent(type, { bubbles: true, pointerType: 'mouse', ...extra }))
+    const over = (el, pointerType = 'mouse') => pointer('pointerover', el, { pointerType })
+    const tap = el => { pointer('pointerdown', el, { pointerType: 'touch' }); el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true })) }
+    // Whether the page's CSS would hide the element: hidden by a click and not shown by a hover, or hidden by a hover
+    const hidden = sel => { const el = $(sel); return (el.hasAttribute('data-hidden') && !el.hasAttribute('data-hover-shown')) || el.hasAttribute('data-hover-hidden') }
+    return { win, doc, $, Reveal, pointer, over, tap, hidden }
+  }
+  const slide = `
+    <section id="one">
+      <div id="spot" data-hover-show="card" data-hover-hide="note" tabindex="0"><p>i</p></div>
+      <div id="card" data-el="card" data-start-hidden data-hidden><p id="inside">Card</p></div>
+      <div id="note" data-el="note"></div>
+      <div id="bg"></div>
+      <div id="tab" data-action="visibility" data-action-toggle="note" data-hover-show="card" tabindex="0"></div>
+    </section>
+    <section id="two"><div data-el="card" data-hidden></div></section>`
+
+  it('shows and hides while the pointer is over the element, then puts them back', () => {
+    const { $, over, hidden } = page(slide)
+    over($('#spot p'))
+    expect([hidden('#card'), hidden('#note'), hidden('#two [data-el]')]).toEqual([false, true, true])
+    expect($('#card').hasAttribute('data-hidden')).toBe(true) // what clicks did is left alone underneath
+    over($('#bg'))
+    expect(hidden('#card')).toBe(false) // for a moment
+    later()
+    expect([hidden('#card'), hidden('#note')]).toEqual([true, false])
+  })
+
+  it('keeps a card shown while the pointer crosses onto it and stays there, and ends when the pointer leaves the page', () => {
+    const { $, doc, over, pointer, hidden } = page(slide)
+    over($('#spot'))
+    over($('#bg')) // a gap between the marker and the card
+    over($('#inside'))
+    later()
+    expect(hidden('#card')).toBe(false)
+    pointer('pointerout', $('#inside'), { relatedTarget: null })
+    later()
+    expect(hidden('#card')).toBe(true)
+    over($('#spot'))
+    pointer('pointerout', $('#spot'), { relatedTarget: $('#bg') })
+    later()
+    expect(hidden('#card')).toBe(false) // pointerover on what it moved to decides
+    over($('#inside'))
+    over($('#bg'))
+    later()
+    expect(hidden('#card')).toBe(true)
+    expect(doc.querySelectorAll('[data-hover-shown], [data-hover-hidden]')).toHaveLength(0)
+  })
+
+  it('switches straight to another hover', () => {
+    const { $, over, hidden } = page(`<section>
+      <div id="a" data-hover-show="x"></div><div id="b" data-hover-show="y"></div>
+      <div data-el="x" id="x" data-hidden></div><div data-el="y" id="y" data-hidden></div></section>`)
+    over($('#a'))
+    over($('#b'))
+    expect([hidden('#x'), hidden('#y')]).toEqual([true, false])
+  })
+
+  it('lies over a click, which shows through again when the hover ends', () => {
+    const { $, over, hidden, win } = page(slide)
+    over($('#spot'))
+    const click = () => $('#tab').dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }))
+    click() // hides the note underneath the hover's hiding it
+    expect(hidden('#note')).toBe(true)
+    over($('#bg'))
+    later()
+    expect(hidden('#note')).toBe(true) // the click hid it
+    click()
+    over($('#spot'))
+    expect(hidden('#note')).toBe(true) // the hover hides it over the click's showing it
+    over($('#bg'))
+    later()
+    expect(hidden('#note')).toBe(false)
+    over($('#tab'))
+    expect(hidden('#card')).toBe(false) // a clickable element can have a hover too
+  })
+
+  it('shows on keyboard focus, not on a click’s focus', () => {
+    const { $, win, pointer, hidden } = page(slide)
+    const focus = (type, el) => el.dispatchEvent(new win.FocusEvent(type, { bubbles: true }))
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Tab' }))
+    focus('focusin', $('#spot'))
+    expect(hidden('#card')).toBe(false)
+    focus('focusout', $('#spot'))
+    expect(hidden('#card')).toBe(true)
+    pointer('pointerdown', $('#spot'))
+    focus('focusin', $('#spot'))
+    expect(hidden('#card')).toBe(true)
+  })
+
+  it('turns on and off with a tap on a touch screen, unless the element has a click action', () => {
+    const { $, over, tap, hidden } = page(slide)
+    over($('#spot'), 'touch')
+    expect(hidden('#card')).toBe(true) // touch doesn't hover
+    tap($('#spot'))
+    expect(hidden('#card')).toBe(false)
+    tap($('#inside'))
+    expect(hidden('#card')).toBe(false) // a tap on the card keeps it
+    tap($('#spot p'))
+    expect(hidden('#card')).toBe(true)
+    tap($('#spot'))
+    tap($('#bg'))
+    expect(hidden('#card')).toBe(true) // a tap elsewhere ends it
+    tap($('#tab'))
+    expect([hidden('#card'), hidden('#note')]).toEqual([true, true]) // the click action ran instead
+  })
+
+  it('treats a group’s parts as one hover on touch', () => {
+    const { $, tap, hidden } = page(`<section>
+      <div id="a" data-hover-show="card"></div><div id="b" data-hover-show="card"></div>
+      <div id="card" data-el="card" data-hidden></div></section>`)
+    tap($('#a'))
+    expect(hidden('#card')).toBe(false)
+    tap($('#b'))
+    expect(hidden('#card')).toBe(true)
+  })
+
+  it('puts elements in states on click: set, toggle and cycle, and back as the slide opens again', () => {
+    const { $, win, Reveal, doc } = page(`
+      <section id="one">
+        <div id="set" data-action="visibility" data-action-set="card:big:set"></div>
+        <div id="toggle" data-action="visibility" data-action-set="card:big:toggle"></div>
+        <div id="cycle" data-action="visibility" data-action-set="card::cycle other:nope:set"></div>
+        <div id="card" data-el="card" data-st-list="big small" data-st="small" data-st-start="small"></div>
+        <div id="other" data-el="other" data-st-list="a" data-st=""></div>
+      </section>`)
+    const click = id => $(`#${id}`).dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }))
+    const st = () => $('#card').getAttribute('data-st')
+    click('set'); expect(st()).toBe('big')
+    click('toggle'); expect(st()).toBe('')
+    click('toggle'); expect(st()).toBe('big')
+    click('cycle'); expect(st()).toBe('small')
+    click('cycle'); expect(st()).toBe('')
+    click('cycle'); expect(st()).toBe('big')
+    expect($('#other').getAttribute('data-st')).toBe('') // a state it doesn't have
+    Reveal.emit('slidechanged', { currentSlide: doc.getElementById('one') })
+    expect(st()).toBe('small')
+  })
+
+  it('lays a hover’s states over a click’s, and takes them off when it ends', () => {
+    const { $, over, hidden } = page(`
+      <section>
+        <div id="spot" data-hover-set="card:big other:" tabindex="0"></div>
+        <div id="card" data-el="card" data-st-list="big" data-st=""></div>
+        <div id="other" data-el="other" data-st-list="a" data-st="a"></div>
+        <div id="bg"></div>
+      </section>`)
+    over($('#spot'))
+    expect([$('#card').getAttribute('data-hover-st'), $('#other').getAttribute('data-hover-st'), $('#card').getAttribute('data-st')]).toEqual(['big', '', ''])
+    over($('#bg')); later()
+    expect([$('#card').hasAttribute('data-hover-st'), $('#other').hasAttribute('data-hover-st'), $('#other').getAttribute('data-st')]).toEqual([false, false, 'a'])
+    expect(hidden('#card')).toBe(false)
+  })
+
+  it('ends when the slide changes', () => {
+    const { $, doc, over, Reveal, hidden } = page(slide)
+    over($('#spot'))
+    Reveal.emit('slidechanged', { currentSlide: doc.getElementById('two') })
+    expect(hidden('#card')).toBe(true)
+    expect(doc.querySelectorAll('[data-hover-shown], [data-hover-hidden]')).toHaveLength(0)
+  })
+
+  it('writes the page CSS so a hover wins over a click', () => {
+    expect(client.CLICK_ACTION_CSS).toContain('[data-el][data-hidden]:not([data-hover-shown]), .reveal .slides [data-el][data-hover-hidden] { opacity:0 !important')
+    const html = generateRevealHTML({ id: 'p', slides: [{ id: 's1', elements: [
+      text('spot', { hoverAction: { type: 'visibility', show: ['card'] } }), text('card', { startHidden: true }),
+    ] }] })
+    expect(html).toContain('data-hover-show="card" tabindex="0"')
+    expect(html).toContain('data-el="card" data-start-hidden data-hidden')
+  })
+})
+
+// The page a deck's window runs in its sandboxed frame (openDeckWindow)
+const deckIn = html => JSON.parse(html.match(/frame\.srcdoc = (".*");/)[1])
+
 describe('PDF export', () => {
   it('links clickable elements and slide links to the slides’ pages, and leaves out what starts hidden', async () => {
     let blob = null
@@ -406,7 +990,7 @@ describe('PDF export', () => {
         ] },
         { id: 's2', elements: [text('later', { fragment: true, fragmentIndex: 1, clickAction: { type: 'prev' } })] },
       ] })
-      const html = await blob.text()
+      const html = deckIn(await blob.text())
       expect(html).toContain('<div class="slide-page" id="s-s1"')
       expect(html.match(/id="s-s2"/g)).toHaveLength(1) // only the slide's first page
       expect(html).toContain('<a href="#s-s2" style="position:absolute;left:10px;top:20px;width:30px;height:40px;')
@@ -415,6 +999,49 @@ describe('PDF export', () => {
       expect(html).not.toContain('javascript:')
       expect(html.match(/<a href="#s-s1"/g)).toHaveLength(1) // "later" links back only once it's shown
       expect(html).toMatch(/visibility:hidden;[^>]*>\s*<p>SECRET/)
+    } finally {
+      vi.useRealTimers()
+      createObjectURL.mockRestore()
+      vi.restoreAllMocks()
+    }
+  })
+  it('prints elements in their first states', async () => {
+    let blob = null
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => { blob = b; return 'blob:x' })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    globalThis.window.open = vi.fn()
+    vi.useFakeTimers()
+    try {
+      const [front, back] = client.buildFlipCard({ makeId: (() => { let n = 0; return () => `k${++n}` })() })
+      exportPDF({ id: 'p', slides: [{ id: 's1', elements: [
+        { ...front, text: 'FRONT' }, { ...back, text: 'BACK' },
+        text('moved', { content: '<p>MOVED</p>', x: 5, states: [{ id: 'm', x: 400 }], initialState: 'm' }),
+      ] }] })
+      const html = deckIn(await blob.text())
+      expect(html).toMatch(/left:400px;[^>]*>\s*<p>MOVED/)
+      // The back starts turned away, with its back hidden
+      const faceOf = word => new RegExp(`<div style="([^"]*)">(?:(?!<div)[\\s\\S])*${word}`).exec(html)?.[1]
+      expect(faceOf('BACK')).toContain('visibility:hidden;')
+      expect(faceOf('FRONT')).not.toContain('visibility:hidden;')
+    } finally {
+      vi.useRealTimers()
+      createObjectURL.mockRestore()
+      vi.restoreAllMocks()
+    }
+  })
+  it('prints a page for each step, with its states', async () => {
+    let blob = null
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => { blob = b; return 'blob:x' })
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    globalThis.window.open = vi.fn()
+    vi.useFakeTimers()
+    try {
+      exportPDF({ id: 'p', slides: [{ id: 's1', elements: [
+        text('mover', { content: '<p>MOVER</p>', x: 5, states: [{ id: 'far', x: 700 }], stateSteps: { 1: 'far', 2: null } }),
+      ] }] })
+      const html = deckIn(await blob.text())
+      const lefts = [...html.matchAll(/left:(\d+)px;[^>]*>\s*<p>MOVER/g)].map(m => +m[1])
+      expect(lefts).toEqual([5, 700, 5]) // as it opens, after step 1, after step 2
     } finally {
       vi.useRealTimers()
       createObjectURL.mockRestore()

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Play, X, GripVertical } from 'lucide-react'
+import { stateSteps } from '../utils/clickActions'
 
 const ANIMATION_TYPES = [
   { value: 'fade-in', label: 'Fade In' },
@@ -67,7 +68,9 @@ export default function AnimationTimeline({ slide, onUpdateElement, onClose, onP
     if (!groups[idx]) groups[idx] = []
     groups[idx].push(el)
   })
-  const sortedIndices = Object.keys(groups).map(Number).sort((a, b) => a - b)
+  // Elements that change state at a step (utils/clickActions.js)
+  const stateChanges = Object.fromEntries(stateSteps(slide))
+  const sortedIndices = [...new Set([...Object.keys(groups), ...Object.keys(stateChanges)].map(Number))].sort((a, b) => a - b)
   const maxIndex = sortedIndices.length > 0 ? Math.max(...sortedIndices) : 0
 
   const handleDragStart = (e, elementId, fromIndex) => {
@@ -126,7 +129,7 @@ export default function AnimationTimeline({ slide, onUpdateElement, onClose, onP
           >
             <div className="timeline-step-label">Step {idx}</div>
             <div className="timeline-step-elements">
-              {groups[idx].map((el, i) => (
+              {(groups[idx] || []).map((el, i) => (
                 <div
                   key={el.id}
                   className="timeline-element-chip"
@@ -146,6 +149,16 @@ export default function AnimationTimeline({ slide, onUpdateElement, onClose, onP
                   </select>
                 </div>
               ))}
+              {(stateChanges[idx] || []).map(([id, stateId]) => {
+                const el = slide.elements.find(e => e.id === id)
+                const name = stateId ? el?.states?.find(st => st.id === stateId)?.name || 'State' : 'Default'
+                return (
+                  <div key={`st-${id}`} className="timeline-element-chip" title="Changes state at this step (set under States in the Properties panel)"
+                    style={{ background: 'rgba(217,70,239,0.15)', borderColor: '#d946ef' }}>
+                    <span className="timeline-chip-label">◆ {el ? getElementLabel(el) : 'Element'} → {name}</span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         ))}
