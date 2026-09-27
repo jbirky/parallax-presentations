@@ -117,6 +117,37 @@ describe('the self-hosted version', () => {
     assert.equal(pdf.get('content-security-policy'), null) // PDF viewers won't open in a sandbox
   })
 
+  it('answers only this computer, and no other site’s pages', async () => {
+    const http = require('http')
+    // A raw request, since fetch won't set Host
+    const raw = (url, headers = {}, method = 'GET') => new Promise((resolve, reject) => {
+      const req = http.request(base + url, { method, headers }, res => { res.resume(); resolve(res.statusCode) })
+      req.on('error', reject)
+      req.end()
+    })
+    const port = new URL(base).port
+    assert.equal(await raw('/api/presentations'), 200)
+    assert.equal(await raw('/api/presentations', { Host: `localhost:${port}` }), 200)
+    // A site that points its own name at this computer (DNS rebinding)
+    assert.equal(await raw('/api/presentations', { Host: `evil.example:${port}` }), 403)
+    assert.equal(await raw('/', { Host: `evil.example:${port}` }), 403)
+    // Another site's page, or a sandboxed one
+    assert.equal(await raw('/api/presentations', { Origin: 'https://evil.example' }), 403)
+    assert.equal(await raw('/api/presentations', { Origin: 'null' }, 'POST'), 403)
+    assert.equal(await raw('/api/presentations', { 'Sec-Fetch-Site': 'cross-site' }), 403)
+    assert.equal(await raw('/api/presentations', { Origin: base, 'Sec-Fetch-Site': 'same-origin' }), 200)
+    // Files a sandboxed deck loads still load
+    assert.equal(await raw('/uploads/pic.svg', { Origin: 'null' }), 200)
+  })
+
+  it('opens to other names only when told to', () => {
+    const { localOnly } = require('../middleware/security')
+    const answer = (mw, host) => { let status = 200; mw({ headers: { host }, path: '/' }, { status: s => { status = s; return { type: () => ({ send() {} }) } } }, () => {}); return status }
+    assert.equal(answer(localOnly(), '[::1]:3002'), 200)
+    assert.equal(answer(localOnly(), 'parallax.lan:3002'), 403)
+    assert.equal(answer(localOnly('localhost, parallax.lan'), 'Parallax.LAN:3002'), 200)
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

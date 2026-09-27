@@ -14,8 +14,9 @@ const ALLOWED_ORIGINS = [
 ]
 
 function corsConfig() {
+  // Self-hosted, nothing is for other sites (localOnly)
   if (!IS_CLOUD) {
-    return { origin: true, credentials: true }
+    return { origin: false }
   }
   return {
     origin(origin, callback) {
@@ -88,6 +89,45 @@ const deckPageLimiter = rateLimit({
   skip: () => !IS_CLOUD,
   message: 'Too many requests, please try again later',
 })
+
+// --- Self-hosted: this machine only ---
+// With no sign-in, whoever reaches the server can read and change every
+// presentation and use the stored GitHub and Zotero tokens. So it only
+// answers requests addressed to this machine by name (a site that points its
+// own name at 127.0.0.1 gets nothing: DNS rebinding), and /api refuses what
+// other sites' pages send. PARALLAX_ALLOWED_HOSTS (names, comma-separated)
+// lets others in, with PARALLAX_HOST to listen beyond this machine.
+const LOCAL_HOSTS = 'localhost,127.0.0.1,[::1]'
+
+const hostnameOf = host => {
+  const h = String(host || '').toLowerCase()
+  return h.startsWith('[') ? h.slice(0, h.indexOf(']') + 1) : h.split(':')[0]
+}
+
+function localOnly(allowedHosts = process.env.PARALLAX_ALLOWED_HOSTS || LOCAL_HOSTS) {
+  const allowed = allowedHosts.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+  return (req, res, next) => {
+    if (!allowed.includes(hostnameOf(req.headers.host))) {
+      return res.status(403).type('text/plain').send('This Parallax only answers on this computer. To open it to others, set PARALLAX_ALLOWED_HOSTS.')
+    }
+    if (req.path === '/api' || req.path.startsWith('/api/')) {
+      let sameOrigin = true
+      if (req.headers.origin) {
+        try { sameOrigin = new URL(req.headers.origin).host === String(req.headers.host).toLowerCase() } catch { sameOrigin = false }
+      }
+      const site = req.headers['sec-fetch-site']
+      if (!sameOrigin || site === 'cross-site' || site === 'same-site') {
+        return res.status(403).json({ error: 'Requests from other sites are refused' })
+      }
+    }
+    next()
+  }
+}
+
+// Where the server listens: this machine only when self-hosted (no sign-in)
+function listenHost() {
+  return process.env.PARALLAX_HOST || (IS_CLOUD ? '0.0.0.0' : '127.0.0.1')
+}
 
 // --- Validation helpers ---
 
@@ -213,6 +253,8 @@ module.exports = {
   apiLimiter,
   uploadLimiter,
   deckPageLimiter,
+  localOnly,
+  listenHost,
   authLimiter,
   requireValidId,
   requireValidSlug,

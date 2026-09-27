@@ -42,7 +42,7 @@ const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plu
 const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
 const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
   safeErrorMessage,
@@ -116,6 +116,7 @@ async function userIdForToken(token) {
 }
 
 app.use(helmetConfig())
+if (!IS_CLOUD) app.use(localOnly())
 // Library files, uploads and a live session's slide feed are public, and the
 // pages that use them are sandboxed (sendDeckPage), so their requests come
 // from origin null: those answer any origin, without credentials
@@ -3579,8 +3580,9 @@ async function startServer(port) {
     try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
   }
   return new Promise((resolve) => {
-    const server = app.listen(p, () => {
-      console.log(`Server running on http://localhost:${p}`)
+    const host = listenHost()
+    const server = app.listen(p, host, () => {
+      console.log(`Server running on http://localhost:${p}${host === '127.0.0.1' ? ' (this computer only)' : ` (listening on ${host})`}`)
       resolve(server)
     })
     attachLiveEditing(server)

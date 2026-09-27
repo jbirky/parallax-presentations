@@ -47,6 +47,8 @@ VOLUME ["/app/server/data", "/app/server/uploads"]
 
 ENV NODE_ENV=production
 ENV PORT=3002
+# Inside the container: the port is published to the host from here
+ENV PARALLAX_HOST=0.0.0.0
 EXPOSE 3002
 
 CMD ["node", "server/index.js"]

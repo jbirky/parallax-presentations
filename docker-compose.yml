@@ -9,8 +9,11 @@ services:
     build: .
     ports:
       # Only this computer can open it, since self-hosted mode has no sign-in.
-      # Use "3002:3002" to open it to your network too.
+      # To open it to your network too, use "3002:3002" and list the names
+      # people will use to reach it below (docs/guide/installation.md).
       - "127.0.0.1:3002:3002"
+    # environment:
+    #   - PARALLAX_ALLOWED_HOSTS=localhost,192.168.1.20
     volumes:
       - parallax-data:/app/server/data
       - parallax-uploads:/app/server/uploads

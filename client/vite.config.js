@@ -75,11 +75,13 @@ export default defineConfig({
   plugins: [react(), vendorLibrariesPlugin()],
   envDir: '..',
   server: {
+    // 127.0.0.1, where the server listens when self-hosted: "localhost" can
+    // resolve to ::1 first, which Node 18 doesn't fall back from
     proxy: {
-      '/api': 'http://localhost:3002',
-      '/uploads': 'http://localhost:3002',
+      '/api': 'http://127.0.0.1:3002',
+      '/uploads': 'http://127.0.0.1:3002',
       // Live editing's WebSocket
-      '/collab': { target: 'ws://localhost:3002', ws: true },
+      '/collab': { target: 'ws://127.0.0.1:3002', ws: true },
     }
   },
   test: {
