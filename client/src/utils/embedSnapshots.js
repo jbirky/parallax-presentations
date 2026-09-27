@@ -67,6 +67,11 @@ export function clearSnapshots() {
   cache.clear()
 }
 
+// Only from a frame in this page (the canvas's embeds): a window that holds
+// a reference to the editor (a presented deck's, through window.opener)
+// could otherwise put pictures of its own in place of an embed's
+const fromOwnFrame = e => [...document.querySelectorAll('iframe')].some(f => f.contentWindow === e.source)
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('message', e => handleSnapshotMessage(e.data))
+  window.addEventListener('message', e => { if (fromOwnFrame(e)) handleSnapshotMessage(e.data) })
 }

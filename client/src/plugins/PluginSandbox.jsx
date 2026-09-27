@@ -85,7 +85,7 @@ export default function PluginSandbox({ sandboxUrl, pluginData, width, height, i
 
   window.addEventListener('message', function(e) {
     var msg = e.data;
-    if (!msg || msg.source !== 'parallax-host') return;
+    if (e.source !== window.parent || !msg || msg.source !== 'parallax-host') return;
     if (msg.type === 'init' || msg.type === 'data-changed') {
       _data = msg.payload.data || msg.payload;
       _dataCallbacks.forEach(function(cb) { cb(JSON.parse(JSON.stringify(_data))); });
