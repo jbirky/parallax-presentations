@@ -96,6 +96,27 @@ describe('the self-hosted version', () => {
     assert.match(html, /<span class="fragment" data-fragment-index="2" data-st-steps="dot:st_star" aria-hidden="true"/)
   })
 
+  it('serves uploads by their names, so none can run as this site', async () => {
+    const dir = process.env.SLIDES_UPLOADS_DIR
+    fs.writeFileSync(path.join(dir, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+    fs.writeFileSync(path.join(dir, 'fake.png'), '<script>alert(1)</script>')
+    fs.writeFileSync(path.join(dir, 'page.xhtml'), '<html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>')
+    fs.writeFileSync(path.join(dir, 'doc.pdf'), '%PDF-1.4')
+    const get = async name => (await fetch(`${base}/uploads/${name}`)).headers
+    const svg = await get('pic.svg')
+    assert.equal(svg.get('content-type'), 'image/svg+xml')
+    assert.equal(svg.get('content-security-policy'), 'sandbox')
+    const png = await get('fake.png')
+    assert.equal(png.get('content-type'), 'image/png')
+    assert.equal(png.get('x-content-type-options'), 'nosniff')
+    const page = await get('page.xhtml')
+    assert.equal(page.get('content-type'), 'application/octet-stream')
+    assert.equal(page.get('content-disposition'), 'attachment')
+    const pdf = await get('doc.pdf')
+    assert.equal(pdf.get('content-type'), 'application/pdf')
+    assert.equal(pdf.get('content-security-policy'), null) // PDF viewers won't open in a sandbox
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

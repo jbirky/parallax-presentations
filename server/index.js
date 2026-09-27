@@ -20,6 +20,7 @@ const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
+const { setUploadHeaders } = require('./utils/upload-headers')
 const { libUrl, localizeLibraries } = require('./services/libraries')
 const { tikzDiagramSvg } = require('./services/tikz-diagram')
 const {
@@ -140,8 +141,9 @@ if (isR2Enabled()) {
         [urlPath]
       )
       if (!rows.length) return res.status(404).send('Not found')
-      const { body, contentType, contentLength } = await streamFromR2(rows[0].storage_key)
-      res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
+      const { body, contentLength } = await streamFromR2(rows[0].storage_key)
+      // By its name, not the type it was stored with (utils/upload-headers.js)
+      setUploadHeaders(res, urlPath)
       if (contentLength) res.setHeader('Content-Length', contentLength)
       // Guest files are deleted with their session, so nothing may cache them
       res.setHeader('Cache-Control', rows[0].storage_key.startsWith('guest/') ? 'private, no-store' : 'public, max-age=31536000, immutable')
@@ -153,14 +155,7 @@ if (isR2Enabled()) {
   })
 } else {
   app.use('/uploads', express.static(UPLOADS_DIR, {
-    setHeaders(res, filePath) {
-      res.setHeader('X-Content-Type-Options', 'nosniff')
-      const ext = path.extname(filePath).toLowerCase()
-      if (ext === '.html' || ext === '.htm' || ext === '.svg') {
-        res.setHeader('Content-Type', 'application/octet-stream')
-        res.setHeader('Content-Disposition', 'attachment')
-      }
-    }
+    setHeaders(res, filePath) { setUploadHeaders(res, filePath) }
   }))
 }
 
@@ -2039,13 +2034,14 @@ app.get('/api/fonts/file/:filename', async (req, res) => {
         [`fonts/${filename}`]
       )
       if (!rows.length) return res.status(404).send('Not found')
-      const { body, contentType } = await streamFromR2(rows[0].storage_key)
-      res.setHeader('Content-Type', contentType || rows[0].content_type || 'application/octet-stream')
+      const { body } = await streamFromR2(rows[0].storage_key)
+      setUploadHeaders(res, filename)
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
       body.pipe(res)
     } else {
       const filePath = path.join(UPLOADS_DIR, 'fonts', filename)
       if (!fs.existsSync(filePath)) return res.status(404).send('Not found')
+      setUploadHeaders(res, filename)
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
       res.sendFile(filePath)
     }
@@ -2134,7 +2130,7 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
       filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
-      const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
+      const result = await r2Upload(filePath, req.file.originalname, {
         presentationId: null, userId: req.userId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
@@ -2160,7 +2156,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
       filePath = convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
-      const result = await r2Upload(filePath, req.file.originalname, req.file.mimetype, {
+      const result = await r2Upload(filePath, req.file.originalname, {
         presentationId: req.params.id, userId: req.deck.ownerId, storage, keyPrefix: req.guestKeyPrefix,
       })
       return res.json(result)
@@ -2205,7 +2201,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     if (isR2Enabled()) {
       const urls = []
       for (const f of pngFiles) {
-        const result = await r2Upload(path.join(tmpDir, f), f, 'image/png', {
+        const result = await r2Upload(path.join(tmpDir, f), f, {
           presentationId: req.params.id, userId: req.deck.ownerId, storage,
         })
         urls.push(result.url)

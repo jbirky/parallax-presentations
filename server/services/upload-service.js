@@ -6,9 +6,12 @@ const fs = require('fs-extra')
 const crypto = require('crypto')
 const { v4: uuidv4 } = require('uuid')
 const { isR2Enabled, uploadToR2, deleteManyFromR2 } = require('./r2')
+const { uploadContentType } = require('../utils/upload-headers')
 
-async function handleUpload(filePath, originalFilename, mimetype, { presentationId, userId, storage, keyPrefix }) {
-  const contentType = mimetype || 'application/octet-stream'
+// Stored with the type its name gives, not the one the uploader sent
+// (utils/upload-headers.js)
+async function handleUpload(filePath, originalFilename, { presentationId, userId, storage, keyPrefix }) {
+  const contentType = uploadContentType(originalFilename || filePath)
   const fileHash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
   if (storage && storage.query && presentationId) {
