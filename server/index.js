@@ -2713,17 +2713,24 @@ app.get('/api/zotero/proxy/*', async (req, res) => {
     if (!config.apiKey || !config.zoteroUserId) {
       return res.status(400).json({ error: 'Zotero not configured' })
     }
+    // Only the user's own collections and items, as the bibliography asks
+    // for them, and only as JSON: the path arrives decoded (..%2f reaches
+    // other api.zotero.org paths), and Zotero's own type, sent back from
+    // this site, could make an attachment a page here
     const zoteroPath = req.params[0]
+    if (!/^(collections|items)(\/[A-Za-z0-9]+){0,3}$/.test(zoteroPath)) return res.status(400).json({ error: 'Invalid Zotero path' })
     const qs = new URL(req.url, 'http://localhost').search
-    const url = `https://api.zotero.org/users/${config.zoteroUserId}/${zoteroPath}${qs}`
+    const url = `https://api.zotero.org/users/${encodeURIComponent(config.zoteroUserId)}/${zoteroPath}${qs}`
     const zRes = await fetch(url, {
-      headers: { 'Zotero-API-Version': '3', 'Zotero-API-Key': config.apiKey }
+      headers: { 'Zotero-API-Version': '3', 'Zotero-API-Key': config.apiKey },
+      redirect: 'error',
     })
     const body = await zRes.text()
+    let data
+    try { data = JSON.parse(body) } catch { data = { error: `Zotero answered ${zRes.status}` } }
     res.status(zRes.status)
-      .set('Content-Type', zRes.headers.get('content-type') || 'application/json')
       .set('Total-Results', zRes.headers.get('total-results') || '0')
-      .send(body)
+      .json(data)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
