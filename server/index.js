@@ -1045,7 +1045,9 @@ function generateRevealHTML(presentation, opts = {}) {
 
     function shortAuthor(authorStr) {
       if (!authorStr) return ''
-      const authors = authorStr.split(/\s+and\s+/i).map(a => {
+      // Spaces squeezed first: /\s+and\s+/ on a long run of spaces takes
+      // time in its square, and author lists come from anyone's .bib
+      const authors = authorStr.replace(/\s+/g, ' ').split(/ and /i).map(a => {
         a = a.trim()
         if (a.includes(',')) return a.split(',')[0].trim()
         const parts = a.split(/\s+/)

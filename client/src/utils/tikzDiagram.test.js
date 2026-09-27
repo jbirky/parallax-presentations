@@ -29,6 +29,27 @@ describe.each([['client', clientTikz], ['server', serverTikz]])('%s TikZ diagram
     expect(clean).toContain('<path d="M0 0"/>')
   })
 
+  it('takes time in proportion to its size, whatever is in it', () => {
+    // Each of these took a regex seconds to minutes: a closing tag or quote
+    // that never comes, looked for again from each opening one
+    const start = Date.now()
+    for (const svg of [
+      '<svg'.repeat(100000),
+      `<svg>${'<script>'.repeat(100000)}</svg>`,
+      `<svg><g${' onx="a'.repeat(100000)}></svg>`,
+      `<svg><a${' href="javascript:'.repeat(100000)}></svg>`,
+    ]) {
+      const clean = tikz.sanitizeSvg(svg)
+      expect(clean).not.toMatch(/<script|\son[a-z]+\s*=|href="\s*javascript:/i)
+    }
+    expect(Date.now() - start).toBeLessThan(2000)
+  })
+
+  it('removes each script up to its own closing tag', () => {
+    expect(tikz.sanitizeSvg('<svg><SCRIPT>a()</script ><g/><script>b()</script>\n<rect/></svg>')).toBe('<svg><g/>\n<rect/></svg>')
+    expect(tikz.sanitizeSvg('<svg><script>a()<g/></svg>')).toBe('<svg>a()<g/></svg>')
+  })
+
   it('gives nothing for something that isn’t an SVG', () => {
     expect(tikz.sanitizeSvg('<img src=x onerror=steal()>')).toBe('')
     expect(tikz.sanitizeSvg(undefined)).toBe('')

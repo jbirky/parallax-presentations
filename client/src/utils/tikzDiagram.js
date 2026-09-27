@@ -11,13 +11,39 @@
 // and javascript: links. Only the editor writes these, but they're saved with
 // the presentation, so treat them as untrusted.
 export function sanitizeSvg(svg) {
-  const match = typeof svg === 'string' && svg.match(/<svg\b[\s\S]*<\/svg\s*>/i)
-  if (!match) return ''
-  return match[0]
-    .replace(/<(script|iframe|object|embed)\b[\s\S]*?<\/\1\s*>/gi, '')
+  if (typeof svg !== 'string') return ''
+  // The first <svg to the last </svg>, found by position: a regex spanning
+  // them looks again from each <svg when there's no closing tag
+  const start = svg.search(/<svg\b/i)
+  let end = -1
+  for (const m of svg.matchAll(/<\/svg\s*>/gi)) end = m.index + m[0].length
+  if (start < 0 || end <= start) return ''
+  return withoutPairs(svg.slice(start, end))
     .replace(/<(script|iframe|object|embed)\b[^>]*>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s((?:xlink:)?href)\s*=\s*("\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, ' $1="#"')
+    // A quote that never closes runs to the end, as a browser reads it
+    .replace(/\son[a-z]+\s*=\s*("[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s>]+)/gi, '')
+    .replace(/\s((?:xlink:)?href)\s*=\s*("\s*javascript:[^"]*(?:"|$)|'\s*javascript:[^']*(?:'|$))/gi, ' $1="#"')
+}
+
+// `html` without each <script>…</script>, and the same for iframe, object
+// and embed. Each tag's closing tag is looked for once past where there's
+// none, so a deck's SVG full of unclosed ones takes no longer than its length.
+function withoutPairs(html) {
+  const lower = html.toLowerCase()
+  const noCloseFrom = {}
+  const open = /<(script|iframe|object|embed)\b/gi
+  let out = '', kept = 0, m
+  while ((m = open.exec(html))) {
+    const tag = m[1].toLowerCase()
+    if (m.index >= (noCloseFrom[tag] ?? Infinity)) continue
+    const close = new RegExp(`</${tag}\\s*>`, 'g')
+    close.lastIndex = m.index
+    const c = close.exec(lower)
+    if (!c) { noCloseFrom[tag] = m.index; continue }
+    out += html.slice(kept, m.index)
+    kept = open.lastIndex = c.index + c[0].length
+  }
+  return out + html.slice(kept)
 }
 
 // The diagram's SVG, filling its element
