@@ -118,6 +118,24 @@ async function readDatasetFile(storageKey, format, localDir) {
   throw new Error(`Unsupported format: ${format}`)
 }
 
+// SQL's LIKE, ignoring case: % matches any run of characters, _ any one, and
+// the rest only themselves. Walks the value once, going back to the last % on
+// a mismatch, so it takes at most value × pattern steps; a regex built from
+// the pattern (%%%%…!) could take longer than the server can wait.
+function likeMatch(value, pattern) {
+  const s = String(value).toLowerCase()
+  const p = String(pattern).toLowerCase()
+  let i = 0, j = 0, star = -1, from = 0
+  while (i < s.length) {
+    if (j < p.length && p[j] !== '%' && (p[j] === '_' || p[j] === s[i])) { i++; j++ }
+    else if (j < p.length && p[j] === '%') { star = j++; from = i }
+    else if (star !== -1) { j = star + 1; i = ++from }
+    else return false
+  }
+  while (p[j] === '%') j++
+  return j === p.length
+}
+
 function applyQuery(rows, columns, opts = {}) {
   let filtered = rows
 
@@ -132,10 +150,7 @@ function applyQuery(rows, columns, opts = {}) {
         if (conditions.lt != null && !(val < conditions.lt)) return false
         if (conditions.lte != null && !(val <= conditions.lte)) return false
         if (conditions.in && !conditions.in.includes(val)) return false
-        if (conditions.like) {
-          const pattern = new RegExp('^' + conditions.like.replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i')
-          if (!pattern.test(String(val))) return false
-        }
+        if (conditions.like && !likeMatch(val, conditions.like)) return false
       }
       return true
     })
@@ -174,4 +189,4 @@ async function deleteDatasetFile(storageKey, localDir) {
   }
 }
 
-module.exports = { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile, detectFormat, ALLOWED_FORMATS }
+module.exports = { ingestDataset, readDatasetFile, applyQuery, likeMatch, deleteDatasetFile, detectFormat, ALLOWED_FORMATS }
