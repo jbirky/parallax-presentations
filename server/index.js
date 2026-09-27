@@ -1933,9 +1933,15 @@ app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
+// Whether the caller may use presentation `pid`'s datasets: deckAccess checks
+// editors, but leaves guests (and self-hosted) to storage, and the dataset
+// links aren't looked up by owner
+const ownsDeck = async (req, pid) => !!(await storage.getPresentation(pid, req.deck.ownerId))
+
 // DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
 app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: err.message }) }
@@ -1944,13 +1950,18 @@ app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckA
 // GET /api/presentations/:pid/datasets — list datasets linked to a presentation
 app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     res.json(await storage.getPresentationDatasets(req.params.pid))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
 // GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
+// (only a linked one: editors reach the owner's datasets through this)
 app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
+    const linked = await storage.getPresentationDatasets(req.params.pid)
+    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)

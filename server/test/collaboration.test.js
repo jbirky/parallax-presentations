@@ -34,6 +34,15 @@ const upload = (who, id) => {
   return call(who, 'POST', `/api/presentations/${id}/upload`, body, headers)
 }
 
+// A CSV dataset of `who`'s, named `name`
+function uploadDataset(who, name) {
+  const boundary = `----parallax${crypto.randomBytes(8).toString('hex')}`
+  const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n${name}\r\n`
+    + `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}.csv"\r\nContent-Type: text/csv\r\n\r\n`
+    + `planet,moons\r\nMars,2\r\nEarth,1\r\n--${boundary}--\r\n`)
+  return call(who, 'POST', '/api/datasets', body, { 'Content-Type': `multipart/form-data; boundary=${boundary}` })
+}
+
 describe('editing a presentation with others', { skip }, () => {
   let owner, editor, stranger, second, deck, token
 
@@ -194,6 +203,30 @@ describe('editing a presentation with others', { skip }, () => {
     assert.equal(taken.status, 200, JSON.stringify(taken.body))
     assert.match(taken.body.url, new RegExp(`^/uploads/${deck}/`))
     await empty(editorId)
+  })
+
+  it('lets an editor use the datasets linked to it, and no others of the owner’s', async () => {
+    const linked = (await uploadDataset(owner, `linked_${run}`)).body
+    const other = (await uploadDataset(owner, `other_${run}`)).body
+    assert.ok(linked.id && other.id)
+    assert.equal((await call(owner, 'POST', `/api/presentations/${deck}/datasets`, { datasetId: linked.id })).status, 200)
+
+    const list = await call(editor, 'GET', `/api/presentations/${deck}/datasets`)
+    assert.equal(list.status, 200)
+    assert.deepEqual(list.body.map(d => d.id), [linked.id])
+    const data = await call(editor, 'GET', `/api/presentations/${deck}/datasets/${linked.id}/data`)
+    assert.equal(data.status, 200, JSON.stringify(data.body))
+    assert.deepEqual(data.body.columns.planet, ['Mars', 'Earth'])
+    // Not linked: the editor knows its id, but it isn't the presentation's
+    assert.equal((await call(editor, 'GET', `/api/presentations/${deck}/datasets/${other.id}/data`)).status, 404)
+    for (const [method, url] of [
+      ['GET', `/api/presentations/${deck}/datasets`],
+      ['GET', `/api/presentations/${deck}/datasets/${linked.id}/data`],
+      ['DELETE', `/api/presentations/${deck}/datasets/${linked.id}`],
+    ]) assert.equal((await call(stranger, method, url)).status, 404, `${method} ${url}`)
+
+    assert.equal((await call(editor, 'DELETE', `/api/presentations/${deck}/datasets/${linked.id}`)).status, 200)
+    assert.deepEqual((await call(owner, 'GET', `/api/presentations/${deck}/datasets`)).body, [])
   })
 
   it('stops the old link working when the owner makes a new one or turns it off', async () => {
