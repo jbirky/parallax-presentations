@@ -28,12 +28,18 @@ async function startCloudServer() {
     SLIDES_DATA_DIR: path.join(tmp, 'data'), SLIDES_UPLOADS_DIR: path.join(tmp, 'uploads'),
   })
   delete process.env.PARALLAX_STORAGE
+  delete process.env.PARALLAX_PUBLIC_URL
   stub('dotenv', { config: () => ({ parsed: {} }) })
+  // What the server asks Clerk to check, by call
+  const clerkOptions = {}
   stub('@clerk/express', {
-    clerkMiddleware: () => (req, res, next) => { req.testUser = req.get('X-Test-User') || null; next() },
+    clerkMiddleware: options => {
+      clerkOptions.middleware = options
+      return (req, res, next) => { req.testUser = req.get('X-Test-User') || null; next() }
+    },
     getAuth: req => ({ userId: req.testUser }),
     requireAuth: () => (req, res, next) => next(),
-    verifyToken: async token => ({ sub: token }),
+    verifyToken: async (token, options) => { clerkOptions.verifyToken = options; return { sub: token } },
     clerkClient: { users: { getUser: async id => ({ emailAddresses: [{ emailAddress: `${id}@test.local` }], firstName: id, lastName: '', imageUrl: '' }) } },
   })
   // The server's cleanup timers mustn't keep the tests running
@@ -90,7 +96,7 @@ async function startCloudServer() {
     await pool.end()
   }
 
-  return { base, server, pool, run, user: name => `${name}-${run}`, call, userId, createDeck, invite, stop }
+  return { base, server, pool, run, user: name => `${name}-${run}`, call, userId, createDeck, invite, stop, clerkOptions }
 }
 
 // Waits until check() is truthy, or fails after `ms`

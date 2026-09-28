@@ -70,6 +70,8 @@ describe('live editing', { skip }, () => {
     assert.equal(a.failed, undefined)
     assert.equal(read(a.doc).title, 'Live talk')
     assert.deepEqual(read(b.doc), read(a.doc))
+    // Only sign-ins made on this site (prod's, by default)
+    assert.deepEqual(t.clerkOptions.verifyToken.authorizedParties, ['https://parallax-presentations.com'])
 
     edit(a.doc, renamed('Renamed live'))
     await until(() => read(b.doc).title === 'Renamed live', 'the rename to reach the other editor')

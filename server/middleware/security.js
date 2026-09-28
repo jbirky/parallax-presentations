@@ -8,10 +8,11 @@ const { ipKeyGenerator } = rateLimit
 const IS_CLOUD = process.env.PARALLAX_MODE === 'cloud'
 const IS_PROD = process.env.NODE_ENV === 'production'
 
-const ALLOWED_ORIGINS = [
-  'https://parallax-presentations.com',
-  'https://dev.parallax-presentations.com',
-]
+// The site this server is (PARALLAX_PUBLIC_URL, prod's by default). Prod and
+// dev are separate sites and each trusts only itself: its pages alone may call
+// its API with credentials, and it takes only sign-ins made on it (auth.js).
+const PUBLIC_ORIGIN = IS_CLOUD ? new URL(process.env.PARALLAX_PUBLIC_URL || 'https://parallax-presentations.com').origin : null
+const ALLOWED_ORIGINS = [PUBLIC_ORIGIN]
 
 function corsConfig() {
   // Self-hosted, nothing is for other sites (localOnly)
@@ -23,7 +24,7 @@ function corsConfig() {
       if (!origin || ALLOWED_ORIGINS.includes(origin)) {
         callback(null, true)
       } else {
-        callback(new Error('Not allowed by CORS'))
+        callback(Object.assign(new Error('Not allowed by CORS'), { status: 403 }))
       }
     },
     credentials: true,
@@ -278,4 +279,5 @@ module.exports = {
   isValidUUID,
   isValidSlug,
   ALLOWED_ORIGINS,
+  PUBLIC_ORIGIN,
 }

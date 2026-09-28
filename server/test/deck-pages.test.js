@@ -103,4 +103,16 @@ describe('pages built from a deck', { skip }, () => {
     const api = await fetch(`${t.base}/api/presentations`, { headers: { Origin: 'null', 'X-Test-User': owner } })
     assert.equal(api.headers.get('access-control-allow-origin'), null)
   })
+
+  it('trusts only its own site’s pages and sign-ins, not the other environment’s', async () => {
+    // PARALLAX_PUBLIC_URL isn't set, so this server is prod's site
+    const from = origin => fetch(`${t.base}/api/presentations`, { headers: { Origin: origin, 'X-Test-User': owner } })
+    const own = await from('https://parallax-presentations.com')
+    assert.equal(own.status, 200)
+    assert.equal(own.headers.get('access-control-allow-origin'), 'https://parallax-presentations.com')
+    const dev = await from('https://dev.parallax-presentations.com')
+    assert.equal(dev.status, 403)
+    assert.equal(dev.headers.get('access-control-allow-origin'), null)
+    assert.deepEqual(t.clerkOptions.middleware.authorizedParties, ['https://parallax-presentations.com'])
+  })
 })

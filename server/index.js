@@ -45,7 +45,7 @@ const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
-  safeErrorMessage,
+  safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
 
 const DATA_DIR = process.env.SLIDES_DATA_DIR || path.join(__dirname, 'data')
@@ -110,7 +110,7 @@ if (IS_CLOUD && storage.query) {
 // The user a Clerk session token is for (the WebSocket has no Clerk middleware)
 async function userIdForToken(token) {
   const { verifyToken } = require('@clerk/express')
-  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY, authorizedParties: [PUBLIC_ORIGIN] })
   const { rows } = await storage.query('SELECT id FROM users WHERE auth_id = $1', [sub])
   return rows[0]?.id || null
 }

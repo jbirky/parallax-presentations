@@ -49,6 +49,8 @@ services:
       - PARALLAX_DB=postgres
       - PARALLAX_STORAGE=r2
       - NODE_ENV=production
+      # Its own site: prod doesn't trust dev's pages or sign-ins, nor dev prod's
+      - PARALLAX_PUBLIC_URL=https://dev.parallax-presentations.com
       # Own database and bucket so dev can never touch prod data
       - DATABASE_URL=${DEV_DATABASE_URL:?set DEV_DATABASE_URL in .env}
       - R2_BUCKET=parallax-uploads-dev
