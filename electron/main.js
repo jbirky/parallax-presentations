@@ -1,7 +1,7 @@
 // Must be set before app is imported
 process.env.ELECTRON_DISABLE_SANDBOX = '1'
 
-const { app, BrowserWindow, shell, dialog } = require('electron')
+const { app, BrowserWindow, shell, dialog, session } = require('electron')
 const path = require('path')
 const net = require('net')
 
@@ -78,23 +78,37 @@ function createWindow() {
 
   mainWindow.loadURL(`http://localhost:${activePort}`)
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('blob:') || url.startsWith(`http://localhost:${activePort}`)) {
-      return { action: 'allow' }
-    }
-    if (url.startsWith('http')) {
-      shell.openExternal(url)
-      return { action: 'deny' }
-    }
-    return { action: 'allow' }
-  })
-
   mainWindow.on('closed', () => {
     mainWindow = null
   })
 }
 
+// Every window the app opens (the editor, and its Present, Presenter Mode and
+// PDF windows) stays on the app: a deck runs its author's code, so what it can
+// open or navigate to is only the app's own pages; web links go to the
+// browser, and anything else is refused
+const own = url => url.startsWith(`http://localhost:${activePort}/`) || url === `http://localhost:${activePort}` ||
+  url.startsWith(`blob:http://localhost:${activePort}/`)
+app.on('web-contents-created', (event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (own(url)) return { action: 'allow' }
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (e, url) => {
+    if (own(url)) return
+    e.preventDefault()
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+  })
+})
+
+// Only what the editor uses (copying, fullscreen presenting, and pointer lock
+// for 3D embeds); a camera, microphone, location and the rest are refused
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'fullscreen', 'pointerLock'])
+
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)))
+  session.defaultSession.setPermissionCheckHandler((contents, permission) => ALLOWED_PERMISSIONS.has(permission))
   try {
     await startBackend()
     createWindow()
