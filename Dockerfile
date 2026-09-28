@@ -24,8 +24,9 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
-# Install ffmpeg for video transcoding, and libreoffice + poppler-utils for PowerPoint import
-RUN apk add --no-cache ffmpeg libreoffice poppler-utils
+# Install ffmpeg for video transcoding, and libreoffice + poppler-utils for PowerPoint import;
+# su-exec lets the entrypoint drop from root to the node user
+RUN apk add --no-cache ffmpeg libreoffice poppler-utils su-exec
 
 # Copy workspace manifests
 COPY package.json package-lock.json ./
@@ -38,6 +39,10 @@ RUN npm ci --workspace=server --omit=dev
 COPY server/ ./server/
 # Builds from a git URL skip .dockerignore, so drop the sample data it would exclude
 RUN rm -rf server/data/* server/uploads/*
+# The server runs as node (docker-entrypoint.sh) and writes only here; the app's
+# own files stay root's
+RUN mkdir -p server/data server/uploads && chown node:node server/data server/uploads
+COPY docker-entrypoint.sh /usr/local/bin/parallax-entrypoint
 COPY docs/ ./docs/
 COPY plugins/ ./plugins/
 COPY --from=builder /app/client/dist ./client/dist
@@ -51,4 +56,5 @@ ENV PORT=3002
 ENV PARALLAX_HOST=0.0.0.0
 EXPOSE 3002
 
+ENTRYPOINT ["parallax-entrypoint"]
 CMD ["node", "server/index.js"]
