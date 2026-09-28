@@ -58,6 +58,37 @@ afterEach(() => {
 })
 
 describe('the editor, shared', () => {
+  // The labels of the items in a top-bar menu, after opening it
+  async function menu(name) {
+    await act(async () => button(name).click())
+    return [...el.querySelectorAll('button')].map(b => b.textContent.trim())
+  }
+
+  it('puts the share link and editors under Share, not Export', async () => {
+    await open('owner')
+    const share = await menu('Share')
+    expect(share).toContain('Share link')
+    expect(share).toContain('Editors…')
+    await act(async () => button('Share').click())
+    const exports = await menu('Export')
+    expect(exports).toContain('Export PDF')
+    expect(exports).not.toContain('Share link')
+    expect(exports).not.toContain('Editors…')
+  })
+
+  it('gives an editor the editors but not the share link, which is the owner’s', async () => {
+    await open('editor')
+    const share = await menu('Share')
+    expect(share).toContain('Editors…')
+    expect(share).not.toContain('Share link')
+  })
+
+  it('has no Share menu for a guest', async () => {
+    await open('owner', { guest: { idleHours: 12 } })
+    expect(button('Share')).toBeUndefined()
+    expect(button('Export')).toBeTruthy()
+  })
+
   it('switches the editor between light and dark in Settings', async () => {
     const onThemeChange = vi.fn()
     await open('owner', { theme: 'light', onThemeChange })

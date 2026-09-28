@@ -82,6 +82,29 @@ const LIVE_WAIT_MS = 10000
 // brought back, along with ZENODO_ENABLED in server/index.js
 const ZENODO_ENABLED = false
 
+// The Share and Export dropdowns in the top bar
+const TOP_MENU_STYLE = {
+  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+  background: 'var(--bg-card)', border: '1px solid var(--border)',
+  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
+}
+
+// A dropdown's items, [{ label, icon, action }]; onPick closes it
+function MenuItems({ items, onPick }) {
+  return items.map(({ label, icon, action }) => (
+    <button
+      key={label}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      onClick={() => { onPick(); action() }}
+    >
+      {icon}{label}
+    </button>
+  ))
+}
+
 // Downloads the presentation as one HTML file with its libraries and uploads
 // inlined, so it works offline and anywhere
 async function downloadOfflineHTML(presentation) {
@@ -347,6 +370,13 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [showShareMenu, setShowShareMenu] = useState(false)
+  // The Share menu: a share link for the owner, and who edits it (cloud, not
+  // for guests; a template has no editors)
+  const shareItems = [
+    isCloud && !guest && !isEditor && { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+    isCloud && !guest && !isTemplate && { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+  ].filter(Boolean)
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
   const [showMasterPanel, setShowMasterPanel] = useState(false)
@@ -2290,48 +2320,43 @@ function draw() {
             Timeline
           </button>
 
+          {shareItems.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                className={`btn btn-secondary ${showShareMenu ? 'active' : ''}`}
+                onClick={() => setShowShareMenu(v => !v)}
+                title="Share link and editors"
+              >
+                <Share2 size={14} />
+                Share
+              </button>
+              {showShareMenu && (
+                <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowShareMenu(false)}>
+                  <MenuItems items={shareItems} onPick={() => setShowShareMenu(false)} />
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ position: 'relative' }}>
             <button
               className={`btn btn-secondary ${showExportMenu ? 'active' : ''}`}
               onClick={() => setShowExportMenu(v => !v)}
-              title="Export / Share"
+              title="Export"
             >
               <Download size={14} />
               Export
             </button>
             {showExportMenu && (
-              <div
-                style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
-                }}
-                onMouseLeave={() => setShowExportMenu(false)}
-              >
-                {[
-                  { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
-                  { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+              <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowExportMenu(false)}>
+                <MenuItems onPick={() => setShowExportMenu(false)} items={[
                   { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
                   { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
                   { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
                   { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
                   { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
                   { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-                ].filter(item => item.label !== 'Share link' || (isCloud && !guest && !isEditor))
-                  .filter(item => item.label !== 'Editors…' || (isCloud && !guest && !isTemplate))
-                  .filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
-                  .map(({ label, icon, action }) => (
-                  <button
-                    key={label}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowExportMenu(false); action() }}
-                  >
-                    {icon}{label}
-                  </button>
-                ))}
+                ].filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))} />
               </div>
             )}
           </div>
