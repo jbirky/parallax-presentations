@@ -421,3 +421,41 @@ describe('deepEqual', () => {
     expect(deepEqual({ a: null }, { a: {} })).toBe(false)
   })
 })
+
+describe('a document with something of another shape in it', () => {
+  // What any client could write into it
+  function junked() {
+    const doc = new Y.Doc()
+    loadDeck(doc, { title: 'T', slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text' }] }, { id: 's2', elements: [{ id: 'e3', type: 'text' }] }] })
+    doc.transact(() => {
+      const slides = doc.getMap('slides')
+      const order = doc.getArray('slideOrder')
+      slides.set('bad', 'not a slide')
+      slides.set('bare', new Y.Map())
+      order.push(['bad', 'bare', 'missing'])
+      const s1 = slides.get('s1')
+      s1.get('elements').set('e2', 42)
+      s1.get('elementOrder').push(['e2'])
+      slides.get('s2').set('elementOrder', 'not an order')
+    })
+    return doc
+  }
+
+  it('reads what has the deck’s shape, and leaves the rest out', () => {
+    const deck = readDeck(junked())
+    expect(deck.title).toBe('T')
+    expect(deck.slides.map(s => s.id)).toEqual(['s1', 's2', 'bare'])
+    expect(deck.slides[0].elements.map(e => e.id)).toEqual(['e1'])
+    expect(deck.slides[1].elements).toEqual([])
+    expect(deck.slides[2]).toEqual({ id: 'bare', elements: [] })
+  })
+
+  it('still takes a save', () => {
+    const doc = junked()
+    const current = readDeck(doc)
+    writeDeck(doc, current, { ...current, title: 'Saved', slides: [...current.slides, { id: 's3', elements: [] }] })
+    const deck = readDeck(doc)
+    expect(deck.title).toBe('Saved')
+    expect(deck.slides.map(s => s.id)).toEqual(['s1', 's2', 'bare', 's3'])
+  })
+})

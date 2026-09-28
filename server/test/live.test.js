@@ -265,6 +265,21 @@ describe('live editing', { skip }, () => {
     }
   })
 
+  it('stores a document someone wrote something of another shape into', async () => {
+    const other = await t.createDeck(owner, 'Odd shapes', { slides: slides() })
+    const a = await connect(owner, other)
+    // Straight into the document, as any client could
+    a.doc.transact(() => {
+      a.doc.getMap('slides').set('bad', 'not a slide')
+      a.doc.getArray('slideOrder').push(['bad'])
+    })
+    edit(a.doc, renamed('Stored anyway'))
+    await until(async () => (await call(owner, 'GET', `/api/presentations/${other}`)).body.title === 'Stored anyway', 'the rename to be stored')
+    const stored = (await call(owner, 'GET', `/api/presentations/${other}`)).body
+    assert.deepEqual(stored.slides.map(s => s.id), ['s1', 's2'])
+    a.provider.destroy()
+  })
+
   it('disconnects an editor the owner removes, for good', async () => {
     const other = await t.createDeck(owner, 'Short collaboration', { slides: slides() })
     await t.invite(owner, other, editor)
