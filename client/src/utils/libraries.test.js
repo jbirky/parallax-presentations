@@ -43,8 +43,11 @@ describe.each([['client', clientLibraries], ['server', serverLibraries]])('%s li
   })
 
   it('maps cdnjs links for the libraries it has', () => {
-    expect(local('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'))
-      .toBe(`${BASE}/vendor/pdfjs-dist@${v['pdfjs-dist']}/build/pdf.worker.min.js`)
+    expect(local(`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${v['pdfjs-dist']}/pdf.worker.min.mjs`))
+      .toBe(`${BASE}/vendor/pdfjs-dist@${v['pdfjs-dist']}/build/pdf.worker.min.mjs`)
+    // Another major version stays on the CDN
+    const old = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    expect(local(old)).toBe(old)
     expect(local('https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.11.1/jsxgraphcore.js'))
       .toBe(`${BASE}/vendor/jsxgraph@${v.jsxgraph}/distrib/jsxgraphcore.js`)
   })

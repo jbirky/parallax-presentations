@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const vendorLibraries = createRequire(import.meta.url)('../server/vendor-libraries.js')
 
-const MIME = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' }
+const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' }
 
 function globToRegExp(glob) {
   const escape = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')

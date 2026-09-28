@@ -33,7 +33,7 @@ module.exports = {
         'dist/fonts/Sans/*', 'dist/fonts/Serif/*', 'dist/fonts/Serif Slanted/*',
         'dist/fonts/Typewriter/*', 'dist/fonts/Typewriter Slanted/*'],
     },
-    'pdfjs-dist': { files: ['build/pdf.min.js', 'build/pdf.worker.min.js'] },
+    'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },

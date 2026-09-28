@@ -103,22 +103,11 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     if (!file) return
     setPdfLoading(true)
     try {
-      // Load PDF.js from CDN if not already loaded
-      if (!window.pdfjsLib) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script')
-          s.src = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.js'))
-          s.onload = resolve
-          s.onerror = reject
-          document.head.appendChild(s)
-        })
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
-      }
+      // PDF.js, a module, from this app's copy (server/vendor-libraries.js)
+      const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.mjs')))
+      pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.mjs'))
       const arrayBuffer = await file.arrayBuffer()
-      // Without eval: pdf.js 3.x can be made to run a PDF's code as the
-      // editor when it compiles fonts with it (CVE-2024-4367)
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
       const pages = []
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
@@ -126,7 +115,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+        await page.render({ canvas, viewport }).promise
         pages.push({ canvas, num: i })
       }
       setPdfModal({ pages, selected: new Set([1]) })
