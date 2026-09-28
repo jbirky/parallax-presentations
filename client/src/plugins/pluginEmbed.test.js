@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
-import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { Window } from 'happy-dom'
 
@@ -56,12 +55,6 @@ describe('buildStaticPluginSrcdoc', () => {
   it("keeps a '</script>' in the data from closing the bridge script", () => {
     const doc = buildStaticPluginSrcdoc('<head></head>', { data: { note: '</script><b>hi</b>' }, width: 1, height: 1 })
     expect(doc.match(/<\/script>/g)).toHaveLength(1)
-  })
-
-  it('builds the same page as the server copy', () => {
-    const server = createRequire(import.meta.url)('../../../server/services/plugin-embed.js')
-    const args = [counterSandbox, { data: { value: 7, label: '</script>' }, width: 300, height: 200 }]
-    expect(server.buildStaticPluginSrcdoc(...args)).toBe(buildStaticPluginSrcdoc(...args))
   })
 
   it('gives the sandbox its data and applies updateData in place', async () => {

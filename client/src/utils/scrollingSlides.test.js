@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createRequire } from 'module'
 import { Window } from 'happy-dom'
 
 if (!globalThis.window) globalThis.window = {}
@@ -9,9 +8,6 @@ import * as client from './scrollingSlides'
 import { generateRevealHTML, exportPDF } from './generateHTML'
 import { inkedPresentation } from './annotations'
 import { diffPresentations } from './presentationDiff'
-
-const require = createRequire(import.meta.url)
-const server = require('../../../server/services/scrolling-slides.js')
 
 const text = (id, extra = {}) => ({ id, type: 'text', x: 40, y: 40, width: 300, height: 60, zIndex: 1, content: `<p>${id}</p>`, ...extra })
 
@@ -369,27 +365,5 @@ describe('version history', () => {
     const pinned = diffPresentations(deck({}), deck({}, { scrollBehavior: 'pin' }))
     expect(pinned.slides[0].elements[0].status).toBe('style-changed')
     expect(pinned.slides[0].elements[0].changes).toContain('scrollBehavior: (none) → pin')
-  })
-})
-
-describe('the server’s copy', () => {
-  it('writes the same pages', () => {
-    expect(Object.keys(server).sort()).toEqual(Object.keys(client).sort())
-    for (const key of ['MAX_SCREENS', 'SCROLLING_CSS', 'SCROLL_STEP_SOURCE', 'SCROLLING_SCRIPT']) expect(server[key]).toBe(client[key])
-    for (const slide of [{}, null, { scrollHeight: 810 }, { scrollHeight: 'x' }, { scrollHeight: 99999 }]) {
-      expect(server.getCanvasHeight(slide, 540)).toBe(client.getCanvasHeight(slide, 540))
-      expect(server.getScreenCount(slide, 540)).toBe(client.getScreenCount(slide, 540))
-      expect(server.isScrolling(slide, 540)).toBe(client.isScrolling(slide, 540))
-    }
-    for (const el of [{ scrollBehavior: 'pin' }, {}, null]) expect(server.isPinned(el)).toBe(client.isPinned(el))
-    for (const bg of [{ type: 'gradient', gradient: 'a;"b' }, { type: 'image', image: "/x'.png", size: 'contain' }, { type: 'image', image: 'data:x' }, { type: 'color', color: 'red' }, null]) {
-      expect(server.canvasBackgroundStyle(bg)).toBe(client.canvasBackgroundStyle(bg))
-    }
-    const deck = scrollingDeck()
-    expect(server.hasScrollingSlides(deck)).toBe(client.hasScrollingSlides(deck))
-    const parts = { slideW: 960, slideH: 540, canvasH: 1620, screen: 2, elementsHtml: '<div>a</div>', pinnedHtml: '<div>b</div>', background: 'background:red;' }
-    expect(server.scrollingSlideBody(parts)).toBe(client.scrollingSlideBody(parts))
-    expect(server.scrollingSlideBody({ ...parts, pinnedHtml: '' })).toBe(client.scrollingSlideBody({ ...parts, pinnedHtml: '' }))
-    expect(server.printScreenBody(parts)).toBe(client.printScreenBody(parts))
   })
 })

@@ -200,45 +200,6 @@ function validateUpload(req, res, next) {
   next()
 }
 
-// --- HTML generation sanitization ---
-
-function sanitizeUrl(url) {
-  if (!url || typeof url !== 'string') return ''
-  const trimmed = url.trim()
-  if (/^(javascript|data|vbscript):/i.test(trimmed)) return ''
-  return trimmed
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function sanitizeAttr(val) {
-  if (val == null) return ''
-  return String(val)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function sanitizeCSSValue(val) {
-  if (val == null) return ''
-  return String(val).replace(/[<>"'`;{}()\\]/g, '')
-}
-
-function sanitizeCustomCSS(css) {
-  if (!css || typeof css !== 'string') return ''
-  return css
-    .replace(/<\/style/gi, '&lt;/style')
-    .replace(/<script/gi, '&lt;script')
-    .replace(/@import\s/gi, '/* @import blocked */ ')
-    .replace(/expression\s*\(/gi, '/* expression blocked */ (')
-    .replace(/url\s*\(\s*['"]?\s*javascript:/gi, 'url(/* blocked */')
-}
-
 // --- Error handling ---
 
 // What a failed request says about its error. Messages the app writes itself
@@ -271,10 +232,6 @@ module.exports = {
   requireValidSlug,
   requireValidSHA,
   validateUpload,
-  sanitizeUrl,
-  sanitizeAttr,
-  sanitizeCSSValue,
-  sanitizeCustomCSS,
   safeErrorMessage,
   isValidUUID,
   isValidSlug,

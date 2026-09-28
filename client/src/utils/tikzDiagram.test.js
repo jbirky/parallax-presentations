@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { createRequire } from 'module'
 
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
@@ -10,12 +9,12 @@ import * as clientTikz from './tikzDiagram'
 import { generateRevealHTML } from './generateHTML'
 import { localizeLibraries } from './libraries'
 
-const serverTikz = createRequire(import.meta.url)('../../../server/services/tikz-diagram.js')
-
 const SVG = '<svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10"/><text>A</text>'
   + '<foreignObject x="0" y="0" width="50" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="tikz-diagram-math"><span class="katex">x</span></div></foreignObject></svg>'
 
-describe.each([['client', clientTikz], ['server', serverTikz]])('%s TikZ diagram SVG', (_, tikz) => {
+describe('TikZ diagram SVG', () => {
+  const tikz = clientTikz
+
   it('keeps the drawing, math included', () => {
     expect(tikz.sanitizeSvg(SVG)).toBe(SVG)
     expect(tikz.sanitizeSvg(`<?xml version="1.0"?>\n${SVG}\n`)).toBe(SVG)

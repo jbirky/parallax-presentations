@@ -4,8 +4,10 @@
 // Plugin elements in present mode and exported HTML: the plugin's sandbox page
 // with a window.parallax bridge that already holds the element's data. There's
 // no editor to report changes to, so updateData only applies them in place;
-// interactions work during the talk and aren't saved. The server builds the
-// same thing in server/services/plugin-embed.js; keep the two in step.
+// interactions work during the talk and aren't saved. Shared, live and
+// exported presentations from the server have it through
+// server/services/deck-html.js, with sandbox pages read from the plugins'
+// folders (server/services/plugin-embed.js).
 
 function staticBridge({ data, width, height }) {
   // < keeps "</script>" inside the data from closing the script early

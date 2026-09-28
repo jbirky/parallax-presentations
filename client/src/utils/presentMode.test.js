@@ -639,7 +639,7 @@ describe('Reveal.js initialization', () => {
 
   it('applies global transition to Reveal config', () => {
     const html = generateRevealHTML(makePres({ transition: 'convex' }))
-    expect(html).toContain("_globalTransition = 'convex'")
+    expect(html).toContain('_globalTransition = "convex"')
   })
 
   it('KaTeX rendering is triggered on ready', () => {

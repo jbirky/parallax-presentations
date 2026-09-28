@@ -5,7 +5,7 @@
 // { type: 'tikz', svg, tikz, editorState }. Slides show `svg` inline, sized to
 // the element, so its KaTeX math uses the page's KaTeX CSS; `tikz` is the code
 // to copy into a paper and `editorState` reopens the editor where it left off.
-// server/services/tikz-diagram.js is the same for pages the server builds.
+// The server's pages have it through server/services/deck-html.js.
 
 // The <svg> without anything that could run: scripts, frames, event handlers
 // and javascript: links. Only the editor writes these, but they're saved with
