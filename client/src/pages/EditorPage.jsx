@@ -4359,6 +4359,7 @@ function draw() {
                   >
                     Disable Sharing
                   </button>
+                  <div style={{ fontSize: 11, color: '#a0a0b0', marginTop: 6 }}>The link stops working for good; sharing again makes a new one.</div>
                 </>
               ) : (
                 <>

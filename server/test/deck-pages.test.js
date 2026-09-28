@@ -41,6 +41,17 @@ describe('pages built from a deck', { skip }, () => {
     assert.match(await own.text(), /SPEAKER ONLY/)
   })
 
+  it('gives a new share link after sharing is turned off, and the old one stops', async () => {
+    const first = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token
+    // Turning it on again while it's on keeps the link
+    assert.equal((await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token, first)
+    await t.call(owner, 'DELETE', `/api/presentations/${deck}/share`)
+    const second = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token
+    assert.notEqual(second, first)
+    assert.equal((await fetch(`${t.base}/share/${first}`)).status, 404)
+    assertSandboxed(await fetch(`${t.base}/share/${second}`))
+  })
+
   it('serves a live session in a sandbox, and its slide feed to anyone', async () => {
     const { sessionId } = (await t.call(owner, 'POST', `/api/presentations/${deck}/live/start`)).body
     assert.match(sessionId, /^[a-z2-9]{6}$/)

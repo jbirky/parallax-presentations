@@ -231,7 +231,9 @@ class PgStorage extends StorageInterface {
     if (!rows.length) return null
     const row = rows[0]
     if (row.share_enabled && row.share_token) return { token: row.share_token, shared: true }
-    const token = row.share_token || uuidv4()
+    // A new link each time sharing is turned on, so turning it off and on
+    // is how a leaked link is replaced
+    const token = uuidv4()
     const updateSql = userId
       ? 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2 AND user_id = $3'
       : 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2'
