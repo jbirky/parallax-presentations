@@ -19,7 +19,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
-const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
+const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2, deleteManyFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
 const { setUploadHeaders } = require('./utils/upload-headers')
 const { libUrl, localizeLibraries } = require('./services/libraries')
@@ -408,6 +408,25 @@ app.use('/api', (req, res, next) => (LIVE_FEED.test(req.path) ? next() : require
 app.use('/api', apiLimiter)
 
 // Plan quota check helper
+// Templates and saved versions are whole decks kept in the database (up to
+// 10 MB each), outside the storage a plan counts, so each has a number limit
+// on every plan. The most anyone had on 2026-09-27 was one template and no
+// versions.
+const MAX_TEMPLATES = 20
+const MAX_VERSIONS = 50
+
+// Whether `sql` (with `params`) counts fewer than `limit`; else answers 403
+async function belowLimit(res, sql, params, limit, message) {
+  if (!storage.query) return true
+  const { rows } = await storage.query(sql, params)
+  if (rows[0].count < limit) return true
+  res.status(403).json({ error: 'limit_reached', message, limit, current: rows[0].count })
+  return false
+}
+const belowTemplateLimit = (req, res) => belowLimit(res,
+  'SELECT COUNT(*)::int AS count FROM presentations WHERE user_id = $1 AND is_template = true', [req.userId],
+  MAX_TEMPLATES, `You can keep up to ${MAX_TEMPLATES} templates. Delete one to save another.`)
+
 async function checkPresentationQuota(req, res) {
   if (!IS_CLOUD || !req.userId) return true
   const limits = planFor(req.userPlan)
@@ -1719,6 +1738,7 @@ app.get('/api/templates', async (req, res) => {
 // POST /api/templates - create new template
 app.post('/api/templates', async (req, res) => {
   try {
+    if (!await belowTemplateLimit(req, res)) return
     const template = await storage.createTemplate(req.body, req.userId)
     res.status(201).json(template)
   } catch (err) {
@@ -1762,6 +1782,7 @@ app.delete('/api/templates/:id', requireValidId(), async (req, res) => {
 // POST /api/presentations/:id/save-as-template
 app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req, res) => {
   try {
+    if (!await belowTemplateLimit(req, res)) return
     const template = await storage.saveAsTemplate(req.params.id, req.body.title, req.userId)
     if (!template) return res.status(404).json({ error: 'Not found' })
     res.status(201).json(template)
@@ -1893,7 +1914,14 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
       userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
     if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+    // Uploading under a name already used replaces that dataset: its file
+    // goes, or it would stay in storage, counted by no one
+    const same = (await storage.listDatasets(req.userId)).find(d => d.name === result.name)
+    const replaced = same && await storage.getDataset(same.id, req.userId)
     const ds = await storage.createDataset(result, req.userId)
+    if (replaced?.storageKey && replaced.storageKey !== ds.storageKey) {
+      deleteDatasetFile(replaced.storageKey, DATA_DIR).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    }
     res.status(201).json(ds)
   } catch (err) {
     if (req.file && req.file.path) fs.removeSync(req.file.path)
@@ -2248,6 +2276,16 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
         const n = s => parseInt(s.match(/(\d+)/)[1])
         return n(a) - n(b)
       })
+
+    // The slide images can be much bigger than the file: they have to fit in
+    // the storage left on the owner's plan, as the file had to
+    if (isR2Enabled() && storage.query) {
+      const plan = planFor(req.deck.role === 'owner' ? req.userPlan : req.deck.ownerPlan)
+      const bytes = pngFiles.reduce((sum, f) => sum + fs.statSync(path.join(tmpDir, f)).size, 0)
+      if (plan.storageBytes && await storageUsedBytes(storage, req.deck.ownerId) + bytes > plan.storageBytes) {
+        return res.status(413).json({ error: `The slides as images (${Math.round(bytes / (1024 * 1024))} MB) don't fit in the storage left on the ${plan.name} plan.` })
+      }
+    }
 
     if (isR2Enabled()) {
       const urls = []
@@ -2647,6 +2685,8 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
 // POST /api/presentations/:id/snapshot
 app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), async (req, res) => {
   try {
+    if (!await belowLimit(res, 'SELECT COUNT(*)::int AS count FROM snapshots WHERE presentation_id = $1', [req.params.id],
+      MAX_VERSIONS, `A presentation can keep up to ${MAX_VERSIONS} saved versions. Delete one in History to save another.`)) return
     const result = await storage.createSnapshot(req.params.id, req.body.name, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
@@ -3445,10 +3485,23 @@ app.post('/api/presentations/fork', async (req, res) => {
       item => item.type === 'blob' && item.path.startsWith(assetPrefix)
     )
 
-    // Download and re-upload each asset, building a path rewrite map
+    // Download and re-upload each asset, building a path rewrite map. In the
+    // cloud they go on the user's storage and count against their plan
     const pathMap = {}
+    const plan = planFor(req.userPlan)
+    const quota = isR2Enabled() && storage.query ? { used: await storageUsedBytes(storage, req.userId) } : null
+    const storedKeys = []
+    let addedBytes = 0
     for (const asset of assetFiles) {
       const filename = path.basename(asset.path)
+      if (quota && plan.storageBytes && quota.used + addedBytes + (asset.size || 0) > plan.storageBytes) {
+        await Promise.all([
+          deleteManyFromR2(storedKeys).catch(e => console.error('Fork assets not deleted:', e.message)),
+          storedKeys.length && storage.query('DELETE FROM uploads WHERE storage_key = ANY($1)', [storedKeys]),
+        ])
+        return res.status(413).json({ error: `Its files don't fit in your storage (${Math.round(plan.storageBytes / (1024 * 1024))} MB on the ${plan.name} plan).` })
+      }
+      if (quota && plan.maxFileBytes && (asset.size || 0) > plan.maxFileBytes) continue
       try {
         const blobRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/blobs/${asset.sha}`,
@@ -3468,9 +3521,11 @@ app.post('/api/presentations/fork', async (req, res) => {
           const storageKey = `uploads/${newFilename}`
           await putBufferToR2(storageKey, buffer, contentType)
           await storage.query(
-            'INSERT INTO uploads (filename, storage_key, content_type, size_bytes, presentation_id) VALUES ($1, $2, $3, $4, $5)',
-            [newFilename, storageKey, contentType, buffer.length, null]
+            'INSERT INTO uploads (filename, storage_key, content_type, size_bytes, presentation_id, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
+            [newFilename, storageKey, contentType, buffer.length, null, req.userId]
           )
+          storedKeys.push(storageKey)
+          addedBytes += buffer.length
           pathMap[`./assets/${filename}`] = `/uploads/${newFilename}`
         } else {
           const destDir = path.join(UPLOADS_DIR, 'forked')
@@ -3507,6 +3562,8 @@ app.post('/api/presentations/fork', async (req, res) => {
       ? new Date(Date.now() + expirationDays * 86400000).toISOString()
       : null
     const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
+    // Its files go with it when it's deleted
+    if (storedKeys.length) await storage.query('UPDATE uploads SET presentation_id = $1 WHERE storage_key = ANY($2)', [created.id, storedKeys])
 
     res.json({
       ...created,
