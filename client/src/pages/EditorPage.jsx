@@ -1791,18 +1791,10 @@ function draw() {
     style.textContent = CODE_THEME_CSS[theme] || CODE_THEME_CSS['monokai']
   }, [presentation?.codeTheme])
 
-  // Inject custom CSS (from template) into editor preview
-  useEffect(() => {
-    const css = presentation?.customCSS || ''
-    let style = document.getElementById('custom-template-css')
-    if (!style) {
-      style = document.createElement('style')
-      style.id = 'custom-template-css'
-      document.head.appendChild(style)
-    }
-    style.textContent = css
-    return () => { style.textContent = '' }
-  }, [presentation?.customCSS])
+  // A template's custom CSS applies to presented decks, where its selectors
+  // (.reveal .slides …) match; it isn't put into the editor's own page, where
+  // it matched nothing of the slides and all of the editor: a collaborator's
+  // could cover it, or read what's typed into its fields through selectors
 
   const selectedBase = currentSlide?.elements?.find(el => el.id === selectedElementId) || null
   // The Properties panel shows the state being recorded

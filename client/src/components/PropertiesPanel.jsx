@@ -2446,7 +2446,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           <SectionHead k="customCss">Custom CSS</SectionHead>
           {!collapsed.customCss && (<>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-            CSS applied to all slides in presentations created from this template.
+            CSS applied to all slides in presentations created from this template, when they're presented or exported.
           </p>
           <textarea
             value={presentation.customCSS || ''}
