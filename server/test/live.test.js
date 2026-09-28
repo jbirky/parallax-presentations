@@ -7,7 +7,7 @@ const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUID } = require('crypto')
 const Y = require('yjs')
-const { DB, startCloudServer, until } = require('./helpers')
+const { DB, DB_UNVERIFIED, startCloudServer, until } = require('./helpers')
 
 const nodeMajor = Number(process.versions.node.split('.')[0])
 const skip = !DB ? 'TEST_DATABASE_URL is not set' : nodeMajor < 22 ? 'Hocuspocus needs Node 22' : false
@@ -233,7 +233,7 @@ describe('live editing', { skip }, () => {
     const http = require('http')
     const PgStorage = require('../storage/pg-storage')
     const { createCollab } = require('../services/collab')
-    const storage = new PgStorage(DB)
+    const storage = new PgStorage(DB_UNVERIFIED)
     const collab = createCollab({
       storage,
       userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,
@@ -284,7 +284,7 @@ describe('live editing', { skip }, () => {
     const http = require('http')
     const PgStorage = require('../storage/pg-storage')
     const { createCollab } = require('../services/collab')
-    const storage = new PgStorage(DB)
+    const storage = new PgStorage(DB_UNVERIFIED)
     const collab = createCollab({
       storage,
       userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,

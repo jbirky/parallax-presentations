@@ -13,7 +13,9 @@ const UNSAVED_FIELDS = `'{id,createdAt,updatedAt,expiresAt,version}'::text[]`
 class PgStorage extends StorageInterface {
   constructor(connectionString) {
     super()
-    this.pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } })
+    // Encrypted, with the server's certificate checked, unless the URL's
+    // sslmode says otherwise (which overrides this)
+    this.pool = new Pool({ connectionString, ssl: true })
     // Set when presentations are edited live (services/collab.js):
     // beforeRead(id) stores the live document's edits in data, and
     // liveSave(id, data, { baseVersion }) saves to the live document, or

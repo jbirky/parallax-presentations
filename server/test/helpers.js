@@ -10,6 +10,9 @@ const fs = require('fs')
 const crypto = require('crypto')
 
 const DB = process.env.TEST_DATABASE_URL
+// The test database's certificate is self-signed, so the server (and any
+// PgStorage a test makes) mustn't check it, as it would the real database's
+const DB_UNVERIFIED = DB && (DB.includes('sslmode=') ? DB : DB + (DB.includes('?') ? '&' : '?') + 'sslmode=no-verify')
 const serverDir = path.join(__dirname, '..')
 
 function stub(moduleName, exports) {
@@ -21,7 +24,7 @@ function stub(moduleName, exports) {
 async function startCloudServer() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'parallax-test-'))
   Object.assign(process.env, {
-    PARALLAX_MODE: 'cloud', PARALLAX_DB: 'postgres', DATABASE_URL: DB, NODE_ENV: 'test',
+    PARALLAX_MODE: 'cloud', PARALLAX_DB: 'postgres', DATABASE_URL: DB_UNVERIFIED, NODE_ENV: 'test',
     SLIDES_DATA_DIR: path.join(tmp, 'data'), SLIDES_UPLOADS_DIR: path.join(tmp, 'uploads'),
   })
   delete process.env.PARALLAX_STORAGE
@@ -101,4 +104,4 @@ async function until(check, what, ms = 5000) {
   }
 }
 
-module.exports = { DB, startCloudServer, until }
+module.exports = { DB, DB_UNVERIFIED, startCloudServer, until }
