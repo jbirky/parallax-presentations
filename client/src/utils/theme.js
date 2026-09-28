@@ -3,9 +3,9 @@
 
 // The app's light or dark look. What someone picks (the dashboard's toggle,
 // or Settings in the editor) is kept in this browser; until they pick, the
-// cloud version is light once signed in and for guests (the landing and
-// sign-in pages stay dark, as they're designed), and the self-hosted and
-// desktop apps are dark. The old key was saved on every load, so only a light
+// cloud version is light from signing in on and for guests (the landing page
+// stays dark, as it's designed), and the self-hosted and desktop apps are
+// dark. The old key was saved on every load, so only a light
 // found there was a choice.
 
 export const THEME_KEY = 'parallax-theme'
@@ -27,5 +27,5 @@ export function saveTheme(theme, storage = globalThis.localStorage) {
 
 export function defaultTheme(isCloud, path = globalThis.location?.pathname || '/') {
   if (!isCloud) return 'dark'
-  return path === '/' || path === '' || path === '/sign-in' ? 'dark' : 'light'
+  return path === '/' || path === '' ? 'dark' : 'light'
 }

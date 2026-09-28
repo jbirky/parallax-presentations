@@ -8,9 +8,9 @@ const storage = (items = {}) => ({
 })
 
 describe('the app theme', () => {
-  it('is light once signed in and for guests, and dark on the landing and sign-in pages', () => {
-    for (const path of ['/dashboard', '/dashboard/my-talk', '/try', '/invite/abc']) expect(defaultTheme(true, path)).toBe('light')
-    for (const path of ['/', '', '/sign-in']) expect(defaultTheme(true, path)).toBe('dark')
+  it('is light from signing in on and for guests, and dark on the landing page', () => {
+    for (const path of ['/sign-in', '/dashboard', '/dashboard/my-talk', '/try', '/invite/abc']) expect(defaultTheme(true, path)).toBe('light')
+    for (const path of ['/', '']) expect(defaultTheme(true, path)).toBe('dark')
   })
 
   it('is dark self-hosted and in the desktop app', () => {
