@@ -280,6 +280,45 @@ describe('live editing', { skip }, () => {
     a.provider.destroy()
   })
 
+  it('refuses edits that would make a presentation too large', async () => {
+    const http = require('http')
+    const PgStorage = require('../storage/pg-storage')
+    const { createCollab } = require('../services/collab')
+    const storage = new PgStorage(DB)
+    const collab = createCollab({
+      storage,
+      userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,
+      limits: { documentBytes: 64 * 1024 },
+    })
+    const server = http.createServer()
+    collab.attach(server)
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${server.address().port}`
+    // Hocuspocus closes it with a message the provider doesn't pass on, and
+    // says why on the console
+    const logged = []
+    const error = console.error
+    console.error = (...args) => logged.push(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '))
+    try {
+      const a = await connect(owner, deck, base)
+      edit(a.doc, renamed('Small change'))
+      await sent(a)
+      edit(a.doc, d => ({ ...d, slides: d.slides.map((s, i) => i ? s : { ...s, elements: [...s.elements, el('big', { content: 'x'.repeat(100 * 1024) })] }) }))
+      await until(() => logged.some(line => line.includes('Presentation too large')), 'the connection growing it past the limit to be closed')
+      a.provider.destroy()
+      // The edit never reached the document
+      const doc = collab.hocuspocus.documents.get(deck)
+      if (doc) {
+        assert.equal(read(doc).title, 'Small change')
+        assert.ok(!read(doc).slides[0].elements.some(e => e.id === 'big'))
+      }
+    } finally {
+      console.error = error
+      server.close()
+      await storage.pool.end()
+    }
+  })
+
   it('disconnects an editor the owner removes, for good', async () => {
     const other = await t.createDeck(owner, 'Short collaboration', { slides: slides() })
     await t.invite(owner, other, editor)

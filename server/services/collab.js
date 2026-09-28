@@ -57,8 +57,20 @@ const LIMITS = {
   messagesPerSecond: 60,        // per connection, averaged over...
   messageBurst: 600,            // ...this many messages
   bytesPerMinute: 64 * 1024 * 1024,
+  // What one presentation's document may grow to. The largest decks are a
+  // few hundred KB; storing encodes the whole document every few seconds,
+  // so one without a limit could be grown until that took the server's memory
+  documentBytes: 50 * 1024 * 1024,
 }
 const TooManyMessages = { code: 4429, reason: 'Too many messages' }
+const TooLarge = { code: 4413, reason: 'Presentation too large' }
+
+// A message's type (sync, awareness, …), after the document's name
+function messageType(rawMessage) {
+  const message = decoding.createDecoder(rawMessage)
+  decoding.readVarString(message)
+  return decoding.readVarUint(message)
+}
 
 // Allows `rate` things a second on average, and `burst` at once
 function tokenBucket(rate, burst, now = Date.now) {
@@ -96,11 +108,17 @@ function checkPresence(rawMessage, userId) {
 function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remoteAddress, debounce = 2000, maxDebounce = 10000, limits = {} }) {
   limits = { ...LIMITS, ...limits }
   const storeKey = id => `onStoreDocument-${id}`
+  // Each open document's size: as encoded when it was loaded or last stored,
+  // plus the edits that have come in since (more than they add, since they
+  // replace things, until the next store measures it again)
+  const sizes = new Map()
 
   // Writes the document to ydoc and data. The version goes up, and
   // updated_at moves, only when the presentation changed.
   async function store(id, document) {
     const deck = readDeck(document)
+    const state = Buffer.from(Y.encodeStateAsUpdate(document))
+    sizes.set(id, state.length)
     const changed = `(title IS DISTINCT FROM $3 OR (data - ${UNSAVED_FIELDS}) IS DISTINCT FROM ($4::jsonb - ${UNSAVED_FIELDS}))`
     await storage.query(
       `UPDATE presentations SET
@@ -109,7 +127,7 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
           version = CASE WHEN ${changed} THEN version + 1 ELSE version END,
           title = $3, data = $4
         WHERE id = $1 AND is_template = false`,
-      [id, Buffer.from(Y.encodeStateAsUpdate(document)), deck.title || 'Untitled', JSON.stringify(deck)]
+      [id, state, deck.title || 'Untitled', JSON.stringify(deck)]
     )
   }
 
@@ -133,19 +151,27 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
       if (ydoc) {
         try {
           Y.applyUpdate(document, ydoc)
+          sizes.set(documentName, ydoc.length)
           return document
         } catch (err) {
           console.error(`Live editing: presentation ${documentName}'s ydoc can't be read, so it's built from data:`, err.message)
         }
       }
       loadDeck(document, deckFromData(data))
+      sizes.set(documentName, Y.encodeStateAsUpdate(document).length)
       return document
     },
     async onStoreDocument({ documentName, document }) {
       await store(documentName, document)
     },
-    async beforeHandleMessage({ update, context }) {
-      checkPresence(update, context.userId)
+    async afterUnloadDocument({ documentName }) {
+      sizes.delete(documentName)
+    },
+    async beforeHandleMessage({ update, context, documentName }) {
+      if (messageType(update) === MessageType.Awareness) return checkPresence(update, context.userId)
+      const size = (sizes.get(documentName) || 0) + update.byteLength
+      if (size > limits.documentBytes) throw TooLarge
+      sizes.set(documentName, size)
     },
   })
 
