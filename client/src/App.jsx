@@ -8,6 +8,7 @@ import AdminPage from './pages/AdminPage'
 import InvitePage from './pages/InvitePage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
+import { chosenTheme, defaultTheme, saveTheme } from './utils/theme'
 
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -103,7 +104,9 @@ export default function App() {
   const [page, setPage] = useState('home')
   const [presentationId, setPresentationId] = useState(null)
   const [isTemplate, setIsTemplate] = useState(false)
-  const [theme, setTheme] = useState(() => localStorage.getItem('editor-theme') || 'dark')
+  // See utils/theme.js
+  const [chosen, setChosen] = useState(() => chosenTheme())
+  const theme = chosen || defaultTheme(isCloud)
   const [docsOverlay, setDocsOverlay] = useState(null)
   const [initialSlug, setInitialSlug] = useState(() => {
     const path = window.location.pathname
@@ -112,9 +115,13 @@ export default function App() {
   })
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark')
-    localStorage.setItem('editor-theme', theme)
+    document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  const pickTheme = next => {
+    setChosen(next)
+    saveTheme(next)
+  }
 
   useEffect(() => {
     const check = () => {
@@ -174,7 +181,7 @@ export default function App() {
   if (isCloud && window.location.pathname === '/try') {
     return (
       <>
-        <GuestPage />
+        <GuestPage theme={theme} onThemeChange={pickTheme} />
         {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
       </>
     )
@@ -201,8 +208,8 @@ export default function App() {
   return (
     <AuthGate>
       {page === 'home'
-        ? <HomePage onOpen={openEditor} theme={theme} onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} initialSlug={initialSlug} />
-        : <EditorPage presentationId={presentationId} isTemplate={isTemplate} onGoHome={goHome} />
+        ? <HomePage onOpen={openEditor} theme={theme} onToggleTheme={() => pickTheme(theme === 'dark' ? 'light' : 'dark')} initialSlug={initialSlug} />
+        : <EditorPage presentationId={presentationId} isTemplate={isTemplate} onGoHome={goHome} theme={theme} onThemeChange={pickTheme} />
       }
       {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
     </AuthGate>

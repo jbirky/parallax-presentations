@@ -27,13 +27,13 @@ import EditorPage from './EditorPage'
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 let root, el
-async function open(role) {
+async function open(role, props = {}) {
   api.getPresentation.mockImplementation(async () => structuredClone(saved))
   api.getCollaborators.mockResolvedValue({ role, you: 'u-me', inviteToken: null, people: [] })
   el = document.createElement('div')
   document.body.appendChild(el)
   root = createRoot(el)
-  await act(async () => root.render(<EditorPage presentationId="p1" onGoHome={() => {}} />))
+  await act(async () => root.render(<EditorPage presentationId="p1" onGoHome={() => {}} {...props} />))
   await act(async () => { await vi.runOnlyPendingTimersAsync() })
 }
 const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.trim() === text)
@@ -58,6 +58,16 @@ afterEach(() => {
 })
 
 describe('the editor, shared', () => {
+  it('switches the editor between light and dark in Settings', async () => {
+    const onThemeChange = vi.fn()
+    await open('owner', { theme: 'light', onThemeChange })
+    await act(async () => button('Settings').click())
+    const select = el.querySelector('select[aria-label="Editor theme"]')
+    expect(select.value).toBe('light')
+    await act(async () => { select.value = 'dark'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(onThemeChange).toHaveBeenCalledWith('dark')
+  })
+
   it('leaves the owner’s Sync menu out for an editor', async () => {
     await open('editor')
     expect(el.querySelector('.editor-header .title-input').value).toBe('Group talk')

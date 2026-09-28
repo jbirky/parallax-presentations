@@ -257,7 +257,7 @@ const migrateSlide = (slide) => {
   return slide
 }
 
-export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
+export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null, theme, onThemeChange }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
   const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
@@ -2576,6 +2576,20 @@ function draw() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
+              {/* The editor's own look, kept in this browser: not the presentation's */}
+              {onThemeChange && (
+                <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Editor theme</div>
+                  <select className="prop-input" value={theme} aria-label="Editor theme"
+                    onChange={e => onThemeChange(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px' }}>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>How the editor looks to you; the slides don't change</div>
+                </div>
+              )}
+
               {/* Font */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Font</div>
