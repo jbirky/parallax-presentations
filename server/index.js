@@ -2401,8 +2401,13 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
 // caller's role and id, and for the owner, the invite link's token
 app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const people = await collaboration.listCollaborators(storage, req.params.id)
+    let people = await collaboration.listCollaborators(storage, req.params.id)
     const inviteToken = req.deck.role === 'owner' ? await collaboration.getInviteToken(storage, req.params.id) : null
+    // Editors may not know each other (anyone with the invite link can join):
+    // they see the owner's email and their own, and only a hint of the rest
+    if (req.deck.role !== 'owner') {
+      people = people.map(p => (p.role === 'owner' || p.id === req.userId ? p : { ...p, email: collaboration.emailHint(p.email) }))
+    }
     res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
@@ -2709,8 +2714,9 @@ app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), require
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
-// DELETE /api/presentations/:id/snapshots/:snapshotId
-app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
+// DELETE /api/presentations/:id/snapshots/:snapshotId - the owner only: an
+// editor could otherwise delete every version, leaving nothing to restore
+app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), ownerOnly, async (req, res) => {
   try {
     await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     res.json({ success: true })

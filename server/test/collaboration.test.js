@@ -241,6 +241,20 @@ describe('editing a presentation with others', { skip }, () => {
     assert.equal((await call(stranger, 'GET', `/api/presentations/${deck}`)).status, 404)
   })
 
+  it('shows an editor the owner’s email and their own, and only a hint of the others’', async () => {
+    const emails = async who => Object.fromEntries((await call(who, 'GET', `/api/presentations/${deck}/collaborators`)).body.people.map(p => [p.name, p.email]))
+    assert.deepEqual(await emails(editor), { [owner]: `${owner}@test.local`, [editor]: `${editor}@test.local`, [second]: 's…@test.local' })
+    assert.equal((await emails(owner))[second], `${second}@test.local`)
+  })
+
+  it('lets only the owner delete a version', async () => {
+    const snap = (await call(editor, 'POST', `/api/presentations/${deck}/snapshot`, { name: 'keep' })).body
+    assert.equal((await call(editor, 'DELETE', `/api/presentations/${deck}/snapshots/${snap.id}`)).status, 403)
+    assert.ok((await call(editor, 'GET', `/api/presentations/${deck}/snapshots`)).body.some(s => s.id === snap.id))
+    assert.equal((await call(owner, 'DELETE', `/api/presentations/${deck}/snapshots/${snap.id}`)).status, 200)
+    assert.ok(!(await call(owner, 'GET', `/api/presentations/${deck}/snapshots`)).body.some(s => s.id === snap.id))
+  })
+
   it('lets the owner remove an editor, and an editor leave', async () => {
     const secondId = await userId(second)
     assert.equal((await call(editor, 'DELETE', `/api/presentations/${deck}/collaborators/${secondId}`)).status, 403)

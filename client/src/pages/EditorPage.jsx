@@ -3344,17 +3344,20 @@ function draw() {
                     >
                       Restore
                     </button>
-                    <button
-                      className="btn-icon"
-                      style={{ color: 'var(--danger)' }}
-                      title="Delete snapshot"
-                      onClick={async () => {
-                        await api.deleteSnapshot(presentationId, snap.id)
-                        setSnapshots(await api.getSnapshots(presentationId))
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
+                    {/* Only the owner can delete a version */}
+                    {!isEditor && (
+                      <button
+                        className="btn-icon"
+                        style={{ color: 'var(--danger)' }}
+                        title="Delete snapshot"
+                        onClick={async () => {
+                          await api.deleteSnapshot(presentationId, snap.id)
+                          setSnapshots(await api.getSnapshots(presentationId))
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </div>
                 ))
               )}
