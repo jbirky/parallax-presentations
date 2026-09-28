@@ -22,6 +22,9 @@
 # Reads DATABASE_URL and R2_* from the repo's .env. Needs Docker.
 
 set -euo pipefail
+# Only this user can read what it writes: the dumps hold every account and
+# presentation (the containers' own files are closed off at the end)
+umask 077
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 BACKUP_DIR=${BACKUP_DIR:-/home/jbirky/backups/parallax-presentations}
@@ -94,5 +97,6 @@ docker run --rm --user "$AS_ME" \
   -v parallax-data:/src/data:ro -v parallax-uploads:/src/uploads:ro \
   -v "$BACKUP_DIR/volumes":/backup alpine tar czf "/backup/volumes.tar.gz" -C /src data uploads
 
+chmod -R go-rwx "$BACKUP_DIR"
 date '+%Y-%m-%d %H:%M:%S' > "$BACKUP_DIR/last-success"
 log "backup OK -> $BACKUP_DIR"
