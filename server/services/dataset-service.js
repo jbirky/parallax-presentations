@@ -3,7 +3,7 @@
 
 const path = require('path')
 const fs = require('fs-extra')
-const { parse: csvParse } = require('csv-parse/sync')
+const { parse: csvParser } = require('csv-parse')
 const { v4: uuidv4 } = require('uuid')
 const { uploadToR2, streamFromR2, deleteFromR2 } = require('./r2')
 const { isR2Enabled } = require('./r2')
@@ -18,14 +18,31 @@ function detectFormat(filename) {
   return null
 }
 
-function parseFile(filePath, format) {
-  const raw = fs.readFileSync(filePath, 'utf8')
+// A dataset file's rows. A CSV or TSV is parsed a chunk at a time, with the
+// server free in between: parsed in one go, a large file held up every other
+// request (and live editing) for seconds, on every read
+const CSV_CHUNK = 256 * 1024
+
+async function parseRows(buffer, format) {
   if (format === 'csv' || format === 'tsv') {
-    const delimiter = format === 'tsv' ? '\t' : ','
-    return csvParse(raw, { columns: true, skip_empty_lines: true, delimiter, cast: true, relax_column_count: true })
+    const parser = csvParser({
+      // A column named __proto__ would be each row's prototype
+      columns: header => header.map(name => (name === '__proto__' ? '_proto_' : name)),
+      skip_empty_lines: true, delimiter: format === 'tsv' ? '\t' : ',', cast: true, relax_column_count: true,
+    })
+    const rows = []
+    parser.on('readable', () => { let row; while ((row = parser.read()) !== null) rows.push(row) })
+    const done = new Promise((resolve, reject) => { parser.on('end', resolve); parser.on('error', reject) })
+    for (let i = 0; i < buffer.length && !parser.destroyed; i += CSV_CHUNK) {
+      parser.write(buffer.subarray(i, i + CSV_CHUNK))
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    parser.end()
+    await done
+    return rows
   }
   if (format === 'json') {
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(buffer.toString('utf8'))
     if (Array.isArray(parsed)) return parsed
     if (parsed.data && Array.isArray(parsed.data)) return parsed.data
     throw new Error('JSON must be an array of objects or have a "data" array property')
@@ -63,7 +80,7 @@ async function ingestDataset(filePath, originalFilename, { userId, storage, loca
     throw new Error(`Unsupported file format. Accepted: ${[...ALLOWED_FORMATS].join(', ')}`)
   }
 
-  const rows = parseFile(filePath, format)
+  const rows = await parseRows(await fs.readFile(filePath), format)
   const columns = inferColumns(rows)
   const stat = fs.statSync(filePath)
   const baseName = path.basename(originalFilename, path.extname(originalFilename))
@@ -95,27 +112,53 @@ async function ingestDataset(filePath, originalFilename, { userId, storage, loca
   }
 }
 
-async function readDatasetFile(storageKey, format, localDir) {
-  let raw
-  if (storageKey.startsWith('local:')) {
-    const localName = storageKey.replace('local:', '')
-    raw = fs.readFileSync(path.join(localDir, 'datasets', localName), 'utf8')
-  } else {
-    const { body } = await streamFromR2(storageKey)
-    const chunks = []
-    for await (const chunk of body) chunks.push(chunk)
-    raw = Buffer.concat(chunks).toString('utf8')
-  }
+// Parsed rows by storage key, since a chart asks for its data again and
+// again, and a file never changes under its key (an upload gets a new one).
+// Up to 48 MB of files, the least recently read going first; rows take
+// several times their file's size, so a file over 16 MB is parsed each time.
+// Callers mustn't change the rows (applyQuery doesn't).
+const CACHE_BYTES = 48 * 1024 * 1024
+const CACHE_FILE_BYTES = 16 * 1024 * 1024
+const cached = new Map()
+const parsing = new Map()
+let cachedBytes = 0
 
-  if (format === 'csv' || format === 'tsv') {
-    const delimiter = format === 'tsv' ? '\t' : ','
-    return csvParse(raw, { columns: true, skip_empty_lines: true, delimiter, cast: true, relax_column_count: true })
+function remember(key, rows, bytes) {
+  if (bytes > CACHE_FILE_BYTES) return
+  cached.set(key, { rows, bytes })
+  cachedBytes += bytes
+  for (const [oldest, entry] of cached) {
+    if (cachedBytes <= CACHE_BYTES) break
+    cached.delete(oldest)
+    cachedBytes -= entry.bytes
   }
-  if (format === 'json') {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : parsed.data
+}
+
+async function readDatasetFile(storageKey, format, localDir) {
+  const hit = cached.get(storageKey)
+  if (hit) {
+    cached.delete(storageKey)
+    cached.set(storageKey, hit)
+    return hit.rows
   }
-  throw new Error(`Unsupported format: ${format}`)
+  // Two reads at once parse it once
+  if (parsing.has(storageKey)) return parsing.get(storageKey)
+  const read = (async () => {
+    let buffer
+    if (storageKey.startsWith('local:')) {
+      buffer = await fs.readFile(path.join(localDir, 'datasets', storageKey.replace('local:', '')))
+    } else {
+      const { body } = await streamFromR2(storageKey)
+      const chunks = []
+      for await (const chunk of body) chunks.push(chunk)
+      buffer = Buffer.concat(chunks)
+    }
+    const rows = await parseRows(buffer, format)
+    remember(storageKey, rows, buffer.length)
+    return rows
+  })()
+  parsing.set(storageKey, read)
+  try { return await read } finally { parsing.delete(storageKey) }
 }
 
 // SQL's LIKE, ignoring case: % matches any run of characters, _ any one, and
@@ -181,6 +224,8 @@ function applyQuery(rows, columns, opts = {}) {
 }
 
 async function deleteDatasetFile(storageKey, localDir) {
+  const hit = cached.get(storageKey)
+  if (hit) { cached.delete(storageKey); cachedBytes -= hit.bytes }
   if (storageKey.startsWith('local:')) {
     const localName = storageKey.replace('local:', '')
     fs.removeSync(path.join(localDir, 'datasets', localName))

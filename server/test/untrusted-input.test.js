@@ -85,3 +85,53 @@ describe('what a failed request says', () => {
     assert.deepEqual(out, ['GitHub refused the push: 404', 'Internal server error', 'Internal server error', 'Internal server error', 'Bad JSON'])
   })
 })
+
+describe('reading a dataset', () => {
+  const os = require('os')
+  const fs = require('fs')
+  const path = require('path')
+  const { readDatasetFile, deleteDatasetFile } = require('../services/dataset-service')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'datasets-'))
+  fs.mkdirSync(path.join(dir, 'datasets'))
+  let n = 0
+  const stored = (text, ext = 'csv') => {
+    const name = `d${++n}.${ext}`
+    fs.writeFileSync(path.join(dir, 'datasets', name), text)
+    return `local:${name}`
+  }
+
+  it('gives the rows the whole-file parser did, across chunk boundaries', async () => {
+    const { parse } = require('csv-parse/sync')
+    // Rows of "é" (two bytes) so that some straddle the 256 KB chunks
+    const text = 'city,name,value\n' + Array.from({ length: 30000 }, (_, i) => `Montréal,é${'é'.repeat(i % 7)},${i}`).join('\n')
+    const rows = await readDatasetFile(stored(text), 'csv', dir)
+    assert.deepEqual(rows, parse(text, { columns: true, skip_empty_lines: true, cast: true, relax_column_count: true }))
+    const tsv = await readDatasetFile(stored('a\tb\n1\tx\n', 'tsv'), 'tsv', dir)
+    assert.deepEqual(tsv, [{ a: 1, b: 'x' }])
+  })
+
+  it('leaves the server free while it parses', async () => {
+    const text = 'a,b,c\n' + '1,two,3.5\n'.repeat(600000)  // 6 MB
+    let ticks = 0
+    const timer = setInterval(() => ticks++, 5)
+    const rows = await readDatasetFile(stored(text), 'csv', dir)
+    clearInterval(timer)
+    assert.equal(rows.length, 600000)
+    assert.ok(ticks >= 3, `timers ran ${ticks} times while it parsed`)
+  })
+
+  it('reads a file once, while it stays unchanged', async () => {
+    const key = stored('x,y\n1,2\n')
+    const [a, b] = await Promise.all([readDatasetFile(key, 'csv', dir), readDatasetFile(key, 'csv', dir)])
+    assert.equal(a, b)
+    assert.equal(await readDatasetFile(key, 'csv', dir), a)
+    await deleteDatasetFile(key, dir)
+    await assert.rejects(readDatasetFile(key, 'csv', dir))
+  })
+
+  it('doesn’t let a column named __proto__ be a row’s prototype', async () => {
+    const [row] = await readDatasetFile(stored('__proto__,b\nx,1\n'), 'csv', dir)
+    assert.equal(Object.getPrototypeOf(row), Object.prototype)
+    assert.deepEqual(row, { _proto_: 'x', b: 1 })
+  })
+})
