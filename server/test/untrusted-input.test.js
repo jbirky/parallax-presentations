@@ -65,3 +65,23 @@ describe('the type an upload is served with', () => {
     assert.equal(html['content-security-policy'], 'sandbox')
   })
 })
+
+describe('what a failed request says', () => {
+  it('keeps the app’s own messages, and not the database’s, the file system’s or storage’s', () => {
+    // In production, which the module reads when it loads
+    const { execFileSync } = require('child_process')
+    const script = `
+      console.error = () => {}
+      const { safeErrorMessage } = require(${JSON.stringify(require.resolve('../middleware/security'))})
+      const e = (m, extra) => Object.assign(new Error(m), extra)
+      console.log(JSON.stringify([
+        e('GitHub refused the push: 404'),
+        e('duplicate key value violates unique constraint "users_email_key"', { code: '23505', severity: 'ERROR' }),
+        e("ENOENT: no such file or directory, open '/app/server/data/x'", { code: 'ENOENT', errno: -2, syscall: 'open' }),
+        e('Access Denied', { $metadata: { httpStatusCode: 403 } }),
+        e('Bad JSON', { statusCode: 400 }),
+      ].map(safeErrorMessage)))`
+    const out = JSON.parse(execFileSync(process.execPath, ['-e', script], { env: { ...process.env, NODE_ENV: 'production' }, encoding: 'utf8' }))
+    assert.deepEqual(out, ['GitHub refused the push: 404', 'Internal server error', 'Internal server error', 'Internal server error', 'Bad JSON'])
+  })
+})

@@ -252,7 +252,7 @@ app.get('/api/plugins', async (req, res) => {
   try {
     const plugins = await storage.listPlugins()
     res.json(plugins)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.get('/api/plugins/:slug', async (req, res) => {
@@ -260,7 +260,7 @@ app.get('/api/plugins/:slug', async (req, res) => {
     const plugin = await storage.getPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.get('/api/plugins/:slug/manifest', async (req, res) => {
@@ -268,7 +268,7 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
     const plugin = await storage.getPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin.manifest)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
@@ -377,7 +377,7 @@ if (IS_CLOUD) {
       )
       res.json({ presentationId: rows[0]?.id || null, idleHours: GUEST_IDLE_HOURS })
     } catch (err) {
-      res.status(500).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
     }
   })
 
@@ -471,7 +471,7 @@ app.get('/api/me', async (req, res) => {
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
     })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/admin/overview — sign-ups, per-user storage and processing, and
@@ -482,7 +482,7 @@ app.get('/api/admin/overview', async (req, res) => {
     res.json({ ...await getAdminOverview(storage, PLAN_LIMITS), billingEnabled: stripeService.isEnabled() })
   } catch (err) {
     console.error('Admin overview error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -496,7 +496,7 @@ app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('End guest sessions error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -516,7 +516,7 @@ app.post('/api/admin/users/:id/plan', async (req, res) => {
     res.json({ previousPlan: result.previousPlan, plan, hasSubscription: result.hasSubscription, unexpired: result.unexpired })
   } catch (err) {
     console.error('Plan change error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -531,7 +531,7 @@ function planRoute(handler) {
     } catch (err) {
       if (err instanceof PlanError) return res.status(err.status).json({ error: err.message })
       console.error('Plan edit error:', err.message)
-      res.status(500).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
     }
   }
 }
@@ -571,35 +571,35 @@ if (IS_CLOUD && stripeService.isEnabled()) {
         `${baseUrl}/dashboard?billing=cancel`
       )
       res.json({ url: session.url })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/portal', requireUser, async (req, res) => {
     try {
       const session = await stripeService.createPortalSession(storage, req.userId)
       res.json({ url: session.url })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.get('/api/billing/status', requireUser, async (req, res) => {
     try {
       const status = await stripeService.getSubscriptionStatus(storage, req.userId)
       res.json(status)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/cancel', requireUser, async (req, res) => {
     try {
       const result = await stripeService.cancelSubscription(storage, req.userId)
       res.json(result)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/resume', requireUser, async (req, res) => {
     try {
       await stripeService.resumeSubscription(storage, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 }
 
@@ -1639,7 +1639,7 @@ app.get('/api/presentations', async (req, res) => {
       : []
     res.json([...own, ...shared])
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1720,7 +1720,7 @@ app.post('/api/presentations', async (req, res) => {
     const created = await storage.createPresentation(presentation, req.userId, expiresAt)
     res.status(201).json(created)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1731,7 +1731,7 @@ app.get('/api/templates', async (req, res) => {
   try {
     res.json(await storage.listTemplates(req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1742,7 +1742,7 @@ app.post('/api/templates', async (req, res) => {
     const template = await storage.createTemplate(req.body, req.userId)
     res.status(201).json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1753,7 +1753,7 @@ app.get('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!template) return res.status(404).json({ error: 'Not found' })
     res.json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1764,7 +1764,7 @@ app.put('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'Not found' })
     res.json(updated)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1775,7 +1775,7 @@ app.delete('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!deleted) return res.status(404).json({ error: 'Not found' })
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1787,7 +1787,7 @@ app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req
     if (!template) return res.status(404).json({ error: 'Not found' })
     res.status(201).json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1798,7 +1798,7 @@ app.get('/api/presentations/:id', requireValidId(), deckAccess(), async (req, re
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     res.json(presentation)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1813,7 +1813,7 @@ app.put('/api/presentations/:id', requireValidId(), deckAccess(), async (req, re
     }
     res.json(updated)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1835,7 +1835,7 @@ app.get('/api/presentations/:id/uploads', requireValidId(), deckAccess(), async 
       name: r.filename.split('/').pop(),
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1868,7 +1868,7 @@ app.get('/api/uploads', async (req, res) => {
       presentationTitle: r.presentation_title || null,
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1899,7 +1899,7 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
     }
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1933,7 +1933,7 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
 app.get('/api/datasets', async (req, res) => {
   try {
     res.json(await storage.listDatasets(req.userId))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/datasets/:id — get dataset metadata
@@ -1942,7 +1942,7 @@ app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     res.json(ds)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
@@ -1961,7 +1961,7 @@ app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
     }
     const result = applyQuery(rows, ds.columns, opts)
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // PATCH /api/datasets/:id — rename a dataset
@@ -1970,7 +1970,7 @@ app.patch('/api/datasets/:id', requireValidId(), async (req, res) => {
     const ds = await storage.updateDataset(req.params.id, { name: req.body.name }, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     res.json(ds)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/datasets/:id — delete a dataset and its stored file
@@ -1982,7 +1982,7 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
       console.error('Dataset file cleanup failed:', e.message)
     }
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
@@ -1998,7 +1998,7 @@ app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     await storage.linkDatasetToPresentation(pid, datasetId, alias)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // Whether the caller may use presentation `pid`'s datasets: deckAccess checks
@@ -2012,7 +2012,7 @@ app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckA
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:pid/datasets — list datasets linked to a presentation
@@ -2020,7 +2020,7 @@ app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('p
   try {
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     res.json(await storage.getPresentationDatasets(req.params.pid))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
@@ -2043,7 +2043,7 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     }
     const result = applyQuery(rows, ds.columns, opts)
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // --- Custom Fonts ---
@@ -2056,7 +2056,7 @@ app.get('/api/fonts', async (req, res) => {
       [req.userId]
     )
     res.json(rows.map(r => ({ id: r.id, familyName: r.family_name, source: r.source, url: r.url, createdAt: r.created_at })))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
@@ -2099,7 +2099,7 @@ app.post('/api/fonts/upload', uploadLimiter, storageQuota, upload.single('file')
       [id, req.userId, familyName, 'upload', fontUrl]
     )
     res.json({ id, familyName, source: 'upload', url: fontUrl })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/fonts/file/:filename - serve uploaded font files from R2
@@ -2139,7 +2139,7 @@ app.post('/api/fonts/google', async (req, res) => {
       [id, req.userId, familyName, 'google', url]
     )
     res.json({ id, familyName, source: 'google', url })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // Deletes an uploaded font's file, found from its URL: /api/fonts/file/<name>
@@ -2169,7 +2169,7 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Font not found' })
     if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/presentations/:id
@@ -2180,7 +2180,7 @@ app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
     collab?.closeDocument(req.params.id)
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2192,7 +2192,7 @@ app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) 
     if (!copy) return res.status(404).json({ error: 'Not found' })
     res.status(201).json(copy)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2216,7 +2216,7 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
     }
     res.json({ url: `/uploads/${path.basename(filePath)}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2242,7 +2242,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
     }
     res.json({ url: `/uploads/${req.params.id}/${path.basename(filePath)}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2308,7 +2308,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     }
   } catch (err) {
     console.error('PPTX import error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   } finally {
     fs.removeSync(tmpDir)
   }
@@ -2325,7 +2325,7 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
     res.send(html)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2347,7 +2347,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2372,7 +2372,7 @@ app.post('/api/presentations/:id/share', requireValidId(), async (req, res) => {
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2381,7 +2381,7 @@ app.delete('/api/presentations/:id/share', requireValidId(), async (req, res) =>
   try {
     res.json(await storage.deleteShareToken(req.params.id, req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2390,7 +2390,7 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
   try {
     res.json(await storage.getShareStatus(req.params.id, req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2405,7 +2405,7 @@ app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), 
     const inviteToken = req.deck.role === 'owner' ? await collaboration.getInviteToken(storage, req.params.id) : null
     res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2415,7 +2415,7 @@ app.post('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerO
   try {
     res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, true) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2424,7 +2424,7 @@ app.delete('/api/presentations/:id/invite', requireValidId(), deckAccess(), owne
   try {
     res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, false) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2441,7 +2441,7 @@ app.delete('/api/presentations/:id/collaborators/:userId', requireValidId(), req
     collab?.disconnectUser(req.params.id, req.params.userId)
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2452,7 +2452,7 @@ app.get('/api/invites/:token', requireValidId('token'), async (req, res) => {
     if (!invite) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
     res.json(invite)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2463,7 +2463,7 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
     if (!joined) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
     res.json(joined)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2474,7 +2474,7 @@ app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, r
 
     sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2510,7 +2510,7 @@ app.post('/api/presentations/:id/live/start', requireValidId(), async (req, res)
 
     res.json({ sessionId, url: `/live/${sessionId}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2690,14 +2690,14 @@ app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), asyn
     const result = await storage.createSnapshot(req.params.id, req.body.name, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/snapshots - list snapshots
 app.get('/api/presentations/:id/snapshots', requireValidId(), deckAccess(), async (req, res) => {
   try {
     res.json(await storage.listSnapshots(req.params.id, req.deck.ownerId))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
@@ -2706,7 +2706,7 @@ app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), require
     const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
     res.json(restored)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/presentations/:id/snapshots/:snapshotId
@@ -2714,7 +2714,7 @@ app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), req
   try {
     await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/snapshots/:snapshotId/data - get snapshot data without restoring
@@ -2723,7 +2723,7 @@ app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), r
     const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!data) return res.status(404).json({ error: 'Snapshot not found' })
     res.json(data)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // --- GitHub Integration ---
@@ -2734,7 +2734,7 @@ app.get('/api/github/config', async (req, res) => {
     const config = await storage.getGithubConfig(req.userId)
     res.json({ owner: config.owner || '', repo: config.repo || '', hasToken: !!config.token, pagesUrl: config.pagesUrl || '' })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2744,7 +2744,7 @@ app.post('/api/github/config', async (req, res) => {
     const updated = await storage.setGithubConfig(req.body, req.userId)
     res.json({ owner: updated.owner || '', repo: updated.repo || '', hasToken: !!updated.token, pagesUrl: updated.pagesUrl || '' })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2754,7 +2754,7 @@ app.get('/api/zotero/config', async (req, res) => {
     const config = await storage.getZoteroConfig(req.userId)
     res.json({ zoteroUserId: config.zoteroUserId || '', hasApiKey: !!config.apiKey })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2764,7 +2764,7 @@ app.post('/api/zotero/config', async (req, res) => {
     await storage.setZoteroConfig(req.body, req.userId)
     res.json({ zoteroUserId: req.body.zoteroUserId || '', hasApiKey: !!req.body.apiKey })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2774,7 +2774,7 @@ app.delete('/api/zotero/config', async (req, res) => {
     await storage.setZoteroConfig({ zoteroUserId: '', apiKey: '' }, req.userId)
     res.json({ ok: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2804,7 +2804,7 @@ app.get('/api/zotero/proxy/*', async (req, res) => {
       .set('Total-Results', zRes.headers.get('total-results') || '0')
       .json(data)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2824,7 +2824,7 @@ app.get('/api/zenodo/config', async (req, res) => {
   try {
     const config = await storage.getZenodoConfig(req.userId)
     res.json({ hasToken: !!config.token, sandbox: config.sandbox })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/zenodo/config
@@ -2832,7 +2832,7 @@ app.post('/api/zenodo/config', async (req, res) => {
   try {
     const updated = await storage.setZenodoConfig(req.body, req.userId)
     res.json({ hasToken: !!updated.token, sandbox: updated.sandbox })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/zenodo/config
@@ -2840,7 +2840,7 @@ app.delete('/api/zenodo/config', async (req, res) => {
   try {
     await storage.setZenodoConfig({ token: '', sandbox: false }, req.userId)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/zenodo/status - check if this presentation has been published
@@ -2866,7 +2866,7 @@ app.get('/api/presentations/:id/zenodo/status', requireValidId(), async (req, re
       versionCount: allVersions.length,
       versions: allVersions,
     })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:id/zenodo/publish - publish presentation to Zenodo
@@ -3101,7 +3101,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
 
     res.json({ doi, url: zenodoUrl, depositionId, isNewVersion, conceptRecid })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3323,7 +3323,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       url: `https://github.com/${owner}/${repo}/tree/${branch}/${folderName}`,
     })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3356,7 +3356,7 @@ app.get('/api/presentations/:id/github/history', async (req, res) => {
       author: c.commit.author.name,
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3386,7 +3386,7 @@ app.get('/api/presentations/:id/github/version/:sha', requireValidId(), requireV
     const content = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'))
     res.json(content)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3443,7 +3443,7 @@ app.post('/api/github/browse-repo', async (req, res) => {
 
     res.json({ owner, repo, branch, presentations })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3571,7 +3571,7 @@ app.post('/api/presentations/fork', async (req, res) => {
       assetsImported: Object.keys(pathMap).length,
     })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3584,7 +3584,7 @@ if (IS_CLOUD) {
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
       await storage.installPlugin(plugin.id, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.delete('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
@@ -3593,14 +3593,14 @@ if (IS_CLOUD) {
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
       await storage.uninstallPlugin(plugin.id, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.get('/api/me/plugins', requireUser, async (req, res) => {
     try {
       const plugins = await storage.getInstalledPlugins(req.userId)
       res.json(plugins)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 }
 
@@ -3610,7 +3610,7 @@ app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async 
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const plugins = await storage.getPresentationPlugins(req.params.id)
     res.json(plugins)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
@@ -3620,7 +3620,7 @@ app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async
     const { pluginId, config } = req.body
     await storage.enablePluginForPresentation(req.params.id, pluginId, config)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), async (req, res) => {
@@ -3629,7 +3629,7 @@ app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAcc
     if (!pres) return res.status(404).json({ error: 'Not found' })
     await storage.disablePluginForPresentation(req.params.id, req.params.pluginId)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // In production, serve client build with SPA fallback

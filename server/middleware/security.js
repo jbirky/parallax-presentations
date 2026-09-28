@@ -240,9 +240,19 @@ function sanitizeCustomCSS(css) {
 
 // --- Error handling ---
 
+// What a failed request says about its error. Messages the app writes itself
+// (GitHub refused the push, say) are kept; the database's, the file system's
+// and storage's are logged and not sent, since they name tables, columns,
+// values, paths and keys. In development everything is sent.
 function safeErrorMessage(err) {
-  if (!IS_PROD) return err.message
-  if (err.statusCode && err.statusCode < 500) return err.message
+  if (!IS_PROD) return err?.message || 'Internal server error'
+  if (err?.statusCode && err.statusCode < 500) return err.message
+  const internal = !err?.message ||
+    (typeof err.code === 'string' && /^[0-9A-Z]{5}$/.test(err.code)) || err.severity || err.routine ||  // Postgres
+    err.syscall || typeof err.errno === 'number' ||  // the file system, sockets
+    err.$metadata  // the AWS SDK (R2)
+  if (!internal) return err.message
+  console.error('Internal error:', err)
   return 'Internal server error'
 }
 
