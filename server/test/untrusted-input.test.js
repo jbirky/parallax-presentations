@@ -129,6 +129,15 @@ describe('reading a dataset', () => {
     await assert.rejects(readDatasetFile(key, 'csv', dir))
   })
 
+  it('turns a CSV it can’t read into an error, not a crash', async () => {
+    // Before, the parser's error went unheard between chunks, and ended the process
+    await assert.rejects(readDatasetFile(stored('a,b\n"x"y,2\n'), 'csv', dir), /quote/i)
+    const late = 'a,b\n' + '1,2\n'.repeat(100000) + '5" screen,3\n'  // past the first chunk
+    await assert.rejects(readDatasetFile(stored(late), 'csv', dir), /quote/i)
+    // and the next read still works
+    assert.deepEqual(await readDatasetFile(stored('a\n1\n'), 'csv', dir), [{ a: 1 }])
+  })
+
   it('doesn’t let a column named __proto__ be a row’s prototype', async () => {
     const [row] = await readDatasetFile(stored('__proto__,b\nx,1\n'), 'csv', dir)
     assert.equal(Object.getPrototypeOf(row), Object.prototype)

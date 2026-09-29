@@ -33,11 +33,14 @@ async function parseRows(buffer, format) {
     const rows = []
     parser.on('readable', () => { let row; while ((row = parser.read()) !== null) rows.push(row) })
     const done = new Promise((resolve, reject) => { parser.on('end', resolve); parser.on('error', reject) })
+    // A bad line rejects `done` while this is between chunks, before it's
+    // awaited: unheard, that rejection would end the process
+    done.catch(() => {})
     for (let i = 0; i < buffer.length && !parser.destroyed; i += CSV_CHUNK) {
       parser.write(buffer.subarray(i, i + CSV_CHUNK))
       await new Promise(resolve => setImmediate(resolve))
     }
-    parser.end()
+    if (!parser.destroyed) parser.end()
     await done
     return rows
   }
