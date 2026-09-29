@@ -3396,14 +3396,19 @@ function draw() {
                     api.saveSnapshot(presentationId, snapshotName || undefined).then(async () => {
                       setSnapshotName('')
                       setSnapshots(await api.getSnapshots(presentationId))
-                    })
+                    }, err => alert(err.message))
                   }
                 }}
               />
               <button
                 className="btn btn-primary"
                 onClick={async () => {
-                  await api.saveSnapshot(presentationId, snapshotName || undefined)
+                  try {
+                    await api.saveSnapshot(presentationId, snapshotName || undefined)
+                  } catch (err) {
+                    alert(err.message) // as when it has as many versions as it may keep
+                    return
+                  }
                   setSnapshotName('')
                   setSnapshots(await api.getSnapshots(presentationId))
                 }}

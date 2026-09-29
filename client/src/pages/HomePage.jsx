@@ -323,7 +323,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       })
       onOpen(template.id, true) // open in editor as template
     } catch (err) {
-      console.error('Failed to create template', err)
+      // The server's reason, as for a limit reached
+      alert(err.message)
     }
   }
 

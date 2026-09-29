@@ -139,11 +139,12 @@ export const api = {
   // Templates
   getTemplates: () => authFetch(`${BASE}/templates`).then(safeJson),
   getTemplate: (id) => authFetch(`${BASE}/templates/${id}`).then(safeJson),
+  // These three reject with the server's reason, as when a limit is reached
   createTemplate: (data) => authFetch(`${BASE}/templates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
-  }).then(safeJson),
+  }).then(r => checked(r, 'Couldn’t create the template')),
   updateTemplate: (id, data) => authFetch(`${BASE}/templates/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -154,12 +155,12 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title })
-  }).then(safeJson),
+  }).then(r => checked(r, 'Couldn’t save it as a template')),
 
   // Version History
   saveSnapshot: (id, name) => authFetch(`${BASE}/presentations/${id}/snapshot`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
-  }).then(safeJson),
+  }).then(r => checked(r, 'Couldn’t save the version')),
   getSnapshots: (id) => authFetch(`${BASE}/presentations/${id}/snapshots`).then(safeJson),
   restoreSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/restore/${snapshotId}`, { method: 'POST' }).then(safeJson).then(deck => noteVersion(id, deck)),
   deleteSnapshot: (id, snapshotId) => authFetch(`${BASE}/presentations/${id}/snapshots/${snapshotId}`, { method: 'DELETE' }).then(safeJson),
