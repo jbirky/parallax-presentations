@@ -123,6 +123,23 @@ describe('what each expression draws', () => {
     expect(P.paramValues(a, { a: 10 })).toEqual({ a: 10, b: 11, c: 22 })
   })
 
+  it('works out a chain of values listed from the last back to the first', () => {
+    const a = read('d = 2c', 'c = 2b', 'b = 2a', 'a = 1', 'y = d x')
+    expect(P.paramValues(a)).toEqual({ a: 1, b: 2, c: 4, d: 8 })
+    expect(a.items[4].f({ ...P.paramValues(a), x: 1 })).toBe(8)
+  })
+
+  it('gives a function that calls one with an error an error of its own, not a crash when drawn', () => {
+    const a = read('a = 1', 'a(x) = x', 'f(x) = a(x) + 1', 'y = f(x)')
+    expect(a.items[1].error).toMatch(/already a slider/)
+    expect(a.items[2].kind).toBe('error')
+    expect(a.items[2].error).toMatch(/a\(…\) has an error/)
+    expect(a.items[3].kind).toBe('error')
+    // and one whose callee fails only as it compiles
+    const b = read('g(x) = mod(x)', 'h(x) = g(x) + 1', 'y = h(x) + 2')
+    expect(b.items.map(it => it.kind)).toEqual(['error', 'error', 'error'])
+  })
+
   it('lists the names to offer sliders for, and still draws the curve', () => {
     const a = read('y = m x + q', 'm = 2')
     expect(a.missing).toEqual(['q'])

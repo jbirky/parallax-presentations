@@ -334,7 +334,8 @@ export function createMathParser() {
       }
       case 'ucall': {
         const def = fns[node.f]
-        if (!def) fail(node.f + ' isn’t defined')
+        // Only functions that compiled are here: this one has an error
+        if (!def) fail(node.f + '(…) has an error')
         if (def.formals.length !== node.args.length) fail(node.f + ' takes ' + def.formals.length + ' value' + (def.formals.length === 1 ? '' : 's'))
         const list = node.args.map(c)
         return (env, x) => def.call(env, list.map(g => g(env, x)))
@@ -466,21 +467,32 @@ export function createMathParser() {
       const item = fns[name].item
       if (item.kind === 'function' && reaches(name, new Set([name]))) { item.kind = 'error'; item.error = name + ' uses itself' }
     }
-    // A compiled user function; its body's free variables come from env
-    for (const name of userFns) {
-      const def = fns[name]
-      if (def.item.kind !== 'function') continue
-      let body = null
-      def.call = (env, a) => body(env, a)
-      def.compile = () => { body = compile(def.item.body, def.formals, fns) }
-    }
+    // A compiled user function; its body's free variables come from env. Its
+    // body compiles against the functions that can be called, so one calling
+    // a function with an error has an error too, rather than failing when drawn
     const callable = {}
     for (const name of userFns) if (fns[name].item.kind === 'function') callable[name] = fns[name]
+    for (const name of Object.keys(callable)) {
+      const def = callable[name]
+      let body = null
+      def.call = (env, a) => (body ? body(env, a) : NaN)
+      def.compile = () => { body = compile(def.item.body, def.formals, callable) }
+    }
     for (const name of Object.keys(callable)) {
       try { callable[name].compile() } catch (e) {
         if (!e.graphError) throw e
         callable[name].item.kind = 'error'
         callable[name].item.error = e.message
+      }
+    }
+    // A function compiled before one it calls failed has an error as well
+    for (let changed = true; changed;) {
+      changed = false
+      for (const name of Object.keys(callable)) {
+        const item = callable[name].item
+        if (item.kind !== 'function') { delete callable[name]; changed = true; continue }
+        const broken = [...usedFns(item.body)].find(f => !callable[f] || callable[f].item.kind !== 'function')
+        if (broken) { Object.assign(item, { kind: 'error', error: broken + '(…) has an error' }); changed = true }
       }
     }
 
@@ -601,8 +613,11 @@ export function createMathParser() {
     for (const it of pending) {
       if (it.slider) env[it.name] = values && typeof values[it.name] === 'number' ? values[it.name] : it.literal
     }
+    // Each pass settles at least one value that depends only on settled ones,
+    // so as many passes as there are values settles every one there is
     let rest = pending.filter(it => !it.slider)
-    for (let pass = 0; pass < rest.length + 1 && rest.length; pass++) {
+    const passes = rest.length + 1
+    for (let pass = 0; pass < passes && rest.length; pass++) {
       rest = rest.filter(it => {
         const v = it.f(env)
         if (Number.isNaN(v) && [...freeVars(it.value)].some(n => env[n] === undefined)) return true

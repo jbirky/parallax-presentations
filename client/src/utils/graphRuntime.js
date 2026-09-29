@@ -95,6 +95,16 @@ export function graphRuntime(P, config) {
     const nice = m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10
     return { step: nice * p, minor: nice === 2 ? 4 : 5 }
   }
+  // The multiples of `stepSize` from lo to hi. Never more than a few hundred,
+  // and never an endless loop: where k passes 2^53, k + 1 is k
+  function ticksBetween(lo, hi, stepSize) {
+    if (!(stepSize > 0) || !isFinite(lo) || !isFinite(hi)) return []
+    const first = Math.ceil(lo / stepSize), last = Math.floor(hi / stepSize)
+    if (!(last - first < 500)) return []
+    const out = []
+    for (let i = 0; i <= last - first; i++) out.push((first + i) * stepSize)
+    return out
+  }
   function tickLabel(v, stepSize) {
     if (Math.abs(v) < stepSize * 1e-6) return '0'
     if (stepSize >= 1e6 || stepSize < 1e-5) return v.toExponential(2).replace(/\.?0+e/, 'e').replace('-', '−')
@@ -139,16 +149,23 @@ export function graphRuntime(P, config) {
     const E = env()
     const ticks = gridAndAxes()
     const items = analysis.items.filter(visible)
-    for (const it of items) if (it.kind === 'region') drawRegion(it, E)
-    for (const it of items) {
+    // One expression that fails to draw leaves the others drawn
+    const each = (kinds, fn) => {
+      for (const it of items) {
+        if (!kinds.includes(it.kind)) continue
+        try { fn(it) } catch (e) { ctx.globalAlpha = 1; ctx.setLineDash([]) }
+      }
+    }
+    each(['region'], it => drawRegion(it, E))
+    each(['explicit', 'function', 'polar', 'parametric', 'implicit'], it => {
       if (it.kind === 'explicit' || (it.kind === 'function' && it.graph)) strokeRuns(explicitRuns(it.f, E, it.axis || 'y'), exprOf(it))
       else if (it.kind === 'polar') strokeRuns(curveRuns(it, E, 'theta'), exprOf(it))
       else if (it.kind === 'parametric') strokeRuns(curveRuns(it, E, 't'), exprOf(it))
       else if (it.kind === 'implicit') strokeRuns(contour(it.F, E), exprOf(it))
-    }
+    })
     axisNumbers(ticks)
     axisLabels()
-    for (const it of items) if (it.kind === 'point') drawPoint(it, E)
+    each(['point'], it => drawPoint(it, E))
     if (hover) drawHover()
     if (C.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true
@@ -166,9 +183,9 @@ export function graphRuntime(P, config) {
       for (const [t, major] of [[tx.step / tx.minor, false], [tx.step, true]]) {
         ctx.beginPath()
         ctx.strokeStyle = major ? theme.major : theme.minor
-        for (let k = Math.ceil(X0 / t); k * t <= X1; k++) { const p = Math.round(sx(k * t)) + 0.5; line(p, 0, p, H) }
+        for (const v of ticksBetween(X0, X1, t)) { const p = Math.round(sx(v)) + 0.5; line(p, 0, p, H) }
         const u = major ? ty.step : ty.step / ty.minor
-        for (let k = Math.ceil(Y0 / u); k * u <= Y1; k++) { const p = Math.round(sy(k * u)) + 0.5; line(0, p, W, p) }
+        for (const v of ticksBetween(Y0, Y1, u)) { const p = Math.round(sy(v)) + 0.5; line(0, p, W, p) }
         ctx.stroke()
       }
     }
@@ -202,15 +219,13 @@ export function graphRuntime(P, config) {
     const ay = Math.min(Math.max(sy(0), 2), H - 18)
     const ax = Math.min(Math.max(sx(0), 30), W - 4)
     const originShown = X0 <= 0 && X1 >= 0 && Y0 <= 0 && Y1 >= 0
-    for (let k = Math.ceil(X0 / tx.step); k * tx.step <= X1; k++) {
-      const v = k * tx.step
+    for (const v of ticksBetween(X0, X1, tx.step)) {
       if (Math.abs(v) < tx.step * 1e-6) continue
       const p = sx(v)
       if (p < 12 || p > W - 12) continue
       haloText(tickLabel(v, tx.step), p, ay + 4, 'center', 'top', font)
     }
-    for (let k = Math.ceil(Y0 / ty.step); k * ty.step <= Y1; k++) {
-      const v = k * ty.step
+    for (const v of ticksBetween(Y0, Y1, ty.step)) {
       if (Math.abs(v) < ty.step * 1e-6) continue
       const p = sy(v)
       if (p < 10 || p > H - 10) continue
@@ -621,10 +636,16 @@ export function graphRuntime(P, config) {
     viewTimer = setTimeout(() => postEditor({ type: 'view', view: copyView(view) }), 200)
   }
 
+  // No closer than a millionth of a millionth of where it's looking (floats
+  // tell apart about 1e-16 of it), and no farther out than 1e12 across
   function zoom(factor, px, py) {
     const v = shown()
     const cx = v.xMin + px / W * (v.xMax - v.xMin)
     const cy = v.yMin + (H - py) / H * (v.yMax - v.yMin)
+    const span = Math.min(view.xMax - view.xMin, view.yMax - view.yMin)
+    const least = 1e-12 * Math.max(1, Math.abs(cx), Math.abs(cy))
+    factor = Math.min(Math.max(factor, least / span), 1e12 / Math.max(view.xMax - view.xMin, view.yMax - view.yMin))
+    if (!(factor > 0) || !isFinite(factor)) return
     view = {
       xMin: cx - (cx - view.xMin) * factor, xMax: cx + (view.xMax - cx) * factor,
       yMin: cy - (cy - view.yMin) * factor, yMax: cy + (view.yMax - cy) * factor,
