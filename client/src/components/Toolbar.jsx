@@ -106,9 +106,12 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     if (!file) return
     setPdfLoading(true)
     try {
-      // PDF.js, a module, from this app's copy (server/vendor-libraries.js)
-      const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.mjs')))
-      pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.mjs'))
+      // PDF.js, a module, from this app's copy (server/vendor-libraries.js).
+      // Its legacy build: the modern one calls Map.prototype.getOrInsertComputed
+      // on every page it draws, which the desktop app's Electron and browsers
+      // older than 2025's don't have
+      const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.min.mjs')))
+      pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.worker.min.mjs'))
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
       const pages = []

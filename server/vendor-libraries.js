@@ -38,7 +38,9 @@ module.exports = {
         'dist/fonts/Sans/*', 'dist/fonts/Serif/*', 'dist/fonts/Serif Slanted/*',
         'dist/fonts/Typewriter/*', 'dist/fonts/Typewriter Slanted/*'],
     },
-    'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs'] },
+    // The app's PDF import uses the legacy build (see Toolbar.jsx); build/ is
+    // for links in people's own embeds to cdnjs's pdf.js
+    'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs', 'legacy/build/pdf.min.mjs', 'legacy/build/pdf.worker.min.mjs'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },
