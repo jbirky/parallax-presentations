@@ -44,6 +44,7 @@ const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', u
 // A click that puts elements in states, and shows or hides nothing
 const clickChangesStatesOnly = action => action.type === 'visibility' && !['show', 'hide', 'toggle'].some(k => action[k]?.length) && action.set?.length > 0
 import { libUrl, localizeLibraries } from '../utils/libraries'
+import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 
@@ -1520,6 +1521,15 @@ export function CanvasElement({ element, faded, unseen, isSelected, isEditing, r
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
             sandbox="allow-scripts"
             title="p5.js sketch"
+          />
+        )}
+        {element.type === 'model' && (
+          <iframe
+            key={element.id}
+            srcDoc={localizeLibraries(modelViewerHtml(element, { snapshotKey: snapshotKey(element.id, modelSnapshotContent(element)) }))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="3D model"
           />
         )}
         {element.type === 'code' && (

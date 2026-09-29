@@ -180,6 +180,7 @@ const ALLOWED_UPLOAD_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/vnd.ms-powerpoint',
   'font/woff', 'font/woff2', 'font/ttf', 'font/otf',
+  'model/stl', 'model/gltf-binary',
 ])
 
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([
@@ -188,6 +189,7 @@ const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   '.mp3', '.wav', '.flac', '.aac',
   '.pdf', '.pptx', '.ppt',
   '.woff', '.woff2', '.ttf', '.otf',
+  '.stl', '.glb',
 ])
 
 function validateUpload(req, res, next) {

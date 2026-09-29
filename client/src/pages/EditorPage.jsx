@@ -40,6 +40,7 @@ import KineticTextModal from '../components/KineticTextModal'
 import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
+import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -1613,6 +1614,27 @@ function draw() {
       muted: false,
       objectFit: 'contain',
       poster: '',
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [])
+
+  const addModelElement = useCallback((src, name) => {
+    const newEl = {
+      id: crypto.randomUUID(),
+      type: 'model',
+      x: 240, y: 90, width: 480, height: 360, zIndex: 2,
+      src,
+      name,
+      ...MODEL_DEFAULTS,
     }
     setPresentation(prev => {
       if (!prev) return prev
@@ -3750,6 +3772,13 @@ function draw() {
               } catch (err) { alert('Upload failed: ' + err.message) }
             }}
             onAddAudio={addAudioElement}
+            onAddModelUpload={async (file) => {
+              if (!isModelFile(file.name)) { alert('3D models can be STL or GLB files.'); return }
+              try {
+                const result = await api.uploadFileToPresentation(presentation.id, file)
+                if (result.url) addModelElement(result.url, file.name)
+              } catch (err) { alert('Upload failed: ' + err.message) }
+            }}
             onAddTable={addTableElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}

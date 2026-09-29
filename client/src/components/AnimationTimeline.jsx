@@ -44,6 +44,7 @@ function getElementLabel(el) {
   if (el.type === 'code') return `Code (${el.language || 'text'})`
   if (el.type === 'html') return 'HTML Embed'
   if (el.type === 'video') return 'Video'
+  if (el.type === 'model') return el.name || '3D Model'
   if (el.type === 'audio') return 'Audio'
   if (el.type === 'table') return 'Table'
   return el.type

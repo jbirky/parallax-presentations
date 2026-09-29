@@ -24,7 +24,12 @@ module.exports = {
     p5: { files: ['lib/p5.min.js'] },
     marked: { files: ['lib/marked.umd.js'], main: 'lib/marked.umd.js' },
     d3: { files: ['dist/d3.min.js'], main: 'dist/d3.min.js' },
-    three: { files: ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js'] },
+    // The loaders and environment are the 3D model viewer's (modelViewer.js)
+    three: {
+      files: ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js',
+        'examples/jsm/loaders/GLTFLoader.js', 'examples/jsm/loaders/STLLoader.js',
+        'examples/jsm/utils/BufferGeometryUtils.js', 'examples/jsm/environments/RoomEnvironment.js'],
+    },
     animejs: { files: ['lib/anime.min.js'] },
     // Its Computer Modern fonts also back the Computer Modern and Latin
     // Modern font choices

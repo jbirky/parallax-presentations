@@ -35,6 +35,7 @@ import {
   Puzzle,
   Clock,
   MousePointerClick,
+  Box,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -72,7 +73,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -403,6 +404,12 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <Music size={14} /> Upload Audio
               <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); try { const res = await api.uploadFile(f); if (res.url) onAddAudio?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } }} />
             </label>
+            {onAddModelUpload && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Box size={14} /> Upload 3D Model
+                <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); onAddModelUpload(f) }} />
+              </label>
+            )}
             <DocsLink page="media" onClose={() => setShowMediaMenu(false)} />
           </div>
         </>)}

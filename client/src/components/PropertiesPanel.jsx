@@ -11,6 +11,7 @@ import { SHAPES } from '../utils/shapeUtils'
 const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
 import { getCanvasHeight, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
+import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -159,6 +160,8 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
     </h3>
   )
   const videoFileRef = useRef(null)
+  const modelFileRef = useRef(null)
+  const [modelUploading, setModelUploading] = useState(false)
 
   async function handleVideoUpload(file) {
     if (!file || !presentation?.id) return
@@ -170,6 +173,20 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
       alert('Upload failed: ' + err.message)
     } finally {
       setVideoUploading(false)
+    }
+  }
+
+  async function handleModelUpload(file) {
+    if (!file || !presentation?.id) return
+    if (!isModelFile(file.name)) { alert('3D models can be STL or GLB files.'); return }
+    setModelUploading(true)
+    try {
+      const result = await api.uploadFileToPresentation(presentation.id, file)
+      if (result.url) onUpdateElement({ src: result.url, name: file.name })
+    } catch (err) {
+      alert('Upload failed: ' + err.message)
+    } finally {
+      setModelUploading(false)
     }
   }
 
@@ -1248,6 +1265,81 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {selectedElement.type === 'model' && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Model File</div>
+              <div title={selectedElement.src || ''} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedElement.name || (selectedElement.src ? selectedElement.src.split('/').pop() : 'None')}
+              </div>
+              <input ref={modelFileRef} type="file" accept=".stl,.glb"
+                style={{ display: 'none' }}
+                onChange={e => { if (e.target.files[0]) handleModelUpload(e.target.files[0]); e.target.value = '' }}
+              />
+              <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '5px 8px', marginBottom: 8, opacity: modelUploading ? 0.6 : 1 }}
+                disabled={modelUploading}
+                onClick={() => modelFileRef.current?.click()}
+              >
+                {modelUploading ? 'Uploading…' : '↑ Replace STL / GLB File'}
+              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>View</div>
+                  <select className="prop-input" value={selectedElement.view || MODEL_DEFAULTS.view} onChange={e => onUpdateElement({ view: e.target.value })} style={{ padding: '4px 6px', width: '100%' }}>
+                    {MODEL_VIEWS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Up Axis</div>
+                  <select className="prop-input" value={selectedElement.upAxis || 'auto'} onChange={e => onUpdateElement({ upAxis: e.target.value === 'auto' ? undefined : e.target.value })} style={{ padding: '4px 6px', width: '100%' }}
+                    title="Auto: Z for STL, Y for GLB">
+                    <option value="auto">Auto</option>
+                    <option value="y">Y</option>
+                    <option value="z">Z</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }} title="STL files without colors of their own">Color (STL)</div>
+                  <input type="color" value={selectedElement.color || MODEL_DEFAULTS.color}
+                    onChange={e => onUpdateElement({ color: e.target.value })}
+                    style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Background</div>
+                  <input type="color" value={selectedElement.background && selectedElement.background !== 'transparent' ? selectedElement.background : '#ffffff'}
+                    disabled={!selectedElement.background || selectedElement.background === 'transparent'}
+                    onChange={e => onUpdateElement({ background: e.target.value })}
+                    style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer', opacity: !selectedElement.background || selectedElement.background === 'transparent' ? 0.4 : 1 }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!selectedElement.background || selectedElement.background === 'transparent'}
+                    onChange={e => onUpdateElement({ background: e.target.checked ? 'transparent' : '#ffffff' })}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Transparent background</span>
+                </label>
+                {[
+                  ['autoRotate', 'Rotate on its own'],
+                  ['edges', 'Show edges'],
+                ].map(([key, label]) => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selectedElement[key]}
+                      onChange={e => onUpdateElement({ [key]: e.target.checked })}
+                      style={{ accentColor: 'var(--accent)' }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+                Drag to turn it, scroll to zoom, right-drag to pan: on the canvas once it's selected, and when presenting.
               </div>
             </div>
           )}

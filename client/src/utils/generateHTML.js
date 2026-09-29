@@ -7,6 +7,7 @@ import { getReferencedEntries } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
+import { modelViewerHtml } from './modelViewer'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
@@ -272,6 +273,10 @@ export function generateRevealHTML(presentation, opts = {}) {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+        }
+        if (el.type === 'model') {
+          const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
@@ -1306,6 +1311,11 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'p5') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
+        }
+        if (el.type === 'model') {
+          // Drawn for real, held still, so the page prints what the slide shows
+          const srcdoc = modelViewerHtml({ ...el, autoRotate: false }, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'

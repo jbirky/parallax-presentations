@@ -117,6 +117,27 @@ describe('the self-hosted version', () => {
     assert.equal(pdf.get('content-security-policy'), null) // PDF viewers won't open in a sandbox
   })
 
+  it('takes STL and GLB models, which a sandboxed deck can then read', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'Models' })).body
+    const upload = (name, bytes) => {
+      const form = new FormData()
+      form.append('file', new Blob([bytes]), name)
+      return fetch(`${base}/api/presentations/${id}/upload`, { method: 'POST', body: form })
+    }
+    const glb = Buffer.from('glTF\x02\x00\x00\x00', 'latin1')
+    for (const [name, bytes] of [['part.STL', 'solid part\nendsolid part\n'], ['assembly.glb', glb]]) {
+      const res = await upload(name, bytes)
+      assert.equal(res.status, 200, name)
+      const { url } = await res.json()
+      const file = await fetch(base + url, { headers: { Origin: 'null' } })
+      assert.equal(file.status, 200)
+      assert.equal(file.headers.get('access-control-allow-origin'), '*')
+      assert.deepEqual(Buffer.from(await file.arrayBuffer()), Buffer.from(bytes))
+    }
+    // CAD formats the viewer can't read yet
+    assert.equal((await upload('part.step', 'ISO-10303-21;')).status, 400)
+  })
+
   it('answers only this computer, and no other site’s pages', async () => {
     const http = require('http')
     // A raw request, since fetch won't set Host
