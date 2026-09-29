@@ -19,6 +19,24 @@ import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBa
 // where the deck can't reach into the embed, as in a sandbox
 const EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});"
 
+// Graphs and 3D models draw at the size the deck shows them, not their size
+// on the slide: Reveal enlarges slides with a transform they can't see
+const EMBED_SCALE_SCRIPT = `
+    (function() {
+      function send(frame) {
+        var s = Reveal.getScale && Reveal.getScale();
+        if (!(s > 0)) return;
+        try { frame.contentWindow.postMessage({ source: 'parallax-deck', type: 'scale', scale: s }, '*'); } catch (e) {}
+      }
+      function sendAll() { document.querySelectorAll('iframe[data-deck-scale]').forEach(send); }
+      document.querySelectorAll('iframe[data-deck-scale]').forEach(function(frame) {
+        frame.addEventListener('load', function() { send(frame); });
+      });
+      Reveal.on('ready', sendAll);
+      Reveal.on('resize', sendAll);
+    })();
+`
+
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
@@ -278,11 +296,11 @@ export function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'graph') {
           const srcdoc = graphPageHtml(el).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
           const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
@@ -953,7 +971,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1325,7 +1343,7 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'model') {
           // Drawn for real, held still, so the page prints what the slide shows
-          const srcdoc = modelViewerHtml({ ...el, autoRotate: false }, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = modelViewerHtml({ ...el, autoRotate: false }, { src: absoluteSrc(el.src), print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'code') {

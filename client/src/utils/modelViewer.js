@@ -46,7 +46,7 @@ function scriptJson(value) {
 // `src` is the file's URL as the page should fetch it (made absolute by the
 // caller where the page won't resolve /uploads/…). `snapshotKey` (editor
 // only) asks for a still to be sent to the slide panel once the model is in.
-export function modelViewerHtml(el, { src = el.src, snapshotKey = null } = {}) {
+export function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false } = {}) {
   const options = {
     src: src || '',
     color: el.color || MODEL_DEFAULTS.color,
@@ -58,6 +58,7 @@ export function modelViewerHtml(el, { src = el.src, snapshotKey = null } = {}) {
     autoRotate: !!el.autoRotate,
     edges: !!el.edges,
     snapshotKey,
+    print,
   }
   const imports = {
     three: libUrl('three', 'build/three.module.js'),
@@ -84,7 +85,11 @@ try {
   fail('3D needs WebGL, which this browser has turned off.');
   throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// How much the deck or editor enlarges this frame, which it can't see (a CSS
+// transform): it draws at that size to stay sharp, at least 2 in a PDF
+let shownScale = 1;
+const pixelRatio = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (O.print ? Math.max(shownScale, 2) : shownScale)));
+renderer.setPixelRatio(pixelRatio());
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -141,7 +146,13 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 window.addEventListener('message', e => {
-  if (e.source === window.parent && e.data === 'parallax-resize') resize();
+  if (e.source !== window.parent) return;
+  if (e.data === 'parallax-resize') resize();
+  if (e.data && e.data.type === 'scale' && typeof e.data.scale === 'number' && e.data.scale > 0) {
+    shownScale = Math.min(8, Math.max(0.1, e.data.scale));
+    renderer.setPixelRatio(pixelRatio());
+    resize();
+  }
 });
 resize();
 

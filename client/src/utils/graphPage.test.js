@@ -84,6 +84,13 @@ describe('graphs in decks', () => {
     expect(html).toContain('<span class="fragment" data-fragment-index="3" data-graph-step="g1" data-graph-step-at="3"')
   })
 
+  it('are told how much the deck enlarges them, to draw sharp', () => {
+    const html = generateRevealHTML(deck([graph([{ id: 'a', text: 'y = x' }])]))
+    expect(html).toMatch(/<iframe srcdoc="[^"]*" data-graph-id="g1" data-deck-scale /)
+    expect(html).toContain("type: 'scale', scale: s")
+    expect(generateRevealHTML(deck([{ id: 't', type: 'text', x: 0, y: 0, width: 10, height: 10, content: 'Hi' }]))).not.toContain("type: 'scale', scale: s")
+  })
+
   it('take no click action, since they take their own clicks', () => {
     const html = generateRevealHTML(deck([graph([{ id: 'a', text: 'y = x' }], { clickAction: { type: 'next' } })]))
     expect(html).not.toContain('data-action="next"')

@@ -264,7 +264,7 @@ var MODEL_DEFAULTS = {
 function scriptJson(value) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
-function modelViewerHtml(el, { src = el.src, snapshotKey = null } = {}) {
+function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false } = {}) {
   const options = {
     src: src || "",
     color: el.color || MODEL_DEFAULTS.color,
@@ -275,7 +275,8 @@ function modelViewerHtml(el, { src = el.src, snapshotKey = null } = {}) {
     up: el.upAxis === "y" || el.upAxis === "z" ? el.upAxis : "auto",
     autoRotate: !!el.autoRotate,
     edges: !!el.edges,
-    snapshotKey
+    snapshotKey,
+    print
   };
   const imports = {
     three: (0, import_libraries.libUrl)("three", "build/three.module.js")
@@ -302,7 +303,11 @@ try {
   fail('3D needs WebGL, which this browser has turned off.');
   throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// How much the deck or editor enlarges this frame, which it can't see (a CSS
+// transform): it draws at that size to stay sharp, at least 2 in a PDF
+let shownScale = 1;
+const pixelRatio = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (O.print ? Math.max(shownScale, 2) : shownScale)));
+renderer.setPixelRatio(pixelRatio());
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -359,7 +364,13 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 window.addEventListener('message', e => {
-  if (e.source === window.parent && e.data === 'parallax-resize') resize();
+  if (e.source !== window.parent) return;
+  if (e.data === 'parallax-resize') resize();
+  if (e.data && e.data.type === 'scale' && typeof e.data.scale === 'number' && e.data.scale > 0) {
+    shownScale = Math.min(8, Math.max(0.1, e.data.scale));
+    renderer.setPixelRatio(pixelRatio());
+    resize();
+  }
 });
 resize();
 
@@ -1210,6 +1221,9 @@ function graphRuntime(P, config) {
   let playing = {};
   let snapshotSent = false;
   let frame = 0;
+  let shownScale = 1;
+  const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)));
+  const clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const copyView = (v) => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax });
   const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax"].every((k) => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
   function setConfig(next, keepState) {
@@ -1416,8 +1430,9 @@ function graphRuntime(P, config) {
   }
   function explicitRuns(f, E, axis) {
     const horiz = axis === "y";
-    const n = Math.ceil(horiz ? W : H);
-    const toWorld = horiz ? wx : wy;
+    const k = Math.min(2, density());
+    const n = Math.ceil((horiz ? W : H) * k);
+    const toWorld = horiz ? (px) => wx(px / k) : (px) => wy(px / k);
     const toPx = horiz ? sy : sx;
     const key = horiz ? "x" : "y";
     const at = (u) => {
@@ -1441,7 +1456,7 @@ function graphRuntime(P, config) {
       if (isFinite(pv) && Math.abs(toPx(val) - toPx(pv)) > 24) {
         let a = pu, b = u, fa = pv, fb = val, broken = false;
         const left = [], right = [];
-        for (let k = 0; k < 30; k++) {
+        for (let k2 = 0; k2 < 30; k2++) {
           const m = (a + b) / 2;
           const fm = at(m);
           if (!isFinite(fm)) {
@@ -1508,7 +1523,7 @@ function graphRuntime(P, config) {
     return runs;
   }
   function contour(F, E, cellPx) {
-    const cell = cellPx || 4;
+    const cell = cellPx || clamp2(6 / density(), 2, 4);
     const nx = Math.ceil(W / cell) + 1, ny = Math.ceil(H / cell) + 1;
     const vals = new Float64Array(nx * ny);
     for (let j = 0; j < ny; j++) {
@@ -1654,7 +1669,7 @@ function graphRuntime(P, config) {
       strokeRuns(runs, Object.assign({}, e, { style: it.strict ? "dashed" : e.style }));
       return;
     }
-    const cell = 3;
+    const cell = clamp2(4.5 / density(), 1.5, 3);
     fillStyle(e);
     ctx.beginPath();
     for (let py = 0; py < H; py += cell) {
@@ -1981,7 +1996,7 @@ function graphRuntime(P, config) {
     if (!w || !h) return;
     W = w;
     H = h;
-    const d = Math.min(window.devicePixelRatio || 1, 3);
+    const d = density();
     canvas.width = Math.round(w * d);
     canvas.height = Math.round(h * d);
     canvas.style.width = w + "px";
@@ -2008,6 +2023,11 @@ function graphRuntime(P, config) {
       return;
     }
     if (!data || typeof data !== "object") return;
+    if (data.type === "scale" && typeof data.scale === "number" && data.scale > 0) {
+      shownScale = clamp2(data.scale, 0.1, 8);
+      resize();
+      return;
+    }
     if (data.source === "parallax-deck" && data.type === "graph-step" && typeof data.step === "number" && !C.showAll) {
       step = data.step;
       request();
@@ -3218,6 +3238,21 @@ var CLICK_ACTION_SCRIPT = `
 
 // client/src/utils/generateHTML.js
 var EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});";
+var EMBED_SCALE_SCRIPT = `
+    (function() {
+      function send(frame) {
+        var s = Reveal.getScale && Reveal.getScale();
+        if (!(s > 0)) return;
+        try { frame.contentWindow.postMessage({ source: 'parallax-deck', type: 'scale', scale: s }, '*'); } catch (e) {}
+      }
+      function sendAll() { document.querySelectorAll('iframe[data-deck-scale]').forEach(send); }
+      document.querySelectorAll('iframe[data-deck-scale]').forEach(function(frame) {
+        frame.addEventListener('load', function() { send(frame); });
+      });
+      Reveal.on('ready', sendAll);
+      Reveal.on('resize', sendAll);
+    })();
+`;
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
@@ -3407,11 +3442,11 @@ function generateRevealHTML(presentation, opts = {}) {
       if (el.type === "graph") {
         const srcdoc = graphPageHtml(el).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         const graphId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`;
       }
       if (el.type === "model") {
         const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`;
       }
       if (el.type === "p5") {
         const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries2.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
@@ -4095,7 +4130,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

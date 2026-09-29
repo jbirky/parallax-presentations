@@ -42,6 +42,13 @@ export function graphRuntime(P, config) {
   let playing = {} // name -> direction
   let snapshotSent = false
   let frame = 0
+  // How much the deck, editor or preview enlarges this frame, which it
+  // can't see (a CSS transform): it draws at that size to stay sharp
+  let shownScale = 1
+  // Canvas pixels per CSS pixel: the screen's density times that, and at
+  // least 3 in a PDF; at most 4, which covers a 4K screen at density 1
+  const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)))
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 
   const copyView = v => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax })
   const sameView = (a, b) => ['xMin', 'xMax', 'yMin', 'yMax'].every(k => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])))
@@ -244,8 +251,10 @@ export function graphRuntime(P, config) {
   // it doesn't), and the halving's points carry each side up to the break.
   function explicitRuns(f, E, axis) {
     const horiz = axis === 'y'
-    const n = Math.ceil(horiz ? W : H)
-    const toWorld = horiz ? wx : wy
+    // A sample a screen pixel, up to two a CSS pixel
+    const k = Math.min(2, density())
+    const n = Math.ceil((horiz ? W : H) * k)
+    const toWorld = horiz ? px => wx(px / k) : px => wy(px / k)
     const toPx = horiz ? sy : sx
     const key = horiz ? 'x' : 'y'
     const at = u => { E[key] = u; return f(E) }
@@ -309,7 +318,8 @@ export function graphRuntime(P, config) {
   // Where F(x, y) = 0, by marching squares, joined into lines. A sign change
   // across a pole (1/x = y at x = 0) isn't a crossing.
   function contour(F, E, cellPx) {
-    const cell = cellPx || 4
+    // Cells about 6 screen pixels across, 2 to 4 CSS pixels
+    const cell = cellPx || clamp(6 / density(), 2, 4)
     const nx = Math.ceil(W / cell) + 1, ny = Math.ceil(H / cell) + 1
     const vals = new Float64Array(nx * ny)
     for (let j = 0; j < ny; j++) {
@@ -418,7 +428,7 @@ export function graphRuntime(P, config) {
       return
     }
     // Anything else: every cell where all the parts hold, then each boundary
-    const cell = 3
+    const cell = clamp(4.5 / density(), 1.5, 3)
     fillStyle(e)
     ctx.beginPath()
     for (let py = 0; py < H; py += cell) {
@@ -722,7 +732,7 @@ export function graphRuntime(P, config) {
     const w = window.innerWidth, h = window.innerHeight
     if (!w || !h) return
     W = w; H = h
-    const d = Math.min(window.devicePixelRatio || 1, 3)
+    const d = density()
     canvas.width = Math.round(w * d)
     canvas.height = Math.round(h * d)
     canvas.style.width = w + 'px'
@@ -745,6 +755,11 @@ export function graphRuntime(P, config) {
     const data = ev.data
     if (data === 'parallax-resize') { resize(); return }
     if (!data || typeof data !== 'object') return
+    if (data.type === 'scale' && typeof data.scale === 'number' && data.scale > 0) {
+      shownScale = clamp(data.scale, 0.1, 8)
+      resize()
+      return
+    }
     if (data.source === 'parallax-deck' && data.type === 'graph-step' && typeof data.step === 'number' && !C.showAll) {
       step = data.step
       request()

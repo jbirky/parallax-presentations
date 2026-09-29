@@ -224,6 +224,17 @@ function applyCropHandle(handle, startCrop, dx, dy, elW, elH) {
   return { x, y, w, h }
 }
 
+// A graph's or 3D model's frame, told how much the canvas enlarges it (a
+// transform it can't see), so it draws sharp at that size
+function ScaledFrame({ scale, ...props }) {
+  const ref = useRef(null)
+  const send = useCallback(() => {
+    try { ref.current?.contentWindow?.postMessage({ source: 'parallax-editor', type: 'scale', scale }, '*') } catch { /* not loaded yet */ }
+  }, [scale])
+  useEffect(() => { send() }, [send])
+  return <iframe ref={ref} onLoad={send} {...props} />
+}
+
 function buildP5Srcdoc(userCode, w, h, snapKey) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style>
@@ -1051,6 +1062,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           <CanvasElement
             key={element.id}
             element={element}
+            canvasScale={scale}
             faded={!!fadedIds?.has(element.id)}
             unseen={!!unseenIds?.has(element.id)}
             isSelected={selectedElementIds.includes(element.id)}
@@ -1327,7 +1339,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   )
 }
 
-export function CanvasElement({ element, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1528,8 +1540,9 @@ export function CanvasElement({ element, faded, unseen, isSelected, isEditing, r
         {element.type === 'graph' && (
           // Edited in its own window (double-click), so the canvas never takes
           // its clicks: dragging moves it
-          <iframe
+          <ScaledFrame
             key={element.id}
+            scale={canvasScale}
             srcDoc={graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true })}
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
             sandbox="allow-scripts"
@@ -1537,8 +1550,9 @@ export function CanvasElement({ element, faded, unseen, isSelected, isEditing, r
           />
         )}
         {element.type === 'model' && (
-          <iframe
+          <ScaledFrame
             key={element.id}
+            scale={canvasScale}
             srcDoc={localizeLibraries(modelViewerHtml(element, { snapshotKey: snapshotKey(element.id, modelSnapshotContent(element)) }))}
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
             sandbox="allow-scripts"

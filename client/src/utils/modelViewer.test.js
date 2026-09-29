@@ -44,7 +44,7 @@ describe('3D model viewer', () => {
   it('writes the element’s settings into the page, with defaults', () => {
     expect(options(modelViewerHtml(model))).toEqual({
       src: '/uploads/p1/part.stl', color: '#b8c2cc', background: 'transparent', view: 'iso',
-      up: 'auto', autoRotate: false, edges: false, snapshotKey: null,
+      up: 'auto', autoRotate: false, edges: false, snapshotKey: null, print: false,
     })
     const o = options(modelViewerHtml({ ...model, color: '#ff0000', background: '#000000', view: 'top', upAxis: 'y', edges: true },
       { src: 'http://localhost:3000/uploads/p1/part.stl', snapshotKey: 'm1:abc' }))
@@ -77,6 +77,9 @@ describe('3D model viewer', () => {
     expect(options(srcdoc).src).toBe('http://localhost:3000/uploads/p1/part.stl')
     // No thumbnail messages from presented decks
     expect(options(srcdoc).snapshotKey).toBe(null)
+    // Told the deck's scale, to draw sharp when it's enlarged
+    expect(html).toMatch(/<iframe srcdoc="[^"]*" data-deck-scale [^>]*title="3D model"/)
+    expect(html).toContain("type: 'scale', scale: s")
   })
 
   it('takes no click action, since it takes its own clicks', () => {

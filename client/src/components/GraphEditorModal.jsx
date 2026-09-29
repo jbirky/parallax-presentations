@@ -134,6 +134,10 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
     const win = frameRef.current?.contentWindow
     if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true }) }, '*')
   }, [graph])
+  const onPreviewLoad = () => {
+    sendConfig()
+    frameRef.current?.contentWindow?.postMessage({ source: 'parallax-graph-editor', type: 'scale', scale: fitScale }, '*')
+  }
   useEffect(() => { sendConfig() }, [sendConfig])
 
   useEffect(() => {
@@ -162,9 +166,14 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const aspect = (size?.w || 560) / (size?.h || 400)
-  const fit = Math.min((box.w - 24) / aspect, box.h - 24)
-  const frameW = Math.max(120, Math.floor(fit * aspect)), frameH = Math.max(90, Math.floor(fit))
+  // Drawn at the element's own size and scaled to fit, so it lays out as the
+  // slide does; told the scale so it stays sharp
+  const elW = size?.w || 560, elH = size?.h || 400
+  const aspect = elW / elH
+  const fitScale = Math.max(0.1, Math.min((box.w - 24) / elW, (box.h - 24) / elH))
+  useEffect(() => {
+    frameRef.current?.contentWindow?.postMessage({ source: 'parallax-graph-editor', type: 'scale', scale: fitScale }, '*')
+  }, [fitScale])
 
   const view = graph.view
   const equal = graph.equalScale !== false
@@ -354,14 +363,16 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
           {/* Preview and the graph's settings */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div ref={previewBox} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary, #111)' }}>
-              <iframe
-                ref={frameRef}
-                title="Graph preview"
-                sandbox="allow-scripts"
-                srcDoc={previewHtml}
-                onLoad={sendConfig}
-                style={{ width: frameW, height: frameH, border: '1px solid var(--border, #333)', borderRadius: 4, background: slideBg || (graph.theme === 'dark' ? '#1e1e2e' : '#ffffff'), display: 'block' }}
-              />
+              <div style={{ width: Math.round(elW * fitScale), height: Math.round(elH * fitScale), position: 'relative', outline: '1px solid var(--border, #333)', background: slideBg || (graph.theme === 'dark' ? '#1e1e2e' : '#ffffff') }}>
+                <iframe
+                  ref={frameRef}
+                  title="Graph preview"
+                  sandbox="allow-scripts"
+                  srcDoc={previewHtml}
+                  onLoad={onPreviewLoad}
+                  style={{ position: 'absolute', left: 0, top: 0, width: elW, height: elH, border: 'none', transform: `scale(${fitScale})`, transformOrigin: 'top left', background: 'transparent', display: 'block' }}
+                />
+              </div>
             </div>
             <div style={{ borderTop: '1px solid var(--border, #333)', padding: '10px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 14, rowGap: 8, alignItems: 'center' }}>
               <span style={smallLabel}>View</span>
