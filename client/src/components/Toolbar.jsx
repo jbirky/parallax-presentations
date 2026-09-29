@@ -78,6 +78,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
+  const [showModelMenu, setShowModelMenu] = useState(false)
   const [showShapeMenu, setShowShapeMenu] = useState(false)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showInteractiveMenu, setShowInteractiveMenu] = useState(false)
@@ -404,16 +405,29 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <Music size={14} /> Upload Audio
               <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); try { const res = await api.uploadFile(f); if (res.url) onAddAudio?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } }} />
             </label>
-            {onAddModelUpload && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Box size={14} /> Upload 3D Model
-                <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); onAddModelUpload(f) }} />
-              </label>
-            )}
             <DocsLink page="media" onClose={() => setShowMediaMenu(false)} />
           </div>
         </>)}
       </div>
+
+      {/* 3D model dropdown */}
+      {onAddModelUpload && (
+        <div style={{ position: 'relative' }}>
+          <button className="btn-icon" onClick={() => setShowModelMenu(v => !v)} title="3D Model" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+            <Box size={14} /> 3D Model <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+          </button>
+          {showModelMenu && (<>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowModelMenu(false)} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Box size={14} /> Upload STL / GLB
+                <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowModelMenu(false); onAddModelUpload(f) }} />
+              </label>
+              <DocsLink page="media" onClose={() => setShowModelMenu(false)} />
+            </div>
+          </>)}
+        </div>
+      )}
 
       <button className="btn-icon" title="Insert Timeline" onClick={onAddTimeline} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
         <Clock size={14} /> Timeline

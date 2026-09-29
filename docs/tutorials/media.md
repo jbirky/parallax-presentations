@@ -41,7 +41,7 @@ Audio elements support the same controls, autoplay, loop, and muted options as v
 
 Show a part or an assembly that you and your audience can turn around.
 
-1. Open the **Media** menu and choose **Upload 3D Model**.
+1. Open the **3D Model** menu in the toolbar and choose **Upload STL / GLB**.
 2. Pick an **STL** or **GLB** file. Most CAD programs can export one of these (SolidWorks, Fusion, Onshape, FreeCAD, Blender).
 3. The model appears on the slide, framed to fit.
 
