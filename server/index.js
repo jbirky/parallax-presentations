@@ -1327,9 +1327,12 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     fs.moveSync(req.file.path, pptxPath)
     const started = Date.now()
 
-    // Convert PPTX → PDF
+    // Convert PPTX → PDF, with a LibreOffice profile of its own: runs share
+    // HOME, and a second LibreOffice on the same profile hands its file to the
+    // first and exits without converting it (two imports at once)
+    const profile = require('url').pathToFileURL(path.join(tmpDir, 'lo-profile')).href
     await runTool('libreoffice', [
-      '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpDir, pptxPath
+      `-env:UserInstallation=${profile}`, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpDir, pptxPath
     ], { timeout: 120000 })
 
     const pdfPath = path.join(tmpDir, 'presentation.pdf')
