@@ -8,6 +8,7 @@ import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
 import { modelViewerHtml } from './modelViewer'
+import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
@@ -273,6 +274,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+        }
+        if (el.type === 'graph') {
+          const srcdoc = graphPageHtml(el).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
           const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -567,7 +573,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -947,7 +953,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1311,6 +1317,11 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'p5') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
+        }
+        if (el.type === 'graph') {
+          // Finished: every expression, no controls
+          const srcdoc = graphPageHtml(el, { print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
           // Drawn for real, held still, so the page prints what the slide shows

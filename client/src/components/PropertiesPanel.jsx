@@ -151,7 +151,7 @@ function CopyTikzButton({ tikz }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -1265,6 +1265,30 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {selectedElement.type === 'graph' && (
+            <div style={{ marginBottom: 10 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px', marginBottom: 8 }} onClick={() => onEditGraph?.()}>
+                Edit Graph…
+              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {[
+                  ['showSliders', 'Sliders on the slide', true],
+                  ['lockView', 'Lock panning and zooming', false],
+                ].map(([key, label, dflt]) => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedElement[key] === undefined ? dflt : !!selectedElement[key]}
+                      onChange={e => onUpdateElement({ [key]: e.target.checked })}
+                      style={{ accentColor: 'var(--accent)' }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+                When presenting: drag to move around, scroll to zoom, hover a curve to read its values.
               </div>
             </div>
           )}

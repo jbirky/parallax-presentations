@@ -41,6 +41,8 @@ import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
+import GraphEditorModal from '../components/GraphEditorModal'
+import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -74,6 +76,9 @@ import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
 import { libUrl, localizeLibraries } from '../utils/libraries'
+
+// A new graph's size on the slide
+const GRAPH_SIZE = { w: 560, h: 400 }
 
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -396,6 +401,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showBibliographyModal, setShowBibliographyModal] = useState(false)
   const [showDiagramModal, setShowDiagramModal] = useState(false)
   const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
+  const [graphEditor, setGraphEditor] = useState(null) // { elementId (null for a new graph), graph, size, slideBg }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -684,7 +690,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1295,6 +1301,43 @@ function draw() {
     if (!element || element.type !== 'tikz' || heldByOther(elementId)) return
     setTikzEditor({ elementId, state: element.editorState || null, dark: slideIsDark() })
   }, [presentation, slideIsDark])
+
+  // The slide's color behind the graph editor's preview
+  const slideBackdrop = useCallback(() => {
+    const bg = presentation?.slides[currentSlideIndexRef.current]?.background
+    if (bg?.type === 'color' && bg.color) return bg.color
+    return slideIsDark() ? '#1e1e2e' : '#ffffff'
+  }, [presentation, slideIsDark])
+
+  const addGraph = useCallback(() => {
+    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openGraphEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'graph' || heldByOther(elementId)) return
+    const graph = {}
+    for (const key of GRAPH_FIELDS) if (element[key] !== undefined) graph[key] = element[key]
+    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveGraph = useCallback((graph) => {
+    const elementId = graphEditor?.elementId
+    if (elementId) {
+      updateElement(elementId, graph)
+    } else {
+      const newEl = {
+        id: crypto.randomUUID(), type: 'graph', x: Math.round((slideW - GRAPH_SIZE.w) / 2), y: Math.round((slideH - GRAPH_SIZE.h) / 2),
+        width: GRAPH_SIZE.w, height: GRAPH_SIZE.h, zIndex: 2, ...graph,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setGraphEditor(null)
+  }, [graphEditor, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -3755,6 +3798,7 @@ function draw() {
             onAddQuiz={() => addStatePreset(buildQuiz, 1)}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
+            onAddGraph={addGraph}
             onAddDiagram={() => setShowDiagramModal(true)}
             onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
             onAddP5={addP5Element}
@@ -3964,6 +4008,7 @@ function draw() {
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
               onOpenTikzEditor={openTikzEditor}
+              onOpenGraphEditor={openGraphEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4001,6 +4046,7 @@ function draw() {
           onEditCode={() => selectedElementId && openCodeEditor(selectedElementId)}
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
           onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
+          onEditGraph={() => selectedElementId && openGraphEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4347,6 +4393,17 @@ function draw() {
             setShowDiagramModal(false)
           }}
           onClose={() => setShowDiagramModal(false)}
+        />
+      )}
+
+      {graphEditor && (
+        <GraphEditorModal
+          initial={graphEditor.graph}
+          size={graphEditor.size}
+          slideBg={graphEditor.slideBg}
+          isNew={!graphEditor.elementId}
+          onSave={saveGraph}
+          onClose={() => setGraphEditor(null)}
         />
       )}
 

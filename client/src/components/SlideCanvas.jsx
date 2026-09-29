@@ -45,6 +45,7 @@ const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', u
 const clickChangesStatesOnly = action => action.type === 'visibility' && !['show', 'hide', 'toggle'].some(k => action[k]?.length) && action.set?.length > 0
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
+import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 
@@ -241,7 +242,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller than the screen, SLIDE_H;
@@ -1076,6 +1077,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               else if (element.type === 'code') onOpenCodeEditor?.(element.id)
               else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
               else if (element.type === 'tikz') onOpenTikzEditor?.(element.id)
+              else if (element.type === 'graph') onOpenGraphEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
@@ -1521,6 +1523,17 @@ export function CanvasElement({ element, faded, unseen, isSelected, isEditing, r
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
             sandbox="allow-scripts"
             title="p5.js sketch"
+          />
+        )}
+        {element.type === 'graph' && (
+          // Edited in its own window (double-click), so the canvas never takes
+          // its clicks: dragging moves it
+          <iframe
+            key={element.id}
+            srcDoc={graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true })}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
+            sandbox="allow-scripts"
+            title="Graph"
           />
         )}
         {element.type === 'model' && (

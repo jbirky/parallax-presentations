@@ -1,0 +1,425 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Jessica Birky
+
+// The graph editor: expressions on the left, typed as in Desmos, and the
+// graph on the right as the slide will show it. The preview is the slide's
+// own page (graphPage.js), sent each change; panning it or moving a slider
+// there changes the graph that's saved.
+
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { Eye, EyeOff, X, Plus, SlidersHorizontal, Play } from 'lucide-react'
+import { createMathParser } from '../utils/graphParser'
+import { graphPageHtml, graphConfig, GRAPH_COLORS, DEFAULT_VIEW, newExpressionId } from '../utils/graphPage'
+
+const EXAMPLES = [
+  ['Function', 'y = x^2 - 2'],
+  ['With a slider', 'y = a sin(bx)'],
+  ['Circle', 'x^2 + y^2 = 9'],
+  ['Shaded region', 'y < 0.5x + 1'],
+  ['Parametric curve', '(3cos t, 2sin t)'],
+  ['Polar curve', 'r = 2 + 2cos θ'],
+  ['Point', '(2, 3)'],
+  ['Draggable point', '(p, q)'],
+  ['Piecewise', 'y = {x < 0: -x, x^2}'],
+  ['Restricted domain', 'y = √x {0 < x < 4}'],
+  ['Define a function', 'f(x) = e^(-x^2)'],
+]
+
+const SLIDER_DEFAULTS = { min: -10, max: 10, step: 0.1 }
+
+const inputStyle = {
+  padding: '4px 6px', background: 'var(--bg-hover, #252530)', border: '1px solid var(--border, #333)', borderRadius: 4,
+  color: 'var(--text-primary, #fff)', fontSize: 12, boxSizing: 'border-box',
+}
+const smallLabel = { fontSize: 11, color: 'var(--text-muted, #888)' }
+const iconButton = {
+  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted, #888)', padding: 3, display: 'flex', alignItems: 'center',
+}
+
+function fmtNumber(v) {
+  if (!isFinite(v)) return ''
+  return String(parseFloat(Number(v).toPrecision(6)))
+}
+
+// A number typed as an expression: 2π, -1/2, sqrt(2)
+function useConstant(P) {
+  return useCallback(text => {
+    try {
+      const st = P.parseStatement(String(text), new Set())
+      if (st.ops.length) return NaN
+      return P.compile(st.parts[0], null, {})({}, [])
+    } catch {
+      return NaN
+    }
+  }, [P])
+}
+
+function NumberField({ value, onCommit, width = 60, title, constant, placeholder }) {
+  const [text, setText] = useState(value === undefined || value === null || value === '' ? '' : fmtNumber(value))
+  useEffect(() => { setText(value === undefined || value === null || value === '' ? '' : fmtNumber(value)) }, [value])
+  const commit = () => {
+    if (text.trim() === '') { onCommit(undefined); return }
+    const v = constant(text)
+    if (isFinite(v)) onCommit(v)
+    else setText(value === undefined ? '' : fmtNumber(value))
+  }
+  return (
+    <input value={text} title={title} placeholder={placeholder} onChange={e => setText(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+      style={{ ...inputStyle, width }} />
+  )
+}
+
+export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave, onClose }) {
+  const P = useMemo(() => createMathParser(), [])
+  const constant = useConstant(P)
+  const [graph, setGraph] = useState(() => ({ ...initial, view: { ...DEFAULT_VIEW, ...(initial.view || {}) } }))
+  const [openOptions, setOpenOptions] = useState(null)
+  const [focusId, setFocusId] = useState(null)
+  const inputs = useRef({})
+  const frameRef = useRef(null)
+  const previewBox = useRef(null)
+  const [box, setBox] = useState({ w: 640, h: 420 })
+
+  const expressions = graph.expressions || []
+  const analysis = useMemo(() => P.analyze(expressions), [P, expressions])
+  const byId = useMemo(() => Object.fromEntries(analysis.items.map(it => [it.id, it])), [analysis])
+  const palette = GRAPH_COLORS[graph.theme === 'dark' ? 'dark' : 'light']
+
+  const update = patch => setGraph(g => ({ ...g, ...patch }))
+  const setExpressions = fn => setGraph(g => ({ ...g, expressions: fn(g.expressions || []) }))
+  const updateExpr = (id, patch) => setExpressions(list => list.map(e => (e.id === id ? { ...e, ...patch } : e)))
+
+  const nextColor = list => palette[list.filter(e => e.color).length % palette.length]
+  const addExpression = (afterId, text = '', extra = {}) => {
+    const id = newExpressionId()
+    setExpressions(list => {
+      const e = { id, text, color: nextColor(list), ...extra }
+      const i = afterId ? list.findIndex(x => x.id === afterId) : -1
+      return i < 0 ? [...list, e] : [...list.slice(0, i + 1), e, ...list.slice(i + 1)]
+    })
+    setFocusId(id)
+    return id
+  }
+  const removeExpression = id => {
+    const i = expressions.findIndex(e => e.id === id)
+    setExpressions(list => list.filter(e => e.id !== id))
+    const prev = expressions[i - 1] || expressions[i + 1]
+    if (prev) setFocusId(prev.id)
+  }
+  const addSliders = (afterId, names) => {
+    let after = afterId
+    setExpressions(list => {
+      const out = [...list]
+      for (const name of names) {
+        if (out.some(e => byId[e.id]?.kind === 'param' && byId[e.id]?.name === name)) continue
+        const e = { id: newExpressionId(), text: `${name} = 1`, slider: { ...SLIDER_DEFAULTS } }
+        const i = out.findIndex(x => x.id === after)
+        out.splice(i < 0 ? out.length : i + 1, 0, e)
+        after = e.id
+      }
+      return out
+    })
+  }
+
+  useEffect(() => {
+    if (!focusId) return
+    const el = inputs.current[focusId]
+    if (el) { el.focus(); setFocusId(null) }
+  }, [focusId, expressions])
+
+  // The preview: the slide's page, loaded once, then sent each change
+  const previewHtml = useMemo(() => graphPageHtml(initial, { editor: true }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const sendConfig = useCallback(() => {
+    const win = frameRef.current?.contentWindow
+    if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true }) }, '*')
+  }, [graph])
+  useEffect(() => { sendConfig() }, [sendConfig])
+
+  useEffect(() => {
+    const onMessage = e => {
+      if (e.source !== frameRef.current?.contentWindow) return
+      const d = e.data
+      if (!d || d.source !== 'parallax-graph') return
+      if (d.type === 'view' && d.view) update({ view: d.view })
+      if (d.type === 'param' && typeof d.value === 'number') {
+        setExpressions(list => list.map(ex => {
+          const it = byId[ex.id]
+          if (!it || it.kind !== 'param' || it.name !== d.name) return ex
+          return { ...ex, text: `${ex.text.split('=')[0].trim()} = ${fmtNumber(d.value)}` }
+        }))
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [byId])
+
+  // The preview keeps the element's shape, as large as its box allows
+  useEffect(() => {
+    const el = previewBox.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setBox({ w: el.clientWidth, h: el.clientHeight }))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const aspect = (size?.w || 560) / (size?.h || 400)
+  const fit = Math.min((box.w - 24) / aspect, box.h - 24)
+  const frameW = Math.max(120, Math.floor(fit * aspect)), frameH = Math.max(90, Math.floor(fit))
+
+  const view = graph.view
+  const equal = graph.equalScale !== false
+  const shownY = equal
+    ? (() => { const half = (view.xMax - view.xMin) / aspect / 2, mid = (view.yMin + view.yMax) / 2; return { yMin: mid - half, yMax: mid + half } })()
+    : { yMin: view.yMin, yMax: view.yMax }
+  const setView = patch => {
+    const next = { ...view, ...patch }
+    if (next.xMax > next.xMin && next.yMax > next.yMin) update({ view: next })
+  }
+
+  const onKeyDown = (e, ex, index) => {
+    if (e.key === 'Enter') { e.preventDefault(); addExpression(ex.id) }
+    else if (e.key === 'Backspace' && !ex.text && expressions.length > 1) { e.preventDefault(); removeExpression(ex.id) }
+    else if (e.key === 'ArrowUp' && index > 0) { e.preventDefault(); setFocusId(expressions[index - 1].id) }
+    else if (e.key === 'ArrowDown' && index < expressions.length - 1) { e.preventDefault(); setFocusId(expressions[index + 1].id) }
+  }
+
+  const check = (key, label, dflt = true) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary, #ccc)' }}>
+      <input type="checkbox" checked={graph[key] === undefined ? dflt : !!graph[key]} onChange={e => update({ [key]: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+      {label}
+    </label>
+  )
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose() }}>
+      <div role="dialog" aria-label="Graph editor" style={{ background: 'var(--bg-card, #1e1e2e)', borderRadius: 12, width: 'min(1240px, 96vw)', height: 'min(800px, 94vh)', display: 'flex', flexDirection: 'column', border: '1px solid var(--border, #333)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--border, #333)' }}>
+          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary, #fff)' }}>Graph</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <a href="/#docs/tutorials/graphs" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--text-muted, #888)' }}>How to use</a>
+            <button onClick={onClose} aria-label="Close" style={{ ...iconButton, fontSize: 18 }}><X size={18} /></button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          {/* Expressions */}
+          <div style={{ width: 380, borderRight: '1px solid var(--border, #333)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {expressions.map((ex, index) => {
+                const it = byId[ex.id] || {}
+                const isSlider = it.kind === 'param' && it.slider
+                const drawn = ['explicit', 'implicit', 'region', 'polar', 'parametric', 'point'].includes(it.kind) || (it.kind === 'function' && it.graph)
+                const curve = drawn && it.kind !== 'point'
+                const slider = { ...SLIDER_DEFAULTS, ...(ex.slider || {}) }
+                const missing = (it.missing || []).filter(n => analysis.missing.includes(n))
+                return (
+                  <div key={ex.id} style={{ borderBottom: '1px solid var(--border, #333)', padding: '8px 10px 8px 0', display: 'flex', gap: 6 }}>
+                    <div style={{ width: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 2, color: 'var(--text-muted)', fontSize: 10 }}>
+                      <span>{index + 1}</span>
+                      {drawn && (
+                        <label title="Color" style={{ width: 18, height: 18, borderRadius: '50%', background: ex.hidden ? 'transparent' : (ex.color || palette[0]), border: `2px solid ${ex.color || palette[0]}`, cursor: 'pointer', position: 'relative' }}>
+                          <input type="color" value={ex.color || palette[0]} onChange={e => updateExpr(ex.id, { color: e.target.value })}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                        </label>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input
+                          ref={el => { inputs.current[ex.id] = el }}
+                          value={ex.text}
+                          spellCheck={false}
+                          placeholder={index === expressions.length - 1 ? 'Type an expression, like y = x^2' : ''}
+                          onChange={e => updateExpr(ex.id, { text: e.target.value })}
+                          onKeyDown={e => onKeyDown(e, ex, index)}
+                          style={{ ...inputStyle, flex: 1, minWidth: 0, fontSize: 14, padding: '6px 8px', fontFamily: "'Cambria Math','STIX Two Math','Times New Roman',serif", borderColor: it.kind === 'error' ? '#e5484d' : 'var(--border, #333)' }}
+                        />
+                        {(drawn || isSlider) && (
+                          <button title={ex.hidden ? 'Show' : 'Hide'} onClick={() => updateExpr(ex.id, { hidden: !ex.hidden })} style={iconButton}>
+                            {ex.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        )}
+                        {(drawn || isSlider) && (
+                          <button title="Options" onClick={() => setOpenOptions(o => (o === ex.id ? null : ex.id))} style={{ ...iconButton, color: openOptions === ex.id ? 'var(--accent)' : iconButton.color }}>
+                            <SlidersHorizontal size={14} />
+                          </button>
+                        )}
+                        <button title="Delete" onClick={() => removeExpression(ex.id)} style={iconButton}><X size={14} /></button>
+                      </div>
+
+                      {it.kind === 'error' && <div style={{ fontSize: 11, color: '#e5484d', marginTop: 4 }}>{it.error}</div>}
+                      {it.kind === 'value' && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>= {fmtNumber(it.f(P.paramValues(analysis)))}</div>}
+                      {missing.length > 0 && it.kind !== 'error' && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5, alignItems: 'center' }}>
+                          <span style={smallLabel}>add slider:</span>
+                          {missing.map(n => (
+                            <button key={n} onClick={() => addSliders(ex.id, [n])} style={{ ...inputStyle, padding: '1px 8px', cursor: 'pointer', fontStyle: 'italic' }}>{n}</button>
+                          ))}
+                          {missing.length > 1 && <button onClick={() => addSliders(ex.id, missing)} style={{ ...inputStyle, padding: '1px 8px', cursor: 'pointer' }}>all</button>}
+                        </div>
+                      )}
+
+                      {isSlider && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
+                          <NumberField value={slider.min} constant={constant} width={48} title="Least value" onCommit={v => updateExpr(ex.id, { slider: { ...slider, min: v ?? SLIDER_DEFAULTS.min } })} />
+                          <input type="range" min={Math.min(slider.min, slider.max)} max={Math.max(slider.min, slider.max)} step={slider.step || 'any'}
+                            value={isFinite(it.literal) ? it.literal : 0}
+                            onChange={e => updateExpr(ex.id, { text: `${ex.text.split('=')[0].trim()} = ${fmtNumber(+e.target.value)}` })}
+                            style={{ flex: 1, minWidth: 0, accentColor: 'var(--accent)' }} />
+                          <NumberField value={slider.max} constant={constant} width={48} title="Greatest value" onCommit={v => updateExpr(ex.id, { slider: { ...slider, max: v ?? SLIDER_DEFAULTS.max } })} />
+                        </div>
+                      )}
+                      {(it.kind === 'parametric' || it.kind === 'polar') && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6, ...smallLabel }}>
+                          <NumberField value={ex.min ?? 0} constant={constant} width={62} onCommit={v => updateExpr(ex.id, { min: v })} />
+                          <span>≤ <i style={{ fontFamily: 'serif', fontSize: 13 }}>{it.kind === 'polar' ? 'θ' : 't'}</i> ≤</span>
+                          <NumberField value={ex.max ?? 2 * Math.PI} constant={constant} width={62} onCommit={v => updateExpr(ex.id, { max: v })} />
+                        </div>
+                      )}
+
+                      {openOptions === ex.id && (
+                        <div style={{ marginTop: 8, padding: 8, borderRadius: 6, background: 'var(--bg-hover, #252530)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {curve && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...smallLabel, width: 44 }}>Line</span>
+                              <select value={ex.style || 'solid'} onChange={e => updateExpr(ex.id, { style: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                                <option value="solid">Solid</option>
+                                <option value="dashed">Dashed</option>
+                                <option value="dotted">Dotted</option>
+                              </select>
+                              <select value={ex.width || 2.5} onChange={e => updateExpr(ex.id, { width: +e.target.value })} style={{ ...inputStyle, width: 70 }} title="Thickness">
+                                {[1.5, 2.5, 3.5, 5].map(w => <option key={w} value={w}>{w === 2.5 ? 'Normal' : w < 2.5 ? 'Thin' : w === 3.5 ? 'Thick' : 'Heavy'}</option>)}
+                              </select>
+                            </div>
+                          )}
+                          {it.kind === 'point' && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Label</span>
+                                <input value={ex.label || ''} onChange={e => updateExpr(ex.id, { label: e.target.value })} placeholder="None" style={{ ...inputStyle, flex: 1 }} />
+                              </div>
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!ex.showCoords} onChange={e => updateExpr(ex.id, { showCoords: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                Show its coordinates
+                              </label>
+                              {(it.dragX || it.dragY) && <div style={smallLabel}>Its sliders move when it’s dragged.</div>}
+                            </>
+                          )}
+                          {isSlider && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Step</span>
+                                <NumberField value={slider.step} constant={constant} width={70} placeholder="Any" onCommit={v => updateExpr(ex.id, { slider: { ...slider, step: v > 0 ? v : undefined } })} />
+                                <span style={{ ...smallLabel, marginLeft: 6 }}>Speed</span>
+                                <select value={slider.speed || 1} onChange={e => updateExpr(ex.id, { slider: { ...slider, speed: +e.target.value } })} style={{ ...inputStyle, width: 70 }}>
+                                  {[0.25, 0.5, 1, 2, 4].map(s => <option key={s} value={s}>{s}×</option>)}
+                                </select>
+                              </div>
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!slider.play} onChange={e => updateExpr(ex.id, { slider: { ...slider, play: e.target.checked } })} style={{ accentColor: 'var(--accent)' }} />
+                                <Play size={11} /> Play when the slide opens
+                              </label>
+                              <div style={smallLabel}>Hide it (the eye) to leave it off the slide’s sliders.</div>
+                            </>
+                          )}
+                          {drawn && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...smallLabel, width: 44 }}>Appears</span>
+                              <select value={ex.step || 0} onChange={e => updateExpr(ex.id, { step: +e.target.value || undefined })} style={{ ...inputStyle, flex: 1 }}>
+                                <option value={0}>With the slide</option>
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>At step {n}</option>)}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ padding: 10, borderTop: '1px solid var(--border, #333)', display: 'flex', gap: 6 }}>
+              <button className="btn btn-secondary" onClick={() => addExpression(expressions[expressions.length - 1]?.id)} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Plus size={13} /> Expression
+              </button>
+              <select value="" onChange={e => { if (e.target.value) addExpression(expressions[expressions.length - 1]?.id, e.target.value); e.target.value = '' }}
+                style={{ ...inputStyle, flex: 1, cursor: 'pointer' }} aria-label="Add an example">
+                <option value="">Add an example…</option>
+                {EXAMPLES.map(([label, text]) => <option key={label} value={text}>{label}: {text}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Preview and the graph's settings */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <div ref={previewBox} style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary, #111)' }}>
+              <iframe
+                ref={frameRef}
+                title="Graph preview"
+                sandbox="allow-scripts"
+                srcDoc={previewHtml}
+                onLoad={sendConfig}
+                style={{ width: frameW, height: frameH, border: '1px solid var(--border, #333)', borderRadius: 4, background: slideBg || (graph.theme === 'dark' ? '#1e1e2e' : '#ffffff'), display: 'block' }}
+              />
+            </div>
+            <div style={{ borderTop: '1px solid var(--border, #333)', padding: '10px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 14, rowGap: 8, alignItems: 'center' }}>
+              <span style={smallLabel}>View</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <NumberField value={view.xMin} constant={constant} width={58} title="Left edge" onCommit={v => v !== undefined && setView({ xMin: v })} />
+                <span>≤ <i style={{ fontFamily: 'serif' }}>x</i> ≤</span>
+                <NumberField value={view.xMax} constant={constant} width={58} title="Right edge" onCommit={v => v !== undefined && setView({ xMax: v })} />
+                <span style={{ width: 8 }} />
+                {equal ? (
+                  <span title="With equal scales, the height follows the width; drag the preview to move up or down" style={smallLabel}>
+                    {fmtNumber(shownY.yMin)} ≤ <i style={{ fontFamily: 'serif' }}>y</i> ≤ {fmtNumber(shownY.yMax)}
+                  </span>
+                ) : (
+                  <>
+                    <NumberField value={view.yMin} constant={constant} width={58} title="Bottom edge" onCommit={v => v !== undefined && setView({ yMin: v })} />
+                    <span>≤ <i style={{ fontFamily: 'serif' }}>y</i> ≤</span>
+                    <NumberField value={view.yMax} constant={constant} width={58} title="Top edge" onCommit={v => v !== undefined && setView({ yMax: v })} />
+                  </>
+                )}
+                <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 6 }} onClick={() => update({ view: { ...DEFAULT_VIEW } })}>Reset</button>
+                <span style={{ ...smallLabel, marginLeft: 4 }}>Drag the preview to move, scroll to zoom.</span>
+              </div>
+              <span style={smallLabel}>Show</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                {check('grid', 'Grid')}
+                {check('axes', 'Axes')}
+                {check('axisNumbers', 'Numbers')}
+                {check('equalScale', 'Equal scales')}
+                {check('showSliders', 'Sliders on the slide')}
+                {check('lockView', 'Lock panning and zooming', false)}
+              </div>
+              <span style={smallLabel}>Axes</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <input value={graph.xLabel || ''} onChange={e => update({ xLabel: e.target.value })} placeholder="x-axis label" style={{ ...inputStyle, width: 130 }} />
+                <input value={graph.yLabel || ''} onChange={e => update({ yLabel: e.target.value })} placeholder="y-axis label" style={{ ...inputStyle, width: 130 }} />
+                <span style={{ ...smallLabel, marginLeft: 10 }}>Colors</span>
+                <select value={graph.theme || 'light'} onChange={e => update({ theme: e.target.value })} style={inputStyle}>
+                  <option value="light">For a light slide</option>
+                  <option value="dark">For a dark slide</option>
+                </select>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!graph.background || graph.background === 'transparent'}
+                    onChange={e => update({ background: e.target.checked ? 'transparent' : (graph.theme === 'dark' ? '#1e1e2e' : '#ffffff') })} style={{ accentColor: 'var(--accent)' }} />
+                  See-through
+                </label>
+                {graph.background && graph.background !== 'transparent' && (
+                  <input type="color" value={graph.background} onChange={e => update({ background: e.target.value })}
+                    style={{ width: 34, height: 24, border: '1px solid var(--border)', borderRadius: 4, padding: 1, background: 'none', cursor: 'pointer' }} />
+                )}
+              </div>
+            </div>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border, #333)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => onSave(graph)} style={{ fontSize: 12 }}>{isNew ? 'Insert' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

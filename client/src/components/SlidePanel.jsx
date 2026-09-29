@@ -10,6 +10,7 @@ import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { getCanvasHeight } from '../utils/scrollingSlides'
 import { modelSnapshotContent } from '../utils/modelViewer'
+import { graphSnapshotContent } from '../utils/graphPage'
 
 const THUMB_W = 150
 
@@ -112,12 +113,13 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />
                   : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5' || el.type === 'model') && (() => {
+              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5' || el.type === 'model' || el.type === 'graph') && (() => {
                 // A still captured while this embed was live on the canvas, so the
                 // thumbnail costs nothing to draw. Placeholder tile until then.
                 const snap = (el.type === 'html' || el.type === 'p5')
                   ? getSnapshot(snapshotKey(el.id, el.content))
                   : el.type === 'model' ? getSnapshot(snapshotKey(el.id, modelSnapshotContent(el)))
+                  : el.type === 'graph' ? getSnapshot(snapshotKey(el.id, graphSnapshotContent(el)))
                   : null
                 if (snap) {
                   return <img src={snap} alt="" draggable={false}
@@ -125,7 +127,7 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                 }
                 return (
                   <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : 'MD' }
+                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'graph' ? 'y=' : 'MD' }
                   </div>
                 )
               })()}
