@@ -10,6 +10,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { modelViewerHtml } from './modelViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
 import { tikzDiagramSvg } from './tikzDiagram'
+import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
@@ -463,6 +464,13 @@ export function generateRevealHTML(presentation, opts = {}) {
             return `<tr>${cells}</tr>`
           }).join('')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+        }
+        if (el.type === 'text3d') {
+          // Unclipped, for letters turned out of the box, and shadowed around
+          // the letters rather than the box
+          const shadow = text3dShadowFilter(el)
+          const t3Style = style.replace('overflow:hidden;', 'overflow:visible;').replace(shadowStyle, '') + (shadow ? `filter:${shadow};` : '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64
@@ -1390,6 +1398,10 @@ function generatePrintHTML(presentation) {
             return `<tr>${cells}</tr>`
           }).join('')
           return `<div style="${style}${vis}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+        }
+        if (el.type === 'text3d') {
+          const shadow = text3dShadowFilter(el)
+          return `<div style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}${shadow ? `filter:${shadow};` : ''}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64

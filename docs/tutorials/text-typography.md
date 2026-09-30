@@ -1,6 +1,6 @@
 # Text & Typography
 
-This tutorial covers the text tools: inserting text boxes, formatting, inline math, and text paths.
+This tutorial covers the text tools: inserting text boxes, formatting, inline math, text paths, and 3D text.
 
 ## Inserting a text box
 
@@ -46,3 +46,32 @@ Text Path lets you place text along a curved line.
 2. A text path element appears with default text on a sine wave.
 3. Double-click to edit the text content.
 4. In the right panel, adjust the **path type** (wave, arc, circle) and **amplitude**.
+
+## 3D text
+
+3D Text gives a headline depth: copies of the text are stacked behind it,
+each a little further back and a little darker, and the whole thing can be
+turned and tilted in perspective. It stays real text, in any font the deck
+has, and looks the same in the editor, when presenting, and in PDFs.
+
+1. Open **Text** in the toolbar and choose **3D Text**.
+2. Type your text in **Text Content** in the right panel. Double-clicking
+   the element on the slide takes you there. Press Enter for a new line.
+3. Pick a **Shape** to start from: **Front**, **Turn left**, **Turn right**
+   or **Lean back**.
+4. Fine-tune it:
+   - **Depth**: how far the letters extend back, in pixels.
+   - **Turn** and **Lean**: rotate the text around its vertical and
+     horizontal axes. The sides show on whichever way it turns away.
+   - **Perspective**: lower values look closer and more dramatic.
+   - **Face** and **Sides**: the colors of the front and of the extrusion.
+     **Side shading** darkens the sides toward the back.
+5. Set the font, size, weight, spacing and alignment below those. A
+   **Drop Shadow** follows the letters, not the element's box.
+
+Keep 3D text to headlines and short phrases. Every pixel of depth (up to
+60 of them) is another copy of the text, which adds up quickly on long
+paragraphs.
+
+In a PowerPoint export, 3D text becomes ordinary text with a hard shadow in
+the side color, pointing the way the extrusion goes.

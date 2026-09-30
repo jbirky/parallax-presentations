@@ -48,6 +48,7 @@ import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
+import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
 
 function highlightCode(code, language) {
   try {
@@ -1093,6 +1094,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
+              // Its text is edited in the properties panel
+              else if (element.type === 'text3d') document.getElementById('text3d-content')?.select()
             }}
             onContextMenu={(e) => {
               e.preventDefault(); e.stopPropagation()
@@ -1398,9 +1401,11 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         // A state's scale (utils/clickActions.js) scales the handles too
         transform: [element.rotation && `rotate(${element.rotation}deg)`, element.scale != null && element.scale !== 1 && `scale(${element.scale})`]
           .filter(Boolean).join(' ') || undefined,
-        boxShadow: (element.shadowBlur || element.shadowX || element.shadowY)
+        boxShadow: element.type !== 'text3d' && (element.shadowBlur || element.shadowX || element.shadowY)
           ? `${element.shadowX||0}px ${element.shadowY||0}px ${element.shadowBlur||0}px ${element.shadowColor||'rgba(0,0,0,0.5)'}`
           : undefined,
+        // 3D text's shadow follows its letters
+        filter: element.type === 'text3d' ? text3dShadowFilter(element) || undefined : undefined,
       }}
       onMouseDown={(e) => { if (!isEditing && !isCropping) onPointerDown(e, 'move', null) }}
       onClick={onClick}
@@ -1411,7 +1416,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           box (badges, handles, others' outlines) comes after, unclipped */}
       <div style={{
         position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
-        overflow: isAutoFit || element.type === 'textpath' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
+        overflow: isAutoFit || element.type === 'textpath' || element.type === 'text3d' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
         // A state's flip, shown mirrored; the badges and handles stay as they are
         transform: element.flipX || element.flipY ? `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` : undefined,
@@ -1630,6 +1635,10 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         )}
         {element.type === 'icon' && (
           <IconRenderer element={element} />
+        )}
+        {element.type === 'text3d' && (
+          <div style={{ width: '100%', height: '100%' }}
+            dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(element, { fontFamily: globalFont })) }} />
         )}
 
         {element.type === 'textpath' && !isEditing && (() => {

@@ -42,7 +42,7 @@ export default function FindReplaceBar({ presentation, onUpdatePresentation, cur
       (slide.elements || []).forEach(el => {
         let text = ''
         if (el.type === 'text') text = stripHtml(el.content)
-        else if (el.type === 'code') text = el.content || ''
+        else if (el.type === 'code' || el.type === 'text3d') text = el.content || ''
         else if (el.type === 'shape' && el.text) text = el.text
         const compare = matchCase ? text : text.toLowerCase()
         let pos = 0
@@ -77,7 +77,7 @@ export default function FindReplaceBar({ presentation, onUpdatePresentation, cur
           if (el.type === 'text') {
             return { ...el, content: replaceInHtml(el.content, searchTerm, replaceTerm, matchCase) }
           }
-          if (el.type === 'code') {
+          if (el.type === 'code' || el.type === 'text3d') {
             const flags = matchCase ? '' : 'i'
             const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
             return { ...el, content: (el.content || '').replace(new RegExp(escaped, flags), replaceTerm) }
@@ -103,7 +103,7 @@ export default function FindReplaceBar({ presentation, onUpdatePresentation, cur
       ...slide,
       elements: (slide.elements || []).map(el => {
         if (el.type === 'text') return { ...el, content: replaceInHtml(el.content, searchTerm, replaceTerm, matchCase) }
-        if (el.type === 'code') return { ...el, content: (el.content || '').replace(regex, replaceTerm) }
+        if (el.type === 'code' || el.type === 'text3d') return { ...el, content: (el.content || '').replace(regex, replaceTerm) }
         if (el.type === 'shape' && el.text) return { ...el, text: el.text.replace(regex, replaceTerm) }
         return el
       })

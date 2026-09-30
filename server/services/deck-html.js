@@ -2192,6 +2192,95 @@ function tikzDiagramSvg(el) {
   return sanitizeSvg(el.svg).replace(/^<svg\b/i, '<svg style="width:100%;height:100%;display:block;overflow:visible"');
 }
 
+// client/src/utils/text3d.js
+var TEXT3D_DEFAULTS = {
+  content: "3D Text",
+  fontSize: 96,
+  fontWeight: "800",
+  fontStyle: "normal",
+  letterSpacing: 0,
+  lineHeight: 1.1,
+  textAlign: "center",
+  color: "#ffffff",
+  sideColor: "#6366f1",
+  sideShade: 0.6,
+  depth: 24,
+  rotateX: 12,
+  rotateY: -24,
+  perspective: 900
+};
+var TEXT3D_LIMITS = {
+  depth: [0, 150],
+  rotateX: [-80, 80],
+  rotateY: [-80, 80],
+  perspective: [150, 3e3],
+  fontSize: [8, 400],
+  letterSpacing: [-50, 200],
+  lineHeight: [0.5, 4],
+  sideShade: [0, 1]
+};
+var MAX_LAYERS = 60;
+var WEIGHTS = /^(normal|bold|[1-9]00)$/;
+var STYLES = ["normal", "italic", "oblique"];
+var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
+var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+function text3dSettings(el, fallbackFont) {
+  const num2 = (key) => {
+    const n = Number(el[key]);
+    const [lo, hi] = TEXT3D_LIMITS[key];
+    return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
+  };
+  const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
+  const weight = String(el.fontWeight ?? "");
+  return {
+    depth: num2("depth"),
+    rotateX: num2("rotateX"),
+    rotateY: num2("rotateY"),
+    perspective: num2("perspective"),
+    fontSize: num2("fontSize"),
+    letterSpacing: num2("letterSpacing"),
+    lineHeight: num2("lineHeight"),
+    sideShade: num2("sideShade"),
+    color: color2("color"),
+    sideColor: color2("sideColor"),
+    fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
+    fontStyle: STYLES.includes(el.fontStyle) ? el.fontStyle : "normal",
+    textAlign: ALIGNS[el.textAlign] ? el.textAlign : "center",
+    fontFamily: String(el.fontFamily || fallbackFont || "sans-serif").replace(/[<>"`;{}\\\r\n]/g, "")
+  };
+}
+var escapeText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function darken(hex, amount) {
+  let h = hex.slice(1);
+  if (h.length === 3) h = h.replace(/./g, (c) => c + c);
+  const k = 1 - Math.min(1, Math.max(0, amount));
+  return "#" + [0, 2, 4].map((i) => Math.round(parseInt(h.slice(i, i + 2), 16) * k).toString(16).padStart(2, "0")).join("");
+}
+var round2 = (v) => Math.round(v * 100) / 100 || 0;
+function text3dLayers(el) {
+  const s = text3dSettings(el);
+  const n = Math.min(MAX_LAYERS, Math.ceil(s.depth));
+  const layers = [];
+  for (let i = n; i >= 1; i--) {
+    const t = n === 1 ? 0 : (i - 1) / (n - 1);
+    layers.push({ z: round2(-(i * s.depth) / n), color: darken(s.sideColor, s.sideShade * t) });
+  }
+  return layers;
+}
+function text3dHtml(el, { fontFamily } = {}) {
+  const s = text3dSettings(el, fontFamily);
+  const text = escapeText(el.content);
+  const type = `font-family:${s.fontFamily};font-size:${s.fontSize}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${s.letterSpacing}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`;
+  const layers = text3dLayers(el).map((l) => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${l.z}px)">${text}</div>`).join("");
+  return `<div class="text3d" style="display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};width:100%;height:100%;perspective:${s.perspective}px;${type}"><div style="position:relative;transform-style:preserve-3d;transform:rotateX(${s.rotateX}deg) rotateY(${s.rotateY}deg)">${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div>`;
+}
+function text3dShadowFilter(el) {
+  if (!(el.shadowBlur || el.shadowX || el.shadowY)) return "";
+  const px = (v) => Number(v) || 0;
+  const color2 = String(el.shadowColor || "rgba(0,0,0,0.5)").replace(/[<>"`;{}\\\r\n]/g, "");
+  return `drop-shadow(${px(el.shadowX)}px ${px(el.shadowY)}px ${Math.max(0, px(el.shadowBlur))}px ${color2})`;
+}
+
 // client/src/utils/annotationOverlay.js
 function installAnnotations(config) {
   const NS = "http://www.w3.org/2000/svg";
@@ -2264,8 +2353,8 @@ function installAnnotations(config) {
   }
   function toSlide(e, section) {
     const r = surfaceOf(section).getBoundingClientRect();
-    const round2 = (v) => Math.round(v * 10) / 10;
-    return [round2((e.clientX - r.left) * W / r.width), round2((e.clientY - r.top) * heightOf(section) / r.height)];
+    const round3 = (v) => Math.round(v * 10) / 10;
+    return [round3((e.clientX - r.left) * W / r.width), round3((e.clientY - r.top) * heightOf(section) / r.height)];
   }
   function simplify(points, tolerance) {
     if (points.length < 3) return points;
@@ -3668,6 +3757,11 @@ ${content}
           return `<tr>${cells}</tr>`;
         }).join("");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`;
+      }
+      if (el.type === "text3d") {
+        const shadow = text3dShadowFilter(el);
+        const t3Style = style.replace("overflow:hidden;", "overflow:visible;").replace(shadowStyle, "") + (shadow ? `filter:${shadow};` : "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`;
       }
       if (el.type === "textpath") {
         const fontSize = el.fontSize || 64;

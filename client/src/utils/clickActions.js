@@ -712,7 +712,7 @@ export function elementLabels(elements) {
   const labels = new Map()
   const counts = {}
   for (const el of elements || []) {
-    const text = el.type === 'text' ? firstLine(el.content) : el.type === 'shape' ? (el.text || '').trim() : ''
+    const text = el.type === 'text' ? firstLine(el.content) : el.type === 'shape' ? (el.text || '').trim() : el.type === 'text3d' ? (el.content || '').trim().split('\n')[0] : ''
     if (text) { labels.set(el.id, shorten(text, 32)); continue }
     const name = (el.type || 'element').replace(/^plugin:/, '').replace(/^./, c => c.toUpperCase())
     counts[name] = (counts[name] || 0) + 1

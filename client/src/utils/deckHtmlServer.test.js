@@ -28,6 +28,7 @@ describe('the pages the server builds', () => {
       { id: 'b', type: 'p5', ...at, content: 'function setup(){createCanvas(10,10)}' },
       { id: 'c', type: 'textpath', ...at, content: 'Curved' },
       { id: 'd', type: 'drawing', ...at, paths: [{ points: [{ x: 0, y: 0 }, { x: 5, y: 5 }, { x: 9, y: 2 }], color: '#f00' }] },
+      { id: 'e', type: 'text3d', ...at, content: 'Deep', depth: 3 },
     ])
     const html = server.generateRevealHTML(presentation)
     const unversioned = s => s.replace(/cdn\.jsdelivr\.net\/npm\/([^/@"']+(?:\/[^/@"']+)?)@[^/"']+/g, 'cdn.jsdelivr.net/npm/$1')
@@ -35,6 +36,7 @@ describe('the pages the server builds', () => {
     // What the server's own generator never drew
     expect(html).toContain('p5.min.js')
     expect(html).toContain('<textPath href="#tp-c"')
+    expect(html).toContain('transform-style:preserve-3d')
     expect(html).toMatch(/<path d="M 0 0 C [^"]+" stroke="#f00"/)
     expect(html).toContain('data-id="a"')
     expect(html).toContain('data-gsap-enter="fadeUp"')

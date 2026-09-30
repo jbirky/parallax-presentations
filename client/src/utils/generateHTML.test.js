@@ -257,6 +257,24 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('<ellipse')
   })
 
+  it('renders 3D text unclipped, with its shadow around the letters', () => {
+    const pres = makePresentation({
+      globalFont: 'Inter, sans-serif',
+      slides: [{
+        id: 's1',
+        elements: [{ id: 'e1', type: 'text3d', x: 10, y: 20, width: 600, height: 200, zIndex: 1, content: 'Deep', depth: 4, rotateX: 10, rotateY: -20, shadowY: 6, shadowBlur: 4, shadowColor: '#000000' }],
+      }],
+    })
+    const html = generateRevealHTML(pres)
+    const box = html.match(/<div[^>]*style="position:absolute;left:10px;top:20px[^"]*"/)[0]
+    expect(box).toContain('overflow:visible;')
+    expect(box).not.toContain('box-shadow')
+    expect(box).toContain('filter:drop-shadow(0px 6px 4px #000000);')
+    expect(html).toContain('transform-style:preserve-3d;transform:rotateX(10deg) rotateY(-20deg)')
+    expect(html.match(/aria-hidden="true" style="position:absolute;inset:0;/g)).toHaveLength(4)
+    expect(html).toContain('font-family:Inter, sans-serif;font-size:96px;')
+  })
+
   // ── Laser pointer / spotlight ──────────────────────────────────────
 
   it('excludes laser pointer elements when laserPointer is off', () => {

@@ -7,6 +7,7 @@ import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
 import { SHAPES } from '../utils/shapeUtils'
+import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS } from '../utils/text3d'
 
 const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
@@ -148,6 +149,76 @@ function CopyTikzButton({ tikz }) {
     <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={copy} disabled={!tikz}>
       {copied ? 'Copied' : 'Copy TikZ'}
     </button>
+  )
+}
+
+// A text path's or 3D text's font
+function FontFamilySelect({ value, onChange, globalFont }) {
+  return (
+    <select className="prop-input" value={value || ''} onChange={e => onChange(e.target.value || null)}>
+      <option value="">↺ Use Global{globalFont ? ` (${globalFont.split(',')[0].replace(/'/g, '')})` : ''}</option>
+      <option value="sans-serif">Default Sans</option>
+      <optgroup label="Sans-serif">
+        <option value="Arial, sans-serif">Arial</option>
+        <option value="'Helvetica Neue', sans-serif">Helvetica</option>
+        <option value="Inter, sans-serif">Inter</option>
+        <option value="'Inter Tight', sans-serif">Inter Tight</option>
+        <option value="Roboto, sans-serif">Roboto</option>
+        <option value="'Roboto Flex', sans-serif">Roboto Flex</option>
+        <option value="'Open Sans', sans-serif">Open Sans</option>
+        <option value="'Source Sans Pro', sans-serif">Source Sans Pro</option>
+        <option value="'Source Sans 3', sans-serif">Source Sans 3</option>
+        <option value="'Fira Sans', sans-serif">Fira Sans</option>
+        <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
+        <option value="Manrope, sans-serif">Manrope</option>
+        <option value="Geist, sans-serif">Geist</option>
+        <option value="Figtree, sans-serif">Figtree</option>
+        <option value="Ubuntu, sans-serif">Ubuntu</option>
+        <option value="Rubik, sans-serif">Rubik</option>
+        <option value="'PT Sans', sans-serif">PT Sans</option>
+        <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
+        <option value="Questrial, sans-serif">Questrial</option>
+        <option value="Barlow, sans-serif">Barlow</option>
+      </optgroup>
+      <optgroup label="Rounded">
+        <option value="Comfortaa, sans-serif">Comfortaa</option>
+        <option value="Nunito, sans-serif">Nunito</option>
+        <option value="'Nunito Sans', sans-serif">Nunito Sans</option>
+        <option value="Quicksand, sans-serif">Quicksand</option>
+        <option value="Dosis, sans-serif">Dosis</option>
+        <option value="'M PLUS Rounded 1c', sans-serif">M PLUS Rounded 1c</option>
+        <option value="Jura, sans-serif">Jura</option>
+      </optgroup>
+      <optgroup label="Condensed">
+        <option value="'Barlow Condensed', sans-serif">Barlow Condensed</option>
+        <option value="'Asap Condensed', sans-serif">Asap Condensed</option>
+        <option value="'Roboto Condensed', sans-serif">Roboto Condensed</option>
+      </optgroup>
+      <optgroup label="Serif">
+        <option value="Georgia, serif">Georgia</option>
+        <option value="'Times New Roman', serif">Times New Roman</option>
+        <option value="'Playfair Display', serif">Playfair Display</option>
+        <option value="Merriweather, serif">Merriweather</option>
+        <option value="'Computer Modern Serif', serif">Computer Modern</option>
+        <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
+      </optgroup>
+      <optgroup label="Monospace">
+        <option value="'Courier New', monospace">Courier New</option>
+        <option value="'Fira Code', monospace">Fira Code</option>
+        <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+        <option value="Inconsolata, monospace">Inconsolata</option>
+        <option value="'Roboto Mono', monospace">Roboto Mono</option>
+        <option value="'Space Mono', monospace">Space Mono</option>
+      </optgroup>
+      <optgroup label="Display">
+        <option value="Impact, sans-serif">Impact</option>
+        <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+        <option value="Codystar, sans-serif">Codystar</option>
+        <option value="'National Park', sans-serif">National Park</option>
+        <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
+        <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+      </optgroup>
+    </select>
   )
 }
 
@@ -507,70 +578,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
-                <select className="prop-input" value={selectedElement.fontFamily || ''} onChange={e => onUpdateElement({ fontFamily: e.target.value || null })}>
-                  <option value="">↺ Use Global{presentation?.globalFont ? ` (${presentation.globalFont.split(',')[0].replace(/'/g, '')})` : ''}</option>
-                  <option value="sans-serif">Default Sans</option>
-                  <optgroup label="Sans-serif">
-                    <option value="Arial, sans-serif">Arial</option>
-                    <option value="'Helvetica Neue', sans-serif">Helvetica</option>
-                    <option value="Inter, sans-serif">Inter</option>
-                    <option value="'Inter Tight', sans-serif">Inter Tight</option>
-                    <option value="Roboto, sans-serif">Roboto</option>
-                    <option value="'Roboto Flex', sans-serif">Roboto Flex</option>
-                    <option value="'Open Sans', sans-serif">Open Sans</option>
-                    <option value="'Source Sans Pro', sans-serif">Source Sans Pro</option>
-                    <option value="'Source Sans 3', sans-serif">Source Sans 3</option>
-                    <option value="'Fira Sans', sans-serif">Fira Sans</option>
-                    <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
-                    <option value="Manrope, sans-serif">Manrope</option>
-                    <option value="Geist, sans-serif">Geist</option>
-                    <option value="Figtree, sans-serif">Figtree</option>
-                    <option value="Ubuntu, sans-serif">Ubuntu</option>
-                    <option value="Rubik, sans-serif">Rubik</option>
-                    <option value="'PT Sans', sans-serif">PT Sans</option>
-                    <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
-                    <option value="Questrial, sans-serif">Questrial</option>
-                    <option value="Barlow, sans-serif">Barlow</option>
-                  </optgroup>
-                  <optgroup label="Rounded">
-                    <option value="Comfortaa, sans-serif">Comfortaa</option>
-                    <option value="Nunito, sans-serif">Nunito</option>
-                    <option value="'Nunito Sans', sans-serif">Nunito Sans</option>
-                    <option value="Quicksand, sans-serif">Quicksand</option>
-                    <option value="Dosis, sans-serif">Dosis</option>
-                    <option value="'M PLUS Rounded 1c', sans-serif">M PLUS Rounded 1c</option>
-                    <option value="Jura, sans-serif">Jura</option>
-                  </optgroup>
-                  <optgroup label="Condensed">
-                    <option value="'Barlow Condensed', sans-serif">Barlow Condensed</option>
-                    <option value="'Asap Condensed', sans-serif">Asap Condensed</option>
-                    <option value="'Roboto Condensed', sans-serif">Roboto Condensed</option>
-                  </optgroup>
-                  <optgroup label="Serif">
-                    <option value="Georgia, serif">Georgia</option>
-                    <option value="'Times New Roman', serif">Times New Roman</option>
-                    <option value="'Playfair Display', serif">Playfair Display</option>
-                    <option value="Merriweather, serif">Merriweather</option>
-                    <option value="'Computer Modern Serif', serif">Computer Modern</option>
-                    <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
-                  </optgroup>
-                  <optgroup label="Monospace">
-                    <option value="'Courier New', monospace">Courier New</option>
-                    <option value="'Fira Code', monospace">Fira Code</option>
-                    <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                    <option value="Inconsolata, monospace">Inconsolata</option>
-                    <option value="'Roboto Mono', monospace">Roboto Mono</option>
-                    <option value="'Space Mono', monospace">Space Mono</option>
-                  </optgroup>
-                  <optgroup label="Display">
-                    <option value="Impact, sans-serif">Impact</option>
-                    <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
-                    <option value="Codystar, sans-serif">Codystar</option>
-                    <option value="'National Park', sans-serif">National Park</option>
-                    <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
-                    <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
-                  </optgroup>
-                </select>
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Color</div>
@@ -706,6 +714,121 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               </div>
             </div>
           )}
+
+          {/* 3D Text options */}
+          {selectedElement.type === 'text3d' && (() => {
+            const val = key => selectedElement[key] ?? TEXT3D_DEFAULTS[key]
+            const slider = (key, label, unit, step = 1) => (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}: {val(key)}{unit}</div>
+                <input type="range" min={TEXT3D_LIMITS[key][0]} max={TEXT3D_LIMITS[key][1]} step={step} value={val(key)}
+                  onChange={e => onUpdateElement({ [key]: Number(e.target.value) })}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              </div>
+            )
+            const presetOn = p => ['rotateX', 'rotateY', 'depth', 'perspective'].every(k => val(k) === p[k])
+            return (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Text Content</div>
+              <textarea
+                id="text3d-content"
+                value={selectedElement.content || ''}
+                onChange={e => onUpdateElement({ content: e.target.value })}
+                style={{ width: '100%', minHeight: 48, background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 4, fontSize: 12, resize: 'vertical', boxSizing: 'border-box', marginBottom: 8 }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Shape</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 8 }}>
+                {TEXT3D_PRESETS.map(({ id, label, ...shape }) => (
+                  <button key={id} onClick={() => onUpdateElement(shape)}
+                    style={{
+                      padding: '4px 0', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: '1px solid var(--border)',
+                      background: presetOn(shape) ? 'var(--accent)' : 'var(--bg-hover)',
+                      color: presetOn(shape) ? '#fff' : 'var(--text-secondary)',
+                    }}
+                  >{label}</button>
+                ))}
+              </div>
+              {slider('depth', 'Depth', 'px')}
+              {slider('rotateY', 'Turn', '°')}
+              {slider('rotateX', 'Lean', '°')}
+              {slider('perspective', 'Perspective', 'px', 10)}
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: -2, marginBottom: 8 }}>A lower perspective looks closer and more dramatic</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Face</div>
+                  <input type="color" value={val('color')}
+                    onChange={e => onUpdateElement({ color: e.target.value })}
+                    style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Sides</div>
+                  <input type="color" value={val('sideColor')}
+                    onChange={e => onUpdateElement({ sideColor: e.target.value })}
+                    style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Side shading: {Math.round(val('sideShade') * 100)}%</div>
+                <input type="range" min={0} max={100} value={Math.round(val('sideShade') * 100)}
+                  onChange={e => onUpdateElement({ sideShade: Number(e.target.value) / 100 })}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Size</div>
+                  <input className="prop-input" type="number" min={TEXT3D_LIMITS.fontSize[0]} max={TEXT3D_LIMITS.fontSize[1]}
+                    value={val('fontSize')}
+                    onChange={e => onUpdateElement({ fontSize: Number(e.target.value) || TEXT3D_DEFAULTS.fontSize })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Weight</div>
+                  <select className="prop-input" value={String(val('fontWeight'))} onChange={e => onUpdateElement({ fontWeight: e.target.value })}>
+                    <option value="100">Thin</option>
+                    <option value="300">Light</option>
+                    <option value="400">Normal</option>
+                    <option value="500">Medium</option>
+                    <option value="700">Bold</option>
+                    <option value="800">Extra Bold</option>
+                    <option value="900">Black</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Style</div>
+                  <select className="prop-input" value={val('fontStyle')} onChange={e => onUpdateElement({ fontStyle: e.target.value })}>
+                    <option value="normal">Normal</option>
+                    <option value="italic">Italic</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Letter (px)</div>
+                  <input className="prop-input" type="number" min={TEXT3D_LIMITS.letterSpacing[0]} max={TEXT3D_LIMITS.letterSpacing[1]} step={0.5}
+                    value={val('letterSpacing')}
+                    onChange={e => onUpdateElement({ letterSpacing: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Line Height</div>
+                  <input className="prop-input" type="number" min={TEXT3D_LIMITS.lineHeight[0]} max={TEXT3D_LIMITS.lineHeight[1]} step={0.1}
+                    value={val('lineHeight')}
+                    onChange={e => onUpdateElement({ lineHeight: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Align</div>
+                  <select className="prop-input" value={val('textAlign')} onChange={e => onUpdateElement({ textAlign: e.target.value })}>
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            )
+          })()}
 
           {/* Markdown options */}
           {selectedElement.type === 'markdown' && (

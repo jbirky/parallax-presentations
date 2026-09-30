@@ -41,6 +41,7 @@ import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
+import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
 import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
 import BibliographyModal from '../components/BibliographyModal'
@@ -1022,6 +1023,27 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     })
     setSelectedElementIds([newEl.id])
   }, [slideH])
+
+  const addText3dElement = useCallback(() => {
+    const width = 640, height = 220
+    const newEl = {
+      id: crypto.randomUUID(),
+      type: 'text3d',
+      x: Math.round((slideW - width) / 2), y: Math.round((slideH - height) / 2),
+      width, height, zIndex: 2,
+      ...TEXT3D_DEFAULTS,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideW, slideH])
 
   const addImageElement = useCallback((src, dropX, dropY) => {
     const newEl = {
@@ -3749,6 +3771,7 @@ function draw() {
       <div className="editor-body">
         <SlidePanel
           slides={presentation.slides}
+          globalFont={presentation.globalFont || ''}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
@@ -3779,6 +3802,7 @@ function draw() {
             onGridSizeChange={(v) => { setGridSize(v); setPresentation(prev => prev ? { ...prev, gridSize: v } : prev) }}
             onAddText={addTextElement}
             onAddTextPath={addTextPathElement}
+            onAddText3d={addText3dElement}
             onAddImage={() => {
               const url = window.prompt('Image URL:')
               if (url) addImageElement(url)
