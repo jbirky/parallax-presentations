@@ -18,7 +18,7 @@ The modal has three tabs:
 
 1. Open the bibliography modal and go to the **Import BibTeX** tab.
 2. Either click **Upload .bib file** to select a file, or paste BibTeX entries directly into the text area.
-3. Click **Import Entries**. Duplicate keys are skipped automatically.
+3. Click **Import Entries**. Papers already in your library are skipped, and the Library tab lists what was skipped (see [Duplicates](#duplicates)).
 
 Standard BibTeX entry types are supported: `@article`, `@inproceedings`, `@book`, `@incollection`, `@phdthesis`, `@techreport`, `@misc`, and more.
 
@@ -31,8 +31,14 @@ Standard BibTeX entry types are supported: `@article`, `@inproceedings`, `@book`
 5. Click **Import** next to individual items, or **Import all visible** to add everything on the current page.
 
 ::: tip
-Zotero items that are already in your bibliography show an "Added" badge so you don't accidentally import duplicates.
+Zotero items that are already in your bibliography show an "Added" badge so you don't accidentally import duplicates. An item shows "In library" when the same paper came in another way, such as from a .bib file under a different key; hover over it to see which entry it matches.
 :::
+
+### Duplicates
+
+A paper imported twice, say once from a .bib file and once from Zotero, would be listed twice on the references slide, since the two copies have different citation keys. So Parallax compares papers, not just keys: two entries are the same paper if they have the same DOI, or, when either has no DOI, the same title and year. Case, braces, punctuation and accents in titles don't matter. Two entries with different DOIs are always kept apart, so a preprint and its published version can both be listed.
+
+Importing skips any entry that is already in the library this way. Copies already in a library are marked in the Library tab, with **duplicate of** and the key of the first copy. Remove the marked copy with its X button.
 
 ## Citation styles
 
@@ -93,7 +99,7 @@ In the **Library** tab of the bibliography modal:
 
 - **Search** with the box above the list: it matches title, authors, year, journal and citation key, and every word you type must appear somewhere in the entry, in any order (`brown 2016` finds Brown et al. 2016). Accents don't matter, so `schrodinger` finds Schrödinger. Press Esc to clear it. The arrows are off while searching, since an entry's neighbours may be hidden.
 - **Reorder** entries using the up/down arrow buttons. This changes the numbering in the references slide.
-- **Remove** an entry by clicking the X button.
+- **Remove** an entry by clicking the X button. In the numbered style, removing an entry renumbers every entry below it, so check `[n]` markers you have already written.
 - **Cite** an entry by clicking the Cite button (when a text element is being edited).
 
 Changes are saved automatically with your presentation.

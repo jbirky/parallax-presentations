@@ -6,8 +6,10 @@ import { createRoot } from 'react-dom/client'
 vi.mock('../utils/api', () => ({
   api: {
     getZoteroConfig: vi.fn(async () => ({})),
+    zoteroProxy: vi.fn(),
   },
 }))
+import { api } from '../utils/api'
 import BibliographyModal, { matchesLibrarySearch } from './BibliographyModal'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -114,5 +116,69 @@ describe('the Library tab search', () => {
   it('has no search box while the library is empty', () => {
     const { search } = render({ bibliography: [] })
     expect(search()).toBeNull()
+  })
+})
+
+describe('duplicates', () => {
+  // The Gaia paper again, as Zotero would name it
+  const gaiaAgain = { type: 'article', key: 'X7K2PQ9A', title: 'The Gaia Mission.', author: 'Prusti, T.', year: '2016' }
+
+  async function importBibtex(r, bibtex) {
+    await act(async () => { r.buttons('Import BibTeX')[0].click() })
+    const textarea = r.el.querySelector('textarea')
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    await act(async () => { setValue.call(textarea, bibtex); textarea.dispatchEvent(new Event('input', { bubbles: true })) })
+    await act(async () => { r.buttons('Import Entries')[0].click() })
+  }
+
+  it('leaves out a BibTeX entry for a paper already in the library under another key, and says so', async () => {
+    const r = render()
+    await importBibtex(r, `
+      @article{prusti2016, title = {The {G}aia Mission}, author = {Prusti, T.}, year = {2016}}
+      @article{tess2015, title = {The Transiting Exoplanet Survey Satellite}, author = {Ricker, G. R.}, year = {2015}}
+    `)
+    expect(r.onUpdate).toHaveBeenCalledTimes(1)
+    expect(r.onUpdate.mock.calls[0][0].bibliography.map(e => e.key)).toEqual([...library.map(e => e.key), 'tess2015'])
+    expect(r.el.textContent).toContain('Added 1 entry. Skipped 1 already in your library: “The Gaia Mission” (as gaia2016).')
+    await act(async () => { r.el.querySelector('button[aria-label="Dismiss"]').click() })
+    expect(r.el.textContent).not.toContain('Skipped')
+  })
+
+  it('imports nothing when every entry is already there', async () => {
+    const r = render()
+    await importBibtex(r, '@article{prusti2016, title = {The Gaia mission}, year = {2016}}')
+    expect(r.onUpdate).not.toHaveBeenCalled()
+    expect(r.el.textContent).toContain('That entry is already in your library')
+  })
+
+  it('marks the later copy of a paper in the library', () => {
+    const { el } = render({ bibliography: [...library, gaiaAgain] })
+    expect(el.textContent).toContain('1 duplicate')
+    const badges = [...el.querySelectorAll('span')].filter(s => s.textContent.startsWith('duplicate of'))
+    expect(badges.map(b => b.textContent.trim())).toEqual(['duplicate of gaia2016'])
+    expect(badges[0].parentElement.textContent).toContain('X7K2PQ9A')
+  })
+
+  it('marks nothing in a library without repeats', () => {
+    const { el } = render()
+    expect(el.textContent).not.toContain('duplicate')
+  })
+
+  it('shows a Zotero item already in the library under another key as in the library, and imports only the rest', async () => {
+    api.getZoteroConfig.mockResolvedValueOnce({ zoteroUserId: '1', hasApiKey: true })
+    const zoteroItem = (key, title, date) => ({ key, data: { itemType: 'journalArticle', title, date, creators: [{ creatorType: 'author', lastName: 'Prusti', firstName: 'T.' }] } })
+    api.zoteroProxy.mockImplementation(async path => path === 'collections'
+      ? { data: [] }
+      : { data: [zoteroItem('X7K2PQ9A', 'The Gaia mission', '2016-11'), zoteroItem('NEW12345', 'Gaia Data Release 3', '2023')], total: 2 })
+    const r = render()
+    await act(async () => {})
+    await act(async () => { r.buttons('Zotero')[0].click() })
+    const inLibrary = r.buttons('In library')
+    expect(inLibrary).toHaveLength(1)
+    expect(inLibrary[0].disabled).toBe(true)
+    expect(inLibrary[0].title).toBe('Already in your library as gaia2016')
+    expect(r.buttons('Import')).toHaveLength(1)
+    await act(async () => { r.buttons('Import all visible')[0].click() })
+    expect(r.onUpdate.mock.calls[0][0].bibliography.map(e => e.key)).toEqual([...library.map(e => e.key), 'NEW12345'])
   })
 })

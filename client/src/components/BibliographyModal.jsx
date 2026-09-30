@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { parseBibtex, parseAuthors, formatAuthorsShort, formatCitation } from '../utils/bibtexParser'
+import { splitDuplicates, workFinder, duplicatesInLibrary } from '../utils/bibDuplicates'
 import { api } from '../utils/api'
 
 // Lowercase, without accents, whether typed (ö) or left as LaTeX (\"o, {\"o})
@@ -23,6 +24,7 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
   const [tab, setTab] = useState('library') // library | import | zotero
   const [bibtexInput, setBibtexInput] = useState('')
   const [importError, setImportError] = useState(null)
+  const [importNote, setImportNote] = useState(null) // what an import skipped, shown on the Library tab
   const [librarySearch, setLibrarySearch] = useState('')
   const fileRef = useRef(null)
 
@@ -47,15 +49,15 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
         setImportError('No valid BibTeX entries found')
         return
       }
-      const existing = new Set(bibliography.map(e => e.key))
-      const newEntries = entries.filter(e => !existing.has(e.key))
-      if (newEntries.length === 0) {
-        setImportError('All entries already exist in bibliography')
+      const { kept, skipped } = splitDuplicates(entries, bibliography)
+      if (kept.length === 0) {
+        setImportError(`${entries.length === 1 ? 'That entry is' : `All ${entries.length} entries are`} already in your library (the same key, DOI, or title and year)`)
         return
       }
-      onUpdate({ bibliography: [...bibliography, ...newEntries] })
+      onUpdate({ bibliography: [...bibliography, ...kept] })
       setBibtexInput('')
       setImportError(null)
+      setImportNote(skipped.length ? { added: kept.length, skipped } : null)
       setTab('library')
     } catch (e) {
       setImportError('Failed to parse BibTeX: ' + e.message)
@@ -152,13 +154,13 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
     }
   }
 
-  function importZoteroItem(item) {
+  function zoteroEntry(item) {
     const d = item.data
     const authors = (d.creators || [])
       .filter(c => c.creatorType === 'author')
       .map(c => c.lastName ? `${c.lastName}, ${c.firstName || ''}` : c.name || '')
       .join(' and ')
-    const entry = {
+    return {
       type: mapZoteroType(d.itemType),
       key: d.citationKey || item.key,
       title: d.title || '',
@@ -171,37 +173,18 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
       url: d.url || '',
       booktitle: d.proceedingsTitle || d.bookTitle || '',
     }
-    const existing = new Set(bibliography.map(e => e.key))
-    if (existing.has(entry.key)) return
+  }
+
+  function importZoteroItem(item) {
+    const entry = zoteroEntry(item)
+    if (findWork(entry)) return
     onUpdate({ bibliography: [...bibliography, entry] })
   }
 
   function importAllZoteroItems() {
-    const existing = new Set(bibliography.map(e => e.key))
-    const newEntries = zoteroItems
-      .map(item => {
-        const d = item.data
-        const authors = (d.creators || [])
-          .filter(c => c.creatorType === 'author')
-          .map(c => c.lastName ? `${c.lastName}, ${c.firstName || ''}` : c.name || '')
-          .join(' and ')
-        return {
-          type: mapZoteroType(d.itemType),
-          key: d.citationKey || item.key,
-          title: d.title || '',
-          author: authors,
-          year: d.date ? d.date.match(/\d{4}/)?.[0] || '' : '',
-          journal: d.publicationTitle || '',
-          volume: d.volume || '',
-          pages: d.pages || '',
-          doi: d.DOI || '',
-          url: d.url || '',
-          booktitle: d.proceedingsTitle || d.bookTitle || '',
-        }
-      })
-      .filter(e => !existing.has(e.key))
-    if (newEntries.length > 0) {
-      onUpdate({ bibliography: [...bibliography, ...newEntries] })
+    const { kept } = splitDuplicates(zoteroItems.map(zoteroEntry), bibliography)
+    if (kept.length > 0) {
+      onUpdate({ bibliography: [...bibliography, ...kept] })
     }
   }
 
@@ -210,7 +193,10 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
     return map[zt] || 'misc'
   }
 
-  const isInBib = (key) => bibliography.some(e => e.key === key)
+  // The library entry that is the same paper as a given one, whatever its key;
+  // and, for each later copy of a paper already in the library, its first's key
+  const findWork = useMemo(() => workFinder(bibliography), [bibliography])
+  const repeats = useMemo(() => duplicatesInLibrary(bibliography), [bibliography])
 
   // While searching, the list skips entries that don't match but keeps each
   // one's place in the whole library, which Cite and the arrows go by
@@ -259,6 +245,18 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
           {/* Library tab */}
           {tab === 'library' && (
             <>
+              {importNote && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12, padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  <div style={{ flex: 1 }}>
+                    Added {importNote.added} {importNote.added === 1 ? 'entry' : 'entries'}.
+                    Skipped {importNote.skipped.length} already in your library:{' '}
+                    {importNote.skipped.slice(0, 3).map(({ entry, of }) => `“${entry.title || entry.key}”${of.key !== entry.key ? ` (as ${of.key})` : ''}`).join(', ')}
+                    {importNote.skipped.length > 3 ? `, and ${importNote.skipped.length - 3} more` : ''}.
+                  </div>
+                  <button onClick={() => setImportNote(null)} aria-label="Dismiss"
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
+                </div>
+              )}
               {bibliography.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <input className="prop-input" type="search" value={librarySearch}
@@ -276,6 +274,15 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                       {matchCount} of {bibliography.length}
                     </span>
                   )}
+                </div>
+              )}
+              {repeats.size > 0 && (
+                <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+                  <span style={{ padding: '1px 6px', borderRadius: 3, background: 'rgba(245,158,11,0.18)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    {repeats.size} duplicate{repeats.size === 1 ? '' : 's'}
+                  </span>{' '}
+                  The same paper is in the library more than once, so it can be listed twice in the
+                  references. Remove the copies marked below.
                 </div>
               )}
               {bibliography.length > 0 && matchCount === 0 && (
@@ -308,6 +315,12 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                           </div>
                           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1, fontFamily: 'monospace' }}>
                             @{entry.type}{'{' + entry.key + '}'}
+                            {repeats.has(entry.key) && (
+                              <span title="The same DOI, or the same title and year: remove this copy so the paper is listed once in the references"
+                                style={{ marginLeft: 6, padding: '0 5px', borderRadius: 3, background: 'rgba(245,158,11,0.18)', color: 'var(--text-primary)' }}>
+                                duplicate of {repeats.get(entry.key)}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
@@ -457,8 +470,8 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {zoteroItems.map(item => {
                           const d = item.data
-                          const itemKey = d.citationKey || item.key
-                          const added = isInBib(itemKey)
+                          const inLibrary = findWork(zoteroEntry(item))
+                          const added = !!inLibrary
                           const authorList = (d.creators || []).filter(c => c.creatorType === 'author')
                           const authorStr = authorList.length > 2
                             ? `${authorList[0].lastName} et al.`
@@ -476,13 +489,14 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                               </div>
                               <button onClick={() => importZoteroItem(item)}
                                 disabled={added}
+                                title={added && inLibrary.key !== (d.citationKey || item.key) ? `Already in your library as ${inLibrary.key}` : undefined}
                                 style={{
                                   background: added ? 'var(--success)' : 'var(--accent)',
                                   color: 'white', border: 'none', borderRadius: 4,
                                   padding: '4px 10px', fontSize: 11, cursor: added ? 'default' : 'pointer',
                                   fontWeight: 500, flexShrink: 0, opacity: added ? 0.7 : 1,
                                 }}>
-                                {added ? 'Added' : 'Import'}
+                                {!added ? 'Import' : inLibrary.key === (d.citationKey || item.key) ? 'Added' : 'In library'}
                               </button>
                             </div>
                           )
