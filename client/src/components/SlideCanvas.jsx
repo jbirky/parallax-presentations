@@ -48,6 +48,7 @@ import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
+import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
 
 function highlightCode(code, language) {
@@ -254,7 +255,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -1158,6 +1159,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             onCommitCrop={commitCrop}
             globalFont={globalFont}
             citationFontSize={citationFontSize}
+            citationLabels={citationLabels}
             citationFontFamily={citationFontFamily}
           />
         ))}
@@ -1381,7 +1383,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   )
 }
 
-export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1478,7 +1480,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
               letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
               wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
             }}
-            dangerouslySetInnerHTML={{ __html: safeHtml(element.content) }}
+            dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(element.content, citationLabels)) }}
           />
         )}
         {element.type === 'text' && isEditing && (

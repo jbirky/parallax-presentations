@@ -194,22 +194,173 @@ function formatAuthorsShort(authors) {
   if (authors.length === 2) return `${authors[0].last} & ${authors[1].last}`;
   return `${authors[0].last} et al.`;
 }
-function getReferencedEntries(bibliography, slides) {
-  if (!bibliography || !bibliography.length) return [];
-  const allText = (slides || []).flatMap((s) => (s.elements || []).flatMap((el) => {
-    const parts = [];
-    if (el.content) parts.push(el.content);
-    if (el.citationText) parts.push(el.citationText);
-    return parts;
-  })).join(" ");
-  return bibliography.filter((entry, i) => {
-    if (allText.includes(`[${i + 1}]`)) return true;
-    const authors = parseAuthors(entry.author);
-    const short = formatAuthorsShort(authors);
-    if (short && allText.includes(short)) return true;
-    if (entry.key && allText.includes(entry.key)) return true;
-    return false;
+function formatCitation(entry, style, index) {
+  const authors = parseAuthors(entry.author);
+  const year = entry.year || "";
+  if (style === "author-year") {
+    return `(${formatAuthorsShort(authors)}, ${year})`;
+  }
+  return `[${index + 1}]`;
+}
+
+// client/src/utils/citationIndex.js
+var BARE_NUMBER_RE = /\[(\d{1,3})\]/g;
+var OPEN_TAG_RE = /^<(sup|span)(?=[\s/>])/i;
+var CITE_ATTR_RE = /(?:^|[\s"'])data-cite="([^"]*)"/i;
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+var escapeText = (text) => String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+var unescapeAttr = (text) => text.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+function allIndexesOf(haystack, needle) {
+  if (!needle) return [];
+  const found = [];
+  const re = new RegExp(escapeRegExp(needle), "g");
+  let m;
+  while ((m = re.exec(haystack)) !== null) found.push(m.index);
+  return found;
+}
+function scanTags(html) {
+  const tags = [];
+  let lt = html.indexOf("<");
+  while (lt !== -1) {
+    const gt = html.indexOf(">", lt);
+    if (gt === -1) break;
+    const start = html.lastIndexOf("<", gt);
+    tags.push({ from: lt, start, end: gt + 1, text: html.slice(start, gt + 1) });
+    lt = html.indexOf("<", gt + 1);
+  }
+  return tags;
+}
+function openTag(tag) {
+  const m = OPEN_TAG_RE.exec(tag.text);
+  if (!m) return null;
+  const cite = CITE_ATTR_RE.exec(tag.text);
+  return { name: m[1].toLowerCase(), key: cite ? unescapeAttr(cite[1]) : null };
+}
+var isClose = (tag, name) => tag.text.toLowerCase() === `</${name}>`;
+function nextCloses(tags) {
+  const next = { sup: new Array(tags.length), span: new Array(tags.length) };
+  let sup = -1, span = -1;
+  for (let i = tags.length - 1; i >= 0; i--) {
+    if (isClose(tags[i], "sup")) sup = i;
+    if (isClose(tags[i], "span")) span = i;
+    next.sup[i] = sup;
+    next.span[i] = span;
+  }
+  return next;
+}
+function keyedMarkers(html) {
+  if (!html || html.indexOf("data-cite") === -1) return [];
+  const tags = scanTags(html), closes = nextCloses(tags), found = [];
+  for (let i = 0; i < tags.length; i++) {
+    const open = openTag(tags[i]);
+    if (!open || open.key === null) continue;
+    const c = closes[open.name][i + 1] ?? -1;
+    if (c === -1) continue;
+    found.push({ start: tags[i].start, end: tags[c].end, key: open.key, inner: [tags[i].end, tags[c].start] });
+    i = c;
+  }
+  return found;
+}
+function replaceRanges(html, ranges, replace) {
+  if (!ranges.length) return html;
+  let out = "", at = 0;
+  for (const r of ranges) {
+    out += html.slice(at, r.start) + replace(r);
+    at = r.end;
+  }
+  return out + html.slice(at);
+}
+var ENTITIES = { "&amp;": "&", "&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
+function blank(length) {
+  return " ".repeat(length);
+}
+function visibleText(html, onMarker) {
+  let out = replaceRanges(html, keyedMarkers(html), (m) => {
+    onMarker(m.key, m.start);
+    return blank(m.end - m.start);
   });
+  out = replaceRanges(out, scanTags(out).map((t) => ({ start: t.from, end: t.end })), (r) => blank(r.end - r.start));
+  out = out.replace(/&[a-z#0-9]+;/gi, (match) => {
+    const decoded = ENTITIES[match.toLowerCase()];
+    return decoded ? decoded + blank(match.length - decoded.length) : blank(match.length);
+  });
+  return out;
+}
+function findCitations(text, bibliography = []) {
+  if (!text) return [];
+  const byKey = new Map(bibliography.map((e) => [e.key, e]));
+  const hits = [];
+  const visible = visibleText(text, (key, pos) => {
+    if (byKey.has(key)) hits.push({ pos, key });
+  });
+  let m;
+  BARE_NUMBER_RE.lastIndex = 0;
+  while ((m = BARE_NUMBER_RE.exec(visible)) !== null) {
+    const entry = bibliography[parseInt(m[1], 10) - 1];
+    if (entry) hits.push({ pos: m.index, key: entry.key });
+  }
+  for (const entry of bibliography) {
+    for (const pos of allIndexesOf(visible, entry.key)) hits.push({ pos, key: entry.key });
+    const short = formatAuthorsShort(parseAuthors(entry.author));
+    for (const pos of allIndexesOf(visible, short)) hits.push({ pos, key: entry.key });
+  }
+  return hits.sort((a, b) => a.pos - b.pos);
+}
+function citedKeysInPresentationOrder(bibliography, slides) {
+  const seen = /* @__PURE__ */ new Set();
+  const keys = [];
+  for (const slide of slides || []) {
+    const elements = [...slide.elements || []].sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+    for (const el of elements) {
+      const text = [el.content, el.citationText].filter(Boolean).join("\n");
+      for (const { key } of findCitations(text, bibliography)) {
+        if (!seen.has(key)) {
+          seen.add(key);
+          keys.push(key);
+        }
+      }
+    }
+  }
+  return keys;
+}
+function alphabeticalSortKey(entry) {
+  const authors = parseAuthors(entry.author);
+  const lead = authors[0]?.last || entry.author || entry.title || "";
+  return [lead.toLowerCase(), entry.year || "", (entry.title || "").toLowerCase()];
+}
+function buildCitationIndex(presentation) {
+  const bibliography = presentation?.bibliography || [];
+  const order = presentation?.citationOrder === "alphabetical" ? "alphabetical" : "presentation";
+  const style = presentation?.citationStyle || "numbered";
+  const citedKeys = citedKeysInPresentationOrder(bibliography, presentation?.slides || []);
+  const byKey = new Map(bibliography.map((e) => [e.key, e]));
+  let entries = citedKeys.map((k) => byKey.get(k)).filter(Boolean);
+  if (order === "alphabetical") {
+    entries = [...entries].sort((a, b) => {
+      const ka = alphabeticalSortKey(a), kb = alphabeticalSortKey(b);
+      for (let i = 0; i < ka.length; i++) {
+        const cmp = String(ka[i]).localeCompare(String(kb[i]));
+        if (cmp !== 0) return cmp;
+      }
+      return 0;
+    });
+  }
+  const numberByKey = {};
+  const labelByKey = {};
+  entries.forEach((entry, i) => {
+    numberByKey[entry.key] = i + 1;
+    labelByKey[entry.key] = formatCitation(entry, style, i);
+  });
+  return { entries, numberByKey, labelByKey, order, style, citedCount: entries.length };
+}
+var CITATION_CSS = `
+    sup[data-cite] { font-weight:700; }`;
+function resolveCitationsInHtml(html, labelByKey) {
+  if (!html || typeof html !== "string" || html.indexOf("data-cite") === -1) return html;
+  const markers = keyedMarkers(html).filter((m) => labelByKey?.[m.key]);
+  return replaceRanges(html, markers, (m) => html.slice(m.start, m.inner[0]) + escapeText(labelByKey[m.key]) + html.slice(m.inner[1], m.end));
 }
 
 // server:plugin-registry
@@ -2249,7 +2400,7 @@ function text3dSettings(el, fallbackFont) {
     fontFamily: String(el.fontFamily || fallbackFont || "sans-serif").replace(/[<>"`;{}\\\r\n]/g, "")
   };
 }
-var escapeText = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+var escapeText2 = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 function darken(hex, amount) {
   let h = hex.slice(1);
   if (h.length === 3) h = h.replace(/./g, (c) => c + c);
@@ -2273,7 +2424,7 @@ function text3dResolution(el) {
 function text3dHtml(el, { fontFamily, resolution } = {}) {
   const s = text3dSettings(el, fontFamily);
   const k = Math.max(1, Math.round(Number(resolution) || text3dResolution(el)));
-  const text = escapeText(el.content);
+  const text = escapeText2(el.content);
   const type = `font-family:${s.fontFamily};font-size:${round2(s.fontSize * k)}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${round2(s.letterSpacing * k)}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`;
   const layers = text3dLayers(el).map((l) => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${round2(l.z * k)}px)">${text}</div>`).join("");
   const down = Math.round(1e6 / k) / 1e6;
@@ -3508,6 +3659,30 @@ function getSlideColumns(slides, presentation = {}) {
   return slides.map((s) => [s]);
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
+function referencesHtml(citations, markerColor) {
+  const items = citations.entries.map((entry) => {
+    const year = entry.year || "";
+    const journal = entry.journal || entry.booktitle || "";
+    const vol = entry.volume || "";
+    const pages = entry.pages || "";
+    const doi = entry.doi || "";
+    let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
+    line += `${escapeHtml(entry.author || "")}`;
+    if (year) line += ` (${escapeHtml(year)})`;
+    line += `. ${escapeHtml(entry.title || "")}.`;
+    if (journal) line += ` <em>${escapeHtml(journal)}</em>`;
+    if (vol) line += `, ${escapeHtml(vol)}`;
+    if (pages) line += `, ${escapeHtml(pages)}`;
+    if (journal || vol || pages) line += ".";
+    if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`;
+    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`;
+  }).join("\n          ");
+  return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+          ${items}
+        </div>`;
+}
+var hasCitationMarkers = (presentation) => (presentation.slides || []).some((slide) => (slide.elements || []).some((el) => typeof el.content === "string" && el.content.includes("data-cite")));
 function generateRevealHTML(presentation, opts = {}) {
   const slideW = Number(presentation.slideWidth) || 960;
   const slideH = Number(presentation.slideHeight) || 540;
@@ -3519,6 +3694,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const showTimeWidget = footerTimeMode !== "none";
   const laserPointer = presentation.laserPointer || "off";
   const bibliography = presentation.bibliography || [];
+  const citations = buildCitationIndex(presentation);
   const pageNumberFormat = presentation.pageNumberFormat || "c/t";
   const theme = /^[\w-]+$/.test(presentation.theme || "") ? presentation.theme : "black";
   const codeTheme = /^[\w-]+$/.test(presentation.codeTheme || "") ? presentation.codeTheme : "monokai";
@@ -3567,7 +3743,7 @@ function generateRevealHTML(presentation, opts = {}) {
       if (el.type === "text") {
         const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ""}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ""}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ""}`;
         const textStyle = el.sizeMode === "auto" ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}` : style;
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${el.content || ""}</div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || "", citations.labelByKey)}</div>`;
       }
       if (el.type === "image") {
         const src = absoluteSrc(sanitizeUrl(el.src));
@@ -3946,38 +4122,13 @@ ${sideCitationsHtml}
 ${sections}
     </section>`;
   }).join("\n");
-  if (bibliography.length > 0) {
-    const referencedEntries = getReferencedEntries(bibliography, presentation.slides);
-    if (referencedEntries.length > 0) {
-      const refItems = referencedEntries.map((entry, i) => {
-        const authors = entry.author || "";
-        const year = entry.year || "";
-        const title = escapeHtml(entry.title || "");
-        const journal = entry.journal || entry.booktitle || "";
-        const vol = entry.volume || "";
-        const pages = entry.pages || "";
-        const doi = entry.doi || "";
-        let line = `<span style="color:${footerColor};font-weight:700;margin-right:6px">[${i + 1}]</span>`;
-        line += `${escapeHtml(authors)}`;
-        if (year) line += ` (${escapeHtml(year)})`;
-        line += `. ${title}.`;
-        if (journal) line += ` <em>${escapeHtml(journal)}</em>`;
-        if (vol) line += `, ${escapeHtml(vol)}`;
-        if (pages) line += `, ${escapeHtml(pages)}`;
-        line += ".";
-        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`;
-        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`;
-      }).join("\n          ");
-      const refSlide = `    <section data-slide-id="references">
+  if (citations.entries.length > 0) {
+    slidesHtml += `
+    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
-        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
-          ${refItems}
-        </div>
+        ${referencesHtml(citations, footerColor)}
       </div>
     </section>`;
-      slidesHtml += "\n" + refSlide;
-    }
   }
   return `<!doctype html>
 <html>
@@ -4046,7 +4197,7 @@ ${sections}
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ""}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ""}${hasCitationMarkers(presentation) ? CITATION_CSS : ""}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${Number(presentation.citationFontSize) || 10}px;color:rgba(255,255,255,0.5);font-family:${cssValue(presentation.citationFontFamily) || "-apple-system,sans-serif"};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }

@@ -73,7 +73,7 @@ describe('the Library tab search', () => {
     expect(el.textContent).toContain('2 of 4')
     await type('')
     expect(titles()).toHaveLength(4)
-    expect(el.textContent).not.toContain('of 4')
+    expect(el.textContent).not.toMatch(/\d of 4(?! cited)/)
   })
 
   it('says so when nothing matches', async () => {
@@ -83,13 +83,13 @@ describe('the Library tab search', () => {
     expect(el.textContent).toContain('No entries match “neutrino”')
   })
 
-  it('cites a found entry with its place in the whole library', async () => {
+  it('cites a found entry', async () => {
     const { onInsertCitation, type, buttons } = render()
     await type('kepler')
     const cites = buttons('Cite')
     expect(cites).toHaveLength(1)
     await act(async () => { cites[0].click() })
-    expect(onInsertCitation).toHaveBeenCalledWith(library[3], 3)
+    expect(onInsertCitation).toHaveBeenCalledWith(library[3])
   })
 
   it("can't reorder while searching, since neighbours may be hidden", async () => {

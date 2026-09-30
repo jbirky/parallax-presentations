@@ -59,8 +59,10 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
-import { formatCitation, getReferencedEntries, parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
+import { parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
+import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
+import { CitationNode } from '../extensions/CitationExtension'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
 import { FontWeight } from '../extensions/FontWeight'
@@ -791,7 +793,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     const mode = previewForSelection(currentSlide.elements, selectedElementIds[0], preview.mode)
     if (mode) setPreviewMode(mode)
   }, [selectedElementIds, currentSlide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
+  // Only what the deck cites is numbered, in the order the deck is set to, and
+  // the references slide lists the same entries (utils/citationIndex.js)
+  const citationIndex = useMemo(() => buildCitationIndex(presentation), [presentation])
+  const referencedEntries = citationIndex.entries
+  const citationMarkerCounts = useMemo(() => (showBibliographyModal ? countStaleMarkers(presentation) : { stale: 0, unlinked: 0 }), [showBibliographyModal, presentation])
   const hasReferencesSlide = referencedEntries.length > 0
   const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
   const isViewingReferences = currentSlideIndex === referencesSlideIndex && hasReferencesSlide
@@ -808,6 +814,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder: 'Click to start typing...' }),
       MathNode,
+      CitationNode,
       FontFamily,
       FontSize,
       FontWeight,
@@ -1773,12 +1780,17 @@ function draw() {
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
     settingContent.current = true
-    editor?.commands.setContent(element.content || '', false)
+    // With its citations' labels as the index has them now
+    editor?.commands.setContent(resolveCitationsInHtml(element.content || '', citationIndex.labelByKey), false)
     settingContent.current = false
     setTimeout(() => editor?.commands.focus(), 10)
-  }, [presentation, editor])
+  }, [presentation, editor, citationIndex])
 
   const stopEditingElement = useCallback(() => {
+    // A citation inserted while editing was labelled as if it came last; with
+    // the text in place, the stored labels catch up with the index (a deck
+    // with nothing to change comes back as it was)
+    if (editingElementIdRef.current) setPresentation(prev => prev && applyCitationNumbering(prev))
     setEditingElementId(null)
     editingElementIdRef.current = null
   }, [])
@@ -3774,6 +3786,7 @@ function draw() {
         <SlidePanel
           slides={presentation.slides}
           globalFont={presentation.globalFont || ''}
+          citationLabels={citationIndex.labelByKey}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
@@ -3945,7 +3958,7 @@ function draw() {
                       const authorStr = formatAuthorsFull(authors)
                       return (
                         <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
-                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{i + 1}]</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>
                           {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
                           {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
                           {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}.
@@ -3999,6 +4012,7 @@ function draw() {
               footerColor={presentation.footerColor || 'rgba(255,255,255,0.65)'}
               footerInactiveColor={presentation.footerInactiveColor || 'rgba(255,255,255,0.25)'}
               citationFontSize={presentation.citationFontSize || 10}
+              citationLabels={citationIndex.labelByKey}
               citationFontFamily={presentation.citationFontFamily || '-apple-system,sans-serif'}
               footerMode={presentation.footerMode || 'basic'}
               sequenceSections={presentation.sequenceSections || []}
@@ -4398,12 +4412,16 @@ function draw() {
         <BibliographyModal
           bibliography={presentation.bibliography || []}
           citationStyle={presentation.citationStyle || 'numbered'}
-          onUpdate={updates => setPresentation(prev => ({ ...prev, ...updates }))}
-          onInsertCitation={(entry, index) => {
-            const cite = formatCitation(entry, presentation.citationStyle || 'numbered', index)
-            if (editor && editingElementId) {
-              editor.chain().focus().insertContent(`<sup style="color:#6366f1;font-weight:700;cursor:default">${cite}</sup>`).run()
-            }
+          citationOrder={presentation.citationOrder || 'presentation'}
+          citationIndex={citationIndex}
+          markerCounts={citationMarkerCounts}
+          // A style, order or library change moves the index under the markers
+          // already in the slides, so their stored labels move with it
+          onUpdate={updates => setPresentation(prev => applyCitationNumbering({ ...prev, ...updates }))}
+          onRenumber={opts => setPresentation(prev => applyCitationNumbering(prev, opts))}
+          onInsertCitation={entry => {
+            if (!editor || !editingElementId) return
+            editor.chain().focus().insertContent({ type: 'citation', attrs: { cite: entry.key, label: nextCitationLabel(presentation, entry) } }).run()
           }}
           onClose={() => setShowBibliographyModal(false)}
         />

@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'reac
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
+import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
@@ -23,7 +24,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
@@ -57,7 +58,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(el.content, citationLabels)) }} />
               )}
               {el.type === 'image' && (() => {
                 const imgFilter = [
@@ -183,7 +184,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '' }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {} }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -330,7 +331,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -472,7 +473,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onClick={e => handleItemClick(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>

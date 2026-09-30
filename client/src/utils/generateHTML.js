@@ -3,7 +3,7 @@
 
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
-import { getReferencedEntries } from './bibtexParser'
+import { buildCitationIndex, resolveCitationsInHtml, CITATION_CSS } from './citationIndex'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
@@ -166,6 +166,36 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // open; opts.customFonts are the fonts the deck may use, as /api/fonts lists
 // them; opts.pluginSandbox(el) gives a plugin element's sandbox page (the
 // editor's plugin registry otherwise)
+// The references slide's heading and list: the entries the deck cites, in the
+// order and with the numbers the citation index gives them
+function referencesHtml(citations, markerColor) {
+  const items = citations.entries.map(entry => {
+    const year = entry.year || ''
+    const journal = entry.journal || entry.booktitle || ''
+    const vol = entry.volume || ''
+    const pages = entry.pages || ''
+    const doi = entry.doi || ''
+    let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`
+    line += `${escapeHtml(entry.author || '')}`
+    if (year) line += ` (${escapeHtml(year)})`
+    line += `. ${escapeHtml(entry.title || '')}.`
+    if (journal) line += ` <em>${escapeHtml(journal)}</em>`
+    if (vol) line += `, ${escapeHtml(vol)}`
+    if (pages) line += `, ${escapeHtml(pages)}`
+    if (journal || vol || pages) line += '.'
+    if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
+    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
+  }).join('\n          ')
+  return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+          ${items}
+        </div>`
+}
+
+// Whether any text in the deck holds a citation marker, which needs CITATION_CSS
+const hasCitationMarkers = presentation => (presentation.slides || [])
+  .some(slide => (slide.elements || []).some(el => typeof el.content === 'string' && el.content.includes('data-cite')))
+
 export function generateRevealHTML(presentation, opts = {}) {
   // Numbers: they're written into pages' scripts and styles
   const slideW = Number(presentation.slideWidth) || 960
@@ -178,6 +208,9 @@ export function generateRevealHTML(presentation, opts = {}) {
   const showTimeWidget = footerTimeMode !== 'none'
   const laserPointer = presentation.laserPointer || 'off'
   const bibliography = presentation.bibliography || []
+  // Markers keep their entry's key and a cached label, refreshed here, so a
+  // deck is never numbered by a stale one (utils/citationIndex.js)
+  const citations = buildCitationIndex(presentation)
   const pageNumberFormat = presentation.pageNumberFormat || 'c/t'
   // Names in library paths
   const theme = /^[\w-]+$/.test(presentation.theme || '') ? presentation.theme : 'black'
@@ -246,7 +279,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -617,39 +650,14 @@ export function generateRevealHTML(presentation, opts = {}) {
     return `    <section>\n${sections}\n    </section>`
   }).join('\n')
 
-  if (bibliography.length > 0) {
-    const referencedEntries = getReferencedEntries(bibliography, presentation.slides)
-
-    if (referencedEntries.length > 0) {
-      const refItems = referencedEntries.map((entry, i) => {
-        const authors = entry.author || ''
-        const year = entry.year || ''
-        const title = escapeHtml(entry.title || '')
-        const journal = entry.journal || entry.booktitle || ''
-        const vol = entry.volume || ''
-        const pages = entry.pages || ''
-        const doi = entry.doi || ''
-        let line = `<span style="color:${footerColor};font-weight:700;margin-right:6px">[${i + 1}]</span>`
-        line += `${escapeHtml(authors)}`
-        if (year) line += ` (${escapeHtml(year)})`
-        line += `. ${title}.`
-        if (journal) line += ` <em>${escapeHtml(journal)}</em>`
-        if (vol) line += `, ${escapeHtml(vol)}`
-        if (pages) line += `, ${escapeHtml(pages)}`
-        line += '.'
-        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
-        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
-      }).join('\n          ')
-      const refSlide = `    <section data-slide-id="references">
+  if (citations.entries.length > 0) {
+    // Sized like every other slide: without it, the section is 0px tall and
+    // clips the list, so the slide showed empty
+    slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
-        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
-          ${refItems}
-        </div>
+        ${referencesHtml(citations, footerColor)}
       </div>
     </section>`
-      slidesHtml += '\n' + refSlide
-    }
   }
 
   return `<!doctype html>
@@ -719,7 +727,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${Number(presentation.citationFontSize) || 10}px;color:rgba(255,255,255,0.5);font-family:${cssValue(presentation.citationFontFamily) || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -1300,6 +1308,7 @@ function generatePrintHTML(presentation) {
   })
   const totalPages = pages.length
 
+  const citations = buildCitationIndex(presentation)
   const pagesHtml = pages.map(({ slide, slideIndex, maxIdx, screen, first }, pageIndex) => {
     // As the slide opens: fragments up to this step, without what a click
     // shows, and each element in its first state or the one a step put it in
@@ -1325,7 +1334,7 @@ function generatePrintHTML(presentation) {
         const vis = isHidden ? 'visibility:hidden;' : ''
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${el.content || ''}</div>`
+          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(el.src)
@@ -1512,7 +1521,14 @@ function generatePrintHTML(presentation) {
       })
     }
     return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${bodyHtml}\n${footerHtml}\n</div>`
-  }).join('\n')
+  }).join('\n') + (citations.entries.length > 0
+    // The references, last, as the presented deck has them
+    ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
+      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:hidden;z-index:1">
+        ${referencesHtml(citations, footerColor)}
+      </div>
+</div>`
+    : '')
 
   const title = escapeHtml(presentation.title || 'Presentation')
   return `<!doctype html>
@@ -1557,14 +1573,14 @@ function generatePrintHTML(presentation) {
     #print-bar button { padding: 7px 18px; background: #6366f1; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; }
     #print-bar button:hover { background: #5254cc; }
     #print-bar .hint { color: rgba(255,255,255,0.5); font-size: 12px; }
-    @media print { #print-bar { display: none; } body { margin-top: 0; } }
+    @media print { #print-bar { display: none; } body { margin-top: 0; } }${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
   </style>${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
 </head>
 <body>
   <div id="print-bar">
     <div>
       <strong>${title}</strong>
-      <span class="hint"> &nbsp;·&nbsp; ${totalPages} page${totalPages !== 1 ? 's' : ''} (fragments expanded)
+      <span class="hint"> &nbsp;·&nbsp; ${totalPages + (citations.entries.length > 0 ? 1 : 0)} page${totalPages !== 1 ? 's' : ''} (fragments expanded)
         &nbsp;·&nbsp; enable <em>Background graphics</em> in print settings</span>
     </div>
     <button onclick="window.print()">Print / Save as PDF</button>

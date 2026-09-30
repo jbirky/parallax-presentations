@@ -2,6 +2,7 @@ import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
 import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
+import { buildCitationIndex, resolveCitationsInHtml } from './citationIndex'
 
 function stripHtml(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
@@ -31,6 +32,7 @@ export function exportToPptx(presentation) {
   // the PDF does, with its pinned elements on each
   const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
+  const citationLabels = buildCitationIndex(presentation).labelByKey
   const pages = (presentation.slides || []).flatMap(slide =>
     Array.from({ length: getScreenCount(slide, slideW, slideH) }, (_, screen) => ({ slide, screen })))
 
@@ -62,7 +64,8 @@ export function exportToPptx(presentation) {
       const rotation = el.rotation || 0
 
       if (el.type === 'text' || el.type === 'markdown') {
-        const text = stripHtml(el.type === 'text' ? el.content : el.content)
+        // Citations read as the index numbers them now
+        const text = stripHtml(el.type === 'text' ? resolveCitationsInHtml(el.content, citationLabels) : el.content)
         if (text.trim()) {
           pptSlide.addText(text, {
             x, y, w, h,
