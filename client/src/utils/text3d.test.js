@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, text3dHtml, text3dLayers, text3dExtrusion, text3dShadowFilter, darken } from './text3d'
+import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, text3dHtml, text3dLayers, text3dExtrusion, text3dShadowFilter, text3dTilt, darken } from './text3d'
 
 const el = (extra = {}) => ({ id: 't', type: 'text3d', x: 0, y: 0, width: 600, height: 200, ...TEXT3D_DEFAULTS, ...extra })
 
@@ -81,8 +81,36 @@ describe('3D text extrusion', () => {
     expect(text3dExtrusion(el({ rotateX: 0, rotateY: 0 }))).toEqual({ dx: 0, dy: 0 })
   })
 
-  it('has presets that change only its shape', () => {
-    for (const p of TEXT3D_PRESETS) expect(Object.keys(p).sort()).toEqual(['depth', 'id', 'label', 'perspective', 'rotateX', 'rotateY'])
+  it('has presets that change only its angle, so flat text stays flat', () => {
+    for (const p of TEXT3D_PRESETS) expect(Object.keys(p).sort()).toEqual(['id', 'label', 'perspective', 'rotateX', 'rotateY'])
+  })
+})
+
+describe('new 3D text', () => {
+  it('is flat, on a tilted plane', () => {
+    expect(TEXT3D_DEFAULTS.depth).toBe(0)
+    expect(TEXT3D_DEFAULTS.rotateX).not.toBe(0)
+    expect(TEXT3D_DEFAULTS.rotateY).not.toBe(0)
+    const html = text3dHtml(el({ content: 'Flat' }))
+    expect(html).not.toContain('aria-hidden')
+    expect(html).toContain(`rotateX(${TEXT3D_DEFAULTS.rotateX}deg) rotateY(${TEXT3D_DEFAULTS.rotateY}deg)`)
+  })
+})
+
+describe('dragging to tilt', () => {
+  it('turns the text the way the pointer goes', () => {
+    expect(text3dTilt({ rotateX: 0, rotateY: 0 }, 50, 0)).toEqual({ rotateX: 0, rotateY: 20 })
+    expect(text3dTilt({ rotateX: 0, rotateY: 0 }, -50, 0)).toEqual({ rotateX: 0, rotateY: -20 })
+    // Down brings the top toward you: a negative lean
+    expect(text3dTilt({ rotateX: 10, rotateY: 5 }, 0, 25)).toEqual({ rotateX: 0, rotateY: 5 })
+    expect(text3dTilt({ rotateX: 10, rotateY: 5 }, 0, -25)).toEqual({ rotateX: 20, rotateY: 5 })
+  })
+
+  it('stops at the limits, in whole degrees, from the defaults when unset', () => {
+    expect(text3dTilt({ rotateX: 0, rotateY: 0 }, 5000, -5000)).toEqual({ rotateX: TEXT3D_LIMITS.rotateX[1], rotateY: TEXT3D_LIMITS.rotateY[1] })
+    expect(text3dTilt({ rotateX: 0, rotateY: 0 }, 3, 1)).toEqual({ rotateX: 0, rotateY: 1 })
+    expect(text3dTilt({}, 0, 0)).toEqual({ rotateX: TEXT3D_DEFAULTS.rotateX, rotateY: TEXT3D_DEFAULTS.rotateY })
+    expect(text3dTilt({ rotateX: null, rotateY: 'x' }, 0, 0)).toEqual({ rotateX: TEXT3D_DEFAULTS.rotateX, rotateY: TEXT3D_DEFAULTS.rotateY })
   })
 })
 

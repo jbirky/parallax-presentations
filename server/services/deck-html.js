@@ -2204,10 +2204,10 @@ var TEXT3D_DEFAULTS = {
   color: "#ffffff",
   sideColor: "#6366f1",
   sideShade: 0.6,
-  depth: 24,
-  rotateX: 12,
-  rotateY: -24,
-  perspective: 900
+  depth: 0,
+  rotateX: 16,
+  rotateY: -26,
+  perspective: 800
 };
 var TEXT3D_LIMITS = {
   depth: [0, 150],

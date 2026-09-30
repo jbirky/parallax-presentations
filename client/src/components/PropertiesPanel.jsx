@@ -7,7 +7,7 @@ import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
 import { SHAPES } from '../utils/shapeUtils'
-import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS } from '../utils/text3d'
+import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, TEXT3D_EXTRUDED_DEPTH } from '../utils/text3d'
 
 const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
@@ -718,15 +718,20 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           {/* 3D Text options */}
           {selectedElement.type === 'text3d' && (() => {
             const val = key => selectedElement[key] ?? TEXT3D_DEFAULTS[key]
-            const slider = (key, label, unit, step = 1) => (
+            const slider = (key, label, unit, step = 1, min = TEXT3D_LIMITS[key][0]) => (
               <div style={{ marginBottom: 6 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}: {val(key)}{unit}</div>
-                <input type="range" min={TEXT3D_LIMITS[key][0]} max={TEXT3D_LIMITS[key][1]} step={step} value={val(key)}
+                <input type="range" min={min} max={TEXT3D_LIMITS[key][1]} step={step} value={val(key)}
                   onChange={e => onUpdateElement({ [key]: Number(e.target.value) })}
                   style={{ width: '100%', accentColor: 'var(--accent)' }} />
               </div>
             )
-            const presetOn = p => ['rotateX', 'rotateY', 'depth', 'perspective'].every(k => val(k) === p[k])
+            const presetOn = p => ['rotateX', 'rotateY', 'perspective'].every(k => val(k) === p[k])
+            const extruded = val('depth') > 0
+            const choice = on => ({
+              padding: '4px 0', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: '1px solid var(--border)',
+              background: on ? 'var(--accent)' : 'var(--bg-hover)', color: on ? '#fff' : 'var(--text-secondary)',
+            })
             return (
             <div style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Text Content</div>
@@ -736,43 +741,47 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 onChange={e => onUpdateElement({ content: e.target.value })}
                 style={{ width: '100%', minHeight: 48, background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 4, fontSize: 12, resize: 'vertical', boxSizing: 'border-box', marginBottom: 8 }}
               />
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Shape</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 8 }}>
-                {TEXT3D_PRESETS.map(({ id, label, ...shape }) => (
-                  <button key={id} onClick={() => onUpdateElement(shape)}
-                    style={{
-                      padding: '4px 0', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: '1px solid var(--border)',
-                      background: presetOn(shape) ? 'var(--accent)' : 'var(--bg-hover)',
-                      color: presetOn(shape) ? '#fff' : 'var(--text-secondary)',
-                    }}
-                  >{label}</button>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Style</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8 }}>
+                <button style={choice(!extruded)} onClick={() => onUpdateElement({ depth: 0 })}>Flat</button>
+                <button style={choice(extruded)} onClick={() => { if (!extruded) onUpdateElement({ depth: TEXT3D_EXTRUDED_DEPTH }) }}>Extruded</button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Angle</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 4 }}>
+                {TEXT3D_PRESETS.map(({ id, label, ...angle }) => (
+                  <button key={id} onClick={() => onUpdateElement(angle)} style={choice(presetOn(angle))}>{label}</button>
                 ))}
               </div>
-              {slider('depth', 'Depth', 'px')}
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>Or double-click the text on the slide and drag it to tilt</div>
+              {extruded && slider('depth', 'Depth', 'px', 1, 1)}
               {slider('rotateY', 'Turn', '°')}
               {slider('rotateX', 'Lean', '°')}
               {slider('perspective', 'Perspective', 'px', 10)}
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: -2, marginBottom: 8 }}>A lower perspective looks closer and more dramatic</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: extruded ? '1fr 1fr' : '1fr', gap: 8, marginBottom: extruded ? 6 : 8 }}>
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Face</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{extruded ? 'Face' : 'Color'}</div>
                   <input type="color" value={val('color')}
                     onChange={e => onUpdateElement({ color: e.target.value })}
                     style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }} />
                 </div>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Sides</div>
-                  <input type="color" value={val('sideColor')}
-                    onChange={e => onUpdateElement({ sideColor: e.target.value })}
-                    style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }} />
+                {extruded && (
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Sides</div>
+                    <input type="color" value={val('sideColor')}
+                      onChange={e => onUpdateElement({ sideColor: e.target.value })}
+                      style={{ width: '100%', height: 28, border: '1px solid var(--border)', borderRadius: 4, padding: 2, background: 'none', cursor: 'pointer' }} />
+                  </div>
+                )}
+              </div>
+              {extruded && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Side shading: {Math.round(val('sideShade') * 100)}%</div>
+                  <input type="range" min={0} max={100} value={Math.round(val('sideShade') * 100)}
+                    onChange={e => onUpdateElement({ sideShade: Number(e.target.value) / 100 })}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }} />
                 </div>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Side shading: {Math.round(val('sideShade') * 100)}%</div>
-                <input type="range" min={0} max={100} value={Math.round(val('sideShade') * 100)}
-                  onChange={e => onUpdateElement({ sideShade: Number(e.target.value) / 100 })}
-                  style={{ width: '100%', accentColor: 'var(--accent)' }} />
-              </div>
+              )}
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
                 <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />

@@ -48,7 +48,7 @@ import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
-import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
+import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
 
 function highlightCode(code, language) {
   try {
@@ -315,6 +315,9 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   const [contextMenu, setContextMenu] = useState(null) // { elementId, x, y }
   const [cropMode, setCropMode] = useState(null) // { elementId, x, y, w, h }
   const cropDragRef = useRef(null) // { handle, startX, startY, startCrop, elW, elH }
+  // The 3D text in tilt mode: double-click it, drag to tilt, Esc when done
+  const [tiltId, setTiltId] = useState(null)
+  const tiltDragRef = useRef(null) // { elementId, startX, startY, start: { rotateX, rotateY } }
   const [dragOver, setDragOver] = useState(false)
   const [activeGuides, setActiveGuides] = useState([])
   const scaleRef = useRef(scale)
@@ -500,6 +503,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         return
       }
 
+      // Tilting 3D text, by how far the pointer has gone on screen
+      if (tiltDragRef.current) {
+        const td = tiltDragRef.current
+        onUpdateElement(td.elementId, text3dTilt(td.start, e.clientX - td.startX, e.clientY - td.startY))
+        return
+      }
+
       // Crop drag
       if (cropDragRef.current) {
         const cd = cropDragRef.current
@@ -638,6 +648,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       draggingGuideRef.current = null
       draggingAxisRef.current = null
       cropDragRef.current = null
+      tiltDragRef.current = null
       pendingDragRef.current = null
       draggingRef.current = null
       setActiveGuides([])
@@ -660,6 +671,11 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         return
       }
       const tag = document.activeElement?.tagName
+      if (tiltId) {
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        if (e.key === 'Escape' || (e.key === 'Enter' && !typing)) { setTiltId(null); e.preventDefault() }
+        return
+      }
       if (editingElementId) {
         if (e.key === 'Escape') { onStopEdit(); e.preventDefault() }
         return
@@ -673,7 +689,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [selectedElementIds, editingElementId, cropMode, onStopEdit, onToggleSelectElement, onDeleteSelectedElements])
+  }, [selectedElementIds, editingElementId, cropMode, tiltId, onStopEdit, onToggleSelectElement, onDeleteSelectedElements])
+
+  // Tilt mode ends when its text is no longer the one thing selected, is
+  // locked, or is gone
+  useEffect(() => {
+    if (!tiltId) return
+    const el = slide?.elements?.find(el => el.id === tiltId)
+    if (!el || el.locked || selectedElementIds.length !== 1 || selectedElementIds[0] !== tiltId) setTiltId(null)
+  }, [tiltId, selectedElementIds, slide])
 
   // Close context menu on outside click
   useEffect(() => {
@@ -1071,6 +1095,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             remote={remoteUse?.get(element.id)}
             isCropping={cropMode?.elementId === element.id}
             cropState={cropMode?.elementId === element.id ? cropMode : null}
+            isTilting={tiltId === element.id}
             isDragging={draggingRef.current?.elementId === element.id}
             editor={editor}
             onPointerDown={(e, type, handle) => {
@@ -1078,6 +1103,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               if (drawToolRef.current) return
               if (editingElementId === element.id) return
               if (element.locked && type === 'move') return
+              // In tilt mode, dragging the text tilts it rather than moving it
+              if (tiltId === element.id && type === 'move') {
+                e.stopPropagation(); e.preventDefault()
+                if (e.button === 0) tiltDragRef.current = { elementId: element.id, startX: e.clientX, startY: e.clientY, start: { rotateX: element.rotateX, rotateY: element.rotateY } }
+                return
+              }
               e.stopPropagation()
               onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey)
               startElementDrag(e, element.id, type, handle)
@@ -1094,8 +1125,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
               else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
-              // Its text is edited in the properties panel
-              else if (element.type === 'text3d') document.getElementById('text3d-content')?.select()
+              // In and out of tilt mode; its text is edited in the properties panel
+              else if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
             }}
             onContextMenu={(e) => {
               e.preventDefault(); e.stopPropagation()
@@ -1342,7 +1373,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   )
 }
 
-export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
+export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif' }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1381,12 +1412,13 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
     <div
       ref={outerRef}
       data-element-id={element.id}
+      data-tilting={isTilting || undefined}
       style={{
         position: 'absolute',
         left: element.x, top: element.y,
         width: element.width, height: isAutoFit ? 'auto' : element.height,
         zIndex: element.zIndex || 1,
-        outline: element.locked ? '2px solid #f59e0b' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : faded ? '1px dashed rgba(148,163,184,0.8)' : 'none',
+        outline: element.locked ? '2px solid #f59e0b' : isTilting ? '2px solid #22d3ee' : (isSelected || isEditing) && !isCropping ? '2px solid #6366f1' : isCropping ? '2px solid #f59e0b' : faded ? '1px dashed rgba(148,163,184,0.8)' : 'none',
         // Hidden when presented, at least for now: faded here, so it can still be
         // edited. A shape draws its own opacity; others have one in a state.
         opacity: faded && !isEditing ? 0.45 : element.type !== 'shape' && element.states?.length && element.opacity != null ? element.opacity : undefined,
@@ -1394,7 +1426,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         // move with the group, not seen or clicked
         visibility: unseen ? 'hidden' : undefined,
         pointerEvents: unseen ? 'none' : undefined,
-        cursor: isCropping ? 'crosshair' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
+        cursor: isCropping ? 'crosshair' : isTilting ? 'move' : isEditing ? 'text' : isDragging ? 'grabbing' : element.locked ? 'not-allowed' : 'grab',
         userSelect: isEditing ? 'text' : 'none',
         boxSizing: 'border-box',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
@@ -1865,7 +1897,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
       )}
 
       {/* Resize handles — auto-fit text only exposes width handles */}
-      {isSelected && !isEditing && !isCropping && !element.locked && element.type !== 'html' && Object.entries(HANDLE_STYLES)
+      {isSelected && !isEditing && !isCropping && !isTilting && !element.locked && element.type !== 'html' && Object.entries(HANDLE_STYLES)
         .filter(([handle]) => !isAutoFit || handle === 'w' || handle === 'e')
         .map(([handle, hStyle]) => (
           <div
@@ -1879,8 +1911,19 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           />
         ))}
 
+      {/* Tilt mode's hint, above the box */}
+      {isTilting && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, zIndex: 100,
+          background: '#0891b2', color: 'white', fontSize: 11, fontFamily: 'sans-serif',
+          padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap', pointerEvents: 'none', userSelect: 'none',
+        }}>
+          Drag to tilt · turn {element.rotateY ?? TEXT3D_DEFAULTS.rotateY}°, lean {element.rotateX ?? TEXT3D_DEFAULTS.rotateX}° · Esc when done
+        </div>
+      )}
+
       {/* Rotation handle */}
-      {isSelected && !isEditing && !isCropping && !element.locked && (
+      {isSelected && !isEditing && !isCropping && !isTilting && !element.locked && (
         <>
           <div style={{
             position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)',

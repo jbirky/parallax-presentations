@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// 3D text elements (type 'text3d'): the text, with copies of it stacked
-// behind in CSS 3D, each pushed a little further back and shaded a little
-// darker, turned and tilted under a perspective. The editor's canvas, the
-// slide thumbnails and the deck generators all draw text3dHtml, so they match.
+// 3D text elements (type 'text3d'): the text on a plane turned and tilted
+// in CSS 3D under a perspective. It's flat, or extruded: copies of it
+// stacked behind, each pushed a little further back and shaded a little
+// darker. The editor's canvas, the slide thumbnails and the deck generators
+// all draw text3dHtml, so they match. The tilt is set in the editor (drag
+// it in tilt mode, or the panel's sliders); presented, it stays put.
 //
 // Nothing in 3D may sit between the perspective and the stack: overflow,
 // opacity, filter and the like on the stack flatten it. They go on the
@@ -15,15 +17,18 @@ export const TEXT3D_DEFAULTS = {
   fontSize: 96, fontWeight: '800', fontStyle: 'normal',
   letterSpacing: 0, lineHeight: 1.1, textAlign: 'center',
   color: '#ffffff', sideColor: '#6366f1', sideShade: 0.6,
-  depth: 24, rotateX: 12, rotateY: -24, perspective: 900,
+  depth: 0, rotateX: 16, rotateY: -26, perspective: 800,
 }
 
-// Starting points for the shape of the extrusion; they leave colors and type alone
+// The depth text gets when it goes from flat to extruded
+export const TEXT3D_EXTRUDED_DEPTH = 24
+
+// Starting angles; they leave depth, colors and type alone
 export const TEXT3D_PRESETS = [
-  { id: 'front', label: 'Front', rotateX: 0, rotateY: 0, depth: 16, perspective: 500 },
-  { id: 'turn-left', label: 'Turn left', rotateX: 10, rotateY: -26, depth: 24, perspective: 900 },
-  { id: 'turn-right', label: 'Turn right', rotateX: 10, rotateY: 26, depth: 24, perspective: 900 },
-  { id: 'lean-back', label: 'Lean back', rotateX: 40, rotateY: 0, depth: 20, perspective: 700 },
+  { id: 'front', label: 'Front', rotateX: 0, rotateY: 0, perspective: 800 },
+  { id: 'turn-left', label: 'Turn left', rotateX: 10, rotateY: -26, perspective: 800 },
+  { id: 'turn-right', label: 'Turn right', rotateX: 10, rotateY: 26, perspective: 800 },
+  { id: 'lean-back', label: 'Lean back', rotateX: 40, rotateY: 0, perspective: 700 },
 ]
 
 export const TEXT3D_LIMITS = {
@@ -106,6 +111,21 @@ export function text3dHtml(el, { fontFamily } = {}) {
   return `<div class="text3d" style="display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};width:100%;height:100%;perspective:${s.perspective}px;${type}">`
     + `<div style="position:relative;transform-style:preserve-3d;transform:rotateX(${s.rotateX}deg) rotateY(${s.rotateY}deg)">`
     + `${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div>`
+}
+
+// Degrees of tilt per pixel the pointer moves in tilt mode
+const TILT_PER_PX = 0.4
+
+// The tilt after dragging `dx`, `dy` screen pixels from where it was: the
+// text turns the way the pointer goes, like grabbing the plane. Right turns
+// its face to the right; down tips its top toward you.
+export function text3dTilt(start, dx, dy) {
+  const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, Math.round(v)))
+  const from = key => Number.isFinite(Number(start[key])) && start[key] !== null ? Number(start[key]) : TEXT3D_DEFAULTS[key]
+  return {
+    rotateY: clamp(from('rotateY') + dx * TILT_PER_PX, TEXT3D_LIMITS.rotateY) || 0,
+    rotateX: clamp(from('rotateX') - dy * TILT_PER_PX, TEXT3D_LIMITS.rotateX) || 0,
+  }
 }
 
 // The element's drop shadow, as a filter: a box-shadow would draw its box

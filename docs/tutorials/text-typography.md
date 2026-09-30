@@ -49,29 +49,35 @@ Text Path lets you place text along a curved line.
 
 ## 3D text
 
-3D Text gives a headline depth: copies of the text are stacked behind it,
-each a little further back and a little darker, and the whole thing can be
-turned and tilted in perspective. It stays real text, in any font the deck
-has, and looks the same in the editor, when presenting, and in PDFs.
+3D Text puts text on a plane you can tilt in 3D, in perspective, like a
+sign turned toward the audience. It can be flat, or extruded: copies of the
+text stacked behind it, each a little further back and a little darker. It
+stays real text, in any font the deck has, in one solid color, and looks
+the same in the editor, when presenting, and in PDFs. Presented, it stays
+exactly where you tilted it.
 
-1. Open **Text** in the toolbar and choose **3D Text**.
-2. Type your text in **Text Content** in the right panel. Double-clicking
-   the element on the slide takes you there. Press Enter for a new line.
-3. Pick a **Shape** to start from: **Front**, **Turn left**, **Turn right**
-   or **Lean back**.
-4. Fine-tune it:
-   - **Depth**: how far the letters extend back, in pixels.
-   - **Turn** and **Lean**: rotate the text around its vertical and
-     horizontal axes. The sides show on whichever way it turns away.
-   - **Perspective**: lower values look closer and more dramatic.
-   - **Face** and **Sides**: the colors of the front and of the extrusion.
-     **Side shading** darkens the sides toward the back.
-5. Set the font, size, weight, spacing and alignment below those. A
+1. Open **Text** in the toolbar and choose **3D Text**. It starts flat and
+   slightly tilted.
+2. Type your text in **Text Content** in the right panel. Press Enter for a
+   new line.
+3. To tilt it, double-click it on the slide. Its outline turns cyan and a
+   label shows its angles. Drag it: left and right turn it, up and down
+   lean it back or toward you. Press Esc, or click elsewhere, when you're
+   done. Outside this mode, dragging moves it as usual.
+4. Or set the angle in the panel: **Front**, **Turn left**, **Turn right**
+   and **Lean back** are starting points, and the **Turn** and **Lean**
+   sliders set it exactly. **Perspective**: lower values look closer and
+   more dramatic.
+5. Choose **Flat** or **Extruded** under **Style**. Extruded text has a
+   **Depth**, and **Sides** and **Side shading** for the color of its
+   extrusion, which shows on whichever way it's turned away.
+6. Set the font, size, weight, spacing and alignment below those. A
    **Drop Shadow** follows the letters, not the element's box.
 
-Keep 3D text to headlines and short phrases. Every pixel of depth (up to
-60 of them) is another copy of the text, which adds up quickly on long
+Keep extruded text to headlines and short phrases. Every pixel of depth (up
+to 60 of them) is another copy of the text, which adds up quickly on long
 paragraphs.
 
-In a PowerPoint export, 3D text becomes ordinary text with a hard shadow in
-the side color, pointing the way the extrusion goes.
+In a PowerPoint export, 3D text becomes ordinary upright text. Extruded
+text gets a hard shadow in the side color, pointing the way the extrusion
+goes.
