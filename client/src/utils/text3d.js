@@ -99,18 +99,34 @@ export function text3dExtrusion(el) {
   return { dx: round(-s.depth * Math.sin(ry)), dy: round(s.depth * Math.cos(ry) * Math.sin(rx)) }
 }
 
+// How many times larger than it shows the text is drawn. A browser draws
+// text under a perspective at its own size and stretches that when the slide
+// is scaled up (fullscreen, a sharp screen), which blurs it; drawn larger and
+// scaled down, it stays sharp. Every copy behind extruded text is drawn at
+// that size too, so extruded text gets less.
+export function text3dResolution(el) {
+  return text3dSettings(el).depth > 0 ? 2 : 4
+}
+
 // The element's inside, filling its box. `fontFamily` is the deck's font,
-// for text that has none of its own.
-export function text3dHtml(el, { fontFamily } = {}) {
+// for text that has none of its own; `resolution` overrides
+// text3dResolution (thumbnails, drawn small, need no more than 1).
+//
+// The text is laid out `resolution` times larger in a box as many times the
+// element's, which is scaled down to fit it: the same picture, at more pixels.
+export function text3dHtml(el, { fontFamily, resolution } = {}) {
   const s = text3dSettings(el, fontFamily)
+  const k = Math.max(1, Math.round(Number(resolution) || text3dResolution(el)))
   const text = escapeText(el.content)
-  const type = `font-family:${s.fontFamily};font-size:${s.fontSize}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${s.letterSpacing}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`
+  const type = `font-family:${s.fontFamily};font-size:${round(s.fontSize * k)}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${round(s.letterSpacing * k)}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`
   const layers = text3dLayers(el)
-    .map(l => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${l.z}px)">${text}</div>`)
+    .map(l => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${round(l.z * k)}px)">${text}</div>`)
     .join('')
-  return `<div class="text3d" style="display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};width:100%;height:100%;perspective:${s.perspective}px;${type}">`
+  const down = Math.round(1e6 / k) / 1e6
+  return `<div class="text3d" style="position:relative;width:100%;height:100%;perspective:${s.perspective}px">`
+    + `<div style="position:absolute;left:0;top:0;width:${100 * k}%;height:${100 * k}%;transform-origin:0 0;transform:scale3d(${down},${down},${down});transform-style:preserve-3d;display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};${type}">`
     + `<div style="position:relative;transform-style:preserve-3d;transform:rotateX(${s.rotateX}deg) rotateY(${s.rotateY}deg)">`
-    + `${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div>`
+    + `${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div></div>`
 }
 
 // Degrees of tilt per pixel the pointer moves in tilt mode

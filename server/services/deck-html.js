@@ -2267,12 +2267,17 @@ function text3dLayers(el) {
   }
   return layers;
 }
-function text3dHtml(el, { fontFamily } = {}) {
+function text3dResolution(el) {
+  return text3dSettings(el).depth > 0 ? 2 : 4;
+}
+function text3dHtml(el, { fontFamily, resolution } = {}) {
   const s = text3dSettings(el, fontFamily);
+  const k = Math.max(1, Math.round(Number(resolution) || text3dResolution(el)));
   const text = escapeText(el.content);
-  const type = `font-family:${s.fontFamily};font-size:${s.fontSize}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${s.letterSpacing}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`;
-  const layers = text3dLayers(el).map((l) => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${l.z}px)">${text}</div>`).join("");
-  return `<div class="text3d" style="display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};width:100%;height:100%;perspective:${s.perspective}px;${type}"><div style="position:relative;transform-style:preserve-3d;transform:rotateX(${s.rotateX}deg) rotateY(${s.rotateY}deg)">${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div>`;
+  const type = `font-family:${s.fontFamily};font-size:${round2(s.fontSize * k)}px;font-weight:${s.fontWeight};font-style:${s.fontStyle};letter-spacing:${round2(s.letterSpacing * k)}px;line-height:${s.lineHeight};text-align:${s.textAlign};white-space:pre-wrap;`;
+  const layers = text3dLayers(el).map((l) => `<div aria-hidden="true" style="position:absolute;inset:0;color:${l.color};transform:translateZ(${round2(l.z * k)}px)">${text}</div>`).join("");
+  const down = Math.round(1e6 / k) / 1e6;
+  return `<div class="text3d" style="position:relative;width:100%;height:100%;perspective:${s.perspective}px"><div style="position:absolute;left:0;top:0;width:${100 * k}%;height:${100 * k}%;transform-origin:0 0;transform:scale3d(${down},${down},${down});transform-style:preserve-3d;display:flex;align-items:center;justify-content:${ALIGNS[s.textAlign]};${type}"><div style="position:relative;transform-style:preserve-3d;transform:rotateX(${s.rotateX}deg) rotateY(${s.rotateY}deg)">${layers}<div style="position:relative;color:${s.color}">${text}</div></div></div></div>`;
 }
 function text3dShadowFilter(el) {
   if (!(el.shadowBlur || el.shadowX || el.shadowY)) return "";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, text3dHtml, text3dLayers, text3dExtrusion, text3dShadowFilter, text3dTilt, darken } from './text3d'
+import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, text3dHtml, text3dLayers, text3dExtrusion, text3dShadowFilter, text3dTilt, text3dResolution, darken } from './text3d'
 
 const el = (extra = {}) => ({ id: 't', type: 'text3d', x: 0, y: 0, width: 600, height: 200, ...TEXT3D_DEFAULTS, ...extra })
 
@@ -38,7 +38,29 @@ describe('3D text markup', () => {
     expect(html).toContain('perspective:800px')
     expect(html).toContain('transform-style:preserve-3d;transform:rotateX(10deg) rotateY(-20deg)')
     expect(html.match(/aria-hidden="true"/g)).toHaveLength(3)
-    expect(html).toMatch(/translateZ\(-1px\)">Hi<\/div><div style="position:relative;color:#ffffff">Hi<\/div>/)
+    expect(html).toMatch(/translateZ\(-2px\)">Hi<\/div><div style="position:relative;color:#ffffff">Hi<\/div>/)
+  })
+
+  it('draws the text larger than it shows and scales it down, so it stays sharp when the slide is scaled up', () => {
+    expect(text3dResolution(el({ depth: 0 }))).toBe(4)
+    expect(text3dResolution(el({ depth: 24 }))).toBe(2) // every copy is drawn larger too
+    const flat = text3dHtml(el({ depth: 0, fontSize: 96, letterSpacing: 2 }))
+    expect(flat).toContain('width:400%;height:400%;transform-origin:0 0;transform:scale3d(0.25,0.25,0.25);transform-style:preserve-3d')
+    expect(flat).toContain('font-size:384px;')
+    expect(flat).toContain('letter-spacing:8px;')
+    const deep = text3dHtml(el({ depth: 3, fontSize: 50 }))
+    expect(deep).toContain('scale3d(0.5,0.5,0.5)')
+    expect(deep).toContain('font-size:100px;')
+    expect(deep).toContain('translateZ(-6px)') // the back, 3px behind once scaled
+    // The perspective stays outside the scaling, at its own distance
+    expect(flat).toMatch(/^<div class="text3d" style="position:relative;width:100%;height:100%;perspective:800px">/)
+  })
+
+  it('draws at the size it shows when asked, for thumbnails', () => {
+    const html = text3dHtml(el({ depth: 0, fontSize: 96 }), { resolution: 1 })
+    expect(html).toContain('width:100%;height:100%;transform-origin:0 0;transform:scale3d(1,1,1)')
+    expect(html).toContain('font-size:96px;')
+    expect(text3dHtml(el({ depth: 0 }), { resolution: 'x' })).toContain('scale3d(0.25,0.25,0.25)')
   })
 
   it('uses the deck font when the element has none of its own', () => {

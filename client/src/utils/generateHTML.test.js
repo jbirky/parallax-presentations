@@ -272,7 +272,7 @@ describe('generateRevealHTML', () => {
     expect(box).toContain('filter:drop-shadow(0px 6px 4px #000000);')
     expect(html).toContain('transform-style:preserve-3d;transform:rotateX(10deg) rotateY(-20deg)')
     expect(html.match(/aria-hidden="true" style="position:absolute;inset:0;/g)).toHaveLength(4)
-    expect(html).toContain('font-family:Inter, sans-serif;font-size:96px;')
+    expect(html).toContain('font-family:Inter, sans-serif;font-size:192px;') // drawn at twice the size, scaled down
   })
 
   // ── Laser pointer / spotlight ──────────────────────────────────────

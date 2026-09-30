@@ -96,7 +96,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
                 <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(el)) }} />
               )}
               {el.type === 'text3d' && (
-                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(el, { fontFamily: globalFont })) }} />
+                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(el, { fontFamily: globalFont, resolution: 1 })) }} />
               )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
