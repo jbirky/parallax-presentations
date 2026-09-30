@@ -13,9 +13,8 @@
 //
 // Element x/y stay canvas coordinates, so a slide stops scrolling without
 // anything moving. Decks with no scrolling slide are written exactly as they
-// were before scrolling slides existed. The server's
-// services/scrolling-slides.js has the same code for the pages it builds; the
-// tests check that the two agree.
+// were before scrolling slides existed. The server's pages have it through
+// server/services/deck-html.js (scripts/build-deck-html.js).
 
 export const MAX_SCREENS = 8
 

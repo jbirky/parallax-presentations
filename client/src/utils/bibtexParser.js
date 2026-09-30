@@ -86,7 +86,9 @@ function cleanLatex(str) {
 
 export function parseAuthors(authorStr) {
   if (!authorStr) return []
-  return authorStr.split(/\s+and\s+/i).map(a => {
+  // Spaces squeezed first: /\s+and\s+/ on a long run of spaces takes
+  // time in its square, and author lists come from anyone's .bib
+  return authorStr.replace(/\s+/g, ' ').split(/ and /i).map(a => {
     a = a.trim()
     if (a.includes(',')) {
       const [last, first] = a.split(',').map(s => s.trim())

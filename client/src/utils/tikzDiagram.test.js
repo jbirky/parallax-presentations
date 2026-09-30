@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { createRequire } from 'module'
 
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
@@ -10,12 +9,12 @@ import * as clientTikz from './tikzDiagram'
 import { generateRevealHTML } from './generateHTML'
 import { localizeLibraries } from './libraries'
 
-const serverTikz = createRequire(import.meta.url)('../../../server/services/tikz-diagram.js')
-
 const SVG = '<svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10"/><text>A</text>'
   + '<foreignObject x="0" y="0" width="50" height="20"><div xmlns="http://www.w3.org/1999/xhtml" class="tikz-diagram-math"><span class="katex">x</span></div></foreignObject></svg>'
 
-describe.each([['client', clientTikz], ['server', serverTikz]])('%s TikZ diagram SVG', (_, tikz) => {
+describe('TikZ diagram SVG', () => {
+  const tikz = clientTikz
+
   it('keeps the drawing, math included', () => {
     expect(tikz.sanitizeSvg(SVG)).toBe(SVG)
     expect(tikz.sanitizeSvg(`<?xml version="1.0"?>\n${SVG}\n`)).toBe(SVG)
@@ -27,6 +26,27 @@ describe.each([['client', clientTikz], ['server', serverTikz]])('%s TikZ diagram
     const clean = tikz.sanitizeSvg(bad)
     expect(clean).not.toMatch(/script|iframe|onload|onclick|javascript:/i)
     expect(clean).toContain('<path d="M0 0"/>')
+  })
+
+  it('takes time in proportion to its size, whatever is in it', () => {
+    // Each of these took a regex seconds to minutes: a closing tag or quote
+    // that never comes, looked for again from each opening one
+    const start = Date.now()
+    for (const svg of [
+      '<svg'.repeat(100000),
+      `<svg>${'<script>'.repeat(100000)}</svg>`,
+      `<svg><g${' onx="a'.repeat(100000)}></svg>`,
+      `<svg><a${' href="javascript:'.repeat(100000)}></svg>`,
+    ]) {
+      const clean = tikz.sanitizeSvg(svg)
+      expect(clean).not.toMatch(/<script|\son[a-z]+\s*=|href="\s*javascript:/i)
+    }
+    expect(Date.now() - start).toBeLessThan(2000)
+  })
+
+  it('removes each script up to its own closing tag', () => {
+    expect(tikz.sanitizeSvg('<svg><SCRIPT>a()</script ><g/><script>b()</script>\n<rect/></svg>')).toBe('<svg><g/>\n<rect/></svg>')
+    expect(tikz.sanitizeSvg('<svg><script>a()<g/></svg>')).toBe('<svg>a()<g/></svg>')
   })
 
   it('gives nothing for something that isn’t an SVG', () => {

@@ -82,3 +82,20 @@ describe('saving a presentation', () => {
     await expect(api.updatePresentation('gone', { title: 'x' })).rejects.toThrow('Not found')
   })
 })
+
+describe('making a template or saving a version', () => {
+  it('rejects with the server’s reason when a limit is reached', async () => {
+    answer = () => ({ status: 403, body: { error: 'limit_reached', message: 'You can keep up to 20 templates. Delete one to save another.' } })
+    await expect(api.createTemplate({ title: 'T' })).rejects.toThrow('You can keep up to 20 templates')
+    await expect(api.saveAsTemplate('p1', 'T')).rejects.toThrow('You can keep up to 20 templates')
+    answer = () => ({ status: 403, body: { error: 'limit_reached', message: 'A presentation can keep up to 50 saved versions.' } })
+    await expect(api.saveSnapshot('p1', 'v')).rejects.toThrow('up to 50 saved versions')
+  })
+
+  it('gives what was made when it’s made', async () => {
+    answer = () => ({ status: 201, body: { id: 't1', title: 'T' } })
+    expect(await api.createTemplate({ title: 'T' })).toEqual({ id: 't1', title: 'T' })
+    answer = () => ({ status: 200, body: { id: 's1' } })
+    expect(await api.saveSnapshot('p1')).toEqual({ id: 's1' })
+  })
+})

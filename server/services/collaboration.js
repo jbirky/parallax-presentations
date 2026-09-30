@@ -75,6 +75,13 @@ async function listCollaborators(storage, id) {
   return rows
 }
 
+// The first letter and the domain of an email address (j…@example.com), for
+// telling people apart without giving their address away
+function emailHint(email) {
+  const at = (email || '').lastIndexOf('@')
+  return at > 0 ? `${email[0]}…${email.slice(at)}` : ''
+}
+
 async function getInviteToken(storage, id) {
   const { rows } = await storage.query('SELECT invite_token FROM presentations WHERE id = $1', [id])
   return rows[0]?.invite_token || null
@@ -156,6 +163,6 @@ async function listSharedPresentations(storage, userId) {
 
 module.exports = {
   presentationAccess, deckAccess, ownerOnly,
-  listCollaborators, getInviteToken, setInviteToken, describeInvite, acceptInvite, removeCollaborator,
+  listCollaborators, emailHint, getInviteToken, setInviteToken, describeInvite, acceptInvite, removeCollaborator,
   listSharedPresentations,
 }

@@ -214,10 +214,15 @@ export function writeDeck(doc, prev, next) {
 // ── Reading ─────────────────────────────────────────────────────────────────
 
 // The ids in an order that still have an item, each once
+// The ids in an order whose values are maps, as the document has them. Any
+// client can write anything into the document; a slide or element of another
+// shape is left out, so it can't stop the deck being read (and stored, and
+// shown to everyone editing it)
 function readOrder(yarr, map) {
+  if (!(yarr instanceof Y.Array) || !(map instanceof Y.Map)) return []
   const seen = new Set()
   return yarr.toArray().filter(id => {
-    if (seen.has(id) || !map.has(id)) return false
+    if (seen.has(id) || !(map.get(id) instanceof Y.Map)) return false
     seen.add(id)
     return true
   })
@@ -268,7 +273,8 @@ export function trackChanges(doc) {
 }
 
 function readSlide(y, id, prev, change) {
-  const slide = y.get('fields').toJSON()
+  const fields = y.get('fields')
+  const slide = fields instanceof Y.Map ? fields.toJSON() : {}
   if (slide.id === undefined) slide.id = id
   const elements = y.get('elements')
   const prevById = new Map((prev?.elements || []).filter(isObject).map(el => [keyOf(el), el]))

@@ -24,7 +24,12 @@ module.exports = {
     p5: { files: ['lib/p5.min.js'] },
     marked: { files: ['lib/marked.umd.js'], main: 'lib/marked.umd.js' },
     d3: { files: ['dist/d3.min.js'], main: 'dist/d3.min.js' },
-    three: { files: ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js'] },
+    // The loaders and environment are the 3D model viewer's (modelViewer.js)
+    three: {
+      files: ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js',
+        'examples/jsm/loaders/GLTFLoader.js', 'examples/jsm/loaders/STLLoader.js',
+        'examples/jsm/utils/BufferGeometryUtils.js', 'examples/jsm/environments/RoomEnvironment.js'],
+    },
     animejs: { files: ['lib/anime.min.js'] },
     // Its Computer Modern fonts also back the Computer Modern and Latin
     // Modern font choices
@@ -33,7 +38,9 @@ module.exports = {
         'dist/fonts/Sans/*', 'dist/fonts/Serif/*', 'dist/fonts/Serif Slanted/*',
         'dist/fonts/Typewriter/*', 'dist/fonts/Typewriter Slanted/*'],
     },
-    'pdfjs-dist': { files: ['build/pdf.min.js', 'build/pdf.worker.min.js'] },
+    // The app's PDF import uses the legacy build (see Toolbar.jsx); build/ is
+    // for links in people's own embeds to cdnjs's pdf.js
+    'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs', 'legacy/build/pdf.min.mjs', 'legacy/build/pdf.worker.min.mjs'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },

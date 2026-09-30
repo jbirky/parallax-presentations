@@ -40,6 +40,10 @@ import KineticTextModal from '../components/KineticTextModal'
 import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
+import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
+import { TEXT3D_DEFAULTS } from '../utils/text3d'
+import GraphEditorModal from '../components/GraphEditorModal'
+import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -74,6 +78,9 @@ import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 
+// A new graph's size on the slide
+const GRAPH_SIZE = { w: 560, h: 400 }
+
 // Share links and live presenting exist only in the cloud version
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 // How long to wait for live editing to connect before saving the usual way
@@ -81,6 +88,29 @@ const LIVE_WAIT_MS = 10000
 // Publishing to Zenodo is turned off for now; its code stays for when it's
 // brought back, along with ZENODO_ENABLED in server/index.js
 const ZENODO_ENABLED = false
+
+// The Share and Export dropdowns in the top bar
+const TOP_MENU_STYLE = {
+  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+  background: 'var(--bg-card)', border: '1px solid var(--border)',
+  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
+}
+
+// A dropdown's items, [{ label, icon, action }]; onPick closes it
+function MenuItems({ items, onPick }) {
+  return items.map(({ label, icon, action }) => (
+    <button
+      key={label}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+      onClick={() => { onPick(); action() }}
+    >
+      {icon}{label}
+    </button>
+  ))
+}
 
 // Downloads the presentation as one HTML file with its libraries and uploads
 // inlined, so it works offline and anywhere
@@ -257,7 +287,7 @@ const migrateSlide = (slide) => {
   return slide
 }
 
-export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null }) {
+export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null, theme, onThemeChange }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
   const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
@@ -347,6 +377,13 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [showShareMenu, setShowShareMenu] = useState(false)
+  // The Share menu: a share link for the owner, and who edits it (cloud, not
+  // for guests; a template has no editors)
+  const shareItems = [
+    isCloud && !guest && !isEditor && { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+    isCloud && !guest && !isTemplate && { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+  ].filter(Boolean)
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
   const [showMasterPanel, setShowMasterPanel] = useState(false)
@@ -365,6 +402,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showBibliographyModal, setShowBibliographyModal] = useState(false)
   const [showDiagramModal, setShowDiagramModal] = useState(false)
   const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
+  const [graphEditor, setGraphEditor] = useState(null) // { elementId (null for a new graph), graph, size, slideBg }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -653,7 +691,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -986,6 +1024,27 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     setSelectedElementIds([newEl.id])
   }, [slideH])
 
+  const addText3dElement = useCallback(() => {
+    const width = 640, height = 220
+    const newEl = {
+      id: crypto.randomUUID(),
+      type: 'text3d',
+      x: Math.round((slideW - width) / 2), y: Math.round((slideH - height) / 2),
+      width, height, zIndex: 2,
+      ...TEXT3D_DEFAULTS,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideW, slideH])
+
   const addImageElement = useCallback((src, dropX, dropY) => {
     const newEl = {
       id: crypto.randomUUID(),
@@ -1264,6 +1323,43 @@ function draw() {
     if (!element || element.type !== 'tikz' || heldByOther(elementId)) return
     setTikzEditor({ elementId, state: element.editorState || null, dark: slideIsDark() })
   }, [presentation, slideIsDark])
+
+  // The slide's color behind the graph editor's preview
+  const slideBackdrop = useCallback(() => {
+    const bg = presentation?.slides[currentSlideIndexRef.current]?.background
+    if (bg?.type === 'color' && bg.color) return bg.color
+    return slideIsDark() ? '#1e1e2e' : '#ffffff'
+  }, [presentation, slideIsDark])
+
+  const addGraph = useCallback(() => {
+    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openGraphEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'graph' || heldByOther(elementId)) return
+    const graph = {}
+    for (const key of GRAPH_FIELDS) if (element[key] !== undefined) graph[key] = element[key]
+    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveGraph = useCallback((graph) => {
+    const elementId = graphEditor?.elementId
+    if (elementId) {
+      updateElement(elementId, graph)
+    } else {
+      const newEl = {
+        id: crypto.randomUUID(), type: 'graph', x: Math.round((slideW - GRAPH_SIZE.w) / 2), y: Math.round((slideH - GRAPH_SIZE.h) / 2),
+        width: GRAPH_SIZE.w, height: GRAPH_SIZE.h, zIndex: 2, ...graph,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setGraphEditor(null)
+  }, [graphEditor, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -1596,6 +1692,27 @@ function draw() {
     setSelectedElementIds([newEl.id])
   }, [])
 
+  const addModelElement = useCallback((src, name) => {
+    const newEl = {
+      id: crypto.randomUUID(),
+      type: 'model',
+      x: 240, y: 90, width: 480, height: 360, zIndex: 2,
+      src,
+      name,
+      ...MODEL_DEFAULTS,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) =>
+          i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s
+        )
+      }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [])
+
   const addAudioElement = useCallback((src) => {
     const newEl = {
       id: crypto.randomUUID(),
@@ -1791,18 +1908,10 @@ function draw() {
     style.textContent = CODE_THEME_CSS[theme] || CODE_THEME_CSS['monokai']
   }, [presentation?.codeTheme])
 
-  // Inject custom CSS (from template) into editor preview
-  useEffect(() => {
-    const css = presentation?.customCSS || ''
-    let style = document.getElementById('custom-template-css')
-    if (!style) {
-      style = document.createElement('style')
-      style.id = 'custom-template-css'
-      document.head.appendChild(style)
-    }
-    style.textContent = css
-    return () => { style.textContent = '' }
-  }, [presentation?.customCSS])
+  // A template's custom CSS applies to presented decks, where its selectors
+  // (.reveal .slides …) match; it isn't put into the editor's own page, where
+  // it matched nothing of the slides and all of the editor: a collaborator's
+  // could cover it, or read what's typed into its fields through selectors
 
   const selectedBase = currentSlide?.elements?.find(el => el.id === selectedElementId) || null
   // The Properties panel shows the state being recorded
@@ -2298,48 +2407,43 @@ function draw() {
             Timeline
           </button>
 
+          {shareItems.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                className={`btn btn-secondary ${showShareMenu ? 'active' : ''}`}
+                onClick={() => setShowShareMenu(v => !v)}
+                title="Share link and editors"
+              >
+                <Share2 size={14} />
+                Share
+              </button>
+              {showShareMenu && (
+                <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowShareMenu(false)}>
+                  <MenuItems items={shareItems} onPick={() => setShowShareMenu(false)} />
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ position: 'relative' }}>
             <button
               className={`btn btn-secondary ${showExportMenu ? 'active' : ''}`}
               onClick={() => setShowExportMenu(v => !v)}
-              title="Export / Share"
+              title="Export"
             >
               <Download size={14} />
               Export
             </button>
             {showExportMenu && (
-              <div
-                style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
-                }}
-                onMouseLeave={() => setShowExportMenu(false)}
-              >
-                {[
-                  { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
-                  { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+              <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowExportMenu(false)}>
+                <MenuItems onPick={() => setShowExportMenu(false)} items={[
                   { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
                   { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
                   { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
                   { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
                   { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
                   { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-                ].filter(item => item.label !== 'Share link' || (isCloud && !guest && !isEditor))
-                  .filter(item => item.label !== 'Editors…' || (isCloud && !guest && !isTemplate))
-                  .filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
-                  .map(({ label, icon, action }) => (
-                  <button
-                    key={label}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowExportMenu(false); action() }}
-                  >
-                    {icon}{label}
-                  </button>
-                ))}
+                ].filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))} />
               </div>
             )}
           </div>
@@ -2584,6 +2688,20 @@ function draw() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
+              {/* The editor's own look, kept in this browser: not the presentation's */}
+              {onThemeChange && (
+                <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Editor theme</div>
+                  <select className="prop-input" value={theme} aria-label="Editor theme"
+                    onChange={e => onThemeChange(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px' }}>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>How the editor looks to you; the slides don't change</div>
+                </div>
+              )}
+
               {/* Font */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Font</div>
@@ -3300,14 +3418,19 @@ function draw() {
                     api.saveSnapshot(presentationId, snapshotName || undefined).then(async () => {
                       setSnapshotName('')
                       setSnapshots(await api.getSnapshots(presentationId))
-                    })
+                    }, err => alert(err.message))
                   }
                 }}
               />
               <button
                 className="btn btn-primary"
                 onClick={async () => {
-                  await api.saveSnapshot(presentationId, snapshotName || undefined)
+                  try {
+                    await api.saveSnapshot(presentationId, snapshotName || undefined)
+                  } catch (err) {
+                    alert(err.message) // as when it has as many versions as it may keep
+                    return
+                  }
                   setSnapshotName('')
                   setSnapshots(await api.getSnapshots(presentationId))
                 }}
@@ -3352,17 +3475,20 @@ function draw() {
                     >
                       Restore
                     </button>
-                    <button
-                      className="btn-icon"
-                      style={{ color: 'var(--danger)' }}
-                      title="Delete snapshot"
-                      onClick={async () => {
-                        await api.deleteSnapshot(presentationId, snap.id)
-                        setSnapshots(await api.getSnapshots(presentationId))
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
+                    {/* Only the owner can delete a version */}
+                    {!isEditor && (
+                      <button
+                        className="btn-icon"
+                        style={{ color: 'var(--danger)' }}
+                        title="Delete snapshot"
+                        onClick={async () => {
+                          await api.deleteSnapshot(presentationId, snap.id)
+                          setSnapshots(await api.getSnapshots(presentationId))
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -3645,6 +3771,7 @@ function draw() {
       <div className="editor-body">
         <SlidePanel
           slides={presentation.slides}
+          globalFont={presentation.globalFont || ''}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
@@ -3675,6 +3802,7 @@ function draw() {
             onGridSizeChange={(v) => { setGridSize(v); setPresentation(prev => prev ? { ...prev, gridSize: v } : prev) }}
             onAddText={addTextElement}
             onAddTextPath={addTextPathElement}
+            onAddText3d={addText3dElement}
             onAddImage={() => {
               const url = window.prompt('Image URL:')
               if (url) addImageElement(url)
@@ -3699,6 +3827,7 @@ function draw() {
             onAddQuiz={() => addStatePreset(buildQuiz, 1)}
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
+            onAddGraph={addGraph}
             onAddDiagram={() => setShowDiagramModal(true)}
             onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
             onAddP5={addP5Element}
@@ -3716,6 +3845,13 @@ function draw() {
               } catch (err) { alert('Upload failed: ' + err.message) }
             }}
             onAddAudio={addAudioElement}
+            onAddModelUpload={async (file) => {
+              if (!isModelFile(file.name)) { alert('3D models can be STL or GLB files.'); return }
+              try {
+                const result = await api.uploadFileToPresentation(presentation.id, file)
+                if (result.url) addModelElement(result.url, file.name)
+              } catch (err) { alert('Upload failed: ' + err.message) }
+            }}
             onAddTable={addTableElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}
@@ -3901,6 +4037,7 @@ function draw() {
               onOpenCodeEditor={openCodeEditor}
               onOpenLatexEditor={openLatexEditor}
               onOpenTikzEditor={openTikzEditor}
+              onOpenGraphEditor={openGraphEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -3938,6 +4075,7 @@ function draw() {
           onEditCode={() => selectedElementId && openCodeEditor(selectedElementId)}
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
           onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
+          onEditGraph={() => selectedElementId && openGraphEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4287,6 +4425,17 @@ function draw() {
         />
       )}
 
+      {graphEditor && (
+        <GraphEditorModal
+          initial={graphEditor.graph}
+          size={graphEditor.size}
+          slideBg={graphEditor.slideBg}
+          isNew={!graphEditor.elementId}
+          onSave={saveGraph}
+          onClose={() => setGraphEditor(null)}
+        />
+      )}
+
       {tikzEditor && (
         <TikzEditorModal
           initialState={tikzEditor.state}
@@ -4367,6 +4516,7 @@ function draw() {
                   >
                     Disable Sharing
                   </button>
+                  <div style={{ fontSize: 11, color: '#a0a0b0', marginTop: 6 }}>The link stops working for good; sharing again makes a new one.</div>
                 </>
               ) : (
                 <>

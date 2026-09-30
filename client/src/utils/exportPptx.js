@@ -1,6 +1,7 @@
 import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
 import { getScreenCount, isScrolling, isPinned } from './scrollingSlides'
+import { text3dSettings, text3dExtrusion, darken } from './text3d'
 
 function stripHtml(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
@@ -99,6 +100,33 @@ export function exportToPptx(presentation) {
             align: 'center',
             valign: 'middle',
             rotate: rotation,
+          })
+        }
+      } else if (el.type === 'text3d') {
+        // PowerPoint has no stack of copies: the face, with a hard shadow in
+        // the side color where the extrusion shows
+        const s = text3dSettings(el)
+        const { dx, dy } = text3dExtrusion(el)
+        const offset = Math.hypot(dx, dy) * 0.75
+        const hex = c => darken(c, 0).slice(1)
+        if ((el.content || '').trim()) {
+          pptSlide.addText(el.content, {
+            x, y, w, h,
+            fontSize: Math.round(s.fontSize * 0.75),
+            fontFace: el.fontFamily ? s.fontFamily.split(',')[0].replace(/['"]/g, '').trim() : undefined,
+            bold: s.fontWeight === 'bold' || Number(s.fontWeight) >= 600,
+            italic: s.fontStyle !== 'normal',
+            color: hex(s.color),
+            align: s.textAlign,
+            valign: 'middle',
+            rotate: rotation,
+            // pptxgenjs reads a blur or angle of 0 as unset, and fills in its own
+            shadow: offset >= 0.5 ? {
+              type: 'outer', blur: 0.01, opacity: 1,
+              offset: Math.min(200, Math.round(offset * 10) / 10),
+              angle: Math.round((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360) || 0.01,
+              color: hex(s.sideColor),
+            } : undefined,
           })
         }
       } else if (el.type === 'code') {

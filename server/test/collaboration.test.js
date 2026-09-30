@@ -34,6 +34,15 @@ const upload = (who, id) => {
   return call(who, 'POST', `/api/presentations/${id}/upload`, body, headers)
 }
 
+// A CSV dataset of `who`'s, named `name`
+function uploadDataset(who, name) {
+  const boundary = `----parallax${crypto.randomBytes(8).toString('hex')}`
+  const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n${name}\r\n`
+    + `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}.csv"\r\nContent-Type: text/csv\r\n\r\n`
+    + `planet,moons\r\nMars,2\r\nEarth,1\r\n--${boundary}--\r\n`)
+  return call(who, 'POST', '/api/datasets', body, { 'Content-Type': `multipart/form-data; boundary=${boundary}` })
+}
+
 describe('editing a presentation with others', { skip }, () => {
   let owner, editor, stranger, second, deck, token
 
@@ -196,6 +205,30 @@ describe('editing a presentation with others', { skip }, () => {
     await empty(editorId)
   })
 
+  it('lets an editor use the datasets linked to it, and no others of the owner’s', async () => {
+    const linked = (await uploadDataset(owner, `linked_${run}`)).body
+    const other = (await uploadDataset(owner, `other_${run}`)).body
+    assert.ok(linked.id && other.id)
+    assert.equal((await call(owner, 'POST', `/api/presentations/${deck}/datasets`, { datasetId: linked.id })).status, 200)
+
+    const list = await call(editor, 'GET', `/api/presentations/${deck}/datasets`)
+    assert.equal(list.status, 200)
+    assert.deepEqual(list.body.map(d => d.id), [linked.id])
+    const data = await call(editor, 'GET', `/api/presentations/${deck}/datasets/${linked.id}/data`)
+    assert.equal(data.status, 200, JSON.stringify(data.body))
+    assert.deepEqual(data.body.columns.planet, ['Mars', 'Earth'])
+    // Not linked: the editor knows its id, but it isn't the presentation's
+    assert.equal((await call(editor, 'GET', `/api/presentations/${deck}/datasets/${other.id}/data`)).status, 404)
+    for (const [method, url] of [
+      ['GET', `/api/presentations/${deck}/datasets`],
+      ['GET', `/api/presentations/${deck}/datasets/${linked.id}/data`],
+      ['DELETE', `/api/presentations/${deck}/datasets/${linked.id}`],
+    ]) assert.equal((await call(stranger, method, url)).status, 404, `${method} ${url}`)
+
+    assert.equal((await call(editor, 'DELETE', `/api/presentations/${deck}/datasets/${linked.id}`)).status, 200)
+    assert.deepEqual((await call(owner, 'GET', `/api/presentations/${deck}/datasets`)).body, [])
+  })
+
   it('stops the old link working when the owner makes a new one or turns it off', async () => {
     const renewed = (await call(owner, 'POST', `/api/presentations/${deck}/invite`)).body.inviteToken
     assert.notEqual(renewed, token)
@@ -206,6 +239,20 @@ describe('editing a presentation with others', { skip }, () => {
     assert.equal((await call(owner, 'DELETE', `/api/presentations/${deck}/invite`)).body.inviteToken, null)
     assert.equal((await call(stranger, 'POST', `/api/invites/${renewed}/accept`)).status, 404)
     assert.equal((await call(stranger, 'GET', `/api/presentations/${deck}`)).status, 404)
+  })
+
+  it('shows an editor the owner’s email and their own, and only a hint of the others’', async () => {
+    const emails = async who => Object.fromEntries((await call(who, 'GET', `/api/presentations/${deck}/collaborators`)).body.people.map(p => [p.name, p.email]))
+    assert.deepEqual(await emails(editor), { [owner]: `${owner}@test.local`, [editor]: `${editor}@test.local`, [second]: 's…@test.local' })
+    assert.equal((await emails(owner))[second], `${second}@test.local`)
+  })
+
+  it('lets only the owner delete a version', async () => {
+    const snap = (await call(editor, 'POST', `/api/presentations/${deck}/snapshot`, { name: 'keep' })).body
+    assert.equal((await call(editor, 'DELETE', `/api/presentations/${deck}/snapshots/${snap.id}`)).status, 403)
+    assert.ok((await call(editor, 'GET', `/api/presentations/${deck}/snapshots`)).body.some(s => s.id === snap.id))
+    assert.equal((await call(owner, 'DELETE', `/api/presentations/${deck}/snapshots/${snap.id}`)).status, 200)
+    assert.ok(!(await call(owner, 'GET', `/api/presentations/${deck}/snapshots`)).body.some(s => s.id === snap.id))
   })
 
   it('lets the owner remove an editor, and an editor leave', async () => {

@@ -7,7 +7,8 @@ const path = require('path')
 const fs = require('fs-extra')
 const multer = require('multer')
 const { v4: uuidv4 } = require('uuid')
-const { execFileSync } = require('child_process')
+const { execFile } = require('child_process')
+const crypto = require('crypto')
 const os = require('os')
 
 const app = express()
@@ -18,11 +19,10 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
-const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2 } = require('./services/r2')
+const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2, deleteManyFromR2 } = require('./services/r2')
 const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
 const { setUploadHeaders } = require('./utils/upload-headers')
-const { libUrl, localizeLibraries } = require('./services/libraries')
-const { tikzDiagramSvg } = require('./services/tikz-diagram')
+const { localizeLibraries } = require('./services/libraries')
 const {
   GUEST_IDLE_HOURS, isGuestModeEnabled, verifyTurnstile, guestSessionsMayExist,
   createGuestSession, closeGuestSession, sweepGuestSessions, endAllGuestSessions,
@@ -37,19 +37,27 @@ const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
-const { buildStaticPluginSrcdoc, createSandboxLookup } = require('./services/plugin-embed')
-const { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, renewSlideIds, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } = require('./services/click-actions')
-const { getCanvasHeight, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, SCROLLING_CSS, SCROLLING_SCRIPT } = require('./services/scrolling-slides')
+const { createSandboxLookup } = require('./services/plugin-embed')
+const { renewSlideIds } = require('./services/click-actions')
+const deckHtml = require('./services/deck-html')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
-  sanitizeUrl, sanitizeAttr, sanitizeCSSValue, sanitizeCustomCSS,
-  safeErrorMessage,
+  safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
 
 const DATA_DIR = process.env.SLIDES_DATA_DIR || path.join(__dirname, 'data')
 const UPLOADS_BASE = process.env.SLIDES_UPLOADS_DIR || path.join(__dirname, 'uploads')
 const UPLOADS_DIR = UPLOADS_BASE
+
+// The file in the uploads folder that a deck's /uploads/<relativePath> names,
+// or null for one that leads out of it (/uploads/../../proc/self/environ):
+// publishing reads what a deck points at and puts it in the owner's repo
+function uploadsFile(relativePath) {
+  const root = path.resolve(UPLOADS_DIR)
+  const filePath = path.resolve(root, relativePath)
+  return filePath.startsWith(root + path.sep) ? filePath : null
+}
 
 fs.ensureDirSync(DATA_DIR)
 fs.ensureDirSync(UPLOADS_DIR)
@@ -100,12 +108,13 @@ if (IS_CLOUD && storage.query) {
 // The user a Clerk session token is for (the WebSocket has no Clerk middleware)
 async function userIdForToken(token) {
   const { verifyToken } = require('@clerk/express')
-  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+  const { sub } = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY, authorizedParties: [PUBLIC_ORIGIN] })
   const { rows } = await storage.query('SELECT id FROM users WHERE auth_id = $1', [sub])
   return rows[0]?.id || null
 }
 
 app.use(helmetConfig())
+if (!IS_CLOUD) app.use(localOnly())
 // Library files, uploads and a live session's slide feed are public, and the
 // pages that use them are sandboxed (sendDeckPage), so their requests come
 // from origin null: those answer any origin, without credentials
@@ -183,6 +192,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
+      { text: 'Graphs', link: 'tutorials/graphs' },
       { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
       { text: 'Images', link: 'tutorials/images' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
@@ -241,7 +251,7 @@ app.get('/api/plugins', async (req, res) => {
   try {
     const plugins = await storage.listPlugins()
     res.json(plugins)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.get('/api/plugins/:slug', async (req, res) => {
@@ -249,7 +259,7 @@ app.get('/api/plugins/:slug', async (req, res) => {
     const plugin = await storage.getPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.get('/api/plugins/:slug/manifest', async (req, res) => {
@@ -257,7 +267,7 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
     const plugin = await storage.getPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin.manifest)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
@@ -366,7 +376,7 @@ if (IS_CLOUD) {
       )
       res.json({ presentationId: rows[0]?.id || null, idleHours: GUEST_IDLE_HOURS })
     } catch (err) {
-      res.status(500).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
     }
   })
 
@@ -397,6 +407,25 @@ app.use('/api', (req, res, next) => (LIVE_FEED.test(req.path) ? next() : require
 app.use('/api', apiLimiter)
 
 // Plan quota check helper
+// Templates and saved versions are whole decks kept in the database (up to
+// 10 MB each), outside the storage a plan counts, so each has a number limit
+// on every plan. The most anyone had on 2026-09-27 was one template and no
+// versions.
+const MAX_TEMPLATES = 20
+const MAX_VERSIONS = 50
+
+// Whether `sql` (with `params`) counts fewer than `limit`; else answers 403
+async function belowLimit(res, sql, params, limit, message) {
+  if (!storage.query) return true
+  const { rows } = await storage.query(sql, params)
+  if (rows[0].count < limit) return true
+  res.status(403).json({ error: 'limit_reached', message, limit, current: rows[0].count })
+  return false
+}
+const belowTemplateLimit = (req, res) => belowLimit(res,
+  'SELECT COUNT(*)::int AS count FROM presentations WHERE user_id = $1 AND is_template = true', [req.userId],
+  MAX_TEMPLATES, `You can keep up to ${MAX_TEMPLATES} templates. Delete one to save another.`)
+
 async function checkPresentationQuota(req, res) {
   if (!IS_CLOUD || !req.userId) return true
   const limits = planFor(req.userPlan)
@@ -441,7 +470,7 @@ app.get('/api/me', async (req, res) => {
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
     })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/admin/overview — sign-ups, per-user storage and processing, and
@@ -452,7 +481,7 @@ app.get('/api/admin/overview', async (req, res) => {
     res.json({ ...await getAdminOverview(storage, PLAN_LIMITS), billingEnabled: stripeService.isEnabled() })
   } catch (err) {
     console.error('Admin overview error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -466,7 +495,7 @@ app.post('/api/admin/guest-sessions/end-all', async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('End guest sessions error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -486,7 +515,7 @@ app.post('/api/admin/users/:id/plan', async (req, res) => {
     res.json({ previousPlan: result.previousPlan, plan, hasSubscription: result.hasSubscription, unexpired: result.unexpired })
   } catch (err) {
     console.error('Plan change error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -501,7 +530,7 @@ function planRoute(handler) {
     } catch (err) {
       if (err instanceof PlanError) return res.status(err.status).json({ error: err.message })
       console.error('Plan edit error:', err.message)
-      res.status(500).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
     }
   }
 }
@@ -541,49 +570,72 @@ if (IS_CLOUD && stripeService.isEnabled()) {
         `${baseUrl}/dashboard?billing=cancel`
       )
       res.json({ url: session.url })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/portal', requireUser, async (req, res) => {
     try {
       const session = await stripeService.createPortalSession(storage, req.userId)
       res.json({ url: session.url })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.get('/api/billing/status', requireUser, async (req, res) => {
     try {
       const status = await stripeService.getSubscriptionStatus(storage, req.userId)
       res.json(status)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/cancel', requireUser, async (req, res) => {
     try {
       const result = await stripeService.cancelSubscription(storage, req.userId)
       res.json(result)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.post('/api/billing/resume', requireUser, async (req, res) => {
     try {
       await stripeService.resumeSubscription(storage, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 }
 
 // Transcode a video file to H.264 MP4 if its codec isn't web-compatible.
 // Returns the (possibly new) filename. Deletes the original on success.
 const WEB_VIDEO_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1', 'hevc', 'vp08', 'vp09'])
-function videoNeedsTranscode(filePath) {
+// ffmpeg, LibreOffice and pdftoppm on an uploaded file: in a child process
+// the server doesn't wait on (a synchronous one held every request and live
+// editing connection until it finished), killed after `timeout`, two at a
+// time, and with none of the server's environment (its database, storage and
+// sign-in keys), since they parse whatever was uploaded
+const TOOL_ENV = { PATH: process.env.PATH, HOME: '/tmp', LANG: 'C.UTF-8' }
+const TOOLS_AT_ONCE = 2
+let toolsRunning = 0
+const toolQueue = []
+
+async function runTool(cmd, args, { timeout }) {
+  if (toolsRunning >= TOOLS_AT_ONCE) await new Promise(resolve => toolQueue.push(resolve))
+  toolsRunning++
   try {
-    const codec = execFileSync('ffprobe', [
+    return await new Promise((resolve, reject) => {
+      execFile(cmd, args, { timeout, killSignal: 'SIGKILL', env: TOOL_ENV, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => err ? reject(err) : resolve(stdout))
+    })
+  } finally {
+    toolsRunning--
+    toolQueue.shift()?.()
+  }
+}
+
+async function videoNeedsTranscode(filePath) {
+  try {
+    const codec = String(await runTool('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0',
       '-show_entries', 'stream=codec_name',
       '-of', 'default=noprint_wrappers=1:nokey=1',
       filePath
-    ], { encoding: 'utf8' }).trim().toLowerCase()
+    ], { timeout: 30000 })).trim().toLowerCase()
     return !!codec && !WEB_VIDEO_CODECS.has(codec)
   } catch (e) {
     console.error('Video probe error:', e.message)
@@ -593,973 +645,49 @@ function videoNeedsTranscode(filePath) {
 
 // Converts an uploaded video if needed, recording the conversion as the
 // uploader's processing time
-function convertUploadedVideo(req, filePath) {
+async function convertUploadedVideo(req, filePath) {
   const started = Date.now()
-  const converted = transcodeVideoIfNeeded(filePath)
+  const converted = await transcodeVideoIfNeeded(filePath)
   if (converted !== filePath) {
     recordUsage(storage, { userId: req.userId, kind: 'video_conversion', durationMs: Date.now() - started, bytes: req.file.size })
   }
   return converted
 }
 
-function transcodeVideoIfNeeded(filePath) {
-  if (!videoNeedsTranscode(filePath)) return filePath
+// The video as MP4/H.264, or as it was if it plays already, or if ffmpeg
+// fails or takes over 10 minutes
+async function transcodeVideoIfNeeded(filePath) {
+  if (!await videoNeedsTranscode(filePath)) return filePath
+  const dir = path.dirname(filePath)
+  const base = path.basename(filePath, path.extname(filePath))
+  const outPath = path.join(dir, `${base}.mp4`)
   try {
-    const dir = path.dirname(filePath)
-    const base = path.basename(filePath, path.extname(filePath))
-    const outPath = path.join(dir, `${base}.mp4`)
-    execFileSync('ffmpeg', [
+    await runTool('ffmpeg', [
       '-i', filePath,
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
       '-c:a', 'aac',
       '-movflags', '+faststart',
       '-y', outPath
-    ])
+    ], { timeout: 10 * 60 * 1000 })
     if (outPath !== filePath) fs.removeSync(filePath)
     return outPath
   } catch (e) {
     console.error('Video transcode error:', e.message)
+    if (outPath !== filePath) fs.removeSync(outPath)
     return filePath
   }
 }
 
 
 
-// Shape SVG rendering helper (mirrors client/src/utils/shapeUtils.js)
-function buildHtmlEmbed(userHtml, embedW, embedH) {
-  const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
-  const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle
-  if (/<head[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<head[^>]*>/i, m => m + injection)
-  if (/<html[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<html[^>]*>/i, m => m + injection)
-  if (/<!doctype[^>]*>/i.test(userHtml))
-    return userHtml.replace(/(<!doctype[^>]*>)/i, '$1' + injection)
-  return injection + userHtml
-}
-
-// Generate reveal.js HTML
+// A deck's page (share links, live sessions, exports, GitHub and Zenodo), from
+// the generator the editor's windows use (services/deck-html.js, built from
+// the client's utils/generateHTML.js). Plugin elements get their sandbox page
+// from the plugins' folders. opts.notes: false leaves speaker notes out, for
+// pages anyone with a link can open; opts.customFonts are the deck's fonts.
 function generateRevealHTML(presentation, opts = {}) {
-  const customFonts = opts.customFonts || []
   const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
-  const theme = presentation.theme || 'black'
-  const transition = presentation.transition || 'slide'
-  const slideW = presentation.slideWidth || 960
-  const slideH = presentation.slideHeight || 540
-  const showFooter = presentation.showFooter || false
-  const showPageNumbers = presentation.showPageNumbers || false
-  const pageNumberFormat = presentation.pageNumberFormat || 'c/t'
-  const footerFontSize = presentation.footerFontSize || 14
-  const footerFontFamily = sanitizeCSSValue(presentation.footerFontFamily) || '-apple-system,sans-serif'
-  const footerMode = presentation.footerMode || 'basic'
-  const sequenceSections = presentation.sequenceSections || []
-  const footerInactiveColor = sanitizeCSSValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
-  const _seenGroups = new Set()
-  const totalNumberedSlides = (presentation.slides || []).filter(s => {
-    if (s.showPageNumber === false) return false
-    if (s.slideGroup) {
-      if (_seenGroups.has(s.slideGroup)) return false
-      _seenGroups.add(s.slideGroup)
-    }
-    return true
-  }).length
-  let pageCounter = 0
-  const pageGroupSeen = new Set()
-  const footerColor = sanitizeCSSValue(presentation.footerColor) || 'rgba(255,255,255,0.65)'
-  const showPresentGrid = presentation.showPresentGrid || false
-  const presentGridSize = presentation.gridSize || 40
-  const codeTheme = presentation.codeTheme || 'monokai'
-  const footerTimeMode = presentation.footerTimeMode || 'none'
-  const timerDuration = presentation.timerDuration ?? 20
-  const showTimeWidget = footerTimeMode !== 'none'
-  const laserPointer = presentation.laserPointer || 'off'
-  const bibliography = presentation.bibliography || []
-  const citationStyle = presentation.citationStyle || 'numbered'
-
-  const slideEntries = (presentation.slides || []).map((slide, slideIndex) => {
-    const bgAttrs = getBackgroundAttrs(slide.background)
-    const notes = slide.notes ? `<aside class="notes">${slide.notes}</aside>` : ''
-
-    const sideCitations = (slide.elements || [])
-      .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
-      .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
-
-    const clickTargets = visibilityTargets(slide)
-    const canvasH = getCanvasHeight(slide, slideH)
-    const scrolling = canvasH > slideH
-    const sortedElements = (slide.elements || [])
-      .slice()
-      .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
-    const renderedElements = sortedElements
-      .map(el => {
-        const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
-          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${sanitizeCSSValue(el.shadowColor)||'rgba(0,0,0,0.5)'};` : ''
-        const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
-        // The rotate property, not transform, so that fragment transitions and
-        // hover styles leave the rotation alone
-        const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
-        const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
-        const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
-        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
-        const actionAttrs = clickActionAttrs(el, clickTargets)
-        if (el.type === 'text') {
-          const textStyle = el.sizeMode === 'auto'
-            ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex||1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
-            : style
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;">${el.content || ''}</div>`
-        }
-        if (el.type === 'image') {
-          const imgFilterParts = [
-            (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
-            (el.filterContrast != null && el.filterContrast !== 100) ? `contrast(${el.filterContrast}%)` : '',
-            el.filterGrayscale ? `grayscale(${el.filterGrayscale}%)` : '',
-          ].filter(Boolean).join(' ')
-          const filterStyle = imgFilterParts ? `filter:${imgFilterParts};` : ''
-          const expandAttr = el.clickToExpand ? ' data-expand="true"' : ''
-          const popupAttr = el.popupText ? ` data-popup="${el.popupText.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" data-popup-pos="${el.popupPosition || 'below'}" data-popup-fs="${el.popupFontSize || 15}"` : ''
-          const interactiveCursor = (el.clickToExpand || el.popupText) ? 'cursor:pointer;' : ''
-          const hasCite = el.citationText || el.citationLink
-          const citeCaption = hasCite && (el.citationMode || 'caption') === 'caption'
-          const citeSide = hasCite && el.citationMode === 'side'
-          const cStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
-          let capHtml = ''
-          if (citeCaption) {
-            const align = el.citationAlign || 'left'
-            const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-            const cc = el.citationColor ? `color:${el.citationColor};` : ''
-            capHtml = el.citationLink
-              ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${el.citationLink.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
-              : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
-          }
-          const sIdx = citeSide ? sideCitations.findIndex(c => c.id === el.id) : -1
-          const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
-          const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : ''
-          const clipClose = citeCaption ? '</div>' : ''
-          const safeSrc = sanitizeUrl(el.src)
-          const safeAlt = sanitizeAttr(el.alt || '')
-          if (el.imageW != null) {
-            const offX = el.imageOffsetX ?? 0
-            const offY = el.imageOffsetY ?? 0
-            const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
-            return `<div${fragClass}${fragIdx}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
-          }
-          return `<div${fragClass}${fragIdx}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${safeSrc}" alt="${safeAlt}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
-        }
-        if (el.type === 'shape') {
-          const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
-        }
-        if (el.type === 'tikz') {
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
-        }
-        if (el.type === 'html') {
-          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
-          const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'code') {
-          const lang = el.language || 'plaintext'
-          const codeContent = escapeHtml(el.content || '')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
-        }
-        if (el.type === 'markdown') {
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('marked', 'lib/marked.umd.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
-          const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-        }
-        if (el.type === 'timeline') {
-          const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
-          const lc = el.lineColor || '#6366f1', dc = el.dotColor || lc, tc = el.textColor || '#fff', fs = el.fontSize || 11
-          const spacing = el.tickSpacing || 'auto'
-          const yearMode = ['year','10year','100year','1000year'].includes(spacing) || (spacing === 'auto' && String(el.startDate).match(/^-?\d+$/))
-          const ticks = []
-          let datePos, itemDateLabel
-          if (yearMode) {
-            const y0 = parseInt(el.startDate) || 0, y1 = parseInt(el.endDate) || 0, yr = y1 - y0 || 1
-            datePos = (d) => pad + ((parseInt(d) - y0) / yr) * (w - pad * 2)
-            itemDateLabel = (d) => String(parseInt(d) || d)
-            const step = spacing === '1000year' ? 1000 : spacing === '100year' ? 100 : spacing === '10year' ? 10 : Math.abs(yr) > 8 ? 2 : 1
-            const sY = Math.ceil(y0 / step) * step
-            for (let y = sY; y <= y1; y += step) ticks.push({ date: String(y), label: String(y) })
-          } else {
-            const t0 = new Date(el.startDate).getTime(), t1 = new Date(el.endDate).getTime(), range = t1 - t0 || 1
-            datePos = (d) => pad + ((new Date(d).getTime() - t0) / range) * (w - pad * 2)
-            itemDateLabel = (d) => d
-            const d0 = new Date(el.startDate), d1 = new Date(el.endDate)
-            if (spacing === 'day') { const step = 86400000; for (let t = d0.getTime(); t <= d1.getTime(); t += step) { const d = new Date(t); ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getMonth()+1}/${d.getDate()}` }) } }
-            else if (spacing === 'month') { for (let d = new Date(d0.getFullYear(), d0.getMonth(), 1); d <= d1; d.setMonth(d.getMonth() + 1)) ticks.push({ date: d.toISOString().split('T')[0], label: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }) }
-            else { const yearSpan = (t1 - t0) / (365.25 * 24 * 3600000); const step = yearSpan > 8 ? 2 : 1; for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) }) }
-          }
-          const esc = (s) => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-          let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-          svg += `<line x1="${pad}" y1="${lineY}" x2="${w-pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`
-          for (const t of ticks) { const x = datePos(t.date); svg += `<line x1="${x}" y1="${lineY-4}" x2="${x}" y2="${lineY+4}" stroke="${lc}" stroke-width="1.5"/><text x="${x}" y="${lineY+14}" text-anchor="end" fill="${tc}" font-size="${fs-1}" opacity="0.5" transform="rotate(-45,${x},${lineY+14})">${t.label}</text>` }
-          for (const item of el.items || []) {
-            const x = datePos(item.date), isTop = item.side !== 'bottom', cl = item.connectorLength ?? 0
-            const cardY = isTop ? 8 - cl : lineY + 28 + cl, cardH = isTop ? lineY - 36 : h - lineY - 36
-            const connY1 = isTop ? cardY + cardH : lineY, connY2 = isTop ? lineY : cardY
-            const imgH = item.image ? Math.min(cardH * 0.55, 60) : 0
-            const hasExpand = item.image || item.detailedDescription
-            svg += `<g${hasExpand ? ` class="tl-event" data-tl-id="${item.id}" style="cursor:pointer"` : ''}>`
-            svg += `<line x1="${x}" y1="${connY1}" x2="${x}" y2="${connY2}" stroke="${lc}" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>`
-            svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`
-            if (isTop) {
-              let ty = cardY + fs
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
-              ty += fs + 2
-              if (item.description) { svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`; ty += fs }
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
-              ty += 4
-              if (item.image) svg += `<image href="${item.image}" x="${x-40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
-            } else {
-              if (item.image) svg += `<image href="${item.image}" x="${x-40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
-              svg += `<text x="${x}" y="${cardY+imgH+fs+2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
-              if (item.description) svg += `<text x="${x}" y="${cardY+imgH+fs*2+4}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`
-              svg += `<text x="${x}" y="${cardY+imgH+fs*(item.description?3:2)+6}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
-            }
-            svg += '</g>'
-          }
-          svg += '</svg>'
-          const expandItems = (el.items || []).filter(i => i.image || i.detailedDescription)
-          let expandData = ''
-          if (expandItems.length) {
-            const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image || '' })))
-            expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\/script>`
-          }
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
-        }
-        if (el.type === 'callout') {
-          const bg = sanitizeCSSValue(el.calloutColor) || '#ef4444'
-          const tc = sanitizeCSSValue(el.calloutTextColor) || '#ffffff'
-          const fs = el.fontSize || 16
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
-        }
-        if (el.type === 'icon') {
-          const color = sanitizeCSSValue(el.iconColor) || '#ffffff'
-          const sw = el.iconStrokeWidth || 2
-          const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
-          const path = iconPaths[el.iconName] || iconPaths['Star']
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
-        }
-        if (el.type === 'latex') {
-          const content = el.content || ''
-          const lc = el.textColor || 'white'
-          const sc = el.fontSize ? (el.fontSize / 20) : 1
-          const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
-          const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
-          if (hasTikz) {
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style></head><body><script type="text/tikz">${content}<\/script></body></html>`
-            const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-          }
-          if (hasTable) {
-            const wrapped = content.includes('\\begin{document}') ? content
-              : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script><link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\/span>'}<\/script></body></html>`
-            const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-          }
-          const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
-        }
-        if (el.type === 'video') {
-          const attrs = []
-          if (el.controls !== false) attrs.push('controls')
-          if (el.autoplay) attrs.push('autoplay')
-          if (el.loop) attrs.push('loop')
-          if (el.muted) attrs.push('muted')
-          const safeVideoSrc = sanitizeUrl(el.src)
-          const posterAttr = el.poster ? ` poster="${sanitizeUrl(el.poster)}"` : ''
-          const videoMime = /\.webm$/i.test(el.src) ? 'video/webm' : /\.og[gv]$/i.test(el.src) ? 'video/ogg' : 'video/mp4'
-          const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
-          const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
-          let vidScript = ''
-          if (rate || hasClip) {
-            const parts = ['var v=document.currentScript.previousElementSibling']
-            if (rate) parts.push(`v.playbackRate=${rate}`)
-            if (hasClip) {
-              const s = el.startTime || 0
-              if (s > 0) parts.push(`v.addEventListener('loadedmetadata',function(){v.currentTime=${s}})`)
-              if (el.endTime != null) parts.push(`v.addEventListener('timeupdate',function(){if(v.currentTime>=${el.endTime}){${el.loop ? `v.currentTime=${s};v.play()` : 'v.pause()'}}})`)
-              if (s > 0) parts.push(`v.addEventListener('play',function(){if(v.currentTime<${s})v.currentTime=${s}})`)
-            }
-            vidScript = `<script>${parts.join(';')}</script>`
-          }
-          if (hasClip && el.loop) { const li = attrs.indexOf('loop'); if (li >= 0) attrs.splice(li, 1) }
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><video ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${el.objectFit||'contain'};display:block;"><source src="${safeVideoSrc}" type="${videoMime}"></video>${vidScript}</div>`
-        }
-        if (el.type === 'audio') {
-          const attrs = ['controls']
-          if (el.autoplay) attrs.push('autoplay')
-          if (el.loop) attrs.push('loop')
-          if (el.muted) attrs.push('muted')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${sanitizeUrl(el.src)}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
-        }
-        if (el.type === 'table') {
-          const data = el.data || [['']]
-          const headerBg = sanitizeCSSValue(el.headerBgColor) || 'rgba(99,102,241,0.3)'
-          const cellBg = sanitizeCSSValue(el.cellBgColor) || 'transparent'
-          const borderColor = sanitizeCSSValue(el.borderColor) || 'rgba(255,255,255,0.2)'
-          const borderWidth = el.borderWidth ?? 1
-          const textColor = sanitizeCSSValue(el.textColor) || '#ffffff'
-          const fontSize = el.fontSize || 14
-          const cellPadding = el.cellPadding || 8
-          const rows = data.map((row, ri) => {
-            const cells = (row || []).map((cell, ci) => {
-              const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
-              return `<td style="padding:${cellPadding}px;border:${borderWidth}px solid ${borderColor};background:${bg};color:${textColor};font-size:${fontSize}px;">${escapeHtml(cell || '')}</td>`
-            }).join('')
-            return `<tr>${cells}</tr>`
-          }).join('')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
-        }
-        if (el.type && el.type.startsWith('plugin:')) {
-          const sandboxHtml = el.pluginId ? pluginSandbox(el.pluginId) : null
-          if (sandboxHtml) {
-            const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
-              .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
-          }
-          const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${fragClass}${fragIdx}${actionAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
-        }
-        return ''
-      })
-    // On a scrolling slide, pinned elements stay on the screen, outside the canvas
-    const pinned = i => scrolling && isPinned(sortedElements[i])
-    const elementsHtml = renderedElements.filter((_, i) => !pinned(i)).join('\n')
-    const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
-
-    let sideCitationsHtml = ''
-    if (sideCitations.length > 0) {
-      const items = sideCitations.map((c, i) => {
-        const t = (c.text || c.link || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        const content = c.link
-          ? `<a href="${c.link.replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${t}</a>`
-          : t
-        return `${i + 1}. ${content}`
-      }).join('&ensp;&middot;&ensp;')
-      sideCitationsHtml = `      <div class="slide-citations"><div class="slide-citations-text">${items}</div></div>`
-    }
-
-    // Per-slide page numbering: grouped slides share the same number
-    const slideHasPageNum = slide.showPageNumber !== false
-    if (slideHasPageNum) {
-      if (slide.slideGroup && pageGroupSeen.has(slide.slideGroup)) {
-        // same group — reuse current counter value
-      } else {
-        pageCounter++
-        if (slide.slideGroup) pageGroupSeen.add(slide.slideGroup)
-      }
-    }
-    const pageLabel = showPageNumbers && slideHasPageNum
-      ? (pageNumberFormat === 'c/t' ? `${pageCounter} / ${totalNumberedSlides}` : `${pageCounter}`)
-      : ''
-
-    let footerHtml = ''
-    if (slide.showSlideFooter !== false && !slide.hideFooter) {
-      const timeSpan = showTimeWidget ? '<span class="reveal-time-widget" style="flex-shrink:0;"></span>' : ''
-      if (footerMode === 'sequence' && sequenceSections.length > 0 && (showFooter || showTimeWidget)) {
-        const activeIdx = slide.activeSection
-        const seqSpans = sequenceSections.map((sec, i) => {
-          const isActive = activeIdx === i
-          const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? sanitizeCSSValue(sec.color) : (footerColor || 'rgba(255,255,255,0.9)')
-          const color = isActive ? secActiveColor : footerInactiveColor
-          const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
-          return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
-        }).join('')
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
-        footerHtml = `      <div class="reveal-footer" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timeSpan}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
-      } else {
-        const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : ''
-        const leftContent = [timeSpan, sectionLabel].filter(Boolean).join(' &mdash; ')
-        footerHtml = (leftContent || pageLabel) ? `      <div class="reveal-footer" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>` : ''
-      }
-    }
-    const slideShowGrid = slide.showPresentGrid != null ? slide.showPresentGrid : showPresentGrid
-    const gridHtml = slideShowGrid ? `      <div style="position:absolute;inset:0;z-index:950;pointer-events:none;background-image:linear-gradient(to right,rgba(255,255,255,0.12) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.12) 1px,transparent 1px);background-size:${presentGridSize}px ${presentGridSize}px;"></div>` : ''
-
-    const autoAnimateAttr = slide.autoAnimate ? ' data-auto-animate data-auto-animate-unmatched="fade"' : ''
-    const autoAnimateDurAttr = slide.autoAnimate && slide.autoAnimateDuration ? ` data-auto-animate-duration="${slide.autoAnimateDuration}"` : ''
-    const autoAnimateEasingAttr = slide.autoAnimate && slide.autoAnimateEasing ? ` data-auto-animate-easing="${slide.autoAnimateEasing}"` : ''
-    const _customTrans = ['differential-rotation']
-    const _isCustom = _customTrans.includes(slide.transition)
-    const perSlideTransition = slide.transition ? ` data-transition="${_isCustom ? 'none' : slide.transition}"` : ''
-    const customTransAttr = _isCustom ? ` data-custom-transition="${slide.transition}"` : ''
-    const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
-    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
-    const canvasBg = scrolling ? canvasBackgroundStyle(slide.background) : ''
-    // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
-    return { slideIndex, html: `    <section${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`, slide }
-  })
-  const scrollingDeck = hasScrollingSlides(presentation)
-
-  // Group slides into 2D columns (section-based or column-based)
-  const allSlides = presentation.slides || []
-  let columns
-  const hasColumns = allSlides.some(s => s.column !== undefined)
-  if (hasColumns) {
-    const colMap = {}
-    allSlides.forEach((s, i) => { const c = s.column ?? 0; if (!colMap[c]) colMap[c] = []; colMap[c].push(i) })
-    columns = Object.keys(colMap).map(Number).sort((a, b) => a - b).map(k => colMap[k])
-  } else if (presentation.sectionNav) {
-    const groups = []; const keyToGroup = {}
-    allSlides.forEach((s, i) => {
-      const key = s.activeSection !== undefined ? String(s.activeSection) : (s.section || '')
-      if (!key) { groups.push([i]) }
-      else if (keyToGroup[key]) { keyToGroup[key].push(i) }
-      else { const g = [i]; keyToGroup[key] = g; groups.push(g) }
-    })
-    columns = groups
-  } else {
-    columns = allSlides.map((_, i) => [i])
-  }
-
-  let slidesHtml = columns.map(idxs => {
-    const sections = idxs.map(i => slideEntries[i]?.html || '').join('\n')
-    if (idxs.length === 1) return sections
-    return `    <section>\n${sections}\n    </section>`
-  }).join('\n')
-
-  if (bibliography.length > 0) {
-    const allText = (presentation.slides || []).flatMap(s => (s.elements || []).flatMap(el => {
-      const parts = []
-      if (el.content) parts.push(el.content)
-      if (el.citationText) parts.push(el.citationText)
-      return parts
-    })).join(' ')
-
-    function shortAuthor(authorStr) {
-      if (!authorStr) return ''
-      const authors = authorStr.split(/\s+and\s+/i).map(a => {
-        a = a.trim()
-        if (a.includes(',')) return a.split(',')[0].trim()
-        const parts = a.split(/\s+/)
-        return parts[parts.length - 1]
-      })
-      if (authors.length === 1) return authors[0]
-      if (authors.length === 2) return `${authors[0]} & ${authors[1]}`
-      return `${authors[0]} et al.`
-    }
-
-    const referencedEntries = bibliography.filter((entry, i) => {
-      if (allText.includes(`[${i + 1}]`)) return true
-      const short = shortAuthor(entry.author)
-      if (short && allText.includes(short)) return true
-      if (entry.key && allText.includes(entry.key)) return true
-      return false
-    })
-
-    if (referencedEntries.length > 0) {
-      const refItems = referencedEntries.map((entry, i) => {
-        const authors = entry.author || ''
-        const year = entry.year || ''
-        const title = escapeHtml(entry.title || '')
-        const journal = entry.journal || entry.booktitle || ''
-        const vol = entry.volume || ''
-        const pages = entry.pages || ''
-        const doi = entry.doi || ''
-        let line = `<span style="color:${sanitizeCSSValue(footerColor)};font-weight:700;margin-right:6px">[${i + 1}]</span>`
-        line += `${escapeHtml(authors)}`
-        if (year) line += ` (${escapeHtml(year)})`
-        line += `. ${title}.`
-        if (journal) line += ` <em>${escapeHtml(journal)}</em>`
-        if (vol) line += `, ${escapeHtml(vol)}`
-        if (pages) line += `, ${escapeHtml(pages)}`
-        line += '.'
-        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
-        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
-      }).join('\n          ')
-      const refSlide = `    <section>
-      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
-        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
-          ${refItems}
-        </div>
-      </div>
-    </section>`
-      slidesHtml += '\n' + refSlide
-    }
-  }
-
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${escapeHtml(presentation.title || 'Presentation')}</title>
-  <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
-  <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${theme}.css`)}">
-  <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
-  <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
-  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
-  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
-  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFonts.filter(f => f.source === 'google' && f.url).map(f => `\n  <link rel="stylesheet" href="${f.url}">`).join('')}
-  <style>${customFonts.filter(f => f.source === 'upload' && f.url).map(f => `\n    @font-face { font-family: '${f.familyName}'; src: url('${f.url}'); }`).join('')}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
-    html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
-    /* Override reveal.js theme CSS variables to match editor */
-    :root { --r-main-font-size: 42px; --r-block-margin: 0px; --r-heading-margin: 0 0 0.4em 0; --r-heading-text-transform: none; --r-heading-letter-spacing: normal; }
-    /* Reset reveal.js section padding/alignment so absolute positions match the editor canvas exactly */
-    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
-    .reveal .slides section > * { overflow: hidden; }
-    /* Override ALL theme element styles to match TipTap editor exactly */
-    .reveal p { margin: 0 0 0.4em !important; }
-    .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 { margin: 0 0 0.4em !important; text-transform: none !important; letter-spacing: normal !important; text-shadow: none !important; }
-    .reveal h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; }
-    .reveal h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; }
-    .reveal h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; }
-    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }
-    .reveal ul, .reveal ol { padding-left: 1.5em; margin: 0 0 0.4em; }
-    .reveal li { margin-bottom: 0.2em; line-height: inherit; }
-    .reveal span { line-height: inherit; }
-    .reveal a { text-decoration: underline; }
-    .reveal img { margin: 0 !important; border: none !important; background: none !important; box-shadow: none !important; max-width: none !important; max-height: none !important; }
-    .reveal code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-family: monospace; }
-    .reveal pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 6px; margin: 0 0 0.4em !important; overflow: auto; width: auto !important; box-shadow: none !important; }
-    .reveal pre code { background: none; padding: 0; }
-    .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
-    /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
-    /* color only on the container so per-span inline colors (inactive sections) are not overridden */
-    .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
-    .reveal .slides section .reveal-footer,
-    .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
-    #fs-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
-      background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
-      backdrop-filter: blur(4px); transition: background 0.15s;
-    }
-    #fs-btn:hover { background: rgba(0,0,0,0.75); }
-    :fullscreen #fs-btn, :-webkit-full-screen #fs-btn { display: none; }
-    [data-expand] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-expand]:hover { outline-color:rgba(99,102,241,0.6); box-shadow:0 0 16px rgba(99,102,241,0.25); }
-    .expand-overlay { position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.92);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s; }
-    .expand-overlay.active { opacity:1; }
-    .expand-overlay img { max-width:90vw;max-height:90vh;object-fit:contain;cursor:default;border-radius:4px; }
-    .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
-    .image-popup.active { opacity:1; }
-    [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
-    .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-    .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
-    .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
-    .slide-citations { position:absolute;right:2px;top:0;bottom:0;z-index:890;display:flex;align-items:center;pointer-events:none; }
-    .slide-citations-text { writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;color:rgba(255,255,255,0.45);font-family:-apple-system,sans-serif;line-height:1.3;white-space:nowrap; }
-    .slide-citations-text a { color:rgba(255,255,255,0.45);text-decoration:underline; }
-    /* Ensure fragments stay hidden until triggered */
-    .reveal .slides section .fragment:not(.visible):not(.current-fragment) { opacity: 0 !important; visibility: hidden !important; }
-    /* Custom fragment animations */
-    .fragment.slide-up { transform:translateY(40px); transition:transform 0.5s ease, opacity 0.5s ease; }
-    .fragment.slide-down { transform:translateY(-40px); transition:transform 0.5s ease, opacity 0.5s ease; }
-    .fragment.slide-left { transform:translateX(40px); transition:transform 0.5s ease, opacity 0.5s ease; }
-    .fragment.slide-right { transform:translateX(-40px); transition:transform 0.5s ease, opacity 0.5s ease; }
-    .fragment.slide-up,.fragment.slide-down,.fragment.slide-left,.fragment.slide-right { opacity:0; }
-    .fragment.slide-up.visible,.fragment.slide-down.visible,.fragment.slide-left.visible,.fragment.slide-right.visible { transform:none; opacity:1; }
-    .fragment.flip-up { transform:perspective(600px) rotateX(90deg); opacity:0; transition:transform 0.6s ease, opacity 0.3s ease; }
-    .fragment.flip-down { transform:perspective(600px) rotateX(-90deg); opacity:0; transition:transform 0.6s ease, opacity 0.3s ease; }
-    .fragment.flip-up.visible,.fragment.flip-down.visible { transform:none; opacity:1; }
-    /* Laser pointer / spotlight */
-    #laser-dot { position:fixed;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle,#ff0000 0%,#ff0000 60%,rgba(255,0,0,0.4) 100%);box-shadow:0 0 8px 2px rgba(255,0,0,0.6);pointer-events:none;z-index:99999;display:none;transform:translate(-50%,-50%); }
-    #spotlight-overlay { position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;display:none; }
-    /* Slide overview panel */
-    #overview-toggle { position:fixed;top:16px;left:16px;z-index:9999;background:rgba(0,0,0,0.5);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;backdrop-filter:blur(4px);transition:background 0.15s; }
-    #overview-toggle:hover { background:rgba(0,0,0,0.75); }
-    :fullscreen #overview-toggle, :-webkit-full-screen #overview-toggle { display:none; }
-    #overview-panel { position:fixed;top:0;left:0;bottom:0;z-index:9998;background:rgba(15,15,25,0.95);backdrop-filter:blur(8px);border-right:1px solid rgba(255,255,255,0.1);transform:translateX(-100%);transition:transform 0.25s ease;overflow:hidden;display:flex;flex-direction:column; }
-    #overview-panel.open { transform:translateX(0); }
-    #overview-panel .ov-header { padding:12px 16px;font-size:12px;color:rgba(255,255,255,0.5);font-family:-apple-system,sans-serif;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;display:flex;align-items:center;justify-content:space-between; }
-    #overview-panel .ov-body { flex:1;overflow:auto;padding:10px; }
-    #overview-panel .ov-body.linear { display:flex;flex-direction:column;gap:8px;width:180px; }
-    #overview-panel .ov-body.sections { display:flex;flex-direction:row;gap:16px;min-width:min-content;padding:10px 14px; }
-    #overview-panel .ov-section-col { display:flex;flex-direction:column;gap:8px;min-width:140px; }
-    #overview-panel .ov-section-label { font-size:10px;color:rgba(255,255,255,0.45);font-family:-apple-system,sans-serif;text-transform:uppercase;letter-spacing:0.04em;padding:0 4px 4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px;white-space:nowrap; }
-    #overview-panel .ov-thumb { position:relative;border-radius:4px;overflow:hidden;cursor:pointer;border:2px solid transparent;transition:border-color 0.15s,box-shadow 0.15s;flex-shrink:0; }
-    #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
-    #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
-    #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
-  </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
-</head>
-<body>
-  <div class="reveal">
-    <div class="slides">
-${slidesHtml}
-    </div>
-  </div>
-  <button id="fs-btn" title="Enter fullscreen (F)" onclick="document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()">&#x26F6; Fullscreen</button>
-  <button id="overview-toggle" title="Slide overview (G)">&#x25A6; Overview</button>
-  <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${presentation.overviewLayout || 'linear'}" id="ov-body"></div></div>
-  <div id="laser-dot"></div>
-  <canvas id="spotlight-overlay"></canvas>
-  <script src="${libUrl('reveal.js', 'dist/reveal.js')}"></script>
-  <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
-  <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
-  <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
-  <script src="${libUrl('gsap', 'dist/gsap.min.js')}"></script>
-  <script>
-    var _customTransitions = ['differential-rotation'];
-    var _globalTransition = '${transition}';
-    var _isGlobalCustom = _customTransitions.indexOf(_globalTransition) !== -1;
-    Reveal.initialize({
-      hash: true,
-      width: ${slideW},
-      height: ${slideH},
-      margin: 0,
-      minScale: 0,
-      maxScale: 10,
-      center: false,
-      transition: _isGlobalCustom ? 'none' : _globalTransition,
-      plugins: [ RevealNotes, RevealHighlight ]
-    });
-    Reveal.on('ready', function() {
-      document.querySelectorAll('span[data-math-latex]').forEach(function(el) {
-        try {
-          katex.render(el.getAttribute('data-math-latex'), el, {
-            displayMode: el.getAttribute('data-math-display') === 'true',
-            throwOnError: false
-          });
-        } catch(e) {}
-      });
-      document.querySelectorAll('[data-latex-block]').forEach(function(el) {
-        try {
-          var target = el.querySelector('.katex-block') || el;
-          katex.render(el.getAttribute('data-latex-block'), target, {
-            displayMode: true,
-            throwOnError: false
-          });
-        } catch(e) {
-          var target = el.querySelector('.katex-block') || el;
-          target.textContent = e.message;
-          target.style.color = '#f87171';
-        }
-      });
-    });
-    // ── Custom transitions (differential rotation) ───────────────────────
-    (function() {
-      var prevH = 0, prevV = 0;
-      Reveal.on('ready', function(e) { prevH = e.indexh || 0; prevV = e.indexv || 0; });
-      Reveal.on('slidechanged', function(e) {
-        var prev = e.previousSlide;
-        var transName = null;
-        if (prev && prev.getAttribute('data-custom-transition'))
-          transName = prev.getAttribute('data-custom-transition');
-        else if (_isGlobalCustom)
-          transName = _globalTransition;
-        var dir = 1;
-        if ((e.indexh || 0) < prevH || ((e.indexh || 0) === prevH && (e.indexv || 0) < prevV)) dir = -1;
-        prevH = e.indexh || 0;
-        prevV = e.indexv || 0;
-        if (transName === 'differential-rotation') drTransition(dir);
-      });
-      function drTransition(dir) {
-        var N = 16;
-        var vw = window.innerWidth, vh = window.innerHeight;
-        var bh = vh / N;
-        var BAUHAUS = ['#CC0000', '#003399', '#FFCC00'];
-        var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9998;pointer-events:none;overflow:hidden;';
-        var pending = N;
-        for (var i = 0; i < N; i++) {
-          var band = document.createElement('div');
-          band.style.cssText = 'position:absolute;left:0;width:100%;background:#000;box-sizing:border-box;';
-          band.style.top = (i * bh) + 'px';
-          band.style.height = (bh + 0.5) + 'px';
-          if (i < N - 1) {
-            band.style.borderBottom = '1.5px solid ' + BAUHAUS[i % 3];
-          }
-          overlay.appendChild(band);
-          var lat = Math.PI * ((i + 0.5) / N - 0.5);
-          var cos2 = Math.cos(lat); cos2 = cos2 * cos2;
-          var dur = 0.4 + 1.0 * (1 - cos2);
-          gsap.to(band, {
-            x: dir * (vw + 20),
-            duration: dur,
-            ease: 'none',
-            onComplete: function() { pending--; if (pending <= 0) overlay.remove(); }
-          });
-        }
-        document.body.appendChild(overlay);
-      }
-    })();
-
-    // ── Image click interactions (popup + expand) ─────────────────────
-    (function() {
-      function dismissAll() {
-        var p = document.querySelector('.image-popup');
-        if (p) { p.classList.remove('active'); setTimeout(function() { p.remove(); }, 200); }
-        var ov = document.querySelector('.expand-overlay');
-        if (ov) { ov.classList.remove('active'); setTimeout(function() { ov.remove(); }, 200); }
-      }
-      function showPopup(el, anchor) {
-        var old = document.querySelector('.image-popup');
-        if (old) old.remove();
-        var text = el.getAttribute('data-popup');
-        var pos = el.getAttribute('data-popup-pos') || 'below';
-        var fs = el.getAttribute('data-popup-fs') || '15';
-        var rect = anchor.getBoundingClientRect();
-        var p = document.createElement('div');
-        p.className = 'image-popup';
-        p.textContent = text;
-        p.style.fontSize = fs + 'px';
-        if (pos === 'center') {
-          p.style.left = (rect.left + rect.width/2) + 'px';
-          p.style.top = (rect.top + rect.height/2) + 'px';
-          p.style.transform = 'translate(-50%,-50%)';
-        } else if (pos === 'side') {
-          p.style.top = (rect.top + rect.height/2) + 'px';
-          if (rect.right + 320 < window.innerWidth) {
-            p.style.left = (rect.right + 12) + 'px';
-            p.style.transform = 'translateY(-50%)';
-          } else {
-            p.style.left = (rect.left - 12) + 'px';
-            p.style.transform = 'translate(-100%,-50%)';
-          }
-        } else {
-          p.style.left = (rect.left + rect.width/2) + 'px';
-          p.style.top = (rect.bottom + 12) + 'px';
-          p.style.transform = 'translateX(-50%)';
-        }
-        document.body.appendChild(p);
-        requestAnimationFrame(function() { p.classList.add('active'); });
-      }
-      document.addEventListener('click', function(e) {
-        if (e.target.closest('.image-popup')) return;
-        var ov = e.target.closest('.expand-overlay');
-        if (ov) {
-          if (e.target.tagName === 'IMG') return;
-          dismissAll(); return;
-        }
-        var el = e.target.closest('[data-popup],[data-expand]');
-        if (!el) { dismissAll(); return; }
-        e.stopPropagation();
-        dismissAll();
-        var hasPopup = el.hasAttribute('data-popup');
-        var hasExpand = el.hasAttribute('data-expand');
-        var img = el.querySelector('img');
-        if (hasExpand && img) {
-          var overlay = document.createElement('div');
-          overlay.className = 'expand-overlay';
-          var big = document.createElement('img');
-          big.src = img.src;
-          big.onclick = function(ev) { ev.stopPropagation(); };
-          overlay.appendChild(big);
-          document.body.appendChild(overlay);
-          requestAnimationFrame(function() {
-            overlay.classList.add('active');
-            if (hasPopup) showPopup(el, big);
-          });
-        } else if (hasPopup) {
-          showPopup(el, el);
-        }
-      });
-      document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
-    })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
-${(() => {
-  const overviewLayout = presentation.overviewLayout || 'linear'
-  const slideCoords = {}
-  columns.forEach((idxs, h) => { idxs.forEach((i, v) => { slideCoords[i] = { h, v } }) })
-  const flatSlides = (presentation.slides || []).map((s, i) => ({ h: slideCoords[i]?.h ?? i, v: slideCoords[i]?.v ?? 0, flatIdx: i, section: s.section || '' }))
-  return `
-    // ── Slide overview panel ──────────────────────────────────────────
-    (function() {
-      var LAYOUT = '${overviewLayout}';
-      var SLIDES = ${JSON.stringify(flatSlides)};
-      var panel = document.getElementById('overview-panel');
-      var body = document.getElementById('ov-body');
-      var toggle = document.getElementById('overview-toggle');
-      var countEl = document.getElementById('ov-count');
-      var thumbs = [];
-      var THUMB_W = LAYOUT === 'sections' ? 130 : 150;
-      var slideW = ${slideW}, slideH = ${slideH};
-      var thumbH = Math.round(THUMB_W * slideH / slideW);
-      var isOpen = false;
-
-      countEl.textContent = SLIDES.length;
-
-      function buildThumbnails() {
-        var allSections = document.querySelectorAll('.reveal .slides > section');
-        var slideEls = [];
-        allSections.forEach(function(sec) {
-          var nested = sec.querySelectorAll(':scope > section');
-          if (nested.length > 0) {
-            nested.forEach(function(s) { slideEls.push(s); });
-          } else {
-            slideEls.push(sec);
-          }
-        });
-
-        if (LAYOUT === 'sections') {
-          var groups = {};
-          var order = [];
-          SLIDES.forEach(function(s, i) {
-            var key = s.section || '(No Section)';
-            if (!groups[key]) { groups[key] = []; order.push(key); }
-            groups[key].push({ meta: s, idx: i, el: slideEls[i] });
-          });
-          order.forEach(function(key) {
-            var col = document.createElement('div');
-            col.className = 'ov-section-col';
-            var label = document.createElement('div');
-            label.className = 'ov-section-label';
-            label.textContent = key;
-            col.appendChild(label);
-            groups[key].forEach(function(item) {
-              col.appendChild(makeThumb(item.meta, item.idx, item.el));
-            });
-            body.appendChild(col);
-          });
-        } else {
-          SLIDES.forEach(function(s, i) {
-            body.appendChild(makeThumb(s, i, slideEls[i]));
-          });
-        }
-      }
-
-      function makeThumb(meta, idx, srcEl) {
-        var wrap = document.createElement('div');
-        wrap.className = 'ov-thumb';
-        wrap.style.width = THUMB_W + 'px';
-        wrap.style.height = thumbH + 'px';
-        var num = document.createElement('div');
-        num.className = 'ov-thumb-num';
-        num.textContent = idx + 1;
-        wrap.appendChild(num);
-        if (srcEl) {
-          var clone = srcEl.cloneNode(true);
-          // A picture only: its clickable and hoverable copies can't be tabbed to
-          clone.setAttribute('inert', '');
-          clone.setAttribute('aria-hidden', 'true');
-          clone.style.cssText = 'position:absolute;top:0;left:0;width:' + slideW + 'px;height:' + slideH + 'px;transform:scale(' + (THUMB_W/slideW) + ');transform-origin:top left;pointer-events:none;overflow:hidden;';
-          clone.querySelectorAll('.reveal-footer').forEach(function(f) { f.remove(); });
-          clone.querySelectorAll('iframe').forEach(function(f) { f.remove(); });
-          clone.querySelectorAll('video').forEach(function(v) { v.pause(); v.removeAttribute('autoplay'); });
-          wrap.appendChild(clone);
-        } else {
-          wrap.style.background = 'rgba(30,30,46,0.8)';
-        }
-        wrap.onclick = function() { Reveal.slide(meta.h, meta.v); updateActive(); };
-        thumbs.push({ el: wrap, h: meta.h, v: meta.v });
-        return wrap;
-      }
-
-      function updateActive() {
-        var state = Reveal.getIndices();
-        thumbs.forEach(function(t) {
-          if (t.h === state.h && t.v === state.v) t.el.classList.add('active');
-          else t.el.classList.remove('active');
-        });
-        var active = body.querySelector('.ov-thumb.active');
-        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-      }
-
-      function togglePanel() {
-        isOpen = !isOpen;
-        if (isOpen) panel.classList.add('open');
-        else panel.classList.remove('open');
-      }
-
-      toggle.onclick = togglePanel;
-      document.addEventListener('keydown', function(e) {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        if (e.key === 'g' || e.key === 'G') { e.preventDefault(); togglePanel(); }
-      });
-
-      Reveal.on('ready', function() { buildThumbnails(); updateActive(); });
-      Reveal.on('slidechanged', function() { updateActive(); });
-    })();
-`
-})()}
-${laserPointer !== 'off' ? `
-    // ── Laser pointer / spotlight ────────────────────────────────────
-    (function() {
-      var mode = '${laserPointer}';
-      var active = false;
-      var dot = document.getElementById('laser-dot');
-      var canvas = document.getElementById('spotlight-overlay');
-      var ctx = canvas.getContext('2d');
-      var mx = 0, my = 0;
-
-      function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; if (active && mode === 'spotlight') drawSpotlight(); }
-      window.addEventListener('resize', resize);
-      resize();
-
-      function drawSpotlight() {
-        var w = canvas.width, h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.fillRect(0, 0, w, h);
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
-        var grad = ctx.createRadialGradient(mx, my, 0, mx, my, 120);
-        grad.addColorStop(0, 'rgba(0,0,0,1)');
-        grad.addColorStop(0.7, 'rgba(0,0,0,0.9)');
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(mx, my, 120, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      document.addEventListener('mousemove', function(e) {
-        mx = e.clientX; my = e.clientY;
-        if (!active) return;
-        if (mode === 'dot') { dot.style.left = mx + 'px'; dot.style.top = my + 'px'; }
-        else { drawSpotlight(); }
-      });
-
-      document.addEventListener('keydown', function(e) {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        if (e.key === 'l' || e.key === 'L') {
-          e.preventDefault();
-          active = !active;
-          if (mode === 'dot') { dot.style.display = active ? 'block' : 'none'; }
-          else { canvas.style.display = active ? 'block' : 'none'; if (active) drawSpotlight(); }
-        }
-      });
-    })();
-` : ''}
-${showTimeWidget ? `
-    (function() {
-      var mode = '${footerTimeMode}';
-      var timerDur = ${timerDuration} * 60;
-      var timerStart = Date.now();
-      function pad(n) { return n < 10 ? '0' + n : '' + n; }
-      function fmt() {
-        if (mode === 'clock12') return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-        if (mode === 'clock24') return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-        var elapsed = Math.floor((Date.now() - timerStart) / 1000);
-        var secs = mode === 'timer-down' ? Math.max(0, timerDur - elapsed) : elapsed;
-        var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
-        return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
-      }
-      function update() { document.querySelectorAll('.reveal-time-widget').forEach(function(el) { el.textContent = fmt(); }); }
-      update();
-      setInterval(update, 1000);
-    })();
-` : ''}
-  </script>
-</body>
-</html>`
-}
-
-function getBackgroundAttrs(bg) {
-  if (!bg) return ''
-  if (bg.type === 'color' && bg.color) return ` data-background-color="${sanitizeAttr(bg.color)}"`
-  if (bg.type === 'image' && bg.image) return ` data-background-image="${sanitizeUrl(bg.image)}" data-background-size="${sanitizeAttr(bg.size || 'cover')}" data-background-position="${sanitizeAttr(bg.position || 'center')}"`
-  if (bg.type === 'gradient' && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`
-  return ''
+  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: el => (el.pluginId ? pluginSandbox(el.pluginId) : null) })
 }
 
 function escapeHtml(str) {
@@ -1580,7 +708,7 @@ app.get('/api/presentations', async (req, res) => {
       : []
     res.json([...own, ...shared])
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1661,7 +789,7 @@ app.post('/api/presentations', async (req, res) => {
     const created = await storage.createPresentation(presentation, req.userId, expiresAt)
     res.status(201).json(created)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1672,17 +800,18 @@ app.get('/api/templates', async (req, res) => {
   try {
     res.json(await storage.listTemplates(req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
 // POST /api/templates - create new template
 app.post('/api/templates', async (req, res) => {
   try {
+    if (!await belowTemplateLimit(req, res)) return
     const template = await storage.createTemplate(req.body, req.userId)
     res.status(201).json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1693,7 +822,7 @@ app.get('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!template) return res.status(404).json({ error: 'Not found' })
     res.json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1704,7 +833,7 @@ app.put('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'Not found' })
     res.json(updated)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1715,18 +844,19 @@ app.delete('/api/templates/:id', requireValidId(), async (req, res) => {
     if (!deleted) return res.status(404).json({ error: 'Not found' })
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
 // POST /api/presentations/:id/save-as-template
 app.post('/api/presentations/:id/save-as-template', requireValidId(), async (req, res) => {
   try {
+    if (!await belowTemplateLimit(req, res)) return
     const template = await storage.saveAsTemplate(req.params.id, req.body.title, req.userId)
     if (!template) return res.status(404).json({ error: 'Not found' })
     res.status(201).json(template)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1737,7 +867,7 @@ app.get('/api/presentations/:id', requireValidId(), deckAccess(), async (req, re
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     res.json(presentation)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1752,7 +882,7 @@ app.put('/api/presentations/:id', requireValidId(), deckAccess(), async (req, re
     }
     res.json(updated)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1774,7 +904,7 @@ app.get('/api/presentations/:id/uploads', requireValidId(), deckAccess(), async 
       name: r.filename.split('/').pop(),
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1807,7 +937,7 @@ app.get('/api/uploads', async (req, res) => {
       presentationTitle: r.presentation_title || null,
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1838,7 +968,7 @@ app.delete('/api/uploads/:id', requireValidId(), async (req, res) => {
     }
     res.json({ success: true, freedBytes: Number(rows[0].size_bytes || 0) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -1853,7 +983,14 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
       userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
     if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+    // Uploading under a name already used replaces that dataset: its file
+    // goes, or it would stay in storage, counted by no one
+    const same = (await storage.listDatasets(req.userId)).find(d => d.name === result.name)
+    const replaced = same && await storage.getDataset(same.id, req.userId)
     const ds = await storage.createDataset(result, req.userId)
+    if (replaced?.storageKey && replaced.storageKey !== ds.storageKey) {
+      deleteDatasetFile(replaced.storageKey, DATA_DIR).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    }
     res.status(201).json(ds)
   } catch (err) {
     if (req.file && req.file.path) fs.removeSync(req.file.path)
@@ -1865,7 +1002,7 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
 app.get('/api/datasets', async (req, res) => {
   try {
     res.json(await storage.listDatasets(req.userId))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/datasets/:id — get dataset metadata
@@ -1874,7 +1011,7 @@ app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     res.json(ds)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
@@ -1893,7 +1030,7 @@ app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
     }
     const result = applyQuery(rows, ds.columns, opts)
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // PATCH /api/datasets/:id — rename a dataset
@@ -1902,7 +1039,7 @@ app.patch('/api/datasets/:id', requireValidId(), async (req, res) => {
     const ds = await storage.updateDataset(req.params.id, { name: req.body.name }, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     res.json(ds)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/datasets/:id — delete a dataset and its stored file
@@ -1914,7 +1051,7 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
       console.error('Dataset file cleanup failed:', e.message)
     }
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
@@ -1930,27 +1067,38 @@ app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     await storage.linkDatasetToPresentation(pid, datasetId, alias)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
+
+// Whether the caller may use presentation `pid`'s datasets: deckAccess checks
+// editors, but leaves guests (and self-hosted) to storage, and the dataset
+// links aren't looked up by owner
+const ownsDeck = async (req, pid) => !!(await storage.getPresentation(pid, req.deck.ownerId))
 
 // DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
 app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:pid/datasets — list datasets linked to a presentation
 app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     res.json(await storage.getPresentationDatasets(req.params.pid))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:pid/datasets/:did/data — fetch data for a linked dataset
+// (only a linked one: editors reach the owner's datasets through this)
 app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
+    const linked = await storage.getPresentationDatasets(req.params.pid)
+    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
@@ -1964,7 +1112,7 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     }
     const result = applyQuery(rows, ds.columns, opts)
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // --- Custom Fonts ---
@@ -1977,7 +1125,7 @@ app.get('/api/fonts', async (req, res) => {
       [req.userId]
     )
     res.json(rows.map(r => ({ id: r.id, familyName: r.family_name, source: r.source, url: r.url, createdAt: r.created_at })))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
@@ -2020,7 +1168,7 @@ app.post('/api/fonts/upload', uploadLimiter, storageQuota, upload.single('file')
       [id, req.userId, familyName, 'upload', fontUrl]
     )
     res.json({ id, familyName, source: 'upload', url: fontUrl })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/fonts/file/:filename - serve uploaded font files from R2
@@ -2060,7 +1208,7 @@ app.post('/api/fonts/google', async (req, res) => {
       [id, req.userId, familyName, 'google', url]
     )
     res.json({ id, familyName, source: 'google', url })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // Deletes an uploaded font's file, found from its URL: /api/fonts/file/<name>
@@ -2090,7 +1238,7 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Font not found' })
     if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/presentations/:id
@@ -2101,7 +1249,7 @@ app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
     collab?.closeDocument(req.params.id)
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2113,7 +1261,7 @@ app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) 
     if (!copy) return res.status(404).json({ error: 'Not found' })
     res.status(201).json(copy)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2123,11 +1271,11 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
   try {
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      if (req.isGuest && videoNeedsTranscode(filePath)) {
+      if (req.isGuest && await videoNeedsTranscode(filePath)) {
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = convertUploadedVideo(req, filePath)
+      filePath = await convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, {
@@ -2137,7 +1285,7 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
     }
     res.json({ url: `/uploads/${path.basename(filePath)}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2149,11 +1297,11 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
     if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
     let filePath = req.file.path
     if (req.file.mimetype.startsWith('video/')) {
-      if (req.isGuest && videoNeedsTranscode(filePath)) {
+      if (req.isGuest && await videoNeedsTranscode(filePath)) {
         fs.removeSync(filePath)
         return res.status(415).json({ error: 'Guest mode only accepts web-ready video (MP4/H.264 or WebM). Convert it first or create an account.' })
       }
-      filePath = convertUploadedVideo(req, filePath)
+      filePath = await convertUploadedVideo(req, filePath)
     }
     if (isR2Enabled()) {
       const result = await r2Upload(filePath, req.file.originalname, {
@@ -2163,7 +1311,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
     }
     res.json({ url: `/uploads/${req.params.id}/${path.basename(filePath)}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2179,16 +1327,19 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     fs.moveSync(req.file.path, pptxPath)
     const started = Date.now()
 
-    // Convert PPTX → PDF
-    execFileSync('libreoffice', [
-      '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpDir, pptxPath
-    ], { timeout: 120000, env: { ...process.env, HOME: '/tmp' } })
+    // Convert PPTX → PDF, with a LibreOffice profile of its own: runs share
+    // HOME, and a second LibreOffice on the same profile hands its file to the
+    // first and exits without converting it (two imports at once)
+    const profile = require('url').pathToFileURL(path.join(tmpDir, 'lo-profile')).href
+    await runTool('libreoffice', [
+      `-env:UserInstallation=${profile}`, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpDir, pptxPath
+    ], { timeout: 120000 })
 
     const pdfPath = path.join(tmpDir, 'presentation.pdf')
     if (!fs.existsSync(pdfPath)) throw new Error('LibreOffice PDF conversion failed')
 
     // Convert PDF pages → PNG images at 150 dpi
-    execFileSync('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
+    await runTool('pdftoppm', ['-r', '150', '-png', pdfPath, path.join(tmpDir, 'slide')], { timeout: 120000 })
     recordUsage(storage, { userId: req.userId, kind: 'powerpoint_import', durationMs: Date.now() - started, bytes: req.file.size })
 
     const pngFiles = fs.readdirSync(tmpDir)
@@ -2197,6 +1348,16 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
         const n = s => parseInt(s.match(/(\d+)/)[1])
         return n(a) - n(b)
       })
+
+    // The slide images can be much bigger than the file: they have to fit in
+    // the storage left on the owner's plan, as the file had to
+    if (isR2Enabled() && storage.query) {
+      const plan = planFor(req.deck.role === 'owner' ? req.userPlan : req.deck.ownerPlan)
+      const bytes = pngFiles.reduce((sum, f) => sum + fs.statSync(path.join(tmpDir, f)).size, 0)
+      if (plan.storageBytes && await storageUsedBytes(storage, req.deck.ownerId) + bytes > plan.storageBytes) {
+        return res.status(413).json({ error: `The slides as images (${Math.round(bytes / (1024 * 1024))} MB) don't fit in the storage left on the ${plan.name} plan.` })
+      }
+    }
 
     if (isR2Enabled()) {
       const urls = []
@@ -2219,7 +1380,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     }
   } catch (err) {
     console.error('PPTX import error:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   } finally {
     fs.removeSync(tmpDir)
   }
@@ -2236,7 +1397,7 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
     res.send(html)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2258,7 +1419,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
     if (!presentation) return res.status(404).json({ error: 'Not found' })
     sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2283,7 +1444,7 @@ app.post('/api/presentations/:id/share', requireValidId(), async (req, res) => {
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2292,7 +1453,7 @@ app.delete('/api/presentations/:id/share', requireValidId(), async (req, res) =>
   try {
     res.json(await storage.deleteShareToken(req.params.id, req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2301,7 +1462,7 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
   try {
     res.json(await storage.getShareStatus(req.params.id, req.userId))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2312,11 +1473,16 @@ app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
 // caller's role and id, and for the owner, the invite link's token
 app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    const people = await collaboration.listCollaborators(storage, req.params.id)
+    let people = await collaboration.listCollaborators(storage, req.params.id)
     const inviteToken = req.deck.role === 'owner' ? await collaboration.getInviteToken(storage, req.params.id) : null
+    // Editors may not know each other (anyone with the invite link can join):
+    // they see the owner's email and their own, and only a hint of the rest
+    if (req.deck.role !== 'owner') {
+      people = people.map(p => (p.role === 'owner' || p.id === req.userId ? p : { ...p, email: collaboration.emailHint(p.email) }))
+    }
     res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2326,7 +1492,7 @@ app.post('/api/presentations/:id/invite', requireValidId(), deckAccess(), ownerO
   try {
     res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, true) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2335,7 +1501,7 @@ app.delete('/api/presentations/:id/invite', requireValidId(), deckAccess(), owne
   try {
     res.json({ inviteToken: await collaboration.setInviteToken(storage, req.params.id, false) })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2352,7 +1518,7 @@ app.delete('/api/presentations/:id/collaborators/:userId', requireValidId(), req
     collab?.disconnectUser(req.params.id, req.params.userId)
     res.json({ success: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2363,7 +1529,7 @@ app.get('/api/invites/:token', requireValidId('token'), async (req, res) => {
     if (!invite) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
     res.json(invite)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2374,18 +1540,18 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
     if (!joined) return res.status(404).json({ error: 'This invite link has been turned off or replaced.' })
     res.json(joined)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
-app.get('/share/:token', requireValidId('token'), async (req, res) => {
+app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2393,10 +1559,11 @@ app.get('/share/:token', requireValidId('token'), async (req, res) => {
 
 const liveSessions = new Map()
 
+// Anyone with the code can watch, so it comes from crypto, not Math.random
 function generateSessionCode() {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789'
   let code = ''
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
+  for (let i = 0; i < 6; i++) code += chars[crypto.randomInt(chars.length)]
   return code
 }
 
@@ -2420,7 +1587,7 @@ app.post('/api/presentations/:id/live/start', requireValidId(), async (req, res)
 
     res.json({ sessionId, url: `/live/${sessionId}` })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2501,7 +1668,7 @@ app.get('/api/live/:sessionId/status', (req, res) => {
 })
 
 // GET /live/:sessionId — serve viewer page (public, no auth)
-app.get('/live/:id', async (req, res) => {
+app.get('/live/:id', deckPageLimiter, async (req, res) => {
   const session = liveSessions.get(req.params.id)
   if (!session) return res.status(404).send('Live session not found or has ended.')
 
@@ -2509,7 +1676,7 @@ app.get('/live/:id', async (req, res) => {
     const presentation = await storage.getPresentation(session.presentationId, session.userId)
     if (!presentation) return res.status(404).send('Presentation not found')
 
-    const baseHtml = localizeLibraries(generateRevealHTML(presentation))
+    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false }))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────
@@ -2595,17 +1762,19 @@ app.get('/live/:id', async (req, res) => {
 // POST /api/presentations/:id/snapshot
 app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), async (req, res) => {
   try {
+    if (!await belowLimit(res, 'SELECT COUNT(*)::int AS count FROM snapshots WHERE presentation_id = $1', [req.params.id],
+      MAX_VERSIONS, `A presentation can keep up to ${MAX_VERSIONS} saved versions. Delete one in History to save another.`)) return
     const result = await storage.createSnapshot(req.params.id, req.body.name, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/snapshots - list snapshots
 app.get('/api/presentations/:id/snapshots', requireValidId(), deckAccess(), async (req, res) => {
   try {
     res.json(await storage.listSnapshots(req.params.id, req.deck.ownerId))
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
@@ -2614,15 +1783,16 @@ app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), require
     const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
     res.json(restored)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
-// DELETE /api/presentations/:id/snapshots/:snapshotId
-app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
+// DELETE /api/presentations/:id/snapshots/:snapshotId - the owner only: an
+// editor could otherwise delete every version, leaving nothing to restore
+app.delete('/api/presentations/:id/snapshots/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), ownerOnly, async (req, res) => {
   try {
     await storage.deleteSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/snapshots/:snapshotId/data - get snapshot data without restoring
@@ -2631,7 +1801,7 @@ app.get('/api/presentations/:id/snapshots/:snapshotId/data', requireValidId(), r
     const data = await storage.getSnapshotData(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!data) return res.status(404).json({ error: 'Snapshot not found' })
     res.json(data)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // --- GitHub Integration ---
@@ -2642,7 +1812,7 @@ app.get('/api/github/config', async (req, res) => {
     const config = await storage.getGithubConfig(req.userId)
     res.json({ owner: config.owner || '', repo: config.repo || '', hasToken: !!config.token, pagesUrl: config.pagesUrl || '' })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2652,7 +1822,7 @@ app.post('/api/github/config', async (req, res) => {
     const updated = await storage.setGithubConfig(req.body, req.userId)
     res.json({ owner: updated.owner || '', repo: updated.repo || '', hasToken: !!updated.token, pagesUrl: updated.pagesUrl || '' })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2662,7 +1832,7 @@ app.get('/api/zotero/config', async (req, res) => {
     const config = await storage.getZoteroConfig(req.userId)
     res.json({ zoteroUserId: config.zoteroUserId || '', hasApiKey: !!config.apiKey })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2672,7 +1842,7 @@ app.post('/api/zotero/config', async (req, res) => {
     await storage.setZoteroConfig(req.body, req.userId)
     res.json({ zoteroUserId: req.body.zoteroUserId || '', hasApiKey: !!req.body.apiKey })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2682,7 +1852,7 @@ app.delete('/api/zotero/config', async (req, res) => {
     await storage.setZoteroConfig({ zoteroUserId: '', apiKey: '' }, req.userId)
     res.json({ ok: true })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2693,19 +1863,26 @@ app.get('/api/zotero/proxy/*', async (req, res) => {
     if (!config.apiKey || !config.zoteroUserId) {
       return res.status(400).json({ error: 'Zotero not configured' })
     }
+    // Only the user's own collections and items, as the bibliography asks
+    // for them, and only as JSON: the path arrives decoded (..%2f reaches
+    // other api.zotero.org paths), and Zotero's own type, sent back from
+    // this site, could make an attachment a page here
     const zoteroPath = req.params[0]
+    if (!/^(collections|items)(\/[A-Za-z0-9]+){0,3}$/.test(zoteroPath)) return res.status(400).json({ error: 'Invalid Zotero path' })
     const qs = new URL(req.url, 'http://localhost').search
-    const url = `https://api.zotero.org/users/${config.zoteroUserId}/${zoteroPath}${qs}`
+    const url = `https://api.zotero.org/users/${encodeURIComponent(config.zoteroUserId)}/${zoteroPath}${qs}`
     const zRes = await fetch(url, {
-      headers: { 'Zotero-API-Version': '3', 'Zotero-API-Key': config.apiKey }
+      headers: { 'Zotero-API-Version': '3', 'Zotero-API-Key': config.apiKey },
+      redirect: 'error',
     })
     const body = await zRes.text()
+    let data
+    try { data = JSON.parse(body) } catch { data = { error: `Zotero answered ${zRes.status}` } }
     res.status(zRes.status)
-      .set('Content-Type', zRes.headers.get('content-type') || 'application/json')
       .set('Total-Results', zRes.headers.get('total-results') || '0')
-      .send(body)
+      .json(data)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -2725,7 +1902,7 @@ app.get('/api/zenodo/config', async (req, res) => {
   try {
     const config = await storage.getZenodoConfig(req.userId)
     res.json({ hasToken: !!config.token, sandbox: config.sandbox })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/zenodo/config
@@ -2733,7 +1910,7 @@ app.post('/api/zenodo/config', async (req, res) => {
   try {
     const updated = await storage.setZenodoConfig(req.body, req.userId)
     res.json({ hasToken: !!updated.token, sandbox: updated.sandbox })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // DELETE /api/zenodo/config
@@ -2741,7 +1918,7 @@ app.delete('/api/zenodo/config', async (req, res) => {
   try {
     await storage.setZenodoConfig({ token: '', sandbox: false }, req.userId)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/presentations/:id/zenodo/status - check if this presentation has been published
@@ -2767,7 +1944,7 @@ app.get('/api/presentations/:id/zenodo/status', requireValidId(), async (req, re
       versionCount: allVersions.length,
       versions: allVersions,
     })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // POST /api/presentations/:id/zenodo/publish - publish presentation to Zenodo
@@ -2955,8 +2132,8 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
           for await (const chunk of body) chunks.push(chunk)
           fileBuffer = Buffer.concat(chunks)
         } else {
-          const filePath = path.join(UPLOADS_DIR, relativePath)
-          if (!fs.existsSync(filePath)) continue
+          const filePath = uploadsFile(relativePath)
+          if (!filePath || !fs.existsSync(filePath)) continue
           fileBuffer = fs.readFileSync(filePath)
         }
         await zenUploadFile(`assets_${assetName(uploadPath)}`, fileBuffer, contentType)
@@ -3002,7 +2179,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
 
     res.json({ doi, url: zenodoUrl, depositionId, isNewVersion, conceptRecid })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3141,8 +2318,8 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
           for await (const chunk of body) chunks.push(chunk)
           fileBuffer = Buffer.concat(chunks)
         } else {
-          const filePath = path.join(UPLOADS_DIR, relativePath)
-          if (!fs.existsSync(filePath)) return null
+          const filePath = uploadsFile(relativePath)
+          if (!filePath || !fs.existsSync(filePath)) return null
           fileBuffer = fs.readFileSync(filePath)
         }
         const blob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
@@ -3224,7 +2401,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       url: `https://github.com/${owner}/${repo}/tree/${branch}/${folderName}`,
     })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3257,7 +2434,7 @@ app.get('/api/presentations/:id/github/history', async (req, res) => {
       author: c.commit.author.name,
     })))
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3287,7 +2464,7 @@ app.get('/api/presentations/:id/github/version/:sha', requireValidId(), requireV
     const content = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'))
     res.json(content)
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3344,7 +2521,7 @@ app.post('/api/github/browse-repo', async (req, res) => {
 
     res.json({ owner, repo, branch, presentations })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3386,10 +2563,23 @@ app.post('/api/presentations/fork', async (req, res) => {
       item => item.type === 'blob' && item.path.startsWith(assetPrefix)
     )
 
-    // Download and re-upload each asset, building a path rewrite map
+    // Download and re-upload each asset, building a path rewrite map. In the
+    // cloud they go on the user's storage and count against their plan
     const pathMap = {}
+    const plan = planFor(req.userPlan)
+    const quota = isR2Enabled() && storage.query ? { used: await storageUsedBytes(storage, req.userId) } : null
+    const storedKeys = []
+    let addedBytes = 0
     for (const asset of assetFiles) {
       const filename = path.basename(asset.path)
+      if (quota && plan.storageBytes && quota.used + addedBytes + (asset.size || 0) > plan.storageBytes) {
+        await Promise.all([
+          deleteManyFromR2(storedKeys).catch(e => console.error('Fork assets not deleted:', e.message)),
+          storedKeys.length && storage.query('DELETE FROM uploads WHERE storage_key = ANY($1)', [storedKeys]),
+        ])
+        return res.status(413).json({ error: `Its files don't fit in your storage (${Math.round(plan.storageBytes / (1024 * 1024))} MB on the ${plan.name} plan).` })
+      }
+      if (quota && plan.maxFileBytes && (asset.size || 0) > plan.maxFileBytes) continue
       try {
         const blobRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/blobs/${asset.sha}`,
@@ -3409,9 +2599,11 @@ app.post('/api/presentations/fork', async (req, res) => {
           const storageKey = `uploads/${newFilename}`
           await putBufferToR2(storageKey, buffer, contentType)
           await storage.query(
-            'INSERT INTO uploads (filename, storage_key, content_type, size_bytes, presentation_id) VALUES ($1, $2, $3, $4, $5)',
-            [newFilename, storageKey, contentType, buffer.length, null]
+            'INSERT INTO uploads (filename, storage_key, content_type, size_bytes, presentation_id, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
+            [newFilename, storageKey, contentType, buffer.length, null, req.userId]
           )
+          storedKeys.push(storageKey)
+          addedBytes += buffer.length
           pathMap[`./assets/${filename}`] = `/uploads/${newFilename}`
         } else {
           const destDir = path.join(UPLOADS_DIR, 'forked')
@@ -3448,6 +2640,8 @@ app.post('/api/presentations/fork', async (req, res) => {
       ? new Date(Date.now() + expirationDays * 86400000).toISOString()
       : null
     const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
+    // Its files go with it when it's deleted
+    if (storedKeys.length) await storage.query('UPDATE uploads SET presentation_id = $1 WHERE storage_key = ANY($2)', [created.id, storedKeys])
 
     res.json({
       ...created,
@@ -3455,7 +2649,7 @@ app.post('/api/presentations/fork', async (req, res) => {
       assetsImported: Object.keys(pathMap).length,
     })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
@@ -3468,7 +2662,7 @@ if (IS_CLOUD) {
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
       await storage.installPlugin(plugin.id, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.delete('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
@@ -3477,14 +2671,14 @@ if (IS_CLOUD) {
       if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
       await storage.uninstallPlugin(plugin.id, req.userId)
       res.json({ ok: true })
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
   app.get('/api/me/plugins', requireUser, async (req, res) => {
     try {
       const plugins = await storage.getInstalledPlugins(req.userId)
       res.json(plugins)
-    } catch (err) { res.status(500).json({ error: err.message }) }
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 }
 
@@ -3494,7 +2688,7 @@ app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async 
     if (!pres) return res.status(404).json({ error: 'Not found' })
     const plugins = await storage.getPresentationPlugins(req.params.id)
     res.json(plugins)
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
@@ -3504,7 +2698,7 @@ app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async
     const { pluginId, config } = req.body
     await storage.enablePluginForPresentation(req.params.id, pluginId, config)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), async (req, res) => {
@@ -3513,7 +2707,7 @@ app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAcc
     if (!pres) return res.status(404).json({ error: 'Not found' })
     await storage.disablePluginForPresentation(req.params.id, req.params.pluginId)
     res.json({ ok: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // In production, serve client build with SPA fallback
@@ -3547,8 +2741,9 @@ async function startServer(port) {
     try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
   }
   return new Promise((resolve) => {
-    const server = app.listen(p, () => {
-      console.log(`Server running on http://localhost:${p}`)
+    const host = listenHost()
+    const server = app.listen(p, host, () => {
+      console.log(`Server running on http://localhost:${p}${host === '127.0.0.1' ? ' (this computer only)' : ` (listening on ${host})`}`)
       resolve(server)
     })
     attachLiveEditing(server)

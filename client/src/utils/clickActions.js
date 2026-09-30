@@ -97,7 +97,7 @@ function setList(action, modes = SET_MODES) {
 }
 
 // Embeds, players and drawings take their own clicks, or none
-const NO_CLICK_ACTION = new Set(['html', 'p5', 'video', 'audio', 'drawing'])
+const NO_CLICK_ACTION = new Set(['html', 'p5', 'model', 'graph', 'video', 'audio', 'drawing'])
 export function supportsClickAction(el) {
   return !!el?.type && !NO_CLICK_ACTION.has(el.type) && !el.type.startsWith('plugin:')
 }
@@ -712,7 +712,7 @@ export function elementLabels(elements) {
   const labels = new Map()
   const counts = {}
   for (const el of elements || []) {
-    const text = el.type === 'text' ? firstLine(el.content) : el.type === 'shape' ? (el.text || '').trim() : ''
+    const text = el.type === 'text' ? firstLine(el.content) : el.type === 'shape' ? (el.text || '').trim() : el.type === 'text3d' ? (el.content || '').trim().split('\n')[0] : ''
     if (text) { labels.set(el.id, shorten(text, 32)); continue }
     const name = (el.type || 'element').replace(/^plugin:/, '').replace(/^./, c => c.toUpperCase())
     counts[name] = (counts[name] || 0) + 1

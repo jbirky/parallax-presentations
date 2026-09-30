@@ -35,6 +35,8 @@ import {
   Puzzle,
   Clock,
   MousePointerClick,
+  Box,
+  ChartSpline,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -72,11 +74,12 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
+  const [showModelMenu, setShowModelMenu] = useState(false)
   const [showShapeMenu, setShowShapeMenu] = useState(false)
   const [showLayoutMenu, setShowLayoutMenu] = useState(false)
   const [showInteractiveMenu, setShowInteractiveMenu] = useState(false)
@@ -103,22 +106,14 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     if (!file) return
     setPdfLoading(true)
     try {
-      // Load PDF.js from CDN if not already loaded
-      if (!window.pdfjsLib) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script')
-          s.src = localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.min.js'))
-          s.onload = resolve
-          s.onerror = reject
-          document.head.appendChild(s)
-        })
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          localizeLibraries(libUrl('pdfjs-dist', 'build/pdf.worker.min.js'))
-      }
+      // PDF.js, a module, from this app's copy (server/vendor-libraries.js).
+      // Its legacy build: the modern one calls Map.prototype.getOrInsertComputed
+      // on every page it draws, which the desktop app's Electron and browsers
+      // older than 2025's don't have
+      const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.min.mjs')))
+      pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.worker.min.mjs'))
       const arrayBuffer = await file.arrayBuffer()
-      // Without eval: pdf.js 3.x can be made to run a PDF's code as the
-      // editor when it compiles fonts with it (CVE-2024-4367)
-      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
       const pages = []
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
@@ -126,7 +121,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+        await page.render({ canvas, viewport }).promise
         pages.push({ canvas, num: i })
       }
       setPdfModal({ pages, selected: new Set([1]) })
@@ -309,6 +304,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <button onClick={() => { setShowTextMenu(false); onAddTextPath() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <span style={{ fontSize: 13, fontStyle: 'italic', transform: 'rotate(-8deg)', display: 'inline-block', lineHeight: 1, width: 14, textAlign: 'center' }}>T/</span> Text Path
               </button>
+              <button onClick={() => { setShowTextMenu(false); onAddText3d() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 12, fontWeight: 800, width: 14, textAlign: 'center', textShadow: '1px 1px 0 var(--accent), 2px 2px 0 var(--accent)' }}>T</span> 3D Text
+              </button>
               <button onClick={() => { setShowTextMenu(false); onAddKineticText() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <Type size={14} /> Kinetic Text
               </button>
@@ -418,6 +416,31 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           </div>
         </>)}
       </div>
+
+      {/* 3D model dropdown */}
+      {onAddModelUpload && (
+        <div style={{ position: 'relative' }}>
+          <button className="btn-icon" onClick={() => setShowModelMenu(v => !v)} title="3D Model" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+            <Box size={14} /> 3D Model <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+          </button>
+          {showModelMenu && (<>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowModelMenu(false)} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Box size={14} /> Upload STL / GLB
+                <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowModelMenu(false); onAddModelUpload(f) }} />
+              </label>
+              <DocsLink page="media" onClose={() => setShowModelMenu(false)} />
+            </div>
+          </>)}
+        </div>
+      )}
+
+      {onAddGraph && (
+        <button className="btn-icon" title="Graph functions, curves and regions" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+          <ChartSpline size={14} /> Graph
+        </button>
+      )}
 
       <button className="btn-icon" title="Insert Timeline" onClick={onAddTimeline} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
         <Clock size={14} /> Timeline

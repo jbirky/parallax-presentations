@@ -86,7 +86,7 @@ describe('generateRevealHTML', () => {
 
   it('applies the global transition', () => {
     const html = generateRevealHTML(makePresentation({ transition: 'fade' }))
-    expect(html).toContain("'fade'")
+    expect(html).toContain('_globalTransition = "fade"')
   })
 
   it('renders footer when showFooter is true', () => {
@@ -257,26 +257,44 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('<ellipse')
   })
 
+  it('renders 3D text unclipped, with its shadow around the letters', () => {
+    const pres = makePresentation({
+      globalFont: 'Inter, sans-serif',
+      slides: [{
+        id: 's1',
+        elements: [{ id: 'e1', type: 'text3d', x: 10, y: 20, width: 600, height: 200, zIndex: 1, content: 'Deep', depth: 4, rotateX: 10, rotateY: -20, shadowY: 6, shadowBlur: 4, shadowColor: '#000000' }],
+      }],
+    })
+    const html = generateRevealHTML(pres)
+    const box = html.match(/<div[^>]*style="position:absolute;left:10px;top:20px[^"]*"/)[0]
+    expect(box).toContain('overflow:visible;')
+    expect(box).not.toContain('box-shadow')
+    expect(box).toContain('filter:drop-shadow(0px 6px 4px #000000);')
+    expect(html).toContain('transform-style:preserve-3d;transform:rotateX(10deg) rotateY(-20deg)')
+    expect(html.match(/aria-hidden="true" style="position:absolute;inset:0;/g)).toHaveLength(4)
+    expect(html).toContain('font-family:Inter, sans-serif;font-size:192px;') // drawn at twice the size, scaled down
+  })
+
   // ── Laser pointer / spotlight ──────────────────────────────────────
 
   it('excludes laser pointer elements when laserPointer is off', () => {
     const html = generateRevealHTML(makePresentation({ laserPointer: 'off' }))
     expect(html).toContain('id="laser-dot"')
     expect(html).toContain('id="spotlight-overlay"')
-    expect(html).not.toContain("var mode = 'dot'")
-    expect(html).not.toContain("var mode = 'spotlight'")
+    expect(html).not.toContain('var mode = "dot"')
+    expect(html).not.toContain('var mode = "spotlight"')
   })
 
   it('includes laser dot JS when laserPointer is dot', () => {
     const html = generateRevealHTML(makePresentation({ laserPointer: 'dot' }))
-    expect(html).toContain("var mode = 'dot'")
+    expect(html).toContain('var mode = "dot"')
     expect(html).toContain('#laser-dot')
     expect(html).toContain("e.key === 'l'")
   })
 
   it('includes spotlight JS when laserPointer is spotlight', () => {
     const html = generateRevealHTML(makePresentation({ laserPointer: 'spotlight' }))
-    expect(html).toContain("var mode = 'spotlight'")
+    expect(html).toContain('var mode = "spotlight"')
     expect(html).toContain('drawSpotlight')
     expect(html).toContain('destination-out')
   })
@@ -508,5 +526,71 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
     const html = generateRevealHTML(embedPresentation(JSX_EMBED))
     const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
     expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
+  })
+})
+
+describe('what a deck writes into its page', () => {
+  const box = { x: 0, y: 0, width: 100, height: 50, zIndex: 1 }
+
+  it('loads the deck’s custom fonts', () => {
+    const html = generateRevealHTML(makePresentation(), { customFonts: [
+      { familyName: 'Lato', source: 'google', url: 'https://fonts.googleapis.com/css2?family=Lato&display=swap' },
+      { familyName: "My 'Font'", source: 'upload', url: '/api/fonts/file/a.woff2' },
+      { familyName: 'Bad', source: 'upload', url: 'javascript:alert(1)' },
+    ] })
+    expect(html).toContain('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato&amp;display=swap">')
+    expect(html).toContain("@font-face { font-family: 'My Font'; src: url('http://localhost:3000/api/fonts/file/a.woff2'); }")
+    expect(html).not.toContain('javascript:alert')
+  })
+
+  it('keeps colors like rgba(…) whole', () => {
+    const html = generateRevealHTML(makePresentation({
+      footerColor: 'rgba(1,2,3,0.5)', showPageNumbers: true,
+      slides: [{ id: 's1', elements: [{ id: 'e', type: 'shape', shapeType: 'rect', ...box, shadowBlur: 4, shadowColor: 'hsl(10 20% 30%)' }] }],
+    }))
+    expect(html).toContain('.reveal-footer { color: rgba(1,2,3,0.5) !important; }')
+    expect(html).toContain('0px 0px 4px hsl(10 20% 30%);')
+  })
+
+  it('lets no value end its attribute or rule', () => {
+    const html = generateRevealHTML(makePresentation({
+      footerColor: 'red;}</style><script>x()</script>',
+      theme: 'black.css"><script>x()</script>',
+      transition: "slide';x();'",
+      slides: [{
+        id: 's1', transition: 'fade" onclick="x()',
+        background: { type: 'image', image: 'javascript:x()' },
+        elements: [
+          { id: 'i', type: 'image', ...box, src: '/a.png" onerror="x()', alt: '"><b>' },
+          { id: 'j', type: 'image', ...box, src: 'data:text/html,<script>x()</script>' },
+          { id: 'k', type: 'image', ...box, src: 'data:image/png;base64,AAAA' },
+          { id: 'f', type: 'text', ...box, content: 'x', fragment: true, fragmentAnimation: 'fade-in" onclick="x()' },
+        ],
+      }],
+    }))
+    expect(html).not.toMatch(/<script>x\(\)<\/script>/)
+    expect(html).not.toMatch(/" on(error|click)="x\(\)/)
+    expect(html).not.toContain('javascript:x()')
+    expect(html).not.toContain('data:text/html,')
+    expect(html).toContain('src="data:image/png;base64,AAAA"')
+    expect(html).toContain('dist/theme/black.css')
+    expect(html).toContain(`var _globalTransition = "slide';x();'";`)
+  })
+
+  it('keeps a deck’s own CSS inside its <style>, @import and all', () => {
+    const html = generateRevealHTML(makePresentation({ customCSS: "@import url('https://fonts.example/x.css');\n.a{color:red}</style><script>x()</script>" }))
+    expect(html).toContain("@import url('https://fonts.example/x.css');")
+    expect(html).not.toContain('</style><script>')
+  })
+
+  it('grows auto-sized text with what it holds', () => {
+    const html = generateRevealHTML(makePresentation({ slides: [{ id: 's1', elements: [{ id: 't', type: 'text', ...box, sizeMode: 'auto', content: '<p>Grows</p>' }] }] }))
+    expect(html).toMatch(/style="position:absolute;left:0px;top:0px;width:100px;height:auto;z-index:1;overflow:visible;[^"]*"><p>Grows<\/p>/)
+  })
+
+  it('runs the differential rotation transition without GSAP, which decks don’t load', () => {
+    const html = generateRevealHTML(makePresentation({ transition: 'differential-rotation' }))
+    expect(html).not.toContain('gsap.')
+    expect(html).toContain("band.animate([{ transform: 'translateX(0)' }")
   })
 })

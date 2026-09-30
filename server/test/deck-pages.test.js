@@ -24,7 +24,7 @@ describe('pages built from a deck', { skip }, () => {
     t = await startCloudServer()
     owner = t.user('owner')
     deck = await t.createDeck(owner, 'Sandboxed talk', {
-      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 100, height: 40, content: '<p>Hi</p>' }] }, { id: 's2', elements: [] }],
+      slides: [{ id: 's1', notes: 'SPEAKER ONLY', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 100, height: 40, content: '<p>Hi</p>' }] }, { id: 's2', elements: [] }],
     })
   })
   after(() => t?.stop())
@@ -33,12 +33,31 @@ describe('pages built from a deck', { skip }, () => {
     const { token } = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body
     const res = await fetch(`${t.base}/share/${token}`)
     assertSandboxed(res)
-    assert.match(await res.text(), /<p>Hi<\/p>/)
+    const html = await res.text()
+    assert.match(html, /<p>Hi<\/p>/)
+    // Speaker notes stay with whoever presents: anyone with the link opens this
+    assert.doesNotMatch(html, /SPEAKER ONLY/)
+    const own = await fetch(`${t.base}/api/presentations/${deck}/present`, { headers: { 'X-Test-User': owner } })
+    assert.match(await own.text(), /SPEAKER ONLY/)
+  })
+
+  it('gives a new share link after sharing is turned off, and the old one stops', async () => {
+    const first = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token
+    // Turning it on again while it's on keeps the link
+    assert.equal((await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token, first)
+    await t.call(owner, 'DELETE', `/api/presentations/${deck}/share`)
+    const second = (await t.call(owner, 'POST', `/api/presentations/${deck}/share`)).body.token
+    assert.notEqual(second, first)
+    assert.equal((await fetch(`${t.base}/share/${first}`)).status, 404)
+    assertSandboxed(await fetch(`${t.base}/share/${second}`))
   })
 
   it('serves a live session in a sandbox, and its slide feed to anyone', async () => {
     const { sessionId } = (await t.call(owner, 'POST', `/api/presentations/${deck}/live/start`)).body
-    assertSandboxed(await fetch(`${t.base}/live/${sessionId}`))
+    assert.match(sessionId, /^[a-z2-9]{6}$/)
+    const page = await fetch(`${t.base}/live/${sessionId}`)
+    assertSandboxed(page)
+    assert.doesNotMatch(await page.text(), /SPEAKER ONLY/)
 
     // As the sandboxed page asks: from origin null, not signed in
     const status = await fetch(`${t.base}/api/live/${sessionId}/status`, { headers: { Origin: 'null' } })
@@ -83,5 +102,17 @@ describe('pages built from a deck', { skip }, () => {
 
     const api = await fetch(`${t.base}/api/presentations`, { headers: { Origin: 'null', 'X-Test-User': owner } })
     assert.equal(api.headers.get('access-control-allow-origin'), null)
+  })
+
+  it('trusts only its own site’s pages and sign-ins, not the other environment’s', async () => {
+    // PARALLAX_PUBLIC_URL isn't set, so this server is prod's site
+    const from = origin => fetch(`${t.base}/api/presentations`, { headers: { Origin: origin, 'X-Test-User': owner } })
+    const own = await from('https://parallax-presentations.com')
+    assert.equal(own.status, 200)
+    assert.equal(own.headers.get('access-control-allow-origin'), 'https://parallax-presentations.com')
+    const dev = await from('https://dev.parallax-presentations.com')
+    assert.equal(dev.status, 403)
+    assert.equal(dev.headers.get('access-control-allow-origin'), null)
+    assert.deepEqual(t.clerkOptions.middleware.authorizedParties, ['https://parallax-presentations.com'])
   })
 })

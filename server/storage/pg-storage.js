@@ -13,7 +13,9 @@ const UNSAVED_FIELDS = `'{id,createdAt,updatedAt,expiresAt,version}'::text[]`
 class PgStorage extends StorageInterface {
   constructor(connectionString) {
     super()
-    this.pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } })
+    // Encrypted, with the server's certificate checked, unless the URL's
+    // sslmode says otherwise (which overrides this)
+    this.pool = new Pool({ connectionString, ssl: true })
     // Set when presentations are edited live (services/collab.js):
     // beforeRead(id) stores the live document's edits in data, and
     // liveSave(id, data, { baseVersion }) saves to the live document, or
@@ -229,7 +231,9 @@ class PgStorage extends StorageInterface {
     if (!rows.length) return null
     const row = rows[0]
     if (row.share_enabled && row.share_token) return { token: row.share_token, shared: true }
-    const token = row.share_token || uuidv4()
+    // A new link each time sharing is turned on, so turning it off and on
+    // is how a leaked link is replaced
+    const token = uuidv4()
     const updateSql = userId
       ? 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2 AND user_id = $3'
       : 'UPDATE presentations SET share_token = $1, share_enabled = true WHERE id = $2'

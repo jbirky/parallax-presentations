@@ -8,7 +8,10 @@ import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
+import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
 import { getCanvasHeight } from '../utils/scrollingSlides'
+import { modelSnapshotContent } from '../utils/modelViewer'
+import { graphSnapshotContent } from '../utils/graphPage'
 
 const THUMB_W = 150
 
@@ -20,7 +23,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-function SlideThumbnail({ slide, slideW, slideH }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
@@ -43,12 +46,13 @@ function SlideThumbnail({ slide, slideW, slideH }) {
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
-              overflow: 'hidden',
+              overflow: el.type === 'text3d' ? 'visible' : 'hidden',
               zIndex: el.zIndex || 1,
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-              boxShadow: (el.shadowBlur || el.shadowX || el.shadowY)
+              boxShadow: el.type !== 'text3d' && (el.shadowBlur || el.shadowX || el.shadowY)
                 ? `${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'}`
                 : undefined,
+              filter: el.type === 'text3d' ? text3dShadowFilter(el) || undefined : undefined,
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
@@ -91,6 +95,9 @@ function SlideThumbnail({ slide, slideW, slideH }) {
               {el.type === 'tikz' && (
                 <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeSvg(tikzDiagramSvg(el)) }} />
               )}
+              {el.type === 'text3d' && (
+                <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(el, { fontFamily: globalFont, resolution: 1 })) }} />
+              )}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
                   {(el.paths || []).map((path, pi) => (
@@ -111,11 +118,13 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />
                   : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5') && (() => {
+              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5' || el.type === 'model' || el.type === 'graph') && (() => {
                 // A still captured while this embed was live on the canvas, so the
                 // thumbnail costs nothing to draw. Placeholder tile until then.
                 const snap = (el.type === 'html' || el.type === 'p5')
                   ? getSnapshot(snapshotKey(el.id, el.content))
+                  : el.type === 'model' ? getSnapshot(snapshotKey(el.id, modelSnapshotContent(el)))
+                  : el.type === 'graph' ? getSnapshot(snapshotKey(el.id, graphSnapshotContent(el)))
                   : null
                 if (snap) {
                   return <img src={snap} alt="" draggable={false}
@@ -123,7 +132,7 @@ function SlideThumbnail({ slide, slideW, slideH }) {
                 }
                 return (
                   <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : 'MD' }
+                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'graph' ? 'y=' : 'MD' }
                   </div>
                 )
               })()}
@@ -173,7 +182,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '' }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -320,7 +329,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -462,7 +471,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onClick={e => handleItemClick(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const vendorLibraries = createRequire(import.meta.url)('../server/vendor-libraries.js')
 
-const MIME = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' }
+const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' }
 
 function globToRegExp(glob) {
   const escape = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
@@ -75,11 +75,13 @@ export default defineConfig({
   plugins: [react(), vendorLibrariesPlugin()],
   envDir: '..',
   server: {
+    // 127.0.0.1, where the server listens when self-hosted: "localhost" can
+    // resolve to ::1 first, which Node 18 doesn't fall back from
     proxy: {
-      '/api': 'http://localhost:3002',
-      '/uploads': 'http://localhost:3002',
+      '/api': 'http://127.0.0.1:3002',
+      '/uploads': 'http://127.0.0.1:3002',
       // Live editing's WebSocket
-      '/collab': { target: 'ws://localhost:3002', ws: true },
+      '/collab': { target: 'ws://127.0.0.1:3002', ws: true },
     }
   },
   test: {

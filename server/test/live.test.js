@@ -7,7 +7,7 @@ const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUID } = require('crypto')
 const Y = require('yjs')
-const { DB, startCloudServer, until } = require('./helpers')
+const { DB, DB_UNVERIFIED, startCloudServer, until } = require('./helpers')
 
 const nodeMajor = Number(process.versions.node.split('.')[0])
 const skip = !DB ? 'TEST_DATABASE_URL is not set' : nodeMajor < 22 ? 'Hocuspocus needs Node 22' : false
@@ -70,6 +70,8 @@ describe('live editing', { skip }, () => {
     assert.equal(a.failed, undefined)
     assert.equal(read(a.doc).title, 'Live talk')
     assert.deepEqual(read(b.doc), read(a.doc))
+    // Only sign-ins made on this site (prod's, by default)
+    assert.deepEqual(t.clerkOptions.verifyToken.authorizedParties, ['https://parallax-presentations.com'])
 
     edit(a.doc, renamed('Renamed live'))
     await until(() => read(b.doc).title === 'Renamed live', 'the rename to reach the other editor')
@@ -233,7 +235,7 @@ describe('live editing', { skip }, () => {
     const http = require('http')
     const PgStorage = require('../storage/pg-storage')
     const { createCollab } = require('../services/collab')
-    const storage = new PgStorage(DB)
+    const storage = new PgStorage(DB_UNVERIFIED)
     const collab = createCollab({
       storage,
       userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,
@@ -260,6 +262,60 @@ describe('live editing', { skip }, () => {
       }
       assert.deepEqual(opened, ['open', 'open', 'open', 'refused'])
     } finally {
+      server.close()
+      await storage.pool.end()
+    }
+  })
+
+  it('stores a document someone wrote something of another shape into', async () => {
+    const other = await t.createDeck(owner, 'Odd shapes', { slides: slides() })
+    const a = await connect(owner, other)
+    // Straight into the document, as any client could
+    a.doc.transact(() => {
+      a.doc.getMap('slides').set('bad', 'not a slide')
+      a.doc.getArray('slideOrder').push(['bad'])
+    })
+    edit(a.doc, renamed('Stored anyway'))
+    await until(async () => (await call(owner, 'GET', `/api/presentations/${other}`)).body.title === 'Stored anyway', 'the rename to be stored')
+    const stored = (await call(owner, 'GET', `/api/presentations/${other}`)).body
+    assert.deepEqual(stored.slides.map(s => s.id), ['s1', 's2'])
+    a.provider.destroy()
+  })
+
+  it('refuses edits that would make a presentation too large', async () => {
+    const http = require('http')
+    const PgStorage = require('../storage/pg-storage')
+    const { createCollab } = require('../services/collab')
+    const storage = new PgStorage(DB_UNVERIFIED)
+    const collab = createCollab({
+      storage,
+      userIdForToken: async token => (await storage.query('SELECT id FROM users WHERE auth_id = $1', [token])).rows[0]?.id || null,
+      limits: { documentBytes: 64 * 1024 },
+    })
+    const server = http.createServer()
+    collab.attach(server)
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${server.address().port}`
+    // Hocuspocus closes it with a message the provider doesn't pass on, and
+    // says why on the console
+    const logged = []
+    const error = console.error
+    console.error = (...args) => logged.push(args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' '))
+    try {
+      const a = await connect(owner, deck, base)
+      edit(a.doc, renamed('Small change'))
+      await sent(a)
+      edit(a.doc, d => ({ ...d, slides: d.slides.map((s, i) => i ? s : { ...s, elements: [...s.elements, el('big', { content: 'x'.repeat(100 * 1024) })] }) }))
+      await until(() => logged.some(line => line.includes('Presentation too large')), 'the connection growing it past the limit to be closed')
+      a.provider.destroy()
+      // The edit never reached the document
+      const doc = collab.hocuspocus.documents.get(deck)
+      if (doc) {
+        assert.equal(read(doc).title, 'Small change')
+        assert.ok(!read(doc).slides[0].elements.some(e => e.id === 'big'))
+      }
+    } finally {
+      console.error = error
       server.close()
       await storage.pool.end()
     }

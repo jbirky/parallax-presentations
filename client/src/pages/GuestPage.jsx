@@ -31,7 +31,7 @@ function loadTurnstile() {
 
 const muted = { color: 'var(--text-muted, #888)', fontSize: 14, maxWidth: 460, lineHeight: 1.6, margin: 0 }
 
-export default function GuestPage() {
+export default function GuestPage({ theme, onThemeChange }) {
   // loading | start | editor | expired | unavailable | error
   const [state, setState] = useState('loading')
   const [presentationId, setPresentationId] = useState(null)
@@ -154,7 +154,7 @@ export default function GuestPage() {
   }, [state])
 
   if (state === 'editor') {
-    return <EditorPage presentationId={presentationId} guest={{ idleHours }} onGoHome={() => { window.location.href = '/' }} />
+    return <EditorPage presentationId={presentationId} guest={{ idleHours }} onGoHome={() => { window.location.href = '/' }} theme={theme} onThemeChange={onThemeChange} />
   }
 
   return (

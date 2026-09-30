@@ -40,7 +40,9 @@ async function inlineUploads(html) {
   const uploadPathRegex = uploadPathRe()
   const dataUrls = new Map()
   for (const [, , uploadPath] of html.matchAll(uploadPathRegex)) {
-    if (dataUrls.has(uploadPath)) continue
+    // Not one that leads out of /uploads/ (/uploads/../api/presentations):
+    // it would be fetched signed in, and its answer put in the file
+    if (dataUrls.has(uploadPath) || /\/\.\.?(\/|$)|%2e|%2f/i.test(uploadPath)) continue
     try {
       const resp = await fetch(uploadPath)
       dataUrls.set(uploadPath, resp.ok ? await blobToDataURL(await resp.blob()) : null)

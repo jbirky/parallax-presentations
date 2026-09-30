@@ -2,12 +2,15 @@
 // Copyright (c) 2026 Jessica Birky
 
 const IS_CLOUD = process.env.PARALLAX_MODE === 'cloud'
+const { PUBLIC_ORIGIN } = require('./security')
 
 let clerkMiddleware, requireAuth, getAuth
 
 if (IS_CLOUD) {
   const clerk = require('@clerk/express')
-  clerkMiddleware = clerk.clerkMiddleware()
+  // Only sessions signed in on this site: prod and dev share a Clerk instance,
+  // and a token taken on dev would otherwise work on prod
+  clerkMiddleware = clerk.clerkMiddleware({ authorizedParties: [PUBLIC_ORIGIN] })
   requireAuth = clerk.requireAuth()
   getAuth = clerk.getAuth
 }

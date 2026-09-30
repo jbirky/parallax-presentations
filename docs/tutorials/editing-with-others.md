@@ -4,7 +4,7 @@ Invite other people to edit a presentation with you. You send them an invite lin
 
 ## Inviting editors
 
-1. Open the presentation and click **Export** in the top-right toolbar.
+1. Open the presentation and click **Share** in the top-right toolbar.
 2. Choose **Editors…**.
 3. Click **Turn on invite link**, then **Copy**, and send the link.
 

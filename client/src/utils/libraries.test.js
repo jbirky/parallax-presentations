@@ -43,8 +43,11 @@ describe.each([['client', clientLibraries], ['server', serverLibraries]])('%s li
   })
 
   it('maps cdnjs links for the libraries it has', () => {
-    expect(local('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'))
-      .toBe(`${BASE}/vendor/pdfjs-dist@${v['pdfjs-dist']}/build/pdf.worker.min.js`)
+    expect(local(`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${v['pdfjs-dist']}/pdf.worker.min.mjs`))
+      .toBe(`${BASE}/vendor/pdfjs-dist@${v['pdfjs-dist']}/build/pdf.worker.min.mjs`)
+    // Another major version stays on the CDN
+    const old = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    expect(local(old)).toBe(old)
     expect(local('https://cdnjs.cloudflare.com/ajax/libs/jsxgraph/1.11.1/jsxgraphcore.js'))
       .toBe(`${BASE}/vendor/jsxgraph@${v.jsxgraph}/distrib/jsxgraphcore.js`)
   })
@@ -53,7 +56,7 @@ describe.each([['client', clientLibraries], ['server', serverLibraries]])('%s li
     const untouched = [
       'https://cdn.jsdelivr.net/npm/d3@6/dist/d3.min.js', // another major
       'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js', // another 0.x minor
-      `https://cdn.jsdelivr.net/npm/three@${v.three}/examples/jsm/loaders/GLTFLoader.js`, // not bundled
+      `https://cdn.jsdelivr.net/npm/three@${v.three}/examples/jsm/loaders/OBJLoader.js`, // not bundled
       'https://cdn.jsdelivr.net/npm/lodash@4/lodash.min.js', // not a bundled package
       'https://cdn.jsdelivr.net/npm/chart.js@4', // no longer bundled
       'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js',

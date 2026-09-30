@@ -7,7 +7,10 @@ import { getReferencedEntries } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
+import { modelViewerHtml } from './modelViewer'
+import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
 import { tikzDiagramSvg } from './tikzDiagram'
+import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
@@ -16,6 +19,24 @@ import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBa
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
 const EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});"
+
+// Graphs and 3D models draw at the size the deck shows them, not their size
+// on the slide: Reveal enlarges slides with a transform they can't see
+const EMBED_SCALE_SCRIPT = `
+    (function() {
+      function send(frame) {
+        var s = Reveal.getScale && Reveal.getScale();
+        if (!(s > 0)) return;
+        try { frame.contentWindow.postMessage({ source: 'parallax-deck', type: 'scale', scale: s }, '*'); } catch (e) {}
+      }
+      function sendAll() { document.querySelectorAll('iframe[data-deck-scale]').forEach(send); }
+      document.querySelectorAll('iframe[data-deck-scale]').forEach(function(frame) {
+        frame.addEventListener('load', function() { send(frame); });
+      });
+      Reveal.on('ready', sendAll);
+      Reveal.on('resize', sendAll);
+    })();
+`
 
 function buildHtmlEmbed(userHtml, embedW, embedH) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
@@ -30,10 +51,66 @@ function buildHtmlEmbed(userHtml, embedW, embedH) {
   return injection + userHtml
 }
 
+// Uploads' URLs made absolute in the browser, where decks open in windows of
+// their own (blob: and srcdoc pages) that /uploads/… wouldn't resolve in.
+// Pages the server builds (server/services/deck-html.js) keep them as they
+// are: they're served from this site, and exports' links are relative.
 function absoluteSrc(src) {
   if (!src) return src
-  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) return src
-  return `${window.location.origin}${src.startsWith('/') ? '' : '/'}${src}`
+  const origin = typeof window === 'undefined' ? '' : window.location?.origin
+  if (!origin || /^(https?:|data:|blob:)/.test(src)) return src
+  return `${origin}${src.startsWith('/') ? '' : '/'}${src}`
+}
+
+// A deck's values in its page: none can end the attribute, rule or <style>
+// it's written into. Decks are presented in sandboxes and run their author's
+// code anyway (HTML embeds), so this keeps pages whole rather than safe.
+function sanitizeAttr(val) {
+  if (val == null) return ''
+  return String(val)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+// No javascript: or vbscript: links, and data: ones only for pictures, video
+// and sound
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return ''
+  const trimmed = url.trim()
+  if (/^(javascript|vbscript):/i.test(trimmed)) return ''
+  if (/^data:/i.test(trimmed) && !/^data:(image|video|audio)\//i.test(trimmed)) return ''
+  return sanitizeAttr(trimmed)
+}
+
+// In a style attribute or a rule. Parentheses stay, for rgba(…) and gradients.
+function cssValue(val) {
+  if (val == null) return ''
+  return String(val).replace(/[<>"`;{}\\\r\n]/g, '')
+}
+
+// A deck's own CSS can't leave its <style>
+function sanitizeCustomCSS(css) {
+  if (!css || typeof css !== 'string') return ''
+  return css
+    .replace(/<\/style/gi, '&lt;/style')
+    .replace(/<script/gi, '&lt;script')
+    .replace(/expression\s*\(/gi, '/* expression blocked */ (')
+    .replace(/url\s*\(\s*['"]?\s*javascript:/gi, 'url(/* blocked */')
+}
+
+// The custom fonts a deck uses (its owner's, from /api/fonts): Google Fonts'
+// stylesheets, and uploaded files' @font-face rules
+function customFontLinks(fonts) {
+  return fonts.filter(f => f.source === 'google' && f.url)
+    .map(f => `\n  <link rel="stylesheet" href="${sanitizeUrl(f.url)}">`).join('')
+}
+function customFontFaces(fonts) {
+  const quoted = s => String(s || '').replace(/['"\\<>{};\r\n]/g, '')
+  return fonts.filter(f => f.source === 'upload' && f.url && !/^\s*(javascript|vbscript|data):/i.test(f.url))
+    .map(f => `\n    @font-face { font-family: '${quoted(f.familyName)}'; src: url('${quoted(absoluteSrc(f.url)).replace(/[()]/g, '')}'); }`).join('')
 }
 
 // Group slides by column for 2D navigation.
@@ -78,32 +155,43 @@ function getSlideColumns(slides, presentation = {}) {
 
 const CUSTOM_TRANSITIONS = ['differential-rotation']
 
+// The page a deck is presented in: in the editor's windows and exports, and,
+// as server/services/deck-html.js (scripts/build-deck-html.js), in the
+// server's share links, live sessions, exports and GitHub and Zenodo copies.
+//
 // opts.annotate: { set } adds the Present window's drawing layer, saving into
 // that annotation set (see utils/annotationOverlay.js); opts.bridge lets the
-// page it's framed in follow and change its slide (DECK_BRIDGE_SCRIPT)
+// page it's framed in follow and change its slide (DECK_BRIDGE_SCRIPT);
+// opts.notes: false leaves speaker notes out, for pages anyone with a link can
+// open; opts.customFonts are the fonts the deck may use, as /api/fonts lists
+// them; opts.pluginSandbox(el) gives a plugin element's sandbox page (the
+// editor's plugin registry otherwise)
 export function generateRevealHTML(presentation, opts = {}) {
   // Numbers: they're written into pages' scripts and styles
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
-  const globalFont = presentation.globalFont || ''
+  const globalFont = cssValue(presentation.globalFont)
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
   const footerTimeMode = presentation.footerTimeMode || 'none'
-  const timerDuration = presentation.timerDuration ?? 20
+  const timerDuration = Number(presentation.timerDuration ?? 20) || 0
   const showTimeWidget = footerTimeMode !== 'none'
   const laserPointer = presentation.laserPointer || 'off'
   const bibliography = presentation.bibliography || []
-  const citationStyle = presentation.citationStyle || 'numbered'
   const pageNumberFormat = presentation.pageNumberFormat || 'c/t'
-  const codeTheme = presentation.codeTheme || 'monokai'
-  const footerFontSize = presentation.footerFontSize || 14
-  const footerFontFamily = presentation.footerFontFamily || '-apple-system,sans-serif'
-  const footerColor = presentation.footerColor || 'rgba(255,255,255,0.65)'
+  // Names in library paths
+  const theme = /^[\w-]+$/.test(presentation.theme || '') ? presentation.theme : 'black'
+  const codeTheme = /^[\w-]+$/.test(presentation.codeTheme || '') ? presentation.codeTheme : 'monokai'
+  const footerFontSize = Number(presentation.footerFontSize) || 14
+  const footerFontFamily = cssValue(presentation.footerFontFamily) || '-apple-system,sans-serif'
+  const footerColor = cssValue(presentation.footerColor) || 'rgba(255,255,255,0.65)'
   const showPresentGrid = presentation.showPresentGrid || false
-  const presentGridSize = presentation.gridSize || 40
+  const presentGridSize = Number(presentation.gridSize) || 40
   const footerMode = presentation.footerMode || 'basic'
   const sequenceSections = presentation.sequenceSections || []
-  const footerInactiveColor = presentation.footerInactiveColor || 'rgba(255,255,255,0.25)'
+  const footerInactiveColor = cssValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
+  const customFonts = (opts.customFonts || []).filter(Boolean)
+  const pluginSandbox = opts.pluginSandbox || (el => registry.getSandboxHtml(el.type))
   // Compute page numbers: grouped slides share the same number
   const seenGroups = new Set()
   const totalNumberedSlides = (presentation.slides || []).filter(s => {
@@ -121,7 +209,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   const slideSectionHtmlByIndex = new Map()
   presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background)
-    const notes = slide.notes ? `<aside class="notes">${slide.notes}</aside>` : ''
+    const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
       .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
@@ -136,7 +224,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const renderedElements = sortedElements
       .map(el => {
         const shadowStyle = (el.shadowBlur || el.shadowX || el.shadowY)
-          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${el.shadowColor||'rgba(0,0,0,0.5)'};`
+          ? `box-shadow:${el.shadowX||0}px ${el.shadowY||0}px ${el.shadowBlur||0}px ${cssValue(el.shadowColor)||'rgba(0,0,0,0.5)'};`
           : ''
         const borderRadiusStyle = (el.type === 'image' || el.type === 'code') && el.borderRadius ? `border-radius:${el.borderRadius}px;` : ''
         // The rotate property, not transform, so that fragment, entry and
@@ -144,18 +232,22 @@ export function generateRevealHTML(presentation, opts = {}) {
         const rotationStyle = el.rotation ? `rotate:${el.rotation}deg;` : ''
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${shadowStyle}${borderRadiusStyle}${rotationStyle}`
         const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
-        const fragClass = el.fragment ? ` class="fragment ${el.fragmentAnimation || 'fade-in'}"` : ''
-        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${el.fragmentIndex}"` : ''
+        const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
+        const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
         const gsapAttrs = (el.animationEnter && el.animationEnter !== 'none')
-          ? ` data-gsap-enter="${el.animationEnter}" data-gsap-delay="${el.animationDelay || 0}" data-gsap-duration="${el.animationDuration || 600}"`
+          ? ` data-gsap-enter="${sanitizeAttr(el.animationEnter)}" data-gsap-delay="${Number(el.animationDelay) || 0}" data-gsap-duration="${Number(el.animationDuration) || 600}"`
           : ''
         const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
+          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
+          // Auto-sized text grows with what it holds, as on the canvas
+          const textStyle = el.sizeMode === 'auto'
+            ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
+            : style
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
         }
         if (el.type === 'image') {
-          const src = absoluteSrc(el.src)
+          const src = absoluteSrc(sanitizeUrl(el.src))
           const imgFilterParts = [
             (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
             (el.filterContrast != null && el.filterContrast !== 100) ? `contrast(${el.filterContrast}%)` : '',
@@ -171,11 +263,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           const cStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
           let capHtml = ''
           if (citeCaption) {
-            const align = el.citationAlign || 'left'
+            const align = cssValue(el.citationAlign) || 'left'
             const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-            const cc = el.citationColor ? `color:${el.citationColor};` : ''
+            const cc = el.citationColor ? `color:${cssValue(el.citationColor)};` : ''
             capHtml = el.citationLink
-              ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${el.citationLink.replace(/"/g,'&quot;')}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
+              ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${sanitizeUrl(el.citationLink)}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
               : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
           }
           const sIdx = citeSide ? sideCitations.findIndex(c => c.id === el.id) : -1
@@ -185,10 +277,10 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (el.imageW != null) {
             const offX = el.imageOffsetX ?? 0
             const offY = el.imageOffsetY ?? 0
-            const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${el.objectFit||'contain'};${filterStyle}`
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+            const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}`
+            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
           }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${el.alt||''}" style="display:block;width:100%;height:100%;object-fit:${el.objectFit||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="display:block;width:100%;height:100%;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
@@ -201,6 +293,15 @@ export function generateRevealHTML(presentation, opts = {}) {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+        }
+        if (el.type === 'graph') {
+          const srcdoc = graphPageHtml(el).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
+        }
+        if (el.type === 'model') {
+          const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
@@ -261,9 +362,9 @@ export function generateRevealHTML(presentation, opts = {}) {
               if (item.description) { svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`; ty += fs }
               svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
               ty += 4
-              if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
+              if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x-40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
             } else {
-              if (item.image) svg += `<image href="${absoluteSrc(item.image)}" x="${x-40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
+              if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x-40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`
               svg += `<text x="${x}" y="${cardY+imgH+fs+2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`
               if (item.description) svg += `<text x="${x}" y="${cardY+imgH+fs*2+4}" text-anchor="middle" fill="${tc}" font-size="${fs-1}" opacity="0.6">${esc(item.description)}</text>`
               svg += `<text x="${x}" y="${cardY+imgH+fs*(item.description?3:2)+6}" text-anchor="middle" fill="${tc}" font-size="${fs-2}" opacity="0.35">${itemDateLabel(item.date)}</text>`
@@ -274,20 +375,21 @@ export function generateRevealHTML(presentation, opts = {}) {
           const expandItems = (el.items || []).filter(i => i.image || i.detailedDescription)
           let expandData = ''
           if (expandItems.length) {
-            const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(i.image) : '' })))
+            // In a <script>: no "</script>" can come from the items
+            const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(sanitizeUrl(i.image)) : '' }))).replace(/</g, '\\u003c')
             expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\\/script>`
           }
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
         }
         if (el.type === 'callout') {
-          const bg = el.calloutColor || '#ef4444'
-          const tc = el.calloutTextColor || '#ffffff'
+          const bg = cssValue(el.calloutColor) || '#ef4444'
+          const tc = cssValue(el.calloutTextColor) || '#ffffff'
           const fs = el.fontSize || 16
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
         }
         if (el.type === 'icon') {
-          const color = el.iconColor || '#ffffff'
-          const sw = el.iconStrokeWidth || 2
+          const color = sanitizeAttr(el.iconColor) || '#ffffff'
+          const sw = Number(el.iconStrokeWidth) || 2
           const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
           const path = iconPaths[el.iconName] || iconPaths['Star']
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
@@ -314,10 +416,10 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
         if (el.type === 'video') {
-          const src = absoluteSrc(el.src)
+          const src = absoluteSrc(sanitizeUrl(el.src))
           const attrs = []
           if (el.controls !== false) attrs.push('controls'); if (el.autoplay) attrs.push('autoplay'); if (el.loop) attrs.push('loop'); if (el.muted) attrs.push('muted')
-          const posterAttr = el.poster ? ` poster="${absoluteSrc(el.poster)}"` : ''
+          const posterAttr = el.poster ? ` poster="${absoluteSrc(sanitizeUrl(el.poster))}"` : ''
           const hasClip = (el.startTime != null && el.startTime > 0) || el.endTime != null
           const rate = el.playbackRate && el.playbackRate !== 1 ? el.playbackRate : null
           let vidScript = ''
@@ -335,10 +437,10 @@ export function generateRevealHTML(presentation, opts = {}) {
             vidScript = `<script>${parts.join(';')}</script>`
           }
           if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:contain;display:block;background:#000;"></video>${vidScript}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${cssValue(el.objectFit) || 'contain'};display:block;background:#000;"></video>${vidScript}</div>`
         }
         if (el.type === 'audio') {
-          const src = absoluteSrc(el.src)
+          const src = absoluteSrc(sanitizeUrl(el.src))
           const attrs = ['controls']
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
@@ -347,13 +449,13 @@ export function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'table') {
           const data = el.data || [['']]
-          const headerBg = el.headerBgColor || 'rgba(99,102,241,0.3)'
-          const cellBg = el.cellBgColor || 'transparent'
-          const borderColor = el.borderColor || 'rgba(255,255,255,0.2)'
-          const borderWidth = el.borderWidth ?? 1
-          const textColor = el.textColor || '#ffffff'
-          const fontSize = el.fontSize || 14
-          const cellPadding = el.cellPadding || 8
+          const headerBg = cssValue(el.headerBgColor) || 'rgba(99,102,241,0.3)'
+          const cellBg = cssValue(el.cellBgColor) || 'transparent'
+          const borderColor = cssValue(el.borderColor) || 'rgba(255,255,255,0.2)'
+          const borderWidth = Number(el.borderWidth ?? 1) || 0
+          const textColor = cssValue(el.textColor) || '#ffffff'
+          const fontSize = Number(el.fontSize) || 14
+          const cellPadding = Number(el.cellPadding) || 8
           const rows = data.map((row, ri) => {
             const cells = (row || []).map((cell, ci) => {
               const bg = (el.headerRow && ri === 0) ? headerBg : cellBg
@@ -362,6 +464,13 @@ export function generateRevealHTML(presentation, opts = {}) {
             return `<tr>${cells}</tr>`
           }).join('')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+        }
+        if (el.type === 'text3d') {
+          // Unclipped, for letters turned out of the box, and shadowed around
+          // the letters rather than the box
+          const shadow = text3dShadowFilter(el)
+          const t3Style = style.replace('overflow:hidden;', 'overflow:visible;').replace(shadowStyle, '') + (shadow ? `filter:${shadow};` : '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64
@@ -414,7 +523,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
-          const sandboxHtml = registry.getSandboxHtml(el.type)
+          const sandboxHtml = pluginSandbox(el)
           if (!sandboxHtml) {
             return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
           }
@@ -463,7 +572,7 @@ export function generateRevealHTML(presentation, opts = {}) {
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : (footerColor || 'rgba(255,255,255,0.9)')
+          const secActiveColor = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : (footerColor || 'rgba(255,255,255,0.9)')
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
           return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
@@ -481,16 +590,16 @@ export function generateRevealHTML(presentation, opts = {}) {
     const gridHtml = slideShowGrid ? `      <div style="position:absolute;inset:0;z-index:950;pointer-events:none;background-image:linear-gradient(to right,rgba(255,255,255,0.12) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.12) 1px,transparent 1px);background-size:${presentGridSize}px ${presentGridSize}px;"></div>` : ''
 
     const autoAnimateAttr = slide.autoAnimate ? ' data-auto-animate data-auto-animate-unmatched="fade"' : ''
-    const autoAnimateDurAttr = slide.autoAnimate && slide.autoAnimateDuration ? ` data-auto-animate-duration="${slide.autoAnimateDuration}"` : ''
-    const autoAnimateEasingAttr = slide.autoAnimate && slide.autoAnimateEasing ? ` data-auto-animate-easing="${slide.autoAnimateEasing}"` : ''
+    const autoAnimateDurAttr = slide.autoAnimate && slide.autoAnimateDuration ? ` data-auto-animate-duration="${sanitizeAttr(slide.autoAnimateDuration)}"` : ''
+    const autoAnimateEasingAttr = slide.autoAnimate && slide.autoAnimateEasing ? ` data-auto-animate-easing="${sanitizeAttr(slide.autoAnimateEasing)}"` : ''
     const isCustomTrans = CUSTOM_TRANSITIONS.includes(slide.transition)
-    const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : slide.transition}"` : ''
+    const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : sanitizeAttr(slide.transition)}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
-    const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${slide.transitionSpeed}"` : ''
+    const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : ''
     const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -549,7 +658,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <title>${escapeHtml(presentation.title || 'Presentation')}</title>
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${presentation.theme || 'black'}.css`)}">
+  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${theme}.css`)}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
@@ -558,8 +667,8 @@ export function generateRevealHTML(presentation, opts = {}) {
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
-  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">
-  <style>
+  <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
+  <style>${customFontFaces(customFonts)}
     @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
     @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
     @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
@@ -609,7 +718,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
     [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
-    .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${presentation.citationFontSize || 10}px;color:rgba(255,255,255,0.5);font-family:${presentation.citationFontFamily || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${Number(presentation.citationFontSize) || 10}px;color:rgba(255,255,255,0.5);font-family:${cssValue(presentation.citationFontFamily) || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
     .slide-citations { position:absolute;right:2px;top:0;bottom:0;z-index:890;display:flex;align-items:center;pointer-events:none; }
@@ -646,7 +755,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
-  </style>${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
+  </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 </head>
 <body>
   <div class="reveal">
@@ -656,7 +765,7 @@ ${slidesHtml}
   </div>
   <button id="fs-btn" title="Enter fullscreen (F)" onclick="document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()">&#x26F6; Fullscreen</button>
   <button id="overview-toggle" title="Slide overview (G)">&#x25A6; Overview</button>
-  <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${presentation.overviewLayout || 'linear'}" id="ov-body"></div></div>
+  <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${sanitizeAttr(presentation.overviewLayout || 'linear')}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
   <script src="${libUrl('reveal.js', 'dist/reveal.js')}"></script>
@@ -665,7 +774,7 @@ ${slidesHtml}
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
-    var _globalTransition = '${presentation.transition || 'slide'}';
+    var _globalTransition = ${scriptValue(presentation.transition || 'slide')};
     var _isGlobalCustom = _customTransitions.indexOf(_globalTransition) !== -1;
     Reveal.initialize({
       hash: true,
@@ -790,12 +899,9 @@ ${slidesHtml}
           var lat = Math.PI * ((i + 0.5) / N - 0.5);
           var cos2 = Math.cos(lat); cos2 = cos2 * cos2;
           var dur = 0.4 + 1.0 * (1 - cos2);
-          gsap.to(band, {
-            x: dir * (vw + 20),
-            duration: dur,
-            ease: 'none',
-            onComplete: function() { pending--; if (pending <= 0) overlay.remove(); }
-          });
+          band.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(' + (dir * (vw + 20)) + 'px)' }], {
+            duration: dur * 1000, easing: 'linear', fill: 'forwards'
+          }).onfinish = function() { pending--; if (pending <= 0) overlay.remove(); };
         }
         document.body.appendChild(overlay);
       }
@@ -873,7 +979,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -885,8 +991,8 @@ ${(() => {
   return `
     // ── Slide overview panel ──────────────────────────────────────────
     (function() {
-      var LAYOUT = '${overviewLayout}';
-      var SLIDES = ${JSON.stringify(flatSlides)};
+      var LAYOUT = ${scriptValue(overviewLayout)};
+      var SLIDES = ${scriptValue(flatSlides)};
       var panel = document.getElementById('overview-panel');
       var body = document.getElementById('ov-body');
       var toggle = document.getElementById('overview-toggle');
@@ -995,7 +1101,7 @@ ${(() => {
 ${laserPointer !== 'off' ? `
     // ── Laser pointer / spotlight ────────────────────────────────────
     (function() {
-      var mode = '${laserPointer}';
+      var mode = ${scriptValue(laserPointer)};
       var active = false;
       var dot = document.getElementById('laser-dot');
       var canvas = document.getElementById('spotlight-overlay');
@@ -1045,7 +1151,7 @@ ${laserPointer !== 'off' ? `
 ${showTimeWidget ? `
     // Time widget (clock or timer)
     (function() {
-      var mode = '${footerTimeMode}';
+      var mode = ${scriptValue(footerTimeMode)};
       var timerDur = ${timerDuration} * 60;
       var timerStart = Date.now();
       function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -1087,9 +1193,9 @@ function annotationScript(presentation, set) {
 
 function getBackgroundAttrs(bg) {
   if (!bg) return ''
-  if (bg.type === 'color' && bg.color) return ` data-background-color="${bg.color}"`
-  if (bg.type === 'image' && bg.image) return ` data-background-image="${absoluteSrc(bg.image)}" data-background-size="${bg.size || 'cover'}" data-background-position="${bg.position || 'center'}"`
-  if (bg.type === 'gradient' && bg.gradient) return ` data-background-gradient="${bg.gradient}"`
+  if (bg.type === 'color' && bg.color) return ` data-background-color="${sanitizeAttr(bg.color)}"`
+  if (bg.type === 'image' && bg.image) return ` data-background-image="${absoluteSrc(sanitizeUrl(bg.image))}" data-background-size="${sanitizeAttr(bg.size || 'cover')}" data-background-position="${sanitizeAttr(bg.position || 'center')}"`
+  if (bg.type === 'gradient' && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`
   return ''
 }
 
@@ -1238,6 +1344,16 @@ function generatePrintHTML(presentation) {
         if (el.type === 'p5') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
         }
+        if (el.type === 'graph') {
+          // Finished: every expression, no controls
+          const srcdoc = graphPageHtml(el, { print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
+        }
+        if (el.type === 'model') {
+          // Drawn for real, held still, so the page prints what the slide shows
+          const srcdoc = modelViewerHtml({ ...el, autoRotate: false }, { src: absoluteSrc(el.src), print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+        }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
           const codeContent = escapeHtml(el.content || '')
@@ -1282,6 +1398,10 @@ function generatePrintHTML(presentation) {
             return `<tr>${cells}</tr>`
           }).join('')
           return `<div style="${style}${vis}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+        }
+        if (el.type === 'text3d') {
+          const shadow = text3dShadowFilter(el)
+          return `<div style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}${shadow ? `filter:${shadow};` : ''}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64

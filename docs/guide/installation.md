@@ -20,7 +20,10 @@ docker compose up -d
 
 Then open **http://localhost:3002** in your browser.
 
-Only this computer can open it, since the self-hosted editor has no sign-in. To open it to your network too, change `"127.0.0.1:3002:3002"` to `"3002:3002"` in `docker-compose.yml`.
+Only this computer can open it, since the self-hosted editor has no sign-in: anyone who can reach it can read and change every presentation, and use the GitHub and Zotero accounts you've connected. To open it to your network anyway, in `docker-compose.yml`:
+
+1. Change `"127.0.0.1:3002:3002"` to `"3002:3002"`.
+2. Uncomment the `environment` lines below it, and list in `PARALLAX_ALLOWED_HOSTS` the names or addresses people will type to reach it (for example `localhost,192.168.1.20`). The server refuses any other name, which keeps other websites from reaching it through your browser.
 
 ### Useful Docker commands
 
@@ -117,7 +120,7 @@ npm run build
 npm start
 ```
 
-Serves the built app at `http://localhost:3002`.
+Serves the built app at `http://localhost:3002`, for this computer only. To open it to your network, set `PARALLAX_HOST=0.0.0.0` and `PARALLAX_ALLOWED_HOSTS` to the names or addresses people will use (for example `localhost,192.168.1.20`), knowing that anyone who can reach it can do anything in it.
 
 ### Data persistence
 

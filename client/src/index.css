@@ -272,8 +272,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .slide-text-content pre code { background: none; padding: 0; }
 .slide-text-content blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin-bottom: 0.4em; }
 
-/* Canvas element hover hint */
-.slide-canvas [style*="position: absolute"]:not(:focus-within):hover {
+/* Canvas element hover hint (not on 3D text being tilted, whose outline says so) */
+.slide-canvas [style*="position: absolute"]:not(:focus-within):not([data-tilting]):hover {
   outline: 1px dashed rgba(99, 102, 241, 0.4) !important;
 }
 
