@@ -1,6 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
-import { getScreenCount, isScrolling, isPinned } from './scrollingSlides'
+import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
 
 function stripHtml(html) {
@@ -29,13 +29,14 @@ export function exportToPptx(presentation) {
 
   // PowerPoint can't scroll, so a scrolling slide gives a slide per screen, as
   // the PDF does, with its pinned elements on each
+  const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
   const pages = (presentation.slides || []).flatMap(slide =>
-    Array.from({ length: getScreenCount(slide, slideH) }, (_, screen) => ({ slide, screen })))
+    Array.from({ length: getScreenCount(slide, slideW, slideH) }, (_, screen) => ({ slide, screen })))
 
   for (const { slide, screen } of pages) {
     const pptSlide = pptx.addSlide()
-    const scrolling = isScrolling(slide, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
 
     // Background
     const bg = slide.background
@@ -49,9 +50,12 @@ export function exportToPptx(presentation) {
     const elements = [...(slide.elements || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
 
     for (const el of elements) {
-      const elY = scrolling && !isPinned(el) ? el.y - screen * slideH : el.y
-      if (scrolling && (elY + el.height <= 0 || elY >= slideH)) continue
-      const x = el.x * SCALE_X
+      // Where it is on this page's screen: the canvas moves up (or left) a screen a page
+      const onCanvas = axis && !isPinned(el)
+      const elX = onCanvas && axis === 'x' ? el.x - screen * slideW : el.x
+      const elY = onCanvas && axis === 'y' ? el.y - screen * slideH : el.y
+      if (axis && (elX + el.width <= 0 || elX >= slideW || elY + el.height <= 0 || elY >= slideH)) continue
+      const x = elX * SCALE_X
       const y = elY * SCALE_Y
       const w = el.width * SCALE_X
       const h = el.height * SCALE_Y

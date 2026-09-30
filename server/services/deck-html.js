@@ -2318,14 +2318,16 @@ function installAnnotations(config) {
   };
   const scrollerOf = (section) => section && section.querySelector(":scope > .slide-scroller");
   const surfaceOf = (section) => scrollerOf(section)?.querySelector(":scope > .slide-scroll-inner") || section;
+  const widthOf = (section) => Number(section.getAttribute("data-scroll-width")) || W;
   const heightOf = (section) => Number(section.getAttribute("data-scroll-height")) || H;
+  const sideways = (scroller) => scroller.getAttribute("data-scroll") === "x";
   function layerOf(section) {
     const surface = surfaceOf(section);
     let svg = surface.querySelector(":scope > svg.pp-ink");
     if (!svg) {
       svg = document.createElementNS(NS, "svg");
       svg.setAttribute("class", "pp-ink");
-      svg.setAttribute("viewBox", `0 0 ${W} ${heightOf(section)}`);
+      svg.setAttribute("viewBox", `0 0 ${widthOf(section)} ${heightOf(section)}`);
       surface.appendChild(svg);
     }
     return svg;
@@ -2359,7 +2361,7 @@ function installAnnotations(config) {
   function toSlide(e, section) {
     const r = surfaceOf(section).getBoundingClientRect();
     const round3 = (v) => Math.round(v * 10) / 10;
-    return [round3((e.clientX - r.left) * W / r.width), round3((e.clientY - r.top) * heightOf(section) / r.height)];
+    return [round3((e.clientX - r.left) * widthOf(section) / r.width), round3((e.clientY - r.top) * heightOf(section) / r.height)];
   }
   function simplify(points, tolerance) {
     if (points.length < 3) return points;
@@ -2561,26 +2563,29 @@ function installAnnotations(config) {
     const scroller = scrollerOf(currentPage());
     if (!scroller) return;
     e.preventDefault();
-    scroller.scrollTop += e.deltaY;
+    if (sideways(scroller)) scroller.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    else scroller.scrollTop += e.deltaY;
   }, { passive: false });
   let drag = null;
   shield.addEventListener("touchstart", (e) => {
     const scroller = scrollerOf(currentPage());
     const t = e.touches[0];
-    drag = tool && penSeen && scroller && e.touches.length === 1 && t.touchType !== "stylus" ? { scroller, x: t.clientX, y: t.clientY, vertical: null } : null;
+    drag = tool && penSeen && scroller && e.touches.length === 1 && t.touchType !== "stylus" ? { scroller, x: t.clientX, y: t.clientY, along: null } : null;
   }, { passive: true });
   shield.addEventListener("touchmove", (e) => {
     if (!drag) return;
-    const t = e.touches[0];
-    if (drag.vertical === null) {
+    const t = e.touches[0], x = sideways(drag.scroller);
+    if (drag.along === null) {
       const dx = t.clientX - drag.x, dy = t.clientY - drag.y;
       if (Math.hypot(dx, dy) < 8) return;
-      drag.vertical = Math.abs(dy) > Math.abs(dx);
+      drag.along = x ? Math.abs(dx) > Math.abs(dy) : Math.abs(dy) > Math.abs(dx);
     }
-    if (!drag.vertical) return;
+    if (!drag.along) return;
     e.stopPropagation();
-    const scale = drag.scroller.clientHeight / (drag.scroller.getBoundingClientRect().height || 1);
-    drag.scroller.scrollTop -= (t.clientY - drag.y) * scale;
+    const rect = drag.scroller.getBoundingClientRect();
+    if (x) drag.scroller.scrollLeft -= (t.clientX - drag.x) * drag.scroller.clientWidth / (rect.width || 1);
+    else drag.scroller.scrollTop -= (t.clientY - drag.y) * drag.scroller.clientHeight / (rect.height || 1);
+    drag.x = t.clientX;
     drag.y = t.clientY;
   }, { passive: true });
   shield.addEventListener("touchend", () => {
@@ -2716,11 +2721,22 @@ function getCanvasHeight(slide, slideH) {
   const h = Math.round(Number(slide?.scrollHeight) || 0);
   return h > slideH ? Math.min(h, slideH * MAX_SCREENS) : slideH;
 }
-var isScrolling = (slide, slideH) => getCanvasHeight(slide, slideH) > slideH;
+function getCanvasWidth(slide, slideW, slideH) {
+  if (getCanvasHeight(slide, slideH) > slideH) return slideW;
+  const w = Math.round(Number(slide?.scrollWidth) || 0);
+  return w > slideW ? Math.min(w, slideW * MAX_SCREENS) : slideW;
+}
+function scrollAxis(slide, slideW, slideH) {
+  if (getCanvasHeight(slide, slideH) > slideH) return "y";
+  if (getCanvasWidth(slide, slideW, slideH) > slideW) return "x";
+  return null;
+}
+var isScrolling = (slide, slideW, slideH) => scrollAxis(slide, slideW, slideH) !== null;
 var isPinned = (el) => el?.scrollBehavior === "pin";
 function hasScrollingSlides(presentation) {
-  const slideH = presentation?.slideHeight || 540;
-  return (presentation?.slides || []).some((slide) => isScrolling(slide, slideH));
+  const slideW = Number(presentation?.slideWidth) || 960;
+  const slideH = Number(presentation?.slideHeight) || 540;
+  return (presentation?.slides || []).some((slide) => isScrolling(slide, slideW, slideH));
 }
 function canvasBackgroundStyle(bg, url = (src) => src) {
   const value = (v) => String(v).replace(/[\\;{}<>"'`\r\n]/g, "").replace(/&/g, "&amp;");
@@ -2730,32 +2746,37 @@ function canvasBackgroundStyle(bg, url = (src) => src) {
   }
   return "";
 }
-function scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background = "" }) {
-  return `      <div class="slide-scroller" data-prevent-swipe style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;overflow-x:hidden;overflow-y:auto;">
-        <div class="slide-scroll-inner" style="position:relative;width:${slideW}px;height:${canvasH}px;${background}">
+function scrollingSlideBody({ slideW, slideH, canvasW = slideW, canvasH = slideH, axis = "y", elementsHtml, pinnedHtml, background = "" }) {
+  const x = axis === "x";
+  const mark = x ? ' data-scroll="x"' : "";
+  return `      <div class="slide-scroller"${mark} data-prevent-swipe style="position:absolute;left:0;top:0;width:${slideW}px;height:${slideH}px;${x ? "overflow-x:auto;overflow-y:hidden;" : "overflow-x:hidden;overflow-y:auto;"}">
+        <div class="slide-scroll-inner" style="position:relative;width:${canvasW}px;height:${canvasH}px;${background}">
 ${elementsHtml}
         </div>
       </div>
-      <div class="slide-scroll-track" aria-hidden="true"><div class="slide-scroll-thumb"></div></div>${pinnedHtml ? `
+      <div class="slide-scroll-track"${mark} aria-hidden="true"><div class="slide-scroll-thumb"></div></div>${pinnedHtml ? `
 ${pinnedHtml}` : ""}`;
 }
 var SCROLLING_CSS = `
     .reveal .slides section > .slide-scroller { overflow-x:hidden !important; overflow-y:auto !important; overscroll-behavior:contain; touch-action:pan-y pinch-zoom; scrollbar-width:none; }
+    .reveal .slides section > .slide-scroller[data-scroll="x"] { overflow-x:auto !important; overflow-y:hidden !important; touch-action:pan-x pinch-zoom; }
     .reveal .slides section > .slide-scroller::-webkit-scrollbar { display:none; }
     .reveal .slides section .slide-scroll-inner { overflow:visible; }
     .reveal .slides section > .slide-scroll-track { position:absolute; top:0; right:0; width:4px; height:100%; z-index:940; background:rgba(127,127,127,0.12); pointer-events:none; }
-    .reveal .slides section .slide-scroll-thumb { position:absolute; left:0; top:0; width:100%; height:0; background:rgba(160,160,160,0.55); border-radius:2px; }`;
+    .reveal .slides section > .slide-scroll-track[data-scroll="x"] { top:auto; bottom:0; left:0; right:auto; width:100%; height:4px; }
+    .reveal .slides section .slide-scroll-thumb { position:absolute; left:0; top:0; width:100%; height:0; background:rgba(160,160,160,0.55); border-radius:2px; }
+    .reveal .slides section > .slide-scroll-track[data-scroll="x"] > .slide-scroll-thumb { width:0; height:100%; }`;
 var SCROLL_STEP_SOURCE = `
       var SCROLL_STEP = 0.85;
       function scrollStep(dir, view, step) {
-        var bottom = view.top + view.height;
+        var end = view.start + view.size;
         if (dir > 0) {
-          if (step && (step.pinned || step.top < bottom)) return 'reveal';
-          if (view.top < view.max - 1) return Math.min(view.max, view.top + view.height * SCROLL_STEP);
+          if (step && (step.pinned || step.start < end)) return 'reveal';
+          if (view.start < view.max - 1) return Math.min(view.max, view.start + view.size * SCROLL_STEP);
           return 'reveal';
         }
-        if (step && (step.pinned || (step.top < bottom && step.bottom > view.top))) return 'reveal';
-        if (view.top > 1) return Math.max(0, view.top - view.height * SCROLL_STEP);
+        if (step && (step.pinned || (step.start < end && step.end > view.start))) return 'reveal';
+        if (view.start > 1) return Math.max(0, view.start - view.size * SCROLL_STEP);
         return step ? 'skip' : 'reveal';
       }`;
 var SCROLLING_SCRIPT = `
@@ -2765,18 +2786,25 @@ var SCROLLING_SCRIPT = `
       try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
 
       function scrollerOf(slide) { return slide ? slide.querySelector(':scope > .slide-scroller') : null; }
-      function canScroll(sc) { return !!sc && sc.scrollHeight > sc.clientHeight + 1; }
+      function sideways(sc) { return sc.getAttribute('data-scroll') === 'x'; }
+      // How far along the scroller is, how much it shows, and how far it can go
+      function posOf(sc) { return sideways(sc) ? sc.scrollLeft : sc.scrollTop; }
+      function sizeOf(sc) { return sideways(sc) ? sc.clientWidth : sc.clientHeight; }
+      function maxOf(sc) { return sideways(sc) ? sc.scrollWidth - sc.clientWidth : sc.scrollHeight - sc.clientHeight; }
+      function canScroll(sc) { return !!sc && maxOf(sc) > 1; }
 
       // Where the canvas is, or is on its way to while a step's smooth scroll runs
       function viewOf(sc) {
-        var top = sc._to != null && Date.now() - sc._toAt < 800 ? sc._to : sc.scrollTop;
-        return { top: top, height: sc.clientHeight, max: sc.scrollHeight - sc.clientHeight };
+        var start = sc._to != null && Date.now() - sc._toAt < 800 ? sc._to : posOf(sc);
+        return { start: start, size: sizeOf(sc), max: maxOf(sc) };
       }
-      function scrollToY(sc, top) {
-        top = Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, top));
-        sc._to = top;
+      function scrollToPos(sc, pos) {
+        pos = Math.max(0, Math.min(maxOf(sc), pos));
+        sc._to = pos;
         sc._toAt = Date.now();
-        sc.scrollTo({ top: top, behavior: reduceMotion ? 'auto' : 'smooth' });
+        var to = { behavior: reduceMotion ? 'auto' : 'smooth' };
+        to[sideways(sc) ? 'left' : 'top'] = pos;
+        sc.scrollTo(to);
       }
 
       // The fragment step a key would show (the lowest index still hidden) or
@@ -2791,42 +2819,44 @@ var SCROLLING_SCRIPT = `
         }
         return els;
       }
-      // Where elements are on the canvas, or pinned: true if any is on the screen
+      // Where elements are along the canvas, or pinned: true if any is on the screen
       function extentOf(els, sc) {
-        var inner = sc.firstElementChild, top = Infinity, bottom = -Infinity;
+        var inner = sc.firstElementChild, x = sideways(sc), start = Infinity, end = -Infinity;
         for (var i = 0; i < els.length; i++) {
-          var y = 0, node = els[i];
-          while (node && node !== inner) { y += node.offsetTop; node = node.offsetParent; }
+          var at = 0, node = els[i];
+          while (node && node !== inner) { at += x ? node.offsetLeft : node.offsetTop; node = node.offsetParent; }
           if (node !== inner) return { pinned: true };
-          top = Math.min(top, y);
-          bottom = Math.max(bottom, y + els[i].offsetHeight);
+          start = Math.min(start, at);
+          end = Math.max(end, at + (x ? els[i].offsetWidth : els[i].offsetHeight));
         }
-        return els.length ? { top: top, bottom: bottom } : null;
+        return els.length ? { start: start, end: end } : null;
       }
 
-      function keyDirection(e) {
+      // Forwards (1), back (-1), or neither (0) for a slide that scrolls
+      // sideways (x) or down
+      function keyDirection(e, x) {
         if (e.altKey || e.ctrlKey || e.metaKey) return 0;
         if (e.keyCode === 32) return e.shiftKey ? -1 : 1;
         if (e.shiftKey) return 0;
-        if ([40, 74, 34, 78].indexOf(e.keyCode) !== -1) return 1;
-        if ([38, 75, 33, 80].indexOf(e.keyCode) !== -1) return -1;
+        if ([x ? 39 : 40, x ? 76 : 74, 34, 78].indexOf(e.keyCode) !== -1) return 1;
+        if ([x ? 37 : 38, x ? 72 : 75, 33, 80].indexOf(e.keyCode) !== -1) return -1;
         return 0;
       }
       // Before reveal.js's own handler, which listens on the document too
       document.addEventListener('keydown', function(e) {
-        var dir = keyDirection(e);
+        var slide = Reveal.getCurrentSlide(), sc = scrollerOf(slide);
+        if (!canScroll(sc)) return;
+        var dir = keyDirection(e, sideways(sc));
         if (!dir) return;
         var active = document.activeElement;
         if (active && (active.isContentEditable || /^(input|textarea|select)$/i.test(active.tagName))) return;
         if (Reveal.getConfig().keyboard === false || Reveal.isOverview() || Reveal.isPaused()) return;
-        var slide = Reveal.getCurrentSlide(), sc = scrollerOf(slide);
-        if (!canScroll(sc)) return;
         var to = scrollStep(dir, viewOf(sc), extentOf(fragmentStep(slide, dir < 0), sc));
         if (to === 'reveal') return;
         e.preventDefault();
         e.stopPropagation();
         if (to === 'skip') Reveal.prev({ skipFragments: true });
-        else scrollToY(sc, to);
+        else scrollToPos(sc, to);
       }, true);
 
       // A fragment that appears off screen is scrolled into view
@@ -2836,16 +2866,16 @@ var SCROLLING_SCRIPT = `
         var extent = extentOf(e.fragments || [e.fragment], sc);
         if (!extent || extent.pinned) return;
         var view = viewOf(sc), margin = 24;
-        if (extent.top < view.top) scrollToY(sc, extent.top - margin);
-        else if (extent.bottom > view.top + view.height) scrollToY(sc, Math.min(extent.top - margin, extent.bottom + margin - view.height));
+        if (extent.start < view.start) scrollToPos(sc, extent.start - margin);
+        else if (extent.end > view.start + view.size) scrollToPos(sc, Math.min(extent.start - margin, extent.end + margin - view.size));
       });
 
       function syncTrack(sc) {
         var thumb = sc.parentNode.querySelector(':scope > .slide-scroll-track > .slide-scroll-thumb');
         if (!thumb) return;
-        var h = sc.clientHeight, max = sc.scrollHeight - h, size = Math.max(24, h * h / sc.scrollHeight);
-        thumb.style.height = size + 'px';
-        thumb.style.top = (max > 0 ? sc.scrollTop / max * (h - size) : 0) + 'px';
+        var x = sideways(sc), size = sizeOf(sc), max = maxOf(sc), length = Math.max(24, size * size / (size + max));
+        thumb.style[x ? 'width' : 'height'] = length + 'px';
+        thumb.style[x ? 'left' : 'top'] = (max > 0 ? posOf(sc) / max * (size - length) : 0) + 'px';
       }
       var scrollers = document.querySelectorAll('.reveal .slides section > .slide-scroller');
       for (var i = 0; i < scrollers.length; i++) (function(sc) {
@@ -2854,6 +2884,14 @@ var SCROLLING_SCRIPT = `
         var byHand = function() { sc._to = null; };
         sc.addEventListener('wheel', byHand, { passive: true });
         sc.addEventListener('touchstart', byHand, { passive: true });
+        // An up-and-down wheel turns a sideways canvas, until it reaches an end
+        if (sideways(sc)) sc.addEventListener('wheel', function(e) {
+          if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+          var by = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? sc.clientWidth : 1);
+          if (by > 0 ? sc.scrollLeft >= maxOf(sc) - 1 : sc.scrollLeft <= 0) return;
+          e.preventDefault();
+          sc.scrollLeft += by;
+        }, { passive: false });
       })(scrollers[i]);
 
       var lastIndex = -1;
@@ -2861,7 +2899,9 @@ var SCROLLING_SCRIPT = `
         var index = Reveal.getSlides().indexOf(e.currentSlide), sc = scrollerOf(e.currentSlide);
         if (sc) {
           sc._to = null;
-          sc.scrollTop = index === lastIndex - 1 ? sc.scrollHeight : 0;
+          var atEnd = index === lastIndex - 1;
+          if (sideways(sc)) sc.scrollLeft = atEnd ? sc.scrollWidth : 0;
+          else sc.scrollTop = atEnd ? sc.scrollHeight : 0;
           syncTrack(sc);
         }
         lastIndex = index;
@@ -2870,18 +2910,21 @@ var SCROLLING_SCRIPT = `
       Reveal.on('slidechanged', land);
 
       // The scroller keeps touches from reveal.js, so a sideways swipe on it
-      // changes slides here, the way reveal.js's own swipes do
+      // changes slides here, the way reveal.js's own swipes do. On a slide that
+      // scrolls sideways the swipe scrolls the canvas, so it changes slides only
+      // when it starts at the end it moves towards.
       var swipe = null;
       document.addEventListener('touchstart', function(e) {
-        var on = e.touches.length === 1 && e.target.closest && e.target.closest('.slide-scroller');
-        swipe = on ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+        var sc = e.touches.length === 1 && e.target.closest && e.target.closest('.slide-scroller');
+        swipe = sc ? { x: e.touches[0].clientX, y: e.touches[0].clientY, sc: sc, pos: sc.scrollLeft } : null;
       }, { passive: true });
       document.addEventListener('touchend', function(e) {
         if (!swipe) return;
-        var t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+        var t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y, sc = swipe.sc, pos = swipe.pos;
         swipe = null;
         var config = Reveal.getConfig();
         if (config.touch === false || Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 2) return;
+        if (sideways(sc) && (dx < 0 ? pos < maxOf(sc) - 1 : pos > 1)) return;
         if (config.navigationMode === 'linear') { if ((dx > 0) !== !!config.rtl) Reveal.prev(); else Reveal.next(); }
         else if (dx > 0) Reveal.left();
         else Reveal.right();
@@ -3507,7 +3550,9 @@ function generateRevealHTML(presentation, opts = {}) {
     const sideCitations = (slide.elements || []).filter((el) => el.type === "image" && (el.citationText || el.citationLink) && el.citationMode === "side").map((el) => ({ id: el.id, text: el.citationText, link: el.citationLink }));
     const clickTargets = visibilityTargets(slide);
     const canvasH = getCanvasHeight(slide, slideH);
-    const scrolling = canvasH > slideH;
+    const canvasW = getCanvasWidth(slide, slideW, slideH);
+    const axis = scrollAxis(slide, slideW, slideH);
+    const scrolling = axis !== null;
     const sortedElements = (slide.elements || []).slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
     const renderedElements = sortedElements.map((el) => {
       const shadowStyle = el.shadowBlur || el.shadowX || el.shadowY ? `box-shadow:${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 0}px ${cssValue(el.shadowColor) || "rgba(0,0,0,0.5)"};` : "";
@@ -3814,7 +3859,7 @@ ${content}
           const d = pointsToPath(path.points, el.smooth !== false);
           return `<path d="${d}" stroke="${path.color || "#ffffff"}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`;
         }).join("");
-        return `<svg${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`;
+        return `<svg${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`;
       }
       if (el.type && el.type.startsWith("plugin:")) {
         const sandboxHtml = pluginSandbox(el);
@@ -3878,9 +3923,9 @@ ${content}
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? "none" : sanitizeAttr(slide.transition)}"` : "";
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : "";
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
-    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : "";
+    const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}

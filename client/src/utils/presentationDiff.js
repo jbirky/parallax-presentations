@@ -105,6 +105,10 @@ function diffSlideOtherChanges(oldSlide, newSlide) {
     const label = h => (h ? `${h}px` : 'one screen')
     changes.push(`Canvas height: ${label(oldSlide.scrollHeight)} → ${label(newSlide.scrollHeight)}`)
   }
+  if ((oldSlide.scrollWidth || 0) !== (newSlide.scrollWidth || 0)) {
+    const label = w => (w ? `${w}px` : 'one screen')
+    changes.push(`Canvas width: ${label(oldSlide.scrollWidth)} → ${label(newSlide.scrollWidth)}`)
+  }
   return changes
 }
 

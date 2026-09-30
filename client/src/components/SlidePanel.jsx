@@ -9,7 +9,7 @@ import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
-import { getCanvasHeight } from '../utils/scrollingSlides'
+import { getCanvasHeight, getCanvasWidth } from '../utils/scrollingSlides'
 import { modelSnapshotContent } from '../utils/modelViewer'
 import { graphSnapshotContent } from '../utils/graphPage'
 
@@ -28,6 +28,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
   const canvasH = getCanvasHeight(slide, slideH)
+  const canvasW = getCanvasWidth(slide, slideW, slideH)
 
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', flexShrink: 0, borderRadius: 3 }}>
@@ -140,12 +141,12 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
           ))
         }
       </div>
-      {canvasH > slideH && (
-        <div title="Scrolling slide" style={{
+      {(canvasH > slideH || canvasW > slideW) && (
+        <div title={canvasW > slideW ? 'Scrolls sideways' : 'Scrolls down'} style={{
           position: 'absolute', bottom: 2, right: 2, pointerEvents: 'none',
           background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: 8, fontWeight: 600,
           padding: '1px 4px', borderRadius: 2, letterSpacing: 0.2,
-        }}>&#8597; {+(canvasH / slideH).toFixed(2)}&times;</div>
+        }}>{canvasW > slideW ? <>&#8596; {+(canvasW / slideW).toFixed(2)}</> : <>&#8597; {+(canvasH / slideH).toFixed(2)}</>}&times;</div>
       )}
     </div>
   )

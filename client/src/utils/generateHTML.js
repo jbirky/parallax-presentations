@@ -14,7 +14,7 @@ import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
-import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
+import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -217,7 +217,9 @@ export function generateRevealHTML(presentation, opts = {}) {
 
     const clickTargets = visibilityTargets(slide)
     const canvasH = getCanvasHeight(slide, slideH)
-    const scrolling = canvasH > slideH
+    const canvasW = getCanvasWidth(slide, slideW, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
+    const scrolling = axis !== null
     const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
@@ -520,7 +522,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = pluginSandbox(el)
@@ -596,10 +598,10 @@ export function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : sanitizeAttr(slide.transition)}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : ''
-    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
+    const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -1284,7 +1286,7 @@ function generatePrintHTML(presentation) {
   const pages = []
   let printPageCounter = 0
   presentation.slides.forEach((slide, slideIndex) => {
-    const screens = getScreenCount(slide, slideH)
+    const screens = getScreenCount(slide, slideW, slideH)
     if (screens > 1) {
       for (let screen = 0; screen < screens; screen++) pages.push({ slide, slideIndex, maxIdx: Infinity, screen, first: screen === 0 })
       return
@@ -1305,7 +1307,9 @@ function generatePrintHTML(presentation) {
     const stateOnPage = el => stepped.has(el.id) ? stepped.get(el.id) : el.initialState
     const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden || hiddenByState(el, stateOnPage(el))
     const canvasH = getCanvasHeight(slide, slideH)
-    const scrolling = canvasH > slideH
+    const canvasW = getCanvasWidth(slide, slideW, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
+    const scrolling = axis !== null
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     const bgStyle = canvasBg ? getBgPrintStyle(null) : getBgPrintStyle(slide.background)
 
@@ -1451,7 +1455,7 @@ function generatePrintHTML(presentation) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -1502,7 +1506,7 @@ function generatePrintHTML(presentation) {
       // This page's screen of the canvas, whose links move with it, under the pinned elements
       const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
       bodyHtml = printScreenBody({
-        slideW, slideH, canvasH, screen, background: canvasBg,
+        slideW, slideH, canvasW, canvasH, axis, screen, background: canvasBg,
         elementsHtml: `${printSlideLinks(elementsHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || isPinned(el))}`,
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })

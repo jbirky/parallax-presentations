@@ -26,7 +26,7 @@ import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, li
 import { reorderSlides } from '../utils/slideReorder'
 import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
-import { getCanvasHeight, isPinned } from '../utils/scrollingSlides'
+import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
@@ -1844,8 +1844,10 @@ function draw() {
       const element = selectedElementId
         ? presentation?.slides[currentSlideIndex]?.elements?.find(el => el.id === selectedElementId)
         : null
-      // How far down a pasted or duplicated element can go: the canvas, or the screen when it's pinned
+      // How far down and across a pasted or duplicated element can go: the
+      // canvas, or the screen when it's pinned
       const bottomOf = el => isPinned(el) ? slideH : getCanvasHeight(presentation?.slides[currentSlideIndex], slideH)
+      const rightOf = el => isPinned(el) ? slideW : getCanvasWidth(presentation?.slides[currentSlideIndex], slideW, slideH)
       if (e.key === 'f') {
         setShowFindReplace(v => !v)
         e.preventDefault()
@@ -1861,7 +1863,7 @@ function draw() {
       } else if (e.key === 'v' && clipboard) {
         const newEl = {
           ...copyElement(clipboard, crypto.randomUUID()),
-          x: Math.min((clipboard.x || 0) + 20, slideW - (clipboard.width || 100)),
+          x: Math.min((clipboard.x || 0) + 20, rightOf(clipboard) - (clipboard.width || 100)),
           y: Math.min((clipboard.y || 0) + 20, bottomOf(clipboard) - (clipboard.height || 100))
         }
         setPresentation(prev => ({
@@ -1875,7 +1877,7 @@ function draw() {
       } else if (e.key === 'd' && element) {
         const newEl = {
           ...copyElement(element, crypto.randomUUID()),
-          x: Math.min((element.x || 0) + 20, slideW - (element.width || 100)),
+          x: Math.min((element.x || 0) + 20, rightOf(element) - (element.width || 100)),
           y: Math.min((element.y || 0) + 20, bottomOf(element) - (element.height || 100))
         }
         setPresentation(prev => ({
