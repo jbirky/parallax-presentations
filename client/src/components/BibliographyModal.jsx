@@ -5,10 +5,25 @@ import { useState, useRef, useEffect } from 'react'
 import { parseBibtex, parseAuthors, formatAuthorsShort, formatCitation } from '../utils/bibtexParser'
 import { api } from '../utils/api'
 
+// Lowercase, without accents, whether typed (ö) or left as LaTeX (\"o, {\"o})
+const foldForSearch = s => String(s ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/\\[`'^"~=.]/g, '').replace(/[{}]/g, '')
+  .toLowerCase()
+
+// Whether a library entry has every word of the query somewhere in its key,
+// title, authors, year, journal or book title, in any order
+export function matchesLibrarySearch(entry, query) {
+  const words = foldForSearch(query).split(/\s+/).filter(Boolean)
+  const text = foldForSearch([entry.key, entry.title, entry.author, entry.year, entry.journal, entry.booktitle].join(' '))
+  return words.every(w => text.includes(w))
+}
+
 export default function BibliographyModal({ bibliography = [], citationStyle = 'numbered', onUpdate, onInsertCitation, onClose }) {
   const [tab, setTab] = useState('library') // library | import | zotero
   const [bibtexInput, setBibtexInput] = useState('')
   const [importError, setImportError] = useState(null)
+  const [librarySearch, setLibrarySearch] = useState('')
   const fileRef = useRef(null)
 
   // Zotero state
@@ -197,8 +212,14 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
 
   const isInBib = (key) => bibliography.some(e => e.key === key)
 
+  // While searching, the list skips entries that don't match but keeps each
+  // one's place in the whole library, which Cite and the arrows go by
+  const searching = librarySearch.trim() !== ''
+  const matchCount = searching ? bibliography.filter(e => matchesLibrarySearch(e, librarySearch)).length : bibliography.length
+
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+    // Held at the top, not centered, so the search box stays put as results shrink the list
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '7.5vh', background: 'rgba(0,0,0,0.5)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, width: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
 
@@ -238,6 +259,30 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
           {/* Library tab */}
           {tab === 'library' && (
             <>
+              {bibliography.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <input className="prop-input" type="search" value={librarySearch}
+                    onChange={e => setLibrarySearch(e.target.value)}
+                    onKeyDown={e => {
+                      // Esc clears the search and goes no further: the editor
+                      // would stop editing the text box that Cite writes into
+                      if (e.key === 'Escape' && librarySearch) { setLibrarySearch(''); e.stopPropagation() }
+                    }}
+                    placeholder="Search title, author, year, key..."
+                    aria-label="Search the library"
+                    style={{ flex: 1, padding: '6px 10px', fontSize: 12 }} />
+                  {searching && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                      {matchCount} of {bibliography.length}
+                    </span>
+                  )}
+                </div>
+              )}
+              {bibliography.length > 0 && matchCount === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                  No entries match &ldquo;{librarySearch.trim()}&rdquo;
+                </div>
+              )}
               {bibliography.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                   <p style={{ fontSize: 14, marginBottom: 8 }}>No bibliography entries yet</p>
@@ -246,6 +291,7 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {bibliography.map((entry, i) => {
+                    if (searching && !matchesLibrarySearch(entry, librarySearch)) return null
                     const authors = parseAuthors(entry.author)
                     return (
                       <div key={entry.key} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -273,12 +319,14 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                             </button>
                           )}
                           <div style={{ display: 'flex', gap: 2 }}>
-                            <button onClick={() => moveEntry(i, -1)} disabled={i === 0}
-                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: i === 0 ? 0.3 : 1 }}>
+                            <button onClick={() => moveEntry(i, -1)} disabled={searching || i === 0}
+                              title={searching ? 'Clear the search to reorder' : undefined}
+                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: searching || i === 0 ? 0.3 : 1 }}>
                               &uarr;
                             </button>
-                            <button onClick={() => moveEntry(i, 1)} disabled={i === bibliography.length - 1}
-                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: i === bibliography.length - 1 ? 0.3 : 1 }}>
+                            <button onClick={() => moveEntry(i, 1)} disabled={searching || i === bibliography.length - 1}
+                              title={searching ? 'Clear the search to reorder' : undefined}
+                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: searching || i === bibliography.length - 1 ? 0.3 : 1 }}>
                               &darr;
                             </button>
                             <button onClick={() => removeEntry(entry.key)}

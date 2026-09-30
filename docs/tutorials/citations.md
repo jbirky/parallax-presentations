@@ -8,7 +8,7 @@ Click the **Citations** button in the top toolbar to open the bibliography modal
 
 The modal has three tabs:
 
-- **Library** — view, reorder, and cite your imported references
+- **Library** — search, view, reorder, and cite your imported references
 - **Import BibTeX** — paste or upload a `.bib` file
 - **Zotero** — connect to your Zotero library and import items
 
@@ -91,6 +91,7 @@ The order of references matches the order in your bibliography library. You can 
 
 In the **Library** tab of the bibliography modal:
 
+- **Search** with the box above the list: it matches title, authors, year, journal and citation key, and every word you type must appear somewhere in the entry, in any order (`brown 2016` finds Brown et al. 2016). Accents don't matter, so `schrodinger` finds Schrödinger. Press Esc to clear it. The arrows are off while searching, since an entry's neighbours may be hidden.
 - **Reorder** entries using the up/down arrow buttons. This changes the numbering in the references slide.
 - **Remove** an entry by clicking the X button.
 - **Cite** an entry by clicking the Cite button (when a text element is being edited).
