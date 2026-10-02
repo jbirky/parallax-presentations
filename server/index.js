@@ -195,6 +195,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Graphs', link: 'tutorials/graphs' },
       { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
       { text: 'Images', link: 'tutorials/images' },
+      { text: 'Interactive Equations', link: 'tutorials/interactive-equations' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
       { text: 'LaTeX & Math', link: 'features/latex' },
       { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },

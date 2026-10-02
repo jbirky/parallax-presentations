@@ -681,7 +681,7 @@ function createMathParser() {
   const isDigit = (c) => c >= "0" && c <= "9";
   const isLetter = (c) => c >= "a" && c <= "z" || c >= "A" && c <= "Z";
   const isWord = (c) => isLetter(c) || isDigit(c);
-  function tokenize(text) {
+  function tokenize2(text) {
     const s = normalize(text);
     const tokens = [];
     let i = 0;
@@ -926,7 +926,7 @@ function createMathParser() {
     };
   }
   function parseStatement(text, userFns) {
-    return parser(tokenize(text), userFns || /* @__PURE__ */ new Set()).statement();
+    return parser(tokenize2(text), userFns || /* @__PURE__ */ new Set()).statement();
   }
   function freeVars(node, into, bound) {
     const out = into || /* @__PURE__ */ new Set();
@@ -1342,7 +1342,7 @@ function createMathParser() {
     }
     return env;
   }
-  return { tokenize, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED };
+  return { tokenize: tokenize2, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED };
 }
 
 // client/src/utils/graphRuntime.js
@@ -2310,6 +2310,912 @@ var GRAPH_DECK_SCRIPT = `
     })();
 `;
 
+// client/src/utils/equationRuntime.js
+function equationRuntime(root, cfg, katex) {
+  const doc = root.ownerDocument;
+  const win = doc.defaultView || window;
+  const SAFE = /^[A-Za-z0-9_-]+$/;
+  const NS = "http://www.w3.org/2000/svg";
+  const FALLBACK = ["#5aa9ff", "#ff9a52", "#4cc36a", "#c58cff", "#f0c04b", "#ff7aa2"];
+  const fontSize = cfg.fontSize || 44;
+  const labelSize = cfg.labelSize || 18;
+  const style = cfg.labelStyle || "callout";
+  if (!doc.getElementById("pxeq-style")) {
+    const css = doc.createElement("style");
+    css.id = "pxeq-style";
+    css.textContent = [
+      ".pxeq{position:relative;width:100%;height:100%;line-height:normal;text-align:center}",
+      ".pxeq .pxeq-body{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45em}",
+      ".pxeq .pxeq-math{max-width:none}",
+      ".pxeq .pxeq-math .katex-display{margin:0}",
+      ".pxeq .pxeq-math .katex{font-size:1em}",
+      ".pxeq .katex,.pxeq .katex *{transition:color .35s ease,border-color .35s ease}",
+      ".pxeq.pxeq-dim .katex{color:color-mix(in srgb,currentColor 28%,transparent)}",
+      ".pxeq [data-term].pxeq-past{color:color-mix(in srgb,var(--tc) 50%,transparent)}",
+      ".pxeq [data-term].pxeq-lit{color:var(--tc)}",
+      ".pxeq.pxeq-hover [data-term]{cursor:pointer}",
+      ".pxeq .pxeq-svg{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}",
+      ".pxeq .pxeq-annos{position:absolute;inset:0;pointer-events:none}",
+      ".pxeq .pxeq-brace{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:pxeq-draw .45s ease-out forwards}",
+      ".pxeq .pxeq-leader{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.8}",
+      ".pxeq .pxeq-tint{animation:pxeq-fade .3s ease-out both}",
+      ".pxeq .pxeq-label,.pxeq .pxeq-card{position:absolute;box-sizing:border-box;max-width:22em;font-size:var(--pxeq-label);line-height:1.3;animation:pxeq-rise .35s ease-out both}",
+      ".pxeq .pxeq-label{text-align:center}",
+      ".pxeq .pxeq-label b,.pxeq .pxeq-card b{display:block;font-weight:700;color:var(--tc)}",
+      ".pxeq .pxeq-label span,.pxeq .pxeq-card span{display:block;padding-top:.2em;font-size:.85em;color:color-mix(in srgb,currentColor 80%,transparent)}",
+      ".pxeq .pxeq-card{text-align:left;padding:.4em .75em .5em;border:2px solid var(--tc);border-radius:.45em;background:color-mix(in srgb,var(--tc) 12%,transparent)}",
+      ".pxeq .pxeq-compact b{white-space:nowrap}",
+      ".pxeq .pxeq-above{--pxeq-dy:-6px}",
+      ".pxeq .pxeq-below{--pxeq-dy:6px}",
+      ".pxeq .pxeq-sentence{margin:0;max-width:min(100%,34em);font-size:calc(var(--pxeq-label) * 1.2);line-height:1.5;color:color-mix(in srgb,currentColor 72%,transparent);text-wrap:balance}",
+      ".pxeq .pxeq-sentence.pxeq-off{display:none}",
+      ".pxeq .pxeq-phr{transition:color .3s ease,border-color .3s ease;border-bottom:.12em solid transparent}",
+      ".pxeq .pxeq-phr.pxeq-past{color:color-mix(in srgb,var(--tc) 60%,transparent)}",
+      ".pxeq .pxeq-phr.pxeq-lit{color:var(--tc);border-bottom-color:var(--tc)}",
+      ".pxeq .pxeq-sentence.pxeq-rest .pxeq-phr.pxeq-lit{border-bottom-color:transparent}",
+      "@keyframes pxeq-draw{to{stroke-dashoffset:0}}",
+      "@keyframes pxeq-rise{from{opacity:0;transform:translateY(var(--pxeq-dy,6px))}to{opacity:1;transform:none}}",
+      "@keyframes pxeq-fade{from{opacity:0}to{opacity:1}}",
+      ".pxeq.pxeq-static .pxeq-label,.pxeq.pxeq-static .pxeq-card,.pxeq.pxeq-static .pxeq-tint{animation:none}",
+      ".pxeq.pxeq-static .pxeq-brace{animation:none;stroke-dashoffset:0}",
+      ".pxeq.pxeq-static .katex,.pxeq.pxeq-static .katex *,.pxeq.pxeq-static .pxeq-phr{transition:none}",
+      "@media (prefers-reduced-motion:reduce){.pxeq .pxeq-label,.pxeq .pxeq-card,.pxeq .pxeq-tint{animation:none}.pxeq .pxeq-brace{animation:none;stroke-dashoffset:0}.pxeq .katex,.pxeq .katex *,.pxeq .pxeq-phr{transition:none}}"
+    ].join("\n");
+    (doc.head || doc.documentElement).appendChild(css);
+  }
+  const make = (tag, cls) => {
+    const e = doc.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  };
+  root.textContent = "";
+  const wrap = make("div", "pxeq" + (cfg.static ? " pxeq-static" : "") + (cfg.hover ? " pxeq-hover" : ""));
+  const svg = doc.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pxeq-svg");
+  svg.setAttribute("aria-hidden", "true");
+  const body = make("div", "pxeq-body");
+  const math = make("div", "pxeq-math");
+  const sentence = make("div", "pxeq-sentence");
+  const annos = make("div", "pxeq-annos");
+  annos.setAttribute("aria-hidden", "true");
+  body.appendChild(math);
+  body.appendChild(sentence);
+  wrap.appendChild(svg);
+  wrap.appendChild(body);
+  wrap.appendChild(annos);
+  wrap.style.fontSize = fontSize + "px";
+  wrap.style.setProperty("--pxeq-label", labelSize + "px");
+  if (cfg.textColor) wrap.style.color = cfg.textColor;
+  root.appendChild(wrap);
+  const trust = (ctx) => ctx.command === "\\htmlData" && Object.keys(ctx.attributes || {}).every((k) => (k === "data-term" || k === "data-pk") && SAFE.test(ctx.attributes[k]));
+  try {
+    katex.render(cfg.latex || "", math, {
+      displayMode: true,
+      throwOnError: false,
+      trust,
+      strict: (code) => code === "htmlExtension" ? "ignore" : "warn",
+      macros: { "\\term": "\\htmlData{term=#1}{#2}" }
+    });
+  } catch (e) {
+    math.textContent = String(e && e.message || e);
+  }
+  const termEls = Array.prototype.slice.call(math.querySelectorAll(".katex-html [data-term]"));
+  const terms = [];
+  const byId = {};
+  const add = (t) => {
+    byId[t.id] = t;
+    terms.push(t);
+  };
+  (cfg.terms || []).forEach((t) => {
+    if (t && !byId[t.id] && termEls.some((e) => e.getAttribute("data-term") === t.id)) add({ id: t.id, label: t.label || "", note: t.note || "", color: t.color || FALLBACK[terms.length % 6] });
+  });
+  termEls.forEach((e) => {
+    const id = e.getAttribute("data-term");
+    if (!byId[id]) add({ id, label: "", note: "", color: FALLBACK[terms.length % 6] });
+  });
+  const order = terms.map((t) => t.id);
+  termEls.forEach((e) => e.style.setProperty("--tc", byId[e.getAttribute("data-term")].color));
+  const phrases = [];
+  if (style === "sentence" && cfg.sentence) {
+    const re = /\[([^\]]+)\]\(([A-Za-z][A-Za-z0-9_-]*)\)/g;
+    const text = cfg.sentence;
+    let last = 0;
+    let m;
+    while (m = re.exec(text)) {
+      sentence.appendChild(doc.createTextNode(text.slice(last, m.index)));
+      const span = make("span", "pxeq-phr");
+      span.textContent = m[1];
+      if (byId[m[2]]) {
+        span.setAttribute("data-term", m[2]);
+        span.style.setProperty("--tc", byId[m[2]].color);
+        phrases.push(span);
+      }
+      sentence.appendChild(span);
+      last = re.lastIndex;
+    }
+    sentence.appendChild(doc.createTextNode(text.slice(last)));
+  } else {
+    sentence.classList.add("pxeq-off");
+  }
+  const stateAt = (n) => {
+    if (cfg.interaction === "hover") return { kind: "rest" };
+    const k = n - (cfg.stepStart || 1);
+    if (k < 0 || !order.length) return { kind: "plain" };
+    if (k < order.length) return { kind: "term", index: k };
+    return cfg.showAll === false ? { kind: "term", index: order.length - 1 } : { kind: "all" };
+  };
+  let stepState = cfg.interaction === "hover" ? { kind: "rest" } : { kind: "plain" };
+  let hoverId = null;
+  let shown = null;
+  function look() {
+    const st = hoverId ? { kind: "focus", id: hoverId } : stepState;
+    const s = { lit: [], past: [], dim: false, anno: [], compact: false, rest: false };
+    if (st.kind === "plain") s.rest = true;
+    else if (st.kind === "rest") {
+      s.lit = order;
+      s.rest = true;
+    } else if (st.kind === "all") {
+      s.lit = order;
+      s.anno = order;
+      s.compact = order.length > 1;
+    } else if (st.kind === "term" && order[st.index]) {
+      s.lit = [order[st.index]];
+      s.past = cfg.keepTinted ? order.slice(0, st.index) : [];
+      s.dim = true;
+      s.anno = s.lit;
+    } else if (st.kind === "focus") {
+      s.lit = [st.id];
+      s.dim = true;
+      s.anno = s.lit;
+    }
+    return s;
+  }
+  function apply(force) {
+    const s = look();
+    const key = JSON.stringify(s);
+    if (!force && key === shown) return;
+    shown = key;
+    wrap.classList.toggle("pxeq-dim", s.dim);
+    termEls.concat(phrases).forEach((e) => {
+      const id = e.getAttribute("data-term");
+      e.classList.toggle("pxeq-lit", s.lit.indexOf(id) >= 0);
+      e.classList.toggle("pxeq-past", s.past.indexOf(id) >= 0);
+    });
+    sentence.classList.toggle("pxeq-rest", s.rest);
+    draw(s);
+  }
+  function measure() {
+    const rr = wrap.getBoundingClientRect();
+    const w = wrap.offsetWidth;
+    if (!w || !rr.width) return null;
+    const sc = rr.width / w;
+    const box = (node) => {
+      let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+      const grow = (l, t, r, b) => {
+        if (r - l <= 0 || b - t <= 0) return;
+        L = Math.min(L, l);
+        T = Math.min(T, t);
+        R = Math.max(R, r);
+        B = Math.max(B, b);
+      };
+      const range = doc.createRange();
+      const walker = doc.createTreeWalker(node, 4);
+      while (walker.nextNode()) {
+        const n = walker.currentNode;
+        if (!n.nodeValue.trim()) continue;
+        range.selectNodeContents(n);
+        const rects = range.getClientRects();
+        for (let i = 0; i < rects.length; i++) {
+          const trim = (rects[i].bottom - rects[i].top) * 0.06;
+          grow(rects[i].left, rects[i].top + trim, rects[i].right, rects[i].bottom - trim);
+        }
+      }
+      node.querySelectorAll("svg, .frac-line, .rule, .overline-line, .underline-line, .hline").forEach((e) => {
+        const r = e.getBoundingClientRect();
+        const p = (e.tagName.toLowerCase() === "svg" && e.parentElement ? e.parentElement : e).getBoundingClientRect();
+        grow(Math.max(r.left, p.left), Math.max(r.top, p.top), Math.min(r.right, p.right), Math.min(r.bottom, p.bottom));
+      });
+      if (L === Infinity) return null;
+      return { left: (L - rr.left) / sc, top: (T - rr.top) / sc, right: (R - rr.left) / sc, bottom: (B - rr.top) / sc };
+    };
+    return { w, box };
+  }
+  const draw1 = (tag, attrs, css) => {
+    const e = doc.createElementNS(NS, tag);
+    Object.keys(attrs).forEach((k) => e.setAttribute(k, attrs[k]));
+    if (css) e.setAttribute("style", css);
+    svg.appendChild(e);
+    return e;
+  };
+  const bracePath = (x0, x1, y, d) => {
+    const xm = (x0 + x1) / 2, q = Math.min(labelSize * 0.6, (x1 - x0) / 4), h = d / 2;
+    return "M" + x0 + "," + y + " Q" + x0 + "," + (y + h) + " " + (x0 + q) + "," + (y + h) + " L" + (xm - q) + "," + (y + h) + " Q" + xm + "," + (y + h) + " " + xm + "," + (y + d) + " Q" + xm + "," + (y + h) + " " + (xm + q) + "," + (y + h) + " L" + (x1 - q) + "," + (y + h) + " Q" + x1 + "," + (y + h) + " " + x1 + "," + y;
+  };
+  const labelFor = (cls, t, compact, side) => {
+    if (!t.label && (compact || !t.note)) return null;
+    const d = make("div", cls + " pxeq-" + side + (compact ? " pxeq-compact" : ""));
+    d.style.setProperty("--tc", t.color);
+    if (t.label) {
+      const b = make("b");
+      b.textContent = t.label;
+      d.appendChild(b);
+    }
+    if (!compact && t.note) {
+      const n = make("span");
+      n.textContent = t.note;
+      d.appendChild(n);
+    }
+    annos.appendChild(d);
+    return d;
+  };
+  function draw(s) {
+    svg.textContent = "";
+    annos.textContent = "";
+    if (style === "sentence" || !s.anno.length) return;
+    const m = measure();
+    const html = math.querySelector(".katex-html");
+    const eq = m && html && m.box(html);
+    if (!eq) return;
+    const mid = (eq.top + eq.bottom) / 2, eqH = eq.bottom - eq.top;
+    const L = labelSize, gap = L * 0.6;
+    const items = [];
+    s.anno.forEach((id) => {
+      const boxes = termEls.filter((e) => e.getAttribute("data-term") === id).map(m.box).filter(Boolean);
+      if (!byId[id] || !boxes.length) return;
+      const first = boxes[0];
+      const side = (first.top + first.bottom) / 2 < mid - eqH * 0.12 ? "above" : "below";
+      items.push({ t: byId[id], boxes, side, cx: (first.left + first.right) / 2 });
+    });
+    const rows = { above: [], below: [] };
+    const row = (side, i) => rows[side][i] = rows[side][i] || { spans: [], posts: [] };
+    const covers = (l, r, x) => x > l - gap / 2 && x < r + gap / 2;
+    const place = (item, w) => {
+      const lo = w > m.w ? (m.w - w) / 2 : 0, hi = w > m.w ? (m.w - w) / 2 : m.w - w;
+      const want = Math.max(lo, Math.min(hi, item.cx - w / 2));
+      const others = items.filter((o) => o !== item && o.side === item.side).map((o) => o.cx);
+      const fits = (i2, l) => {
+        const r = row(item.side, i2);
+        if (!r.spans.every((sp) => l + w + gap <= sp[0] || l >= sp[1] + gap)) return false;
+        if (r.posts.some((x) => covers(l, l + w, x))) return false;
+        if (i2 === 0 && others.some((x) => covers(l, l + w, x))) return false;
+        for (let j = 0; j < i2; j++) if (row(item.side, j).spans.some((sp) => covers(sp[0], sp[1], item.cx))) return false;
+        return true;
+      };
+      const nudge = style === "callout" ? Math.min(w * 0.45, L * 5) : 0;
+      for (let i2 = 0; i2 < 6; i2++) {
+        let at = fits(i2, want) ? want : null;
+        if (at === null && nudge) {
+          const near = [];
+          row(item.side, i2).spans.forEach((sp) => near.push(sp[1] + gap, sp[0] - gap - w));
+          const ok = near.filter((l) => l >= lo && l <= hi && Math.abs(l - want) <= nudge && fits(i2, l));
+          if (ok.length) at = ok.sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
+        }
+        if (at !== null) {
+          row(item.side, i2).spans.push([at, at + w]);
+          for (let j = 0; j < i2; j++) row(item.side, j).posts.push(item.cx);
+          return { x: at, row: i2 };
+        }
+      }
+      const i = rows[item.side].length;
+      row(item.side, i).spans.push([want, want + w]);
+      return { x: want, row: i };
+    };
+    items.forEach((item) => {
+      const { t, boxes, side, cx } = item;
+      const dir = side === "below" ? 1 : -1;
+      if (style === "brace") {
+        const y0 = side === "below" ? eq.bottom + L * 0.45 : eq.top - L * 0.45;
+        const depth = L * 0.75 * dir;
+        boxes.forEach((b) => draw1("path", { class: "pxeq-brace", d: bracePath(b.left + 1, b.right - 1, y0, depth), pathLength: 1 }, "stroke:" + t.color));
+        const lab = labelFor("pxeq-label", t, s.compact, side);
+        if (!lab) return;
+        const w = lab.offsetWidth, h = lab.offsetHeight;
+        const at = place(item, w);
+        const tipY = y0 + depth;
+        const top = side === "below" ? tipY + L * 0.35 + at.row * L * 1.75 : tipY - L * 0.35 - h - at.row * L * 1.75;
+        lab.style.left = at.x + "px";
+        lab.style.top = top + "px";
+        if (at.row > 0) {
+          const edge = side === "below" ? top - 3 : top + h + 3;
+          draw1("path", { class: "pxeq-leader pxeq-tint", d: "M" + cx + "," + (tipY + 3 * dir) + " L" + cx + "," + edge }, "stroke:" + t.color);
+        }
+      } else {
+        const padX = fontSize * 0.07, padY = fontSize * 0.07;
+        boxes.forEach((b) => draw1("rect", {
+          class: "pxeq-tint",
+          x: b.left - padX,
+          y: b.top - padY,
+          width: b.right - b.left + 2 * padX,
+          height: b.bottom - b.top + 2 * padY,
+          rx: fontSize * 0.18
+        }, "fill:" + t.color + ";fill-opacity:.12;stroke:" + t.color + ";stroke-opacity:.55;stroke-width:1.5"));
+        const card = labelFor("pxeq-card", t, s.compact, side);
+        if (!card) return;
+        const w = card.offsetWidth, h = card.offsetHeight;
+        const at = place(item, w);
+        const out = s.compact ? L * 1.9 : L * 2.3;
+        const top = side === "below" ? eq.bottom + out + at.row * L * 2.4 : eq.top - out - h - at.row * L * 2.4;
+        card.style.left = at.x + "px";
+        card.style.top = top + "px";
+        const cardX = Math.max(at.x + L, Math.min(at.x + w - L, cx));
+        const cardEdge = side === "below" ? top : top + h;
+        boxes.forEach((b) => {
+          const ax = (b.left + b.right) / 2, ay = side === "below" ? b.bottom + padY : b.top - padY;
+          const midY = side === "below" ? Math.max(ay + L * 0.6, eq.bottom + L * 0.9) : Math.min(ay - L * 0.6, eq.top - L * 0.9);
+          draw1("path", { class: "pxeq-leader pxeq-tint", d: "M" + ax + "," + ay + " L" + ax + "," + midY + " L" + cardX + "," + midY + " L" + cardX + "," + cardEdge }, "stroke:" + t.color);
+          draw1("circle", { class: "pxeq-tint", cx: ax, cy: ay, r: L * 0.22 }, "fill:" + t.color);
+        });
+      }
+    });
+  }
+  let timer = 0;
+  const setHover = (id) => {
+    win.clearTimeout(timer);
+    if (hoverId === id) return;
+    hoverId = id;
+    apply();
+  };
+  const leave = () => {
+    win.clearTimeout(timer);
+    timer = win.setTimeout(() => setHover(null), 200);
+  };
+  const termAt = (target) => {
+    const t = target && target.closest ? target.closest("[data-term]") : null;
+    return t && wrap.contains(t) && byId[t.getAttribute("data-term")] ? t.getAttribute("data-term") : null;
+  };
+  const onOver = (e) => {
+    if (e.pointerType === "touch") return;
+    const id = termAt(e.target);
+    if (id) setHover(id);
+    else leave();
+  };
+  const onClick = (e) => {
+    const id = termAt(e.target);
+    const tap = e.pointerType === "touch" || e.pointerType === "pen";
+    if (id) setHover(tap && hoverId === id ? null : id);
+    else if (hoverId) setHover(null);
+  };
+  if (cfg.hover) {
+    wrap.addEventListener("pointerover", onOver);
+    wrap.addEventListener("pointerleave", leave);
+    wrap.addEventListener("click", onClick);
+  }
+  const redraw = () => apply(true);
+  const ro = win.ResizeObserver ? new win.ResizeObserver(redraw) : null;
+  if (ro) ro.observe(wrap);
+  const fonts = doc.fonts;
+  if (fonts && fonts.addEventListener) fonts.addEventListener("loadingdone", redraw);
+  apply(true);
+  return {
+    step(n) {
+      stepState = stateAt(n);
+      apply();
+    },
+    show(kind, index) {
+      stepState = kind === "term" ? { kind, index: index || 0 } : { kind };
+      apply();
+    },
+    focus(id) {
+      setHover(id && byId[id] ? id : null);
+    },
+    terms: order,
+    wrap,
+    math,
+    redraw,
+    // A node's box in the wrapper's own pixels, or null while it isn't shown
+    box(node) {
+      const m = measure();
+      return m && node ? m.box(node) : null;
+    },
+    destroy() {
+      win.clearTimeout(timer);
+      if (ro) ro.disconnect();
+      if (fonts && fonts.removeEventListener) fonts.removeEventListener("loadingdone", redraw);
+      root.textContent = "";
+    }
+  };
+}
+
+// client/src/utils/equationTerms.js
+var EQUATION_COLORS = {
+  dark: ["#5aa9ff", "#ff9a52", "#4cc36a", "#c58cff", "#f0c04b", "#ff7aa2"],
+  light: ["#1d6fd8", "#cc5410", "#12855a", "#8a3ec2", "#9f6600", "#c02a5c"]
+};
+var LABEL_STYLES = ["callout", "brace", "sentence"];
+var INTERACTIONS = ["steps", "hover", "both"];
+var MAX_TERMS = 40;
+var TERM_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
+var COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+var ARGS = {
+  frac: "mm",
+  dfrac: "mm",
+  tfrac: "mm",
+  cfrac: "mm",
+  binom: "mm",
+  dbinom: "mm",
+  tbinom: "mm",
+  sqrt: "om",
+  overset: "mm",
+  underset: "mm",
+  stackrel: "mm",
+  xrightarrow: "om",
+  xleftarrow: "om",
+  overbrace: "m",
+  underbrace: "m",
+  overline: "m",
+  underline: "m",
+  boxed: "m",
+  hat: "m",
+  widehat: "m",
+  tilde: "m",
+  widetilde: "m",
+  bar: "m",
+  vec: "m",
+  dot: "m",
+  ddot: "m",
+  dddot: "m",
+  check: "m",
+  breve: "m",
+  acute: "m",
+  grave: "m",
+  mathring: "m",
+  overrightarrow: "m",
+  overleftarrow: "m",
+  overleftrightarrow: "m",
+  underrightarrow: "m",
+  underleftarrow: "m",
+  cancel: "m",
+  bcancel: "m",
+  xcancel: "m",
+  sout: "m",
+  phantom: "m",
+  hphantom: "m",
+  vphantom: "m",
+  smash: "om",
+  mathrm: "m",
+  mathbf: "m",
+  mathit: "m",
+  mathsf: "m",
+  mathtt: "m",
+  mathcal: "m",
+  mathbb: "m",
+  mathfrak: "m",
+  mathscr: "m",
+  mathnormal: "m",
+  boldsymbol: "m",
+  bm: "m",
+  pmb: "m",
+  mathop: "m",
+  mathbin: "m",
+  mathrel: "m",
+  mathord: "m",
+  mathopen: "m",
+  mathclose: "m",
+  mathpunct: "m",
+  mathinner: "m",
+  text: "t",
+  textrm: "t",
+  textbf: "t",
+  textit: "t",
+  textsf: "t",
+  texttt: "t",
+  textnormal: "t",
+  textup: "t",
+  emph: "t",
+  mbox: "t",
+  hbox: "t",
+  operatorname: "t",
+  "operatorname*": "t",
+  tag: "t",
+  "tag*": "t",
+  label: "t",
+  color: "t",
+  textcolor: "tm",
+  colorbox: "tt",
+  fcolorbox: "ttt",
+  href: "tm",
+  url: "t",
+  htmlData: "tm",
+  htmlClass: "tm",
+  htmlId: "tm",
+  htmlStyle: "tm",
+  hspace: "t",
+  kern: "",
+  mkern: "",
+  mskip: "",
+  hskip: ""
+};
+var STRUCTURAL = /* @__PURE__ */ new Set(["over", "atop", "choose", "above", "brace", "brack", "\\", "cr", "newline", "right", "middle", "end", "hline", "hdashline", "nonumber", "notag"]);
+var OPERATORS = /* @__PURE__ */ new Set([
+  "sum",
+  "prod",
+  "coprod",
+  "int",
+  "iint",
+  "iiint",
+  "oint",
+  "oiint",
+  "bigcup",
+  "bigcap",
+  "bigvee",
+  "bigwedge",
+  "bigoplus",
+  "bigotimes",
+  "bigodot",
+  "biguplus",
+  "bigsqcup",
+  "lim",
+  "liminf",
+  "limsup",
+  "max",
+  "min",
+  "sup",
+  "inf",
+  "det",
+  "gcd",
+  "Pr",
+  "argmax",
+  "argmin",
+  "varlimsup",
+  "varliminf",
+  "injlim",
+  "projlim",
+  "overbrace",
+  "underbrace",
+  "overbracket",
+  "underbracket",
+  "operatorname*",
+  "mathop"
+]);
+var ENV_ARG = /* @__PURE__ */ new Set(["array", "darray", "subarray", "alignat", "alignat*", "alignedat"]);
+function tokenize(src) {
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "%") {
+      while (i < src.length && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === " " || c === "	" || c === "\n" || c === "\r") {
+      i++;
+      continue;
+    }
+    if (c === "\\") {
+      const word = /^[A-Za-z@]+\*?/.exec(src.slice(i + 1, i + 64));
+      if (word) {
+        out.push({ t: "cmd", name: word[0], start: i, end: i + 1 + word[0].length });
+        i += 1 + word[0].length;
+      } else if (i + 1 < src.length) {
+        out.push({ t: "cmd", name: src[i + 1], start: i, end: i + 2 });
+        i += 2;
+      } else {
+        out.push({ t: "char", start: i, end: i + 1 });
+        i++;
+      }
+      continue;
+    }
+    const len = src.codePointAt(i) > 65535 ? 2 : 1;
+    out.push({ t: "{}^_&[]".includes(c) ? c : "char", start: i, end: i + len });
+    i += len;
+  }
+  return out;
+}
+function parseLatex(src) {
+  src = String(src || "");
+  const toks = tokenize(src);
+  let p = 0;
+  const isCmd = (tok, ...names) => !!tok && tok.t === "cmd" && names.includes(tok.name);
+  const mkList = (atoms2, start, end, braced) => ({ start, end, braced, atoms: atoms2, parent: null });
+  const mk = (kind, start, end, lists, extra) => ({ kind, start, end, lists, wrap: true, parent: null, index: 0, ...extra });
+  function items(stop) {
+    const atoms2 = [];
+    while (p < toks.length && !stop(toks[p])) {
+      const a = atom();
+      if (a) atoms2.push(a);
+    }
+    return atoms2;
+  }
+  function group() {
+    const open = toks[p++];
+    const atoms2 = items((tok) => tok.t === "}");
+    const close = toks[p] && toks[p].t === "}" ? toks[p++] : null;
+    const innerEnd = close ? close.start : atoms2.length ? atoms2[atoms2.length - 1].end : open.end;
+    return { inner: mkList(atoms2, open.end, innerEnd, true), end: close ? close.end : innerEnd };
+  }
+  function skipArg() {
+    const tok = toks[p];
+    if (!tok) return src.length;
+    if (tok.t !== "{") {
+      p++;
+      return tok.end;
+    }
+    let depth = 0;
+    while (p < toks.length) {
+      const t = toks[p++];
+      if (t.t === "{") depth++;
+      else if (t.t === "}" && --depth === 0) return t.end;
+    }
+    return src.length;
+  }
+  function mathArg() {
+    const tok = toks[p];
+    if (!tok || tok.t === "}" || tok.t === "&") return null;
+    if (tok.t === "{") {
+      const g = group();
+      return { list: g.inner, end: g.end };
+    }
+    const a = base();
+    return a ? { list: mkList([a], a.start, a.end, false), end: a.end } : null;
+  }
+  function base() {
+    const tok = toks[p];
+    if (tok.t === "{") {
+      const g = group();
+      return mk("group", tok.start, g.end, [g.inner]);
+    }
+    if (tok.t === "cmd") return command();
+    p++;
+    return mk("char", tok.start, tok.end, [], { wrap: tok.t !== "&" && tok.t !== "}" });
+  }
+  function atom() {
+    const tok = toks[p];
+    if (tok.t === "}") {
+      p++;
+      return null;
+    }
+    const b = tok.t === "^" || tok.t === "_" ? null : base();
+    if (b && !b.wrap) return b;
+    const scripts = [];
+    let end = b ? b.end : tok.start, any = false;
+    while (p < toks.length) {
+      const t = toks[p];
+      if (isCmd(t, "limits", "nolimits")) {
+        end = t.end;
+        p++;
+        continue;
+      }
+      if (t.t === "char" && src[t.start] === "'") {
+        end = t.end;
+        p++;
+        any = true;
+        continue;
+      }
+      if (t.t !== "^" && t.t !== "_") break;
+      p++;
+      any = true;
+      const arg = mathArg();
+      if (!arg) {
+        end = t.end;
+        continue;
+      }
+      scripts.push(arg.list);
+      end = arg.end;
+    }
+    if (!any) return b;
+    const lists = [];
+    if (b) {
+      if (b.kind === "cmd" && OPERATORS.has(b.name)) lists.push(...b.lists);
+      else lists.push(mkList([b], b.start, b.end, false));
+    }
+    lists.push(...scripts);
+    return mk("scripts", b ? b.start : tok.start, end, lists);
+  }
+  function command() {
+    const tok = toks[p++];
+    const name = tok.name;
+    if (name === "left") return leftRight(tok);
+    if (name === "begin") return environment(tok);
+    if (name === "term") return term(tok);
+    if (STRUCTURAL.has(name)) {
+      let end2 = tok.end;
+      if (name === "middle" || name === "right") {
+        const d = toks[p];
+        if (d) {
+          p++;
+          end2 = d.end;
+        }
+      }
+      if (name === "\\" && toks[p] && toks[p].t === "[") {
+        p++;
+        items((t) => t.t === "]");
+        if (toks[p]) end2 = toks[p++].end;
+      }
+      return mk("cmd", tok.start, end2, [], { name, wrap: false });
+    }
+    const lists = [];
+    let end = tok.end;
+    const spec = ARGS[name];
+    if (spec === void 0) {
+      while (toks[p] && toks[p].t === "{" && toks[p].start === end) {
+        const g = group();
+        lists.push(g.inner);
+        end = g.end;
+      }
+    } else {
+      for (const kind of spec) {
+        const t = toks[p];
+        if (!t) break;
+        if (kind === "o") {
+          if (t.t !== "[") continue;
+          p++;
+          const atoms2 = items((x) => x.t === "]");
+          const close = toks[p] && toks[p].t === "]" ? toks[p++] : null;
+          lists.push(mkList(atoms2, t.end, close ? close.start : end, true));
+          end = close ? close.end : atoms2.length ? atoms2[atoms2.length - 1].end : t.end;
+        } else if (kind === "t") {
+          end = skipArg();
+        } else {
+          const arg = mathArg();
+          if (!arg) break;
+          lists.push(arg.list);
+          end = arg.end;
+        }
+      }
+    }
+    return mk("cmd", tok.start, end, lists, { name });
+  }
+  function leftRight(tok) {
+    let end = tok.end;
+    if (toks[p]) end = toks[p++].end;
+    const open = end;
+    const atoms2 = items((t) => isCmd(t, "right"));
+    const close = toks[p] ? toks[p].start : src.length;
+    if (isCmd(toks[p], "right")) {
+      end = toks[p++].end;
+      if (toks[p]) end = toks[p++].end;
+    } else if (atoms2.length) end = atoms2[atoms2.length - 1].end;
+    return mk("leftright", tok.start, end, [mkList(atoms2, open, close, true)]);
+  }
+  function environment(tok) {
+    const nameTok = toks[p];
+    let end = skipArg();
+    const env = nameTok && nameTok.t === "{" ? src.slice(nameTok.end, end - 1).trim() : "";
+    if (ENV_ARG.has(env)) end = skipArg();
+    const cells = [];
+    for (; ; ) {
+      const from = toks[p] ? toks[p].start : src.length;
+      const atoms2 = items((t2) => t2.t === "&" || isCmd(t2, "\\", "cr", "end", "hline", "hdashline"));
+      const t = toks[p];
+      cells.push(mkList(atoms2, from, t ? t.start : src.length, true));
+      if (!t) break;
+      p++;
+      if (isCmd(t, "end")) {
+        end = skipArg();
+        break;
+      }
+      if (isCmd(t, "\\") && toks[p] && toks[p].t === "[") {
+        p++;
+        items((x) => x.t === "]");
+        if (toks[p]) p++;
+      }
+    }
+    return mk("env", tok.start, end, cells, { name: env });
+  }
+  function term(tok) {
+    let id = "", end = tok.end;
+    if (toks[p] && toks[p].t === "{") {
+      const from = toks[p].end;
+      end = skipArg();
+      id = src.slice(from, end - 1).trim();
+    }
+    const arg = mathArg();
+    if (!arg) return mk("cmd", tok.start, end, [], { name: "term", wrap: false, term: id });
+    return mk("term", tok.start, arg.end, [arg.list], { term: id, body: arg.list });
+  }
+  const root = mkList(items(() => false), 0, src.length, true);
+  const atoms = [];
+  const link = (list, parent2) => {
+    list.parent = parent2;
+    list.atoms.forEach((a, i) => {
+      a.parent = list;
+      a.index = i;
+      atoms.push(a);
+      a.lists.forEach((l) => link(l, a));
+    });
+  };
+  link(root, null);
+  return { src, root, atoms };
+}
+function termAtoms(tree) {
+  return tree.atoms.filter((a) => a.kind === "term").sort((a, b) => a.start - b.start);
+}
+function termIdsIn(latex) {
+  const ids = [];
+  for (const a of termAtoms(parseLatex(latex))) if (TERM_ID.test(a.term) && !ids.includes(a.term)) ids.push(a.term);
+  return ids;
+}
+var int = (v, min, max, dflt) => Number.isInteger(+v) && +v >= min && +v <= max ? +v : dflt;
+var num2 = (v, min, max, dflt) => typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : dflt;
+var str = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
+var isDark = (hex) => {
+  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d) => d + d) : hex;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+};
+function equationConfig(el) {
+  const latex = str(el?.latex, 2e4);
+  const ids = termIdsIn(latex);
+  const textColor = typeof el?.textColor === "string" && COLOR.test(el.textColor) ? el.textColor : null;
+  const palette = EQUATION_COLORS[textColor && isDark(textColor) ? "light" : "dark"];
+  const given = Array.isArray(el?.terms) ? el.terms : [];
+  const terms = [];
+  for (const t of given) {
+    if (!t || !ids.includes(t.id) || terms.some((u) => u.id === t.id)) continue;
+    terms.push({ id: t.id, label: str(t.label, 200), note: str(t.note, 500), color: COLOR.test(t.color || "") ? t.color : null });
+  }
+  for (const id of ids) if (!terms.some((t) => t.id === id)) terms.push({ id, label: "", note: "", color: null });
+  terms.splice(MAX_TERMS);
+  terms.forEach((t, i) => {
+    if (!t.color) t.color = palette[i % palette.length];
+  });
+  return {
+    latex,
+    terms,
+    labelStyle: LABEL_STYLES.includes(el?.labelStyle) ? el.labelStyle : "callout",
+    sentence: str(el?.sentence, 2e3),
+    interaction: INTERACTIONS.includes(el?.interaction) ? el.interaction : "steps",
+    stepStart: int(el?.stepStart, 1, 1e3, 1),
+    showAll: el?.showAll !== false,
+    keepTinted: !!el?.keepTinted,
+    fontSize: num2(el?.fontSize, 8, 200, 44),
+    labelSize: num2(el?.labelSize, 6, 120, 18),
+    textColor
+  };
+}
+function equationSteps(el) {
+  if (el?.type !== "equation") return [];
+  const cfg = equationConfig(el);
+  if (cfg.interaction === "hover") return [];
+  const steps = cfg.terms.map((t, i) => [cfg.stepStart + i, i]);
+  if (steps.length && cfg.showAll) steps.push([cfg.stepStart + steps.length, "all"]);
+  return steps.filter(([n]) => n <= 1e3);
+}
+function equationStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n] of equationSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-eq-step="${id}" data-eq-step-at="${n}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasEquations(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "equation"));
+}
+function equationConfigAttr(el, extra = {}) {
+  return JSON.stringify({ ...equationConfig(el), ...extra }).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+var runtimeCode = null;
+function runtimeSource() {
+  if (!runtimeCode) runtimeCode = `(${equationRuntime.toString()})`.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "< !--");
+  return runtimeCode;
+}
+function equationDeckScript() {
+  return `
+    (function() {
+      var run = ${runtimeSource()};
+      var items = [];
+      document.querySelectorAll('[data-eq-config]').forEach(function(el) {
+        try {
+          var cfg = JSON.parse(el.getAttribute('data-eq-config'));
+          cfg.hover = cfg.interaction !== 'steps';
+          items.push({ el: el, id: el.getAttribute('data-eq'), eq: run(el, cfg, window.katex) });
+        } catch (e) {}
+      });
+      function stepOf(item) {
+        var slide = item.el.closest('section'), n = 0;
+        if (!slide) return 0;
+        slide.querySelectorAll('.fragment[data-eq-step]').forEach(function(m) {
+          if (m.getAttribute('data-eq-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-eq-step-at') || 0);
+        });
+        return n;
+      }
+      function sync() { items.forEach(function(item) { item.eq.step(stepOf(item)); }); }
+      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
+    })();
+`;
+}
+
 // client/src/utils/tikzDiagram.js
 function sanitizeSvg(svg) {
   if (typeof svg !== "string") return "";
@@ -2376,7 +3282,7 @@ var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
 var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num2 = (key) => {
+  const num3 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
@@ -2384,14 +3290,14 @@ function text3dSettings(el, fallbackFont) {
   const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num2("depth"),
-    rotateX: num2("rotateX"),
-    rotateY: num2("rotateY"),
-    perspective: num2("perspective"),
-    fontSize: num2("fontSize"),
-    letterSpacing: num2("letterSpacing"),
-    lineHeight: num2("lineHeight"),
-    sideShade: num2("sideShade"),
+    depth: num3("depth"),
+    rotateX: num3("rotateX"),
+    rotateY: num3("rotateY"),
+    perspective: num3("perspective"),
+    fontSize: num3("fontSize"),
+    letterSpacing: num3("letterSpacing"),
+    lineHeight: num3("lineHeight"),
+    sideShade: num3("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -3101,9 +4007,9 @@ var STATE_EASINGS = {
 var DEFAULT_STATE_DURATION = 400;
 var SET_MODES = ["set", "toggle", "cycle"];
 var SAFE_ID = /^[A-Za-z0-9_-]+$/;
-var COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
+var COLOR2 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
 var clamp = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
-var color = (v) => typeof v === "string" && COLOR.test(v.trim()) ? v.trim() : null;
+var color = (v) => typeof v === "string" && COLOR2.test(v.trim()) ? v.trim() : null;
 var flip = (v) => v === true || v === 180 ? 180 : v === -180 ? -180 : 0;
 function elementStates(el) {
   if (typeof el?.id !== "string" || !SAFE_ID.test(el.id) || !Array.isArray(el.states)) return [];
@@ -3931,6 +4837,10 @@ ${content}
         const escaped = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`;
       }
+      if (el.type === "equation") {
+        const eqId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`;
+      }
       if (el.type === "video") {
         const src = absoluteSrc(sanitizeUrl(el.src));
         const attrs = [];
@@ -4101,7 +5011,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -4462,7 +5372,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -4680,8 +5590,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str2) {
+  return String(str2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>

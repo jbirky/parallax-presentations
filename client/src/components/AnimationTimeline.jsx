@@ -46,6 +46,7 @@ function getElementLabel(el) {
   if (el.type === 'video') return 'Video'
   if (el.type === 'model') return el.name || '3D Model'
   if (el.type === 'graph') return 'Graph'
+  if (el.type === 'equation') return 'Equation'
   if (el.type === 'audio') return 'Audio'
   if (el.type === 'table') return 'Table'
   return el.type

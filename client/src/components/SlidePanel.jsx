@@ -13,6 +13,7 @@ import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
 import { getCanvasHeight, getCanvasWidth } from '../utils/scrollingSlides'
 import { modelSnapshotContent } from '../utils/modelViewer'
 import { graphSnapshotContent } from '../utils/graphPage'
+import EquationView from './EquationView'
 
 const THUMB_W = 150
 
@@ -48,7 +49,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
-              overflow: el.type === 'text3d' ? 'visible' : 'hidden',
+              overflow: el.type === 'text3d' || el.type === 'equation' ? 'visible' : 'hidden',
               zIndex: el.zIndex || 1,
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
               boxShadow: el.type !== 'text3d' && (el.shadowBlur || el.shadowX || el.shadowY)
@@ -100,6 +101,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
               {el.type === 'text3d' && (
                 <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(el, { fontFamily: globalFont, resolution: 1 })) }} />
               )}
+              {el.type === 'equation' && <EquationView element={el} />}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
                   {(el.paths || []).map((path, pi) => (

@@ -222,7 +222,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -1422,6 +1422,65 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
                 When presenting: drag to move around, scroll to zoom, hover a curve to read its values.
               </div>
+            </div>
+          )}
+
+          {selectedElement.type === 'equation' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditEquation?.()}>
+                Edit Equation…
+              </button>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Labels</div>
+                <div role="group" aria-label="Label style" style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+                  {[['callout', 'Callout'], ['brace', 'Brace'], ['sentence', 'Sentence']].map(([v, label]) => {
+                    const on = (selectedElement.labelStyle || 'callout') === v
+                    return (
+                      <button key={v} type="button" aria-pressed={on} onClick={() => onUpdateElement({ labelStyle: v })}
+                        style={{ flex: 1, border: 'none', borderRadius: 4, padding: '4px 6px', fontSize: 11, cursor: 'pointer', background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-secondary)' }}>
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>When presenting</div>
+                <select className="prop-input" value={selectedElement.interaction || 'steps'} onChange={e => onUpdateElement({ interaction: e.target.value })} style={{ width: '100%', fontSize: 11 }}>
+                  <option value="steps">One term per step</option>
+                  <option value="hover">Term under the pointer</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+              {selectedElement.interaction !== 'hover' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First term at step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Size</div>
+                  <input className="prop-input" type="number" min={8} max={200} step={1}
+                    value={selectedElement.fontSize || 44}
+                    onChange={e => onUpdateElement({ fontSize: Number(e.target.value) || 44 })}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Labels</div>
+                  <input className="prop-input" type="number" min={6} max={120} step={1}
+                    value={selectedElement.labelSize || 18}
+                    onChange={e => onUpdateElement({ labelSize: Number(e.target.value) || 18 })}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+                <input type="color" value={selectedElement.textColor || '#ffffff'} title="Text color"
+                  onChange={e => onUpdateElement({ textColor: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows every term labeled. Double-click to edit the terms.</p>
             </div>
           )}
 

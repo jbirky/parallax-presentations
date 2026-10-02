@@ -44,6 +44,8 @@ import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
 import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
+import EquationEditorModal from '../components/EquationEditorModal'
+import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -405,6 +407,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showDiagramModal, setShowDiagramModal] = useState(false)
   const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
   const [graphEditor, setGraphEditor] = useState(null) // { elementId (null for a new graph), graph, size, slideBg }
+  const [equationEditor, setEquationEditor] = useState(null) // { elementId (null for a new one), equation, size, slideBg, dark }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -693,7 +696,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1367,6 +1370,37 @@ function draw() {
     }
     setGraphEditor(null)
   }, [graphEditor, updateElement, slideW, slideH])
+
+  const addEquation = useCallback(() => {
+    setEquationEditor({ elementId: null, equation: defaultEquation(slideIsDark()), size: EQUATION_SIZE, slideBg: slideBackdrop(), dark: slideIsDark() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openEquationEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'equation' || heldByOther(elementId)) return
+    const equation = {}
+    for (const key of EQUATION_FIELDS) if (element[key] !== undefined) equation[key] = element[key]
+    setEquationEditor({ elementId, equation, size: { w: element.width, h: element.height }, slideBg: slideBackdrop(), dark: slideIsDark() })
+  }, [presentation, slideBackdrop, slideIsDark])
+
+  const saveEquation = useCallback((equation, size) => {
+    const elementId = equationEditor?.elementId
+    const w = Math.round(size?.w || EQUATION_SIZE.w), h = Math.round(size?.h || EQUATION_SIZE.h)
+    if (elementId) {
+      updateElement(elementId, { ...equation, width: w, height: h })
+    } else {
+      const newEl = {
+        id: crypto.randomUUID(), type: 'equation', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...equation,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setEquationEditor(null)
+  }, [equationEditor, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -3848,6 +3882,7 @@ function draw() {
             onAddP5={addP5Element}
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
+            onAddEquation={addEquation}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
@@ -4054,6 +4089,7 @@ function draw() {
               onOpenLatexEditor={openLatexEditor}
               onOpenTikzEditor={openTikzEditor}
               onOpenGraphEditor={openGraphEditor}
+              onOpenEquationEditor={openEquationEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4092,6 +4128,7 @@ function draw() {
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
           onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
           onEditGraph={() => selectedElementId && openGraphEditor(selectedElementId)}
+          onEditEquation={() => selectedElementId && openEquationEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4453,6 +4490,18 @@ function draw() {
           isNew={!graphEditor.elementId}
           onSave={saveGraph}
           onClose={() => setGraphEditor(null)}
+        />
+      )}
+
+      {equationEditor && (
+        <EquationEditorModal
+          initial={equationEditor.equation}
+          size={equationEditor.size}
+          slideBg={equationEditor.slideBg}
+          dark={equationEditor.dark}
+          isNew={!equationEditor.elementId}
+          onSave={saveEquation}
+          onClose={() => setEquationEditor(null)}
         />
       )}
 

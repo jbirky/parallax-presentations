@@ -60,6 +60,7 @@ export default defineConfig({
             { text: 'Citations & Bibliography', link: '/tutorials/citations' },
             { text: 'Diagram Editor', link: '/tutorials/diagrams' },
             { text: 'Equation Palette', link: '/tutorials/equation-palette' },
+            { text: 'Interactive Equations', link: '/tutorials/interactive-equations' },
           ]
         },
         {
