@@ -84,12 +84,32 @@ function cleanLatex(str) {
     .trim()
 }
 
+// The names in an author list, split at each " and " outside braces, so an
+// organisation's braced name stays whole however it reads
+function splitNames(str) {
+  const names = []
+  let depth = 0, from = 0
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '{') depth++
+    else if (str[i] === '}') depth = Math.max(0, depth - 1)
+    else if (depth === 0 && str[i] === ' ' && str.slice(i, i + 5).toLowerCase() === ' and ') {
+      names.push(str.slice(from, i))
+      from = i + 5
+      i += 4
+    }
+  }
+  names.push(str.slice(from))
+  return names
+}
+
 export function parseAuthors(authorStr) {
   if (!authorStr) return []
-  // Spaces squeezed first: /\s+and\s+/ on a long run of spaces takes
-  // time in its square, and author lists come from anyone's .bib
-  return authorStr.replace(/\s+/g, ' ').split(/ and /i).map(a => {
+  // Spaces squeezed first: author lists come from anyone's .bib
+  return splitNames(authorStr.replace(/\s+/g, ' ')).map(a => {
     a = a.trim()
+    // An organisation, in braces as BibTeX writes one: {Planck Collaboration}
+    if (/^\{[^{}]*\}$/.test(a)) return { first: '', last: a.slice(1, -1).trim() }
+    a = a.replace(/[{}]/g, '')
     if (a.includes(',')) {
       const [last, first] = a.split(',').map(s => s.trim())
       return { first, last }
@@ -138,6 +158,14 @@ export function getReferencedEntries(bibliography, slides) {
     if (entry.key && allText.includes(entry.key)) return true
     return false
   })
+}
+
+// A reference's web link, for one with no DOI (a PubChem record), named by
+// its site: { href, site }
+export function webLink(url) {
+  const href = String(url || '').trim()
+  if (!/^https?:\/\//i.test(href)) return null
+  try { return { href, site: new URL(href).hostname.replace(/^www\./, '') } } catch { return null }
 }
 
 export function formatReference(entry, index) {

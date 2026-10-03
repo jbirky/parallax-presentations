@@ -87,3 +87,50 @@ describe('citations in a PDF', () => {
     expect(page).toContain(CITATION_CSS)
   })
 })
+
+describe('a PubChem citation under a molecule', () => {
+  const pubchem = {
+    key: 'pubchem-cid-2519', type: 'misc', author: '{National Center for Biotechnology Information}',
+    title: 'PubChem Compound Summary for CID 2519, Caffeine', year: '2026', urldate: '2026-10-03',
+    url: 'https://pubchem.ncbi.nlm.nih.gov/compound/2519#section=3D-Conformer',
+  }
+  const molecule = (extra = {}) => ({
+    id: 'mol', type: 'molecule', x: 100, y: 100, width: 300, height: 260, zIndex: 1, src: '/uploads/p/caffeine.sdf', format: 'sdf', name: 'Caffeine',
+    source: { db: 'pubchem', id: '2519' }, citationText: 'PubChem CID 2519', citationLink: pubchem.url, citationKey: pubchem.key, ...extra,
+  })
+  const withMolecule = el => deck({ bibliography: [smith, pubchem], slides: [{ id: 's1', elements: [el] }] })
+
+  it('captions it, linked to the record, outside its box', () => {
+    const box = parse(generateRevealHTML(withMolecule(molecule()))).querySelector('section[data-slide-id="s1"] iframe[title="Caffeine"]').parentElement
+    expect(box.getAttribute('style')).toContain('overflow:visible;')
+    const link = box.querySelector('.image-caption a')
+    expect(link.textContent).toBe('PubChem CID 2519')
+    expect(link.getAttribute('href')).toBe(pubchem.url)
+  })
+
+  it('or numbers it, with the slide’s side references', () => {
+    const doc = parse(generateRevealHTML(withMolecule(molecule({ citationMode: 'side' }))))
+    const section = doc.querySelector('section[data-slide-id="s1"]')
+    expect(section.querySelector('iframe[title="Caffeine"]').parentElement.querySelector('.cite-sup').textContent).toBe('1')
+    expect(section.querySelector('.slide-citations-text').textContent).toBe('1. PubChem CID 2519')
+    expect(section.querySelector('.image-caption')).toBe(null)
+  })
+
+  it('lists the record on the references slide, with NCBI as author and a link to it', () => {
+    const doc = parse(generateRevealHTML(withMolecule(molecule())))
+    expect(references(doc)).toEqual(['[1]National Center for Biotechnology Information (2026). PubChem Compound Summary for CID 2519, Caffeine. pubchem.ncbi.nlm.nih.gov'])
+    const link = doc.querySelector('section[data-slide-id="references"] a')
+    expect(link.getAttribute('href')).toBe(pubchem.url)
+  })
+
+  it('draws a molecule without a citation as before', () => {
+    const box = parse(generateRevealHTML(withMolecule(molecule({ citationText: null, citationLink: null })))).querySelector('iframe[title="Caffeine"]').parentElement
+    expect(box.getAttribute('style')).toContain('overflow:hidden;')
+    expect(box.children).toHaveLength(1)
+  })
+
+  it('won’t link a side reference to a script', () => {
+    const html = generateRevealHTML(withMolecule(molecule({ citationMode: 'side', citationLink: 'javascript:alert(1)' })))
+    expect(html).not.toContain('javascript:alert(1)')
+  })
+})

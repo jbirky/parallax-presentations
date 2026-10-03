@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fetchPubChem, fetchPdb, readStructureFile, structureTitle, isPdbId, sourceLabel, sourceUrl } from './moleculeSources'
+import { fetchPubChem, fetchPdb, readStructureFile, structureTitle, isPdbId, sourceLabel, sourceUrl, pubchemCitation, pubchemCaption, fetchPubChemCitation } from './moleculeSources'
 
 // A fetch that answers from a table of URL → [status, body]
 function fakeFetch(table) {
@@ -110,5 +110,47 @@ describe('molecule sources', () => {
     expect(sourceUrl({ db: 'pdb', id: '1UBQ' })).toBe('https://www.rcsb.org/structure/1UBQ')
     expect(sourceLabel(null)).toBe('')
     expect(sourceUrl(undefined)).toBe('')
+  })
+})
+
+describe('a PubChem compound’s citation', () => {
+  const on = new Date(2026, 9, 3)
+
+  it('is the one PubChem’s Cite button gives, as a library entry', () => {
+    expect(pubchemCitation('2519', 'Caffeine', on)).toEqual({
+      type: 'misc', key: 'pubchem-cid-2519',
+      author: '{National Center for Biotechnology Information}',
+      title: 'PubChem Compound Summary for CID 2519, Caffeine',
+      year: '2026', urldate: '2026-10-03',
+      url: 'https://pubchem.ncbi.nlm.nih.gov/compound/2519#section=3D-Conformer',
+    })
+  })
+
+  it('leaves out a title PubChem would: over 100 characters, or none', () => {
+    expect(pubchemCitation('99999999', 'methyl'.repeat(20), on).title).toBe('PubChem Compound Summary for CID 99999999')
+    expect(pubchemCitation('200000000', undefined, on).title).toBe('PubChem Compound Summary for CID 200000000')
+  })
+
+  it('credits the compound under the molecule, linked to its 3D conformer', () => {
+    expect(pubchemCaption('2519')).toEqual({
+      citationText: 'PubChem CID 2519',
+      citationLink: 'https://pubchem.ncbi.nlm.nih.gov/compound/2519#section=3D-Conformer',
+    })
+  })
+
+  it('fetches the title the record has now', async () => {
+    const fetch = fakeFetch({ [`${PUG}/cid/2519/property/Title/JSON`]: [200, { PropertyTable: { Properties: [{ CID: 2519, Title: 'Caffeine' }] } }] })
+    expect(await fetchPubChemCitation('2519', fetch, on)).toEqual(pubchemCitation('2519', 'Caffeine', on))
+  })
+
+  it('says why it couldn’t', async () => {
+    await expect(fetchPubChemCitation('', fakeFetch({}))).rejects.toThrow('This molecule has no PubChem CID to cite.')
+    await expect(fetchPubChemCitation('25/../19', fakeFetch({}))).rejects.toThrow('This molecule has no PubChem CID to cite.')
+    const bad = fakeFetch({ [`${PUG}/cid/999999999999/property/Title/JSON`]: [400, { Fault: { Code: 'PUGREST.BadRequest' } }] })
+    await expect(fetchPubChemCitation('999999999999', bad)).rejects.toThrow('PubChem has no compound with CID 999999999999.')
+    const down = fakeFetch({ [`${PUG}/cid/2519/property/Title/JSON`]: [503, 'busy'] })
+    await expect(fetchPubChemCitation('2519', down)).rejects.toThrow('PubChem couldn’t look that up (503). Try again in a moment.')
+    const offline = fakeFetch({ [`${PUG}/cid/2519/property/Title/JSON`]: new TypeError('Failed to fetch') })
+    await expect(fetchPubChemCitation('2519', offline)).rejects.toThrow(/Couldn’t reach PubChem/)
   })
 })

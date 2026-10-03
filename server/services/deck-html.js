@@ -175,10 +175,27 @@ function pointsToPath(points, smooth = true) {
 }
 
 // client/src/utils/bibtexParser.js
+function splitNames(str6) {
+  const names = [];
+  let depth = 0, from = 0;
+  for (let i = 0; i < str6.length; i++) {
+    if (str6[i] === "{") depth++;
+    else if (str6[i] === "}") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && str6[i] === " " && str6.slice(i, i + 5).toLowerCase() === " and ") {
+      names.push(str6.slice(from, i));
+      from = i + 5;
+      i += 4;
+    }
+  }
+  names.push(str6.slice(from));
+  return names;
+}
 function parseAuthors(authorStr) {
   if (!authorStr) return [];
-  return authorStr.replace(/\s+/g, " ").split(/ and /i).map((a) => {
+  return splitNames(authorStr.replace(/\s+/g, " ")).map((a) => {
     a = a.trim();
+    if (/^\{[^{}]*\}$/.test(a)) return { first: "", last: a.slice(1, -1).trim() };
+    a = a.replace(/[{}]/g, "");
     if (a.includes(",")) {
       const [last, first] = a.split(",").map((s) => s.trim());
       return { first, last };
@@ -201,6 +218,15 @@ function formatCitation(entry, style, index) {
     return `(${formatAuthorsShort(authors)}, ${year})`;
   }
   return `[${index + 1}]`;
+}
+function webLink(url) {
+  const href = String(url || "").trim();
+  if (!/^https?:\/\//i.test(href)) return null;
+  try {
+    return { href, site: new URL(href).hostname.replace(/^www\./, "") };
+  } catch {
+    return null;
+  }
 }
 
 // client/src/utils/citationIndex.js
@@ -309,18 +335,21 @@ function findCitations(text, bibliography = []) {
   return hits.sort((a, b) => a.pos - b.pos);
 }
 function citedKeysInPresentationOrder(bibliography, slides) {
+  const known = new Set(bibliography.map((e) => e.key));
   const seen = /* @__PURE__ */ new Set();
   const keys = [];
+  const cite = (key) => {
+    if (!seen.has(key)) {
+      seen.add(key);
+      keys.push(key);
+    }
+  };
   for (const slide of slides || []) {
     const elements = [...slide.elements || []].sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
     for (const el of elements) {
       const text = [el.content, el.citationText].filter(Boolean).join("\n");
-      for (const { key } of findCitations(text, bibliography)) {
-        if (!seen.has(key)) {
-          seen.add(key);
-          keys.push(key);
-        }
-      }
+      for (const { key } of findCitations(text, bibliography)) cite(key);
+      if ((el.citationText || el.citationLink) && known.has(el.citationKey)) cite(el.citationKey);
     }
   }
   return keys;
@@ -7470,6 +7499,21 @@ function sanitizeUrl(url) {
   if (/^data:/i.test(trimmed) && !/^data:(image|video|audio)\//i.test(trimmed)) return "";
   return sanitizeAttr(trimmed);
 }
+var CITABLE_TYPES = ["image", "molecule"];
+function citationParts(el, sideCitations) {
+  const hasCite = el.citationText || el.citationLink;
+  const citeCaption = !!hasCite && (el.citationMode || "caption") === "caption";
+  let capHtml = "";
+  if (citeCaption) {
+    const align = cssValue(el.citationAlign) || "left";
+    const ct = (el.citationText || el.citationLink || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const cc = el.citationColor ? `color:${cssValue(el.citationColor)};` : "";
+    capHtml = el.citationLink ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${sanitizeUrl(el.citationLink)}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>` : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`;
+  }
+  const sIdx = hasCite && el.citationMode === "side" ? sideCitations.findIndex((c) => c.id === el.id) : -1;
+  const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : "";
+  return { citeCaption, capHtml, sup };
+}
 function cssValue(val) {
   if (val == null) return "";
   return String(val).replace(/[<>"`;{}\\\r\n]/g, "");
@@ -7530,7 +7574,7 @@ function referencesHtml(citations, markerColor) {
     const pages = entry.pages || "";
     const doi = entry.doi || "";
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
-    line += `${escapeHtml(entry.author || "")}`;
+    line += `${escapeHtml(String(entry.author || "").replace(/[{}]/g, ""))}`;
     if (year) line += ` (${escapeHtml(year)})`;
     line += `. ${escapeHtml(entry.title || "")}.`;
     if (journal) line += ` <em>${escapeHtml(journal)}</em>`;
@@ -7538,6 +7582,7 @@ function referencesHtml(citations, markerColor) {
     if (pages) line += `, ${escapeHtml(pages)}`;
     if (journal || vol || pages) line += ".";
     if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`;
+    else if (webLink(entry.url)) line += ` <a href="${sanitizeUrl(webLink(entry.url).href)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">${escapeHtml(webLink(entry.url).site)}</a>`;
     return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`;
   }).join("\n          ");
   return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
@@ -7586,7 +7631,7 @@ function generateRevealHTML(presentation, opts = {}) {
   presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background);
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : "";
-    const sideCitations = (slide.elements || []).filter((el) => el.type === "image" && (el.citationText || el.citationLink) && el.citationMode === "side").map((el) => ({ id: el.id, text: el.citationText, link: el.citationLink }));
+    const sideCitations = (slide.elements || []).filter((el) => CITABLE_TYPES.includes(el.type) && (el.citationText || el.citationLink) && el.citationMode === "side").map((el) => ({ id: el.id, text: el.citationText, link: el.citationLink }));
     const clickTargets = visibilityTargets(slide);
     const canvasH = getCanvasHeight(slide, slideH);
     const canvasW = getCanvasWidth(slide, slideW, slideH);
@@ -7619,19 +7664,8 @@ function generateRevealHTML(presentation, opts = {}) {
         const expandAttr = el.clickToExpand ? ' data-expand="true"' : "";
         const popupAttr = el.popupText ? ` data-popup="${el.popupText.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}" data-popup-pos="${el.popupPosition || "below"}" data-popup-fs="${el.popupFontSize || 15}"` : "";
         const interactiveCursor = el.clickToExpand || el.popupText ? "cursor:pointer;" : "";
-        const hasCite = el.citationText || el.citationLink;
-        const citeCaption = hasCite && (el.citationMode || "caption") === "caption";
-        const citeSide = hasCite && el.citationMode === "side";
+        const { citeCaption, capHtml, sup } = citationParts(el, sideCitations);
         const cStyle = citeCaption ? style.replace("overflow:hidden;", "overflow:visible;") : style;
-        let capHtml = "";
-        if (citeCaption) {
-          const align = cssValue(el.citationAlign) || "left";
-          const ct = (el.citationText || el.citationLink || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-          const cc = el.citationColor ? `color:${cssValue(el.citationColor)};` : "";
-          capHtml = el.citationLink ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${sanitizeUrl(el.citationLink)}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>` : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`;
-        }
-        const sIdx = citeSide ? sideCitations.findIndex((c) => c.id === el.id) : -1;
-        const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : "";
         const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : "";
         const clipClose = citeCaption ? "</div>" : "";
         if (el.imageW != null) {
@@ -7681,7 +7715,9 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "molecule") {
         const srcdoc = moleculeViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe></div>`;
+        const { citeCaption, capHtml, sup } = citationParts(el, sideCitations);
+        const mStyle = citeCaption ? style.replace("overflow:hidden;", "overflow:visible;") : style;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
         const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries3.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
@@ -7941,7 +7977,7 @@ ${content}
     if (sideCitations.length > 0) {
       const items = sideCitations.map((c, i) => {
         const t = (c.text || c.link || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const content = c.link ? `<a href="${c.link.replace(/"/g, "&quot;")}" target="_blank" rel="noopener">${t}</a>` : t;
+        const content = c.link ? `<a href="${sanitizeUrl(c.link)}" target="_blank" rel="noopener">${t}</a>` : t;
         return `${i + 1}. ${content}`;
       }).join("&ensp;&middot;&ensp;");
       sideCitationsHtml = `      <div class="slide-citations"><div class="slide-citations-text">${items}</div></div>`;

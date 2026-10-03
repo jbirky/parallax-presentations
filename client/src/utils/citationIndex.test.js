@@ -341,3 +341,26 @@ describe('what goes into markup', () => {
     expect(countStaleMarkers(deck)).toEqual({ stale: 0, unlinked: 0 })
   })
 })
+
+describe('a caption made from a library entry', () => {
+  const pubchem = { key: 'pubchem-cid-2519', type: 'misc', author: '{National Center for Biotechnology Information}', title: 'PubChem Compound Summary for CID 2519, Caffeine', year: '2026' }
+  const molecule = (extra = {}) => ({ id: 'm', type: 'molecule', x: 0, y: 100, width: 300, height: 300, citationText: 'PubChem CID 2519', citationKey: 'pubchem-cid-2519', ...extra })
+
+  it('cites its entry, though its text names no author', () => {
+    const index = buildCitationIndex(pres([{ elements: [text('t', `<p>${marker('smith2020', '[1]')}</p>`), molecule()] }], { bibliography: [smith, pubchem] }))
+    expect(index.entries.map(e => e.key)).toEqual(['smith2020', 'pubchem-cid-2519'])
+  })
+
+  it('cites nothing once its caption is gone, or its entry is', () => {
+    const cited = (el, bibliography = [pubchem]) => buildCitationIndex(pres([{ elements: [el] }], { bibliography })).citedCount
+    expect(cited(molecule())).toBe(1)
+    expect(cited(molecule({ citationText: null }))).toBe(0)
+    expect(cited(molecule({ citationText: null, citationLink: 'https://pubchem.ncbi.nlm.nih.gov/compound/2519' }))).toBe(1)
+    expect(cited(molecule(), [smith])).toBe(0)
+  })
+
+  it('gives an organisation its whole name in author-year style', () => {
+    const deck = pres([{ elements: [molecule()] }], { bibliography: [pubchem], citationStyle: 'author-year' })
+    expect(buildCitationIndex(deck).labelByKey['pubchem-cid-2519']).toBe('(National Center for Biotechnology Information, 2026)')
+  })
+})

@@ -74,7 +74,8 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
-import { parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
+import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
+import { workFinder } from '../utils/bibDuplicates'
 import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
 import { CitationNode } from '../extensions/CitationExtension'
@@ -979,6 +980,26 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
             )
           } : s
         )
+      }
+    })
+  }, [])
+
+  // A caption citing `entry`, fetched for an element (a PubChem compound's
+  // record): the entry joins the library unless it holds the same work, and
+  // the caption cites whichever is there. By id, on whichever slide it's on,
+  // since the slide or the selection may have changed while it was fetched.
+  const citeElement = useCallback((id, entry, caption) => {
+    setPresentation(prev => {
+      if (!prev) return prev
+      const library = prev.bibliography || []
+      const known = workFinder(library)(entry)
+      return {
+        ...prev,
+        bibliography: known ? library : [...library, entry],
+        slides: prev.slides.map(s => s.elements?.some(el => el.id === id) ? {
+          ...s,
+          elements: s.elements.map(el => el.id === id ? { ...el, ...caption, citationKey: (known || entry).key } : el),
+        } : s),
       }
     })
   }, [])
@@ -4196,8 +4217,10 @@ function draw() {
                           <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>
                           {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
                           {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
-                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}.
+                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}
+                          {entry.journal || entry.booktitle || entry.volume || entry.pages ? '.' : ''}
                           {entry.doi && <a href={`https://doi.org/${entry.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>DOI</a>}
+                          {!entry.doi && webLink(entry.url) && <a href={webLink(entry.url).href} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>{webLink(entry.url).site}</a>}
                         </div>
                       )
                     })}
@@ -4338,6 +4361,7 @@ function draw() {
           onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
           onEditFreebody={() => selectedElementId && openFreebodyEditor(selectedElementId)}
           onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
+          onCiteElement={citeElement}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}

@@ -3,11 +3,12 @@
 
 // The properties panel's section for a molecule element: where it came from,
 // how it's drawn, and the view it starts from. The view is the one it was
-// last turned to on the canvas, which the element's page sends here.
+// last turned to on the canvas, which the element's page sends here. A
+// compound from PubChem can be cited from here too (CitePubChem).
 
 import { useEffect, useState } from 'react'
 import { MOLECULE_DEFAULTS, MOLECULE_STYLES, MOLECULE_COLORS } from '../utils/moleculeViewer'
-import { sourceLabel, sourceUrl } from '../utils/moleculeSources'
+import { sourceLabel, sourceUrl, fetchPubChemCitation, pubchemCaption } from '../utils/moleculeSources'
 
 const label = { fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }
 const sameView = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((n, i) => Math.abs(n - b[i]) < 1e-6)
@@ -118,6 +119,39 @@ export default function MoleculeProperties({ element, onUpdateElement, onChangeM
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
         Drag to turn it, scroll to zoom, Ctrl-drag to move it: on the canvas once it's selected, and when presenting.
       </div>
+    </div>
+  )
+}
+
+// Fetches PubChem's citation for a compound's record into the library, and
+// credits the compound under the molecule, as PubChem asks of a reused 3D
+// structure: "PubChem CID 2519", linked to the record
+export function CitePubChem({ cid, onCite }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const cite = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      onCite(await fetchPubChemCitation(cid), pubchemCaption(cid))
+    } catch (err) {
+      setError(err?.message || String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <button className="btn btn-secondary" disabled={busy} onClick={cite}
+        title={`Add PubChem’s citation for CID ${cid} to the references, and credit it under the molecule`}
+        style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '5px 8px' }}>
+        {busy ? 'Fetching Citation…' : 'Cite PubChem'}
+      </button>
+      {error && (
+        <div role="alert" style={{ fontSize: 11, color: 'var(--danger, #e5484d)', marginTop: 4, lineHeight: 1.4 }}>{error}</div>
+      )}
     </div>
   )
 }

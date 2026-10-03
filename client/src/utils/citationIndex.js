@@ -172,17 +172,20 @@ export function findCitations(text, bibliography = []) {
 }
 
 // Reading order: slide by slide, and within a slide top to bottom, left to right.
+// A caption cites what its text names, and the entry it was made from
+// (citationKey), whatever its text says: "PubChem CID 2519" names no author.
 function citedKeysInPresentationOrder(bibliography, slides) {
+  const known = new Set(bibliography.map(e => e.key))
   const seen = new Set()
   const keys = []
+  const cite = key => { if (!seen.has(key)) { seen.add(key); keys.push(key) } }
   for (const slide of slides || []) {
     const elements = [...(slide.elements || [])]
       .sort((a, b) => ((a.y || 0) - (b.y || 0)) || ((a.x || 0) - (b.x || 0)))
     for (const el of elements) {
       const text = [el.content, el.citationText].filter(Boolean).join('\n')
-      for (const { key } of findCitations(text, bibliography)) {
-        if (!seen.has(key)) { seen.add(key); keys.push(key) }
-      }
+      for (const { key } of findCitations(text, bibliography)) cite(key)
+      if ((el.citationText || el.citationLink) && known.has(el.citationKey)) cite(el.citationKey)
     }
   }
   return keys

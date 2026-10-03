@@ -17,7 +17,7 @@ const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-o
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, isScrolling, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
 import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
-import MoleculeProperties from './MoleculeProperties'
+import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -52,9 +52,12 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
   const [selectedKey, setSelectedKey] = useState(null)
   const inputRef = useRef(null)
 
-  const prevTextRef = useRef(citationText)
-  if (citationText !== prevTextRef.current) {
-    prevTextRef.current = citationText
+  // Text set from outside (Cite PubChem, undo) shows here. The last value is
+  // kept in state, not a ref: a ref written in a render React throws away
+  // stays written, and the field never caught up.
+  const [prevText, setPrevText] = useState(citationText)
+  if (citationText !== prevText) {
+    setPrevText(citationText)
     if (citationText !== query) setQuery(citationText)
   }
 
@@ -78,7 +81,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
     setQuery(text)
     setSelectedKey(entry.key)
     setShowSuggestions(false)
-    const updates = { citationText: text }
+    const updates = { citationText: text, citationKey: entry.key }
     if (entry.doi) updates.citationLink = `https://doi.org/${entry.doi}`
     else if (entry.url) updates.citationLink = entry.url
     onUpdate(updates)
@@ -88,7 +91,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
     setQuery(val)
     setSelectedKey(null)
     setShowSuggestions(val.length > 0)
-    onUpdate({ citationText: val || null })
+    onUpdate(val ? { citationText: val } : { citationText: null, citationKey: null })
   }
 
   function handleBlur() {
@@ -135,6 +138,66 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
           style={{ width: '100%', fontSize: 11, padding: '4px 6px', boxSizing: 'border-box' }} />
       </div>
     </>
+  )
+}
+
+// An image's or molecule's citation: a caption under it or a side reference,
+// citing the library entry it was picked from (citationKey) as well as what
+// its text names. children go above it: a molecule's Cite PubChem.
+function CitationFields({ element, bibliography, onUpdate, children }) {
+  const cited = element.citationKey && (element.citationText || element.citationLink)
+    ? bibliography.find(e => e.key === element.citationKey) : null
+  return (
+    <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Citation</div>
+      {children}
+      <CitationAutocomplete
+        bibliography={bibliography}
+        citationText={element.citationText || ''}
+        citationLink={element.citationLink || ''}
+        onUpdate={onUpdate}
+      />
+      {cited && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+          <span title={cited.title || cited.key} style={{ flex: 1, minWidth: 0, fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Cites {cited.title || cited.key}
+          </span>
+          <button className="btn btn-ghost" style={{ padding: '0 4px', fontSize: 12, lineHeight: 1 }}
+            title="Stop citing it, unless the text names it" aria-label="Stop citing it"
+            onClick={() => onUpdate({ citationKey: null })}>×</button>
+        </div>
+      )}
+      {(element.citationText || element.citationLink) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Color</div>
+            <input type="color" value={element.citationColor || '#808080'}
+              onChange={e => onUpdate({ citationColor: e.target.value })}
+              style={{ width: '100%', height: 24, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Display</div>
+            <select className="prop-input" value={element.citationMode || 'caption'}
+              onChange={e => onUpdate({ citationMode: e.target.value })}
+              style={{ padding: '4px 6px' }}>
+              <option value="caption">Caption bar</option>
+              <option value="side">Side reference</option>
+            </select>
+          </div>
+          {(element.citationMode || 'caption') === 'caption' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Align</div>
+              <select className="prop-input" value={element.citationAlign || 'left'}
+                onChange={e => onUpdate({ citationAlign: e.target.value })}
+                style={{ padding: '4px 6px' }}>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -227,7 +290,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditMolecule, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -1163,45 +1226,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                   </div>
                 </div>
               )}
-              <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Citation</div>
-                <CitationAutocomplete
-                  bibliography={presentation?.bibliography || []}
-                  citationText={selectedElement.citationText || ''}
-                  citationLink={selectedElement.citationLink || ''}
-                  onUpdate={onUpdateElement}
-                />
-                {(selectedElement.citationText || selectedElement.citationLink) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Color</div>
-                      <input type="color" value={selectedElement.citationColor || '#808080'}
-                        onChange={e => onUpdateElement({ citationColor: e.target.value })}
-                        style={{ width: '100%', height: 24, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Display</div>
-                      <select className="prop-input" value={selectedElement.citationMode || 'caption'}
-                        onChange={e => onUpdateElement({ citationMode: e.target.value })}
-                        style={{ padding: '4px 6px' }}>
-                        <option value="caption">Caption bar</option>
-                        <option value="side">Side reference</option>
-                      </select>
-                    </div>
-                    {(selectedElement.citationMode || 'caption') === 'caption' && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Align</div>
-                        <select className="prop-input" value={selectedElement.citationAlign || 'left'}
-                          onChange={e => onUpdateElement({ citationAlign: e.target.value })}
-                          style={{ padding: '4px 6px' }}>
-                          <option value="left">Left</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <CitationFields element={selectedElement} bibliography={presentation?.bibliography || []} onUpdate={onUpdateElement} />
             </div>
           )}
 
@@ -1716,7 +1741,17 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           )}
 
           {selectedElement.type === 'molecule' && (
-            <MoleculeProperties element={selectedElement} onUpdateElement={onUpdateElement} onChangeMolecule={onEditMolecule} />
+            <>
+              <MoleculeProperties element={selectedElement} onUpdateElement={onUpdateElement} onChangeMolecule={onEditMolecule} />
+              <div style={{ marginBottom: 10 }}>
+                <CitationFields element={selectedElement} bibliography={presentation?.bibliography || []} onUpdate={onUpdateElement}>
+                  {selectedElement.source?.db === 'pubchem' && onCiteElement && (
+                    <CitePubChem key={selectedElement.id} cid={selectedElement.source.id}
+                      onCite={(entry, caption) => onCiteElement(selectedElement.id, entry, caption)} />
+                  )}
+                </CitationFields>
+              </div>
+            </>
           )}
 
           {/* Audio options */}

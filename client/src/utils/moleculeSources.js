@@ -4,7 +4,8 @@
 // Structures for the molecule element, fetched in the editor from PubChem
 // (small molecules, by name or CID) and the RCSB Protein Data Bank (by PDB
 // ID). Both answer any origin. What they return is uploaded with the deck,
-// so a presented molecule never needs them.
+// so a presented molecule never needs them. A PubChem compound's citation
+// comes from here too.
 
 import { moleculeFormat } from './moleculeViewer'
 
@@ -70,6 +71,47 @@ export async function fetchPubChem(query, fetchImpl = fetch) {
     text: await text(sdf), format: 'sdf', fileName: `${fileStem(name) || `cid-${cid}`}.sdf`,
     name, formula: props.MolecularFormula || '', source: { db: 'pubchem', id: cid },
   }
+}
+
+// PubChem's citation for a compound's record, as its Cite button writes it
+// (pubchem.ncbi.nlm.nih.gov/docs/citation-guidelines), as a library entry.
+// The author is NCBI, braced as BibTeX writes an organisation; the year and
+// urldate are the day it was retrieved, from the record's URL for its 3D
+// conformer. PubChem leaves out titles over 100 characters.
+export function pubchemCitation(cid, title, on = new Date()) {
+  const id = String(cid)
+  const named = title && title.length <= 100 && title !== id ? `, ${title}` : ''
+  const day = [on.getFullYear(), on.getMonth() + 1, on.getDate()].map(n => String(n).padStart(2, '0')).join('-')
+  return {
+    type: 'misc',
+    key: `pubchem-cid-${id}`,
+    author: '{National Center for Biotechnology Information}',
+    title: `PubChem Compound Summary for CID ${id}${named}`,
+    year: String(on.getFullYear()),
+    url: pubchemStructureUrl(id),
+    urldate: day,
+  }
+}
+
+// What PubChem asks a reused 3D structure to be credited with, for its caption
+export function pubchemCaption(cid) {
+  return { citationText: `PubChem CID ${cid}`, citationLink: pubchemStructureUrl(cid) }
+}
+
+function pubchemStructureUrl(cid) {
+  return `https://pubchem.ncbi.nlm.nih.gov/compound/${encodeURIComponent(cid)}#section=3D-Conformer`
+}
+
+// A compound's citation, with the title its record has now
+export async function fetchPubChemCitation(cid, fetchImpl = fetch, on = new Date()) {
+  const id = String(cid ?? '').trim()
+  if (!/^[1-9]\d*$/.test(id)) throw new SourceError('This molecule has no PubChem CID to cite.')
+  const res = await get(fetchImpl, `${PUBCHEM}/cid/${id}/property/Title/JSON`, 'PubChem')
+  if (res.status === 400 || res.status === 404) throw new SourceError(`PubChem has no compound with CID ${id}.`)
+  if (!res.ok) throw new SourceError(`PubChem couldn’t look that up (${res.status}). Try again in a moment.`)
+  const props = (await res.json())?.PropertyTable?.Properties?.[0]
+  if (String(props?.CID) !== id) throw new SourceError(`PubChem has no compound with CID ${id}.`)
+  return pubchemCitation(id, props.Title, on)
 }
 
 // An entry from the RCSB PDB by ID: PDB format, or mmCIF for the large

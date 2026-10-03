@@ -40,6 +40,15 @@ A molecule starts out framed to fit. To have it start from another angle, turn i
 | **Show surface** | Adds a translucent molecular surface. Large proteins take a few seconds to compute one. |
 | **Rotate on its own** | Spins it slowly while it's shown. Taking hold of it stops the spin. |
 
+## Citing PubChem
+
+For a compound from PubChem, click **Cite PubChem** in the right panel's **Citation** section. Parallax fetches the compound's record from PubChem and:
+
+- adds PubChem's citation for it to your library, as its **Cite** button gives it: *National Center for Biotechnology Information (2026). PubChem Compound Summary for CID 2519, Caffeine.*, linked to the record, and
+- credits it under the molecule as **PubChem CID 2519**, linked to the compound's 3D conformer, which is how PubChem asks for a reused 3D structure to be credited.
+
+The caption cites the library entry, so the record is listed on the [references slide](/tutorials/citations#references-slide). Citing the same compound again uses the entry already there. You can change the caption's text, color and placement like an image's ([Image citations](/tutorials/citations#image-and-molecule-citations)).
+
 ## Printing and export
 
 - **PDF**: draws the molecule as it starts, held still.

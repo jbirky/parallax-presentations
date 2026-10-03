@@ -1394,6 +1394,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   )
 }
 
+// An image's or molecule's citation, in a line under it
+function CitationCaption({ element, fontSize, fontFamily }) {
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
+      {element.citationText || element.citationLink}
+    </div>
+  )
+}
+
 export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
@@ -1469,7 +1478,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           box (badges, handles, others' outlines) comes after, unclipped */}
       <div style={{
         position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
-        overflow: isAutoFit || element.type === 'textpath' || element.type === 'text3d' || element.type === 'equation' || element.type === 'feynman' || element.type === 'circuit' || element.type === 'logic' || element.type === 'freebody' || (element.type === 'image' && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
+        overflow: isAutoFit || element.type === 'textpath' || element.type === 'text3d' || element.type === 'equation' || element.type === 'feynman' || element.type === 'circuit' || element.type === 'logic' || element.type === 'freebody' || ((element.type === 'image' || element.type === 'molecule') && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
         // A state's flip, shown mirrored; the badges and handles stay as they are
         transform: element.flipX || element.flipY ? `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` : undefined,
@@ -1557,11 +1566,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
                 )}
               </div>
             )}
-            {hasCiteText && (
-              <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', fontSize: citationFontSize, color: element.citationColor || 'rgba(255,255,255,0.5)', fontFamily: citationFontFamily, lineHeight: 1.3, padding: '3px 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', textAlign: element.citationAlign || 'left' }}>
-                {element.citationText || element.citationLink}
-              </div>
-            )}
+            {hasCiteText && <CitationCaption element={element} fontSize={citationFontSize} fontFamily={citationFontFamily} />}
             {isCropping && cropState && (
               <CropOverlay
                 crop={cropState}
@@ -1628,6 +1633,9 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
             sandbox="allow-scripts"
             title="Molecule"
           />
+        )}
+        {element.type === 'molecule' && (element.citationText || element.citationLink) && (
+          <CitationCaption element={element} fontSize={citationFontSize} fontFamily={citationFontFamily} />
         )}
         {element.type === 'code' && (
           <pre

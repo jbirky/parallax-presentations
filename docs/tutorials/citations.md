@@ -1,6 +1,6 @@
 # Citations & Bibliography
 
-Parallax has a built-in citation manager that lets you import references from BibTeX files or your Zotero library, insert citation markers in text, auto-fill image citations, and generate a references slide at the end of your presentation.
+Parallax has a built-in citation manager that lets you import references from BibTeX files or your Zotero library, insert citation markers in text, auto-fill image and molecule citations, and generate a references slide at the end of your presentation.
 
 ## Opening the bibliography manager
 
@@ -60,16 +60,20 @@ Choose between two styles in the **Settings** tab of the bibliography modal:
 You must be actively editing a text element before opening the modal. If no text cursor is active, the Cite button has nowhere to insert the marker.
 :::
 
-## Image citations with autocomplete
+## Image and molecule citations
 
-When you select an image element, the right panel shows a **Citation** section with Text and Link fields. These fields integrate with your bibliography:
+When you select an image or a molecule, the right panel shows a **Citation** section with Text and Link fields. These fields integrate with your bibliography:
 
-1. Select an image element on the canvas.
+1. Select an image or a molecule on the canvas.
 2. In the right panel, find the **Citation** section.
 3. Start typing an author name, title, year, or BibTeX key in the **Text** field.
 4. A dropdown appears showing matching bibliography entries. Click one to select it.
 5. The text field auto-fills with the author and year (e.g. "Smith et al. (2020)"), and the link field auto-fills with the paper's DOI URL.
 6. If no bibliography entry matches, you can type any text freely.
+
+A caption made from an entry cites that entry even after you edit its text. Under the fields, **Cites …** names it; click **×** there to stop citing it. Clearing the Text field forgets it too.
+
+A molecule from PubChem can fetch its citation instead: see [Citing PubChem](/tutorials/molecules#citing-pubchem).
 
 The citation display mode can be set to **Caption bar** (below the image) or **Side reference** (vertical text on the right edge of the slide).
 
@@ -80,7 +84,7 @@ When your slides cite at least one entry, a **References** slide is automaticall
 The references slide includes:
 
 - Numbered reference entries with author, year, title, journal/venue, volume, and pages
-- Clickable DOI links where available
+- Clickable DOI links where available, and otherwise a link to the entry's URL, named by its site (for a PubChem record, `pubchem.ncbi.nlm.nih.gov`)
 - Automatic two-column layout when there are more than 8 references
 
 Only entries you actually cite are indexed. An entry sitting in the library
