@@ -15,6 +15,7 @@ import { tikzDiagramSvg } from './tikzDiagram'
 import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman } from './feynmanDiagram'
 import { circuitSvg, circuitStepMarkers, circuitSteps, circuitStepAt, hasCircuits } from './circuitDiagram'
 import { logicSvg, logicStepMarkers, logicSteps, logicStepAt, hasLogic } from './logicDiagram'
+import { freebodySvg, freebodyStepMarkers, freebodySteps, freebodyStepAt, hasFreebody } from './freebodyDiagram'
 import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
@@ -345,6 +346,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
+        if (el.type === 'freebody') {
+          // Every force, drawn in at its step by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -664,7 +670,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -1020,7 +1026,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) ? diagramDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) ? diagramDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1337,6 +1343,7 @@ function generatePrintHTML(presentation) {
       ...(slide.elements || []).flatMap(el => feynmanSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => circuitSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => logicSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => freebodySteps(el).map(([step]) => step)),
     ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
@@ -1400,6 +1407,11 @@ function generatePrintHTML(presentation) {
           // As it is at this page's step, its signals then
           const at = maxIdx === Infinity ? Math.max(0, ...logicSteps(el).map(([, s]) => s)) : logicStepAt(el, maxIdx)
           return `<div data-lg-at-page="${at}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${logicSvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'freebody') {
+          // The forces drawn by this page's step
+          const at = maxIdx === Infinity ? null : freebodyStepAt(el, maxIdx)
+          return `<div data-fb-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${freebodySvg(el, { step: at, labels: 'deck' })}</div>`
         }
         if (el.type === 'html') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`

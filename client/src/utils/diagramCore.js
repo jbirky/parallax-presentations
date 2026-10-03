@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Jessica Birky
 
 // What the diagram elements share (Feynman diagrams, feynmanDiagram.js,
-// circuits, circuitDiagram.js, and logic, logicDiagram.js): labels from a small part of TeX, and the
+// circuits, circuitDiagram.js, logic, logicDiagram.js, and free-body diagrams,
+// freebodyDiagram.js): labels from a small part of TeX, and the
 // steps of a presented deck. A diagram in a deck is a <div data-fx="id">
 // holding its SVG, with a hidden fragment per step (data-fx-step="id",
 // data-fx-step-at="n") counted with the slide's others; diagramDeckScript
@@ -160,7 +161,7 @@ export const DIAGRAM_CSS = [
   '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig{animation:none}.pxfx-part{transition:none}}',
 ].join('\n')
 
-// In a deck with Feynman, circuit or logic diagrams: tells each its slide's step,
+// In a deck with Feynman, circuit, logic or free-body diagrams: tells each its slide's step,
 // drawing in a step's parts when it's stepped to
 let deckScript = null
 export function diagramDeckScript() {

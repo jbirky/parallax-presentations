@@ -49,6 +49,7 @@ import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
 import LogicEditorModal from '../components/LogicEditorModal'
+import FreebodyEditorModal from '../components/FreebodyEditorModal'
 import MoleculeModal from '../components/MoleculeModal'
 import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
 import { defaultFeynman, FEYNMAN_FIELDS, feynmanBox } from '../utils/feynmanDiagram'
@@ -56,6 +57,8 @@ import { defaultCircuit, circuitBox } from '../utils/circuitDiagram'
 import { CIRCUIT_FIELDS } from '../utils/circuitParts'
 import { defaultLogic, logicBox } from '../utils/logicDiagram'
 import { LOGIC_FIELDS } from '../utils/logicParts'
+import { defaultFreebody, freebodyBox } from '../utils/freebodyDiagram'
+import { FREEBODY_FIELDS } from '../utils/freebodySolve'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -421,6 +424,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [feynmanEditor, setFeynmanEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [circuitEditor, setCircuitEditor] = useState(null) // { elementId (null for a new one), circuit, slideBg }
   const [logicEditor, setLogicEditor] = useState(null) // { elementId (null for a new one), logic, slideBg }
+  const [freebodyEditor, setFreebodyEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [moleculePicker, setMoleculePicker] = useState(null) // { elementId (null for a new one) }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
@@ -710,7 +714,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1523,6 +1527,42 @@ function draw() {
     }
     setLogicEditor(null)
   }, [logicEditor, presentation, updateElement, slideW, slideH])
+
+  const addFreebody = useCallback(() => {
+    setFreebodyEditor({ elementId: null, diagram: defaultFreebody(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openFreebodyEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'freebody' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of FREEBODY_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setFreebodyEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveFreebody = useCallback((diagram) => {
+    const elementId = freebodyEditor?.elementId
+    const box = freebodyBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.75) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'freebody', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setFreebodyEditor(null)
+  }, [freebodyEditor, presentation, updateElement, slideW, slideH])
 
   const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
 
@@ -4041,6 +4081,7 @@ function draw() {
             onAddFeynman={addFeynman}
             onAddCircuit={addCircuit}
             onAddLogic={addLogic}
+            onAddFreebody={addFreebody}
             onAddMolecule={addMolecule}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
@@ -4252,6 +4293,7 @@ function draw() {
               onOpenFeynmanEditor={openFeynmanEditor}
               onOpenCircuitEditor={openCircuitEditor}
               onOpenLogicEditor={openLogicEditor}
+              onOpenFreebodyEditor={openFreebodyEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4294,6 +4336,7 @@ function draw() {
           onEditFeynman={() => selectedElementId && openFeynmanEditor(selectedElementId)}
           onEditCircuit={() => selectedElementId && openCircuitEditor(selectedElementId)}
           onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
+          onEditFreebody={() => selectedElementId && openFreebodyEditor(selectedElementId)}
           onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
@@ -4688,6 +4731,16 @@ function draw() {
           isNew={!circuitEditor.elementId}
           onSave={saveCircuit}
           onClose={() => setCircuitEditor(null)}
+        />
+      )}
+
+      {freebodyEditor && (
+        <FreebodyEditorModal
+          initial={freebodyEditor.diagram}
+          slideBg={freebodyEditor.slideBg}
+          isNew={!freebodyEditor.elementId}
+          onSave={saveFreebody}
+          onClose={() => setFreebodyEditor(null)}
         />
       )}
 

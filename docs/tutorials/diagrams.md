@@ -13,6 +13,7 @@ The same menu has the other diagram tools:
 - **Feynman Diagram** (see [Feynman Diagrams](/tutorials/feynman-diagrams))
 - **Circuit Diagram** (see [Circuit Diagrams](/tutorials/circuit-diagrams))
 - **Logic Diagram** (see [Logic Diagrams](/tutorials/logic-diagrams))
+- **Free-Body Diagram** (see [Free-Body Diagrams](/tutorials/free-body-diagrams))
 - **Molecule**, a 3D structure to turn while presenting (see [Molecules](/tutorials/molecules))
 
 The diagram editor opens as a full-screen modal with a dark canvas and a tool panel on the left.

@@ -64,6 +64,7 @@ export default defineConfig({
             { text: 'Feynman Diagrams', link: '/tutorials/feynman-diagrams' },
             { text: 'Circuit Diagrams', link: '/tutorials/circuit-diagrams' },
             { text: 'Logic Diagrams', link: '/tutorials/logic-diagrams' },
+            { text: 'Free-Body Diagrams', link: '/tutorials/free-body-diagrams' },
             { text: 'Molecules', link: '/tutorials/molecules' },
           ]
         },

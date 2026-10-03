@@ -938,9 +938,9 @@ function createMathParser() {
             if (s[j + 1] === "{") {
               const end = s.indexOf("}", j + 2);
               if (end < 0) fail("A subscript _{ needs its }");
-              const sub = s.slice(j + 2, end).trim();
-              if (!sub || ![...sub].every(isWord)) fail("Subscripts are letters and digits, like a_1");
-              name += "_" + sub;
+              const sub2 = s.slice(j + 2, end).trim();
+              if (!sub2 || ![...sub2].every(isWord)) fail("Subscripts are letters and digits, like a_1");
+              name += "_" + sub2;
               j = end + 1;
             } else {
               let k = j + 1;
@@ -1641,9 +1641,9 @@ function graphRuntime(P, config) {
   }
   function shown() {
     if (C.equalScale === false || !W || !H) return view;
-    const half = (view.xMax - view.xMin) * H / W / 2;
+    const half2 = (view.xMax - view.xMin) * H / W / 2;
     const mid = (view.yMin + view.yMax) / 2;
-    return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half, yMax: mid + half };
+    return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half2, yMax: mid + half2 };
   }
   function exprOf(it) {
     return (C.expressions || []).find((e) => e.id === it.id) || {};
@@ -1959,7 +1959,7 @@ function graphRuntime(P, config) {
     };
     const edges = /* @__PURE__ */ new Map();
     const segs = [];
-    const add = (k1, p1, k2, p2) => {
+    const add2 = (k1, p1, k2, p2) => {
       if (!p1 || !p2) return;
       const s = segs.length;
       segs.push([k1, p1, k2, p2]);
@@ -1980,7 +1980,7 @@ function graphRuntime(P, config) {
         const R = () => ["v" + (j * nx + i + 1), cross("v" + (j * nx + i + 1), i + 1, j, i + 1, j + 1)];
         const seg = (e1, e2) => {
           const p = e1(), q = e2();
-          add(p[0], p[1], q[0], q[1]);
+          add2(p[0], p[1], q[0], q[1]);
         };
         switch (idx) {
           case 1:
@@ -2220,9 +2220,9 @@ function graphRuntime(P, config) {
       base.style.fontSize = "15px";
       label.appendChild(base);
       if (nm.sub) {
-        const sub = document.createElement("sub");
-        sub.textContent = nm.sub;
-        label.appendChild(sub);
+        const sub2 = document.createElement("sub");
+        sub2.textContent = nm.sub;
+        label.appendChild(sub2);
       }
       const value = document.createElement("span");
       value.style.cssText = "min-width:44px;font-variant-numeric:tabular-nums;";
@@ -2629,16 +2629,16 @@ function equationRuntime(root, cfg, katex) {
   const termEls = Array.prototype.slice.call(math.querySelectorAll(".katex-html [data-term]"));
   const terms = [];
   const byId = {};
-  const add = (t) => {
+  const add2 = (t) => {
     byId[t.id] = t;
     terms.push(t);
   };
   (cfg.terms || []).forEach((t) => {
-    if (t && !byId[t.id] && termEls.some((e) => e.getAttribute("data-term") === t.id)) add({ id: t.id, label: t.label || "", note: t.note || "", color: t.color || FALLBACK[terms.length % 6] });
+    if (t && !byId[t.id] && termEls.some((e) => e.getAttribute("data-term") === t.id)) add2({ id: t.id, label: t.label || "", note: t.note || "", color: t.color || FALLBACK[terms.length % 6] });
   });
   termEls.forEach((e) => {
     const id = e.getAttribute("data-term");
-    if (!byId[id]) add({ id, label: "", note: "", color: FALLBACK[terms.length % 6] });
+    if (!byId[id]) add2({ id, label: "", note: "", color: FALLBACK[terms.length % 6] });
   });
   const order = terms.map((t) => t.id);
   termEls.forEach((e) => e.style.setProperty("--tc", byId[e.getAttribute("data-term")].color));
@@ -3122,9 +3122,9 @@ function tokenize(src) {
       }
       continue;
     }
-    const len = src.codePointAt(i) > 65535 ? 2 : 1;
-    out.push({ t: "{}^_&[]".includes(c) ? c : "char", start: i, end: i + len });
-    i += len;
+    const len2 = src.codePointAt(i) > 65535 ? 2 : 1;
+    out.push({ t: "{}^_&[]".includes(c) ? c : "char", start: i, end: i + len2 });
+    i += len2;
   }
   return out;
 }
@@ -3576,13 +3576,13 @@ function texRuns(src) {
   return runs;
 }
 function texBox(src, fs) {
-  let w = 0, sup = false, sub = false;
+  let w = 0, sup = false, sub2 = false;
   for (const r of texRuns(src)) {
     w += r.t.replace(COMBINING, "").length * fs * 0.5 * (r.lvl ? 0.7 : 1);
     if (r.lvl > 0) sup = true;
-    if (r.lvl < 0) sub = true;
+    if (r.lvl < 0) sub2 = true;
   }
-  return { w: Math.max(w, fs * 0.4), h: fs * (1 + (sup ? 0.25 : 0) + (sub ? 0.2 : 0)) };
+  return { w: Math.max(w, fs * 0.4), h: fs * (1 + (sup ? 0.25 : 0) + (sub2 ? 0.2 : 0)) };
 }
 function texLiteHtml(src) {
   return texRuns(src).map((r) => {
@@ -4209,9 +4209,9 @@ function formatSI(v, unit) {
     pick2 = s;
     break;
   }
-  const num6 = v / pick2[0];
-  const str5 = Math.abs(num6) >= 99.95 ? String(Math.round(num6)) : String(Number(num6.toPrecision(3)));
-  return `${str5} ${pick2[1]}${unit}`;
+  const num7 = v / pick2[0];
+  const str6 = Math.abs(num7) >= 99.95 ? String(Math.round(num7)) : String(Number(num7.toPrecision(3)));
+  return `${str6} ${pick2[1]}${unit}`;
 }
 var valueOf = (e) => {
   const v = parseValue(e.value);
@@ -4514,15 +4514,15 @@ function maxStep2(m) {
   for (const v of m.vertices) if (v.step != null) s = Math.max(s, v.step);
   return s;
 }
-function partShape(part2, len, u, k, lw, ink, style) {
+function partShape(part2, len2, u, k, lw, ink, style) {
   const L = (x1, y1, x2, y2, w = lw) => `<path d="M${n13(x1)} ${n13(y1)}L${n13(x2)} ${n13(y2)}" stroke="${esc3(ink)}" stroke-width="${n13(w)}" stroke-linecap="round" fill="none"/>`;
   const circ = (cx, r) => `<circle cx="${n13(cx)}" cy="0" r="${n13(r)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
-  const b = part2 === "wire" ? 0 : Math.max(Math.min(BODY * u, len - 0.3 * u), Math.min(len * 0.7, 0.5 * u));
-  const a = (len - b) / 2, c = len / 2;
-  const leads = () => L(0, 0, a, 0) + L(a + b, 0, len, 0);
+  const b = part2 === "wire" ? 0 : Math.max(Math.min(BODY * u, len2 - 0.3 * u), Math.min(len2 * 0.7, 0.5 * u));
+  const a = (len2 - b) / 2, c = len2 / 2;
+  const leads = () => L(0, 0, a, 0) + L(a + b, 0, len2, 0);
   const out = { body: "", ext: [0.06 * u, 0.06 * u], glyphs: [], a, b };
   if (part2 === "wire") {
-    out.body = L(0, 0, len, 0);
+    out.body = L(0, 0, len2, 0);
     out.ext = [0.04 * u, 0.04 * u];
   } else if (part2 === "resistor") {
     if (style === "iec") out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.14 * u)}" width="${n13(b)}" height="${n13(0.28 * u)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
@@ -4535,7 +4535,7 @@ function partShape(part2, len, u, k, lw, ink, style) {
     out.ext = [0.17 * u, 0.17 * u];
   } else if (part2 === "capacitor") {
     const g = 0.08 * u, p = 0.3 * u;
-    out.body = L(0, 0, c - g, 0) + L(c + g, 0, len, 0) + L(c - g, -p, c - g, p, lw * 1.4) + L(c + g, -p, c + g, p, lw * 1.4);
+    out.body = L(0, 0, c - g, 0) + L(c + g, 0, len2, 0) + L(c - g, -p, c - g, p, lw * 1.4) + L(c + g, -p, c + g, p, lw * 1.4);
     out.ext = [p, p];
   } else if (part2 === "inductor") {
     if (style === "iec") {
@@ -4550,12 +4550,12 @@ function partShape(part2, len, u, k, lw, ink, style) {
     }
   } else if (part2 === "battery") {
     const offs = [-0.27, -0.09, 0.09, 0.27].map((o) => c + o * u);
-    out.body = L(0, 0, offs[0], 0) + L(offs[3], 0, len, 0) + offs.map((x, i) => i % 2 ? L(x, -0.32 * u, x, 0.32 * u) : L(x, -0.15 * u, x, 0.15 * u, lw * 2.2)).join("");
+    out.body = L(0, 0, offs[0], 0) + L(offs[3], 0, len2, 0) + offs.map((x, i) => i % 2 ? L(x, -0.32 * u, x, 0.32 * u) : L(x, -0.15 * u, x, 0.15 * u, lw * 2.2)).join("");
     out.glyphs.push([offs[3] + 0.16 * u, -0.34 * u, "+", 0.3 * u]);
     out.ext = [0.34 * u, 0.33 * u];
   } else if (["vsource", "acsource", "isource", "ammeter", "voltmeter", "lamp"].includes(part2)) {
     const r = 0.3 * u;
-    out.body = L(0, 0, c - r, 0) + L(c + r, 0, len, 0) + circ(c, r);
+    out.body = L(0, 0, c - r, 0) + L(c + r, 0, len2, 0) + circ(c, r);
     out.ext = [r, r];
     if (part2 === "vsource") {
       if (style === "iec") out.body += L(c - r, 0, c + r, 0);
@@ -4580,12 +4580,12 @@ function partShape(part2, len, u, k, lw, ink, style) {
   } else if (part2 === "switch") {
     const tr = 0.06 * u, x0 = a, x1 = a + b, ang = 28 * Math.PI / 180;
     const ring = (x) => `<circle cx="${n13(x)}" cy="0" r="${n13(tr)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.8)}"/>`;
-    out.body = L(0, 0, x0 - tr, 0) + L(x1 + tr, 0, len, 0) + ring(x0) + ring(x1);
+    out.body = L(0, 0, x0 - tr, 0) + L(x1 + tr, 0, len2, 0) + ring(x0) + ring(x1);
     out.blade = (closed) => closed ? L(x0, 0, x1, 0) : L(x0, 0, x0 + b * Math.cos(ang), -b * Math.sin(ang));
     out.ext = [b * Math.sin(ang) + 0.04 * u, 0.08 * u];
   } else if (part2 === "diode") {
     const t = 0.2 * u, h = 0.22 * u;
-    out.body = L(0, 0, c - t, 0) + L(c + t, 0, len, 0) + `<path d="M${n13(c - t)} ${n13(-h)}L${n13(c - t)} ${n13(h)}L${n13(c + t)} 0Z" fill="${style === "iec" ? "none" : esc3(ink)}" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>` + L(c + t, -h, c + t, h);
+    out.body = L(0, 0, c - t, 0) + L(c + t, 0, len2, 0) + `<path d="M${n13(c - t)} ${n13(-h)}L${n13(c - t)} ${n13(h)}L${n13(c + t)} 0Z" fill="${style === "iec" ? "none" : esc3(ink)}" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>` + L(c + t, -h, c + t, h);
     out.ext = [h, h];
   }
   return out;
@@ -4644,10 +4644,10 @@ function drawCircuit(m, o = {}) {
     const s = e.step || 0;
     if (deck == null && !shownAt(s, step)) continue;
     const P = CIRCUIT_PARTS[e.part] || CIRCUIT_PARTS.wire;
-    const X1 = A.x * u, Y1 = -A.y * u, X2 = B.x * u, Y2 = -B.y * u, dx = X2 - X1, dy = Y2 - Y1, len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len, uy = dy / len, ang = Math.atan2(dy, dx) * 180 / Math.PI;
-    const G = (sx, sy) => [X1 + ux * sx - uy * sy, Y1 + uy * sx + ux * sy];
-    const sh = partShape(e.part, len, u, k, lw, ink, o.style);
+    const X1 = A.x * u, Y1 = -A.y * u, X2 = B.x * u, Y2 = -B.y * u, dx = X2 - X1, dy = Y2 - Y1, len2 = Math.hypot(dx, dy) || 1;
+    const ux = dx / len2, uy = dy / len2, ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const G2 = (sx, sy) => [X1 + ux * sx - uy * sy, Y1 + uy * sx + ux * sy];
+    const sh = partShape(e.part, len2, u, k, lw, ink, o.style);
     let body = sh.body;
     if (sh.blade) {
       if (deck != null && e.flipAt != null) body += `<g data-fx-in="0-${e.flipAt - 1}">${sh.blade(!!e.closed)}</g><g data-fx-in="${e.flipAt}-">${sh.blade(!e.closed)}</g>`;
@@ -4655,13 +4655,13 @@ function drawCircuit(m, o = {}) {
     }
     grow(X1, Y1, lw);
     grow(X2, Y2, lw);
-    for (const [gx, gy] of [G(len / 2, -sh.ext[0]), G(len / 2, sh.ext[1])]) grow(gx, gy);
+    for (const [gx, gy] of [G2(len2 / 2, -sh.ext[0]), G2(len2 / 2, sh.ext[1])]) grow(gx, gy);
     let lines = "";
     if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="${esc3(o.accent)}" stroke-opacity=".3" stroke-width="${n13(16 * k)}" stroke-linecap="round"/>`;
     if (o.editor && warn.has(e.id)) lines += `<path d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="${esc3(o.warnColor)}" stroke-opacity=".45" stroke-width="${n13(16 * k)}" stroke-linecap="round"/>`;
     lines += `<g transform="translate(${n13(X1)} ${n13(Y1)}) rotate(${n13(ang)})">${body}</g>`;
     for (const [gxs, gys, t, size, weight] of sh.glyphs) {
-      const [gx, gy] = G(gxs, gys);
+      const [gx, gy] = G2(gxs, gys);
       lines += plain(t, gx, gy, size, ink, weight || 400);
     }
     let labels = "";
@@ -4669,11 +4669,11 @@ function drawCircuit(m, o = {}) {
     const place = (sx, sd, gap, bx) => {
       const extPx = sd < 0 ? sh.ext[0] : sh.ext[1], nx = -uy * sd, ny = ux * sd;
       const reach = Math.abs(nx) * bx.w / 2 + Math.abs(ny) * bx.h / 2;
-      const [px, py] = G(sx, sd * (extPx + gap));
+      const [px, py] = G2(sx, sd * (extPx + gap));
       return [px + nx * reach, py + ny * reach, reach * 2];
     };
     if (e.label && e.part !== "wire") {
-      const [x, y] = place(len / 2, side, 0.12 * u, texBox(e.label, fs));
+      const [x, y] = place(len2 / 2, side, 0.12 * u, texBox(e.label, fs));
       labels += label(e.label, x, y, fs);
     }
     let depth = 0;
@@ -4681,27 +4681,27 @@ function drawCircuit(m, o = {}) {
     const valueText = P.unit && e.value !== "" ? parsed != null ? formatSI(parsed, P.unit) : e.value : "";
     if (valueText) {
       const bx = { w: Math.max(valueText.length * fs * 0.9 * 0.5, fs * 0.4), h: fs * 0.95 };
-      const [x, y, d] = place(len / 2, -side, 0.12 * u, bx);
+      const [x, y, d] = place(len2 / 2, -side, 0.12 * u, bx);
       depth = d;
       labels += plain(valueText, x, y, fs * 0.9);
     }
     if (e.current) {
-      const sx = e.part === "wire" ? len * 0.62 : len - sh.a / 2, hs = 0.12 * u;
-      const [tx, ty] = G(sx + hs * 0.6, 0), [b1x, b1y] = G(sx - hs * 0.6, -hs * 0.65), [b2x, b2y] = G(sx - hs * 0.6, hs * 0.65);
+      const sx = e.part === "wire" ? len2 * 0.62 : len2 - sh.a / 2, hs = 0.12 * u;
+      const [tx, ty] = G2(sx + hs * 0.6, 0), [b1x, b1y] = G2(sx - hs * 0.6, -hs * 0.65), [b2x, b2y] = G2(sx - hs * 0.6, hs * 0.65);
       labels += `<path d="M${n13(tx)} ${n13(ty)}L${n13(b1x)} ${n13(b1y)}L${n13(b2x)} ${n13(b2y)}Z" fill="${esc3(ink)}"/>`;
       const [x, y] = place(sx, side, 0.16 * u, texBox(e.current, fs * 0.85));
       labels += label(e.current, x, y, fs * 0.85);
     }
     if (e.voltage && e.part !== "wire") {
-      const inset = Math.max(Math.min(sh.a * 0.5, len * 0.2), 0.12 * u), off = -side * (sh.ext[side < 0 ? 1 : 0] + 0.2 * u);
-      const [px, py] = G(inset, off), [qx, qy] = G(len - inset, off);
+      const inset = Math.max(Math.min(sh.a * 0.5, len2 * 0.2), 0.12 * u), off = -side * (sh.ext[side < 0 ? 1 : 0] + 0.2 * u);
+      const [px, py] = G2(inset, off), [qx, qy] = G2(len2 - inset, off);
       labels += plain("+", px, py, fs * 0.85) + plain("−", qx, qy, fs * 0.85);
-      const [x, y, d] = place(len / 2, -side, 0.12 * u + depth, texBox(e.voltage, fs * 0.9));
+      const [x, y, d] = place(len2 / 2, -side, 0.12 * u + depth, texBox(e.voltage, fs * 0.9));
       depth += d + 0.06 * u;
       labels += label(e.voltage, x, y, fs * 0.9);
     }
     if (o.editor) labels += `<path class="pxcx-hit" data-e="${esc3(e.id)}" d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="#000" stroke-opacity="0" stroke-width="${n13(18 * k)}" pointer-events="stroke"/>`;
-    placed[e.id] = { e, X1, Y1, X2, Y2, len, G, at: s, reading: (text, size) => place(len / 2, -side, 0.12 * u + depth, { w: text.length * size * 0.5, h: size * 1.05 }) };
+    placed[e.id] = { e, X1, Y1, X2, Y2, len: len2, G: G2, at: s, reading: (text, size) => place(len2 / 2, -side, 0.12 * u + depth, { w: text.length * size * 0.5, h: size * 1.05 }) };
     parts += wrap(s, lines, labels, `M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}`, false, e.id);
   }
   let verts = "";
@@ -5659,6 +5659,553 @@ var LOGIC_TEMPLATES = [
   { key: "blank", name: "Blank", build: () => ({ parts: [], nodes: [], wires: [], captions: {}, table: false }) }
 ];
 
+// client/src/utils/freebodySolve.js
+var G = 9.8;
+var FORCE_KINDS = {
+  weight: { name: "Weight", key: "w", label: "F_g", chips: ["F_g", "mg", "W", "F_G"] },
+  normal: { name: "Normal", key: "n", label: "F_N", chips: ["F_N", "N", "n", "F_{\\perp}"] },
+  friction: { name: "Friction", key: "f", label: "f", chips: ["f", "f_s", "f_k", "F_f"] },
+  tension: { name: "Tension", key: "t", label: "T", chips: ["T", "T_1", "T_2", "F_T"] },
+  applied: { name: "Applied", key: "a", label: "F_{\\text{app}}", chips: ["F", "F_{\\text{app}}", "P", "F_{\\text{push}}"] },
+  drag: { name: "Drag", key: "d", label: "F_D", chips: ["F_D", "F_{\\text{air}}", "D", "bv"] },
+  spring: { name: "Spring", key: "s", label: "F_s", chips: ["F_s", "kx", "F_{\\text{sp}}"] },
+  custom: { name: "Other", key: "o", label: "F", chips: ["F", "qE", "F_E", "F_B", "F_b"] }
+};
+var ID4 = /^[A-Za-z0-9_-]{1,40}$/;
+var HEX = /^#[0-9a-f]{6}$/i;
+var num6 = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
+var int5 = (v, lo, hi, d) => Number.isInteger(v) ? Math.min(hi, Math.max(lo, v)) : d;
+var str5 = (v, max, d = "") => typeof v === "string" ? v.slice(0, max) : d;
+var oneOf = (v, list, d) => list.includes(v) ? v : d;
+var typed = (v, d = "") => typeof v === "number" && isFinite(v) ? String(v) : typeof v === "string" ? v.slice(0, 20) : d;
+var readNumber = (s) => {
+  if (s == null || String(s).trim() === "") return null;
+  const v = parseFloat(String(s).replace(",", "."));
+  return isFinite(v) ? v : null;
+};
+function freebodyModel(el) {
+  const b = el?.body || {}, s = el?.surface || {}, n = el?.net || {};
+  const forces = [], ids = /* @__PURE__ */ new Set();
+  for (const f of Array.isArray(el?.forces) ? el.forces.slice(0, 40) : []) {
+    if (!f || !ID4.test(f.id) || ids.has(f.id) || !FORCE_KINDS[f.kind]) continue;
+    ids.add(f.id);
+    let magMode = oneOf(f.magMode, ["given", "solve", "mass", "mu"], "given");
+    if (magMode === "mass" && f.kind !== "weight" || magMode === "mu" && f.kind !== "friction") magMode = "given";
+    const cl = Array.isArray(f.compLabels) ? f.compLabels : [];
+    forces.push({
+      id: f.id,
+      kind: f.kind,
+      label: str5(f.label, 120, FORCE_KINDS[f.kind].label),
+      magMode,
+      mag: typed(f.mag),
+      mu: typed(f.mu, "0.3"),
+      dir: { from: oneOf(f.dir?.from, ["level", "surface"], "level"), deg: num6(f.dir?.deg, -360, 360, 0) },
+      push: !!f.push,
+      comps: !!f.comps,
+      compLabels: [str5(cl[0], 120), str5(cl[1], 120)],
+      angle: oneOf(f.angle, ["none", "level", "vertical", "surface", "normal"], "none"),
+      angleLabel: str5(f.angleLabel, 60, "\\theta"),
+      rope: !!f.rope,
+      color: HEX.test(f.color || "") ? f.color : null,
+      step: int5(f.step, 0, 1e3, 0)
+    });
+  }
+  const captions = {};
+  for (const [k, v] of Object.entries(el?.captions && typeof el.captions === "object" ? el.captions : {})) {
+    const i = Number(k);
+    if (Number.isInteger(i) && i >= 0 && i <= 1e3 && typeof v === "string" && v.trim()) captions[i] = v.slice(0, 300);
+  }
+  return {
+    body: { shape: oneOf(b.shape, ["box", "ball", "dot"], "box"), w: num6(b.w, 0.3, 6, 1.6), h: num6(b.h, 0.3, 6, 1), label: str5(b.label, 60, "m"), mass: typed(b.mass) },
+    surface: { kind: oneOf(s.kind, ["none", "floor", "incline", "wall", "ceiling"], "floor"), angle: num6(s.angle, -60, 60, 30), angleLabel: str5(s.angleLabel, 60, "\\theta"), show: s.show !== false },
+    model: oneOf(el?.model, ["particle", "extended"], "particle"),
+    axes: oneOf(el?.axes, ["none", "level", "surface"], "level"),
+    motion: oneOf(el?.motion, ["rest", "slide", "free"], "rest"),
+    forceScale: num6(el?.forceScale, 0.01, 1e6, 10),
+    values: !!el?.values,
+    net: { show: n.show !== false, step: int5(n.step, 0, 1e3, 0), label: str5(n.label, 60, "F_{\\text{net}}") },
+    forces,
+    captions,
+    color: HEX.test(el?.color || "") ? el.color : "#ffffff",
+    stepStart: int5(el?.stepStart, 1, 1e3, 1),
+    dimPast: !!el?.dimPast
+  };
+}
+var D2R = Math.PI / 180;
+var uvec = (deg) => [Math.cos(deg * D2R), Math.sin(deg * D2R)];
+var add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+var sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+var mul = (a, k) => [a[0] * k, a[1] * k];
+var dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+var len = (a) => Math.hypot(a[0], a[1]);
+var angOf = (v) => Math.atan2(v[1], v[0]) / D2R;
+var wrap180 = (d) => {
+  d = ((d + 180) % 360 + 360) % 360 - 180;
+  return d === -180 ? 180 : d;
+};
+var angDiff = (a, b) => wrap180(b - a);
+function alpha(m) {
+  const k = m.surface.kind;
+  return k === "incline" ? m.surface.angle : k === "wall" ? -90 : k === "ceiling" ? 180 : 0;
+}
+var bodyRot = (m) => m.surface.kind === "none" ? 0 : alpha(m);
+function half(m) {
+  const b = m.body;
+  if (b.shape === "dot") return [0.09, 0.09];
+  if (b.shape === "ball") return [b.h / 2, b.h / 2];
+  return [b.w / 2, b.h / 2];
+}
+var absDeg = (m, f) => (f.dir.from === "surface" ? alpha(m) : 0) + f.dir.deg;
+function axesFrame(m) {
+  const a = m.axes === "surface" ? alpha(m) : 0;
+  return [uvec(a), uvec(a + 90)];
+}
+function contact(m) {
+  return mul(uvec(alpha(m) + 90), -half(m)[1]);
+}
+function boundary(m, u) {
+  const [hw, hh] = half(m);
+  if (m.body.shape !== "box") return mul(u, hw);
+  const r = -bodyRot(m) * D2R;
+  const lx = u[0] * Math.cos(r) - u[1] * Math.sin(r), ly = u[0] * Math.sin(r) + u[1] * Math.cos(r);
+  const t = Math.min(Math.abs(lx) > 1e-9 ? hw / Math.abs(lx) : Infinity, Math.abs(ly) > 1e-9 ? hh / Math.abs(ly) : Infinity);
+  return mul(u, t);
+}
+function solveFreebody(m) {
+  const fs = m.forces, mass = readNumber(m.body.mass);
+  const out = { mag: {}, how: {}, notes: [], net: [0, 0], acc: null, status: "ok", unknowns: 0 };
+  const note = (text, ...labels) => {
+    if (!out.notes.some((n3) => n3.text === text && n3.labels.join() === labels.join())) out.notes.push({ text, labels });
+  };
+  const normal = fs.find((f) => f.kind === "normal");
+  const vars = [], expr = {};
+  for (const f of fs) {
+    if (f.magMode === "solve" && m.motion !== "free") {
+      expr[f.id] = { c: 0, k: { [vars.length]: 1 } };
+      vars.push({ id: f.id, label: f.label });
+    }
+  }
+  for (const f of fs) {
+    if (expr[f.id] !== void 0 || f.magMode === "mu") continue;
+    if (f.magMode === "mass") {
+      expr[f.id] = mass != null ? { c: mass * G, k: {} } : null;
+      if (mass == null) note("{0} is mg, but the body has no mass yet.", f.label);
+    } else if (f.magMode === "given") {
+      const v = readNumber(f.mag);
+      expr[f.id] = v != null ? { c: v, k: {} } : null;
+    } else {
+      expr[f.id] = null;
+      note("Nothing is worked out in free motion: give {0} a value.", f.label);
+    }
+  }
+  for (const f of fs) {
+    if (f.magMode !== "mu") continue;
+    const mu = readNumber(f.mu), ne = normal ? expr[normal.id] : null;
+    if (!normal) note("{0} is μ times the normal force, but there’s no normal force.", f.label);
+    expr[f.id] = mu != null && ne ? { c: mu * ne.c, k: Object.fromEntries(Object.entries(ne.k).map(([i, v]) => [i, mu * v])) } : null;
+  }
+  const s = uvec(alpha(m));
+  let accVar = -1;
+  if (m.motion === "slide") {
+    if (mass == null) note("Give the body a mass to work out how fast it slides.");
+    else {
+      accVar = vars.length;
+      vars.push({ acc: true, label: "a" });
+    }
+  }
+  const n = vars.length;
+  const A = [new Array(n).fill(0), new Array(n).fill(0)], b = [0, 0];
+  for (const f of fs) {
+    const e = expr[f.id];
+    if (!e) continue;
+    const u = uvec(absDeg(m, f));
+    for (let r = 0; r < 2; r++) {
+      b[r] -= u[r] * e.c;
+      for (const [k, v] of Object.entries(e.k)) A[r][k] += u[r] * v;
+    }
+  }
+  if (accVar >= 0) for (let r = 0; r < 2; r++) A[r][accVar] -= mass * s[r];
+  out.unknowns = n;
+  let x = null;
+  if (n === 0) x = [];
+  else if (n === 1) {
+    const c = [A[0][0], A[1][0]], cc = dot(c, c);
+    if (cc > 1e-12) x = [dot(b, c) / cc];
+    else {
+      out.status = "unsolved";
+      note("{0} has nothing to balance: it doesn’t enter the sums.", vars[0].label);
+    }
+  } else if (n === 2) {
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    if (Math.abs(det) < 1e-9) {
+      out.status = "unsolved";
+      note("{0} and {1} act along one line, so they can’t both be worked out.", vars[0].label, vars[1].label);
+    } else x = [(b[0] * A[1][1] - A[0][1] * b[1]) / det, (A[0][0] * b[1] - b[0] * A[1][0]) / det];
+  } else {
+    out.status = "unsolved";
+    note(`${n} unknowns: only two can be worked out. Give the others values.`);
+  }
+  const value = (e) => {
+    if (!e) return null;
+    let v = e.c;
+    for (const [k, c] of Object.entries(e.k)) {
+      if (!x) return null;
+      v += c * x[k];
+    }
+    return isFinite(v) ? v : null;
+  };
+  for (const f of fs) {
+    const v = value(expr[f.id]);
+    out.mag[f.id] = v;
+    out.how[f.id] = v == null && f.magMode === "given" ? "none" : f.magMode;
+    if (v == null && f.magMode === "given") note("{0} has no value, so it isn’t counted.", f.label);
+    if (v != null && v < -1e-9) {
+      if (f.kind === "normal") note("{0} comes out negative: the body would leave the surface.", f.label);
+      else if (f.kind === "tension") note("{0} comes out negative: a rope can only pull.", f.label);
+      else if (f.kind === "friction") note("{0} comes out negative, so friction points the other way. It’s drawn that way.", f.label);
+      else if (f.magMode === "solve") note("{0} comes out negative, so it points the other way. It’s drawn that way.", f.label);
+    }
+    if (v != null) out.net = add(out.net, mul(uvec(absDeg(m, f)), v));
+  }
+  if (Math.abs(out.net[0]) < 1e-9) out.net[0] = 0;
+  if (Math.abs(out.net[1]) < 1e-9) out.net[1] = 0;
+  if (m.motion === "rest") {
+    out.acc = [0, 0];
+    if (len(out.net) > 1e-6 && n === 1 && x) note("With only {0} unknown, the forces can’t balance: what’s left is the net force.", vars[0].label);
+  } else if (m.motion === "slide") out.acc = accVar >= 0 && x ? mul(s, x[accVar]) : null;
+  else out.acc = mass ? mul(out.net, 1 / mass) : null;
+  return out;
+}
+
+// client/src/utils/freebodyDiagram.js
+var FREEBODY_UNIT = 56;
+var DEFAULT_LEN = 1.6;
+var MAX_LEN = 12;
+var CAPTION4 = 0.3;
+var esc5 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n15 = (v) => String(Math.round(v * 10) / 10);
+function sig3(v) {
+  const a = Math.abs(v);
+  if (a < 5e-3) return "0";
+  return a >= 100 ? String(Math.round(v)) : String(Number(v.toPrecision(3)));
+}
+var PUSHABLE = (k) => !["weight", "normal", "friction"].includes(k);
+var isPush = (m, f) => m.model === "extended" && f.push && PUSHABLE(f.kind);
+function forceGeom(m, f, sol) {
+  const mag = sol.mag[f.id];
+  let deg = absDeg(m, f);
+  if (mag != null && mag < 0) deg += 180;
+  const u = uvec(deg);
+  const L = mag == null ? DEFAULT_LEN : Math.min(MAX_LEN, Math.max(0.3, Math.abs(mag) / m.forceScale));
+  let tail = [0, 0];
+  if (m.model === "extended") {
+    if (f.kind === "normal" || f.kind === "friction") tail = m.surface.kind === "none" ? boundary(m, mul(u, -1)) : contact(m);
+    else if (isPush(m, f)) tail = sub(boundary(m, mul(u, -1)), mul(u, L));
+    else if (f.kind !== "weight") tail = boundary(m, u);
+  }
+  return { u, deg, L, tail, head: add(tail, mul(u, L)) };
+}
+function ropeGeom(m, f, sol) {
+  const g = forceGeom(m, f, sol), u = uvec(absDeg(m, f));
+  const start = m.body.shape === "dot" ? [0, 0] : boundary(m, u);
+  return { u, start, end: add(start, mul(u, Math.max(2.6, g.L + 0.9))) };
+}
+function surfaceGeom(m) {
+  const k = m.surface.kind;
+  if (k === "none") return null;
+  const a = alpha(m), s = uvec(a), n = uvec(a + 90), P = contact(m);
+  if (k === "incline") {
+    const E1 = add(P, mul(s, -3.2)), E2 = add(P, mul(s, 2));
+    const low = E1[1] <= E2[1] ? E1 : E2, high = low === E1 ? E2 : E1;
+    return { k, a, s, n, P, line: [E1, E2], low, high, B: [high[0], low[1]] };
+  }
+  return { k, a, s, n, P, line: [add(P, mul(s, -2.6)), add(P, mul(s, 2.6))] };
+}
+function inclineArc(sg) {
+  const a0 = sg.B[0] > sg.low[0] ? 0 : 180;
+  return { a0, d: angDiff(a0, angOf(sub(sg.high, sg.low))) };
+}
+function angleRef(m, f, deg) {
+  const a = alpha(m);
+  const cands = f.angle === "level" ? [0, 180] : f.angle === "vertical" ? [90, -90] : f.angle === "surface" ? [a, a + 180] : f.angle === "normal" ? [a + 90, a - 90] : [];
+  let best = null;
+  for (const c of cands) if (best == null || Math.abs(angDiff(c, deg)) < Math.abs(angDiff(best, deg))) best = c;
+  return best;
+}
+function compLabel(label, axis) {
+  if (label.endsWith("}")) {
+    let depth = 0, i = label.length - 1;
+    for (; i >= 0; i--) {
+      depth += label[i] === "}" ? 1 : label[i] === "{" ? -1 : 0;
+      if (!depth) break;
+    }
+    if (i > 0 && label[i - 1] === "_") return `${label.slice(0, i - 1)}_{${label.slice(i + 1, -1)},${axis}}`;
+  }
+  const m = /^(.*)_([A-Za-z0-9])$/.exec(label);
+  if (m) return `${m[1]}_{${m[2]},${axis}}`;
+  return label.includes("_") ? `{${label}}_${axis}` : `${label}_${axis}`;
+}
+function labelText(m, f, sol) {
+  const v = sol.mag[f.id];
+  return m.values && v != null ? `${f.label} = ${sig3(Math.abs(v))}\\,\\text{N}` : f.label;
+}
+var netLabel = (m, sol) => m.values ? `${m.net.label} = ${sig3(len(sol.net))}\\,\\text{N}` : m.net.label;
+var netShown = (m, sol) => m.net.show && len(sol.net) > 0.01;
+function netGeom(m, sol, box) {
+  if (!netShown(m, sol)) return null;
+  const u = mul(sol.net, 1 / len(sol.net)), L = Math.min(MAX_LEN, Math.max(0.3, len(sol.net) / m.forceScale));
+  const xs = (isFinite(box.x1) ? box.x1 : 1) + 0.8;
+  const tail = [xs + Math.max(0, -u[0]) * L, -(u[1] * L) / 2];
+  let side = [-u[1], u[0]];
+  if (Math.abs(side[0]) > 0.2 ? side[0] < 0 : side[1] < 0) side = mul(side, -1);
+  return { u, L, tail, head: add(tail, mul(u, L)), mid: add(tail, mul(u, L / 2)), side };
+}
+function bodyLabelAt(m, sol) {
+  const dirs = [];
+  for (const f of m.forces) {
+    const g = forceGeom(m, f, sol);
+    if (len(g.tail) < 0.05) dirs.push(g.deg);
+  }
+  if (m.axes !== "none") {
+    const a = m.axes === "surface" ? alpha(m) : 0;
+    dirs.push(a, a + 90, a + 180, a - 90);
+  }
+  if (!dirs.length) return [0, 0];
+  let best = 45, score = -1;
+  for (let k = 0; k < 16; k++) {
+    const c = 45 + k * 22.5, d = Math.min(...dirs.map((x) => Math.abs(angDiff(c, x))));
+    if (d > score + 1e-6) {
+      score = d;
+      best = c;
+    }
+  }
+  return mul(uvec(best), m.body.shape === "dot" ? 0.42 : 0.36);
+}
+function drawFreebody(m, o = {}) {
+  const u = o.U || FREEBODY_UNIT, ink = o.ink || m.color;
+  const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
+  const step = deck != null ? null : o.step ?? null;
+  const sol = o.sol || solveFreebody(m);
+  const bx = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const ext = (p, r = 0) => {
+    bx.x0 = Math.min(bx.x0, p[0] - r);
+    bx.y0 = Math.min(bx.y0, p[1] - r);
+    bx.x1 = Math.max(bx.x1, p[0] + r);
+    bx.y1 = Math.max(bx.y1, p[1] + r);
+  };
+  const X = (p) => n15(p[0] * u), Y = (p) => n15(-p[1] * u);
+  const fs = 0.4 * u;
+  const shown = (s) => step == null || s <= step;
+  const part2 = (s, inner) => deck != null && s > 0 ? `<g class="pxfx-part" data-fx-at="${s}">${inner}</g>` : inner;
+  const line = (a, b, attrs) => `<path d="M${X(a)} ${Y(a)}L${X(b)} ${Y(b)}" ${attrs}/>`;
+  function label(tex, at, dir, size, color2) {
+    const b = texBox(tex, size);
+    const reach = (Math.abs(dir[0]) * b.w / 2 + Math.abs(dir[1]) * b.h / 2) / u + 0.14;
+    const c = add(at, mul(dir, reach));
+    ext([c[0] - b.w / 2 / u, c[1] - b.h / 2 / u]);
+    ext([c[0] + b.w / 2 / u, c[1] + b.h / 2 / u]);
+    const Xc = c[0] * u, Yc = -c[1] * u;
+    if (o.labels === "deck" || typeof o.labels === "function") {
+      const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc5(tex)}" style="font-family:${esc5(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n15(Xc - w / 2)}" y="${n15(Yc - h / 2)}" width="${n15(w)}" height="${n15(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n15(size / 1.21)}px;color:${esc5(color2)}">${inner}</div></foreignObject>`;
+    }
+    return texSvg(tex, Xc, Yc, size, color2);
+  }
+  function arrow(t, h, color2, w, dash) {
+    const v = sub(h, t), L = len(v);
+    if (L < 1e-6) return { shaft: "", head: "" };
+    const e = mul(v, 1 / L), k = w / 2.6, hl = Math.min(0.3 * k, L * 0.6), hw2 = 0.115 * k + 0.02;
+    const base = sub(h, mul(e, hl * 0.82)), p = [-e[1], e[0]], back2 = sub(h, mul(e, hl));
+    const a = add(back2, mul(p, hw2)), c = sub(back2, mul(p, hw2));
+    ext(h, 0.15);
+    ext(t);
+    return {
+      shaft: `<path${deck != null && !dash ? ' class="pxfx-reveal" pathLength="1"' : ""} d="M${X(t)} ${Y(t)}L${X(base)} ${Y(base)}" stroke="${esc5(color2)}" stroke-width="${n15(w * u / 46)}" stroke-linecap="round" fill="none"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`,
+      head: `<path d="M${X(h)} ${Y(h)}L${X(a)} ${Y(a)}L${X(c)} ${Y(c)}Z" fill="${esc5(color2)}"/>`
+    };
+  }
+  function hatch(a, b, out) {
+    const L = len(sub(b, a)), s = mul(sub(b, a), 1 / L), d = mul(add(out, mul(s, -0.85)), 1 / Math.hypot(1, 0.85));
+    let p = "";
+    for (let t = 0.12; t < L - 0.05; t += 0.22) {
+      const q = add(a, mul(s, t)), r = add(q, mul(d, 0.24));
+      p += `M${X(q)} ${Y(q)}L${X(r)} ${Y(r)}`;
+      ext(r);
+    }
+    return `<path d="${p}" stroke="${esc5(ink)}" stroke-opacity=".5" stroke-width="1.2" fill="none"/>`;
+  }
+  const lw = (w) => n15(w * u / 46);
+  let back = "", mid = "", front = "", top = "";
+  const sg = surfaceGeom(m);
+  if (sg && m.surface.show) {
+    if (sg.k === "incline") {
+      const { low, high, B } = sg;
+      back += `<path d="M${X(low)} ${Y(low)}L${X(B)} ${Y(B)}L${X(high)} ${Y(high)}Z" fill="${esc5(ink)}" fill-opacity=".07" stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
+      back += hatch(low, B, [0, -1]);
+      ext(low);
+      ext(high);
+      ext(B);
+      const { a0, d } = inclineArc(sg);
+      if (Math.abs(d) > 1) {
+        const r = 0.85, p0 = add(low, mul(uvec(a0), r)), p1 = add(low, mul(uvec(a0 + d), r));
+        back += `<path d="M${X(p0)} ${Y(p0)}A${n15(r * u)} ${n15(r * u)} 0 0 ${d > 0 ? 0 : 1} ${X(p1)} ${Y(p1)}" stroke="${esc5(ink)}" stroke-width="${lw(1.4)}" fill="none"/>`;
+        back += label(m.surface.angleLabel || "\\theta", add(low, mul(uvec(a0 + d / 2), r)), uvec(a0 + d / 2), fs * 0.9, ink);
+      }
+    } else {
+      back += line(sg.line[0], sg.line[1], `stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linecap="round"`);
+      back += hatch(sg.line[0], sg.line[1], mul(sg.n, -1));
+      ext(sg.line[0]);
+      ext(sg.line[1]);
+    }
+  }
+  if (m.axes !== "none") {
+    const [ex2, ey2] = axesFrame(m), r = 2.3;
+    for (const [e, nm] of [[ex2, "x"], [ey2, "y"]]) {
+      const a = mul(e, -r), b = mul(e, r), p = [-e[1], e[0]], hb = sub(b, mul(e, 0.2));
+      mid += line(a, sub(b, mul(e, 0.12)), `stroke="${esc5(ink)}" stroke-opacity=".45" stroke-width="${lw(1.2)}"`);
+      mid += `<path d="M${X(b)} ${Y(b)}L${X(add(hb, mul(p, 0.07)))} ${Y(add(hb, mul(p, 0.07)))}L${X(sub(hb, mul(p, 0.07)))} ${Y(sub(hb, mul(p, 0.07)))}Z" fill="${esc5(ink)}" fill-opacity=".45"/>`;
+      mid += `<g opacity=".6">${label(nm, b, e, fs * 0.8, ink)}</g>`;
+      ext(a);
+      ext(b);
+    }
+  }
+  for (const f of m.forces) {
+    if (!f.rope || !m.surface.show) continue;
+    const { u: d, start, end } = ropeGeom(m, f, sol), p = [-d[1], d[0]];
+    ext(end, 0.45);
+    if (!shown(f.step)) continue;
+    mid += part2(f.step, line(start, end, `stroke="${esc5(ink)}" stroke-opacity=".55" stroke-width="${lw(1.6)}"`) + line(add(end, mul(p, 0.38)), sub(end, mul(p, 0.38)), `stroke="${esc5(ink)}" stroke-width="${lw(2.2)}" stroke-linecap="round"`) + hatch(sub(end, mul(p, 0.38)), add(end, mul(p, 0.38)), d));
+  }
+  const [hw, hh] = half(m);
+  const bodyHit = o.editor ? ' data-body="1"' : "";
+  if (m.body.shape === "box") {
+    const r = bodyRot(m) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+    const pts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => [x * cs - y * sn, x * sn + y * cs]);
+    pts.forEach((p) => ext(p));
+    mid += `<path${bodyHit} d="M${pts.map((p) => `${X(p)} ${Y(p)}`).join("L")}Z" fill="${esc5(ink)}" fill-opacity=".1" stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
+  } else if (m.body.shape === "ball") {
+    ext([0, 0], hw);
+    mid += `<circle${bodyHit} cx="0" cy="0" r="${n15(hw * u)}" fill="${esc5(ink)}" fill-opacity=".1" stroke="${esc5(ink)}" stroke-width="${lw(2)}"/>`;
+  }
+  if (m.body.shape === "dot" || m.model === "particle") {
+    const dot0 = m.body.shape === "dot";
+    mid += `<circle cx="0" cy="0" r="${n15((dot0 ? 0.11 : 0.06) * u)}" fill="${esc5(ink)}"/>`;
+    if (dot0 && o.editor) mid += `<circle data-body="1" cx="0" cy="0" r="${n15(0.45 * u)}" fill="#000" fill-opacity="0"/>`;
+    ext([0, 0], 0.2);
+  }
+  if (m.body.label) {
+    const at = bodyLabelAt(m, sol);
+    mid += `<g opacity=".85">${label(m.body.label, at, [0, 0], fs * 0.85, ink)}</g>`;
+  }
+  const [ex, ey] = axesFrame(m);
+  for (const f of m.forces) {
+    const g = forceGeom(m, f, sol), color2 = f.color || ink;
+    if (!shown(f.step)) {
+      ext(g.head, 0.6);
+      ext(g.tail);
+      continue;
+    }
+    let fade = "";
+    if (f.comps && m.axes !== "none") {
+      const vec = mul(g.u, g.L);
+      for (const [e, k, lb] of [[ex, dot(vec, ex), f.compLabels[0] || compLabel(f.label, "x")], [ey, dot(vec, ey), f.compLabels[1] || compLabel(f.label, "y")]]) {
+        if (Math.abs(k) < 0.08) continue;
+        const tip = add(g.tail, mul(e, k)), a2 = arrow(g.tail, tip, color2, 1.7, `${n15(6 * u / 46)} ${n15(4 * u / 46)}`);
+        fade += line(g.head, tip, `stroke="${esc5(color2)}" stroke-opacity=".55" stroke-width="${lw(1.1)}" stroke-dasharray="${n15(2 * u / 46)} ${n15(4 * u / 46)}"`) + a2.shaft + a2.head;
+        fade += label(lb, tip, mul(e, Math.sign(k)), fs * 0.82, color2);
+      }
+    }
+    if (f.angle !== "none") {
+      const ref = angleRef(m, f, g.deg), d = ref == null ? 0 : angDiff(ref, g.deg);
+      if (Math.abs(d) > 1) {
+        const r = Math.min(0.75, g.L * 0.55), p0 = add(g.tail, mul(uvec(ref), r)), p1 = add(g.tail, mul(uvec(ref + d), r));
+        fade += `<path d="M${X(p0)} ${Y(p0)}A${n15(r * u)} ${n15(r * u)} 0 0 ${d > 0 ? 0 : 1} ${X(p1)} ${Y(p1)}" stroke="${esc5(color2)}" stroke-width="${lw(1.3)}" fill="none"/>`;
+        fade += label(f.angleLabel || "\\theta", add(g.tail, mul(uvec(ref + d / 2), r)), uvec(ref + d / 2), fs * 0.8, color2);
+        if (f.angle === "level" || f.angle === "vertical") fade += line(g.tail, add(g.tail, mul(uvec(ref), r + 0.35)), `stroke="${esc5(color2)}" stroke-opacity=".5" stroke-width="${lw(1.1)}" stroke-dasharray="${n15(3 * u / 46)} ${n15(3 * u / 46)}"`);
+      }
+    }
+    const a = arrow(g.tail, g.head, color2, 2.6, "");
+    fade = a.head + label(labelText(m, f, sol), g.head, g.u, fs, color2) + fade;
+    let s = "";
+    if (o.editor && o.sel === f.id) s += line(g.tail, g.head, `stroke="${esc5(o.accent)}" stroke-opacity=".35" stroke-width="12" stroke-linecap="round"`);
+    s += a.shaft + (deck != null && f.step > 0 ? `<g class="pxfx-fade">${fade}</g>` : fade);
+    if (o.editor) {
+      s += `<path data-f="${esc5(f.id)}" d="M${X(g.tail)} ${Y(g.tail)}L${X(g.head)} ${Y(g.head)}" stroke="#000" stroke-opacity="0" stroke-width="18" stroke-linecap="round" fill="none"/>`;
+      if (o.sel === f.id) {
+        const hp = isPush(m, f) ? g.tail : g.head;
+        top += `<circle data-h="${esc5(f.id)}" cx="${X(hp)}" cy="${Y(hp)}" r="7" fill="${esc5(o.accent)}" stroke="${esc5(o.bg || "#fff")}" stroke-width="2"><title>Drag to turn it</title></circle>`;
+      }
+    }
+    front += part2(f.step, `<g>${s}</g>`);
+  }
+  const ng = netGeom(m, sol, { ...bx });
+  if (ng) {
+    ext(ng.tail);
+    ext(ng.head, 0.15);
+    const nl = netLabel(m, sol);
+    const lb = label(nl, add(ng.mid, mul(ng.side, 0.05)), ng.side, fs, ink);
+    if (shown(m.net.step)) {
+      const a = arrow(ng.tail, ng.head, ink, 2.2, `${n15(7 * u / 46)} ${n15(5 * u / 46)}`);
+      const inner = a.shaft + a.head + lb;
+      front += part2(m.net.step, deck != null && m.net.step > 0 ? `<g class="pxfx-fade">${inner}</g>` : inner);
+    }
+  }
+  if (!isFinite(bx.x0)) ext([0, 0], 2);
+  const box = { x0: bx.x0 * u, x1: bx.x1 * u, y0: -bx.y1 * u, y1: -bx.y0 * u };
+  let caps = "";
+  const capSteps = Object.keys(m.captions || {}).map(Number).sort((a, b) => a - b);
+  if (o.captions && capSteps.length) {
+    const cs = CAPTION4 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
+    const one = (n, cls) => {
+      const text = m.captions[n];
+      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n15(cx)}" y="${n15(y + cs)}" text-anchor="middle" font-size="${n15(cs)}" fill="${esc5(ink)}">${esc5(text)}</text>`;
+      return `<foreignObject${cls} x="${n15(cx - w / 2)}" y="${n15(y)}" width="${n15(w)}" height="${n15(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n15(cs)}px;line-height:1.3;color:${esc5(ink)}">${esc5(text)}</div></foreignObject>`;
+    };
+    if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
+    else {
+      const at = capSteps.filter((n) => n <= (step ?? 0)).pop();
+      if (at != null) caps = one(at, "");
+    }
+    box.x0 = Math.min(box.x0, cx - w / 2);
+    box.x1 = Math.max(box.x1, cx + w / 2);
+    box.y1 = Math.max(box.y1, y + h);
+  }
+  return { svg: back + mid + front + top + caps, box, sol, net: ng };
+}
+var baseOptions3 = (m) => ({ ink: m.color, captions: true });
+function freebodyBox(el) {
+  const m = freebodyModel(el);
+  const { box } = drawFreebody(m, baseOptions3(m));
+  const pad = 0.2 * FREEBODY_UNIT;
+  return { x: box.x0 - pad, y: box.y0 - pad, w: box.x1 - box.x0 + 2 * pad, h: box.y1 - box.y0 + 2 * pad };
+}
+function freebodySvg(el, opts = {}) {
+  const m = freebodyModel(el), b = freebodyBox(el);
+  const { svg } = drawFreebody(m, { ...baseOptions3(m), labels: opts.labels || "text", deck: opts.deck, step: opts.step ?? null });
+  const size = opts.standalone ? ` width="${n15(b.w)}" height="${n15(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n15(b.x)} ${n15(b.y)} ${n15(b.w)} ${n15(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+}
+function freebodySteps(el) {
+  if (el?.type !== "freebody") return [];
+  const m = freebodyModel(el), steps = /* @__PURE__ */ new Set();
+  for (const f of m.forces) if (f.step > 0) steps.add(f.step);
+  if (m.net.show && m.net.step > 0 && netShown(m, solveFreebody(m))) steps.add(m.net.step);
+  for (const k of Object.keys(m.captions)) if (+k > 0) steps.add(+k);
+  return [...steps].sort((a, b) => a - b).map((s) => [m.stepStart - 1 + s, s]).filter(([n]) => n <= 1e3);
+}
+function freebodyStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of freebodySteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasFreebody(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "freebody"));
+}
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -5690,24 +6237,24 @@ var MAX_LAYERS = 60;
 var WEIGHTS = /^(normal|bold|[1-9]00)$/;
 var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
-var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+var HEX2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num6 = (key) => {
+  const num7 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
   };
-  const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
+  const color2 = (key) => HEX2.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num6("depth"),
-    rotateX: num6("rotateX"),
-    rotateY: num6("rotateY"),
-    perspective: num6("perspective"),
-    fontSize: num6("fontSize"),
-    letterSpacing: num6("letterSpacing"),
-    lineHeight: num6("lineHeight"),
-    sideShade: num6("sideShade"),
+    depth: num7("depth"),
+    rotateX: num7("rotateX"),
+    rotateY: num7("rotateY"),
+    perspective: num7("perspective"),
+    fontSize: num7("fontSize"),
+    letterSpacing: num7("letterSpacing"),
+    lineHeight: num7("lineHeight"),
+    sideShade: num7("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -5836,8 +6383,8 @@ function installAnnotations(config) {
     let far = 0, index = 0;
     for (let i = 1; i < points.length - 1; i++) {
       const [px, py] = points[i];
-      const len = Math.hypot(bx - ax, by - ay) || 1;
-      const d = Math.abs((by - ay) * px - (bx - ax) * py + bx * ay - by * ax) / len;
+      const len2 = Math.hypot(bx - ax, by - ay) || 1;
+      const d = Math.abs((by - ay) * px - (bx - ax) * py + bx * ay - by * ax) / len2;
       if (d > far) {
         far = d;
         index = i;
@@ -7114,6 +7661,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="0" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${logicSvg(el, { deck: fxId, labels: "deck" })}</div>`;
       }
+      if (el.type === "freebody") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${freebodySvg(el, { deck: fxId, labels: "deck" })}</div>`;
+      }
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -7181,7 +7732,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc5 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc6 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -7199,10 +7750,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc5(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc6(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc5(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc6(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -7210,8 +7761,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc5(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc5(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc6(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc6(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -7437,7 +7988,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -7799,7 +8350,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) ? diagramDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) ? diagramDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -8017,8 +8568,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str5) {
-  return String(str5).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str6) {
+  return String(str6).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>
