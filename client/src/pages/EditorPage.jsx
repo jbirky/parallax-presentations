@@ -58,6 +58,7 @@ import { CIRCUIT_FIELDS } from '../utils/circuitParts'
 import { defaultLogic, logicBox } from '../utils/logicDiagram'
 import { LOGIC_FIELDS } from '../utils/logicParts'
 import { defaultFreebody, freebodyBox } from '../utils/freebodyDiagram'
+import { defaultPeriodic, periodicBox } from '../utils/periodicTable'
 import { FREEBODY_FIELDS } from '../utils/freebodySolve'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
@@ -1586,6 +1587,24 @@ function draw() {
   }, [freebodyEditor, presentation, updateElement, slideW, slideH])
 
   const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
+
+  // A periodic table, as large as the slide allows, in the slide's colors;
+  // everything about it is set in the properties panel
+  const addPeriodic = useCallback(() => {
+    const table = defaultPeriodic(slideIsDark())
+    const box = periodicBox(table)
+    const scale = Math.min((slideW * 0.94) / box.w, (slideH * 0.92) / box.h)
+    const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'periodic', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...table,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideIsDark, slideW, slideH])
 
   const openMoleculePicker = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
@@ -4104,6 +4123,7 @@ function draw() {
             onAddLogic={addLogic}
             onAddFreebody={addFreebody}
             onAddMolecule={addMolecule}
+            onAddPeriodic={addPeriodic}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}

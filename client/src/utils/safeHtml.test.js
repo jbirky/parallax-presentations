@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { safeHtml, safeSvg } from './safeHtml'
 import { shapeSvgString } from './shapeUtils'
+import { periodicSvg, defaultPeriodic } from './periodicTable'
 
 const ATTACKS = [
   '<img src=x onerror="steal()"><img/src=x/onerror=steal()>',
@@ -52,6 +53,17 @@ describe('HTML from a deck, shown in the editor', () => {
     expect(safeSvg(ATTACKS)).toBe(LEFT)
     // Text boxes don't take HTML in SVG
     expect(safeHtml(svg)).not.toContain('katex')
+  })
+
+  it('keeps a periodic table whole, with what its pointing and pins use', () => {
+    const svg = periodicSvg({ ...defaultPeriodic(), highlight: 'block:p', orbitalView: 'clouds' }, { mode: 'canvas' })
+    const clean = safeSvg(svg)
+    expect(clean.match(/data-pt-z=/g)).toHaveLength(118)
+    expect(clean).toContain('data-pt-card')
+    expect(clean).toContain('data-pt-sub')
+    expect(clean).toContain('opacity="0.22"')
+    expect(clean).toContain('pointer-events:none')
+    expect(clean.length).toBeGreaterThan(svg.length * 0.95)
   })
 
   it('returns nothing for nothing', () => {

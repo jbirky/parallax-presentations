@@ -40,6 +40,7 @@ import FeynmanView from './FeynmanView'
 import CircuitView from './CircuitView'
 import LogicView from './LogicView'
 import FreebodyView from './FreebodyView'
+import PeriodicView from './PeriodicView'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
@@ -1154,6 +1155,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             }}
             onStopEdit={onStopEdit}
             onUpdateContent={(id, content) => onUpdateElement?.(id, { content })}
+            onUpdateFields={(id, changes) => onUpdateElement?.(id, changes)}
             onAutoResize={(id, h) => onUpdateElement?.(id, { height: h })}
             onCropHandleDown={(handle, clientX, clientY) => {
               const el = slide?.elements?.find(el => el.id === element.id)
@@ -1403,7 +1405,7 @@ function CitationCaption({ element, fontSize, fontFamily }) {
   )
 }
 
-export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
+export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1478,7 +1480,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           box (badges, handles, others' outlines) comes after, unclipped */}
       <div style={{
         position: 'relative', width: '100%', height: isAutoFit ? 'auto' : '100%',
-        overflow: isAutoFit || element.type === 'textpath' || element.type === 'text3d' || element.type === 'equation' || element.type === 'feynman' || element.type === 'circuit' || element.type === 'logic' || element.type === 'freebody' || ((element.type === 'image' || element.type === 'molecule') && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
+        overflow: isAutoFit || element.type === 'textpath' || element.type === 'text3d' || element.type === 'equation' || element.type === 'feynman' || element.type === 'circuit' || element.type === 'logic' || element.type === 'freebody' || element.type === 'periodic' || ((element.type === 'image' || element.type === 'molecule') && (element.citationText || element.citationLink)) ? 'visible' : 'hidden',
         borderRadius: (element.type === 'image' || element.type === 'code') && element.borderRadius ? element.borderRadius : undefined,
         // A state's flip, shown mirrored; the badges and handles stay as they are
         transform: element.flipX || element.flipY ? `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` : undefined,
@@ -1707,6 +1709,13 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         )}
         {element.type === 'freebody' && (
           <FreebodyView element={element} style={{ pointerEvents: 'none' }} />
+        )}
+        {element.type === 'periodic' && (
+          // Once selected, pointing at a tile shows it in the card, and a
+          // double-click makes it the one shown at rest
+          <PeriodicView element={element} interactive={isSelected && !element.locked}
+            style={{ pointerEvents: isSelected ? 'auto' : 'none' }}
+            onPick={z => onUpdateFields?.(element.id, { restingElement: z })} />
         )}
         {element.type === 'tikz' && (
           <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}

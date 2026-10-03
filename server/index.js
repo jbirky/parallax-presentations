@@ -205,6 +205,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },
       { text: 'Molecules', link: 'tutorials/molecules' },
       { text: 'Overview', link: 'features/overview' },
+      { text: 'Periodic Table', link: 'tutorials/periodic-table' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },

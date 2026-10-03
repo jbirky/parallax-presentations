@@ -15,6 +15,7 @@ The same menu has the other diagram tools:
 - **Logic Diagram** (see [Logic Diagrams](/tutorials/logic-diagrams))
 - **Free-Body Diagram** (see [Free-Body Diagrams](/tutorials/free-body-diagrams))
 - **Molecule**, a 3D structure to turn while presenting (see [Molecules](/tutorials/molecules))
+- **Periodic Table**, showing each element's details and electrons as you point at it (see [Periodic Table](/tutorials/periodic-table))
 
 The diagram editor opens as a full-screen modal with a dark canvas and a tool panel on the left.
 

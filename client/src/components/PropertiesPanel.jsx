@@ -18,6 +18,7 @@ import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, isScrolling, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
 import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
 import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
+import PeriodicProperties from './PeriodicProperties'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -684,6 +685,10 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           )}
 
           {/* Free-body diagram */}
+          {selectedElement.type === 'periodic' && (
+            <PeriodicProperties element={selectedElement} onUpdateElement={onUpdateElement} />
+          )}
+
           {selectedElement.type === 'freebody' && (
             <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditFreebody?.()}>
