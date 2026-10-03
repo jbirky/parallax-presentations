@@ -10,6 +10,7 @@ import { feynmanTikz, feynmanSteps } from '../utils/feynmanDiagram'
 import { circuitTikz, circuitSteps } from '../utils/circuitDiagram'
 import { logicTikz, logicSteps, logicTableLatex } from '../utils/logicDiagram'
 import { freebodyTikz, freebodySteps } from '../utils/freebodyDiagram'
+import { vennTikz, vennSteps, vennExprTex } from '../utils/vennDiagram'
 import { SHAPES } from '../utils/shapeUtils'
 import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, TEXT3D_EXTRUDED_DEPTH } from '../utils/text3d'
 
@@ -291,7 +292,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -721,6 +722,39 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 </>
               )}
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows every force. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Venn diagram */}
+          {selectedElement.type === 'venn' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditVenn?.()}>
+                Edit Venn Diagram…
+              </button>
+              <CopyTikzButton tikz={vennTikz(selectedElement)} label="Copy TikZ" />
+              <CopyTikzButton tikz={vennExprTex(selectedElement)} label="Copy expression" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              {vennSteps(selectedElement).length > 0 && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selectedElement.dimPast} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Dim earlier steps
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the last step. Double-click to edit it.</p>
             </div>
           )}
 

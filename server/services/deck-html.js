@@ -175,19 +175,19 @@ function pointsToPath(points, smooth = true) {
 }
 
 // client/src/utils/bibtexParser.js
-function splitNames(str6) {
+function splitNames(str7) {
   const names = [];
   let depth = 0, from = 0;
-  for (let i = 0; i < str6.length; i++) {
-    if (str6[i] === "{") depth++;
-    else if (str6[i] === "}") depth = Math.max(0, depth - 1);
-    else if (depth === 0 && str6[i] === " " && str6.slice(i, i + 5).toLowerCase() === " and ") {
-      names.push(str6.slice(from, i));
+  for (let i = 0; i < str7.length; i++) {
+    if (str7[i] === "{") depth++;
+    else if (str7[i] === "}") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && str7[i] === " " && str7.slice(i, i + 5).toLowerCase() === " and ") {
+      names.push(str7.slice(from, i));
       from = i + 5;
       i += 4;
     }
   }
-  names.push(str6.slice(from));
+  names.push(str7.slice(from));
   return names;
 }
 function parseAuthors(authorStr) {
@@ -924,7 +924,7 @@ function createMathParser() {
     "ρ": "rho"
   };
   const CMP = ["=", "<", ">", "<=", ">="];
-  function fail(message) {
+  function fail2(message) {
     const e = new Error(message);
     e.graphError = true;
     throw e;
@@ -937,7 +937,7 @@ function createMathParser() {
   const isDigit = (c) => c >= "0" && c <= "9";
   const isLetter = (c) => c >= "a" && c <= "z" || c >= "A" && c <= "Z";
   const isWord = (c) => isLetter(c) || isDigit(c);
-  function tokenize2(text) {
+  function tokenize3(text) {
     const s = normalize(text);
     const tokens = [];
     let i = 0;
@@ -966,15 +966,15 @@ function createMathParser() {
           if (s[j] === "_") {
             if (s[j + 1] === "{") {
               const end = s.indexOf("}", j + 2);
-              if (end < 0) fail("A subscript _{ needs its }");
+              if (end < 0) fail2("A subscript _{ needs its }");
               const sub2 = s.slice(j + 2, end).trim();
-              if (!sub2 || ![...sub2].every(isWord)) fail("Subscripts are letters and digits, like a_1");
+              if (!sub2 || ![...sub2].every(isWord)) fail2("Subscripts are letters and digits, like a_1");
               name += "_" + sub2;
               j = end + 1;
             } else {
               let k = j + 1;
               while (k < s.length && isWord(s[k])) k++;
-              if (k === j + 1) fail("Put a letter or digit after _, like a_1");
+              if (k === j + 1) fail2("Put a letter or digit after _, like a_1");
               name += "_" + s.slice(j + 1, k);
               j = k;
             }
@@ -1000,7 +1000,7 @@ function createMathParser() {
         i++;
         continue;
       }
-      fail("“" + c + "” isn’t something a graph can read");
+      fail2("“" + c + "” isn’t something a graph can read");
     }
     return tokens;
   }
@@ -1010,7 +1010,7 @@ function createMathParser() {
     const peek = () => tokens[pos];
     const isOp = (v) => pos < tokens.length && tokens[pos].t === "op" && tokens[pos].v === v;
     function expect(v, what) {
-      if (!isOp(v)) fail(pos < tokens.length ? "Expected " + (what || v) + " before “" + tokens[pos].v + "”" : "Expected " + (what || v) + " at the end");
+      if (!isOp(v)) fail2(pos < tokens.length ? "Expected " + (what || v) + " before “" + tokens[pos].v + "”" : "Expected " + (what || v) + " at the end");
       pos++;
     }
     function startsFactor(tok) {
@@ -1076,7 +1076,7 @@ function createMathParser() {
       expect(")");
       return list;
     }
-    function chain(first) {
+    function chain2(first) {
       const parts = [first || expr()];
       const ops = [];
       while (pos < tokens.length && tokens[pos].t === "op" && CMP.includes(tokens[pos].v)) {
@@ -1089,10 +1089,10 @@ function createMathParser() {
       const branches = [];
       let otherwise = null;
       for (; ; ) {
-        const c = chain();
+        const c = chain2();
         if (!c.ops.length) {
           otherwise = c.parts[0];
-          if (!isOp("}")) fail("In { }, the value for “otherwise” goes last");
+          if (!isOp("}")) fail2("In { }, the value for “otherwise” goes last");
           break;
         }
         let value = null;
@@ -1123,21 +1123,21 @@ function createMathParser() {
         pos++;
         list = args();
       } else {
-        if (!startsFactor(peek())) fail(name + " needs something to work on, like " + name + "(x)");
+        if (!startsFactor(peek())) fail2(name + " needs something to work on, like " + name + "(x)");
         let a = power();
         while (startsFactor(peek()) && peek().t !== "fn") a = { k: "bin", op: "*", a, b: power() };
         list = [a];
       }
       const [least, most] = ARITY[name] || [1, 1];
       if (list.length < least || list.length > most) {
-        fail(name + " takes " + (least === most ? least : least + " or " + most) + " value" + (most === 1 ? "" : "s"));
+        fail2(name + " takes " + (least === most ? least : least + " or " + most) + " value" + (most === 1 ? "" : "s"));
       }
       const call = { k: "call", f: name, args: list };
       return pow ? { k: "bin", op: "^", a: call, b: pow } : call;
     }
     function primary() {
       const tok = peek();
-      if (!tok) fail("Something’s missing at the end");
+      if (!tok) fail2("Something’s missing at the end");
       if (tok.t === "num") {
         pos++;
         return { k: "num", v: tok.v };
@@ -1171,18 +1171,18 @@ function createMathParser() {
         pos++;
         return piecewise();
       }
-      fail("“" + tok.v + "” is out of place");
+      fail2("“" + tok.v + "” is out of place");
     }
     return {
       statement() {
-        const c = chain();
-        if (pos < tokens.length) fail("“" + tokens[pos].v + "” is out of place");
+        const c = chain2();
+        if (pos < tokens.length) fail2("“" + tokens[pos].v + "” is out of place");
         return c;
       }
     };
   }
   function parseStatement(text, userFns) {
-    return parser(tokenize2(text), userFns || /* @__PURE__ */ new Set()).statement();
+    return parser(tokenize3(text), userFns || /* @__PURE__ */ new Set()).statement();
   }
   function freeVars(node, into, bound) {
     const out = into || /* @__PURE__ */ new Set();
@@ -1258,7 +1258,7 @@ function createMathParser() {
         }
         const i = formals ? formals.indexOf(node.n) : -1;
         if (i >= 0) return (env, a) => a[i];
-        if (fns[node.n]) fail(node.n + " is a function: write " + node.n + "(x)");
+        if (fns[node.n]) fail2(node.n + " is a function: write " + node.n + "(x)");
         const name = node.n;
         return (env) => {
           const v = env[name];
@@ -1299,8 +1299,8 @@ function createMathParser() {
       }
       case "ucall": {
         const def = fns[node.f];
-        if (!def) fail(node.f + "(…) has an error");
-        if (def.formals.length !== node.args.length) fail(node.f + " takes " + def.formals.length + " value" + (def.formals.length === 1 ? "" : "s"));
+        if (!def) fail2(node.f + "(…) has an error");
+        if (def.formals.length !== node.args.length) fail2(node.f + " takes " + def.formals.length + " value" + (def.formals.length === 1 ? "" : "s"));
         const list = node.args.map(c);
         return (env, x) => def.call(env, list.map((g) => g(env, x)));
       }
@@ -1313,9 +1313,9 @@ function createMathParser() {
         };
       }
       case "tuple":
-        fail("A point ( , ) can’t be used inside a calculation");
+        fail2("A point ( , ) can’t be used inside a calculation");
     }
-    fail("Couldn’t read this");
+    fail2("Couldn’t read this");
   }
   function condition(ch, formals, fns) {
     const parts = ch.parts.map((p) => compile(p, formals, fns));
@@ -1338,7 +1338,7 @@ function createMathParser() {
   }
   const isVar = (node, name) => node.k === "var" && node.n === name;
   const only = (set, names) => [...set].every((v) => !RESERVED.includes(v) || names.includes(v));
-  const has = (set, names) => names.some((n) => set.has(n));
+  const has3 = (set, names) => names.some((n) => set.has(n));
   function analyze(expressions) {
     const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
     const fns = {};
@@ -1371,7 +1371,7 @@ function createMathParser() {
       try {
         if (item.kind === "function") {
           const st = parseStatement(item.bodyText, userFns);
-          if (st.ops.length) fail("A function is one expression after =");
+          if (st.ops.length) fail2("A function is one expression after =");
           item.body = st.parts[0];
         } else {
           item.stmt = parseStatement(item.text, userFns);
@@ -1389,7 +1389,7 @@ function createMathParser() {
       if (ops.length !== 1 || ops[0] !== "=" || parts[0].k !== "var") continue;
       const name = parts[0].n;
       if (RESERVED.includes(name) || name in CONSTANTS) continue;
-      if (has(freeVars(parts[1]), RESERVED)) continue;
+      if (has3(freeVars(parts[1]), RESERVED)) continue;
       if (params.has(name)) {
         item.kind = "error";
         item.error = name + " is defined twice";
@@ -1499,13 +1499,13 @@ function createMathParser() {
           node = node.a;
         }
         if (node.k === "tuple") {
-          if (node.items.length !== 2) fail("A point has two coordinates, like (1, 2)");
+          if (node.items.length !== 2) fail2("A point has two coordinates, like (1, 2)");
           const [nx, ny] = restrict ? node.items.map((n) => ({ k: "bin", op: "*", a: n, b: restrict })) : node.items;
           if (vars.has("t")) {
-            if (!only(vars, ["t"])) fail("A curve (x(t), y(t)) can use only t and sliders");
+            if (!only(vars, ["t"])) fail2("A curve (x(t), y(t)) can use only t and sliders");
             item.kind = "parametric";
           } else {
-            if (has(vars, RESERVED)) fail("A point’s coordinates are numbers or sliders; for a curve use t");
+            if (has3(vars, RESERVED)) fail2("A point’s coordinates are numbers or sliders; for a curve use t");
             item.kind = "point";
             item.dragX = node.items[0].k === "var" && params.has(node.items[0].n) ? node.items[0].n : null;
             item.dragY = node.items[1].k === "var" && params.has(node.items[1].n) ? node.items[1].n : null;
@@ -1514,14 +1514,14 @@ function createMathParser() {
           item.fy = cf(ny);
           return;
         }
-        if (has(vars, ["y", "t", "theta", "r"])) fail("Write it as an equation, like y = …");
+        if (has3(vars, ["y", "t", "theta", "r"])) fail2("Write it as an equation, like y = …");
         item.f = cf(node);
         item.kind = vars.has("x") ? "explicit" : "value";
         item.axis = "y";
         return;
       }
       if (ops.every((op) => op === "=")) {
-        if (ops.length > 1) fail("Only one = per line");
+        if (ops.length > 1) fail2("Only one = per line");
         const [l, r] = parts;
         for (const [side, other] of [[l, r], [r, l]]) {
           const ov = freeVars(other);
@@ -1543,17 +1543,17 @@ function createMathParser() {
             return;
           }
         }
-        if (isVar(l, "t") || isVar(l, "theta")) fail(l.n + " is what curves are drawn over; call this something else");
-        if (!only(vars, ["x", "y"])) fail("An equation uses x, y and sliders; for curves over t or θ, see the examples");
-        if (!has(vars, ["x", "y"])) fail("There’s no x or y to draw");
+        if (isVar(l, "t") || isVar(l, "theta")) fail2(l.n + " is what curves are drawn over; call this something else");
+        if (!only(vars, ["x", "y"])) fail2("An equation uses x, y and sliders; for curves over t or θ, see the examples");
+        if (!has3(vars, ["x", "y"])) fail2("There’s no x or y to draw");
         const lf = cf(l), rf = cf(r);
         item.kind = "implicit";
         item.F = (env) => lf(env) - rf(env);
         return;
       }
-      if (ops.includes("=")) fail("Use either = or <, >, ≤, ≥ in one line");
-      if (!only(vars, ["x", "y"])) fail("An inequality uses x, y and sliders");
-      if (!has(vars, ["x", "y"])) fail("There’s no x or y to shade");
+      if (ops.includes("=")) fail2("Use either = or <, >, ≤, ≥ in one line");
+      if (!only(vars, ["x", "y"])) fail2("An inequality uses x, y and sliders");
+      if (!has3(vars, ["x", "y"])) fail2("There’s no x or y to shade");
       if (ops.length === 1) {
         const [l, r] = parts;
         const op = ops[0];
@@ -1598,12 +1598,12 @@ function createMathParser() {
     }
     return env;
   }
-  return { tokenize: tokenize2, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED };
+  return { tokenize: tokenize3, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED };
 }
 
 // client/src/utils/graphRuntime.js
 function graphRuntime(P, config) {
-  let C = config;
+  let C2 = config;
   const THEMES = {
     light: {
       axis: "#2b2b2b",
@@ -1645,37 +1645,37 @@ function graphRuntime(P, config) {
   let snapshotSent = false;
   let frame = 0;
   let shownScale = 1;
-  const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)));
+  const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C2.print ? Math.max(shownScale, 3) : shownScale)));
   const clamp4 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const copyView = (v) => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax });
   const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax"].every((k) => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
   function setConfig(next, keepState) {
-    C = next;
-    theme = THEMES[C.theme] || THEMES.light;
-    analysis = P.analyze(C.expressions || []);
+    C2 = next;
+    theme = THEMES[C2.theme] || THEMES.light;
+    analysis = P.analyze(C2.expressions || []);
     const kept = values;
     values = {};
     for (const it of analysis.items) {
-      if (it.kind === "param" && it.slider) values[it.name] = keepState && typeof kept[it.name] === "number" && !C.editor ? kept[it.name] : it.literal;
+      if (it.kind === "param" && it.slider) values[it.name] = keepState && typeof kept[it.name] === "number" && !C2.editor ? kept[it.name] : it.literal;
     }
-    if (!keepState || C.editor) view = copyView(C.view);
+    if (!keepState || C2.editor) view = copyView(C2.view);
     playing = {};
-    for (const e of C.expressions || []) {
+    for (const e of C2.expressions || []) {
       const it = analysis.items.find((i) => i.id === e.id);
-      if (it && it.kind === "param" && it.slider && e.slider && e.slider.play && !C.print) playing[it.name] = 1;
+      if (it && it.kind === "param" && it.slider && e.slider && e.slider.play && !C2.print) playing[it.name] = 1;
     }
-    step = C.showAll ? Infinity : step;
+    step = C2.showAll ? Infinity : step;
     buildPanel();
     request();
   }
   function shown() {
-    if (C.equalScale === false || !W || !H) return view;
+    if (C2.equalScale === false || !W || !H) return view;
     const half2 = (view.xMax - view.xMin) * H / W / 2;
     const mid = (view.yMin + view.yMax) / 2;
     return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half2, yMax: mid + half2 };
   }
   function exprOf(it) {
-    return (C.expressions || []).find((e) => e.id === it.id) || {};
+    return (C2.expressions || []).find((e) => e.id === it.id) || {};
   }
   function visible(it) {
     const e = exprOf(it);
@@ -1735,8 +1735,8 @@ function graphRuntime(P, config) {
     Y0 = v.yMin;
     Y1 = v.yMax;
     ctx.clearRect(0, 0, W, H);
-    if (C.background && C.background !== "transparent") {
-      ctx.fillStyle = C.background;
+    if (C2.background && C2.background !== "transparent") {
+      ctx.fillStyle = C2.background;
       ctx.fillRect(0, 0, W, H);
     }
     const E = env();
@@ -1764,10 +1764,10 @@ function graphRuntime(P, config) {
     axisLabels();
     each(["point"], (it) => drawPoint(it, E));
     if (hover) drawHover();
-    if (C.snapshotKey && !snapshotSent && analysis.items.length) {
+    if (C2.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true;
       try {
-        parent.postMessage({ source: "parallax-embed", type: "snapshot", key: C.snapshotKey, dataUrl: canvas.toDataURL("image/png") }, "*");
+        parent.postMessage({ source: "parallax-embed", type: "snapshot", key: C2.snapshotKey, dataUrl: canvas.toDataURL("image/png") }, "*");
       } catch (e) {
       }
     }
@@ -1775,12 +1775,12 @@ function graphRuntime(P, config) {
   function gridAndAxes() {
     const px = 90;
     const tx = niceStep((X1 - X0) * px / W);
-    const ty = C.equalScale === false ? niceStep((Y1 - Y0) * px / H) : tx;
+    const ty = C2.equalScale === false ? niceStep((Y1 - Y0) * px / H) : tx;
     const line = (x0, y0, x1, y1) => {
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
     };
-    if (C.grid !== false) {
+    if (C2.grid !== false) {
       ctx.lineWidth = 1;
       for (const [t, major] of [[tx.step / tx.minor, false], [tx.step, true]]) {
         ctx.beginPath();
@@ -1797,7 +1797,7 @@ function graphRuntime(P, config) {
         ctx.stroke();
       }
     }
-    if (C.axes !== false) {
+    if (C2.axes !== false) {
       ctx.beginPath();
       ctx.strokeStyle = theme.axis;
       ctx.lineWidth = 1.25;
@@ -1825,7 +1825,7 @@ function graphRuntime(P, config) {
     ctx.fillText(text, x, y);
   }
   function axisNumbers({ tx, ty }) {
-    if (C.axisNumbers === false || C.axes === false) return;
+    if (C2.axisNumbers === false || C2.axes === false) return;
     const font = "12px " + FONT;
     const ay = Math.min(Math.max(sy(0), 2), H - 18);
     const ax = Math.min(Math.max(sx(0), 30), W - 4);
@@ -1846,8 +1846,8 @@ function graphRuntime(P, config) {
   }
   function axisLabels() {
     const font = "italic 16px " + MATH_FONT2;
-    if (C.xLabel) haloText(C.xLabel, W - 8, Math.min(Math.max(sy(0), 20), H - 24) - 6, "right", "bottom", font);
-    if (C.yLabel) haloText(C.yLabel, Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, "left", "top", font);
+    if (C2.xLabel) haloText(C2.xLabel, W - 8, Math.min(Math.max(sy(0), 20), H - 24) - 6, "right", "bottom", font);
+    if (C2.yLabel) haloText(C2.yLabel, Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, "left", "top", font);
   }
   function styleFor(e) {
     ctx.strokeStyle = e.color || "#c74440";
@@ -2225,7 +2225,7 @@ function graphRuntime(P, config) {
     panel.innerHTML = "";
     rows = [];
     const params = analysis.items.filter((it) => it.kind === "param" && it.slider && !exprOf(it).hidden);
-    const show = C.showSliders !== false && !C.print && params.length > 0;
+    const show = C2.showSliders !== false && !C2.print && params.length > 0;
     panel.style.cssText = "position:absolute;left:8px;bottom:8px;display:" + (show ? "flex" : "none") + ";flex-direction:column;gap:4px;padding:6px 10px;border-radius:8px;max-height:45%;overflow:auto;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";font:13px " + FONT + ";box-shadow:0 2px 10px rgba(0,0,0,0.15);";
     for (const it of params) {
       const s = sliderOf(it.name);
@@ -2289,16 +2289,16 @@ function graphRuntime(P, config) {
   reset.title = "Back to the starting view";
   document.body.appendChild(reset);
   function styleReset() {
-    const changed = view && C.view && !sameView(view, copyView(C.view));
-    reset.style.cssText = "position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (changed && !C.editor && !C.print ? "block" : "none") + ";";
+    const changed = view && C2.view && !sameView(view, copyView(C2.view));
+    reset.style.cssText = "position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (changed && !C2.editor && !C2.print ? "block" : "none") + ";";
   }
   reset.addEventListener("click", () => {
-    view = copyView(C.view);
+    view = copyView(C2.view);
     styleReset();
     request();
   });
   function postEditor(msg) {
-    if (!C.editor) return;
+    if (!C2.editor) return;
     try {
       parent.postMessage(Object.assign({ source: "parallax-graph" }, msg), "*");
     } catch (e) {
@@ -2355,7 +2355,7 @@ function graphRuntime(P, config) {
         return;
       }
     }
-    if (!C.lockView) drag = { kind: "pan", view: copyView(view), start: [px, py], shown: shown() };
+    if (!C2.lockView) drag = { kind: "pan", view: copyView(view), start: [px, py], shown: shown() };
   });
   canvas.addEventListener("pointermove", (ev) => {
     const [px, py] = pos(ev);
@@ -2377,7 +2377,7 @@ function graphRuntime(P, config) {
       const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin);
       view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
       viewChanged();
-    } else if (drag.kind === "pinch" && pointers.size === 2 && !C.lockView) {
+    } else if (drag.kind === "pinch" && pointers.size === 2 && !C2.lockView) {
       const [a, b] = [...pointers.values()];
       const [a0, b0] = drag.start;
       const d0 = Math.hypot(a0[0] - b0[0], a0[1] - b0[1]), d1 = Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -2403,13 +2403,13 @@ function graphRuntime(P, config) {
     }
   });
   canvas.addEventListener("wheel", (ev) => {
-    if (C.lockView) return;
+    if (C2.lockView) return;
     ev.preventDefault();
     const [px, py] = pos(ev);
     zoom(Math.exp(ev.deltaY * 15e-4), px, py);
   }, { passive: false });
   canvas.addEventListener("dblclick", (ev) => {
-    if (C.lockView) return;
+    if (C2.lockView) return;
     const [px, py] = pos(ev);
     zoom(0.5, px, py);
   });
@@ -2432,7 +2432,7 @@ function graphRuntime(P, config) {
     }
     const had = !!hover;
     hover = best;
-    canvas.style.cursor = best ? "crosshair" : C.lockView ? "default" : "grab";
+    canvas.style.cursor = best ? "crosshair" : C2.lockView ? "default" : "grab";
     if (best || had) request();
   }
   function resize() {
@@ -2451,7 +2451,7 @@ function graphRuntime(P, config) {
   window.addEventListener("resize", resize);
   const NAV_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", " ", "Home", "End"];
   window.addEventListener("keydown", (ev) => {
-    if (C.editor || ev.altKey || ev.ctrlKey || ev.metaKey || !NAV_KEYS.includes(ev.key)) return;
+    if (C2.editor || ev.altKey || ev.ctrlKey || ev.metaKey || !NAV_KEYS.includes(ev.key)) return;
     if (document.activeElement && document.activeElement.tagName === "INPUT") return;
     ev.preventDefault();
     try {
@@ -2472,7 +2472,7 @@ function graphRuntime(P, config) {
       resize();
       return;
     }
-    if (data.source === "parallax-deck" && data.type === "graph-step" && typeof data.step === "number" && !C.showAll) {
+    if (data.source === "parallax-deck" && data.type === "graph-step" && typeof data.step === "number" && !C2.showAll) {
       step = data.step;
       request();
     } else if (data.source === "parallax-graph-editor" && data.type === "config" && data.config) {
@@ -2480,9 +2480,9 @@ function graphRuntime(P, config) {
       styleReset();
     }
   });
-  setConfig(C, false);
+  setConfig(C2, false);
   styleReset();
-  canvas.style.cursor = C.lockView ? "default" : "grab";
+  canvas.style.cursor = C2.lockView ? "default" : "grab";
   resize();
 }
 
@@ -2574,7 +2574,7 @@ function equationRuntime(root, cfg, katex) {
   const NS = "http://www.w3.org/2000/svg";
   const FALLBACK = ["#5aa9ff", "#ff9a52", "#4cc36a", "#c58cff", "#f0c04b", "#ff7aa2"];
   const fontSize = cfg.fontSize || 44;
-  const labelSize = cfg.labelSize || 18;
+  const labelSize2 = cfg.labelSize || 18;
   const style = cfg.labelStyle || "callout";
   if (!doc.getElementById("pxeq-style")) {
     const css = doc.createElement("style");
@@ -2640,7 +2640,7 @@ function equationRuntime(root, cfg, katex) {
   wrap.appendChild(body);
   wrap.appendChild(annos);
   wrap.style.fontSize = fontSize + "px";
-  wrap.style.setProperty("--pxeq-label", labelSize + "px");
+  wrap.style.setProperty("--pxeq-label", labelSize2 + "px");
   if (cfg.textColor) wrap.style.color = cfg.textColor;
   root.appendChild(wrap);
   const trust = (ctx) => ctx.command === "\\htmlData" && Object.keys(ctx.attributes || {}).every((k) => (k === "data-term" || k === "data-pk") && SAFE.test(ctx.attributes[k]));
@@ -2784,7 +2784,7 @@ function equationRuntime(root, cfg, katex) {
     return e;
   };
   const bracePath = (x0, x1, y, d) => {
-    const xm = (x0 + x1) / 2, q = Math.min(labelSize * 0.6, (x1 - x0) / 4), h = d / 2;
+    const xm = (x0 + x1) / 2, q = Math.min(labelSize2 * 0.6, (x1 - x0) / 4), h = d / 2;
     return "M" + x0 + "," + y + " Q" + x0 + "," + (y + h) + " " + (x0 + q) + "," + (y + h) + " L" + (xm - q) + "," + (y + h) + " Q" + xm + "," + (y + h) + " " + xm + "," + (y + d) + " Q" + xm + "," + (y + h) + " " + (xm + q) + "," + (y + h) + " L" + (x1 - q) + "," + (y + h) + " Q" + x1 + "," + (y + h) + " " + x1 + "," + y;
   };
   const labelFor = (cls, t, compact, side) => {
@@ -2813,7 +2813,7 @@ function equationRuntime(root, cfg, katex) {
     const eq = m && html && m.box(html);
     if (!eq) return;
     const mid = (eq.top + eq.bottom) / 2, eqH = eq.bottom - eq.top;
-    const L = labelSize, gap = L * 0.6;
+    const L = labelSize2, gap = L * 0.6;
     const items = [];
     s.anno.forEach((id) => {
       const boxes = termEls.filter((e) => e.getAttribute("data-term") === id).map(m.box).filter(Boolean);
@@ -3511,6 +3511,7 @@ var esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(
 var n1 = (v) => String(Math.round(v * 10) / 10);
 var GREEK = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", upsilon: "υ", phi: "ϕ", varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω" };
 var SYM = { pm: "±", mp: "∓", to: "→", prime: "′", ell: "ℓ", ast: "∗", times: "×", cdot: "·", infty: "∞", partial: "∂", hbar: "ℏ", ",": " ", ";": " ", " ": " ", "!": "", quad: "  " };
+var SET_SYM = { cup: " ∪ ", cap: " ∩ ", setminus: " ∖ ", smallsetminus: " ∖ ", triangle: " △ ", ominus: " ⊖ ", oplus: " ⊕ ", subseteq: " ⊆ ", supseteq: " ⊇ ", subset: " ⊂ ", supset: " ⊃ ", subsetneq: " ⊊ ", supsetneq: " ⊋ ", neq: " ≠ ", ne: " ≠ ", mid: " | ", in: " ∈ ", notin: " ∉ ", varnothing: "∅", emptyset: "∅", complement: "ᶜ" };
 var ACCENT = { bar: 772, overline: 773, tilde: 771, hat: 770 };
 var UPRIGHT = { mathrm: 1, text: 1, rm: 1, mathbf: 1 };
 var SCRIPT = { A: "𝒜", B: "ℬ", C: "𝒞", E: "ℰ", F: "ℱ", H: "ℋ", I: "ℐ", L: "ℒ", M: "ℳ", R: "ℛ" };
@@ -3567,12 +3568,21 @@ function texRuns(src) {
         for (const r of runs.slice(Math.max(0, before - 1))) r.t = r.t.replace(/[A-Z]/g, (c2) => SCRIPT[c2] || c2);
         return;
       }
+      if (name === "mathbin" || name === "mathrel" || name === "mathop") {
+        while (src[i] === " ") i++;
+        atom(lvl, up);
+        return;
+      }
       if (GREEK[name]) {
         push(GREEK[name], lvl, !up && name[0] === name[0].toLowerCase());
         return;
       }
       if (SYM[name] !== void 0) {
         push(SYM[name], lvl, false);
+        return;
+      }
+      if (SET_SYM[name] !== void 0) {
+        push(SET_SYM[name], lvl, false);
         return;
       }
       push(name, lvl, false);
@@ -3669,7 +3679,9 @@ var DIAGRAM_CSS = [
   "@keyframes pxcx-flow{to{stroke-dashoffset:-14}}",
   // A logic signal that changed: it fades in after those before it in the logic
   ".pxlg-sig{animation:pxfx-fade .28s ease-out both}",
-  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig{animation:none}.pxfx-part{transition:none}}"
+  // A Venn diagram's shading, numbers or verdict: in at once, with nothing drawn first
+  ".pxfx-new .pxvn-in{animation:pxfx-fade .45s ease-out both}",
+  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig,.pxfx-new .pxvn-in{animation:none}.pxfx-part{transition:none}}"
 ].join("\n");
 var deckScript = null;
 function diagramDeckScript() {
@@ -4238,9 +4250,9 @@ function formatSI(v, unit) {
     pick2 = s;
     break;
   }
-  const num7 = v / pick2[0];
-  const str6 = Math.abs(num7) >= 99.95 ? String(Math.round(num7)) : String(Number(num7.toPrecision(3)));
-  return `${str6} ${pick2[1]}${unit}`;
+  const num8 = v / pick2[0];
+  const str7 = Math.abs(num8) >= 99.95 ? String(Math.round(num8)) : String(Number(num8.toPrecision(3)));
+  return `${str7} ${pick2[1]}${unit}`;
 }
 var valueOf = (e) => {
   const v = parseValue(e.value);
@@ -6235,6 +6247,1418 @@ function hasFreebody(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "freebody"));
 }
 
+// client/src/utils/vennExpr.js
+var OVERLINE = String.fromCharCode(773);
+var MAX_MEMBERS = 200;
+var popcount = (m) => {
+  let c = 0;
+  while (m) {
+    c += m & 1;
+    m >>>= 1;
+  }
+  return c;
+};
+var fullMask = (n) => (1 << (1 << n)) - 1;
+var has = (mask, m) => (mask >>> m & 1) === 1;
+function setMask(i, n) {
+  let r = 0;
+  for (let m = 0; m < 1 << n; m++) if (m >> i & 1) r |= 1 << m;
+  return r;
+}
+function regionsOf(mask, n) {
+  const out = [];
+  for (let m = 0; m < 1 << n; m++) if (has(mask, m)) out.push(m);
+  return out;
+}
+var WORDS = {
+  or: "or",
+  union: "or",
+  cup: "or",
+  and: "and",
+  intersect: "and",
+  intersection: "and",
+  cap: "and",
+  minus: "diff",
+  without: "diff",
+  setminus: "diff",
+  except: "diff",
+  xor: "xor",
+  symdiff: "xor",
+  not: "not",
+  complement: "not",
+  empty: "empty",
+  emptyset: "empty"
+};
+var CMDS = {
+  cup: "or",
+  lor: "or",
+  vee: "or",
+  bigcup: "or",
+  cap: "and",
+  land: "and",
+  wedge: "and",
+  bigcap: "and",
+  cdot: "and",
+  setminus: "diff",
+  smallsetminus: "diff",
+  backslash: "diff",
+  triangle: "xor",
+  vartriangle: "xor",
+  bigtriangleup: "xor",
+  triangleup: "xor",
+  Delta: "xor",
+  ominus: "xor",
+  oplus: "xor",
+  veebar: "xor",
+  neg: "not",
+  lnot: "not",
+  complement: "not",
+  overline: "bar",
+  bar: "bar",
+  widebar: "bar",
+  overbar: "bar",
+  emptyset: "empty",
+  varnothing: "empty",
+  prime: "comp"
+};
+var SKIP = /* @__PURE__ */ new Set(["left", "right", "big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr", "middle", ",", ";", ":", "!", "quad", "qquad", "displaystyle", "textstyle"]);
+var WRAP = /* @__PURE__ */ new Set(["mathrm", "text", "textrm", "mathsf", "mathit", "mathbf", "textit", "operatorname", "mathnormal", "mathbin"]);
+var REL_CMDS = { neq: "≠", ne: "≠", subseteq: "⊆", subset: "⊆", supseteq: "⊇", supset: "⊇", equiv: "=", subsetneq: "⊂", supsetneq: "⊃" };
+var REL_CHARS = { "=": "=", "≡": "=", "≠": "≠", "⊆": "⊆", "⊂": "⊆", "⊇": "⊇", "⊃": "⊇", "⊊": "⊂", "⊋": "⊃" };
+var CHAR_OPS = {
+  "∪": "or",
+  "|": "or",
+  "+": "or",
+  "∨": "or",
+  "∩": "and",
+  "&": "and",
+  "∧": "and",
+  "·": "and",
+  "⋅": "and",
+  "*": "and",
+  "∖": "diff",
+  "-": "diff",
+  "−": "diff",
+  "Δ": "xor",
+  "△": "xor",
+  "∆": "xor",
+  "⊕": "xor",
+  "⊖": "xor",
+  "⊻": "xor",
+  "¬": "not",
+  "~": "not",
+  "!": "not",
+  "∅": "empty",
+  "⌀": "empty",
+  "Ø": "empty",
+  "'": "comp",
+  "′": "comp",
+  "ᶜ": "comp",
+  "(": "lp",
+  "[": "lp",
+  "{": "lp",
+  ")": "rp",
+  "]": "rp",
+  "}": "rp"
+};
+var UNIVERSE_CHARS = ["Ω", "ξ", "ℰ", "𝒰", "ε"];
+var UNIVERSE_CMDS = { Omega: 1, xi: 1, varepsilon: 1 };
+var UNIVERSE_TEXT = { "\\Omega": "Ω", "\\xi": "ξ", "\\mathcal{E}": "ℰ", "\\mathcal{U}": "𝒰", "\\varepsilon": "ε" };
+var OP_TEXT = { or: "∪", and: "∩", diff: "∖", xor: "Δ", not: "′", comp: "′", lp: "(", rp: ")" };
+function fail(msg, at, len2) {
+  const e = new Error(msg);
+  e.at = at;
+  e.len = len2 || 1;
+  e.venn = true;
+  throw e;
+}
+var listNames = (ids) => ids.length === 1 ? ids[0] : ids.slice(0, -1).join(", ") + " and " + ids[ids.length - 1];
+function tokenize2(src, ctx) {
+  const toks = [];
+  const ids = ctx.ids;
+  const uni = String(ctx.universe || "U");
+  const uniLetter = /^[A-Za-z]$/.test(uni) && !ids.includes(uni) ? uni : null;
+  const push = (k, at, len2, v) => toks.push({ k, at, len: len2, v });
+  function letter(c, at) {
+    if (ids.includes(c)) return push("set", at, 1, ids.indexOf(c));
+    if (c === uniLetter || c === "U" && !ids.includes("U")) return push("U", at, 1);
+    const up = c.toUpperCase(), lo = c.toLowerCase();
+    const alt = c === up ? lo : up;
+    if (ids.includes(alt) && !ids.includes(c)) return push("set", at, 1, ids.indexOf(alt));
+    fail(`There's no set ${c}. The sets here are ${listNames(ids)}.`, at, 1);
+  }
+  function readGroup(i2) {
+    let depth = 0;
+    for (let j = i2; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") {
+        depth--;
+        if (depth === 0) return [src.slice(i2 + 1, j), j + 1];
+      }
+    }
+    fail("A { here is never closed.", i2, 1);
+  }
+  const skipBraces = /* @__PURE__ */ new Set();
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
+    if (c === "\\") {
+      const m = /^\\([A-Za-z]+|.)/.exec(src.slice(i));
+      if (!m) {
+        push("diff", i, 1);
+        i++;
+        continue;
+      }
+      const name = m[1], at = i;
+      i += m[0].length;
+      if (name === " " || name === "\\") {
+        push("diff", at, 1);
+        continue;
+      }
+      if (SKIP.has(name)) {
+        if ((name === "left" || name === "right") && src[i] === ".") i++;
+        continue;
+      }
+      if (name === "{") {
+        if (src.startsWith("\\}", i)) {
+          push("empty", at, i + 2 - at);
+          i += 2;
+          continue;
+        }
+        fail("Lists of members go in the panel’s Elements box, not in the expression.", at, 2);
+      }
+      if (WRAP.has(name)) {
+        while (src[i] === " ") i++;
+        if (src[i] === "{") {
+          const close = readGroup(i)[1] - 1;
+          skipBraces.add(close);
+          i++;
+        }
+        continue;
+      }
+      if (name === "mathcal" || name === "mathscr" || name === "mathbb") {
+        while (src[i] === " ") i++;
+        let inner, next;
+        if (src[i] === "{") [inner, next] = readGroup(i);
+        else {
+          inner = src[i] || "";
+          next = i + 1;
+        }
+        i = next;
+        if (/^\s*[UE]\s*$/.test(inner)) {
+          push("U", at, i - at);
+          continue;
+        }
+        fail(`\\${name}{${inner}} isn't a set here.`, at, i - at);
+      }
+      if (UNIVERSE_CMDS[name]) {
+        push("U", at, i - at);
+        continue;
+      }
+      if (REL_CMDS[name]) {
+        push("rel", at, i - at, REL_CMDS[name]);
+        continue;
+      }
+      if (CMDS[name]) {
+        const k = CMDS[name];
+        if (k === "not" && name === "complement" && toks.length && endsAtom(toks[toks.length - 1])) {
+          push("comp", at, i - at);
+          continue;
+        }
+        push(k, at, i - at);
+        continue;
+      }
+      if (/^[A-Za-z]$/.test(name) && ids.includes(name)) {
+        push("diff", at, 1);
+        push("set", at + 1, 1, ids.indexOf(name));
+        continue;
+      }
+      fail(`\\${name} isn't something a set expression can use.`, at, i - at);
+    }
+    if (c === "^") {
+      const at = i;
+      i++;
+      while (src[i] === " ") i++;
+      let inner;
+      if (src[i] === "{") {
+        const g = readGroup(i);
+        inner = g[0];
+        i = g[1];
+      } else if (src[i] === "\\") {
+        const m = /^\\([A-Za-z]+|.)/.exec(src.slice(i));
+        inner = m[0];
+        i += m[0].length;
+      } else {
+        inner = src[i] || "";
+        i++;
+      }
+      const norm = inner.replace(/\\(mathrm|mathsf|text|textrm|mathit)\s*/g, "").replace(/[{}\s]/g, "");
+      if (["c", "C", "\\complement", "∁", "\\prime", "'", "′", "\\mathcal{C}", "\\mathcalC"].includes(norm)) {
+        push("comp", at, i - at);
+        continue;
+      }
+      fail("A superscript can only be c here, for the complement: A^c.", at, i - at);
+    }
+    if (c === "∁") {
+      push(toks.length && endsAtom(toks[toks.length - 1]) ? "comp" : "not", i, 1);
+      i++;
+      continue;
+    }
+    if (c === "!" && src[i + 1] === "=") {
+      push("rel", i, 2, "≠");
+      i += 2;
+      continue;
+    }
+    if (REL_CHARS[c]) {
+      push("rel", i, 1, REL_CHARS[c]);
+      i++;
+      continue;
+    }
+    const u = UNIVERSE_CHARS.find((s) => src.startsWith(s, i));
+    if (u) {
+      push("U", i, u.length);
+      i += u.length;
+      continue;
+    }
+    if (c === "}" && skipBraces.has(i)) {
+      i++;
+      continue;
+    }
+    if (CHAR_OPS[c]) {
+      push(CHAR_OPS[c], i, 1);
+      i++;
+      continue;
+    }
+    if (/[A-Za-z]/.test(c)) {
+      const m = /^[A-Za-z]+/.exec(src.slice(i));
+      const run = m[0], at = i;
+      i += run.length;
+      if (src[i] === "_") fail("Sets are named by one letter, without subscripts. Their labels on the diagram can be anything.", i, 1);
+      const w = WORDS[run.toLowerCase()];
+      if (w && run.length > 1) {
+        push(w, at, run.length);
+        continue;
+      }
+      if (run.length > 3 && !run.split("").every((ch) => ids.includes(ch) || ids.includes(ch.toUpperCase()))) {
+        fail(`“${run}” isn't an operation or a set. Sets are named by one letter.`, at, run.length);
+      }
+      for (let k = 0; k < run.length; k++) letter(run[k], at + k);
+      continue;
+    }
+    if (/[0-9]/.test(c)) fail("Numbers go in the panel’s Facts box. Expressions are made of sets.", i, 1);
+    fail(`“${c}” doesn't mean anything in a set expression.`, i, 1);
+  }
+  push("end", src.length, 0);
+  return toks;
+}
+var endsAtom = (t) => t.k === "set" || t.k === "U" || t.k === "empty" || t.k === "rp" || t.k === "comp";
+var startsAtom = (t) => t.k === "set" || t.k === "U" || t.k === "empty" || t.k === "lp" || t.k === "not" || t.k === "bar";
+var LEVEL1 = { or: 1, diff: 1, xor: 1 };
+function parse(src, ctx) {
+  src = String(src == null ? "" : src);
+  const toks = tokenize2(src, ctx);
+  let p = 0;
+  const flags = { andInOr: false, mixed: false, implicit: false };
+  const peek = () => toks[p];
+  const next = () => toks[p++];
+  const what = (t) => t.k === "end" ? "the end" : `“${src.slice(t.at, t.at + t.len)}”`;
+  function expectAtom(after) {
+    const t = peek();
+    if (t.k === "end") fail(after ? `Something's missing after ${after}.` : "Type an expression, such as A ∩ (B ∪ C).", src.length, 0);
+    fail(`Expected a set before ${what(t)}.`, t.at, t.len);
+  }
+  function parseRel() {
+    const a = parseExpr();
+    const t = peek();
+    if (t.k === "rel") {
+      next();
+      const b = parseExpr();
+      if (peek().k === "rel") fail("One relation at a time: compare two sides.", peek().at, peek().len);
+      if (peek().k !== "end") fail(`Unexpected ${what(peek())}.`, peek().at, peek().len);
+      return { t: "rel", op: t.v, a, b };
+    }
+    if (t.k === "rp") fail("This bracket closes one that was never opened.", t.at, t.len);
+    if (t.k !== "end") fail(`Unexpected ${what(t)}.`, t.at, t.len);
+    return a;
+  }
+  function parseExpr() {
+    let left = parseTerm();
+    let lastOp = null, grouped = left.paren;
+    while (LEVEL1[peek().k]) {
+      const op = next().k;
+      if (lastOp && lastOp !== op) flags.mixed = true;
+      if (lastOp === "diff" && op === "diff") flags.mixed = true;
+      const right = parseTerm(OP_TEXT[op]);
+      if (left.t === "and" && !left.paren) flags.andInOr = true;
+      if (right.t === "and" && !right.paren) flags.andInOr = true;
+      left = { t: op, a: left, b: right };
+      lastOp = op;
+    }
+    return left;
+  }
+  function parseTerm(after) {
+    let left = parseFactor(after);
+    for (; ; ) {
+      const t = peek();
+      if (t.k === "and") {
+        next();
+        left = { t: "and", a: left, b: parseFactor("∩") };
+        continue;
+      }
+      if (startsAtom(t)) {
+        flags.implicit = true;
+        left = { t: "and", a: left, b: parseFactor() };
+        continue;
+      }
+      return left;
+    }
+  }
+  function parseFactor(after) {
+    if (peek().k === "not") {
+      const t = next();
+      return { t: "not", a: parseFactor(src.slice(t.at, t.at + t.len)) };
+    }
+    let a = parseAtom(after);
+    while (peek().k === "comp") {
+      next();
+      a = { t: "not", a };
+    }
+    return a;
+  }
+  function parseAtom(after) {
+    const t = peek();
+    if (t.k === "set") {
+      next();
+      return { t: "set", i: t.v };
+    }
+    if (t.k === "U") {
+      next();
+      return { t: "U" };
+    }
+    if (t.k === "empty") {
+      next();
+      return { t: "empty" };
+    }
+    if (t.k === "lp") {
+      next();
+      if (peek().k === "rp") fail("There’s nothing inside these brackets.", t.at, peek().at - t.at + 1);
+      const e = parseExpr();
+      if (peek().k !== "rp") {
+        if (peek().k === "end") fail("This bracket is never closed.", t.at, t.len);
+        fail(`Unexpected ${what(peek())}.`, peek().at, peek().len);
+      }
+      next();
+      return Object.assign({}, e, { paren: true });
+    }
+    if (t.k === "bar") {
+      next();
+      return { t: "not", a: parseAtom("a bar") };
+    }
+    expectAtom(after);
+  }
+  const ast = parseRel();
+  const notes = [];
+  if (flags.andInOr) notes.push("∩ is read before ∪, ∖ and Δ, the way × comes before +.");
+  if (flags.mixed) notes.push("∪, ∖ and Δ are read from left to right. Brackets make it certain.");
+  return { ast, notes, readAs: flags.andInOr || flags.mixed, implicit: flags.implicit };
+}
+function evaluate(node, n) {
+  switch (node.t) {
+    case "set":
+      return setMask(node.i, n);
+    case "U":
+      return fullMask(n);
+    case "empty":
+      return 0;
+    case "not":
+      return fullMask(n) & ~evaluate(node.a, n);
+    case "and":
+      return evaluate(node.a, n) & evaluate(node.b, n);
+    case "or":
+      return evaluate(node.a, n) | evaluate(node.b, n);
+    case "diff":
+      return evaluate(node.a, n) & ~evaluate(node.b, n);
+    case "xor":
+      return evaluate(node.a, n) ^ evaluate(node.b, n);
+  }
+  throw new Error("Unknown node " + node.t);
+}
+var prec = (node) => LEVEL1[node.t] ? 1 : node.t === "and" ? 2 : node.t === "not" ? 3 : 4;
+function needsParens(child, parent2, side) {
+  const pc = prec(child);
+  if (pc >= 3) return false;
+  if (LEVEL1[parent2.t]) {
+    if (pc === 2) return true;
+    return !(side === "a" && child.t === parent2.t && (parent2.t === "or" || parent2.t === "xor"));
+  }
+  if (parent2.t === "and") return pc === 1 || side === "b";
+  return false;
+}
+var escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function universeText(u) {
+  return UNIVERSE_TEXT[u] || String(u).replace(/[\\{}]/g, "");
+}
+function format(node, style) {
+  const out = style.out || "text", comp = style.comp || "prime", ids = style.ids;
+  const S = out === "tex" ? { or: " \\cup ", and: " \\cap ", diff: " \\setminus ", xor: " \\mathbin{\\triangle} ", empty: "\\varnothing", U: style.universe || "U", lp: "(", rp: ")" } : { or: " ∪ ", and: " ∩ ", diff: " ∖ ", xor: " Δ ", empty: "∅", U: universeText(style.universe || "U"), lp: "(", rp: ")" };
+  if (out === "html") S.U = `<i>${escHtml(S.U)}</i>`;
+  if (out === "tex" && style.xor === "plain") S.xor = " \\triangle ";
+  const set = (i) => out === "html" ? `<i>${escHtml(ids[i])}</i>` : ids[i];
+  function f(nd) {
+    switch (nd.t) {
+      case "set":
+        return set(nd.i);
+      case "U":
+        return S.U;
+      case "empty":
+        return S.empty;
+      case "not": {
+        const a = nd.a, inner = f(a), atom = prec(a) >= 3;
+        if (comp === "bar") {
+          if (out === "tex") return `\\overline{${inner}}`;
+          if (out === "html") return `<span class="ov">${inner}</span>`;
+          if (a.t === "set") return ids[a.i] + OVERLINE;
+        }
+        const body = atom ? inner : S.lp + inner + S.rp;
+        if (comp === "c" || comp === "bar" && out === "text") return out === "tex" ? `${a.t === "not" ? `{${body}}` : body}^{c}` : out === "html" ? `${body}<sup>c</sup>` : body + "ᶜ";
+        return out === "tex" ? body + "'" : body + "′";
+      }
+      default: {
+        const l = needsParens(nd.a, nd, "a") ? S.lp + f(nd.a) + S.rp : f(nd.a);
+        const r = needsParens(nd.b, nd, "b") ? S.lp + f(nd.b) + S.rp : f(nd.b);
+        return l + S[nd.t] + r;
+      }
+    }
+  }
+  if (node.t === "rel") {
+    const R = out === "tex" ? { "=": " = ", "≠": " \\neq ", "⊆": " \\subseteq ", "⊇": " \\supseteq ", "⊂": " \\subsetneq ", "⊃": " \\supsetneq " } : { "=": " = ", "≠": " ≠ ", "⊆": " ⊆ ", "⊇": " ⊇ ", "⊂": " ⊊ ", "⊃": " ⊋ " };
+    return f(node.a) + R[node.op] + f(node.b);
+  }
+  return f(node);
+}
+var S_ = (i) => ({ t: "set", i });
+var chain = (t, items) => items.reduce((acc, x) => acc ? { t, a: acc, b: x } : x, null);
+var ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI"];
+var REGION_ORDER = {
+  1: [1, 0],
+  2: [1, 3, 2, 0],
+  3: [1, 3, 2, 5, 7, 6, 4, 0],
+  4: [1, 2, 4, 8, 3, 5, 9, 6, 10, 12, 7, 11, 13, 14, 15, 0]
+};
+var regionNumber = (m, n) => ROMAN[REGION_ORDER[n].indexOf(m)];
+function regionAst(m, n) {
+  const lits = [];
+  for (let i = 0; i < n; i++) lits.push(m >> i & 1 ? S_(i) : { t: "not", a: S_(i) });
+  return chain("and", lits);
+}
+function parseNumber(s) {
+  s = String(s).trim().replace(/\s+/g, "");
+  let m = /^\\[dt]?frac\{(-?[\d.]+)\}\{([\d.]+)\}$/.exec(s);
+  if (m) return +m[1] / +m[2];
+  m = /^(-?[\d.]+)\/([\d.]+)$/.exec(s);
+  if (m) return +m[1] / +m[2];
+  m = /^(-?[\d.]+)(\\?%)$/.exec(s);
+  if (m) return +m[1] / 100;
+  if (/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return +s;
+  return null;
+}
+function splitGiven(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (depth === 0 && c === "|") return [s.slice(0, i), s.slice(i + 1)];
+    else if (depth === 0 && s.startsWith("\\mid", i)) return [s.slice(0, i), s.slice(i + 4)];
+  }
+  return [s, null];
+}
+function parseFact(line, ctx, n) {
+  const raw = line;
+  line = line.replace(/\\left|\\right|\\big|\\Big/g, "").trim();
+  if (!line || line.startsWith("%") || line.startsWith("//")) return null;
+  const eq = line.lastIndexOf("=");
+  if (eq < 0) fail("A fact needs an equals sign: |A| = 12.", 0, raw.length);
+  const lhs = line.slice(0, eq).trim(), rhs = parseNumber(line.slice(eq + 1));
+  if (rhs == null) fail("The right side should be a number, such as 12, 0.35, 35% or 1/3.", eq + 1, raw.length - eq - 1);
+  let m, kind = "n";
+  let inner = null;
+  if (m = /^\|(.*)\|$/.exec(lhs)) inner = m[1];
+  else if (m = /^(?:n|N|#)\s*\((.*)\)$/.exec(lhs)) inner = m[1];
+  else if (m = /^#\s*(.+)$/.exec(lhs)) inner = m[1];
+  else if (m = /^(?:P|Pr|\\Pr|\\mathbb\{P\}|ℙ)\s*[([](.*)[)\]]$/.exec(lhs)) {
+    inner = m[1];
+    kind = "P";
+  } else fail("Write a fact as |A ∩ B| = 7, n(A) = 22 or P(A) = 0.3.", 0, eq);
+  const [a, b] = kind === "P" ? splitGiven(inner) : [inner, null];
+  const pa = parse(a, ctx);
+  if (pa.ast.t === "rel") fail("A fact measures one set, not a relation.", 0, eq);
+  const out = { kind, a: evaluate(pa.ast, n), rhs };
+  if (b != null) {
+    const pb = parse(b, ctx);
+    if (pb.ast.t === "rel") fail("A fact measures one set, not a relation.", 0, eq);
+    out.b = evaluate(pb.ast, n);
+  }
+  return out;
+}
+function solveFacts(text, ctx, n, mode, shaded) {
+  const R = 1 << n;
+  const rows = [], notes = [], errors = [];
+  const lines = String(text || "").split("\n");
+  let anyP = false, anyN = false;
+  lines.forEach((line, k) => {
+    try {
+      const f = parseFact(line, ctx, n);
+      if (!f) return;
+      if (f.kind === "P") anyP = true;
+      else anyN = true;
+      const coef = new Array(R).fill(0);
+      if (f.b != null) {
+        for (let m = 0; m < R; m++) coef[m] = (has(f.a & f.b, m) ? 1 : 0) - (has(f.b, m) ? f.rhs : 0);
+        rows.push({ coef, rhs: 0, line: k });
+      } else {
+        for (let m = 0; m < R; m++) coef[m] = has(f.a, m) ? 1 : 0;
+        rows.push({ coef, rhs: f.rhs, line: k });
+      }
+    } catch (e) {
+      if (!e.venn) throw e;
+      errors.push({ line: k, msg: e.message });
+    }
+  });
+  if (mode === "probability") rows.unshift({ coef: new Array(R).fill(1), rhs: 1, line: -1 });
+  if (mode === "counts" && anyP && !anyN) notes.push("These facts are probabilities. Switch to Probability to count them out of 1.");
+  const basis = [];
+  const eps = 1e-9;
+  const contradictions = [], redundant = [];
+  for (const row of rows) {
+    const c = row.coef.slice();
+    let r = row.rhs;
+    for (const b of basis) {
+      const k2 = c[b.pivot];
+      if (Math.abs(k2) > eps) {
+        for (let j = 0; j < R; j++) c[j] -= k2 * b.coef[j];
+        r -= k2 * b.rhs;
+      }
+    }
+    let piv = -1, big = 0;
+    for (let j = 0; j < R; j++) if (Math.abs(c[j]) > big + eps) {
+      big = Math.abs(c[j]);
+      piv = j;
+    }
+    if (piv < 0 || big < 1e-7) {
+      if (Math.abs(r) > 1e-6) contradictions.push(row.line);
+      else if (row.line >= 0) redundant.push(row.line);
+      continue;
+    }
+    const k = c[piv];
+    for (let j = 0; j < R; j++) c[j] /= k;
+    r /= k;
+    for (const b of basis) {
+      const kk = b.coef[piv];
+      if (Math.abs(kk) > eps) {
+        for (let j = 0; j < R; j++) b.coef[j] -= kk * c[j];
+        b.rhs -= kk * r;
+      }
+    }
+    basis.push({ coef: c, rhs: r, pivot: piv });
+  }
+  const pivotOf = new Map(basis.map((b) => [b.pivot, b]));
+  const free = [];
+  for (let j = 0; j < R; j++) if (!pivotOf.has(j)) free.push(j);
+  const value = new Array(R).fill(null);
+  for (let m = 0; m < R; m++) {
+    const b = pivotOf.get(m);
+    if (b && free.every((f) => Math.abs(b.coef[f]) < 1e-7)) value[m] = Math.abs(b.rhs) < 1e-12 ? 0 : b.rhs;
+  }
+  function total(mask) {
+    let c = 0;
+    for (const f of free) {
+      let k = has(mask, f) ? 1 : 0;
+      for (const b of basis) if (has(mask, b.pivot)) k -= b.coef[f];
+      if (Math.abs(k) > 1e-7) return null;
+    }
+    for (const b of basis) if (has(mask, b.pivot)) c += b.rhs;
+    return Math.abs(c) < 1e-12 ? 0 : c;
+  }
+  const unknown = value.filter((v) => v == null).length;
+  return { value, total, shadedTotal: shaded == null ? null : total(shaded), errors, contradictions, redundant, notes, unknown, facts: rows.filter((r) => r.line >= 0).length };
+}
+function placeMembers(members, ids) {
+  const n = ids.length;
+  const parse2 = (s) => {
+    const out = [];
+    for (const part2 of String(s || "").split(",")) {
+      const t = part2.trim();
+      if (!t || out.length >= MAX_MEMBERS) continue;
+      const r = /^(-?\d+)\s*\.\.\s*(-?\d+)$/.exec(t);
+      if (r) {
+        const a = +r[1], b = +r[2], d = a <= b ? 1 : -1;
+        for (let v = a; d > 0 ? v <= b : v >= b; v += d) {
+          if (out.length >= MAX_MEMBERS) break;
+          if (!out.includes(String(v))) out.push(String(v));
+        }
+        continue;
+      }
+      if (!out.includes(t)) out.push(t.slice(0, 40));
+    }
+    return out;
+  };
+  const lists = ids.map((id) => parse2(members[id]));
+  const uniGiven = parse2(members.U);
+  const order = uniGiven.length ? uniGiven.slice() : [];
+  const notes = [];
+  lists.forEach((list, i) => list.forEach((x) => {
+    if (!order.includes(x)) {
+      if (uniGiven.length) notes.push(`${x} is in ${ids[i]} but not in the universe.`);
+      order.push(x);
+    }
+  }));
+  const region = new Array(1 << n).fill(null).map(() => []);
+  const where = /* @__PURE__ */ new Map();
+  for (const x of order) {
+    let m = 0;
+    lists.forEach((list, i) => {
+      if (list.includes(x)) m |= 1 << i;
+    });
+    region[m].push(x);
+    where.set(x, m);
+  }
+  return { region, order, where, notes, universeGiven: uniGiven.length > 0 };
+}
+
+// client/src/utils/vennGeometry.js
+var TAU = Math.PI * 2;
+var D2R2 = Math.PI / 180;
+function shapeFns(s) {
+  const c = Math.cos(s.rot * D2R2), sn = Math.sin(s.rot * D2R2);
+  return {
+    // Negative inside, positive outside
+    F(px, py) {
+      const dx = px - s.x, dy = py - s.y, u = dx * c + dy * sn, v = -dx * sn + dy * c;
+      return (u / s.rx) ** 2 + (v / s.ry) ** 2 - 1;
+    },
+    at(t) {
+      const a = s.rx * Math.cos(t), b = s.ry * Math.sin(t);
+      return [s.x + a * c - b * sn, s.y + a * sn + b * c];
+    },
+    // About how far a point is from the outline
+    dist(px, py) {
+      const dx = px - s.x, dy = py - s.y, u = dx * c + dy * sn, v = -dx * sn + dy * c;
+      if (Math.abs(s.rx - s.ry) < 1e-9) return Math.abs(Math.hypot(u, v) - s.rx);
+      const r = Math.hypot(u / s.rx, v / s.ry), F = r * r - 1;
+      const g = 2 * Math.hypot(u / (s.rx * s.rx), v / (s.ry * s.ry));
+      const radial = r > 1e-9 ? Math.abs(1 - 1 / r) * Math.hypot(u, v) : Math.min(s.rx, s.ry);
+      return g > 1e-9 ? Math.min(Math.abs(F) / g, radial) : radial;
+    },
+    // Where a ray from the centre in direction d crosses the outline
+    ray(d) {
+      const u = d[0] * c + d[1] * sn, v = -d[0] * sn + d[1] * c;
+      const k = 1 / Math.hypot(u / s.rx, v / s.ry);
+      return [s.x + d[0] * k, s.y + d[1] * k];
+    }
+  };
+}
+function arrangement(shapes, box) {
+  const n = shapes.length, fns = shapes.map(shapeFns), N = 720;
+  const arcs = [];
+  for (let i = 0; i < n; i++) {
+    const cuts = [];
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      let prev = fns[j].F(...fns[i].at(0));
+      for (let k = 1; k <= N; k++) {
+        const t = k / N * TAU, cur = fns[j].F(...fns[i].at(t));
+        if (prev < 0 !== cur < 0) {
+          let a = (k - 1) / N * TAU, b = t, fa = prev;
+          for (let it = 0; it < 48; it++) {
+            const mid = (a + b) / 2, fm = fns[j].F(...fns[i].at(mid));
+            if (fm < 0 === fa < 0) {
+              a = mid;
+              fa = fm;
+            } else b = mid;
+          }
+          cuts.push((a + b) / 2);
+        }
+        prev = cur;
+      }
+    }
+    cuts.sort((a, b) => a - b);
+    const segs = cuts.length ? cuts.map((t0, k) => [t0, k + 1 < cuts.length ? cuts[k + 1] : cuts[0] + TAU]) : [[0, TAU]];
+    for (const [t0, t1] of segs) {
+      const p = fns[i].at((t0 + t1) / 2);
+      let others = 0;
+      for (let j = 0; j < n; j++) if (j !== i && fns[j].F(p[0], p[1]) < 0) others |= 1 << j;
+      arcs.push({ i, t0, t1, full: !cuts.length, others, p0: fns[i].at(t0), p1: fns[i].at(t1) });
+    }
+  }
+  const regions = [];
+  const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-5;
+  for (let m = 0; m < 1 << n; m++) {
+    const mine = arcs.filter((a) => a.others === (m & ~(1 << a.i))).map((a) => {
+      const fwd = (m >> a.i & 1) === 1;
+      return { arc: a, fwd, start: fwd ? a.p0 : a.p1, end: fwd ? a.p1 : a.p0 };
+    });
+    const loops = [];
+    const unused = mine.slice();
+    while (unused.length) {
+      const first = unused.shift(), loop = [first];
+      if (!first.arc.full) {
+        let cur = first;
+        for (let guard = 0; guard < 64 && !near(cur.end, first.start); guard++) {
+          let k = -1, bd = Infinity;
+          unused.forEach((x, j) => {
+            const d = Math.hypot(x.start[0] - cur.end[0], x.start[1] - cur.end[1]);
+            if (d < bd) {
+              bd = d;
+              k = j;
+            }
+          });
+          if (k < 0 || bd > 1e-4) break;
+          cur = unused.splice(k, 1)[0];
+          loop.push(cur);
+        }
+      }
+      loops.push(loop);
+    }
+    if (m === 0 && box) loops.push([{ rect: box }]);
+    let area = 0;
+    const poly = [];
+    for (const loop of loops) {
+      const pts = [];
+      for (const seg of loop) {
+        if (seg.rect) {
+          const b = seg.rect;
+          pts.push([b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]);
+          continue;
+        }
+        const a = seg.arc, steps = Math.max(8, Math.ceil((a.t1 - a.t0) / 0.05));
+        for (let k = 0; k < steps; k++) {
+          const t = seg.fwd ? a.t0 + (a.t1 - a.t0) * (k / steps) : a.t1 - (a.t1 - a.t0) * (k / steps);
+          pts.push(fns[a.i].at(t));
+        }
+      }
+      for (let k = 0; k < pts.length; k++) {
+        const p = pts[k], q = pts[(k + 1) % pts.length];
+        area += (p[0] * q[1] - q[0] * p[1]) / 2;
+      }
+      poly.push(pts);
+    }
+    regions.push({ m, loops, area: m === 0 && !box ? Infinity : area, poly });
+  }
+  return { shapes, fns, arcs, regions };
+}
+function regionPoles(geo, box, opts = {}) {
+  const n = geo.shapes.length, fns = geo.fns;
+  const h = opts.step || 0.09;
+  const best = new Array(1 << n).fill(null);
+  const bit = (x, y) => {
+    let m = 0;
+    for (let i = 0; i < n; i++) if (fns[i].F(x, y) < 0) m |= 1 << i;
+    return m;
+  };
+  const avoid = opts.avoid || [];
+  const score = (x, y) => {
+    let d = Math.min(x - box.x0, box.x1 - x, y - box.y0, box.y1 - y);
+    for (let i = 0; i < n; i++) d = Math.min(d, fns[i].dist(x, y));
+    for (const a of avoid) {
+      const dx = Math.max(0, Math.abs(x - a.x) - a.w / 2), dy = Math.max(0, Math.abs(y - a.y) - a.h / 2);
+      d = Math.min(d, Math.hypot(dx, dy) * 1.2);
+    }
+    return d;
+  };
+  for (let x = box.x0 + h / 2; x < box.x1; x += h) {
+    for (let y = box.y0 + h / 2; y < box.y1; y += h) {
+      const m = bit(x, y), d = score(x, y);
+      if (!best[m] || d > best[m].d) best[m] = { x, y, d };
+    }
+  }
+  for (let m = 0; m < best.length; m++) {
+    const b = best[m];
+    if (!b) continue;
+    for (let k = 0; k < 2; k++) {
+      const hh = h / (k ? 8 : 3);
+      let bx = b.x, by = b.y, bd = b.d;
+      for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) {
+        const x = b.x + dx * hh, y = b.y + dy * hh;
+        if (bit(x, y) !== m) continue;
+        const d = score(x, y);
+        if (d > bd) {
+          bd = d;
+          bx = x;
+          by = y;
+        }
+      }
+      b.x = bx;
+      b.y = by;
+      b.d = bd;
+    }
+  }
+  return best;
+}
+function placeLabels(shapes, sizes) {
+  const n = shapes.length, fns = shapes.map(shapeFns);
+  const cx = shapes.reduce((s, p) => s + p.x, 0) / n, cy = shapes.reduce((s, p) => s + p.y, 0) / n;
+  const samples = fns.map((f) => Array.from({ length: 32 }, (_, k) => f.at(k / 32 * TAU)));
+  const within = (i, j) => samples[i].every((q) => fns[j].F(q[0], q[1]) < 0);
+  const placed = [];
+  return shapes.map((s, i) => {
+    const { w, h } = sizes[i];
+    let out = [s.x - cx, s.y - cy];
+    const ol = Math.hypot(out[0], out[1]);
+    out = ol > 1e-6 ? [out[0] / ol, out[1] / ol] : [-0.6, 0.8];
+    let best = null;
+    for (let k = 0; k < 64; k++) {
+      const a = k / 64 * TAU, d = [Math.cos(a), Math.sin(a)];
+      const e = fns[i].ray(d);
+      const r = 0.12 + Math.abs(d[0]) * w / 2 + Math.abs(d[1]) * h / 2;
+      const p = [e[0] + d[0] * r, e[1] + d[1] * r];
+      let clear = 1;
+      const corners = [p, [p[0] - w / 2, p[1] - h / 2], [p[0] + w / 2, p[1] - h / 2], [p[0] - w / 2, p[1] + h / 2], [p[0] + w / 2, p[1] + h / 2]];
+      for (let j = 0; j < n; j++) {
+        if (j === i) continue;
+        const inside = within(i, j);
+        for (const q of corners) {
+          const F = fns[j].F(q[0], q[1]), dd = fns[j].dist(q[0], q[1]);
+          clear = Math.min(clear, F < 0 && !inside ? -dd : dd);
+        }
+      }
+      let score = Math.min(clear, 0.45) * 4 + 0.8 * (d[0] * out[0] + d[1] * out[1]) + 0.25 * d[1] - 0.05 * d[0];
+      for (const o of placed) if (Math.abs(o.x - p[0]) < (o.w + w) / 2 + 0.1 && Math.abs(o.y - p[1]) < (o.h + h) / 2 + 0.05) score -= 3;
+      if (!best || score > best.score) best = { x: p[0], y: p[1], w, h, score };
+    }
+    placed.push(best);
+    return best;
+  });
+}
+var cache = /* @__PURE__ */ new Map();
+function layoutGeometry(shapes, sizes, universe) {
+  const key = JSON.stringify([shapes, sizes, universe]);
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const fns = shapes.map(shapeFns);
+  const labels = placeLabels(shapes, sizes);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const ext = (x, y) => {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  };
+  fns.forEach((f) => {
+    for (let k = 0; k < 96; k++) {
+      const p = f.at(k / 96 * TAU);
+      ext(p[0], p[1]);
+    }
+  });
+  labels.forEach((l) => {
+    ext(l.x - l.w / 2, l.y - l.h / 2);
+    ext(l.x + l.w / 2, l.y + l.h / 2);
+  });
+  const pad = 0.4;
+  const box = { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad };
+  let ulab = null;
+  if (universe) {
+    const { w, h } = universe;
+    const place = () => ({ x: box.x0 + 0.18 + w / 2, y: box.y1 - 0.14 - h / 2, w, h });
+    ulab = place();
+    const clash = () => [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]].some(([sx, sy]) => {
+      const qx = ulab.x + sx * w / 2, qy = ulab.y + sy * h / 2;
+      return fns.some((f) => f.F(qx, qy) < 0.08) || labels.some((l) => Math.abs(qx - l.x) < l.w / 2 + 0.05 && Math.abs(qy - l.y) < l.h / 2 + 0.05);
+    });
+    for (let k = 0; k < 6 && clash(); k++) {
+      box.y1 += 0.18;
+      box.x0 -= 0.12;
+      ulab = place();
+    }
+  }
+  const geo = arrangement(shapes, box);
+  const poles = regionPoles(geo, box, { avoid: labels.concat(ulab ? [ulab] : []) });
+  let drawn = 0;
+  geo.regions.forEach((r) => {
+    if (r.area > 0.02 && poles[r.m]) drawn |= 1 << r.m;
+  });
+  const res = { shapes, fns, labels, box, ulab, geo, poles, drawn };
+  cache.set(key, res);
+  if (cache.size > 80) cache.delete(cache.keys().next().value);
+  return res;
+}
+var has2 = (mask, m) => (mask >>> m & 1) === 1;
+function regionPolys(g, mask) {
+  const out = [];
+  for (const r of g.geo.regions) if (has2(mask, r.m)) out.push(...r.poly);
+  return out;
+}
+function hatchSegments(polys, deg, spacing) {
+  const c = Math.cos(deg * D2R2), s = Math.sin(deg * D2R2);
+  const rot = ([x, y]) => [x * c + y * s, -x * s + y * c];
+  const back = ([u, v]) => [u * c - v * s, u * s + v * c];
+  const rp = polys.map((p) => p.map(rot));
+  let v0 = Infinity, v1 = -Infinity;
+  for (const p of rp) for (const q of p) {
+    v0 = Math.min(v0, q[1]);
+    v1 = Math.max(v1, q[1]);
+  }
+  const segs = [];
+  if (!isFinite(v0)) return segs;
+  for (let v = Math.ceil(v0 / spacing) * spacing; v < v1; v += spacing) {
+    const xs = [];
+    for (const p of rp) {
+      for (let k = 0; k < p.length; k++) {
+        const a = p[k], b = p[(k + 1) % p.length];
+        if (a[1] <= v !== b[1] <= v) xs.push(a[0] + (v - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+      }
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) if (xs[k + 1] - xs[k] > 1e-3) segs.push([back([xs[k], v]), back([xs[k + 1], v])]);
+  }
+  return segs;
+}
+function insidePolys(polys, x, y) {
+  let inside = false;
+  for (const p of polys) {
+    for (let k = 0, j = p.length - 1; k < p.length; j = k++) {
+      const a = p[k], b = p[j];
+      if (a[1] > y !== b[1] > y && x < a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])) inside = !inside;
+    }
+  }
+  return inside;
+}
+function dotPoints(polys, spacing) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of polys) for (const q of p) {
+    x0 = Math.min(x0, q[0]);
+    y0 = Math.min(y0, q[1]);
+    x1 = Math.max(x1, q[0]);
+    y1 = Math.max(y1, q[1]);
+  }
+  const pts = [];
+  if (!isFinite(x0)) return pts;
+  let row = 0;
+  for (let y = Math.ceil(y0 / spacing) * spacing; y < y1; y += spacing * 0.87, row++) {
+    for (let x = Math.ceil(x0 / spacing) * spacing + (row % 2 ? spacing / 2 : 0); x < x1; x += spacing) if (insidePolys(polys, x, y)) pts.push([x, y]);
+  }
+  return pts;
+}
+var C = (x, y, r) => ({ x, y, rx: r, ry: r, rot: 0 });
+var VENN_LAYOUTS = {
+  1: [{ id: "one", name: "One circle", shapes: [C(0, 0, 1.6)] }],
+  2: [
+    { id: "overlap", name: "Overlapping", shapes: [C(-0.95, 0, 1.6), C(0.95, 0, 1.6)] },
+    { id: "inside", name: "{0} inside {1}", shapes: [C(-0.45, -0.15, 0.95), C(0, 0, 1.9)] },
+    { id: "apart", name: "Apart", shapes: [C(-1.85, 0, 1.45), C(1.85, 0, 1.45)] }
+  ],
+  3: [
+    { id: "classic", name: "Overlapping", shapes: [C(-0.9, 0.52, 1.5), C(0.9, 0.52, 1.5), C(0, -1.04, 1.5)] },
+    { id: "row", name: "In a row", shapes: [C(-1.9, 0, 1.3), C(0, 0, 1.3), C(1.9, 0, 1.3)] },
+    { id: "nested", name: "Nested", shapes: [C(0, -0.55, 0.85), C(0, -0.2, 1.45), C(0, 0.2, 2.1)] }
+  ],
+  4: [
+    { id: "ellipses", name: "Ellipses", shapes: [
+      { x: -0.8, y: -0.4, rx: 2.4, ry: 1.56, rot: -50 },
+      { x: 0, y: 0.3, rx: 2.4, ry: 1.56, rot: -50 },
+      { x: 0, y: 0.3, rx: 2.4, ry: 1.56, rot: 50 },
+      { x: 0.8, y: -0.4, rx: 2.4, ry: 1.56, rot: 50 }
+    ] }
+  ]
+};
+
+// client/src/utils/vennDiagram.js
+var VENN_UNIT = 56;
+var SET_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7"];
+var SHADE_COLOR = "#818cf8";
+var VENN_STYLES = [
+  { id: "fill", name: "Solid" },
+  { id: "hatch-ne", name: "Lines ╱" },
+  { id: "hatch-nw", name: "Lines ╲" },
+  { id: "hatch-h", name: "Lines ─" },
+  { id: "hatch-v", name: "Lines │" },
+  { id: "dots", name: "Dots" },
+  { id: "outline", name: "Outline" }
+];
+var STYLE_IDS = VENN_STYLES.map((s) => s.id);
+var HATCH_DEG = { "hatch-ne": 45, "hatch-nw": 135, "hatch-h": 0, "hatch-v": 90 };
+var REL_TEX = { "=": "=", "≠": "\\neq", "⊆": "\\subseteq", "⊇": "\\supseteq", "⊂": "\\subsetneq", "⊃": "\\supsetneq" };
+var GAP = 1.6;
+var LABEL_FS = 0.46;
+var UNIVERSE_FS = 0.44;
+var CAPTION5 = 0.3;
+var OK = "#22c55e";
+var BAD = "#ef4444";
+var esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n16 = (v) => String(Math.round(v * 10) / 10);
+var HEX2 = /^#[0-9a-f]{6}$/i;
+var ID5 = /^[A-Za-z0-9_-]{1,40}$/;
+var num7 = (v, lo, hi, d) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
+var int6 = (v, lo, hi, d) => Number.isInteger(v) ? Math.min(hi, Math.max(lo, v)) : d;
+var str6 = (v, max, d = "") => typeof v === "string" ? v.slice(0, max) : d;
+var oneOf2 = (v, list, d) => list.includes(v) ? v : d;
+function vennModel(el) {
+  const sets = [];
+  for (const s of Array.isArray(el?.sets) ? el.sets.slice(0, 4) : []) {
+    if (!s || !/^[A-Za-z]$/.test(s.id) || sets.some((x) => x.id === s.id)) continue;
+    sets.push({ id: s.id, label: str6(s.label, 80, s.id), color: HEX2.test(s.color || "") ? s.color : SET_COLORS[sets.length] });
+  }
+  if (!sets.length) for (const id of ["A", "B", "C"]) sets.push({ id, label: id, color: SET_COLORS[sets.length] });
+  const n = sets.length;
+  const presets = VENN_LAYOUTS[n];
+  let layout = typeof el?.layout === "string" ? el.layout : presets[0].id;
+  let shapes = Array.isArray(el?.shapes) && el.shapes.length === n ? el.shapes.map((s) => ({ x: num7(s?.x, -20, 20, 0), y: num7(s?.y, -20, 20, 0), rx: num7(s?.rx, 0.3, 6, 1.5), ry: num7(s?.ry, 0.3, 6, 1.5), rot: num7(s?.rot, -180, 180, 0) })) : null;
+  if (!shapes) {
+    const p = presets.find((l) => l.id === layout) || presets[0];
+    layout = p.id;
+    shapes = p.shapes.map((s) => ({ ...s }));
+  } else if (layout !== "custom" && !presets.some((l) => l.id === layout)) layout = "custom";
+  const u = el?.universe || {}, r = el?.result || {}, g = el?.regions || {}, v = el?.verdict || {};
+  const layers = [], ids = /* @__PURE__ */ new Set();
+  for (const L of Array.isArray(el?.layers) ? el.layers.slice(0, 40) : []) {
+    if (!L || !ID5.test(L.id) || ids.has(L.id)) continue;
+    ids.add(L.id);
+    const step = int6(L.step, 0, 1e3, 0);
+    const until = Number.isInteger(L.until) ? Math.min(1e3, Math.max(step, L.until)) : null;
+    layers.push({ id: L.id, expr: str6(L.expr, 400), style: oneOf2(L.style, STYLE_IDS, "fill"), color: HEX2.test(L.color || "") ? L.color : null, step, until, panel: L.panel === 1 ? 1 : 0 });
+  }
+  const captions = {};
+  for (const [k, c] of Object.entries(el?.captions && typeof el.captions === "object" ? el.captions : {})) {
+    const i = Number(k);
+    if (Number.isInteger(i) && i >= 0 && i <= 1e3 && typeof c === "string" && c.trim()) captions[i] = c.slice(0, 300);
+  }
+  const members = {};
+  const mem = el?.members && typeof el.members === "object" ? el.members : {};
+  for (const k of ["U", ...sets.map((s) => s.id)]) if (typeof mem[k] === "string" && mem[k].trim()) members[k] = mem[k].slice(0, 600);
+  const rs = Array.isArray(r.steps) ? r.steps : [];
+  return {
+    sets,
+    layout,
+    shapes,
+    universe: { show: u.show !== false, label: str6(u.label, 40, "U").trim() || "U" },
+    notation: { complement: oneOf2(el?.notation?.complement, ["prime", "c", "bar"], "prime") },
+    outlines: oneOf2(el?.outlines, ["ink", "sets"], "ink"),
+    expr: str6(el?.expr, 400),
+    // The expression Build It Up wrote the steps for, to say when they're out of date
+    builtFrom: str6(el?.builtFrom, 400),
+    result: { style: oneOf2(r.style, STYLE_IDS, "fill"), color: HEX2.test(r.color || "") ? r.color : null, steps: [int6(rs[0], 0, 1e3, 0), int6(rs[1], 0, 1e3, 0)] },
+    layers,
+    regions: {
+      label: oneOf2(g.label, ["none", "roman", "name"], "none"),
+      values: oneOf2(g.values, ["none", "counts", "probability", "elements"], "none"),
+      reveal: oneOf2(g.reveal, ["together", "inside-out"], "together"),
+      step: int6(g.step, 0, 1e3, 0)
+    },
+    facts: (Array.isArray(el?.facts) ? el.facts : []).filter((f) => typeof f === "string").slice(0, 40).map((f) => f.slice(0, 160)),
+    members,
+    verdict: { show: v.show !== false, step: int6(v.step, 0, 1e3, 0) },
+    captions,
+    color: HEX2.test(el?.color || "") ? el.color : "#ffffff",
+    stepStart: int6(el?.stepStart, 1, 1e3, 1),
+    dimPast: !!el?.dimPast
+  };
+}
+var ctxOf = (m) => ({ ids: m.sets.map((s) => s.id), universe: m.universe.label });
+var styleOf = (m, out) => ({ out, comp: m.notation.complement, ids: m.sets.map((s) => s.id), universe: m.universe.label });
+var labelSize = (tex, fs) => {
+  const b = texBox(tex, fs * VENN_UNIT);
+  return { w: b.w / VENN_UNIT, h: fs * 1.15 };
+};
+function vennGeometry(m) {
+  return layoutGeometry(m.shapes, m.sets.map((s) => labelSize(s.label, LABEL_FS)), m.universe.show ? labelSize(m.universe.label, UNIVERSE_FS) : null);
+}
+function analyzeVenn(m) {
+  const n = m.sets.length, ctx = ctxOf(m), all = fullMask(n);
+  const a = { n, all, ctx, sides: [], masks: [], rel: null, err: null, parsed: null, layers: [], warnings: [], notes: [] };
+  try {
+    const p = parse(m.expr, ctx);
+    a.parsed = p;
+    if (p.ast.t === "rel") {
+      a.rel = p.ast.op;
+      a.sides = [p.ast.a, p.ast.b];
+    } else a.sides = [p.ast];
+    a.masks = a.sides.map((s) => evaluate(s, n));
+  } catch (e) {
+    if (!e.venn) throw e;
+    a.err = e;
+  }
+  a.layers = m.layers.map((L) => {
+    try {
+      const p = parse(L.expr, ctx);
+      if (p.ast.t === "rel") return { L, err: "A layer shades one set, not a relation." };
+      return { L, mask: evaluate(p.ast, n), ast: p.ast };
+    } catch (e) {
+      if (!e.venn) throw e;
+      return { L, err: e.message };
+    }
+  });
+  a.g = vennGeometry(m);
+  a.visible = a.g.drawn & (m.universe.show ? all : all & ~1);
+  const nameOf = (r) => format(regionAst(r, n), styleOf(m, "text"));
+  const listMask = (mask) => listNames(regionsOf(mask, n).map(nameOf));
+  a.nameOf = nameOf;
+  a.listMask = listMask;
+  a.masks.forEach((mask, p) => {
+    const lost = mask & ~a.g.drawn;
+    const several = popcount(lost) > 1;
+    if (lost) a.notes.push(`${listMask(lost)} ${several ? "are" : "is"} shaded${a.rel ? p ? " on the right" : " on the left" : ""}, but this layout leaves no room for ${several ? "them" : "it"}, so ${several ? "they count" : "it counts"} as empty.`);
+    if (!m.universe.show && mask & 1) a.warnings.push(`The outside, ${nameOf(0)}, is shaded, but the universe isn’t drawn.`);
+  });
+  if (a.rel) a.verdict = verdictOf(a.rel, a.masks[0], a.masks[1], a.g.drawn, all, listMask);
+  const shaded = a.masks.length === 1 ? a.masks[0] : null;
+  if (m.regions.values === "counts" || m.regions.values === "probability") a.num = solveFacts(m.facts.join("\n"), ctx, n, m.regions.values, shaded);
+  if (m.regions.values === "elements") a.mem = placeMembers(m.members, ctx.ids);
+  a.maxStep = maxStep4(m, a);
+  a.staleBuild = m.layers.length > 0 && !!m.builtFrom && m.builtFrom !== m.expr;
+  return a;
+}
+function verdictOf(op, L, R, drawn, all, listMask) {
+  const judge = (room) => {
+    const onlyL = L & ~R & room, onlyR = R & ~L & room;
+    const holds = op === "=" ? !onlyL && !onlyR : op === "≠" ? !!(onlyL || onlyR) : op === "⊆" ? !onlyL : op === "⊇" ? !onlyR : op === "⊂" ? !onlyL && !!onlyR : !onlyR && !!onlyL;
+    return { holds, onlyL, onlyR };
+  };
+  const v = judge(drawn), anyway = judge(all);
+  const isAre = (mask) => popcount(mask) > 1 ? "are" : "is";
+  let text;
+  if (op === "=" || op === "≠") {
+    if (!v.onlyL && !v.onlyR) text = "Both sides shade the same regions.";
+    else text = [v.onlyL && `${listMask(v.onlyL)} ${isAre(v.onlyL)} shaded only on the left.`, v.onlyR && `${listMask(v.onlyR)} ${isAre(v.onlyR)} shaded only on the right.`].filter(Boolean).join(" ");
+  } else if (op === "⊆" || op === "⊂") {
+    text = v.onlyL ? `${listMask(v.onlyL)} ${isAre(v.onlyL)} shaded on the left but not on the right.` : "Every region shaded on the left is shaded on the right.";
+    if (op === "⊂" && !v.onlyL && !v.onlyR) text += " But the sides are equal, so it isn’t a proper subset.";
+  } else {
+    text = v.onlyR ? `${listMask(v.onlyR)} ${isAre(v.onlyR)} shaded on the right but not on the left.` : "Every region shaded on the right is shaded on the left.";
+    if (op === "⊃" && !v.onlyL && !v.onlyR) text += " But the sides are equal, so it isn’t a proper superset.";
+  }
+  const short = op === "=" ? v.holds ? "Equal" : "Not equal" : op === "≠" ? v.holds ? "Not equal" : "Equal after all" : v.holds ? "Holds" : "Doesn’t hold";
+  const layoutNote = v.holds !== anyway.holds ? `Only because this layout leaves no room for ${listMask(all & ~drawn & (L ^ R))}.` : "";
+  return { holds: v.holds, text, short, layoutNote };
+}
+function valueStep(m, n, r) {
+  return m.regions.reveal === "inside-out" ? m.regions.step + (n - popcount(r)) : m.regions.step;
+}
+function maxStep4(m, a) {
+  let s = 0;
+  for (const L of m.layers) {
+    s = Math.max(s, L.step);
+    if (L.until != null) s = Math.max(s, L.until);
+  }
+  for (let p = 0; p < Math.max(1, a.sides.length); p++) s = Math.max(s, m.result.steps[p]);
+  if (a.rel && m.verdict.show) s = Math.max(s, m.verdict.step);
+  if (m.regions.values !== "none") s = Math.max(s, valueStep(m, a.n, 0));
+  for (const k of Object.keys(m.captions)) s = Math.max(s, +k);
+  return Math.min(s, 1e3);
+}
+function fmtValue(v, mode) {
+  if (v == null) return "?";
+  if (mode === "probability") return String(+v.toFixed(3));
+  return Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : v.toFixed(2);
+}
+function regionPath(a, mask, off, u) {
+  const g = a.g, X = (x) => n16((x + off) * u), Y = (y) => n16(-y * u);
+  let d = "";
+  for (const r of g.geo.regions) {
+    if (!has(mask, r.m) || !has(a.visible, r.m)) continue;
+    for (const loop of r.loops) {
+      if (loop[0].rect) {
+        const b = loop[0].rect;
+        d += `M${X(b.x0)} ${Y(b.y0)}H${X(b.x1)}V${Y(b.y1)}H${X(b.x0)}Z`;
+        continue;
+      }
+      loop.forEach((seg, k) => {
+        const arc = seg.arc, s = g.shapes[arc.i];
+        if (k === 0) d += `M${X(seg.start[0])} ${Y(seg.start[1])}`;
+        const cmd = (p, large) => `A${n16(s.rx * u)} ${n16(s.ry * u)} ${n16(-s.rot)} ${large ? 1 : 0} ${seg.fwd ? 0 : 1} ${X(p[0])} ${Y(p[1])}`;
+        if (arc.full) d += cmd(g.fns[arc.i].at(arc.t0 + Math.PI), false) + cmd(seg.end, false);
+        else d += cmd(seg.end, arc.t1 - arc.t0 > Math.PI);
+      });
+      d += "Z";
+    }
+  }
+  return d;
+}
+function vennFrame(m, a) {
+  const box = a.g.box, W = box.x1 - box.x0;
+  const panels = a.rel ? 2 : 1;
+  const offs = panels === 2 ? [0, W + GAP] : [0];
+  const verdict = a.rel && m.verdict.show ? 0.85 : 0;
+  return { box, W, panels, offs, x0: box.x0 - 0.12, x1: box.x1 + offs[panels - 1] + 0.12, y0: box.y0 - 0.12 - verdict, y1: box.y1 + 0.12 };
+}
+function drawVenn(m, o = {}) {
+  const u = VENN_UNIT, ink = o.ink || m.color;
+  const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
+  const a = o.a || analyzeVenn(m);
+  const g = a.g, n = a.n, fr = vennFrame(m, a), box = g.box;
+  const step = deck != null ? null : o.step == null ? a.maxStep : o.step;
+  const shown = (at, until) => deck != null || step >= at && (until == null || step <= until);
+  const part2 = (at, until, inner) => {
+    if (deck == null) return inner;
+    let s = at > 0 ? `<g class="pxvn-in">${inner}</g>` : inner;
+    if (until != null) s = `<g data-fx-in="0-${until}">${s}</g>`;
+    return at > 0 ? `<g class="pxfx-part" data-fx-at="${at}">${s}</g>` : s;
+  };
+  function label(tex, cx, cy, size, color2) {
+    if (o.labels === "deck" || typeof o.labels === "function") {
+      const b = texBox(tex, size), w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc6(tex)}" style="font-family:${esc6(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n16(cx - w / 2)}" y="${n16(cy - h / 2)}" width="${n16(w)}" height="${n16(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n16(size / 1.21)}px;color:${esc6(color2)}">${inner}</div></foreignObject>`;
+    }
+    return texSvg(tex, cx, cy, size, color2);
+  }
+  const text = (t, cx, cy, size, color2, extra = "") => `<text x="${n16(cx)}" y="${n16(cy + size * 0.34)}" text-anchor="middle" font-family="${esc6(MATH_FONT)}" font-size="${n16(size)}" fill="${esc6(color2)}"${extra}>${esc6(t)}</text>`;
+  function shade(mask, style, color2, off) {
+    mask &= a.visible;
+    if (!mask) return "";
+    if (style === "fill" || style === "outline") {
+      const d2 = regionPath(a, mask, off, u);
+      return style === "fill" ? `<path d="${d2}" fill-rule="evenodd" fill="${esc6(color2)}" fill-opacity="0.45"/>` : `<path d="${d2}" fill-rule="evenodd" fill="none" stroke="${esc6(color2)}" stroke-width="5" stroke-linejoin="round"/>`;
+    }
+    const polys = regionPolys(g, mask & a.visible);
+    const X = (x) => n16((x + off) * u), Y = (y) => n16(-y * u);
+    if (style === "dots") {
+      const r = 0.035 * u;
+      let d2 = "";
+      for (const [x, y] of dotPoints(polys, 0.18)) d2 += `M${n16((x + off) * u - r)} ${Y(y)}a${n16(r)} ${n16(r)} 0 1 0 ${n16(2 * r)} 0a${n16(r)} ${n16(r)} 0 1 0 ${n16(-2 * r)} 0`;
+      return d2 ? `<path d="${d2}" fill="${esc6(color2)}"/>` : "";
+    }
+    let d = "";
+    for (const [p, q] of hatchSegments(polys, HATCH_DEG[style], 0.15)) d += `M${X(p[0])} ${Y(p[1])}L${X(q[0])} ${Y(q[1])}`;
+    return d ? `<path d="${d}" stroke="${esc6(color2)}" stroke-width="1.8" stroke-linecap="round" fill="none"/>` : "";
+  }
+  let svg = "";
+  for (let p = 0; p < fr.panels; p++) {
+    const off = fr.offs[p];
+    const X = (x) => (x + off) * u, Y = (y) => -y * u;
+    if (m.universe.show) svg += `<rect x="${n16(X(box.x0))}" y="${n16(Y(box.y1))}" width="${n16((box.x1 - box.x0) * u)}" height="${n16((box.y1 - box.y0) * u)}" fill="none" stroke="${esc6(ink)}" stroke-width="2"/>`;
+    const items = [];
+    if (a.masks[p] != null) items.push({ mask: a.masks[p], style: m.result.style, color: m.result.color || SHADE_COLOR, at: m.result.steps[p], until: null });
+    for (const l of a.layers) {
+      if (l.err || fr.panels === 2 && l.L.panel !== p) continue;
+      items.push({ mask: l.mask, style: l.L.style, color: l.L.color || SHADE_COLOR, at: l.L.step, until: l.L.until });
+    }
+    for (const it of items) {
+      if (!shown(it.at, it.until)) continue;
+      const s = shade(it.mask, it.style, it.color, off);
+      if (s) svg += part2(it.at, it.until, s);
+    }
+    if (o.hover && o.hover.p === p && o.hover.r != null && has(a.visible, o.hover.r)) {
+      svg += `<path d="${regionPath(a, 1 << o.hover.r, off, u)}" fill-rule="evenodd" fill="${esc6(o.accent)}" fill-opacity="0.16" stroke="${esc6(o.accent)}" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+    }
+    g.shapes.forEach((s, i) => {
+      const color2 = m.outlines === "sets" ? m.sets[i].color : ink;
+      const cx = n16(X(s.x)), cy = n16(Y(s.y)), rot = Math.abs(s.rot) > 1e-9 ? ` transform="rotate(${n16(-s.rot)} ${cx} ${cy})"` : "";
+      svg += `<ellipse cx="${cx}" cy="${cy}" rx="${n16(s.rx * u)}" ry="${n16(s.ry * u)}"${rot} fill="none" stroke="${esc6(color2)}" stroke-width="2.4"/>`;
+      if (o.sel === i) svg += `<ellipse cx="${cx}" cy="${cy}" rx="${n16(s.rx * u + 6)}" ry="${n16(s.ry * u + 6)}"${rot} fill="none" stroke="${esc6(o.accent)}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+      const l = g.labels[i];
+      svg += label(m.sets[i].label, X(l.x), Y(l.y), LABEL_FS * u, color2);
+    });
+    if (g.ulab) svg += label(m.universe.label, X(g.ulab.x), Y(g.ulab.y), UNIVERSE_FS * u, ink);
+    const vals = m.regions.values, named = m.regions.label !== "none";
+    if (named || vals !== "none") {
+      for (let r = 0; r < 1 << n; r++) {
+        const pole = g.poles[r];
+        if (!has(a.visible, r) || !pole) continue;
+        const cx = X(pole.x), cy = Y(pole.y);
+        let value = "", rows = [];
+        if ((vals === "counts" || vals === "probability") && a.num) value = fmtValue(a.num.value[r], vals);
+        if (vals === "elements" && a.mem) {
+          const items2 = a.mem.region[r], per = items2.length <= 3 ? items2.length : items2.length <= 6 ? 3 : 4;
+          for (let k = 0; k < items2.length; k += per) rows.push(items2.slice(k, k + per).join(",\\ "));
+        }
+        const vh = value ? 0.42 : rows.length * 0.36;
+        const nameFs = (m.regions.label === "name" ? 0.27 : 0.25) * u;
+        const top = cy - (vh * u + (named ? nameFs * 1.2 : 0)) / 2;
+        if (named) {
+          const ny = top + nameFs * 0.6;
+          svg += `<g opacity="0.7">${m.regions.label === "roman" ? text(regionNumber(r, n), cx, ny, nameFs, ink, ' letter-spacing="0.5"') : label(format(regionAst(r, n), styleOf(m, "tex")), cx, ny, nameFs, ink)}</g>`;
+        }
+        const vy = top + (named ? nameFs * 1.2 : 0);
+        const at = valueStep(m, n, r);
+        if (value && shown(at, null)) svg += part2(at, null, text(value, cx, vy + 0.21 * u, 0.42 * u, ink, a.num.value[r] == null ? ' opacity="0.55"' : ""));
+        if (rows.length && shown(at, null)) svg += part2(at, null, rows.map((row, k) => label(row, cx, vy + (k + 0.5) * 0.36 * u, 0.32 * u, ink)).join(""));
+      }
+    }
+  }
+  if (a.rel) {
+    svg += label(REL_TEX[a.rel], (box.x1 + GAP / 2) * u, -((box.y0 + box.y1) / 2) * u, 0.95 * u, ink);
+    if (m.verdict.show && a.verdict && shown(m.verdict.step, null)) {
+      const v = a.verdict;
+      svg += part2(m.verdict.step, null, text(`${v.holds ? "✓" : "✗"} ${v.short}`, (fr.x0 + fr.x1) / 2 * u, -(box.y0 - 0.48) * u, 0.4 * u, v.holds ? OK : BAD));
+    }
+  }
+  const pbox = { x0: fr.x0 * u, x1: fr.x1 * u, y0: -fr.y1 * u, y1: -fr.y0 * u };
+  const capSteps = Object.keys(m.captions).map(Number).sort((x, y) => x - y);
+  if (o.captions && capSteps.length) {
+    const cs = CAPTION5 * u, w = Math.max(pbox.x1 - pbox.x0, 6 * u), cx = (pbox.x0 + pbox.x1) / 2, y = pbox.y1 + cs * 0.6, h = cs * 2.8;
+    const one = (k, cls) => {
+      const t = m.captions[k];
+      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n16(cx)}" y="${n16(y + cs)}" text-anchor="middle" font-family="${esc6(MATH_FONT)}" font-size="${n16(cs)}" fill="${esc6(ink)}">${esc6(captionText(t))}</text>`;
+      return `<foreignObject${cls} x="${n16(cx - w / 2)}" y="${n16(y)}" width="${n16(w)}" height="${n16(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n16(cs)}px;line-height:1.3;color:${esc6(ink)}">${captionHtml(t, o.labels)}</div></foreignObject>`;
+    };
+    if (deck != null) svg += capSteps.map((k) => one(k, ` class="pxfx-cap" data-fx-cap="${k}"`)).join("");
+    else {
+      const at = capSteps.filter((k) => k <= step).pop();
+      if (at != null) svg += one(at, "");
+    }
+    pbox.x0 = Math.min(pbox.x0, cx - w / 2);
+    pbox.x1 = Math.max(pbox.x1, cx + w / 2);
+    pbox.y1 = Math.max(pbox.y1, y + h);
+  }
+  return { svg, box: pbox, a, frame: fr };
+}
+function captionHtml(t, labels) {
+  return String(t).split(/(\$[^$]*\$)/).map((seg) => {
+    if (!(seg.length > 1 && seg.startsWith("$") && seg.endsWith("$"))) return esc6(seg);
+    const tex = seg.slice(1, -1);
+    return labels === "deck" ? `<span data-math-latex="${esc6(tex)}" style="font-family:${esc6(MATH_FONT)}">${texLiteHtml(tex)}</span>` : labels(tex);
+  }).join("");
+}
+function captionText(t) {
+  return String(t).split(/(\$[^$]*\$)/).map((seg) => seg.length > 1 && seg.startsWith("$") && seg.endsWith("$") ? texRuns(seg.slice(1, -1)).map((r) => r.t).join("") : seg).join("");
+}
+var baseOptions4 = (m) => ({ ink: m.color, captions: true });
+function vennBox(el) {
+  const m = vennModel(el);
+  const { box } = drawVenn(m, baseOptions4(m));
+  const pad = 0.15 * VENN_UNIT;
+  return { x: box.x0 - pad, y: box.y0 - pad, w: box.x1 - box.x0 + 2 * pad, h: box.y1 - box.y0 + 2 * pad };
+}
+function vennSvg(el, opts = {}) {
+  const m = vennModel(el), b = vennBox(el);
+  const { svg } = drawVenn(m, { ...baseOptions4(m), labels: opts.labels || "text", deck: opts.deck, step: opts.step ?? null });
+  const size = opts.standalone ? ` width="${n16(b.w)}" height="${n16(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n16(b.x)} ${n16(b.y)} ${n16(b.w)} ${n16(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+}
+function vennSteps(el) {
+  if (el?.type !== "venn") return [];
+  const m = vennModel(el), a = analyzeVenn(m), steps = /* @__PURE__ */ new Set();
+  const add2 = (k) => {
+    if (k > 0 && k <= a.maxStep) steps.add(k);
+  };
+  for (const l of a.layers) if (!l.err) {
+    add2(l.L.step);
+    if (l.L.until != null) add2(l.L.until + 1);
+  }
+  a.masks.forEach((_, p) => add2(m.result.steps[p]));
+  if (m.regions.values !== "none") {
+    for (let r = 0; r < 1 << a.n; r++) if (has(a.visible, r)) add2(valueStep(m, a.n, r));
+  }
+  if (a.rel && m.verdict.show) add2(m.verdict.step);
+  for (const k of Object.keys(m.captions)) add2(+k);
+  return [...steps].sort((x, y) => x - y).map((s) => [m.stepStart - 1 + s, s]).filter(([k]) => k <= 1e3);
+}
+function vennStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [k, s] of vennSteps(el)) html += `<span class="fragment" data-fragment-index="${k}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasVenn(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "venn"));
+}
+
 // client/src/utils/periodicData.js
 var PERIODIC_ROWS = [
   [1, "H", "Hydrogen", "1.0080", "1s1", "", 2.2, 120, 13.598, 0.754, "+1, -1", "Gas", 0, 13.81, 20.28, 8988e-8, "Nonmetal", 1766],
@@ -6364,10 +7788,10 @@ function periodicRuntime(ROWS) {
   var SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   var MONO = "Menlo, Consolas, monospace";
   var NS = "http://www.w3.org/2000/svg";
-  function esc6(s) {
+  function esc7(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function n16(v) {
+  function n17(v) {
     return String(Math.round(v * 10) / 10);
   }
   function clamp4(v, a, b) {
@@ -6411,7 +7835,7 @@ function periodicRuntime(ROWS) {
   function madelung(a, b) {
     return a.n + a.l - (b.n + b.l) || a.n - b.n;
   }
-  function parse(z) {
+  function parse2(z) {
     if (parsed[z]) return parsed[z];
     var s = EL[z].config, core = null, m = /^\[(\w+)\]\s*/.exec(s), subs = [];
     if (m) {
@@ -6426,7 +7850,7 @@ function periodicRuntime(ROWS) {
     return parsed[z] = { core, subs };
   }
   function fullSubs(z) {
-    var p = parse(z);
+    var p = parse2(z);
     return (p.core ? fullSubs(CORE_Z[p.core]) : []).concat(p.subs).sort(madelung);
   }
   function shellCounts(z) {
@@ -6743,19 +8167,19 @@ function periodicRuntime(ROWS) {
     return w > max ? Math.max(min || 5, fs * max / w) : fs;
   }
   function text(x, y, s, a) {
-    return '<text x="' + n16(x) + '" y="' + n16(y) + '"' + (a || "") + ">" + esc6(s) + "</text>";
+    return '<text x="' + n17(x) + '" y="' + n17(y) + '"' + (a || "") + ">" + esc7(s) + "</text>";
   }
   function supText(x, y, runs, fs, a, sep) {
     var out = "", down = false;
     runs.forEach(function(r, i) {
-      out += "<tspan" + (down ? ' dy="' + n16(fs * 0.38) + '"' : "") + ">" + esc6((i && sep ? sep : "") + r[0]) + "</tspan>";
+      out += "<tspan" + (down ? ' dy="' + n17(fs * 0.38) + '"' : "") + ">" + esc7((i && sep ? sep : "") + r[0]) + "</tspan>";
       down = false;
       if (r[1]) {
-        out += '<tspan dy="' + n16(-fs * 0.38) + '" font-size="' + n16(fs * 0.7) + '">' + esc6(r[1]) + "</tspan>";
+        out += '<tspan dy="' + n17(-fs * 0.38) + '" font-size="' + n17(fs * 0.7) + '">' + esc7(r[1]) + "</tspan>";
         down = true;
       }
     });
-    return '<text x="' + n16(x) + '" y="' + n16(y) + '" font-size="' + n16(fs) + '"' + (a || "") + ">" + out + "</text>";
+    return '<text x="' + n17(x) + '" y="' + n17(y) + '" font-size="' + n17(fs) + '"' + (a || "") + ">" + out + "</text>";
   }
   function runsW(runs, fs, k, sep) {
     return runs.reduce(function(w, r, i) {
@@ -6763,7 +8187,7 @@ function periodicRuntime(ROWS) {
     }, 0);
   }
   function configRuns(z, full) {
-    var p = parse(z), subs = full ? fullSubs(z) : p.subs;
+    var p = parse2(z), subs = full ? fullSubs(z) : p.subs;
     var runs = subs.map(function(s) {
       return [subName(s), String(s.e)];
     });
@@ -6788,7 +8212,7 @@ function periodicRuntime(ROWS) {
   function tileSvg(t, s, v, th, o) {
     var z = t.z, e = EL[z], lk = look(z, v, s, th);
     var a = ' data-pt-z="' + z + '" transform="translate(' + t.x + " " + t.y + ')"' + (dimmed(z, v, s, o.key) ? ' opacity="0.22"' : "");
-    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc6(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
+    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc7(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
     else if (o.mode === "canvas") a += ' style="cursor:pointer;transition:opacity .18s"';
     var h = "<g" + a + '><rect width="60" height="60" rx="6" fill="' + lk.fill + '"' + (lk.fillOp === 0 ? ' fill-opacity="0"' : "");
     h += lk.dash ? ' stroke="' + lk.stroke + '" stroke-dasharray="3 2"/>' : ' stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
@@ -6798,12 +8222,12 @@ function periodicRuntime(ROWS) {
     var mode = s.tileLabel === "auto" ? lk.value != null ? "value" : "name" : s.tileLabel;
     var a2 = ' text-anchor="middle" fill="' + lk.ink + '"';
     if (mode === "value" || mode === "name" && lk.value != null && s.tileLabel === "auto") {
-      h += text(30, 50.5, lk.value, a2 + ' font-family="' + MONO + '" font-size="' + n16(fit(textW(lk.value, 8.6, 0.6), 54, 8.6)) + '"');
+      h += text(30, 50.5, lk.value, a2 + ' font-family="' + MONO + '" font-size="' + n17(fit(textW(lk.value, 8.6, 0.6), 54, 8.6)) + '"');
     } else if (mode === "name") {
-      h += text(30, 50.5, e.name, a2 + ' font-size="' + n16(fit(textW(e.name, 8.6), 54, 8.6, 6)) + '"');
+      h += text(30, 50.5, e.name, a2 + ' font-size="' + n17(fit(textW(e.name, 8.6), 54, 8.6, 6)) + '"');
     } else if (mode === "mass") {
       var m = shortMass(e.mass);
-      h += text(30, 50.5, m, a2 + ' font-family="' + MONO + '" font-size="' + n16(fit(textW(m, 8.6, 0.6), 54, 8.6)) + '"');
+      h += text(30, 50.5, m, a2 + ' font-family="' + MONO + '" font-size="' + n17(fit(textW(m, 8.6, 0.6), 54, 8.6)) + '"');
     } else if (mode === "valence") {
       var runs = configRuns(z).filter(function(r) {
         return r[1];
@@ -6846,48 +8270,48 @@ function periodicRuntime(ROWS) {
       ["density", "Density", e.density == null ? "—" : fmtVal(PROPS.density, e.density) + " g/cm³"]
     ];
   }
-  function cardSvg(z, s, v, th, o, C, at) {
+  function cardSvg(z, s, v, th, o, C2, at) {
     if (!z || !EL[z]) return "";
     var e = EL[z], lk = look(z, v, s, th), prop = PROPS[v.colorBy];
-    var h = '<rect width="' + C.w + '" height="' + C.h + '" rx="8" fill="' + th.surface + '" stroke="' + th.line + '"/>';
+    var h = '<rect width="' + C2.w + '" height="' + C2.h + '" rx="8" fill="' + th.surface + '" stroke="' + th.line + '"/>';
     h += '<rect x="8" y="8" width="108" height="104" rx="7" fill="' + (lk.fillOp === 0 ? th.code : lk.fill) + '" stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
     var ink = lk.fillOp === 0 ? th.fg : lk.ink;
     h += text(15, 21, z, ' font-family="' + MONO + '" font-size="11" fill="' + ink + '"');
-    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n16(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink + '" opacity="0.72"');
+    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n17(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink + '" opacity="0.72"');
     h += text(62, 72, e.sym, ' text-anchor="middle" font-size="44" font-weight="700" fill="' + ink + '"');
-    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n16(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink + '"');
+    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n17(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink + '"');
     var cat = hsl(CAT_HUE[e.cat], th.strongS, th.strongL);
     h += '<rect x="8" y="121" width="8" height="8" rx="2" fill="' + cat + '"/>';
-    h += text(20, 129, e.cat, ' font-size="' + n16(fit(textW(e.cat, 10.5), 96, 10.5, 7)) + '" font-weight="600" fill="' + th.fg + '"');
+    h += text(20, 129, e.cat, ' font-size="' + n17(fit(textW(e.cat, 10.5), 96, 10.5, 7)) + '" font-weight="600" fill="' + th.fg + '"');
     var meta = [(e.predicted ? "Predicted " + e.state.toLowerCase() : e.state) + " at 298 K", blockOf(z, s.group3) + "-block", e.year ? "Discovered " + e.year : e.yearText === "Ancient" ? "Known since antiquity" : ""];
     meta.forEach(function(m, i) {
-      if (m) h += text(8, 144 + i * 14, m, ' font-size="' + n16(fit(textW(m, 10.5), 108, 10.5, 7)) + '" fill="' + th.muted + '"');
+      if (m) h += text(8, 144 + i * 14, m, ' font-size="' + n17(fit(textW(m, 10.5), 108, 10.5, 7)) + '" fill="' + th.muted + '"');
     });
     var x0 = 128, x1 = 364, runs = configRuns(z);
     var note = e.note ? " (" + e.note + ")" : "";
     var cfs = fit(runsW(runs, 13, 0.6, " ") + textW(note, 10, 0.55), 236, 13, 7);
-    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n16(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n16(cfs * 0.75) + '" fill="' + th.muted + '">' + esc6(note) + "</tspan></text>" : "</text>");
+    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n17(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n17(cfs * 0.75) + '" fill="' + th.muted + '">' + esc7(note) + "</tspan></text>" : "</text>");
     factRows(e).forEach(function(r, i) {
       var y = 48 + i * 16, hl = prop && (prop.key === r[0] || prop.key === "massNum" && r[0] === "mass");
       var col = hl ? th.accent : th.muted, vcol = hl ? th.accent : th.fg;
       var lw = textW(r[1], 11) + 8, val = r[2];
       if (textW(val, 11, 0.6) > 236 - lw) val = val.replace(/, /g, ",");
       h += text(x0, y, r[1], ' font-size="11" fill="' + col + '"');
-      h += text(x1, y, val, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n16(fit(textW(val, 11, 0.6), 236 - lw, 11, 6.5)) + '" fill="' + vcol + '"');
+      h += text(x1, y, val, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n17(fit(textW(val, 11, 0.6), 236 - lw, 11, 6.5)) + '" fill="' + vcol + '"');
     });
-    if (s.source) h += text(C.mode === "wide" ? x1 : C.w - 8, C.h - 7, "Data: PubChem", ' text-anchor="end" font-size="8.5" fill="' + th.faint + '"');
-    var B = C.mode === "wide" ? { x: 376, y: 8, w: C.w - 384, h: C.h - 16 } : { x: 8, y: 190, w: C.w - 16, h: C.h - 210 };
+    if (s.source) h += text(C2.mode === "wide" ? x1 : C2.w - 8, C2.h - 7, "Data: PubChem", ' text-anchor="end" font-size="8.5" fill="' + th.faint + '"');
+    var B = C2.mode === "wide" ? { x: 376, y: 8, w: C2.w - 384, h: C2.h - 16 } : { x: 8, y: 190, w: C2.w - 16, h: C2.h - 210 };
     if (s.orbitalView === "boxes") h += boxesSvg(z, B, s, th);
     else if (s.orbitalView === "shells") h += shellsSvg(z, B, th, o.mode === "deck" && o.animate);
-    else if (s.orbitalView === "clouds") h += cloudsSvg(z, B, th, o, C, at);
-    if (o.mode === "deck" && o.pinned === z) h += text(C.mode === "wide" ? x0 : 8, C.h - 7, "Pinned · Esc to let go", ' font-family="' + MONO + '" font-size="9" fill="' + th.accent + '"');
+    else if (s.orbitalView === "clouds") h += cloudsSvg(z, B, th, o, C2, at);
+    if (o.mode === "deck" && o.pinned === z) h += text(C2.mode === "wide" ? x0 : 8, C2.h - 7, "Pinned · Esc to let go", ' font-family="' + MONO + '" font-size="9" fill="' + th.accent + '"');
     return h;
   }
   function header(B, s, th) {
     return text(B.x, B.y + 10, s, ' font-family="' + MONO + '" font-size="10" fill="' + th.muted + '"');
   }
   function boxesSvg(z, B, s, th) {
-    var p = parse(z), all = fullSubs(z), subs = s.showCore ? all : p.subs.slice(), front = all[all.length - 1];
+    var p = parse2(z), all = fullSubs(z), subs = s.showCore ? all : p.subs.slice(), front = all[all.length - 1];
     var h = header(B, "Orbital boxes · " + unpaired(z) + " unpaired", th);
     var area = { x: B.x, y: B.y + 20, w: B.w, h: B.h - 20 };
     var core = !s.showCore && p.core ? "[" + p.core + "]" : null;
@@ -6915,7 +8339,7 @@ function periodicRuntime(ROWS) {
       var X = area.x + it.x, Y = area.y + it.y;
       if (it.core) {
         var cw = textW(core, 11, 0.6) + 12;
-        h += '<rect x="' + n16(X) + '" y="' + n16(Y + 12) + '" width="' + n16(cw) + '" height="' + n16(place.bh) + '" rx="4" fill="' + th.code + '"/>';
+        h += '<rect x="' + n17(X) + '" y="' + n17(Y + 12) + '" width="' + n17(cw) + '" height="' + n17(place.bh) + '" rx="4" fill="' + th.code + '"/>';
         h += text(X + cw / 2, Y + 12 + place.bh / 2 + 3.8, core, ' text-anchor="middle" font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
         return;
       }
@@ -6924,11 +8348,11 @@ function periodicRuntime(ROWS) {
       h += text(X, Y + 9, subName(sb), ' font-family="' + MONO + '" font-size="10" fill="' + (isFront ? th.accent : th.muted) + '"');
       for (var i = 0; i < k; i++) {
         var bx = X + i * w + 0.5, by = Y + 12.5;
-        h += '<rect x="' + n16(bx) + '" y="' + n16(by) + '" width="' + w + '" height="' + bh2 + '" fill="none" stroke="' + th.muted + '"/>';
+        h += '<rect x="' + n17(bx) + '" y="' + n17(by) + '" width="' + w + '" height="' + bh2 + '" fill="none" stroke="' + th.muted + '"/>';
         var a1 = bx + w * 0.34, a2 = bx + w * 0.66, t = by + bh2 * 0.18, bt = by + bh2 * 0.82, hd = w * 0.2;
         var line = ' fill="none" stroke="' + th.fg + '" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
-        if (i < up) h += '<path d="M' + n16(a1) + " " + n16(bt) + "V" + n16(t) + "l" + n16(-hd) + " " + n16(hd * 1.2) + '"' + line;
-        if (i < down) h += '<path d="M' + n16(a2) + " " + n16(t) + "V" + n16(bt) + "l" + n16(hd) + " " + n16(-hd * 1.2) + '"' + line;
+        if (i < up) h += '<path d="M' + n17(a1) + " " + n17(bt) + "V" + n17(t) + "l" + n17(-hd) + " " + n17(hd * 1.2) + '"' + line;
+        if (i < down) h += '<path d="M' + n17(a2) + " " + n17(t) + "V" + n17(bt) + "l" + n17(hd) + " " + n17(-hd * 1.2) + '"' + line;
       }
     });
     return h;
@@ -6939,19 +8363,19 @@ function periodicRuntime(ROWS) {
     var area = { x: B.x, y: B.y + 16, w: B.w, h: B.h - 16 };
     var R = Math.max(20, Math.min(area.h / 2 - 2, (area.w - 56) / 2)), cx = area.x + R + 2, cy = area.y + area.h / 2;
     var rIn = Math.max(10, R * 0.28), nucleus = R * 0.17;
-    h += '<circle cx="' + n16(cx) + '" cy="' + n16(cy) + '" r="' + n16(nucleus) + '" fill="' + hsl(CAT_HUE[e.cat], th.strongS, th.strongL) + '"/>';
-    h += text(cx, cy + nucleus * 0.3, e.sym, ' text-anchor="middle" font-size="' + n16(nucleus * 0.85) + '" font-weight="700" fill="' + th.surface + '"');
+    h += '<circle cx="' + n17(cx) + '" cy="' + n17(cy) + '" r="' + n17(nucleus) + '" fill="' + hsl(CAT_HUE[e.cat], th.strongS, th.strongL) + '"/>';
+    h += text(cx, cy + nucleus * 0.3, e.sym, ' text-anchor="middle" font-size="' + n17(nucleus * 0.85) + '" font-weight="700" fill="' + th.surface + '"');
     for (var k = 0; k < N; k++) {
       var r = N === 1 ? R * 0.55 : rIn + k * (R - rIn) / (N - 1), outer = k === N - 1, n = counts[k], off = k * 0.5;
-      h += '<circle cx="' + n16(cx) + '" cy="' + n16(cy) + '" r="' + n16(r) + '" fill="none" stroke="' + th.line + '"/>';
+      h += '<circle cx="' + n17(cx) + '" cy="' + n17(cy) + '" r="' + n17(r) + '" fill="none" stroke="' + th.line + '"/>';
       h += "<g>";
       for (var j = 0; j < n; j++) {
         var a = off + j * 2 * Math.PI / n;
-        h += '<circle cx="' + n16(cx + r * Math.cos(a)) + '" cy="' + n16(cy + r * Math.sin(a)) + '" r="' + n16(R * (n > 18 ? 0.029 : 0.035)) + '" fill="' + (outer ? th.accent : th.fg) + '"/>';
+        h += '<circle cx="' + n17(cx + r * Math.cos(a)) + '" cy="' + n17(cy + r * Math.sin(a)) + '" r="' + n17(R * (n > 18 ? 0.029 : 0.035)) + '" fill="' + (outer ? th.accent : th.fg) + '"/>';
       }
       if (animate) {
         var dur = 14 + k * 7, from = k % 2 ? 360 : 0;
-        h += '<animateTransform attributeName="transform" type="rotate" from="' + from + " " + n16(cx) + " " + n16(cy) + '" to="' + (360 - from) + " " + n16(cx) + " " + n16(cy) + '" dur="' + dur + 's" repeatCount="indefinite"/>';
+        h += '<animateTransform attributeName="transform" type="rotate" from="' + from + " " + n17(cx) + " " + n17(cy) + '" to="' + (360 - from) + " " + n17(cx) + " " + n17(cy) + '" dur="' + dur + 's" repeatCount="indefinite"/>';
       }
       h += "</g>";
       h += text(cx + R + 14, area.y + 12 + k * 15, "KLMNOPQ"[k] + " " + n, ' font-family="' + MONO + '" font-size="10.5" fill="' + (outer ? th.accent : th.muted) + '"');
@@ -7086,7 +8510,7 @@ function periodicRuntime(ROWS) {
     return clouds[key] = { pts, r90: rs[Math.floor(rs.length * 0.92)] };
   }
   function cloudChoice(z, sub2) {
-    var p = parse(z), valence = p.subs.length ? p.subs : fullSubs(z);
+    var p = parse2(z), valence = p.subs.length ? p.subs : fullSubs(z);
     var names = valence.map(subName), front = valence[valence.length - 1];
     valence.forEach(function(v) {
       if (v.e < 2 * (2 * v.l + 1) && (front.e >= 2 * (2 * front.l + 1) || v.l > front.l)) front = v;
@@ -7115,12 +8539,12 @@ function periodicRuntime(ROWS) {
     }
   }
   var STILL = [900, 520, 340, 240];
-  function cloudsSvg(z, B, th, o, C, at) {
+  function cloudsSvg(z, B, th, o, C2, at) {
     var ch = cloudChoice(z, o.sub), s = ch.sel;
     var h = "", x = B.x;
     ch.valence.forEach(function(v) {
       var nm = subName(v), on = nm === subName(s), w = textW(nm, 10, 0.6) + 10;
-      h += "<g" + (o.mode !== "static" ? ' data-pt-sub="' + nm + '" style="cursor:pointer"' : "") + '><rect x="' + n16(x) + '" y="' + n16(B.y) + '" width="' + n16(w) + '" height="14" rx="3" fill="' + (on ? th.accent : th.surface) + '" stroke="' + (on ? th.accent : th.line) + '"/>';
+      h += "<g" + (o.mode !== "static" ? ' data-pt-sub="' + nm + '" style="cursor:pointer"' : "") + '><rect x="' + n17(x) + '" y="' + n17(B.y) + '" width="' + n17(w) + '" height="14" rx="3" fill="' + (on ? th.accent : th.surface) + '" stroke="' + (on ? th.accent : th.line) + '"/>';
       h += text(x + w / 2, B.y + 10.5, nm, ' text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (on ? th.onAccent : th.fg) + '"') + "</g>";
       x += w + 4;
     });
@@ -7133,19 +8557,19 @@ function periodicRuntime(ROWS) {
       projectCell(s, c, 0.6, STILL[s.l], function(px, py, depth, sign) {
         var bucket = Math.min(3, Math.floor((depth + 1) * 2)), key = (sign > 0 ? "p" : "n") + bucket + (base < 1 ? "e" : "");
         var d = paths[key] || (paths[key] = { d: [], sign, op: base * (0.42 - 0.22 * (bucket / 2 - 0.75)) });
-        d.d.push("M" + n16(A.x + px - sz / 2) + " " + n16(A.y + py - sz / 2) + "h" + sz + "v" + sz + "h-" + sz + "z");
+        d.d.push("M" + n17(A.x + px - sz / 2) + " " + n17(A.y + py - sz / 2) + "h" + sz + "v" + sz + "h-" + sz + "z");
       });
     });
     h += "<g data-pt-cloud-static>";
     Object.keys(paths).sort().forEach(function(key) {
       var p = paths[key];
-      h += '<path d="' + p.d.join("") + '" fill="' + (p.sign > 0 ? th.pos : th.neg) + '" fill-opacity="' + n16(p.op * 100) / 100 + '"/>';
+      h += '<path d="' + p.d.join("") + '" fill="' + (p.sign > 0 ? th.pos : th.neg) + '" fill-opacity="' + n17(p.op * 100) / 100 + '"/>';
     });
     h += "</g>";
-    h += '<rect data-pt-cloud data-n="' + s.n + '" data-l="' + s.l + '" data-e="' + s.e + '" data-x="' + n16(at.x + A.x) + '" data-y="' + n16(at.y + A.y) + '" data-w="' + n16(A.w) + '" data-h="' + n16(A.h) + '" x="' + n16(A.x) + '" y="' + n16(A.y) + '" width="' + n16(A.w) + '" height="' + n16(A.h) + '" fill="none"/>';
+    h += '<rect data-pt-cloud data-n="' + s.n + '" data-l="' + s.l + '" data-e="' + s.e + '" data-x="' + n17(at.x + A.x) + '" data-y="' + n17(at.y + A.y) + '" data-w="' + n17(A.w) + '" data-h="' + n17(A.h) + '" x="' + n17(A.x) + '" y="' + n17(A.y) + '" width="' + n17(A.w) + '" height="' + n17(A.h) + '" fill="none"/>';
     cells.forEach(function(c) {
       var lab = ANG[s.l][c.m].lab, occ = c.occ === 2 ? " ↑↓" : c.occ === 1 ? " ↑" : "";
-      h += '<text x="' + n16(A.x + c.x + c.w / 2) + '" y="' + n16(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc6(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc6(lab[1]) + '</tspan><tspan dy="-2.5">' + esc6(occ) + "</tspan>" : esc6(occ)) + "</text>";
+      h += '<text x="' + n17(A.x + c.x + c.w / 2) + '" y="' + n17(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc7(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc7(lab[1]) + '</tspan><tspan dy="-2.5">' + esc7(occ) + "</tspan>" : esc7(occ)) + "</text>";
     });
     return h;
   }
@@ -7160,9 +8584,9 @@ function periodicRuntime(ROWS) {
           h += text(x, y, it.label, ' font-size="11" fill="' + th.muted + '" font-style="italic"');
           return;
         }
-        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc6(it.key) + '" style="cursor:pointer"' : "") + ">";
-        h += '<rect x="' + n16(x - 3) + '" y="' + n16(y - 12) + '" width="' + n16(f.w + 6) + '" height="16" fill="' + th.surface + '" fill-opacity="0"' + (on ? ' stroke="' + th.accent + '" rx="4"' : "") + "/>";
-        h += '<rect x="' + n16(x) + '" y="' + n16(y - 9) + '" width="10" height="10" rx="2" fill="' + hsl(it.hue, th.strongS, th.strongL) + '"/>';
+        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc7(it.key) + '" style="cursor:pointer"' : "") + ">";
+        h += '<rect x="' + n17(x - 3) + '" y="' + n17(y - 12) + '" width="' + n17(f.w + 6) + '" height="16" fill="' + th.surface + '" fill-opacity="0"' + (on ? ' stroke="' + th.accent + '" rx="4"' : "") + "/>";
+        h += '<rect x="' + n17(x) + '" y="' + n17(y - 9) + '" width="10" height="10" rx="2" fill="' + hsl(it.hue, th.strongS, th.strongL) + '"/>';
         h += text(x + 15, y, it.label, ' font-size="11" fill="' + th.fg + '"') + "</g>";
       });
       return h;
@@ -7173,13 +8597,13 @@ function periodicRuntime(ROWS) {
     var oneRow = G2.w >= 700, tw = oneRow ? Math.min(300, textW(title, 11.5) + 16) : 0;
     var by = oneRow ? G2.y + 3 : G2.y + ROW_H + 3, bx = G2.x + tw + textW(fmtVal(prop, lo), 11, 0.6) + 8;
     var bw = Math.max(80, Math.min(320, G2.w - (bx - G2.x) - textW(fmtVal(prop, hi), 11, 0.6) - 100));
-    h += text(G2.x, G2.y + 12, title, ' font-size="' + n16(fit(textW(title, 11.5), oneRow ? tw - 16 : G2.w, 11.5, 8)) + '" font-weight="600" fill="' + th.fg + '"');
+    h += text(G2.x, G2.y + 12, title, ' font-size="' + n17(fit(textW(title, 11.5), oneRow ? tw - 16 : G2.w, 11.5, 8)) + '" font-weight="600" fill="' + th.fg + '"');
     h += text(bx - 6, by + 10, fmtVal(prop, lo), ' text-anchor="end" font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
-    for (var i = 0; i < 24; i++) h += '<rect x="' + n16(bx + i * bw / 24) + '" y="' + by + '" width="' + n16(bw / 24 + 0.4) + '" height="12" fill="' + rampAt((i + 0.5) / 24, th.dark).bg + '"/>';
-    if (t != null) h += '<rect data-pt-mark x="' + n16(bx + t * bw - 1) + '" y="' + (by - 4) + '" width="2" height="20" rx="1" fill="' + th.fg + '"/>';
+    for (var i = 0; i < 24; i++) h += '<rect x="' + n17(bx + i * bw / 24) + '" y="' + by + '" width="' + n17(bw / 24 + 0.4) + '" height="12" fill="' + rampAt((i + 0.5) / 24, th.dark).bg + '"/>';
+    if (t != null) h += '<rect data-pt-mark x="' + n17(bx + t * bw - 1) + '" y="' + (by - 4) + '" width="2" height="20" rx="1" fill="' + th.fg + '"/>';
     h += text(bx + bw + 6, by + 10, fmtVal(prop, hi), ' font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
     var nx = bx + bw + 14 + textW(fmtVal(prop, hi), 11, 0.6);
-    h += '<rect x="' + n16(nx) + '" y="' + by + '" width="12" height="12" rx="3" fill="none" stroke="' + th.faint + '" stroke-dasharray="3 2"/>' + text(nx + 17, by + 10, "no data", ' font-size="11" fill="' + th.muted + '"');
+    h += '<rect x="' + n17(nx) + '" y="' + by + '" width="12" height="12" rx="3" fill="none" stroke="' + th.faint + '" stroke-dasharray="3 2"/>' + text(nx + 17, by + 10, "no data", ' font-size="11" fill="' + th.muted + '"');
     return h;
   }
   function arrowsSvg(L, v, th) {
@@ -7187,16 +8611,16 @@ function periodicRuntime(ROWS) {
     var t = TRENDS[v.arrow], label = t.label + " increases", fs = 12, tw = textW(label, fs) + 16;
     var a = ' stroke="' + th.accent + '" stroke-width="2" stroke-linecap="round"';
     var head = function(x2, y2, dx, dy) {
-      return '<path d="M' + n16(x2) + " " + n16(y2) + "l" + n16(-dx * 10 + dy * 5) + " " + n16(-dy * 10 - dx * 5) + "l" + n16(-dy * 10) + " " + n16(dx * 10) + 'z" fill="' + th.accent + '"/>';
+      return '<path d="M' + n17(x2) + " " + n17(y2) + "l" + n17(-dx * 10 + dy * 5) + " " + n17(-dy * 10 - dx * 5) + "l" + n17(-dy * 10) + " " + n17(dx * 10) + 'z" fill="' + th.accent + '"/>';
     };
     var y = L.oy - 17, x0 = L.tx0, x1 = L.tx1, mx = (x0 + x1) / 2;
-    var h = '<line x1="' + n16(x0) + '" y1="' + n16(y) + '" x2="' + n16(mx - tw / 2) + '" y2="' + n16(y) + '"' + a + '/><line x1="' + n16(mx + tw / 2) + '" y1="' + n16(y) + '" x2="' + n16(x1) + '" y2="' + n16(y) + '"' + a + "/>";
+    var h = '<line x1="' + n17(x0) + '" y1="' + n17(y) + '" x2="' + n17(mx - tw / 2) + '" y2="' + n17(y) + '"' + a + '/><line x1="' + n17(mx + tw / 2) + '" y1="' + n17(y) + '" x2="' + n17(x1) + '" y2="' + n17(y) + '"' + a + "/>";
     h += t.right ? head(x1 + 2, y, 1, 0) : head(x0 - 2, y, -1, 0);
     h += text(mx, y + 4.2, label, ' text-anchor="middle" font-size="' + fs + '" font-weight="600" fill="' + th.accent + '"');
     var x = L.ox - 17, y0 = L.ty0, y1 = L.ty1, my = (y0 + y1) / 2, th2 = Math.min(tw, y1 - y0 - 40), vfs = fit(tw - 16, th2 - 16, fs, 7);
-    h += '<line x1="' + n16(x) + '" y1="' + n16(y0) + '" x2="' + n16(x) + '" y2="' + n16(my - th2 / 2) + '"' + a + '/><line x1="' + n16(x) + '" y1="' + n16(my + th2 / 2) + '" x2="' + n16(x) + '" y2="' + n16(y1) + '"' + a + "/>";
+    h += '<line x1="' + n17(x) + '" y1="' + n17(y0) + '" x2="' + n17(x) + '" y2="' + n17(my - th2 / 2) + '"' + a + '/><line x1="' + n17(x) + '" y1="' + n17(my + th2 / 2) + '" x2="' + n17(x) + '" y2="' + n17(y1) + '"' + a + "/>";
     h += t.up ? head(x, y0 - 2, 0, -1) : head(x, y1 + 2, 0, 1);
-    h += '<text transform="translate(' + n16(x + 4.2) + " " + n16(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n16(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc6(label) + "</text>";
+    h += '<text transform="translate(' + n17(x + 4.2) + " " + n17(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n17(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc7(label) + "</text>";
     return h;
   }
   function render(s, o) {
@@ -7229,8 +8653,8 @@ function periodicRuntime(ROWS) {
     if (L.tiles.length) h += ringsSvg(L, shown, pinned, th);
     if (L.card) h += '<g data-pt-card transform="translate(' + L.card.x + " " + L.card.y + ')">' + cardSvg(shown, s, v, th, ro, L.card, L.card) + "</g>";
     if (L.legend) h += "<g data-pt-legend>" + legendSvg(L, s, v, th, ro, shown) + "</g>";
-    var vb = L.vb, size = o.standalone ? ' width="' + n16(vb.w) + '" height="' + n16(vb.h) + '"' : "";
-    return '<svg xmlns="' + NS + '" viewBox="' + n16(vb.x) + " " + n16(vb.y) + " " + n16(vb.w) + " " + n16(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc6(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
+    var vb = L.vb, size = o.standalone ? ' width="' + n17(vb.w) + '" height="' + n17(vb.h) + '"' : "";
+    return '<svg xmlns="' + NS + '" viewBox="' + n17(vb.x) + " " + n17(vb.y) + " " + n17(vb.w) + " " + n17(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc7(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
   }
   var live = [], escOn = false;
   function attach(root, el, opts) {
@@ -7516,7 +8940,7 @@ function periodicRuntime(ROWS) {
     SHOWS,
     TILE_LABELS,
     zOf,
-    parse,
+    parse: parse2,
     fullSubs,
     shellCounts,
     unpaired,
@@ -7629,24 +9053,24 @@ var MAX_LAYERS = 60;
 var WEIGHTS = /^(normal|bold|[1-9]00)$/;
 var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
-var HEX2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+var HEX3 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num7 = (key) => {
+  const num8 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
   };
-  const color2 = (key) => HEX2.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
+  const color2 = (key) => HEX3.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num7("depth"),
-    rotateX: num7("rotateX"),
-    rotateY: num7("rotateY"),
-    perspective: num7("perspective"),
-    fontSize: num7("fontSize"),
-    letterSpacing: num7("letterSpacing"),
-    lineHeight: num7("lineHeight"),
-    sideShade: num7("sideShade"),
+    depth: num8("depth"),
+    rotateX: num8("rotateX"),
+    rotateY: num8("rotateY"),
+    perspective: num8("perspective"),
+    fontSize: num8("fontSize"),
+    letterSpacing: num8("letterSpacing"),
+    lineHeight: num8("lineHeight"),
+    sideShade: num8("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -9062,6 +10486,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${freebodySvg(el, { deck: fxId, labels: "deck" })}</div>`;
       }
+      if (el.type === "venn") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${vennSvg(el, { deck: fxId, labels: "deck" })}</div>`;
+      }
       if (el.type === "periodic") {
         const pt = periodicDeckHtml(el);
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${pt.attrs} style="${style.replace("overflow:hidden;", "overflow:visible;")}">${pt.svg}</div>`;
@@ -9135,7 +10563,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc6 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc7 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -9153,10 +10581,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc6(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc7(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc6(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc7(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -9164,8 +10592,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc6(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc6(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc7(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc7(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -9391,7 +10819,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + periodicStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + periodicStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -9753,7 +11181,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -9971,8 +11399,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str6) {
-  return String(str6).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str7) {
+  return String(str7).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>

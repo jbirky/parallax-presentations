@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Jessica Birky
 
 // What the diagram elements share (Feynman diagrams, feynmanDiagram.js,
-// circuits, circuitDiagram.js, logic, logicDiagram.js, and free-body diagrams,
-// freebodyDiagram.js): labels from a small part of TeX, and the
+// circuits, circuitDiagram.js, logic, logicDiagram.js, free-body diagrams,
+// freebodyDiagram.js, and Venn diagrams, vennDiagram.js): labels from a small part of TeX, and the
 // steps of a presented deck. A diagram in a deck is a <div data-fx="id">
 // holding its SVG, with a hidden fragment per step (data-fx-step="id",
 // data-fx-step-at="n") counted with the slide's others; diagramDeckScript
@@ -20,6 +20,8 @@ const n1 = v => String(Math.round(v * 10) / 10)
 
 const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ϵ', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'ϕ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω' }
 const SYM = { pm: '±', mp: '∓', to: '→', prime: '′', ell: 'ℓ', ast: '∗', times: '×', cdot: '·', infty: '∞', partial: '∂', hbar: 'ℏ', ',': ' ', ';': ' ', ' ': ' ', '!': '', quad: '  ' }
+// Sets, for Venn diagrams: operators with room around them
+const SET_SYM = { cup: ' ∪ ', cap: ' ∩ ', setminus: ' ∖ ', smallsetminus: ' ∖ ', triangle: ' △ ', ominus: ' ⊖ ', oplus: ' ⊕ ', subseteq: ' ⊆ ', supseteq: ' ⊇ ', subset: ' ⊂ ', supset: ' ⊃ ', subsetneq: ' ⊊ ', supsetneq: ' ⊋ ', neq: ' ≠ ', ne: ' ≠ ', mid: ' | ', in: ' ∈ ', notin: ' ∉ ', varnothing: '∅', emptyset: '∅', complement: 'ᶜ' }
 const ACCENT = { bar: 0x304, overline: 0x305, tilde: 0x303, hat: 0x302 }
 const UPRIGHT = { mathrm: 1, text: 1, rm: 1, mathbf: 1 }
 const SCRIPT = { A: '𝒜', B: 'ℬ', C: '𝒞', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ' }
@@ -56,8 +58,10 @@ export function texRuns(src) {
       }
       if (UPRIGHT[name]) { while (src[i] === ' ') i++; atom(lvl, true); return }
       if (name === 'mathcal') { while (src[i] === ' ') i++; const before = runs.length; atom(lvl, true); for (const r of runs.slice(Math.max(0, before - 1))) r.t = r.t.replace(/[A-Z]/g, c => SCRIPT[c] || c); return }
+      if (name === 'mathbin' || name === 'mathrel' || name === 'mathop') { while (src[i] === ' ') i++; atom(lvl, up); return }
       if (GREEK[name]) { push(GREEK[name], lvl, !up && name[0] === name[0].toLowerCase()); return }
       if (SYM[name] !== undefined) { push(SYM[name], lvl, false); return }
+      if (SET_SYM[name] !== undefined) { push(SET_SYM[name], lvl, false); return }
       push(name, lvl, false)
       return
     }
@@ -158,10 +162,12 @@ export const DIAGRAM_CSS = [
   '@keyframes pxcx-flow{to{stroke-dashoffset:-14}}',
   // A logic signal that changed: it fades in after those before it in the logic
   '.pxlg-sig{animation:pxfx-fade .28s ease-out both}',
-  '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig{animation:none}.pxfx-part{transition:none}}',
+  // A Venn diagram's shading, numbers or verdict: in at once, with nothing drawn first
+  '.pxfx-new .pxvn-in{animation:pxfx-fade .45s ease-out both}',
+  '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig,.pxfx-new .pxvn-in{animation:none}.pxfx-part{transition:none}}',
 ].join('\n')
 
-// In a deck with Feynman, circuit, logic or free-body diagrams: tells each its slide's step,
+// In a deck with Feynman, circuit, logic, free-body or Venn diagrams: tells each its slide's step,
 // drawing in a step's parts when it's stepped to
 let deckScript = null
 export function diagramDeckScript() {

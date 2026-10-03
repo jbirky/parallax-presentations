@@ -65,6 +65,7 @@ export default defineConfig({
             { text: 'Circuit Diagrams', link: '/tutorials/circuit-diagrams' },
             { text: 'Logic Diagrams', link: '/tutorials/logic-diagrams' },
             { text: 'Free-Body Diagrams', link: '/tutorials/free-body-diagrams' },
+            { text: 'Venn Diagrams', link: '/tutorials/venn-diagrams' },
             { text: 'Molecules', link: '/tutorials/molecules' },
             { text: 'Periodic Table', link: '/tutorials/periodic-table' },
           ]

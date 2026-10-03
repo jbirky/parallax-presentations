@@ -17,6 +17,7 @@ import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman
 import { circuitSvg, circuitStepMarkers, circuitSteps, circuitStepAt, hasCircuits } from './circuitDiagram'
 import { logicSvg, logicStepMarkers, logicSteps, logicStepAt, hasLogic } from './logicDiagram'
 import { freebodySvg, freebodyStepMarkers, freebodySteps, freebodyStepAt, hasFreebody } from './freebodyDiagram'
+import { vennSvg, vennStepMarkers, vennSteps, vennStepAt, hasVenn } from './vennDiagram'
 import { periodicSvg, periodicDeckHtml, periodicStepMarkers, periodicSteps, periodicStepAt, hasPeriodic, periodicDeckScript } from './periodicTable'
 import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
@@ -363,6 +364,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
+        if (el.type === 'venn') {
+          // Every layer, number and caption, each shown at its steps by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
         if (el.type === 'periodic') {
           // The table as it rests, which the deck's periodic script makes follow
           // the pointer and the slide's steps
@@ -690,7 +696,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + periodicStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + periodicStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -1046,7 +1052,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1364,6 +1370,7 @@ function generatePrintHTML(presentation) {
       ...(slide.elements || []).flatMap(el => circuitSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => logicSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => freebodySteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => vennSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => periodicSteps(el).map(([step]) => step)),
     ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
@@ -1433,6 +1440,11 @@ function generatePrintHTML(presentation) {
           // The forces drawn by this page's step
           const at = maxIdx === Infinity ? null : freebodyStepAt(el, maxIdx)
           return `<div data-fb-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${freebodySvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'venn') {
+          // As at this page's step; a scrolling slide's page, as at its last
+          const at = maxIdx === Infinity ? null : vennStepAt(el, maxIdx)
+          return `<div data-vn-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${vennSvg(el, { step: at, labels: 'deck' })}</div>`
         }
         if (el.type === 'periodic') {
           // As at this page's step (a scrolling slide's, its last), clouds held still

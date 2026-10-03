@@ -214,6 +214,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Text & Typography', link: 'tutorials/text-typography' },
       { text: 'Transitions', link: 'tutorials/transitions' },
       { text: 'Using LaTeX & Math', link: 'tutorials/using-latex' },
+      { text: 'Venn Diagrams', link: 'tutorials/venn-diagrams' },
       { text: 'Version Diff', link: 'features/version-diff' },
       { text: 'Video & Audio', link: 'tutorials/media' },
       // Hidden while publishing to Zenodo is turned off (ZENODO_ENABLED)
