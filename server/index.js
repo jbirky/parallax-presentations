@@ -185,6 +185,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Animations & Fragments', link: 'tutorials/animations' },
       { text: 'Charts', link: 'features/charts' },
       { text: 'Charts & Tables', link: 'tutorials/charts-tables' },
+      { text: 'Circuit Diagrams', link: 'tutorials/circuit-diagrams' },
       { text: 'Citations & Bibliography', link: 'tutorials/citations' },
       { text: 'Code, LaTeX & Markdown', link: 'tutorials/code-math' },
       { text: 'Diagram Editor', link: 'tutorials/diagrams' },

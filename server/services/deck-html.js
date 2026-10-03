@@ -1390,7 +1390,7 @@ function graphRuntime(P, config) {
   let frame = 0;
   let shownScale = 1;
   const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)));
-  const clamp3 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clamp4 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const copyView = (v) => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax });
   const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax"].every((k) => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
   function setConfig(next, keepState) {
@@ -1707,7 +1707,7 @@ function graphRuntime(P, config) {
     return runs;
   }
   function contour(F, E, cellPx) {
-    const cell = cellPx || clamp3(6 / density(), 2, 4);
+    const cell = cellPx || clamp4(6 / density(), 2, 4);
     const nx = Math.ceil(W / cell) + 1, ny = Math.ceil(H / cell) + 1;
     const vals = new Float64Array(nx * ny);
     for (let j = 0; j < ny; j++) {
@@ -1853,7 +1853,7 @@ function graphRuntime(P, config) {
       strokeRuns(runs, Object.assign({}, e, { style: it.strict ? "dashed" : e.style }));
       return;
     }
-    const cell = clamp3(4.5 / density(), 1.5, 3);
+    const cell = clamp4(4.5 / density(), 1.5, 3);
     fillStyle(e);
     ctx.beginPath();
     for (let py = 0; py < H; py += cell) {
@@ -2212,7 +2212,7 @@ function graphRuntime(P, config) {
     }
     if (!data || typeof data !== "object") return;
     if (data.type === "scale" && typeof data.scale === "number" && data.scale > 0) {
-      shownScale = clamp3(data.scale, 0.1, 8);
+      shownScale = clamp4(data.scale, 0.1, 8);
       resize();
       return;
     }
@@ -3249,100 +3249,15 @@ function tikzDiagramSvg(el) {
   return sanitizeSvg(el.svg).replace(/^<svg\b/i, '<svg style="width:100%;height:100%;display:block;overflow:visible"');
 }
 
-// client/src/utils/feynmanDiagram.js
-var UNIT = 64;
-var AMP = 0.085;
-var HALF = 0.155;
-var PITCH = 0.19;
-var COIL = 0.1;
-var DBL = 0.032;
-var LABEL = 0.3;
-var CAPTION = 0.27;
+// client/src/utils/diagramCore.js
 var MATH_FONT = "'Latin Modern Roman', 'Times New Roman', Times, serif";
-var FEYNMAN_TYPES = {
-  fermion: { name: "Fermion", tikz: "fermion", arrow: 1, fermion: true, key: "f", usual: "e, μ, q, t", chips: ["e^-", "\\mu^-", "q", "t", "\\nu_e"] },
-  antifermion: { name: "Antifermion", tikz: "anti fermion", arrow: -1, fermion: true, key: "a", usual: "e⁺, antiquarks", chips: ["e^+", "\\bar{q}", "\\bar{\\nu}_e"] },
-  photon: { name: "Photon", tikz: "photon", deco: "wave", key: "p", usual: "γ, Z, W", chips: ["\\gamma", "\\gamma^*", "Z", "W^-"] },
-  chargedBoson: { name: "Charged boson", tikz: "charged boson", deco: "wave", arrow: 1, usual: "W⁺, W⁻", chips: ["W^+", "W^-"] },
-  gluon: { name: "Gluon", tikz: "gluon", deco: "coil", key: "g", usual: "g", chips: ["g"] },
-  scalar: { name: "Scalar", tikz: "scalar", dash: "7 5", key: "s", usual: "H, φ, π⁰", chips: ["H", "\\phi", "\\pi^0"] },
-  chargedScalar: { name: "Charged scalar", tikz: "charged scalar", dash: "7 5", arrow: 1, usual: "H⁺, π⁺, K⁺", chips: ["H^+", "\\pi^+", "K^+"] },
-  ghost: { name: "Ghost", tikz: "ghost", dash: "dot", arrow: 1, usual: "Faddeev–Popov ghost", chips: ["c", "\\bar{c}"] },
-  graviton: { name: "Graviton", tikz: "graviton", deco: "wave2", usual: "graviton", chips: ["h_{\\mu\\nu}"] },
-  plain: { name: "Plain", tikz: "plain", usual: "any, or a Majorana line", chips: [] },
-  double: { name: "Double", tikz: "double", deco: "double", usual: "heavy quark, composite", chips: ["Q", "B"] }
-};
-var VERTEX_KINDS = [["auto", "Auto"], ["none", "None"], ["dot", "Dot"], ["blob", "Blob"], ["crossed", "Crossed"], ["empty", "Empty"], ["square", "Square"]];
-var KIND_R = { blob: 0.36, crossed: 0.125, empty: 0.072 };
-var LABEL_AT = { above: [0, 1], below: [0, -1], left: [-1, 0], right: [1, 0] };
 var esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 var n1 = (v) => String(Math.round(v * 10) / 10);
-var clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-var ID = /^[A-Za-z0-9_-]{1,40}$/;
-var COLOR2 = /^#[0-9a-f]{6}$/i;
-var num3 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : dflt;
-var int2 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(Math.round(v), lo, hi) : dflt;
-var str2 = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
-function feynmanModel(el) {
-  const vertices = [], edges = [], ids = /* @__PURE__ */ new Set();
-  for (const v of Array.isArray(el?.vertices) ? el.vertices.slice(0, 500) : []) {
-    if (!v || !ID.test(v.id) || ids.has(v.id)) continue;
-    ids.add(v.id);
-    vertices.push({
-      id: v.id,
-      x: num3(v.x, -1e3, 1e3, 0),
-      y: num3(v.y, -1e3, 1e3, 0),
-      kind: VERTEX_KINDS.some(([k]) => k === v.kind) ? v.kind : "auto",
-      label: str2(v.label, 200),
-      labelAt: LABEL_AT[v.labelAt] ? v.labelAt : "auto",
-      color: COLOR2.test(v.color || "") ? v.color : null,
-      step: v.step == null ? null : int2(v.step, 0, 1e3, null)
-    });
-  }
-  const edgeIds = /* @__PURE__ */ new Set();
-  for (const e of Array.isArray(el?.edges) ? el.edges.slice(0, 1e3) : []) {
-    if (!e || !ID.test(e.id) || edgeIds.has(e.id) || !ids.has(e.from) || !ids.has(e.to)) continue;
-    edgeIds.add(e.id);
-    const out = {
-      id: e.id,
-      from: e.from,
-      to: e.to,
-      particle: FEYNMAN_TYPES[e.particle] ? e.particle : "plain",
-      bend: num3(e.bend, -1.6, 1.6, 0),
-      label: str2(e.label, 200),
-      labelSide: e.labelSide === -1 ? -1 : 1,
-      momentum: str2(e.momentum, 200),
-      momentumSide: e.momentumSide === 1 ? 1 : -1,
-      momentumReverse: !!e.momentumReverse,
-      color: COLOR2.test(e.color || "") ? e.color : null,
-      step: int2(e.step, 0, 1e3, 0)
-    };
-    if (e.from === e.to) {
-      out.loopAngle = int2(e.loopAngle, -360, 720, 90);
-      out.loopSize = num3(e.loopSize, 0.3, 6, 1.2);
-    }
-    edges.push(out);
-  }
-  const captions = {};
-  if (el?.captions && typeof el.captions === "object") {
-    for (const [k, v] of Object.entries(el.captions)) {
-      const n = Number(k);
-      if (Number.isInteger(n) && n >= 0 && n <= 1e3 && typeof v === "string" && v.trim()) captions[n] = v.slice(0, 500);
-    }
-  }
-  return {
-    vertices,
-    edges,
-    captions,
-    color: COLOR2.test(el?.color || "") ? el.color : "#ffffff",
-    stepStart: int2(el?.stepStart, 1, 1e3, 1),
-    dimPast: el?.dimPast !== false
-  };
-}
 var GREEK = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", upsilon: "υ", phi: "ϕ", varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω" };
 var SYM = { pm: "±", mp: "∓", to: "→", prime: "′", ell: "ℓ", ast: "∗", times: "×", cdot: "·", infty: "∞", partial: "∂", hbar: "ℏ", ",": " ", ";": " ", " ": " ", "!": "", quad: "  " };
 var ACCENT = { bar: 772, overline: 773, tilde: 771, hat: 770 };
 var UPRIGHT = { mathrm: 1, text: 1, rm: 1, mathbf: 1 };
+var SCRIPT = { A: "𝒜", B: "ℬ", C: "𝒞", E: "ℰ", F: "ℱ", H: "ℋ", I: "ℐ", L: "ℒ", M: "ℳ", R: "ℛ" };
 var COMBINING = new RegExp("[" + String.fromCharCode(768) + "-" + String.fromCharCode(879) + "]", "g");
 function texRuns(src) {
   src = String(src || "");
@@ -3387,6 +3302,13 @@ function texRuns(src) {
       if (UPRIGHT[name]) {
         while (src[i] === " ") i++;
         atom(lvl, true);
+        return;
+      }
+      if (name === "mathcal") {
+        while (src[i] === " ") i++;
+        const before = runs.length;
+        atom(lvl, true);
+        for (const r of runs.slice(Math.max(0, before - 1))) r.t = r.t.replace(/[A-Z]/g, (c2) => SCRIPT[c2] || c2);
         return;
       }
       if (GREEK[name]) {
@@ -3450,6 +3372,175 @@ function texSvg(src, X, Y, fs, fill) {
     spans += `<tspan dy="${n1(dy)}" font-size="${n1(r.lvl ? fs * 0.7 : fs)}" font-style="${r.it ? "italic" : "normal"}">${esc(r.t)}</tspan>`;
   }
   return `<text x="${n1(X)}" y="${n1(Y + fs * 0.34)}" text-anchor="middle" font-family="${esc(MATH_FONT)}" font-size="${n1(fs)}" fill="${esc(fill)}">${spans}</text>`;
+}
+function applyDiagramStep(root, cur, animate, dim) {
+  var parts = root.querySelectorAll(".pxfx-part"), i, p, at, best = -1;
+  for (i = 0; i < parts.length; i++) {
+    p = parts[i];
+    at = +p.getAttribute("data-fx-at") || 0;
+    p.classList.toggle("pxfx-off", at > cur);
+    p.classList.toggle("pxfx-past", !!dim && cur > 0 && at < cur);
+    p.classList.remove("pxfx-new");
+    if (animate && at === cur && at > 0) {
+      void p.getBoundingClientRect();
+      p.classList.add("pxfx-new");
+    }
+  }
+  var caps = root.querySelectorAll("[data-fx-cap]");
+  for (i = 0; i < caps.length; i++) {
+    at = +caps[i].getAttribute("data-fx-cap");
+    if (at <= cur && at > best) best = at;
+  }
+  for (i = 0; i < caps.length; i++) caps[i].classList.toggle("pxfx-off", +caps[i].getAttribute("data-fx-cap") !== best);
+  var spans = root.querySelectorAll("[data-fx-in]"), r;
+  for (i = 0; i < spans.length; i++) {
+    r = spans[i].getAttribute("data-fx-in").split("-");
+    spans[i].classList.toggle("pxfx-off", cur < +r[0] || r[1] !== "" && cur > +r[1]);
+  }
+}
+var DIAGRAM_CSS = [
+  ".pxfx-part.pxfx-off,.pxfx-cap.pxfx-off{visibility:hidden}",
+  "[data-fx-in].pxfx-off{display:none}",
+  ".pxfx-part{transition:opacity .35s ease}",
+  ".pxfx-part.pxfx-past{opacity:.34}",
+  ".pxfx-reveal{stroke-dasharray:1 1;stroke-dashoffset:0}",
+  ".pxfx-new .pxfx-reveal{animation:pxfx-draw .75s ease-in-out both}",
+  ".pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:pxfx-fade .35s .45s ease-out both}",
+  "@keyframes pxfx-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}",
+  "@keyframes pxfx-fade{from{opacity:0}to{opacity:1}}",
+  // A circuit's current: dots that run the way conventional current flows
+  ".pxcx-flow{animation:pxcx-flow .6s linear infinite}",
+  "@keyframes pxcx-flow{to{stroke-dashoffset:-14}}",
+  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow{animation:none}.pxfx-part{transition:none}}"
+].join("\n");
+var deckScript = null;
+function diagramDeckScript() {
+  if (!deckScript) deckScript = `
+    (function() {
+      var apply = (${applyDiagramStep.toString()});
+      // The labels, now rather than when the deck is ready
+      if (window.katex) document.querySelectorAll('[data-fx] span[data-math-latex]').forEach(function(el) {
+        try { window.katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false }); el.style.fontFamily = ''; } catch (e) {}
+      });
+      var css = document.createElement('style');
+      css.textContent = ${JSON.stringify(DIAGRAM_CSS)};
+      document.head.appendChild(css);
+      var items = [];
+      document.querySelectorAll('[data-fx]').forEach(function(el) {
+        items.push({ el: el, id: el.getAttribute('data-fx'), dim: el.getAttribute('data-fx-dim') === '1', at: -1 });
+      });
+      function stepOf(item) {
+        var slide = item.el.closest('section'), n = 0;
+        if (!slide) return 0;
+        slide.querySelectorAll('.fragment[data-fx-step]').forEach(function(m) {
+          if (m.getAttribute('data-fx-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-fx-step-at') || 0);
+        });
+        return n;
+      }
+      function sync(ev) {
+        var forward = !!ev && ev.type === 'fragmentshown';
+        items.forEach(function(item) {
+          var n = stepOf(item);
+          if (n === item.at) return;
+          apply(item.el, n, forward && n > item.at, item.dim);
+          item.at = n;
+        });
+      }
+      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
+      sync();
+    })();
+`;
+  return deckScript;
+}
+
+// client/src/utils/feynmanDiagram.js
+var UNIT = 64;
+var AMP = 0.085;
+var HALF = 0.155;
+var PITCH = 0.19;
+var COIL = 0.1;
+var DBL = 0.032;
+var LABEL = 0.3;
+var CAPTION = 0.27;
+var FEYNMAN_TYPES = {
+  fermion: { name: "Fermion", tikz: "fermion", arrow: 1, fermion: true, key: "f", usual: "e, μ, q, t", chips: ["e^-", "\\mu^-", "q", "t", "\\nu_e"] },
+  antifermion: { name: "Antifermion", tikz: "anti fermion", arrow: -1, fermion: true, key: "a", usual: "e⁺, antiquarks", chips: ["e^+", "\\bar{q}", "\\bar{\\nu}_e"] },
+  photon: { name: "Photon", tikz: "photon", deco: "wave", key: "p", usual: "γ, Z, W", chips: ["\\gamma", "\\gamma^*", "Z", "W^-"] },
+  chargedBoson: { name: "Charged boson", tikz: "charged boson", deco: "wave", arrow: 1, usual: "W⁺, W⁻", chips: ["W^+", "W^-"] },
+  gluon: { name: "Gluon", tikz: "gluon", deco: "coil", key: "g", usual: "g", chips: ["g"] },
+  scalar: { name: "Scalar", tikz: "scalar", dash: "7 5", key: "s", usual: "H, φ, π⁰", chips: ["H", "\\phi", "\\pi^0"] },
+  chargedScalar: { name: "Charged scalar", tikz: "charged scalar", dash: "7 5", arrow: 1, usual: "H⁺, π⁺, K⁺", chips: ["H^+", "\\pi^+", "K^+"] },
+  ghost: { name: "Ghost", tikz: "ghost", dash: "dot", arrow: 1, usual: "Faddeev–Popov ghost", chips: ["c", "\\bar{c}"] },
+  graviton: { name: "Graviton", tikz: "graviton", deco: "wave2", usual: "graviton", chips: ["h_{\\mu\\nu}"] },
+  plain: { name: "Plain", tikz: "plain", usual: "any, or a Majorana line", chips: [] },
+  double: { name: "Double", tikz: "double", deco: "double", usual: "heavy quark, composite", chips: ["Q", "B"] }
+};
+var VERTEX_KINDS = [["auto", "Auto"], ["none", "None"], ["dot", "Dot"], ["blob", "Blob"], ["crossed", "Crossed"], ["empty", "Empty"], ["square", "Square"]];
+var KIND_R = { blob: 0.36, crossed: 0.125, empty: 0.072 };
+var LABEL_AT = { above: [0, 1], below: [0, -1], left: [-1, 0], right: [1, 0] };
+var esc2 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n12 = (v) => String(Math.round(v * 10) / 10);
+var clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+var ID = /^[A-Za-z0-9_-]{1,40}$/;
+var COLOR2 = /^#[0-9a-f]{6}$/i;
+var num3 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : dflt;
+var int2 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(Math.round(v), lo, hi) : dflt;
+var str2 = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
+function feynmanModel(el) {
+  const vertices = [], edges = [], ids = /* @__PURE__ */ new Set();
+  for (const v of Array.isArray(el?.vertices) ? el.vertices.slice(0, 500) : []) {
+    if (!v || !ID.test(v.id) || ids.has(v.id)) continue;
+    ids.add(v.id);
+    vertices.push({
+      id: v.id,
+      x: num3(v.x, -1e3, 1e3, 0),
+      y: num3(v.y, -1e3, 1e3, 0),
+      kind: VERTEX_KINDS.some(([k]) => k === v.kind) ? v.kind : "auto",
+      label: str2(v.label, 200),
+      labelAt: LABEL_AT[v.labelAt] ? v.labelAt : "auto",
+      color: COLOR2.test(v.color || "") ? v.color : null,
+      step: v.step == null ? null : int2(v.step, 0, 1e3, null)
+    });
+  }
+  const edgeIds = /* @__PURE__ */ new Set();
+  for (const e of Array.isArray(el?.edges) ? el.edges.slice(0, 1e3) : []) {
+    if (!e || !ID.test(e.id) || edgeIds.has(e.id) || !ids.has(e.from) || !ids.has(e.to)) continue;
+    edgeIds.add(e.id);
+    const out = {
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      particle: FEYNMAN_TYPES[e.particle] ? e.particle : "plain",
+      bend: num3(e.bend, -1.6, 1.6, 0),
+      label: str2(e.label, 200),
+      labelSide: e.labelSide === -1 ? -1 : 1,
+      momentum: str2(e.momentum, 200),
+      momentumSide: e.momentumSide === 1 ? 1 : -1,
+      momentumReverse: !!e.momentumReverse,
+      color: COLOR2.test(e.color || "") ? e.color : null,
+      step: int2(e.step, 0, 1e3, 0)
+    };
+    if (e.from === e.to) {
+      out.loopAngle = int2(e.loopAngle, -360, 720, 90);
+      out.loopSize = num3(e.loopSize, 0.3, 6, 1.2);
+    }
+    edges.push(out);
+  }
+  const captions = {};
+  if (el?.captions && typeof el.captions === "object") {
+    for (const [k, v] of Object.entries(el.captions)) {
+      const n = Number(k);
+      if (Number.isInteger(n) && n >= 0 && n <= 1e3 && typeof v === "string" && v.trim()) captions[n] = v.slice(0, 500);
+    }
+  }
+  return {
+    vertices,
+    edges,
+    captions,
+    color: COLOR2.test(el?.color || "") ? el.color : "#ffffff",
+    stepStart: int2(el?.stepStart, 1, 1e3, 1),
+    dimPast: el?.dimPast !== false
+  };
 }
 function lineGeometry(V, e) {
   const A = V[e.from], B = V[e.to];
@@ -3605,18 +3696,18 @@ function drawDiagram(m, o = {}) {
     pts.forEach((p, i) => {
       const X = p[0] * u, Y = -p[1] * u;
       if (measure) grow(X, Y, lw);
-      d += (i ? "L" : "M") + n1(X) + " " + n1(Y);
+      d += (i ? "L" : "M") + n12(X) + " " + n12(Y);
     });
     return d;
   };
-  const stroke = (d, ink, extra = "", w = lw) => `<path d="${d}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
+  const stroke = (d, ink, extra = "", w = lw) => `<path d="${d}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
   const label = (tex, X, Y, size, ink) => {
     const b = texBox(tex, size);
     grow(X, Y, b.w / 2, b.h / 2);
     if (o.labels === "deck" || typeof o.labels === "function") {
       const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
-      const inner = o.labels === "deck" ? `<span data-math-latex="${esc(tex)}" style="font-family:${esc(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
-      return `<foreignObject x="${n1(X - w / 2)}" y="${n1(Y - h / 2)}" width="${n1(w)}" height="${n1(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n1(size / 1.21)}px;color:${esc(ink)}">${inner}</div></foreignObject>`;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc2(tex)}" style="font-family:${esc2(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n12(X - w / 2)}" y="${n12(Y - h / 2)}" width="${n12(w)}" height="${n12(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n12(size / 1.21)}px;color:${esc2(ink)}">${inner}</div></foreignObject>`;
     }
     return texSvg(tex, X, Y, size, ink);
   };
@@ -3626,7 +3717,7 @@ function drawDiagram(m, o = {}) {
       const cls = `pxfx-part${isVertex ? " pxfx-v" : ""}`;
       if (s > 0 && revealPts) {
         const mid = `pxfxm-${deck}-${id}`;
-        return `<g class="${cls}" data-fx-at="${s}"><mask id="${mid}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000"><path class="pxfx-reveal" pathLength="1" d="${P(revealPts, false)}" fill="none" stroke="#fff" stroke-width="${n1(40 * k)}" stroke-linecap="round"/></mask><g mask="url(#${mid})">${lines}</g><g class="pxfx-fade">${labels}</g></g>`;
+        return `<g class="${cls}" data-fx-at="${s}"><mask id="${mid}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000"><path class="pxfx-reveal" pathLength="1" d="${P(revealPts, false)}" fill="none" stroke="#fff" stroke-width="${n12(40 * k)}" stroke-linecap="round"/></mask><g mask="url(#${mid})">${lines}</g><g class="pxfx-fade">${labels}</g></g>`;
       }
       return `<g class="${cls}" data-fx-at="${s}">${lines}${labels}</g>`;
     }
@@ -3636,7 +3727,7 @@ function drawDiagram(m, o = {}) {
   let out = "";
   if (o.editor && o.grid && o.view) {
     const v = o.view, gx = v.x0 * u, gy = -(v.y0 + v.h) * u;
-    out += `<defs><pattern id="pxfx-g1" width="${u / 2}" height="${u / 2}" x="${-u / 4}" y="${-u / 4}" patternUnits="userSpaceOnUse"><circle cx="${u / 4}" cy="${u / 4}" r="1" fill="${esc(o.mark)}" fill-opacity=".5"/></pattern><pattern id="pxfx-g2" width="${u}" height="${u}" x="${-u / 2}" y="${-u / 2}" patternUnits="userSpaceOnUse"><circle cx="${u / 2}" cy="${u / 2}" r="1.7" fill="${esc(o.mark)}" fill-opacity=".75"/></pattern></defs><rect x="${n1(gx)}" y="${n1(gy)}" width="${n1(v.w * u)}" height="${n1(v.h * u)}" fill="url(#pxfx-g1)"/><rect x="${n1(gx)}" y="${n1(gy)}" width="${n1(v.w * u)}" height="${n1(v.h * u)}" fill="url(#pxfx-g2)"/>`;
+    out += `<defs><pattern id="pxfx-g1" width="${u / 2}" height="${u / 2}" x="${-u / 4}" y="${-u / 4}" patternUnits="userSpaceOnUse"><circle cx="${u / 4}" cy="${u / 4}" r="1" fill="${esc2(o.mark)}" fill-opacity=".5"/></pattern><pattern id="pxfx-g2" width="${u}" height="${u}" x="${-u / 2}" y="${-u / 2}" patternUnits="userSpaceOnUse"><circle cx="${u / 2}" cy="${u / 2}" r="1.7" fill="${esc2(o.mark)}" fill-opacity=".75"/></pattern></defs><rect x="${n12(gx)}" y="${n12(gy)}" width="${n12(v.w * u)}" height="${n12(v.h * u)}" fill="url(#pxfx-g1)"/><rect x="${n12(gx)}" y="${n12(gy)}" width="${n12(v.w * u)}" height="${n12(v.h * u)}" fill="url(#pxfx-g2)"/>`;
   }
   for (const e of m.edges) {
     const g0 = lineGeometry(V, e);
@@ -3650,18 +3741,18 @@ function drawDiagram(m, o = {}) {
     const t0 = loop ? 0 : Math.min(0.45, trim(e.from)), t1 = loop ? 1 : 1 - Math.min(0.45, trim(e.to));
     const g = t0 > 0 || t1 < 1 ? part(g0, t0, t1) : g0;
     let lines = "";
-    if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="${P(basePoints(g0))}" fill="none" stroke="${esc(o.accent)}" stroke-opacity=".32" stroke-width="${n1(14 * k)}" stroke-linecap="round"/>`;
+    if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="${P(basePoints(g0))}" fill="none" stroke="${esc2(o.accent)}" stroke-opacity=".32" stroke-width="${n12(14 * k)}" stroke-linecap="round"/>`;
     if (t.deco === "wave") lines += stroke(P(wavePoints(g)), ink);
     else if (t.deco === "wave2") lines += stroke(P(wavePoints(g, DBL)), ink) + stroke(P(wavePoints(g, -DBL)), ink);
     else if (t.deco === "coil") lines += stroke(P(coilPoints(g)), ink);
     else if (t.deco === "double") lines += stroke(P(basePoints(g, DBL)), ink, "", lw * 0.8) + stroke(P(basePoints(g, -DBL)), ink, "", lw * 0.8);
-    else if (t.dash === "dot") lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="0.1 ${n1(6 * k)}"`, lw * 1.45);
-    else if (t.dash) lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="${t.dash.split(" ").map((x) => n1(x * k)).join(" ")}"`);
+    else if (t.dash === "dot") lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="0.1 ${n12(6 * k)}"`, lw * 1.45);
+    else if (t.dash) lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="${t.dash.split(" ").map((x) => n12(x * k)).join(" ")}"`);
     else lines += stroke(P(basePoints(g)), ink);
     if (t.arrow) {
       const [x, y, tx, ty] = g.at(0.5), X = x * u, Y = -y * u;
       const dx = tx * t.arrow, dy = -ty * t.arrow, nx = -dy, ny = dx, aL = 7.5 * k, aW = 5.4 * k;
-      lines += `<path d="M${n1(X + dx * aL)} ${n1(Y + dy * aL)}L${n1(X - dx * aL * 0.75 + nx * aW)} ${n1(Y - dy * aL * 0.75 + ny * aW)}L${n1(X - dx * aL * 0.75 - nx * aW)} ${n1(Y - dy * aL * 0.75 - ny * aW)}Z" fill="${esc(ink)}"/>`;
+      lines += `<path d="M${n12(X + dx * aL)} ${n12(Y + dy * aL)}L${n12(X - dx * aL * 0.75 + nx * aW)} ${n12(Y - dy * aL * 0.75 + ny * aW)}L${n12(X - dx * aL * 0.75 - nx * aW)} ${n12(Y - dy * aL * 0.75 - ny * aW)}Z" fill="${esc2(ink)}"/>`;
     }
     let labels = "";
     const amp = decoAmp(t), ms = e.momentumSide || -1, ls = e.labelSide || 1;
@@ -3676,7 +3767,7 @@ function drawDiagram(m, o = {}) {
       const hx = (b[0] - a[0]) * u, hy = -(b[1] - a[1]) * u, hl = Math.hypot(hx, hy) || 1, ux = hx / hl, uy = hy / hl;
       const BX = b[0] * u, BY = -b[1] * u, hs = 6 * k;
       labels += stroke(P(pts), ink, "", 1.4 * k);
-      labels += `<path d="M${n1(BX - ux * hs - uy * hs * 0.6)} ${n1(BY - uy * hs + ux * hs * 0.6)}L${n1(BX)} ${n1(BY)}L${n1(BX - ux * hs + uy * hs * 0.6)} ${n1(BY - uy * hs - ux * hs * 0.6)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.4 * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      labels += `<path d="M${n12(BX - ux * hs - uy * hs * 0.6)} ${n12(BY - uy * hs + ux * hs * 0.6)}L${n12(BX)} ${n12(BY)}L${n12(BX - ux * hs + uy * hs * 0.6)} ${n12(BY - uy * hs - ux * hs * 0.6)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.4 * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
       const [x, y, tx, ty] = g.at(0.5), nX = -ty * ms, nY = tx * ms;
       const bx = texBox(e.momentum, fs * 0.85), ext = (Math.abs(nX) * bx.w / 2 + Math.abs(nY) * bx.h / 2) / u;
       const L = off + 0.1 + ext;
@@ -3688,7 +3779,7 @@ function drawDiagram(m, o = {}) {
       const L = amp + 0.13 + ext + (e.momentum && ms === ls ? 0.5 : 0);
       labels += label(e.label, (x + nX * L) * u, -(y + nY * L) * u, fs, ink);
     }
-    if (o.editor) labels += `<path class="pxfx-hit" data-e="${esc(e.id)}" d="${P(basePoints(g0), false)}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="${n1(16 * k)}" pointer-events="stroke"/>`;
+    if (o.editor) labels += `<path class="pxfx-hit" data-e="${esc2(e.id)}" d="${P(basePoints(g0), false)}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="${n12(16 * k)}" pointer-events="stroke"/>`;
     out += wrap(s, lines, labels, basePoints(g0), false, e.id);
   }
   const warn = new Set(o.warn || []);
@@ -3698,24 +3789,24 @@ function drawDiagram(m, o = {}) {
     const kind = shownKind(v, deg), ink = v.color || o.ink || "#ffffff", X = v.x * u, Y = -v.y * u;
     let mark = "";
     if (kind === "dot") {
-      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(4.3 * k)}" fill="${esc(ink)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(4.3 * k)}" fill="${esc2(ink)}"/>`;
       grow(X, Y, 4.3 * k);
     } else if (kind === "empty") {
       const r = KIND_R.empty * u;
-      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.8 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.8 * k)}"/>`;
       grow(X, Y, r);
     } else if (kind === "square") {
-      mark += `<rect x="${n1(X - 4.6 * k)}" y="${n1(Y - 4.6 * k)}" width="${n1(9.2 * k)}" height="${n1(9.2 * k)}" fill="${esc(ink)}"/>`;
+      mark += `<rect x="${n12(X - 4.6 * k)}" y="${n12(Y - 4.6 * k)}" width="${n12(9.2 * k)}" height="${n12(9.2 * k)}" fill="${esc2(ink)}"/>`;
       grow(X, Y, 4.6 * k);
     } else if (kind === "crossed") {
       const r = KIND_R.crossed * u, c = r * 0.7;
-      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.8 * k)}"/><path d="M${n1(X - c)} ${n1(Y - c)}L${n1(X + c)} ${n1(Y + c)}M${n1(X - c)} ${n1(Y + c)}L${n1(X + c)} ${n1(Y - c)}" stroke="${esc(ink)}" stroke-width="${n1(1.6 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.8 * k)}"/><path d="M${n12(X - c)} ${n12(Y - c)}L${n12(X + c)} ${n12(Y + c)}M${n12(X - c)} ${n12(Y + c)}L${n12(X + c)} ${n12(Y - c)}" stroke="${esc2(ink)}" stroke-width="${n12(1.6 * k)}"/>`;
       grow(X, Y, r);
     } else if (kind === "blob") {
       const r = KIND_R.blob * u;
-      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="${esc(ink)}" fill-opacity=".22" stroke="${esc(ink)}" stroke-width="${n1(2 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="${esc2(ink)}" fill-opacity=".22" stroke="${esc2(ink)}" stroke-width="${n12(2 * k)}"/>`;
       grow(X, Y, r);
-    } else if (o.editor) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="3" fill="none" stroke="${esc(o.mark)}" stroke-width="1.2"/>`;
+    } else if (o.editor) mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="3" fill="none" stroke="${esc2(o.mark)}" stroke-width="1.2"/>`;
     let labels = "";
     if (v.label) {
       const d = labelDirection(m, V, v);
@@ -3724,9 +3815,9 @@ function drawDiagram(m, o = {}) {
       labels += label(v.label, (v.x + d[0] * L) * u, -(v.y + d[1] * L) * u, fs, ink);
     }
     if (o.editor) {
-      if (warn.has(v.id)) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(13 * k)}" fill="none" stroke="${esc(o.warnColor)}" stroke-width="2" stroke-dasharray="4 3"><title>Fermion arrows don’t flow through this vertex</title></circle>`;
-      if (o.sel && o.sel.kind === "v" && o.sel.id === v.id) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(10 * k)}" fill="${esc(o.accent)}" fill-opacity=".22" stroke="${esc(o.accent)}" stroke-width="2"/>`;
-      labels += `<circle data-v="${esc(v.id)}" cx="${n1(X)}" cy="${n1(Y)}" r="${n1(12 * k)}" fill="#000" fill-opacity="0"/>`;
+      if (warn.has(v.id)) mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(13 * k)}" fill="none" stroke="${esc2(o.warnColor)}" stroke-width="2" stroke-dasharray="4 3"><title>Fermion arrows don’t flow through this vertex</title></circle>`;
+      if (o.sel && o.sel.kind === "v" && o.sel.id === v.id) mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(10 * k)}" fill="${esc2(o.accent)}" fill-opacity=".22" stroke="${esc2(o.accent)}" stroke-width="2"/>`;
+      labels += `<circle data-v="${esc2(v.id)}" cx="${n12(X)}" cy="${n12(Y)}" r="${n12(12 * k)}" fill="#000" fill-opacity="0"/>`;
     }
     out += wrap(s, mark, labels, null, true, v.id);
   }
@@ -3734,7 +3825,7 @@ function drawDiagram(m, o = {}) {
     const e = m.edges.find((x) => x.id === o.sel.id), g = e && lineGeometry(V, e);
     if (g) {
       const [x, y] = g.at(0.5), loop = e.from === e.to;
-      out += `<circle data-h="${loop ? "loop" : "bend"}" cx="${n1(x * u)}" cy="${n1(-y * u)}" r="${n1(6.5 * k)}" fill="${esc(o.accent)}" stroke="#fff" stroke-width="2"><title>${loop ? "Drag to turn and resize the loop" : "Drag to bend the line"}</title></circle>`;
+      out += `<circle data-h="${loop ? "loop" : "bend"}" cx="${n12(x * u)}" cy="${n12(-y * u)}" r="${n12(6.5 * k)}" fill="${esc2(o.accent)}" stroke="#fff" stroke-width="2"><title>${loop ? "Drag to turn and resize the loop" : "Drag to bend the line"}</title></circle>`;
     }
   }
   const capSteps = Object.keys(m.captions || {}).map(Number).sort((a, b) => a - b);
@@ -3742,8 +3833,8 @@ function drawDiagram(m, o = {}) {
     const cs = CAPTION * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
     const one = (n, cls) => {
       const text = m.captions[n];
-      if (o.labels === "text") return `<text${cls} x="${n1(cx)}" y="${n1(y + cs)}" text-anchor="middle" font-size="${n1(cs)}" fill="${esc(o.ink || "#ffffff")}">${esc(text)}</text>`;
-      return `<foreignObject${cls} x="${n1(cx - w / 2)}" y="${n1(y)}" width="${n1(w)}" height="${n1(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n1(cs)}px;line-height:1.3;color:${esc(o.ink || "#ffffff")}">${esc(text)}</div></foreignObject>`;
+      if (o.labels === "text") return `<text${cls} x="${n12(cx)}" y="${n12(y + cs)}" text-anchor="middle" font-size="${n12(cs)}" fill="${esc2(o.ink || "#ffffff")}">${esc2(text)}</text>`;
+      return `<foreignObject${cls} x="${n12(cx - w / 2)}" y="${n12(y)}" width="${n12(w)}" height="${n12(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n12(cs)}px;line-height:1.3;color:${esc2(o.ink || "#ffffff")}">${esc2(text)}</div></foreignObject>`;
     };
     if (deck != null) out += capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
     else {
@@ -3765,8 +3856,8 @@ function feynmanSvg(el, opts = {}) {
   const m = feynmanModel(el);
   const b = feynmanBox(el);
   const { svg } = drawDiagram(m, { ink: m.color, labels: opts.labels || "text", captions: true, deck: opts.deck, step: opts.step, dim: m.dimPast });
-  const size = opts.standalone ? ` width="${n1(b.w)}" height="${n1(b.h)}"` : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n1(b.x)} ${n1(b.y)} ${n1(b.w)} ${n1(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+  const size = opts.standalone ? ` width="${n12(b.w)}" height="${n12(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n12(b.x)} ${n12(b.y)} ${n12(b.w)} ${n12(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
 }
 function feynmanSteps(el) {
   if (el?.type !== "feynman") return [];
@@ -3786,76 +3877,6 @@ function feynmanStepMarkers(slide) {
 }
 function hasFeynman(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "feynman"));
-}
-function applyFeynmanStep(root, cur, animate, dim) {
-  var parts = root.querySelectorAll(".pxfx-part"), i, p, at, best = -1;
-  for (i = 0; i < parts.length; i++) {
-    p = parts[i];
-    at = +p.getAttribute("data-fx-at") || 0;
-    p.classList.toggle("pxfx-off", at > cur);
-    p.classList.toggle("pxfx-past", !!dim && cur > 0 && at < cur);
-    p.classList.remove("pxfx-new");
-    if (animate && at === cur && at > 0) {
-      void p.getBoundingClientRect();
-      p.classList.add("pxfx-new");
-    }
-  }
-  var caps = root.querySelectorAll("[data-fx-cap]");
-  for (i = 0; i < caps.length; i++) {
-    at = +caps[i].getAttribute("data-fx-cap");
-    if (at <= cur && at > best) best = at;
-  }
-  for (i = 0; i < caps.length; i++) caps[i].classList.toggle("pxfx-off", +caps[i].getAttribute("data-fx-cap") !== best);
-}
-var FEYNMAN_CSS = [
-  ".pxfx-part.pxfx-off,.pxfx-cap.pxfx-off{visibility:hidden}",
-  ".pxfx-part{transition:opacity .35s ease}",
-  ".pxfx-part.pxfx-past{opacity:.34}",
-  ".pxfx-reveal{stroke-dasharray:1 1;stroke-dashoffset:0}",
-  ".pxfx-new .pxfx-reveal{animation:pxfx-draw .75s ease-in-out both}",
-  ".pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:pxfx-fade .35s .45s ease-out both}",
-  "@keyframes pxfx-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}",
-  "@keyframes pxfx-fade{from{opacity:0}to{opacity:1}}",
-  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:none}.pxfx-part{transition:none}}"
-].join("\n");
-var deckScript = null;
-function feynmanDeckScript() {
-  if (!deckScript) deckScript = `
-    (function() {
-      var apply = (${applyFeynmanStep.toString()});
-      // The labels, now rather than when the deck is ready
-      if (window.katex) document.querySelectorAll('[data-fx] span[data-math-latex]').forEach(function(el) {
-        try { window.katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false }); el.style.fontFamily = ''; } catch (e) {}
-      });
-      var css = document.createElement('style');
-      css.textContent = ${JSON.stringify(FEYNMAN_CSS)};
-      document.head.appendChild(css);
-      var items = [];
-      document.querySelectorAll('[data-fx]').forEach(function(el) {
-        items.push({ el: el, id: el.getAttribute('data-fx'), dim: el.getAttribute('data-fx-dim') === '1', at: -1 });
-      });
-      function stepOf(item) {
-        var slide = item.el.closest('section'), n = 0;
-        if (!slide) return 0;
-        slide.querySelectorAll('.fragment[data-fx-step]').forEach(function(m) {
-          if (m.getAttribute('data-fx-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-fx-step-at') || 0);
-        });
-        return n;
-      }
-      function sync(ev) {
-        var forward = !!ev && ev.type === 'fragmentshown';
-        items.forEach(function(item) {
-          var n = stepOf(item);
-          if (n === item.at) return;
-          apply(item.el, n, forward && n > item.at, item.dim);
-          item.at = n;
-        });
-      }
-      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
-      sync();
-    })();
-`;
-  return deckScript;
 }
 function template(key, name, verts, edges, captions) {
   return { key, name, build() {
@@ -3926,6 +3947,809 @@ var FEYNMAN_TEMPLATES = [
   { key: "blank", name: "Blank", build: () => ({ vertices: [], edges: [], captions: {} }) }
 ];
 
+// client/src/utils/circuitParts.js
+var CIRCUIT_PARTS = {
+  wire: { name: "Wire", key: "w", kind: "short" },
+  resistor: { name: "Resistor", key: "r", tikz: "R", kind: "R", unit: "Ω", dflt: 100, chips: ["R", "R_1", "R_2"] },
+  capacitor: { name: "Capacitor", key: "c", tikz: "C", kind: "open", unit: "F", dflt: 1e-6, chips: ["C", "C_1"] },
+  inductor: { name: "Inductor", key: "l", tikz: "L", kind: "short", unit: "H", dflt: 1e-3, chips: ["L", "L_1"] },
+  battery: { name: "Battery", key: "b", tikz: "battery1", kind: "V", unit: "V", dflt: 9, polar: true, chips: ["\\mathcal{E}", "V_0"] },
+  vsource: { name: "DC source", key: "e", tikz: "V", kind: "V", unit: "V", dflt: 5, polar: true, chips: ["V_s", "V_1"] },
+  acsource: { name: "AC source", tikz: "sV", kind: "V0", unit: "V", dflt: 10, polar: true, chips: ["V_0", "v(t)"] },
+  isource: { name: "Current source", key: "i", tikz: "I", kind: "I", unit: "A", dflt: 0.01, polar: true, chips: ["I_s", "I_0"] },
+  switch: { name: "Switch", key: "s", tikz: "nos", kind: "switch", chips: ["S", "S_1"] },
+  diode: { name: "Diode", key: "d", tikz: "D", kind: "diode", polar: true, chips: ["D", "D_1"] },
+  lamp: { name: "Lamp", key: "x", tikz: "lamp", kind: "R", unit: "Ω", dflt: 12, chips: ["B", "B_1"] },
+  ammeter: { name: "Ammeter", key: "a", tikz: "ammeter", kind: "short", meter: "A", chips: ["A"] },
+  voltmeter: { name: "Voltmeter", key: "m", tikz: "voltmeter", kind: "open", meter: "V", chips: ["V"] }
+};
+var CIRCUIT_VERTEX_KINDS = [["auto", "Auto"], ["none", "None"], ["dot", "Dot"], ["terminal", "Terminal"]];
+var GROUND_DIRS = { down: 0, left: 90, up: 180, right: -90 };
+var PREFIX = { p: 1e-12, n: 1e-9, u: 1e-6, "µ": 1e-6, "μ": 1e-6, m: 1e-3, k: 1e3, M: 1e6, G: 1e9 };
+function parseValue(s) {
+  const m = /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([pnuµμmkMG])?/.exec(String(s ?? ""));
+  return m ? parseFloat(m[1]) * (m[2] ? PREFIX[m[2]] : 1) : null;
+}
+function formatSI(v, unit) {
+  if (v == null || !isFinite(v)) return "";
+  const a = Math.abs(v);
+  if (a < 1e-13) return `0 ${unit}`;
+  const steps = [[1e9, "G"], [1e6, "M"], [1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"], [1e-12, "p"]];
+  let pick = steps[steps.length - 1];
+  for (const s of steps) if (a >= s[0] * 0.9995) {
+    pick = s;
+    break;
+  }
+  const num5 = v / pick[0];
+  const str4 = Math.abs(num5) >= 99.95 ? String(Math.round(num5)) : String(Number(num5.toPrecision(3)));
+  return `${str4} ${pick[1]}${unit}`;
+}
+var valueOf = (e) => {
+  const v = parseValue(e.value);
+  return v == null ? CIRCUIT_PARTS[e.part].dflt ?? 0 : v;
+};
+var closedAt = (e, step) => !!e.closed !== (e.flipAt != null && step >= e.flipAt);
+var isShort = (e, step) => CIRCUIT_PARTS[e.part].kind === "short" || e.part === "switch" && closedAt(e, step);
+var ID2 = /^[A-Za-z0-9_-]{1,40}$/;
+var COLOR3 = /^#[0-9a-f]{6}$/i;
+var LABEL_AT2 = ["above", "below", "left", "right"];
+var num4 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
+var int3 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : dflt;
+var str3 = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
+function circuitModel(el) {
+  const vertices = [], edges = [], ids = /* @__PURE__ */ new Set(), edgeIds = /* @__PURE__ */ new Set();
+  for (const v of Array.isArray(el?.vertices) ? el.vertices.slice(0, 500) : []) {
+    if (!v || !ID2.test(v.id) || ids.has(v.id)) continue;
+    ids.add(v.id);
+    vertices.push({
+      id: v.id,
+      x: num4(v.x, -1e3, 1e3, 0),
+      y: num4(v.y, -1e3, 1e3, 0),
+      kind: CIRCUIT_VERTEX_KINDS.some(([k]) => k === v.kind) ? v.kind : "auto",
+      ground: GROUND_DIRS[v.ground] !== void 0 ? v.ground : null,
+      label: str3(v.label, 200),
+      labelAt: LABEL_AT2.includes(v.labelAt) ? v.labelAt : "auto",
+      step: v.step == null ? null : int3(v.step, 0, 1e3, null)
+    });
+  }
+  for (const e of Array.isArray(el?.edges) ? el.edges.slice(0, 1e3) : []) {
+    if (!e || !ID2.test(e.id) || edgeIds.has(e.id) || !ids.has(e.from) || !ids.has(e.to) || e.from === e.to) continue;
+    edgeIds.add(e.id);
+    edges.push({
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      part: CIRCUIT_PARTS[e.part] ? e.part : "wire",
+      label: str3(e.label, 200),
+      value: str3(e.value, 40),
+      flip: !!e.flip,
+      current: str3(e.current, 200),
+      voltage: str3(e.voltage, 200),
+      closed: !!e.closed,
+      flipAt: e.flipAt == null ? null : int3(e.flipAt, 1, 1e3, null),
+      step: int3(e.step, 0, 1e3, 0)
+    });
+  }
+  const captions = {};
+  if (el?.captions && typeof el.captions === "object") {
+    for (const [k, v] of Object.entries(el.captions)) {
+      const n = Number(k);
+      if (Number.isInteger(n) && n >= 0 && n <= 1e3 && typeof v === "string" && v.trim()) captions[n] = v.slice(0, 500);
+    }
+  }
+  return {
+    vertices,
+    edges,
+    captions,
+    color: COLOR3.test(el?.color || "") ? el.color : "#ffffff",
+    symbols: el?.symbols === "iec" ? "iec" : "us",
+    flow: el?.flow !== false,
+    readings: el?.readings !== false,
+    stepStart: int3(el?.stepStart, 1, 1e3, 1),
+    // Off unless chosen: the current runs through what came before too
+    dimPast: !!el?.dimPast
+  };
+}
+
+// client/src/utils/circuitSolve.js
+var VF = 0.7;
+var GON = 1e3;
+var LEAK = 1e-12;
+function gauss(A, b) {
+  const n = b.length;
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    if (Math.abs(A[p][c]) < 1e-14) return null;
+    if (p !== c) {
+      [A[c], A[p]] = [A[p], A[c]];
+      [b[c], b[p]] = [b[p], b[c]];
+    }
+    for (let r = c + 1; r < n; r++) {
+      const f = A[r][c] / A[c][c];
+      if (!f) continue;
+      for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
+      b[r] -= f * b[c];
+    }
+  }
+  const x = new Float64Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let k = r + 1; k < n; k++) s -= A[r][k] * x[k];
+    x[r] = s / A[r][r];
+  }
+  return x;
+}
+function solveCircuit(m, step = Infinity) {
+  const edges = m.edges.filter((e) => (e.step || 0) <= step && e.from !== e.to && CIRCUIT_PARTS[e.part]);
+  if (!edges.length) return { status: "empty" };
+  const kind = (e) => CIRCUIT_PARTS[e.part].kind;
+  const ids = /* @__PURE__ */ new Set();
+  for (const e of edges) {
+    ids.add(e.from);
+    ids.add(e.to);
+  }
+  const grounded = m.vertices.filter((v) => v.ground && ids.has(v.id)).map((v) => v.id);
+  const GND = ":ground";
+  const parent2 = { [GND]: GND };
+  for (const id of ids) parent2[id] = id;
+  const find = (a) => {
+    while (parent2[a] !== a) {
+      parent2[a] = parent2[parent2[a]];
+      a = parent2[a];
+    }
+    return a;
+  };
+  const unite = (a, b) => {
+    a = find(a);
+    b = find(b);
+    if (a !== b) parent2[a] = b;
+  };
+  const shorts = [];
+  for (const e of edges) if (isShort(e, step)) {
+    unite(e.from, e.to);
+    shorts.push([e.from, e.to, e.id]);
+  }
+  for (const g of grounded) {
+    unite(g, GND);
+    shorts.push([g, GND, null]);
+  }
+  const sources = edges.filter((e) => ["V", "V0", "I"].includes(kind(e)));
+  if (!sources.length) return { status: "nosource" };
+  const vsrc = edges.filter((e) => kind(e) === "V" || kind(e) === "V0");
+  for (const e of vsrc) if (find(e.from) === find(e.to)) return { status: "shorted", id: e.id };
+  const ref = grounded.length ? find(GND) : find(sources[0].from);
+  const nodeOf = {};
+  let N = 0;
+  for (const id of [...ids, GND]) {
+    const r = find(id);
+    if (r !== ref && nodeOf[r] == null) nodeOf[r] = N++;
+  }
+  const ix = (id) => {
+    const r = find(id);
+    return r === ref ? -1 : nodeOf[r];
+  };
+  const S = N + vsrc.length;
+  const diodes = edges.filter((e) => kind(e) === "diode");
+  const on = new Map(diodes.map((d) => [d.id, true]));
+  let x = null;
+  const volt = (id) => {
+    const i = ix(id);
+    return i < 0 ? 0 : x[i];
+  };
+  for (let iter = 0; iter < 30; iter++) {
+    const A = Array.from({ length: S }, () => new Float64Array(S)), z = new Float64Array(S);
+    const conductance = (a, b, g) => {
+      if (a >= 0) A[a][a] += g;
+      if (b >= 0) A[b][b] += g;
+      if (a >= 0 && b >= 0) {
+        A[a][b] -= g;
+        A[b][a] -= g;
+      }
+    };
+    for (let i = 0; i < N; i++) A[i][i] += LEAK;
+    for (const e of edges) {
+      const a = ix(e.from), b = ix(e.to);
+      if (kind(e) === "R") conductance(a, b, 1 / Math.max(1e-6, valueOf(e)));
+      else if (kind(e) === "diode" && on.get(e.id)) {
+        conductance(a, b, GON);
+        if (a >= 0) z[a] += GON * VF;
+        if (b >= 0) z[b] -= GON * VF;
+      } else if (kind(e) === "I") {
+        const I2 = valueOf(e);
+        if (a >= 0) z[a] -= I2;
+        if (b >= 0) z[b] += I2;
+      }
+    }
+    vsrc.forEach((e, k) => {
+      const p = ix(e.to), n = ix(e.from), r = N + k;
+      if (p >= 0) {
+        A[p][r] += 1;
+        A[r][p] += 1;
+      }
+      if (n >= 0) {
+        A[n][r] -= 1;
+        A[r][n] -= 1;
+      }
+      z[r] = kind(e) === "V0" ? 0 : valueOf(e);
+    });
+    x = gauss(A, z);
+    if (!x) return { status: "conflict" };
+    let changed = false;
+    for (const d of diodes) {
+      const dv = volt(d.from) - volt(d.to);
+      if (on.get(d.id) && GON * (dv - VF) < -1e-9) {
+        on.set(d.id, false);
+        changed = true;
+      } else if (!on.get(d.id) && dv > VF + 1e-6) {
+        on.set(d.id, true);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const V = {}, I = {}, P = {}, inj = {};
+  for (const id of ids) V[id] = volt(id);
+  for (const e of edges) {
+    if (isShort(e, step)) continue;
+    const dv = volt(e.from) - volt(e.to);
+    let c = 0;
+    if (kind(e) === "R") {
+      const R = Math.max(1e-6, valueOf(e));
+      c = dv / R;
+      P[e.id] = c * c * R;
+    } else if (kind(e) === "diode") c = on.get(e.id) ? GON * (dv - VF) : 0;
+    else if (kind(e) === "I") c = valueOf(e);
+    else if (kind(e) === "V" || kind(e) === "V0") c = -x[N + vsrc.indexOf(e)];
+    I[e.id] = c;
+    inj[e.from] = (inj[e.from] || 0) - c;
+    inj[e.to] = (inj[e.to] || 0) + c;
+  }
+  const adj = {};
+  for (const [a, b, id] of shorts) {
+    (adj[a] = adj[a] || []).push([b, id, 1]);
+    (adj[b] = adj[b] || []).push([a, id, -1]);
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const [start] of shorts) {
+    if (seen.has(start)) continue;
+    const order = [start], via = { [start]: null };
+    seen.add(start);
+    for (let q = 0; q < order.length; q++) {
+      for (const [next, id, dir] of adj[order[q]] || []) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        order.push(next);
+        via[next] = [order[q], id, dir];
+      }
+    }
+    const beyond = {};
+    for (let q = order.length - 1; q >= 0; q--) {
+      const node = order[q];
+      beyond[node] = (beyond[node] || 0) + (inj[node] || 0);
+      if (!via[node]) continue;
+      const [toward, id, dir] = via[node];
+      if (id) I[id] = dir === 1 ? -beyond[node] : beyond[node];
+      beyond[toward] = (beyond[toward] || 0) + beyond[node];
+    }
+  }
+  for (const e of edges) if (I[e.id] == null || Math.abs(I[e.id]) < 1e-9) I[e.id] = 0;
+  const maxI = Math.max(0, ...edges.map((e) => Math.abs(I[e.id])));
+  return { status: maxI < 1e-9 ? "still" : "ok", V, I, P, maxI };
+}
+
+// client/src/utils/circuitDiagram.js
+var CIRCUIT_UNIT = 48;
+var BODY = 1;
+var LW = 2;
+var LABEL2 = 0.34;
+var CAPTION2 = 0.3;
+var DIRS = { above: [0, 1], below: [0, -1], left: [-1, 0], right: [1, 0] };
+var esc3 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n13 = (v) => String(Math.round(v * 10) / 10);
+var n2 = (v) => String(Math.round(v * 100) / 100);
+var clamp2 = (v, a, b) => Math.min(b, Math.max(a, v));
+function flowColorFor(ink) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink || "");
+  const light = !m || 0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16) > 140;
+  return light ? "#ffbf47" : "#c26a00";
+}
+function vertexMap2(m) {
+  const V = {};
+  for (const v of m.vertices) V[v.id] = v;
+  return V;
+}
+var shownAt = (s, step) => step == null || s <= step;
+function connections(m, step = null) {
+  const d = {};
+  for (const v of m.vertices) d[v.id] = v.ground ? 1 : 0;
+  for (const e of m.edges) if (shownAt(e.step || 0, step)) {
+    d[e.from] = (d[e.from] || 0) + 1;
+    d[e.to] = (d[e.to] || 0) + 1;
+  }
+  return d;
+}
+var shownKind2 = (v, conn) => v.kind && v.kind !== "auto" ? v.kind : conn[v.id] >= 3 ? "dot" : "none";
+function vertexStep2(m, v) {
+  if (v.step != null) return v.step;
+  let s = Infinity;
+  for (const e of m.edges) if (e.from === v.id || e.to === v.id) s = Math.min(s, e.step || 0);
+  return isFinite(s) ? s : 0;
+}
+function maxStep2(m) {
+  let s = 0;
+  for (const e of m.edges) {
+    s = Math.max(s, e.step || 0);
+    if (e.part === "switch" && e.flipAt != null) s = Math.max(s, e.flipAt);
+  }
+  for (const v of m.vertices) if (v.step != null) s = Math.max(s, v.step);
+  return s;
+}
+function partShape(part2, len, u, k, lw, ink, style) {
+  const L = (x1, y1, x2, y2, w = lw) => `<path d="M${n13(x1)} ${n13(y1)}L${n13(x2)} ${n13(y2)}" stroke="${esc3(ink)}" stroke-width="${n13(w)}" stroke-linecap="round" fill="none"/>`;
+  const circ = (cx, r) => `<circle cx="${n13(cx)}" cy="0" r="${n13(r)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+  const b = part2 === "wire" ? 0 : Math.max(Math.min(BODY * u, len - 0.3 * u), Math.min(len * 0.7, 0.5 * u));
+  const a = (len - b) / 2, c = len / 2;
+  const leads = () => L(0, 0, a, 0) + L(a + b, 0, len, 0);
+  const out = { body: "", ext: [0.06 * u, 0.06 * u], glyphs: [], a, b };
+  if (part2 === "wire") {
+    out.body = L(0, 0, len, 0);
+    out.ext = [0.04 * u, 0.04 * u];
+  } else if (part2 === "resistor") {
+    if (style === "iec") out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.14 * u)}" width="${n13(b)}" height="${n13(0.28 * u)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+    else {
+      const h = 0.16 * u;
+      let d = `M${n13(a)} 0`;
+      for (let i = 0; i < 6; i++) d += `L${n13(a + (2 * i + 1) * b / 12)} ${n13(i % 2 ? h : -h)}`;
+      out.body = leads() + `<path d="${d}L${n13(a + b)} 0" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>`;
+    }
+    out.ext = [0.17 * u, 0.17 * u];
+  } else if (part2 === "capacitor") {
+    const g = 0.08 * u, p = 0.3 * u;
+    out.body = L(0, 0, c - g, 0) + L(c + g, 0, len, 0) + L(c - g, -p, c - g, p, lw * 1.4) + L(c + g, -p, c + g, p, lw * 1.4);
+    out.ext = [p, p];
+  } else if (part2 === "inductor") {
+    if (style === "iec") {
+      out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.11 * u)}" width="${n13(b)}" height="${n13(0.22 * u)}" fill="${esc3(ink)}"/>`;
+      out.ext = [0.12 * u, 0.12 * u];
+    } else {
+      const r = b / 8;
+      let d = `M${n13(a)} 0`;
+      for (let i = 0; i < 4; i++) d += `A${n13(r)} ${n13(r)} 0 0 1 ${n13(a + (i + 1) * 2 * r)} 0`;
+      out.body = leads() + `<path d="${d}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+      out.ext = [r + 0.02 * u, 0.04 * u];
+    }
+  } else if (part2 === "battery") {
+    const offs = [-0.27, -0.09, 0.09, 0.27].map((o) => c + o * u);
+    out.body = L(0, 0, offs[0], 0) + L(offs[3], 0, len, 0) + offs.map((x, i) => i % 2 ? L(x, -0.32 * u, x, 0.32 * u) : L(x, -0.15 * u, x, 0.15 * u, lw * 2.2)).join("");
+    out.glyphs.push([offs[3] + 0.16 * u, -0.34 * u, "+", 0.3 * u]);
+    out.ext = [0.34 * u, 0.33 * u];
+  } else if (["vsource", "acsource", "isource", "ammeter", "voltmeter", "lamp"].includes(part2)) {
+    const r = 0.3 * u;
+    out.body = L(0, 0, c - r, 0) + L(c + r, 0, len, 0) + circ(c, r);
+    out.ext = [r, r];
+    if (part2 === "vsource") {
+      if (style === "iec") out.body += L(c - r, 0, c + r, 0);
+      else {
+        out.glyphs.push([c + 0.15 * u, 0, "+", 0.26 * u]);
+        out.glyphs.push([c - 0.15 * u, 0, "−", 0.26 * u]);
+      }
+    } else if (part2 === "acsource") {
+      let d = "";
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20;
+        d += `${i ? "L" : "M"}${n13(c - 0.17 * u + t * 0.34 * u)} ${n13(-0.1 * u * Math.sin(2 * Math.PI * t))}`;
+      }
+      out.body += `<path d="${d}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.85)}"/>`;
+    } else if (part2 === "isource") {
+      if (style === "iec") out.body += L(c, -r, c, r);
+      else out.body += L(c - 0.17 * u, 0, c + 0.08 * u, 0) + `<path d="M${n13(c + 0.19 * u)} 0L${n13(c + 0.05 * u)} ${n13(-0.08 * u)}L${n13(c + 0.05 * u)} ${n13(0.08 * u)}Z" fill="${esc3(ink)}"/>`;
+    } else if (part2 === "lamp") {
+      const q = 0.21 * u;
+      out.body += L(c - q, -q, c + q, q, lw * 0.9) + L(c - q, q, c + q, -q, lw * 0.9);
+    } else out.glyphs.push([c, 0, CIRCUIT_PARTS[part2].meter, 0.3 * u, 600]);
+  } else if (part2 === "switch") {
+    const tr = 0.06 * u, x0 = a, x1 = a + b, ang = 28 * Math.PI / 180;
+    const ring = (x) => `<circle cx="${n13(x)}" cy="0" r="${n13(tr)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.8)}"/>`;
+    out.body = L(0, 0, x0 - tr, 0) + L(x1 + tr, 0, len, 0) + ring(x0) + ring(x1);
+    out.blade = (closed) => closed ? L(x0, 0, x1, 0) : L(x0, 0, x0 + b * Math.cos(ang), -b * Math.sin(ang));
+    out.ext = [b * Math.sin(ang) + 0.04 * u, 0.08 * u];
+  } else if (part2 === "diode") {
+    const t = 0.2 * u, h = 0.22 * u;
+    out.body = L(0, 0, c - t, 0) + L(c + t, 0, len, 0) + `<path d="M${n13(c - t)} ${n13(-h)}L${n13(c - t)} ${n13(h)}L${n13(c + t)} 0Z" fill="${style === "iec" ? "none" : esc3(ink)}" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>` + L(c + t, -h, c + t, h);
+    out.ext = [h, h];
+  }
+  return out;
+}
+function drawCircuit(m, o = {}) {
+  const u = o.U || CIRCUIT_UNIT, k = u / 48, lw = (o.lw || LW) * k, fs = LABEL2 * u;
+  const ink = o.ink || "#ffffff", flowColor = o.flowColor || flowColorFor(ink), V = vertexMap2(m);
+  const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
+  const step = deck != null ? null : o.step ?? null;
+  const state = step == null ? Infinity : step;
+  const conn = connections(m, step);
+  const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const grow = (X, Y, rx = 0, ry = rx) => {
+    box.x0 = Math.min(box.x0, X - rx);
+    box.x1 = Math.max(box.x1, X + rx);
+    box.y0 = Math.min(box.y0, Y - ry);
+    box.y1 = Math.max(box.y1, Y + ry);
+  };
+  const label = (tex, X, Y, size) => {
+    const b = texBox(tex, size);
+    grow(X, Y, b.w / 2, b.h / 2);
+    if (o.labels === "deck" || typeof o.labels === "function") {
+      const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc3(tex)}" style="font-family:${esc3(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n13(X - w / 2)}" y="${n13(Y - h / 2)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n13(size / 1.21)}px;color:${esc3(ink)}">${inner}</div></foreignObject>`;
+    }
+    return texSvg(tex, X, Y, size, ink);
+  };
+  const plain = (t, X, Y, size, color2 = ink, weight = 400) => {
+    grow(X, Y, Math.max(String(t).length * size * 0.5, size * 0.4) / 2, size * 0.55);
+    return `<text x="${n13(X)}" y="${n13(Y + size * 0.34)}" text-anchor="middle" font-family="${esc3(MATH_FONT)}" font-size="${n13(size)}" font-weight="${weight}" fill="${esc3(color2)}">${esc3(t)}</text>`;
+  };
+  const wrap = (s, lines, labels, reveal, isVertex, id) => {
+    if (deck != null) {
+      const cls = `pxfx-part${isVertex ? " pxfx-v" : ""}`;
+      if (s > 0 && reveal) {
+        const mid = `pxfxm-${deck}-${id}`;
+        return `<g class="${cls}" data-fx-at="${s}"><mask id="${mid}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000"><path class="pxfx-reveal" pathLength="1" d="${reveal}" fill="none" stroke="#fff" stroke-width="${n13(46 * k)}" stroke-linecap="round"/></mask><g mask="url(#${mid})">${lines}</g><g class="pxfx-fade">${labels}</g></g>`;
+      }
+      return `<g class="${cls}" data-fx-at="${s}">${lines}${labels}</g>`;
+    }
+    const faded = step != null && o.dim && step > 0 && s < step;
+    return `<g${faded ? ' opacity=".34"' : ""}>${lines}${labels}</g>`;
+  };
+  let grid = "";
+  if (o.editor && o.grid && o.view) {
+    const v = o.view, gx = v.x0 * u, gy = -(v.y0 + v.h) * u;
+    grid = `<defs><pattern id="pxcx-g1" width="${u / 2}" height="${u / 2}" x="${-u / 4}" y="${-u / 4}" patternUnits="userSpaceOnUse"><circle cx="${u / 4}" cy="${u / 4}" r="1" fill="${esc3(o.mark)}" fill-opacity=".55"/></pattern><pattern id="pxcx-g2" width="${u}" height="${u}" x="${-u / 2}" y="${-u / 2}" patternUnits="userSpaceOnUse"><circle cx="${u / 2}" cy="${u / 2}" r="1.6" fill="${esc3(o.mark)}" fill-opacity=".8"/></pattern></defs><rect x="${n13(gx)}" y="${n13(gy)}" width="${n13(v.w * u)}" height="${n13(v.h * u)}" fill="url(#pxcx-g1)"/><rect x="${n13(gx)}" y="${n13(gy)}" width="${n13(v.w * u)}" height="${n13(v.h * u)}" fill="url(#pxcx-g2)"/>`;
+  }
+  const warn = new Set(o.warn || []);
+  const placed = {};
+  let parts = "";
+  for (const e of m.edges) {
+    const A = V[e.from], B = V[e.to];
+    if (!A || !B || A === B) continue;
+    const s = e.step || 0;
+    if (deck == null && !shownAt(s, step)) continue;
+    const P = CIRCUIT_PARTS[e.part] || CIRCUIT_PARTS.wire;
+    const X1 = A.x * u, Y1 = -A.y * u, X2 = B.x * u, Y2 = -B.y * u, dx = X2 - X1, dy = Y2 - Y1, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len, ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const G = (sx, sy) => [X1 + ux * sx - uy * sy, Y1 + uy * sx + ux * sy];
+    const sh = partShape(e.part, len, u, k, lw, ink, o.style);
+    let body = sh.body;
+    if (sh.blade) {
+      if (deck != null && e.flipAt != null) body += `<g data-fx-in="0-${e.flipAt - 1}">${sh.blade(!!e.closed)}</g><g data-fx-in="${e.flipAt}-">${sh.blade(!e.closed)}</g>`;
+      else body += sh.blade(closedAt(e, state));
+    }
+    grow(X1, Y1, lw);
+    grow(X2, Y2, lw);
+    for (const [gx, gy] of [G(len / 2, -sh.ext[0]), G(len / 2, sh.ext[1])]) grow(gx, gy);
+    let lines = "";
+    if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="${esc3(o.accent)}" stroke-opacity=".3" stroke-width="${n13(16 * k)}" stroke-linecap="round"/>`;
+    if (o.editor && warn.has(e.id)) lines += `<path d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="${esc3(o.warnColor)}" stroke-opacity=".45" stroke-width="${n13(16 * k)}" stroke-linecap="round"/>`;
+    lines += `<g transform="translate(${n13(X1)} ${n13(Y1)}) rotate(${n13(ang)})">${body}</g>`;
+    for (const [gxs, gys, t, size, weight] of sh.glyphs) {
+      const [gx, gy] = G(gxs, gys);
+      lines += plain(t, gx, gy, size, ink, weight || 400);
+    }
+    let labels = "";
+    const side = e.flip ? 1 : -1;
+    const place = (sx, sd, gap, bx) => {
+      const extPx = sd < 0 ? sh.ext[0] : sh.ext[1], nx = -uy * sd, ny = ux * sd;
+      const reach = Math.abs(nx) * bx.w / 2 + Math.abs(ny) * bx.h / 2;
+      const [px, py] = G(sx, sd * (extPx + gap));
+      return [px + nx * reach, py + ny * reach, reach * 2];
+    };
+    if (e.label && e.part !== "wire") {
+      const [x, y] = place(len / 2, side, 0.12 * u, texBox(e.label, fs));
+      labels += label(e.label, x, y, fs);
+    }
+    let depth = 0;
+    const parsed = parseValue(e.value);
+    const valueText = P.unit && e.value !== "" ? parsed != null ? formatSI(parsed, P.unit) : e.value : "";
+    if (valueText) {
+      const bx = { w: Math.max(valueText.length * fs * 0.9 * 0.5, fs * 0.4), h: fs * 0.95 };
+      const [x, y, d] = place(len / 2, -side, 0.12 * u, bx);
+      depth = d;
+      labels += plain(valueText, x, y, fs * 0.9);
+    }
+    if (e.current) {
+      const sx = e.part === "wire" ? len * 0.62 : len - sh.a / 2, hs = 0.12 * u;
+      const [tx, ty] = G(sx + hs * 0.6, 0), [b1x, b1y] = G(sx - hs * 0.6, -hs * 0.65), [b2x, b2y] = G(sx - hs * 0.6, hs * 0.65);
+      labels += `<path d="M${n13(tx)} ${n13(ty)}L${n13(b1x)} ${n13(b1y)}L${n13(b2x)} ${n13(b2y)}Z" fill="${esc3(ink)}"/>`;
+      const [x, y] = place(sx, side, 0.16 * u, texBox(e.current, fs * 0.85));
+      labels += label(e.current, x, y, fs * 0.85);
+    }
+    if (e.voltage && e.part !== "wire") {
+      const inset = Math.max(Math.min(sh.a * 0.5, len * 0.2), 0.12 * u), off = -side * (sh.ext[side < 0 ? 1 : 0] + 0.2 * u);
+      const [px, py] = G(inset, off), [qx, qy] = G(len - inset, off);
+      labels += plain("+", px, py, fs * 0.85) + plain("−", qx, qy, fs * 0.85);
+      const [x, y, d] = place(len / 2, -side, 0.12 * u + depth, texBox(e.voltage, fs * 0.9));
+      depth += d + 0.06 * u;
+      labels += label(e.voltage, x, y, fs * 0.9);
+    }
+    if (o.editor) labels += `<path class="pxcx-hit" data-e="${esc3(e.id)}" d="M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}" stroke="#000" stroke-opacity="0" stroke-width="${n13(18 * k)}" pointer-events="stroke"/>`;
+    placed[e.id] = { e, X1, Y1, X2, Y2, len, G, at: s, reading: (text, size) => place(len / 2, -side, 0.12 * u + depth, { w: text.length * size * 0.5, h: size * 1.05 }) };
+    parts += wrap(s, lines, labels, `M${n13(X1)} ${n13(Y1)}L${n13(X2)} ${n13(Y2)}`, false, e.id);
+  }
+  let verts = "";
+  for (const v of m.vertices) {
+    const s = vertexStep2(m, v);
+    if (deck == null && !shownAt(s, step)) continue;
+    const kind = shownKind2(v, conn), X = v.x * u, Y = -v.y * u;
+    let mark = "", labels = "";
+    if (v.ground) {
+      const g = 0.3 * u;
+      mark += `<g transform="translate(${n13(X)} ${n13(Y)}) rotate(${GROUND_DIRS[v.ground] ?? 0})" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linecap="round" fill="none"><path d="M0 0V${n13(g)}M${n13(-0.27 * u)} ${n13(g)}H${n13(0.27 * u)}M${n13(-0.17 * u)} ${n13(g + 0.09 * u)}H${n13(0.17 * u)}M${n13(-0.07 * u)} ${n13(g + 0.18 * u)}H${n13(0.07 * u)}"/></g>`;
+      const d = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[v.ground];
+      grow(X + d[0] * 0.48 * u, Y + d[1] * 0.48 * u, 0.27 * u);
+    }
+    if (kind === "dot") {
+      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(3.4 * k)}" fill="${esc3(ink)}"/>`;
+      grow(X, Y, 3.4 * k);
+    } else if (kind === "terminal") {
+      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(4.2 * k)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.9)}"/>`;
+      grow(X, Y, 4.2 * k);
+    } else if (o.editor && conn[v.id] <= 2) mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="2.6" fill="none" stroke="${esc3(o.mark)}" stroke-width="1.1"/>`;
+    if (v.label) {
+      let d = DIRS[v.labelAt];
+      if (!d) {
+        const legs = [];
+        for (const e of m.edges) {
+          if (deck == null && !shownAt(e.step || 0, step)) continue;
+          const other = e.from === v.id ? V[e.to] : e.to === v.id ? V[e.from] : null;
+          if (other) {
+            const l = Math.hypot(other.x - v.x, other.y - v.y) || 1;
+            legs.push([(other.x - v.x) / l, (other.y - v.y) / l]);
+          }
+        }
+        if (v.ground) legs.push({ down: [0, -1], up: [0, 1], left: [-1, 0], right: [1, 0] }[v.ground]);
+        d = awayFrom(legs);
+      }
+      const bx = texBox(v.label, fs), reach = (Math.abs(d[0]) * bx.w / 2 + Math.abs(d[1]) * bx.h / 2) / u, L = 0.16 + reach;
+      labels += label(v.label, (v.x + d[0] * L) * u, -(v.y + d[1] * L) * u, fs);
+    }
+    if (o.editor) {
+      if (warn.has(v.id)) mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(11 * k)}" fill="none" stroke="${esc3(o.warnColor)}" stroke-width="2" stroke-dasharray="4 3"><title>Connected to nothing</title></circle>`;
+      if (o.sel && o.sel.kind === "v" && o.sel.id === v.id) mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(9 * k)}" fill="${esc3(o.accent)}" fill-opacity=".22" stroke="${esc3(o.accent)}" stroke-width="2"/>`;
+      labels += `<circle data-v="${esc3(v.id)}" cx="${n13(X)}" cy="${n13(Y)}" r="${n13(11 * k)}" fill="#000" fill-opacity="0"/>`;
+    }
+    if (mark || labels) verts += wrap(s, mark, labels, null, true, v.id);
+  }
+  const overlay = (sol, upTo) => {
+    let under2 = "", over2 = "";
+    if (!sol || sol.status !== "ok" && sol.status !== "still") return { under: under2, over: over2 };
+    for (const p of Object.values(placed)) {
+      const { e } = p;
+      if (upTo != null && p.at > upTo) continue;
+      const I = sol.I[e.id];
+      if (I == null) continue;
+      if (o.flow && e.part === "lamp" && (sol.P[e.id] || 0) > 1e-4) {
+        const bright = clamp2(sol.P[e.id] / (sol.P[e.id] + 0.35), 0.25, 1), [cx, cy] = p.G(p.len / 2, 0);
+        for (const [r, a] of [[0.72, 0.16], [0.52, 0.24], [0.38, 0.36]]) under2 += `<circle cx="${n13(cx)}" cy="${n13(cy)}" r="${n13(r * u)}" fill="#ffcf6b" fill-opacity="${n2(a * bright)}"/>`;
+      }
+      if (o.flow && sol.maxI > 0 && Math.abs(I) > Math.max(1e-9, sol.maxI * 2e-3)) {
+        const f = 0.25 + 0.75 * Math.abs(I) / sol.maxI;
+        const d = I > 0 ? `M${n13(p.X1)} ${n13(p.Y1)}L${n13(p.X2)} ${n13(p.Y2)}` : `M${n13(p.X2)} ${n13(p.Y2)}L${n13(p.X1)} ${n13(p.Y1)}`;
+        over2 += `<path class="pxcx-flow" d="${d}" fill="none" stroke="${esc3(flowColor)}" stroke-width="${n13(4.2 * k)}" stroke-linecap="round" stroke-dasharray="0.1 14" style="animation-duration:${(0.42 / f).toFixed(2)}s"/>`;
+      }
+      const meter = CIRCUIT_PARTS[e.part].meter;
+      if (o.readings && meter) {
+        const text = meter === "A" ? formatSI(Math.abs(I), "A") : formatSI(Math.abs((sol.V[e.from] || 0) - (sol.V[e.to] || 0)), "V");
+        const [x, y] = p.reading(text, fs * 0.92);
+        over2 += plain(text, x, y, fs * 0.92, flowColor, 600);
+      }
+    }
+    return { under: under2, over: over2 };
+  };
+  let under = "", over = "";
+  if (o.flow || o.readings) {
+    if (deck != null) {
+      for (const run of o.runs || []) {
+        const lay = overlay(run.sol, run.from);
+        const span = `${run.from}-${run.to ?? ""}`;
+        if (lay.under) under += `<g data-fx-in="${span}">${lay.under}</g>`;
+        if (lay.over) over += `<g data-fx-in="${span}">${lay.over}</g>`;
+      }
+    } else ({ under, over } = overlay(o.sol, step));
+    if (under) under = `<g pointer-events="none">${under}</g>`;
+    if (over) over = `<g pointer-events="none">${over}</g>`;
+  }
+  let caps = "";
+  const capSteps = Object.keys(m.captions || {}).map(Number).sort((a, b) => a - b);
+  if (o.captions && capSteps.length && isFinite(box.x0)) {
+    const cs = CAPTION2 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
+    const one = (n, cls) => {
+      const text = m.captions[n];
+      if (o.labels === "text") return `<text${cls} x="${n13(cx)}" y="${n13(y + cs)}" text-anchor="middle" font-size="${n13(cs)}" fill="${esc3(ink)}">${esc3(text)}</text>`;
+      return `<foreignObject${cls} x="${n13(cx - w / 2)}" y="${n13(y)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n13(cs)}px;line-height:1.3;color:${esc3(ink)}">${esc3(text)}</div></foreignObject>`;
+    };
+    if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
+    else {
+      const shown = capSteps.filter((n) => n <= (step ?? maxStep2(m))).pop();
+      if (shown != null) caps = one(shown, "");
+    }
+    grow(cx, y + h / 2, w / 2, h / 2);
+  }
+  if (!isFinite(box.x0)) Object.assign(box, { x0: 0, y0: 0, x1: 6 * u, y1: 3 * u });
+  return { svg: grid + under + parts + verts + over + caps, box };
+}
+function awayFrom(dirs) {
+  if (!dirs.length) return [0, 1];
+  let best = [0, 1], score = -Infinity, sx = 0, sy = 0;
+  for (const d of dirs) {
+    sx += d[0];
+    sy += d[1];
+  }
+  const sl = Math.hypot(sx, sy);
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4, c = [Math.round(Math.cos(a) * 1e6) / 1e6, Math.round(Math.sin(a) * 1e6) / 1e6];
+    let gap = Infinity;
+    for (const d of dirs) gap = Math.min(gap, Math.acos(clamp2(c[0] * d[0] + c[1] * d[1], -1, 1)));
+    const sc = gap + (sl > 0.2 ? 0.3 * (-(sx * c[0] + sy * c[1]) / sl) : 0) + (i % 2 ? -0.05 : 0) + 0.04 * c[1];
+    if (sc > score) {
+      score = sc;
+      best = c;
+    }
+  }
+  return best;
+}
+function circuitSteps(el) {
+  if (el?.type !== "circuit") return [];
+  const m = circuitModel(el);
+  return modelSteps(m).map((s) => [m.stepStart - 1 + s, s]).filter(([n]) => n <= 1e3);
+}
+function modelSteps(m) {
+  const steps = /* @__PURE__ */ new Set();
+  for (const e of m.edges) {
+    if (e.step > 0) steps.add(e.step);
+    if (e.part === "switch" && e.flipAt != null) steps.add(e.flipAt);
+  }
+  for (const v of m.vertices) if (v.step > 0) steps.add(v.step);
+  for (const n of Object.keys(m.captions)) if (+n > 0) steps.add(+n);
+  return [...steps].sort((a, b) => a - b);
+}
+function circuitStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of circuitSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasCircuits(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "circuit"));
+}
+function solutionRuns(m) {
+  const starts = [0, ...modelSteps(m)];
+  return starts.map((from, i) => ({ from, to: i + 1 < starts.length ? starts[i + 1] - 1 : null, sol: solveCircuit(m, from) }));
+}
+var baseOptions = (m) => ({ ink: m.color, style: m.symbols, captions: true, flow: m.flow, readings: m.readings });
+function circuitBox(el) {
+  const m = circuitModel(el);
+  const { box } = drawCircuit(m, { ...baseOptions(m), sol: m.flow || m.readings ? solveCircuit(m) : null });
+  const pad = 0.2 * CIRCUIT_UNIT;
+  return { x: box.x0 - pad, y: box.y0 - pad, w: box.x1 - box.x0 + 2 * pad, h: box.y1 - box.y0 + 2 * pad };
+}
+function circuitSvg(el, opts = {}) {
+  const m = circuitModel(el), b = circuitBox(el), solved = m.flow || m.readings;
+  const o = { ...baseOptions(m), labels: opts.labels || "text" };
+  const { svg } = opts.deck != null ? drawCircuit(m, { ...o, deck: opts.deck, runs: solved ? solutionRuns(m) : [] }) : drawCircuit(m, { ...o, step: opts.step ?? null, dim: m.dimPast, sol: solved ? solveCircuit(m, opts.step ?? Infinity) : null });
+  const size = opts.standalone ? ` width="${n13(b.w)}" height="${n13(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n13(b.x)} ${n13(b.y)} ${n13(b.w)} ${n13(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+}
+function template2(key, name, verts, edges, captions = {}) {
+  return { key, name, build() {
+    return {
+      vertices: verts.map(([id, x, y, more]) => ({ id, x, y, kind: "auto", ground: null, label: "", labelAt: "auto", step: null, ...more || {} })),
+      edges: edges.map(([from, to, part2, more], i) => ({ id: "e" + (i + 1), from, to, part: part2, label: "", value: "", flip: false, current: "", voltage: "", closed: false, flipAt: null, step: 0, ...more || {} })),
+      captions: { ...captions }
+    };
+  } };
+}
+var CIRCUIT_TEMPLATES = [
+  template2(
+    "lamp",
+    "Switch and lamp",
+    [["a", 0, 0], ["b", 0, 3], ["c", 2.5, 3], ["d", 5, 3], ["e", 5, 0], ["f", 2.5, 0], ["g", 6.5, 3], ["h", 6.5, 0]],
+    [
+      ["a", "b", "battery", { label: "\\mathcal{E}", value: "9", step: 1 }],
+      ["b", "c", "switch", { label: "S", flipAt: 3, step: 1 }],
+      ["c", "d", "resistor", { label: "R", value: "18", step: 1 }],
+      ["d", "e", "lamp", { label: "B", value: "12", step: 1 }],
+      ["e", "f", "ammeter", { step: 1 }],
+      ["f", "a", "wire", { step: 1 }],
+      ["d", "g", "wire", { step: 2 }],
+      ["g", "h", "voltmeter", { flip: true, step: 2 }],
+      ["h", "e", "wire", { step: 2 }]
+    ],
+    { 1: "A battery, a switch, a resistor and a lamp in series,", 2: "with a voltmeter across the lamp.", 3: "Close the switch: 300 mA flows, and the lamp lights." }
+  ),
+  template2(
+    "parallel",
+    "Parallel branches",
+    [["a", 0, 0], ["b", 0, 3], ["c", 2.5, 3], ["d", 4.5, 3], ["e", 6.5, 3], ["f", 2.5, 0], ["g", 4.5, 0], ["h", 6.5, 0]],
+    [
+      ["a", "b", "battery", { label: "\\mathcal{E}", value: "6", step: 1 }],
+      ["b", "c", "ammeter", { step: 1 }],
+      ["c", "f", "resistor", { label: "R_1", value: "10", step: 1 }],
+      ["f", "a", "wire", { step: 1 }],
+      ["c", "d", "wire", { step: 2 }],
+      ["d", "g", "resistor", { label: "R_2", value: "20", step: 2 }],
+      ["g", "f", "wire", { step: 2 }],
+      ["d", "e", "wire", { step: 3 }],
+      ["e", "h", "resistor", { label: "R_3", value: "30", step: 3 }],
+      ["h", "g", "wire", { step: 3 }]
+    ],
+    { 1: "One resistor draws 600 mA.", 2: "A second branch adds 300 mA,", 3: "and a third 200 mA: 1.1 A from the battery." }
+  ),
+  template2(
+    "divider",
+    "Voltage divider",
+    [["a", 0, 0, { ground: "down" }], ["b", 0, 4], ["c", 3, 4], ["d", 3, 2], ["e", 3, 0], ["o", 5.5, 2, { label: "V_\\mathrm{out}", labelAt: "right" }], ["p", 5.5, 0]],
+    [
+      ["a", "b", "vsource", { label: "V_s", value: "10" }],
+      ["b", "c", "wire"],
+      ["c", "d", "resistor", { label: "R_1", value: "1k" }],
+      ["d", "e", "resistor", { label: "R_2", value: "2k" }],
+      ["e", "a", "wire"],
+      ["d", "o", "wire"],
+      ["o", "p", "voltmeter"],
+      ["p", "e", "wire"]
+    ]
+  ),
+  template2(
+    "bridge",
+    "Wheatstone bridge",
+    [["L", 0, 1.5], ["T", 2, 3.5], ["R", 4, 1.5], ["B", 2, -0.5], ["p", 0, -2], ["q", 4, -2]],
+    [
+      ["L", "T", "resistor", { label: "R_1", value: "100" }],
+      ["T", "R", "resistor", { label: "R_2", value: "200" }],
+      ["B", "L", "resistor", { label: "R_3", value: "100" }],
+      ["R", "B", "resistor", { label: "R_x", value: "300" }],
+      ["T", "B", "ammeter", { label: "G" }],
+      ["L", "p", "wire"],
+      ["p", "q", "battery", { label: "\\mathcal{E}", value: "12" }],
+      ["q", "R", "wire"]
+    ]
+  ),
+  template2(
+    "diode",
+    "Diode and resistor",
+    [["a", 0, 0], ["b", 0, 3], ["c", 2.5, 3], ["d", 5, 3], ["e", 5, 0]],
+    [["a", "b", "vsource", { label: "V_s", value: "5" }], ["b", "c", "resistor", { label: "R", value: "430" }], ["c", "d", "diode", { label: "D" }], ["d", "e", "ammeter"], ["e", "a", "wire"]]
+  ),
+  template2(
+    "rc",
+    "RC circuit",
+    [["a", 0, 0], ["b", 0, 3], ["c", 2.5, 3], ["d", 5, 3], ["e", 5, 0]],
+    [
+      ["a", "b", "battery", { label: "\\mathcal{E}", value: "9", step: 1 }],
+      ["b", "c", "switch", { label: "S", flipAt: 2, step: 1 }],
+      ["c", "d", "resistor", { label: "R", value: "10k", step: 1 }],
+      ["d", "e", "capacitor", { label: "C", value: "100u", voltage: "V_C", step: 1 }],
+      ["e", "a", "wire", { step: 1 }]
+    ],
+    { 2: "Closing the switch charges C through R. Once it has charged, no current flows." }
+  ),
+  template2(
+    "rlc",
+    "Series RLC (AC)",
+    [["a", 0, 0], ["b", 0, 3], ["c", 2.5, 3], ["d", 5, 3], ["e", 5, 0]],
+    [
+      ["a", "b", "acsource", { label: "v(t)" }],
+      ["b", "c", "resistor", { label: "R", value: "50" }],
+      ["c", "d", "inductor", { label: "L", value: "10m" }],
+      ["d", "e", "capacitor", { label: "C", value: "1u" }],
+      ["e", "a", "wire", { current: "i(t)" }]
+    ]
+  ),
+  { key: "blank", name: "Blank", build: () => ({ vertices: [], edges: [], captions: {} }) }
+];
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -3959,7 +4783,7 @@ var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
 var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num4 = (key) => {
+  const num5 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
@@ -3967,14 +4791,14 @@ function text3dSettings(el, fallbackFont) {
   const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num4("depth"),
-    rotateX: num4("rotateX"),
-    rotateY: num4("rotateY"),
-    perspective: num4("perspective"),
-    fontSize: num4("fontSize"),
-    letterSpacing: num4("letterSpacing"),
-    lineHeight: num4("lineHeight"),
-    sideShade: num4("sideShade"),
+    depth: num5("depth"),
+    rotateX: num5("rotateX"),
+    rotateY: num5("rotateY"),
+    perspective: num5("perspective"),
+    fontSize: num5("fontSize"),
+    letterSpacing: num5("letterSpacing"),
+    lineHeight: num5("lineHeight"),
+    sideShade: num5("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -4684,9 +5508,9 @@ var STATE_EASINGS = {
 var DEFAULT_STATE_DURATION = 400;
 var SET_MODES = ["set", "toggle", "cycle"];
 var SAFE_ID = /^[A-Za-z0-9_-]+$/;
-var COLOR3 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
-var clamp2 = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
-var color = (v) => typeof v === "string" && COLOR3.test(v.trim()) ? v.trim() : null;
+var COLOR4 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
+var clamp3 = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
+var color = (v) => typeof v === "string" && COLOR4.test(v.trim()) ? v.trim() : null;
 var flip = (v) => v === true || v === 180 ? 180 : v === -180 ? -180 : 0;
 function elementStates(el) {
   if (typeof el?.id !== "string" || !SAFE_ID.test(el.id) || !Array.isArray(el.states)) return [];
@@ -4694,25 +5518,25 @@ function elementStates(el) {
 }
 function stateValues(st) {
   return {
-    x: clamp2(st.x, -1e4, 1e4),
-    y: clamp2(st.y, -1e4, 1e4),
-    width: clamp2(st.width, 1, 1e4),
-    height: clamp2(st.height, 1, 1e4),
-    rotation: clamp2(st.rotation, -3600, 3600),
-    scale: clamp2(st.scale, 0.05, 20),
+    x: clamp3(st.x, -1e4, 1e4),
+    y: clamp3(st.y, -1e4, 1e4),
+    width: clamp3(st.width, 1, 1e4),
+    height: clamp3(st.height, 1, 1e4),
+    rotation: clamp3(st.rotation, -3600, 3600),
+    scale: clamp3(st.scale, 0.05, 20),
     flipX: flip(st.flipX),
     flipY: flip(st.flipY),
-    opacity: clamp2(st.opacity, 0, 1),
-    zIndex: st.zIndex == null ? null : Math.round(clamp2(st.zIndex, -1e3, 1e5) ?? 0),
+    opacity: clamp3(st.opacity, 0, 1),
+    zIndex: st.zIndex == null ? null : Math.round(clamp3(st.zIndex, -1e3, 1e5) ?? 0),
     fill: color(st.fill),
     stroke: color(st.stroke),
     textColor: color(st.textColor),
-    filterBrightness: clamp2(st.filterBrightness, 0, 400),
-    filterContrast: clamp2(st.filterContrast, 0, 400),
-    filterGrayscale: clamp2(st.filterGrayscale, 0, 100),
+    filterBrightness: clamp3(st.filterBrightness, 0, 400),
+    filterContrast: clamp3(st.filterContrast, 0, 400),
+    filterGrayscale: clamp3(st.filterGrayscale, 0, 100),
     shape: CLOSED_SHAPES.includes(st.shape) ? st.shape : null,
-    borderRadius: clamp2(st.borderRadius, 0, 1e4),
-    duration: Math.round(clamp2(st.duration, 0, 1e4) ?? DEFAULT_STATE_DURATION),
+    borderRadius: clamp3(st.borderRadius, 0, 1e4),
+    duration: Math.round(clamp3(st.duration, 0, 1e4) ?? DEFAULT_STATE_DURATION),
     easing: STATE_EASINGS[st.easing] || "ease"
   };
 }
@@ -4857,9 +5681,9 @@ function statesCss(slides) {
         if (paint.length) rules.push(`${where(on.join(", "))} > svg > ${line ? ":is(line, polyline)" : "g"} { ${paint.join("; ")}; }`);
         if (v.textColor) rules.push(`${where(on.join(", "))} > svg > text { fill:${v.textColor}; }`);
         if (v.filterBrightness != null || v.filterContrast != null || v.filterGrayscale != null) {
-          const b = v.filterBrightness ?? clamp2(el.filterBrightness, 0, 400) ?? 100;
-          const c = v.filterContrast ?? clamp2(el.filterContrast, 0, 400) ?? 100;
-          const g = v.filterGrayscale ?? clamp2(el.filterGrayscale, 0, 100) ?? 0;
+          const b = v.filterBrightness ?? clamp3(el.filterBrightness, 0, 400) ?? 100;
+          const c = v.filterContrast ?? clamp3(el.filterContrast, 0, 400) ?? 100;
+          const g = v.filterGrayscale ?? clamp3(el.filterGrayscale, 0, 100) ?? 0;
           rules.push(`${where(on.join(", "))} img { filter:brightness(${b}%) contrast(${c}%) grayscale(${g}%) !important; }`);
         }
       });
@@ -5373,6 +6197,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${feynmanSvg(el, { deck: fxId, labels: "deck" })}</div>`;
       }
+      if (el.type === "circuit") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${circuitSvg(el, { deck: fxId, labels: "deck" })}</div>`;
+      }
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -5436,7 +6264,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc2 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc4 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -5454,10 +6282,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc2(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc4(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc2(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc4(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -5465,8 +6293,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc2(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc2(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc4(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc4(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -5692,7 +6520,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -6053,7 +6881,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) ? feynmanDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) ? diagramDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -6271,8 +7099,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str3) {
-  return String(str3).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str4) {
+  return String(str4).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>

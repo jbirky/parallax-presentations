@@ -16,6 +16,11 @@
 // fragment counted with the slide's others, as equations' are. The server's
 // pages have all this through server/services/deck-html.js.
 
+import { MATH_FONT, texRuns, texBox, texSvg, texLiteHtml, applyDiagramStep, DIAGRAM_CSS, diagramDeckScript } from './diagramCore'
+
+// The diagram core's labels and deck steps, under the names they first had here
+export { texRuns, texBox, applyDiagramStep as applyFeynmanStep, DIAGRAM_CSS as FEYNMAN_CSS, diagramDeckScript as feynmanDeckScript }
+
 export const UNIT = 64          // px per cm in the drawing's own coordinates
 const SNAP = 0.25
 const AMP = 0.085, HALF = 0.155 // photon amplitude, half wavelength
@@ -23,7 +28,6 @@ const PITCH = 0.19, COIL = 0.1  // gluon coil pitch, radius
 const DBL = 0.032               // half the gap of a double line
 const LABEL = 0.3               // label size
 const CAPTION = 0.27            // caption size
-const MATH_FONT = "'Latin Modern Roman', 'Times New Roman', Times, serif"
 
 export const FEYNMAN_COLORS = ['#5aa9ff', '#ff9a52', '#4cc36a', '#c58cff', '#f0c04b', '#ff7aa2']
 
@@ -102,104 +106,6 @@ export function feynmanModel(el) {
     stepStart: int(el?.stepStart, 1, 1000, 1),
     dimPast: el?.dimPast !== false,
   }
-}
-
-// ---------- Labels as SVG text, from a small part of TeX, where KaTeX can't
-// be used (PowerPoint, which leaves out HTML inside an SVG)
-
-const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ϵ', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'ϕ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω' }
-const SYM = { pm: '±', mp: '∓', to: '→', prime: '′', ell: 'ℓ', ast: '∗', times: '×', cdot: '·', infty: '∞', partial: '∂', hbar: 'ℏ', ',': ' ', ';': ' ', ' ': ' ', '!': '', quad: '  ' }
-const ACCENT = { bar: 0x304, overline: 0x305, tilde: 0x303, hat: 0x302 }
-const UPRIGHT = { mathrm: 1, text: 1, rm: 1, mathbf: 1 }
-const COMBINING = new RegExp('[' + String.fromCharCode(0x300) + '-' + String.fromCharCode(0x36f) + ']', 'g')
-
-// Runs of text: { t, lvl: 0, 1 (superscript) or -1 (subscript), it: italic }
-export function texRuns(src) {
-  src = String(src || '')
-  const runs = []
-  let i = 0
-  const push = (t, lvl, it) => {
-    if (!t) return
-    const r = runs[runs.length - 1]
-    if (r && r.lvl === lvl && r.it === it) r.t += t
-    else runs.push({ t, lvl, it })
-  }
-  function atom(lvl, up) {
-    const c = src[i]
-    if (c === undefined) return
-    if (c === '{') { i++; group(lvl, up, '}'); return }
-    if (c === '\\') {
-      const m = /^\\([A-Za-z]+|.)/.exec(src.slice(i))
-      if (!m) { i++; return }
-      i += m[0].length
-      const name = m[1]
-      if (ACCENT[name]) {
-        const before = runs.length, lastLen = before ? runs[before - 1].t.length : 0
-        while (src[i] === ' ') i++
-        atom(lvl, up)
-        const mark = String.fromCharCode(ACCENT[name])
-        if (runs.length > before) { const r = runs[before]; r.t = r.t.slice(0, 1) + mark + r.t.slice(1) }
-        else if (before && runs[before - 1].t.length > lastLen) { const r = runs[before - 1]; r.t = r.t.slice(0, lastLen + 1) + mark + r.t.slice(lastLen + 1) }
-        return
-      }
-      if (UPRIGHT[name]) { while (src[i] === ' ') i++; atom(lvl, true); return }
-      if (GREEK[name]) { push(GREEK[name], lvl, !up && name[0] === name[0].toLowerCase()); return }
-      if (SYM[name] !== undefined) { push(SYM[name], lvl, false); return }
-      push(name, lvl, false)
-      return
-    }
-    i++
-    if (/[A-Za-z]/.test(c)) push(c, lvl, !up)
-    else if (c === '-') push('−', lvl, false)
-    else if (c === "'") push('′', lvl, false)
-    else if (c === '~') push(' ', lvl, false)
-    else if (c !== ' ') push(c, lvl, false)
-  }
-  function group(lvl, up, end) {
-    while (i < src.length && src[i] !== end) {
-      if (src[i] === '^' || src[i] === '_') {
-        const l = src[i] === '^' ? 1 : -1
-        i++
-        atom(lvl || l, up)
-        continue
-      }
-      if (src[i] === '}') { i++; continue }
-      atom(lvl, up)
-    }
-    if (end && src[i] === end) i++
-  }
-  group(0, false, null)
-  return runs
-}
-
-// About how much room a label takes, in px at font size fs
-export function texBox(src, fs) {
-  let w = 0, sup = false, sub = false
-  for (const r of texRuns(src)) {
-    w += r.t.replace(COMBINING, '').length * fs * 0.5 * (r.lvl ? 0.7 : 1)
-    if (r.lvl > 0) sup = true
-    if (r.lvl < 0) sub = true
-  }
-  return { w: Math.max(w, fs * 0.4), h: fs * (1 + (sup ? 0.25 : 0) + (sub ? 0.2 : 0)) }
-}
-
-// The same as HTML, in a deck until KaTeX draws it, so a label never shows as TeX
-function texLiteHtml(src) {
-  return texRuns(src).map(r => {
-    const t = r.it ? `<i>${esc(r.t)}</i>` : esc(r.t)
-    return r.lvl > 0 ? `<sup>${t}</sup>` : r.lvl < 0 ? `<sub>${t}</sub>` : t
-  }).join('')
-}
-
-function texSvg(src, X, Y, fs, fill) {
-  let cur = 0, spans = ''
-  for (const r of texRuns(src)) {
-    const target = r.lvl > 0 ? -0.42 : r.lvl < 0 ? 0.24 : 0
-    const dy = (target - cur) * fs
-    cur = target
-    spans += `<tspan dy="${n1(dy)}" font-size="${n1(r.lvl ? fs * 0.7 : fs)}" font-style="${r.it ? 'italic' : 'normal'}">${esc(r.t)}</tspan>`
-  }
-  return `<text x="${n1(X)}" y="${n1(Y + fs * 0.34)}" text-anchor="middle" font-family="${esc(MATH_FONT)}" font-size="${n1(fs)}" fill="${esc(fill)}">${spans}</text>`
 }
 
 // ---------- Geometry. A line is g: g.len, and g.at(t) = [x, y, tx, ty], its
@@ -359,7 +265,7 @@ export function diagramBounds(m) {
 //   labels          'text' (SVG text), 'deck' (spans the page's KaTeX fills
 //                   in) or a function from TeX to HTML
 //   deck            for a presented deck: an id, and every part is drawn,
-//                   marked with its step (applyFeynmanStep shows them)
+//                   marked with its step (diagramCore's applyDiagramStep shows them)
 //   step, dim       drawn as it is at a step, earlier parts faded with dim
 //   captions        draw the step captions under the diagram
 //   editor          for the editor: hit areas, vertex marks, sel, warn,
@@ -550,7 +456,7 @@ export function feynmanBox(el) {
 }
 
 // The element as an <svg> filling its box. opts: labels (as drawDiagram's),
-// deck (an id: every part, for applyFeynmanStep), step (as at that diagram
+// deck (an id: every part, for applyDiagramStep), step (as at that diagram
 // step), standalone (with a width and height, for an image)
 export function feynmanSvg(el, opts = {}) {
   const m = feynmanModel(el)
@@ -645,78 +551,6 @@ export function feynmanStepMarkers(slide) {
 }
 export function hasFeynman(presentation) {
   return (presentation?.slides || []).some(s => (s.elements || []).some(el => el.type === 'feynman'))
-}
-
-// Shows a deck-drawn diagram (drawDiagram's deck mode) at step cur: later
-// parts hidden, earlier ones faded with dim, and with animate this step's
-// lines drawn in. A page runs it from its source, so it uses nothing else.
-export function applyFeynmanStep(root, cur, animate, dim) {
-  var parts = root.querySelectorAll('.pxfx-part'), i, p, at, best = -1
-  for (i = 0; i < parts.length; i++) {
-    p = parts[i]
-    at = +p.getAttribute('data-fx-at') || 0
-    p.classList.toggle('pxfx-off', at > cur)
-    p.classList.toggle('pxfx-past', !!dim && cur > 0 && at < cur)
-    p.classList.remove('pxfx-new')
-    if (animate && at === cur && at > 0) { void p.getBoundingClientRect(); p.classList.add('pxfx-new') }
-  }
-  var caps = root.querySelectorAll('[data-fx-cap]')
-  for (i = 0; i < caps.length; i++) { at = +caps[i].getAttribute('data-fx-cap'); if (at <= cur && at > best) best = at }
-  for (i = 0; i < caps.length; i++) caps[i].classList.toggle('pxfx-off', +caps[i].getAttribute('data-fx-cap') !== best)
-}
-
-export const FEYNMAN_CSS = [
-  '.pxfx-part.pxfx-off,.pxfx-cap.pxfx-off{visibility:hidden}',
-  '.pxfx-part{transition:opacity .35s ease}',
-  '.pxfx-part.pxfx-past{opacity:.34}',
-  '.pxfx-reveal{stroke-dasharray:1 1;stroke-dashoffset:0}',
-  '.pxfx-new .pxfx-reveal{animation:pxfx-draw .75s ease-in-out both}',
-  '.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:pxfx-fade .35s .45s ease-out both}',
-  '@keyframes pxfx-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}',
-  '@keyframes pxfx-fade{from{opacity:0}to{opacity:1}}',
-  '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:none}.pxfx-part{transition:none}}',
-].join('\n')
-
-// In a deck with diagrams: tells each its slide's step, drawing in a step's
-// lines when it's stepped to
-let deckScript = null
-export function feynmanDeckScript() {
-  if (!deckScript) deckScript = `
-    (function() {
-      var apply = (${applyFeynmanStep.toString()});
-      // The labels, now rather than when the deck is ready
-      if (window.katex) document.querySelectorAll('[data-fx] span[data-math-latex]').forEach(function(el) {
-        try { window.katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false }); el.style.fontFamily = ''; } catch (e) {}
-      });
-      var css = document.createElement('style');
-      css.textContent = ${JSON.stringify(FEYNMAN_CSS)};
-      document.head.appendChild(css);
-      var items = [];
-      document.querySelectorAll('[data-fx]').forEach(function(el) {
-        items.push({ el: el, id: el.getAttribute('data-fx'), dim: el.getAttribute('data-fx-dim') === '1', at: -1 });
-      });
-      function stepOf(item) {
-        var slide = item.el.closest('section'), n = 0;
-        if (!slide) return 0;
-        slide.querySelectorAll('.fragment[data-fx-step]').forEach(function(m) {
-          if (m.getAttribute('data-fx-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-fx-step-at') || 0);
-        });
-        return n;
-      }
-      function sync(ev) {
-        var forward = !!ev && ev.type === 'fragmentshown';
-        items.forEach(function(item) {
-          var n = stepOf(item);
-          if (n === item.at) return;
-          apply(item.el, n, forward && n > item.at, item.dim);
-          item.at = n;
-        });
-      }
-      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
-      sync();
-    })();
-`
-  return deckScript
 }
 
 // ---------- Templates (cm, y up)

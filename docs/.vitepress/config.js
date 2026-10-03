@@ -62,6 +62,7 @@ export default defineConfig({
             { text: 'Equation Palette', link: '/tutorials/equation-palette' },
             { text: 'Interactive Equations', link: '/tutorials/interactive-equations' },
             { text: 'Feynman Diagrams', link: '/tutorials/feynman-diagrams' },
+            { text: 'Circuit Diagrams', link: '/tutorials/circuit-diagrams' },
           ]
         },
         {
