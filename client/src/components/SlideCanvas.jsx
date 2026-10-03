@@ -49,6 +49,7 @@ const CLICK_BADGES = { slide: '↗ Slide', next: '→ Next', prev: '← Back', u
 const clickChangesStatesOnly = action => action.type === 'visibility' && !['show', 'hide', 'toggle'].some(k => action[k]?.length) && action.set?.length > 0
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
+import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
@@ -1612,6 +1613,18 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
             sandbox="allow-scripts"
             title="3D model"
+          />
+        )}
+        {element.type === 'molecule' && (
+          // Turned on the canvas once selected; where it's turned to goes to
+          // the properties panel, which can keep it as its starting view
+          <ScaledFrame
+            key={element.id}
+            scale={canvasScale}
+            srcDoc={localizeLibraries(moleculeViewerHtml(element, { snapshotKey: snapshotKey(element.id, moleculeSnapshotContent(element)), viewKey: element.id }))}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
+            sandbox="allow-scripts"
+            title="Molecule"
           />
         )}
         {element.type === 'code' && (

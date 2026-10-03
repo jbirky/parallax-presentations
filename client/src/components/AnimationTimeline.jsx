@@ -45,6 +45,7 @@ function getElementLabel(el) {
   if (el.type === 'html') return 'HTML Embed'
   if (el.type === 'video') return 'Video'
   if (el.type === 'model') return el.name || '3D Model'
+  if (el.type === 'molecule') return el.name || 'Molecule'
   if (el.type === 'graph') return 'Graph'
   if (el.type === 'equation') return 'Equation'
   if (el.type === 'feynman') return 'Feynman diagram'

@@ -190,6 +190,8 @@ const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   '.pdf', '.pptx', '.ppt',
   '.woff', '.woff2', '.ttf', '.otf',
   '.stl', '.glb',
+  // Molecular structures (client/src/utils/moleculeViewer.js), served as downloads
+  '.pdb', '.ent', '.pqr', '.cif', '.mmcif', '.sdf', '.mol', '.mol2', '.xyz', '.gro',
 ])
 
 function validateUpload(req, res, next) {

@@ -144,7 +144,7 @@ See the [KaTeX support table](https://katex.org/docs/support_table.html) for a f
 | `\ce{CaCO3 ->[\Delta] CaO + CO2}` | a condition over the arrow |
 | `\pu{25 kJ mol-1}` | 25 kJ mol⁻¹ |
 
-They work wherever math does: inline math in text boxes, LaTeX blocks, equations and diagram labels, in the editor and when presenting. The TikZ diagram editor is the exception, since its labels are written for LaTeX, which needs `\usepackage{mhchem}`.
+They work wherever math does: inline math in text boxes, LaTeX blocks, equations and diagram labels, in the editor and when presenting. The TikZ diagram editor is the exception, since its labels are written for LaTeX, which needs `\usepackage{mhchem}`. For 3D structures, see [Molecules](/tutorials/molecules).
 
 ## 6. Troubleshooting rendering issues
 

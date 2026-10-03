@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@highlightjs/cdn-assets": "11.11.1",
+    "3dmol": "2.5.5",
     "animejs": "3.2.2",
     "concurrently": "^8.2.2",
     "d3": "7.9.0",

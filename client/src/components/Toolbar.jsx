@@ -41,6 +41,7 @@ import {
   Waypoints,
   CircuitBoard,
   Binary,
+  FlaskConical,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -78,7 +79,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddMolecule, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -397,7 +398,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       </div>
 
       {/* Diagrams dropdown */}
-      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic) && (
+      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic || onAddMolecule) && (
         <div style={{ position: 'relative' }}>
           <button className="btn-icon" onClick={() => setShowDiagramMenu(v => !v)} title="Diagram tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
             <Waypoints size={14} /> Diagrams <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
@@ -420,6 +421,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <button onClick={() => { setShowDiagramMenu(false); onAddLogic?.() }} title="Logic gates, latches and flip-flops, simulated so each step shows its signals, with a truth table" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <Binary size={14} /> Logic Diagram
               </button>
+              {onAddMolecule && <button onClick={() => { setShowDiagramMenu(false); onAddMolecule() }} title="A 3D structure from PubChem, the Protein Data Bank or a file, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <FlaskConical size={14} /> Molecule
+              </button>}
               <DocsLink page="diagrams" onClose={() => setShowDiagramMenu(false)} />
             </div>
           </>)}

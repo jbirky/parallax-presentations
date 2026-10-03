@@ -41,6 +41,7 @@ import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
+import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
 import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
@@ -48,6 +49,7 @@ import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
 import LogicEditorModal from '../components/LogicEditorModal'
+import MoleculeModal from '../components/MoleculeModal'
 import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
 import { defaultFeynman, FEYNMAN_FIELDS, feynmanBox } from '../utils/feynmanDiagram'
 import { defaultCircuit, circuitBox } from '../utils/circuitDiagram'
@@ -419,6 +421,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [feynmanEditor, setFeynmanEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [circuitEditor, setCircuitEditor] = useState(null) // { elementId (null for a new one), circuit, slideBg }
   const [logicEditor, setLogicEditor] = useState(null) // { elementId (null for a new one), logic, slideBg }
+  const [moleculePicker, setMoleculePicker] = useState(null) // { elementId (null for a new one) }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -707,7 +710,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1520,6 +1523,39 @@ function draw() {
     }
     setLogicEditor(null)
   }, [logicEditor, presentation, updateElement, slideW, slideH])
+
+  const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
+
+  const openMoleculePicker = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'molecule' || heldByOther(elementId)) return
+    setMoleculePicker({ elementId })
+  }, [presentation])
+
+  // The structure is uploaded like any other file, so presenting it needs
+  // nothing from PubChem or the PDB; a new structure starts framed to fit
+  const pickMolecule = useCallback(async (structure) => {
+    const elementId = moleculePicker?.elementId
+    const file = new File([structure.text], structure.fileName, { type: 'text/plain' })
+    const result = await api.uploadFileToPresentation(presentation.id, file)
+    if (!result?.url) throw new Error('The structure couldn’t be uploaded.')
+    const fields = { src: result.url, format: structure.format, name: structure.name, source: structure.source || null, view: null }
+    if (elementId) {
+      updateElement(elementId, fields)
+    } else {
+      const w = 420, h = 360
+      const newEl = {
+        id: crypto.randomUUID(), type: 'molecule', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...MOLECULE_DEFAULTS, ...fields,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setMoleculePicker(null)
+  }, [moleculePicker, presentation?.id, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -4005,6 +4041,7 @@ function draw() {
             onAddFeynman={addFeynman}
             onAddCircuit={addCircuit}
             onAddLogic={addLogic}
+            onAddMolecule={addMolecule}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
@@ -4257,6 +4294,7 @@ function draw() {
           onEditFeynman={() => selectedElementId && openFeynmanEditor(selectedElementId)}
           onEditCircuit={() => selectedElementId && openCircuitEditor(selectedElementId)}
           onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
+          onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4660,6 +4698,14 @@ function draw() {
           isNew={!logicEditor.elementId}
           onSave={saveLogic}
           onClose={() => setLogicEditor(null)}
+        />
+      )}
+
+      {moleculePicker && (
+        <MoleculeModal
+          isNew={!moleculePicker.elementId}
+          onPick={pickMolecule}
+          onClose={() => setMoleculePicker(null)}
         />
       )}
 

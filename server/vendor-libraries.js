@@ -43,6 +43,8 @@ module.exports = {
     // for links in people's own embeds to cdnjs's pdf.js
     'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs', 'legacy/build/pdf.min.mjs', 'legacy/build/pdf.worker.min.mjs'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
+    // Draws molecule elements (moleculeViewer.js)
+    '3dmol': { files: ['build/3Dmol-min.js'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },
   },

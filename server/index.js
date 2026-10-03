@@ -202,6 +202,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'LaTeX & Math', link: 'features/latex' },
       { text: 'Logic Diagrams', link: 'tutorials/logic-diagrams' },
       { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },
+      { text: 'Molecules', link: 'tutorials/molecules' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
