@@ -49,6 +49,7 @@ function getElementLabel(el) {
   if (el.type === 'equation') return 'Equation'
   if (el.type === 'feynman') return 'Feynman diagram'
   if (el.type === 'circuit') return 'Circuit diagram'
+  if (el.type === 'logic') return 'Logic diagram'
   if (el.type === 'audio') return 'Audio'
   if (el.type === 'table') return 'Table'
   return el.type

@@ -47,10 +47,13 @@ import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
+import LogicEditorModal from '../components/LogicEditorModal'
 import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
 import { defaultFeynman, FEYNMAN_FIELDS, feynmanBox } from '../utils/feynmanDiagram'
 import { defaultCircuit, circuitBox } from '../utils/circuitDiagram'
 import { CIRCUIT_FIELDS } from '../utils/circuitParts'
+import { defaultLogic, logicBox } from '../utils/logicDiagram'
+import { LOGIC_FIELDS } from '../utils/logicParts'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -415,6 +418,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [equationEditor, setEquationEditor] = useState(null) // { elementId (null for a new one), equation, size, slideBg, dark }
   const [feynmanEditor, setFeynmanEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [circuitEditor, setCircuitEditor] = useState(null) // { elementId (null for a new one), circuit, slideBg }
+  const [logicEditor, setLogicEditor] = useState(null) // { elementId (null for a new one), logic, slideBg }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -703,7 +707,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1480,6 +1484,42 @@ function draw() {
     }
     setCircuitEditor(null)
   }, [circuitEditor, presentation, updateElement, slideW, slideH])
+
+  const addLogic = useCallback(() => {
+    setLogicEditor({ elementId: null, logic: defaultLogic(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openLogicEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'logic' || heldByOther(elementId)) return
+    const logic = {}
+    for (const key of LOGIC_FIELDS) if (element[key] !== undefined) logic[key] = element[key]
+    setLogicEditor({ elementId, logic, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveLogic = useCallback((logic) => {
+    const elementId = logicEditor?.elementId
+    const box = logicBox(logic)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...logic, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.7) / box.w, (slideH * 0.7) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'logic', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...logic,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setLogicEditor(null)
+  }, [logicEditor, presentation, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -3964,6 +4004,7 @@ function draw() {
             onAddEquation={addEquation}
             onAddFeynman={addFeynman}
             onAddCircuit={addCircuit}
+            onAddLogic={addLogic}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
@@ -4173,6 +4214,7 @@ function draw() {
               onOpenEquationEditor={openEquationEditor}
               onOpenFeynmanEditor={openFeynmanEditor}
               onOpenCircuitEditor={openCircuitEditor}
+              onOpenLogicEditor={openLogicEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4214,6 +4256,7 @@ function draw() {
           onEditEquation={() => selectedElementId && openEquationEditor(selectedElementId)}
           onEditFeynman={() => selectedElementId && openFeynmanEditor(selectedElementId)}
           onEditCircuit={() => selectedElementId && openCircuitEditor(selectedElementId)}
+          onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4607,6 +4650,16 @@ function draw() {
           isNew={!circuitEditor.elementId}
           onSave={saveCircuit}
           onClose={() => setCircuitEditor(null)}
+        />
+      )}
+
+      {logicEditor && (
+        <LogicEditorModal
+          initial={logicEditor.logic}
+          slideBg={logicEditor.slideBg}
+          isNew={!logicEditor.elementId}
+          onSave={saveLogic}
+          onClose={() => setLogicEditor(null)}
         />
       )}
 

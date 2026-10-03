@@ -2,6 +2,7 @@ import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
 import { feynmanSvg } from './feynmanDiagram'
 import { circuitSvg } from './circuitDiagram'
+import { logicSvg } from './logicDiagram'
 import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
 import { buildCitationIndex, resolveCitationsInHtml } from './citationIndex'
@@ -85,10 +86,10 @@ export function exportToPptx(presentation) {
             pptSlide.addImage({ path: src, x, y, w, h, rotate: rotation })
           }
         } catch {}
-      } else if (el.type === 'feynman' || el.type === 'circuit') {
+      } else if (el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic') {
         // As an image, with its labels as SVG text rather than KaTeX, which PowerPoint would leave out
         try {
-          const svg = el.type === 'feynman' ? feynmanSvg(el, { labels: 'text', standalone: true }) : circuitSvg(el, { labels: 'text', standalone: true })
+          const svg = (el.type === 'feynman' ? feynmanSvg : el.type === 'circuit' ? circuitSvg : logicSvg)(el, { labels: 'text', standalone: true })
           const bytes = new TextEncoder().encode(svg)
           let binary = ''
           for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))

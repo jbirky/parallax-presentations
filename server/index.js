@@ -200,6 +200,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Interactive Equations', link: 'tutorials/interactive-equations' },
       { text: 'Kinetic Text', link: 'tutorials/kinetic-text' },
       { text: 'LaTeX & Math', link: 'features/latex' },
+      { text: 'Logic Diagrams', link: 'tutorials/logic-diagrams' },
       { text: 'Links, Click & Hover Actions', link: 'tutorials/interactive-slides' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },

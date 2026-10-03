@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// What the diagram elements share (Feynman diagrams, feynmanDiagram.js, and
-// circuits, circuitDiagram.js): labels from a small part of TeX, and the
+// What the diagram elements share (Feynman diagrams, feynmanDiagram.js,
+// circuits, circuitDiagram.js, and logic, logicDiagram.js): labels from a small part of TeX, and the
 // steps of a presented deck. A diagram in a deck is a <div data-fx="id">
 // holding its SVG, with a hidden fragment per step (data-fx-step="id",
 // data-fx-step-at="n") counted with the slide's others; diagramDeckScript
@@ -155,10 +155,12 @@ export const DIAGRAM_CSS = [
   // A circuit's current: dots that run the way conventional current flows
   '.pxcx-flow{animation:pxcx-flow .6s linear infinite}',
   '@keyframes pxcx-flow{to{stroke-dashoffset:-14}}',
-  '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow{animation:none}.pxfx-part{transition:none}}',
+  // A logic signal that changed: it fades in after those before it in the logic
+  '.pxlg-sig{animation:pxfx-fade .28s ease-out both}',
+  '@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig{animation:none}.pxfx-part{transition:none}}',
 ].join('\n')
 
-// In a deck with Feynman or circuit diagrams: tells each its slide's step,
+// In a deck with Feynman, circuit or logic diagrams: tells each its slide's step,
 // drawing in a step's parts when it's stepped to
 let deckScript = null
 export function diagramDeckScript() {

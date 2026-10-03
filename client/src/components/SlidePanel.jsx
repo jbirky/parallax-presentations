@@ -16,6 +16,7 @@ import { graphSnapshotContent } from '../utils/graphPage'
 import EquationView from './EquationView'
 import FeynmanView from './FeynmanView'
 import CircuitView from './CircuitView'
+import LogicView from './LogicView'
 
 const THUMB_W = 150
 
@@ -51,7 +52,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
-              overflow: el.type === 'text3d' || el.type === 'equation' || el.type === 'feynman' || el.type === 'circuit' ? 'visible' : 'hidden',
+              overflow: el.type === 'text3d' || el.type === 'equation' || el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic' ? 'visible' : 'hidden',
               zIndex: el.zIndex || 1,
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
               boxShadow: el.type !== 'text3d' && (el.shadowBlur || el.shadowX || el.shadowY)
@@ -106,6 +107,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
               {el.type === 'equation' && <EquationView element={el} />}
               {el.type === 'feynman' && <FeynmanView element={el} />}
               {el.type === 'circuit' && <CircuitView element={el} />}
+              {el.type === 'logic' && <LogicView element={el} />}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
                   {(el.paths || []).map((path, pi) => (

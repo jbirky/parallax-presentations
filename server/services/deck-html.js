@@ -3411,7 +3411,9 @@ var DIAGRAM_CSS = [
   // A circuit's current: dots that run the way conventional current flows
   ".pxcx-flow{animation:pxcx-flow .6s linear infinite}",
   "@keyframes pxcx-flow{to{stroke-dashoffset:-14}}",
-  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow{animation:none}.pxfx-part{transition:none}}"
+  // A logic signal that changed: it fades in after those before it in the logic
+  ".pxlg-sig{animation:pxfx-fade .28s ease-out both}",
+  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v,.pxcx-flow,.pxlg-sig{animation:none}.pxfx-part{transition:none}}"
 ].join("\n");
 var deckScript = null;
 function diagramDeckScript() {
@@ -3980,9 +3982,9 @@ function formatSI(v, unit) {
     pick = s;
     break;
   }
-  const num5 = v / pick[0];
-  const str4 = Math.abs(num5) >= 99.95 ? String(Math.round(num5)) : String(Number(num5.toPrecision(3)));
-  return `${str4} ${pick[1]}${unit}`;
+  const num6 = v / pick[0];
+  const str5 = Math.abs(num6) >= 99.95 ? String(Math.round(num6)) : String(Number(num6.toPrecision(3)));
+  return `${str5} ${pick[1]}${unit}`;
 }
 var valueOf = (e) => {
   const v = parseValue(e.value);
@@ -4750,6 +4752,686 @@ var CIRCUIT_TEMPLATES = [
   { key: "blank", name: "Blank", build: () => ({ vertices: [], edges: [], captions: {} }) }
 ];
 
+// client/src/utils/logicParts.js
+var LOGIC_PARTS = {
+  input: { name: "Input", key: "i", tikz: "ocirc" },
+  output: { name: "Output", key: "o", tikz: "ocirc" },
+  clock: { name: "Clock", key: "k", tikz: "ocirc" },
+  and: { name: "AND", key: "a", gate: "and", multi: true, iec: "&", tikz: "and port" },
+  or: { name: "OR", key: "r", gate: "or", multi: true, iec: "≥1", tikz: "or port" },
+  not: { name: "NOT", key: "n", gate: "buf", inv: true, iec: "1", tikz: "not port" },
+  nand: { name: "NAND", gate: "and", inv: true, multi: true, iec: "&", tikz: "nand port" },
+  nor: { name: "NOR", gate: "or", inv: true, multi: true, iec: "≥1", tikz: "nor port" },
+  xor: { name: "XOR", key: "x", gate: "xor", multi: true, iec: "=1", tikz: "xor port" },
+  xnor: { name: "XNOR", gate: "xor", inv: true, multi: true, iec: "=1", tikz: "xnor port" },
+  buf: { name: "Buffer", gate: "buf", iec: "1", tikz: "buffer port" },
+  dff: { name: "D flip-flop", key: "f", tikz: "flipflop D" }
+};
+var LOGIC_GATES = Object.keys(LOGIC_PARTS).filter((k) => LOGIC_PARTS[k].gate);
+var LOGIC_SNAP = 0.25;
+function pinsOf(p) {
+  const K = LOGIC_PARTS[p.kind];
+  if (K.gate) {
+    const n = K.multi ? Math.min(4, Math.max(2, p.inputs || 2)) : 1;
+    const ins = Array.from({ length: n }, (_, i) => ({ name: "in" + (i + 1), x: p.x - 0.75, y: p.y + ((n - 1) / 2 - i) * 0.5, io: "in" }));
+    return [...ins, { name: "out", x: p.x + 0.75, y: p.y, io: "out" }];
+  }
+  if (p.kind === "input" || p.kind === "clock") return [{ name: "out", x: p.x + 0.75, y: p.y, io: "out" }];
+  if (p.kind === "output") return [{ name: "in", x: p.x - 0.75, y: p.y, io: "in" }];
+  return [
+    { name: "d", x: p.x - 1, y: p.y + 0.5, io: "in" },
+    { name: "clk", x: p.x - 1, y: p.y - 0.5, io: "in" },
+    { name: "q", x: p.x + 1, y: p.y + 0.5, io: "out" },
+    { name: "qn", x: p.x + 1, y: p.y - 0.5, io: "out" }
+  ];
+}
+function endpoints(m, step = null) {
+  const E = /* @__PURE__ */ new Map();
+  for (const p of m.parts) if (step == null || (p.step || 0) <= step) for (const pin of pinsOf(p)) E.set(`${p.id}.${pin.name}`, { ...pin, part: p });
+  for (const n of m.nodes) if (step == null || (n.step || 0) <= step) E.set(n.id, { x: n.x, y: n.y, node: n });
+  return E;
+}
+var snapTo = (v) => Math.round(v / LOGIC_SNAP) * LOGIC_SNAP;
+function route(P, Q, mx) {
+  if (Math.abs(P.y - Q.y) < 1e-9) return [P, Q];
+  const x = mx ?? snapTo((P.x + Q.x) / 2);
+  return [P, { x, y: P.y }, { x, y: Q.y }, Q].filter((p, i, a) => i === 0 || Math.hypot(p.x - a[i - 1].x, p.y - a[i - 1].y) > 1e-9);
+}
+var inputAt = (p, s) => {
+  let v = p.value ? 1 : 0;
+  for (const f of p.flips || []) if (f <= s) v = 1 - v;
+  return v;
+};
+var clockAt = (p, s) => {
+  const a = p.start ?? 1, b = p.end ?? 8;
+  return s >= a && s <= b ? (s - a) % 2 === 0 ? 1 : 0 : 0;
+};
+var ID3 = /^[A-Za-z0-9_-]{1,40}$/;
+var COLOR4 = /^#[0-9a-f]{6}$/i;
+var num5 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
+var int4 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : dflt;
+var str4 = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
+function logicModel(el) {
+  const parts = [], nodes = [], wires = [], ids = /* @__PURE__ */ new Set();
+  for (const p of Array.isArray(el?.parts) ? el.parts.slice(0, 300) : []) {
+    if (!p || !ID3.test(p.id) || ids.has(p.id) || !LOGIC_PARTS[p.kind]) continue;
+    ids.add(p.id);
+    const K = LOGIC_PARTS[p.kind];
+    const out = { id: p.id, kind: p.kind, x: num5(p.x, -1e3, 1e3, 0), y: num5(p.y, -1e3, 1e3, 0), label: str4(p.label, 200), step: int4(p.step, 0, 1e3, 0) };
+    if (K.multi) out.inputs = int4(p.inputs, 2, 4, 2);
+    if (p.kind === "input") {
+      out.value = p.value ? 1 : 0;
+      out.flips = [...new Set((Array.isArray(p.flips) ? p.flips : []).filter((f) => Number.isInteger(f) && f >= 1 && f <= 1e3))].sort((a, b) => a - b).slice(0, 200);
+    }
+    if (p.kind === "clock") {
+      out.start = int4(p.start, 0, 1e3, 1);
+      out.end = Math.max(out.start, int4(p.end, 0, 1e3, 8));
+    }
+    parts.push(out);
+  }
+  for (const n of Array.isArray(el?.nodes) ? el.nodes.slice(0, 500) : []) {
+    if (!n || !ID3.test(n.id) || ids.has(n.id)) continue;
+    ids.add(n.id);
+    nodes.push({ id: n.id, x: num5(n.x, -1e3, 1e3, 0), y: num5(n.y, -1e3, 1e3, 0), step: int4(n.step, 0, 1e3, 0) });
+  }
+  const E = endpoints({ parts, nodes });
+  const wireIds = /* @__PURE__ */ new Set();
+  for (const w of Array.isArray(el?.wires) ? el.wires.slice(0, 1e3) : []) {
+    if (!w || !ID3.test(w.id) || wireIds.has(w.id) || !E.has(w.from) || !E.has(w.to) || w.from === w.to) continue;
+    wireIds.add(w.id);
+    wires.push({ id: w.id, from: w.from, to: w.to, mx: typeof w.mx === "number" && isFinite(w.mx) ? num5(w.mx, -1e3, 1e3, 0) : null, step: int4(w.step, 0, 1e3, 0) });
+  }
+  const captions = {};
+  if (el?.captions && typeof el.captions === "object") {
+    for (const [k, v] of Object.entries(el.captions)) {
+      const n = Number(k);
+      if (Number.isInteger(n) && n >= 0 && n <= 1e3 && typeof v === "string" && v.trim()) captions[n] = v.slice(0, 500);
+    }
+  }
+  return {
+    parts,
+    nodes,
+    wires,
+    captions,
+    color: COLOR4.test(el?.color || "") ? el.color : "#ffffff",
+    symbols: el?.symbols === "iec" ? "iec" : "us",
+    values: el?.values !== false,
+    table: !!el?.table,
+    stepStart: int4(el?.stepStart, 1, 1e3, 1)
+  };
+}
+
+// client/src/utils/logicSim.js
+function gateOut(kind, ins) {
+  const K = LOGIC_PARTS[kind];
+  let v;
+  if (K.gate === "and") v = ins.some((x) => x === 0) ? 0 : ins.every((x) => x === 1) ? 1 : null;
+  else if (K.gate === "or") v = ins.some((x) => x === 1) ? 1 : ins.every((x) => x === 0) ? 0 : null;
+  else if (K.gate === "xor") v = ins.some((x) => x == null) ? null : ins.reduce((a, b) => a ^ b, 0);
+  else v = ins[0] ?? null;
+  return v == null ? null : K.inv ? 1 - v : v;
+}
+var everythingAtOnce = (m) => ({ ...m, parts: m.parts.map((p) => ({ ...p, step: 0 })), wires: m.wires.map((w) => ({ ...w, step: 0 })), nodes: m.nodes.map((n) => ({ ...n, step: 0 })) });
+function simulateLogic(m, upto, override = null) {
+  const states = [], outVal = {}, ffQ = {}, lastClk = {};
+  for (const p of m.parts) if (p.kind === "dff") ffQ[p.id] = 0;
+  for (let s = 0; s <= upto; s++) {
+    const E = endpoints(m, s);
+    const parts = m.parts.filter((p) => (p.step || 0) <= s);
+    const wires = m.wires.filter((w) => (w.step || 0) <= s && E.has(w.from) && E.has(w.to));
+    const parent2 = {};
+    for (const id of E.keys()) parent2[id] = id;
+    const find = (a) => {
+      while (parent2[a] !== a) {
+        parent2[a] = parent2[parent2[a]];
+        a = parent2[a];
+      }
+      return a;
+    };
+    for (const w of wires) {
+      const a = find(w.from), b = find(w.to);
+      if (a !== b) parent2[a] = b;
+    }
+    const drivers = {};
+    for (const [id, e] of E) if (e.io === "out") (drivers[find(id)] = drivers[find(id)] || []).push(id);
+    const conflicts = /* @__PURE__ */ new Set();
+    const netVal = (net) => {
+      const ds = drivers[net];
+      if (!ds) return null;
+      const vals = [...new Set(ds.map((d) => outVal[d] ?? null))];
+      if (vals.length > 1) {
+        if (!vals.includes(null)) conflicts.add(net);
+        return null;
+      }
+      return vals[0];
+    };
+    const pinIn = (id) => netVal(find(id));
+    let oscillates = false;
+    const relax = (again = true) => {
+      for (let iter = 0; iter < 200; iter++) {
+        let changed = false;
+        const set = (id, v) => {
+          if (outVal[id] !== v) {
+            outVal[id] = v;
+            changed = true;
+          }
+        };
+        for (const p of parts) {
+          if (p.kind === "input") set(`${p.id}.out`, override && override.has(p.id) ? override.get(p.id) : inputAt(p, s));
+          else if (p.kind === "clock") set(`${p.id}.out`, clockAt(p, s));
+          else if (p.kind === "dff") {
+            set(`${p.id}.q`, ffQ[p.id]);
+            set(`${p.id}.qn`, ffQ[p.id] == null ? null : 1 - ffQ[p.id]);
+          } else if (LOGIC_PARTS[p.kind].gate) set(`${p.id}.out`, gateOut(p.kind, pinsOf(p).filter((x) => x.io === "in").map((x) => pinIn(`${p.id}.${x.name}`))));
+        }
+        if (!changed) return;
+      }
+      oscillates = true;
+      if (!again) return;
+      for (const p of parts) if (LOGIC_PARTS[p.kind].gate) outVal[`${p.id}.out`] = null;
+      relax(false);
+    };
+    relax();
+    for (let round3 = 0; round3 < 10; round3++) {
+      const fired = [];
+      for (const p of parts) {
+        if (p.kind !== "dff") continue;
+        const clk = pinIn(`${p.id}.clk`);
+        if (s > 0 && lastClk[p.id] === 0 && clk === 1) fired.push([p.id, pinIn(`${p.id}.d`)]);
+        lastClk[p.id] = clk;
+      }
+      if (!fired.length) break;
+      for (const [id, d] of fired) ffQ[id] = d;
+      relax();
+    }
+    const at = {}, wire = {};
+    for (const id of E.keys()) at[id] = netVal(find(id));
+    for (const w of wires) wire[w.id] = netVal(find(w.from));
+    const floating = parts.flatMap((p) => pinsOf(p).filter((x) => x.io === "in" && !drivers[find(`${p.id}.${x.name}`)]).map((x) => `${p.id}.${x.name}`));
+    states.push({ at, wire, floating, conflicts: conflicts.size, oscillates });
+  }
+  return states;
+}
+var inputsOf = (m) => m.parts.filter((p) => p.kind === "input").sort((a, b) => b.y - a.y || a.x - b.x);
+var outputsOf = (m) => m.parts.filter((p) => p.kind === "output").sort((a, b) => b.y - a.y || a.x - b.x);
+function netsOf(m) {
+  const E = endpoints(m), parent2 = {};
+  for (const id of E.keys()) parent2[id] = id;
+  const find = (a) => {
+    while (parent2[a] !== a) {
+      parent2[a] = parent2[parent2[a]];
+      a = parent2[a];
+    }
+    return a;
+  };
+  for (const w of m.wires) if (E.has(w.from) && E.has(w.to)) {
+    const a = find(w.from), b = find(w.to);
+    if (a !== b) parent2[a] = b;
+  }
+  return find;
+}
+function hasFeedback(m) {
+  const find = netsOf(m);
+  const gates = m.parts.filter((p) => LOGIC_PARTS[p.kind].gate);
+  const feeds = new Map(gates.map((g) => [g.id, gates.filter((h) => pinsOf(h).some((x) => x.io === "in" && find(`${h.id}.${x.name}`) === find(`${g.id}.out`))).map((h) => h.id)]));
+  const state = {};
+  const visit = (id) => {
+    if (state[id] === 1) return true;
+    if (state[id] === 2) return false;
+    state[id] = 1;
+    for (const n of feeds.get(id) || []) if (visit(n)) return true;
+    state[id] = 2;
+    return false;
+  };
+  return gates.some((g) => visit(g.id));
+}
+function truthTable(m) {
+  if (m.parts.some((p) => p.kind === "dff" || p.kind === "clock")) return { why: "It has a flip-flop or a clock, so it remembers: no truth table." };
+  const ins = inputsOf(m), outs = outputsOf(m);
+  if (!ins.length || !outs.length) return { why: "Add inputs and outputs for a truth table." };
+  if (ins.length > 6) return { why: "More than six inputs: too many rows for a truth table." };
+  if (hasFeedback(m)) return { why: "It has feedback, so it can remember: no truth table." };
+  const flat = everythingAtOnce(m), rows = [];
+  for (let k = 0; k < 2 ** ins.length; k++) {
+    const vals = ins.map((p, i) => k >> ins.length - 1 - i & 1);
+    const st = simulateLogic(flat, 0, new Map(ins.map((p, i) => [p.id, vals[i]])))[0];
+    rows.push([...vals, ...outs.map((o) => st.at[`${o.id}.in`])]);
+  }
+  return { ins, outs, rows };
+}
+function rowOf(tt, state) {
+  if (!tt.rows || !state) return -1;
+  return tt.rows.findIndex((r) => tt.ins.every((p, i) => state.at[`${p.id}.out`] === r[i]));
+}
+function logicDepths(m) {
+  const find = netsOf(m), level = {};
+  for (const p of m.parts) for (const x of pinsOf(p)) if (x.io === "out" && !LOGIC_PARTS[p.kind].gate) level[find(`${p.id}.${x.name}`)] = 0;
+  const gates = m.parts.filter((p) => LOGIC_PARTS[p.kind].gate);
+  for (let i = 0; i < gates.length + 2; i++) {
+    for (const g of gates) {
+      const ins = pinsOf(g).filter((x) => x.io === "in").map((x) => level[find(`${g.id}.${x.name}`)] ?? 0);
+      level[find(`${g.id}.out`)] = Math.min(12, 1 + Math.max(0, ...ins));
+    }
+  }
+  return (id) => level[find(id)] ?? 0;
+}
+
+// client/src/utils/logicDiagram.js
+var LOGIC_UNIT = 56;
+var LW2 = 2;
+var CAPTION3 = 0.3;
+var esc4 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n14 = (v) => String(Math.round(v * 10) / 10);
+function signalColors(ink) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink || "");
+  const light = !m || 0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16) > 140;
+  return light ? { hi: "#4ade80", lo: "#5d6a85", unk: "#f5a524" } : { hi: "#16a34a", lo: "#a7b0c2", unk: "#d97706" };
+}
+function maxStep3(m) {
+  let s = 0;
+  for (const p of m.parts) {
+    s = Math.max(s, p.step || 0, ...p.flips || []);
+    if (p.kind === "clock") s = Math.max(s, p.end ?? 8);
+  }
+  for (const w of m.wires) s = Math.max(s, w.step || 0);
+  for (const n of m.nodes) s = Math.max(s, n.step || 0);
+  for (const k of Object.keys(m.captions || {})) s = Math.max(s, +k);
+  return s;
+}
+function logicBounds(m) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of m.parts) {
+    const r = p.kind === "dff" ? 1.1 : 0.9, hh = p.kind === "dff" ? 1 : Math.max(0.5, ((p.inputs || 2) - 1) * 0.25 + 0.3);
+    x0 = Math.min(x0, p.x - r - (p.kind === "input" || p.kind === "clock" ? 0.6 : 0));
+    x1 = Math.max(x1, p.x + r + (p.kind === "output" ? 0.6 : 0));
+    y0 = Math.min(y0, p.y - hh);
+    y1 = Math.max(y1, p.y + hh);
+  }
+  for (const n of m.nodes) {
+    x0 = Math.min(x0, n.x);
+    x1 = Math.max(x1, n.x);
+    y0 = Math.min(y0, n.y);
+    y1 = Math.max(y1, n.y);
+  }
+  return isFinite(x0) ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 6, y1: 3 };
+}
+function gateGeometry(p, u) {
+  const K = LOGIC_PARTS[p.kind], ins = pinsOf(p).filter((x) => x.io === "in"), n = ins.length;
+  const h = (K.multi ? Math.max(0.47, (n - 1) * 0.25 + 0.22) : 0.36) * u;
+  return { K, ins, n, h };
+}
+function partBase(p, u, ink, style, label) {
+  const K = LOGIC_PARTS[p.kind], X = p.x * u, Y = -p.y * u, lw = LW2;
+  const stroke = `fill="none" stroke="${esc4(ink)}" stroke-width="${n14(lw)}" stroke-linejoin="round"`;
+  const text = (t, x, y, fs) => `<text x="${n14(x)}" y="${n14(y + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink)}">${esc4(t)}</text>`;
+  let out = "";
+  if (K.gate) {
+    const { h } = gateGeometry(p, u), xb = X - 0.5 * u, xf = X + 0.5 * u;
+    let front = xf;
+    if (style === "iec") {
+      out += `<rect x="${n14(X - 0.42 * u)}" y="${n14(Y - h)}" width="${n14(0.84 * u)}" height="${n14(2 * h)}" ${stroke}/>` + text(K.iec, X, Y, 0.3 * u);
+      front = X + 0.42 * u;
+    } else if (K.gate === "and") {
+      const rx = Math.min(h, 0.55 * u);
+      out += `<path d="M${n14(xb)} ${n14(Y - h)}H${n14(xf - rx)}A${n14(rx)} ${n14(h)} 0 0 1 ${n14(xf - rx)} ${n14(Y + h)}H${n14(xb)}Z" ${stroke}/>`;
+    } else if (K.gate === "or" || K.gate === "xor") {
+      const c = 0.22 * u;
+      out += `<path d="M${n14(xb)} ${n14(Y - h)}Q${n14(xb + c)} ${n14(Y)} ${n14(xb)} ${n14(Y + h)}Q${n14(X + 0.15 * u)} ${n14(Y + h)} ${n14(xf)} ${n14(Y)}Q${n14(X + 0.15 * u)} ${n14(Y - h)} ${n14(xb)} ${n14(Y - h)}Z" ${stroke}/>`;
+      if (K.gate === "xor") out += `<path d="M${n14(xb - 0.14 * u)} ${n14(Y - h)}Q${n14(xb - 0.14 * u + c)} ${n14(Y)} ${n14(xb - 0.14 * u)} ${n14(Y + h)}" ${stroke}/>`;
+    } else {
+      out += `<path d="M${n14(X - 0.35 * u)} ${n14(Y - 0.33 * u)}L${n14(X - 0.35 * u)} ${n14(Y + 0.33 * u)}L${n14(X + 0.3 * u)} ${n14(Y)}Z" ${stroke}/>`;
+      front = X + 0.3 * u;
+    }
+    if (K.inv) out += `<circle cx="${n14(front + 0.08 * u)}" cy="${n14(Y)}" r="${n14(0.08 * u)}" ${stroke}/>`;
+    if (p.label) out += label(p.label, X, Y - h - 0.24 * u, 0.28 * u);
+  } else if (p.kind === "input" || p.kind === "clock") {
+    out += `<rect x="${n14(X - 0.32 * u)}" y="${n14(Y - 0.27 * u)}" width="${n14(0.64 * u)}" height="${n14(0.54 * u)}" rx="${n14(0.08 * u)}" ${stroke}/>`;
+    if (p.label) {
+      const b = texBox(p.label, 0.32 * u);
+      out += label(p.label, X - 0.48 * u - b.w / 2, Y, 0.32 * u);
+    }
+  } else if (p.kind === "output") {
+    out += `<circle cx="${n14(X)}" cy="${n14(Y)}" r="${n14(0.27 * u)}" ${stroke}/>`;
+    if (p.label) {
+      const b = texBox(p.label, 0.32 * u);
+      out += label(p.label, X + 0.45 * u + b.w / 2, Y, 0.32 * u);
+    }
+  } else if (p.kind === "dff") {
+    const x0 = X - 0.6 * u, fs = 0.26 * u;
+    out += `<rect x="${n14(x0)}" y="${n14(Y - 0.9 * u)}" width="${n14(1.2 * u)}" height="${n14(1.8 * u)}" ${stroke}/>`;
+    out += text("D", x0 + 0.18 * u, Y - 0.5 * u, fs) + texSvg("Q", X + 0.42 * u, Y - 0.5 * u, fs, ink) + texSvg("\\overline{Q}", X + 0.42 * u, Y + 0.5 * u, fs, ink);
+    out += `<path d="M${n14(x0)} ${n14(Y + 0.38 * u)}L${n14(x0 + 0.16 * u)} ${n14(Y + 0.5 * u)}L${n14(x0)} ${n14(Y + 0.62 * u)}" ${stroke}/>`;
+    if (p.label) out += label(p.label, X, Y - 1.14 * u, 0.28 * u);
+  }
+  return out;
+}
+function backAt(p, u, style, pyPx) {
+  const K = LOGIC_PARTS[p.kind], X = p.x * u, Y = -p.y * u;
+  if (style === "iec") return X - 0.42 * u;
+  if (K.gate === "buf") return X - 0.35 * u;
+  if (K.gate === "and") return X - 0.5 * u;
+  const { h } = gateGeometry(p, u), t = (pyPx - (Y - h)) / (2 * h);
+  return X - 0.5 * u - (K.gate === "xor" ? 0.14 * u : 0) + 2 * t * (1 - t) * 0.22 * u;
+}
+function partSignals(p, u, ink, style, at, color2) {
+  const K = LOGIC_PARTS[p.kind], X = p.x * u, Y = -p.y * u;
+  const line = (x1, y1, x2, y2, c) => `<path d="M${n14(x1)} ${n14(y1)}L${n14(x2)} ${n14(y2)}" stroke="${esc4(c)}" stroke-width="${n14(LW2)}" stroke-linecap="round" fill="none"/>`;
+  const sig = (name) => color2(at ? at[`${p.id}.${name}`] : void 0);
+  let out = "";
+  if (K.gate) {
+    for (const pin of pinsOf(p).filter((x) => x.io === "in")) {
+      const py = -pin.y * u;
+      out += line(pin.x * u, py, backAt(p, u, style, py), py, sig(pin.name));
+    }
+    const front = style === "iec" ? X + 0.42 * u : K.gate === "buf" ? X + 0.3 * u : X + 0.5 * u;
+    out += line(front + (K.inv ? 0.16 * u : 0), Y, X + 0.75 * u, Y, sig("out"));
+  } else if (p.kind === "input" || p.kind === "clock") {
+    const v = at ? at[`${p.id}.out`] : void 0;
+    out += line(X + 0.32 * u, Y, X + 0.75 * u, Y, color2(v));
+    if (p.kind === "clock") {
+      const a = 0.18 * u, b = 0.12 * u;
+      out += `<path d="M${n14(X - a)} ${n14(Y + b)}H${n14(X - a / 2)}V${n14(Y - b)}H${n14(X + a / 2)}V${n14(Y + b)}H${n14(X + a)}" fill="none" stroke="${esc4(v == null ? ink : color2(v))}" stroke-width="${n14(LW2 * 0.9)}" stroke-linejoin="round"/>`;
+    } else if (v != null) out += `<text x="${n14(X)}" y="${n14(Y + 0.32 * u * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(0.32 * u)}" font-weight="700" fill="${esc4(color2(v))}">${v}</text>`;
+  } else if (p.kind === "output") {
+    const v = at ? at[`${p.id}.in`] : void 0;
+    out += line(X - 0.75 * u, Y, X - 0.27 * u, Y, color2(v));
+    if (v === 1) out += `<circle cx="${n14(X)}" cy="${n14(Y)}" r="${n14(0.5 * u)}" fill="${esc4(color2(1))}" fill-opacity=".18"/><circle cx="${n14(X)}" cy="${n14(Y)}" r="${n14(0.27 * u)}" fill="${esc4(color2(1))}"/>`;
+    else if (v === null) out += `<circle cx="${n14(X)}" cy="${n14(Y)}" r="${n14(0.27 * u)}" fill="none" stroke="${esc4(color2(null))}" stroke-width="${n14(LW2)}" stroke-dasharray="3 3"/>`;
+  } else if (p.kind === "dff") {
+    for (const pin of pinsOf(p)) {
+      const px = pin.x * u, py = -pin.y * u;
+      out += pin.io === "in" ? line(px, py, X - 0.6 * u, py, sig(pin.name)) : line(X + 0.6 * u, py, px, py, sig(pin.name));
+    }
+  }
+  return out;
+}
+function drawLogic(m, o = {}) {
+  const u = o.U || LOGIC_UNIT, ink = o.ink || "#ffffff", pal = signalColors(ink);
+  const color2 = o.values ? (v) => v === 1 ? pal.hi : v === 0 ? pal.lo : v === null ? pal.unk : ink : () => ink;
+  const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
+  const step = deck != null ? null : o.step ?? null;
+  const max = maxStep3(m);
+  const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const grow = (X, Y, rx = 0, ry = rx) => {
+    box.x0 = Math.min(box.x0, X - rx);
+    box.x1 = Math.max(box.x1, X + rx);
+    box.y0 = Math.min(box.y0, Y - ry);
+    box.y1 = Math.max(box.y1, Y + ry);
+  };
+  const label = (tex, X, Y, size) => {
+    const b = texBox(tex, size);
+    grow(X, Y, b.w / 2, b.h / 2);
+    if (o.labels === "deck" || typeof o.labels === "function") {
+      const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc4(tex)}" style="font-family:${esc4(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n14(X - w / 2)}" y="${n14(Y - h / 2)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n14(size / 1.21)}px;color:${esc4(ink)}">${inner}</div></foreignObject>`;
+    }
+    return texSvg(tex, X, Y, size, ink);
+  };
+  for (const p of m.parts) {
+    const b = logicBounds({ parts: [p], nodes: [] });
+    grow((b.x0 + b.x1) / 2 * u, -(b.y0 + b.y1) / 2 * u, (b.x1 - b.x0) / 2 * u, (b.y1 - b.y0) / 2 * u);
+  }
+  for (const n of m.nodes) grow(n.x * u, -n.y * u);
+  const flat = everythingAtOnce(m);
+  const tt = o.table ? truthTable(m) : null;
+  const deep = logicDepths(m);
+  const states = deck != null ? simulateLogic(m, max) : step == null ? simulateLogic(flat, 0) : simulateLogic(m, step);
+  const signals = (s, state, prev, model) => {
+    const E = endpoints(model, s);
+    const shown = (x) => s == null || (x.step || 0) <= s;
+    let out = "";
+    const fan = {};
+    for (const w of model.wires) if (shown(w) && E.has(w.from) && E.has(w.to)) {
+      fan[w.from] = (fan[w.from] || 0) + 1;
+      fan[w.to] = (fan[w.to] || 0) + 1;
+    }
+    for (const w of model.wires) {
+      if (!shown(w) || !E.has(w.from) || !E.has(w.to)) continue;
+      const d = route(E.get(w.from), E.get(w.to), w.mx ?? void 0).map((p, i) => `${i ? "L" : "M"}${n14(p.x * u)} ${n14(-p.y * u)}`).join("");
+      const v = state.wire[w.id], c = color2(v), dash = o.values && v === null ? ' stroke-dasharray="5 4"' : "";
+      const path = (cls, col, extra = "") => `<path${cls} d="${d}" fill="none" stroke="${esc4(col)}" stroke-width="${n14(LW2 * 1.15)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
+      const fresh = deck != null && (w.step || 0) === s && s > 0;
+      const changed = prev && o.values && prev.wire[w.id] !== void 0 && prev.wire[w.id] !== v;
+      if (deck != null && (fresh || changed)) {
+        if (changed) out += path("", color2(prev.wire[w.id]));
+        out += path(` class="pxlg-sig" style="animation-delay:${(deep(w.from) * 0.14).toFixed(2)}s"`, c, dash);
+      } else out += path("", c, dash);
+    }
+    for (const [id, e] of E) {
+      const f = fan[id] || 0;
+      if (e.node && f >= 3 || !e.node && f >= 2) out += `<circle cx="${n14(e.x * u)}" cy="${n14(-e.y * u)}" r="3.6" fill="${esc4(color2(state.at[id]))}"/>`;
+    }
+    for (const p of model.parts) if (shown(p)) out += partSignals(p, u, ink, o.style, state.at, color2);
+    if (tt && tt.rows) {
+      const row = rowOf(tt, state);
+      if (row >= 0) out += tableRow(row);
+    }
+    return out;
+  };
+  let tableBase = "", tableRow = () => "";
+  if (tt && tt.rows) {
+    const b = logicBounds(m), cw = 0.62 * u, rh = 0.44 * u, cols = tt.ins.length + tt.outs.length;
+    const x0 = (b.x1 + 0.9) * u, top = -b.y1 * u + 0.1 * u, fs = 0.27 * u;
+    [...tt.ins, ...tt.outs].forEach((p, c) => {
+      tableBase += label(p.label || p.id, x0 + (c + 0.5) * cw, top + rh * 0.5, fs);
+    });
+    tableBase += `<path d="M${n14(x0 - 0.08 * u)} ${n14(top + rh)}H${n14(x0 + cols * cw + 0.08 * u)}M${n14(x0 + tt.ins.length * cw)} ${n14(top + 0.06 * u)}V${n14(top + rh * (tt.rows.length + 1))}" stroke="${esc4(ink)}" stroke-width="1.2" opacity=".6"/>`;
+    tt.rows.forEach((r, ri) => r.forEach((v, c) => {
+      tableBase += `<text x="${n14(x0 + (c + 0.5) * cw)}" y="${n14(top + rh * (ri + 1.5) + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink)}">${v == null ? "?" : v}</text>`;
+    }));
+    grow(x0 + cols * cw / 2, top + rh * (tt.rows.length + 1) / 2, cols * cw / 2 + 0.1 * u, rh * (tt.rows.length + 1) / 2);
+    tableRow = (row) => `<rect x="${n14(x0 - 0.08 * u)}" y="${n14(top + rh * (row + 1))}" width="${n14(cols * cw + 0.16 * u)}" height="${n14(rh)}" rx="4" fill="${esc4(o.accent || pal.hi)}" fill-opacity=".26"/>`;
+  }
+  let layers = "";
+  if (deck != null) {
+    for (let s = 0; s <= max; s++) layers += `<g data-fx-in="${s}-${s === max ? "" : s}">${signals(s, states[s], s ? states[s - 1] : null, m)}</g>`;
+  } else layers = signals(step, states[states.length - 1], null, step == null ? flat : m);
+  let bases = "";
+  for (const p of m.parts) {
+    if (step != null && (p.step || 0) > step) continue;
+    let g = partBase(p, u, ink, o.style, label);
+    if (o.editor) {
+      const sel = o.sel && o.sel.kind === "p" && o.sel.id === p.id;
+      const hw = (p.kind === "dff" ? 1 : 0.62) * u, hh = (p.kind === "dff" ? 0.95 : Math.max(0.45, ((p.inputs || 2) - 1) * 0.25 + 0.3)) * u;
+      if (sel) g = `<rect x="${n14(p.x * u - hw)}" y="${n14(-p.y * u - hh)}" width="${n14(2 * hw)}" height="${n14(2 * hh)}" rx="6" fill="${esc4(o.accent)}" fill-opacity=".14" stroke="${esc4(o.accent)}" stroke-width="1.5"/>` + g;
+      g += `<rect data-p="${esc4(p.id)}" x="${n14(p.x * u - hw * 0.8)}" y="${n14(-p.y * u - hh * 0.9)}" width="${n14(1.6 * hw)}" height="${n14(1.8 * hh)}" fill="#000" fill-opacity="0"/>`;
+      if (p.kind === "input") g += `<rect data-toggle="${esc4(p.id)}" x="${n14(p.x * u - 0.32 * u)}" y="${n14(-p.y * u - 0.27 * u)}" width="${n14(0.64 * u)}" height="${n14(0.54 * u)}" fill="#000" fill-opacity="0"><title>Click to set it to ${p.value ? 0 : 1}</title></rect>`;
+      for (const pin of pinsOf(p)) {
+        const id = `${p.id}.${pin.name}`, floating = (o.warn || []).includes(id);
+        g += `<circle data-pin="${esc4(id)}" cx="${n14(pin.x * u)}" cy="${n14(-pin.y * u)}" r="${floating ? 6 : 2.6}" fill="${floating ? esc4(o.warnColor) : "none"}" fill-opacity="${floating ? ".35" : "0"}" stroke="${esc4(floating ? o.warnColor : o.mark)}" stroke-width="1.2"/>`;
+      }
+    }
+    bases += deck != null && (p.step || 0) > 0 ? `<g class="pxfx-part pxfx-v" data-fx-at="${p.step}">${g}</g>` : `<g>${g}</g>`;
+  }
+  let editor = "";
+  if (o.editor) {
+    const E = endpoints(m);
+    for (const w of m.wires) {
+      if (!E.has(w.from) || !E.has(w.to)) continue;
+      const pts = route(E.get(w.from), E.get(w.to), w.mx ?? void 0);
+      const d = pts.map((p, i) => `${i ? "L" : "M"}${n14(p.x * u)} ${n14(-p.y * u)}`).join("");
+      const sel = o.sel && o.sel.kind === "w" && o.sel.id === w.id;
+      if (sel) editor += `<path d="${d}" fill="none" stroke="${esc4(o.accent)}" stroke-opacity=".3" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`;
+      editor += `<path data-w="${esc4(w.id)}" d="${d}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="14" pointer-events="stroke"/>`;
+      if (sel && pts.length === 4) editor += `<circle data-h="${esc4(w.id)}" cx="${n14(pts[1].x * u)}" cy="${n14(-(pts[1].y + pts[2].y) / 2 * u)}" r="6" fill="${esc4(o.accent)}" stroke="#fff" stroke-width="2"><title>Drag to move the upright</title></circle>`;
+    }
+    for (const n of m.nodes) {
+      const sel = o.sel && o.sel.kind === "n" && o.sel.id === n.id;
+      editor += `<circle data-n="${esc4(n.id)}" cx="${n14(n.x * u)}" cy="${n14(-n.y * u)}" r="${sel ? 7 : 5}" fill="${sel ? esc4(o.accent) : "#000"}" fill-opacity="${sel ? ".35" : "0"}"/>`;
+    }
+  }
+  let grid = "";
+  if (o.editor && o.grid && o.view) {
+    const v = o.view, gx = v.x0 * u, gy = -(v.y0 + v.h) * u;
+    grid = `<defs><pattern id="pxlg-g" width="${u / 2}" height="${u / 2}" x="${-u / 4}" y="${-u / 4}" patternUnits="userSpaceOnUse"><circle cx="${u / 4}" cy="${u / 4}" r="1.1" fill="${esc4(o.mark)}" fill-opacity=".7"/></pattern></defs><rect x="${n14(gx)}" y="${n14(gy)}" width="${n14(v.w * u)}" height="${n14(v.h * u)}" fill="url(#pxlg-g)"/>`;
+  }
+  let caps = "";
+  const capSteps = Object.keys(m.captions || {}).map(Number).sort((a, b) => a - b);
+  if (o.captions && capSteps.length && isFinite(box.x0)) {
+    const cs = CAPTION3 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
+    const one = (n, cls) => {
+      const text = m.captions[n];
+      if (o.labels === "text") return `<text${cls} x="${n14(cx)}" y="${n14(y + cs)}" text-anchor="middle" font-size="${n14(cs)}" fill="${esc4(ink)}">${esc4(text)}</text>`;
+      return `<foreignObject${cls} x="${n14(cx - w / 2)}" y="${n14(y)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n14(cs)}px;line-height:1.3;color:${esc4(ink)}">${esc4(text)}</div></foreignObject>`;
+    };
+    if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
+    else {
+      const shown = capSteps.filter((n) => n <= (step ?? 0)).pop();
+      if (shown != null) caps = one(shown, "");
+    }
+    grow(cx, y + h / 2, w / 2, h / 2);
+  }
+  if (!isFinite(box.x0)) Object.assign(box, { x0: 0, y0: 0, x1: 6 * u, y1: 3 * u });
+  return { svg: grid + `<g pointer-events="none">${layers}</g>` + bases + tableBase + editor + caps, box };
+}
+var baseOptions2 = (m) => ({ ink: m.color, style: m.symbols, values: m.values, table: m.table, captions: true });
+function logicBox(el) {
+  const m = logicModel(el);
+  const { box } = drawLogic(m, baseOptions2(m));
+  const pad = 0.2 * LOGIC_UNIT;
+  return { x: box.x0 - pad, y: box.y0 - pad, w: box.x1 - box.x0 + 2 * pad, h: box.y1 - box.y0 + 2 * pad };
+}
+function logicSvg(el, opts = {}) {
+  const m = logicModel(el), b = logicBox(el);
+  const { svg } = drawLogic(m, { ...baseOptions2(m), labels: opts.labels || "text", deck: opts.deck, step: opts.step ?? null });
+  const size = opts.standalone ? ` width="${n14(b.w)}" height="${n14(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n14(b.x)} ${n14(b.y)} ${n14(b.w)} ${n14(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+}
+function logicSteps(el) {
+  if (el?.type !== "logic") return [];
+  const m = logicModel(el), steps = /* @__PURE__ */ new Set();
+  for (const p of m.parts) {
+    if (p.step > 0) steps.add(p.step);
+    for (const f of p.flips || []) steps.add(f);
+    if (p.kind === "clock") for (let s = Math.max(1, p.start); s <= p.end + 1; s++) steps.add(s);
+  }
+  for (const w of m.wires) if (w.step > 0) steps.add(w.step);
+  for (const n of m.nodes) if (n.step > 0) steps.add(n.step);
+  for (const k of Object.keys(m.captions)) if (+k > 0) steps.add(+k);
+  return [...steps].filter((s) => s <= maxStep3(m)).sort((a, b) => a - b).map((s) => [m.stepStart - 1 + s, s]).filter(([n]) => n <= 1e3);
+}
+function logicStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of logicSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasLogic(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "logic"));
+}
+function template3(key, name, parts, nodes, wires, extra = {}) {
+  return { key, name, build() {
+    return {
+      parts: parts.map(([id, kind, x, y, more]) => ({
+        id,
+        kind,
+        x,
+        y,
+        label: "",
+        step: 0,
+        ...LOGIC_PARTS[kind].multi ? { inputs: 2 } : {},
+        ...kind === "input" ? { value: 0, flips: [] } : {},
+        ...kind === "clock" ? { start: 1, end: 8 } : {},
+        ...more || {}
+      })),
+      nodes: nodes.map(([id, x, y]) => ({ id, x, y, step: 0 })),
+      wires: wires.map(([from, to, more], i) => ({ id: "w" + (i + 1), from, to, mx: null, step: 0, ...more || {} })),
+      captions: { ...extra.captions || {} },
+      table: !!extra.table
+    };
+  } };
+}
+var LOGIC_TEMPLATES = [
+  template3(
+    "half",
+    "Half adder",
+    [["A", "input", 0, 2, { label: "A", flips: [2] }], ["B", "input", 0, 0, { label: "B", flips: [1, 2, 3] }], ["g1", "xor", 3, 1.75], ["g2", "and", 3, 0.25], ["S", "output", 5.25, 1.75, { label: "S" }], ["C", "output", 5.25, 0.25, { label: "C" }]],
+    [["nA", 1.25, 2], ["nB", 1.75, 0]],
+    [["A.out", "nA"], ["nA", "g1.in1"], ["nA", "g2.in1", { mx: 1.25 }], ["B.out", "nB"], ["nB", "g2.in2"], ["nB", "g1.in2", { mx: 1.75 }], ["g1.out", "S.in"], ["g2.out", "C.in"]],
+    { table: true, captions: { 0: "0 + 0: sum 0, carry 0", 1: "0 + 1: sum 1", 2: "1 + 0: sum 1", 3: "1 + 1: sum 0, carry 1" } }
+  ),
+  template3(
+    "mux",
+    "2-to-1 multiplexer",
+    [
+      ["D0", "input", 0, 3, { label: "D_0", value: 1 }],
+      ["Sel", "input", 0, 1.75, { label: "S", flips: [1, 3] }],
+      ["D1", "input", 0, 0.5, { label: "D_1", flips: [2] }],
+      ["inv", "not", 2.5, 2.5],
+      ["g1", "and", 4.5, 2.75],
+      ["g2", "and", 4.5, 0.75],
+      ["g3", "or", 7, 1.75],
+      ["Y", "output", 9, 1.75, { label: "Y" }]
+    ],
+    [["j", 1.25, 1.75]],
+    [
+      ["D0.out", "g1.in1"],
+      ["Sel.out", "j"],
+      ["j", "inv.in1", { mx: 1.25 }],
+      ["j", "g2.in1", { mx: 1.25 }],
+      ["inv.out", "g1.in2"],
+      ["D1.out", "g2.in2"],
+      ["g1.out", "g3.in1", { mx: 5.75 }],
+      ["g2.out", "g3.in2", { mx: 5.75 }],
+      ["g3.out", "Y.in"]
+    ],
+    { table: true, captions: { 0: "S = 0 passes D₀", 1: "S = 1 passes D₁", 2: "D₁ rises, and Y with it", 3: "Back to D₀" } }
+  ),
+  template3(
+    "latch",
+    "SR latch (NOR)",
+    [
+      ["R", "input", 0, 2.75, { label: "R", flips: [3, 4] }],
+      ["S", "input", 0, 0.25, { label: "S", flips: [1, 2] }],
+      ["g1", "nor", 3, 2.5],
+      ["g2", "nor", 3, 0.5],
+      ["Q", "output", 6, 2.5, { label: "Q" }],
+      ["Qn", "output", 6, 0.5, { label: "\\overline{Q}" }]
+    ],
+    [["q", 4.5, 2.5], ["k1", 4.5, 1.75], ["k2", 1.75, 1.75], ["qn", 4.5, 0.5], ["k3", 4.5, 1.25], ["k4", 1.5, 1.25]],
+    [
+      ["R.out", "g1.in1"],
+      ["S.out", "g2.in2"],
+      ["g1.out", "q"],
+      ["q", "Q.in"],
+      ["q", "k1"],
+      ["k1", "k2"],
+      ["k2", "g2.in1", { mx: 1.75 }],
+      ["g2.out", "qn"],
+      ["qn", "Qn.in"],
+      ["qn", "k3"],
+      ["k3", "k4"],
+      ["k4", "g1.in2", { mx: 1.5 }]
+    ],
+    { captions: { 0: "With both inputs low, Q could be either.", 1: "S sets it: Q = 1.", 2: "S goes low, and the latch remembers.", 3: "R resets it: Q = 0.", 4: "And it holds." } }
+  ),
+  template3(
+    "counter",
+    "2-bit ripple counter",
+    [["clk", "clock", 0, 1, { label: "\\mathrm{CLK}", start: 1, end: 8 }], ["f1", "dff", 3, 1.5], ["f2", "dff", 7, 1.5], ["Q0", "output", 5.75, 3.5, { label: "Q_0" }], ["Q1", "output", 9.75, 3.5, { label: "Q_1" }]],
+    [["a1", 4.5, 1], ["a2", 4.5, 2.75], ["a3", 1.5, 2.75], ["b1", 8.5, 1], ["b2", 8.5, 2.75], ["b3", 5.5, 2.75]],
+    [
+      ["clk.out", "f1.clk"],
+      ["f1.qn", "a1"],
+      ["a1", "a2"],
+      ["a2", "a3"],
+      ["a3", "f1.d", { mx: 1.5 }],
+      ["a1", "f2.clk"],
+      ["f2.qn", "b1"],
+      ["b1", "b2"],
+      ["b2", "b3"],
+      ["b3", "f2.d", { mx: 5.5 }],
+      ["f1.q", "Q0.in", { mx: 4.25 }],
+      ["f2.q", "Q1.in", { mx: 8.25 }]
+    ],
+    { captions: { 1: "The clock rises: count 1.", 3: "Q₀ falls, so its inverse rises and clocks Q₁: count 2.", 5: "Count 3.", 7: "And back to 0." } }
+  ),
+  { key: "blank", name: "Blank", build: () => ({ parts: [], nodes: [], wires: [], captions: {}, table: false }) }
+];
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -4783,7 +5465,7 @@ var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
 var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num5 = (key) => {
+  const num6 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
@@ -4791,14 +5473,14 @@ function text3dSettings(el, fallbackFont) {
   const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num5("depth"),
-    rotateX: num5("rotateX"),
-    rotateY: num5("rotateY"),
-    perspective: num5("perspective"),
-    fontSize: num5("fontSize"),
-    letterSpacing: num5("letterSpacing"),
-    lineHeight: num5("lineHeight"),
-    sideShade: num5("sideShade"),
+    depth: num6("depth"),
+    rotateX: num6("rotateX"),
+    rotateY: num6("rotateY"),
+    perspective: num6("perspective"),
+    fontSize: num6("fontSize"),
+    letterSpacing: num6("letterSpacing"),
+    lineHeight: num6("lineHeight"),
+    sideShade: num6("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -5508,9 +6190,9 @@ var STATE_EASINGS = {
 var DEFAULT_STATE_DURATION = 400;
 var SET_MODES = ["set", "toggle", "cycle"];
 var SAFE_ID = /^[A-Za-z0-9_-]+$/;
-var COLOR4 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
+var COLOR5 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
 var clamp3 = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
-var color = (v) => typeof v === "string" && COLOR4.test(v.trim()) ? v.trim() : null;
+var color = (v) => typeof v === "string" && COLOR5.test(v.trim()) ? v.trim() : null;
 var flip = (v) => v === true || v === 180 ? 180 : v === -180 ? -180 : 0;
 function elementStates(el) {
   if (typeof el?.id !== "string" || !SAFE_ID.test(el.id) || !Array.isArray(el.states)) return [];
@@ -6201,6 +6883,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${circuitSvg(el, { deck: fxId, labels: "deck" })}</div>`;
       }
+      if (el.type === "logic") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="0" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${logicSvg(el, { deck: fxId, labels: "deck" })}</div>`;
+      }
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -6264,7 +6950,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc4 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc5 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -6282,10 +6968,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc4(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc5(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc4(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc5(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -6293,8 +6979,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc4(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc4(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc5(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc5(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -6520,7 +7206,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -6881,7 +7567,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) ? diagramDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) ? diagramDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -7099,8 +7785,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str4) {
-  return String(str4).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str5) {
+  return String(str5).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>

@@ -63,6 +63,7 @@ export default defineConfig({
             { text: 'Interactive Equations', link: '/tutorials/interactive-equations' },
             { text: 'Feynman Diagrams', link: '/tutorials/feynman-diagrams' },
             { text: 'Circuit Diagrams', link: '/tutorials/circuit-diagrams' },
+            { text: 'Logic Diagrams', link: '/tutorials/logic-diagrams' },
           ]
         },
         {

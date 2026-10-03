@@ -8,6 +8,7 @@ import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STAT
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
 import { feynmanTikz, feynmanSteps } from '../utils/feynmanDiagram'
 import { circuitTikz, circuitSteps } from '../utils/circuitDiagram'
+import { logicTikz, logicSteps, logicTableLatex } from '../utils/logicDiagram'
 import { SHAPES } from '../utils/shapeUtils'
 import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, TEXT3D_EXTRUDED_DEPTH } from '../utils/text3d'
 
@@ -224,7 +225,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -575,6 +576,45 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 </>
               )}
               <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the circuit as it ends; the current moves when presenting. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Logic diagram */}
+          {selectedElement.type === 'logic' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditLogic?.()}>
+                Edit Logic Diagram…
+              </button>
+              <CopyTikzButton tikz={logicTikz(selectedElement)} label="Copy CircuiTikZ" />
+              <CopyTikzButton tikz={logicTableLatex(selectedElement).startsWith('%') ? '' : logicTableLatex(selectedElement)} label="Copy truth table" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+                <select className="prop-input" value={selectedElement.symbols === 'iec' ? 'iec' : 'us'} onChange={e => onUpdateElement({ symbols: e.target.value })} style={{ flex: 1, fontSize: 11 }} aria-label="Symbols">
+                  <option value="us">US symbols</option>
+                  <option value="iec">IEC symbols</option>
+                </select>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedElement.values !== false} onChange={e => onUpdateElement({ values: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Color wires by signal
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!selectedElement.table} onChange={e => onUpdateElement({ table: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Show the truth table
+              </label>
+              {logicSteps(selectedElement).length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the diagram as the slide starts. Double-click to edit it.</p>
             </div>
           )}
 
