@@ -7360,6 +7360,7 @@ ${slidesHtml}
   <script src="${(0, import_libraries2.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
   <script src="${(0, import_libraries2.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
   <script src="${(0, import_libraries2.libUrl)("katex", "dist/katex.min.js")}"></script>
+  <script src="${(0, import_libraries2.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || "slide")};

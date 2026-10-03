@@ -4,6 +4,9 @@ import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.jsx'
 import './index.css'
 import 'katex/dist/katex.min.css'
+// \ce and \pu (chemical equations and units) for every KaTeX the editor
+// draws; decks load the same extension (generateHTML.js)
+import 'katex/contrib/mhchem'
 
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 const clerkPk = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY

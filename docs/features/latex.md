@@ -105,6 +105,7 @@ KaTeX supports a large subset of LaTeX. Frequently used commands:
 | `\text{word}` | Text inside math |
 | `\begin{pmatrix}...\end{pmatrix}` | Matrix |
 | `\left( ... \right)` | Auto-sized delimiters |
+| `\ce{2H2 + O2 -> 2H2O}`, `\pu{25 kJ mol-1}` | Chemical equations and units ([mhchem](/tutorials/using-latex#chemical-equations)) |
 
 See the full [KaTeX support table](https://katex.org/docs/support_table.html) for a complete reference.
 

@@ -807,6 +807,7 @@ ${slidesHtml}
   <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
   <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
+  <script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || 'slide')};
@@ -1635,6 +1636,7 @@ function generatePrintHTML(presentation) {
   </div>
 ${pagesHtml}
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
+  <script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"></script>
   <script src="${libUrl('@highlightjs/cdn-assets', 'highlight.min.js')}"></script>
   <script>
     window.addEventListener('load', function() {

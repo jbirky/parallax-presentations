@@ -18,7 +18,8 @@ module.exports = {
       files: ['dist/reset.css', 'dist/reveal.css', 'dist/reveal.js', 'dist/theme/**',
         'plugin/notes/notes.js', 'plugin/highlight/highlight.js'],
     },
-    katex: { files: ['dist/katex.min.js', 'dist/katex.min.css', 'dist/fonts/*.woff2'] },
+    // mhchem adds \ce and \pu, for chemical equations and units
+    katex: { files: ['dist/katex.min.js', 'dist/katex.min.css', 'dist/fonts/*.woff2', 'dist/contrib/mhchem.min.js'] },
     '@highlightjs/cdn-assets': { files: ['highlight.min.js', 'styles/*.min.css'] },
     gsap: { files: ['dist/gsap.min.js'] },
     p5: { files: ['lib/p5.min.js'] },
