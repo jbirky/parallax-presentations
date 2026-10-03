@@ -45,7 +45,9 @@ import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
 import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
+import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
+import { defaultFeynman, FEYNMAN_FIELDS, feynmanBox } from '../utils/feynmanDiagram'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -408,6 +410,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
   const [graphEditor, setGraphEditor] = useState(null) // { elementId (null for a new graph), graph, size, slideBg }
   const [equationEditor, setEquationEditor] = useState(null) // { elementId (null for a new one), equation, size, slideBg, dark }
+  const [feynmanEditor, setFeynmanEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -696,7 +699,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1401,6 +1404,42 @@ function draw() {
     }
     setEquationEditor(null)
   }, [equationEditor, updateElement, slideW, slideH])
+
+  const addFeynman = useCallback(() => {
+    setFeynmanEditor({ elementId: null, diagram: defaultFeynman(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openFeynmanEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'feynman' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of FEYNMAN_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setFeynmanEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveFeynman = useCallback((diagram) => {
+    const elementId = feynmanEditor?.elementId
+    const box = feynmanBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.7) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'feynman', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setFeynmanEditor(null)
+  }, [feynmanEditor, presentation, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -3883,6 +3922,7 @@ function draw() {
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
             onAddEquation={addEquation}
+            onAddFeynman={addFeynman}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
@@ -4090,6 +4130,7 @@ function draw() {
               onOpenTikzEditor={openTikzEditor}
               onOpenGraphEditor={openGraphEditor}
               onOpenEquationEditor={openEquationEditor}
+              onOpenFeynmanEditor={openFeynmanEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4129,6 +4170,7 @@ function draw() {
           onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
           onEditGraph={() => selectedElementId && openGraphEditor(selectedElementId)}
           onEditEquation={() => selectedElementId && openEquationEditor(selectedElementId)}
+          onEditFeynman={() => selectedElementId && openFeynmanEditor(selectedElementId)}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4502,6 +4544,16 @@ function draw() {
           isNew={!equationEditor.elementId}
           onSave={saveEquation}
           onClose={() => setEquationEditor(null)}
+        />
+      )}
+
+      {feynmanEditor && (
+        <FeynmanEditorModal
+          initial={feynmanEditor.diagram}
+          slideBg={feynmanEditor.slideBg}
+          isNew={!feynmanEditor.elementId}
+          onSave={saveFeynman}
+          onClose={() => setFeynmanEditor(null)}
         />
       )}
 

@@ -11,6 +11,7 @@ import { modelViewerHtml } from './modelViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
 import { equationConfigAttr, equationStepMarkers, equationSteps, equationDeckScript, equationPrintScript, hasEquations } from './equationTerms'
 import { tikzDiagramSvg } from './tikzDiagram'
+import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, feynmanDeckScript, hasFeynman } from './feynmanDiagram'
 import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
@@ -324,6 +325,11 @@ export function generateRevealHTML(presentation, opts = {}) {
         }
         if (el.type === 'tikz') {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
+        }
+        if (el.type === 'feynman') {
+          // Every part, shown from its step by the deck's Feynman script; labels can reach past its box
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
@@ -640,7 +646,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -995,7 +1001,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) ? feynmanDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1309,6 +1315,7 @@ function generatePrintHTML(presentation) {
       ...(slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1),
       ...stateSteps(slide).map(([step]) => step),
       ...(slide.elements || []).flatMap(el => equationSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => feynmanSteps(el).map(([step]) => step)),
     ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
@@ -1357,6 +1364,11 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'tikz') {
           return `<div style="${style}${vis}">${tikzDiagramSvg(el)}</div>`
+        }
+        if (el.type === 'feynman') {
+          // As it is at this page's step; the page's KaTeX fills in its labels
+          const at = maxIdx === Infinity ? null : feynmanStepAt(el, maxIdx)
+          return `<div data-fx-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${feynmanSvg(el, { step: at, labels: 'deck' })}</div>`
         }
         if (el.type === 'html') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`

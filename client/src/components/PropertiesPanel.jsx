@@ -6,6 +6,7 @@ import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
+import { feynmanTikz, feynmanSteps } from '../utils/feynmanDiagram'
 import { SHAPES } from '../utils/shapeUtils'
 import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, TEXT3D_EXTRUDED_DEPTH } from '../utils/text3d'
 
@@ -134,7 +135,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
 }
 
 // Copies a TikZ diagram's code, for pasting into a LaTeX document
-function CopyTikzButton({ tikz }) {
+function CopyTikzButton({ tikz, label = 'Copy TikZ' }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
     try {
@@ -147,7 +148,7 @@ function CopyTikzButton({ tikz }) {
   }
   return (
     <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={copy} disabled={!tikz}>
-      {copied ? 'Copied' : 'Copy TikZ'}
+      {copied ? 'Copied' : label}
     </button>
   )
 }
@@ -222,7 +223,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -497,6 +498,38 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 Edit p5.js Sketch
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open sketch editor</p>
+            </div>
+          )}
+
+          {/* Feynman diagram */}
+          {selectedElement.type === 'feynman' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditFeynman?.()}>
+                Edit Diagram…
+              </button>
+              <CopyTikzButton tikz={feynmanTikz(selectedElement)} label="Copy TikZ-Feynman" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              {feynmanSteps(selectedElement).length > 0 && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedElement.dimPast !== false} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Fade earlier steps
+                  </label>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the whole diagram. Double-click to edit it.</p>
             </div>
           )}
 

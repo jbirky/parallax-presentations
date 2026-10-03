@@ -638,9 +638,9 @@ function createMathParser() {
   const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2] };
   const INVERSE = { sin: "arcsin", cos: "arccos", tan: "arctan" };
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E };
-  const GREEK = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho"];
+  const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho"];
   const RESERVED = ["x", "y", "t", "theta", "r"];
-  const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ["theta"], GREEK).sort((a, b) => b.length - a.length);
+  const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ["theta"], GREEK2).sort((a, b) => b.length - a.length);
   const UNICODE = {
     "−": "-",
     "–": "-",
@@ -1093,7 +1093,7 @@ function createMathParser() {
       const name = m[1].replace(/[{}]/g, "");
       const formals = m[2].split(",").map((s) => s.trim());
       if (FUNCS[name] || name in CONSTANTS || RESERVED.includes(name)) continue;
-      if (!formals.every((f) => f.length === 1 || f === "theta" || GREEK.includes(f))) continue;
+      if (!formals.every((f) => f.length === 1 || f === "theta" || GREEK2.includes(f))) continue;
       if (fns[name]) {
         item.kind = "error";
         item.error = name + " is defined twice";
@@ -1373,7 +1373,7 @@ function graphRuntime(P, config) {
     }
   };
   const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
-  const MATH_FONT = '"Cambria Math", "Latin Modern Math", "STIX Two Math", "Times New Roman", serif';
+  const MATH_FONT2 = '"Cambria Math", "Latin Modern Math", "STIX Two Math", "Times New Roman", serif';
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;left:0;top:0;display:block;touch-action:none;";
   document.body.appendChild(canvas);
@@ -1390,7 +1390,7 @@ function graphRuntime(P, config) {
   let frame = 0;
   let shownScale = 1;
   const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)));
-  const clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clamp3 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const copyView = (v) => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax });
   const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax"].every((k) => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
   function setConfig(next, keepState) {
@@ -1589,7 +1589,7 @@ function graphRuntime(P, config) {
     if (originShown) haloText("0", sx(0) - 5, sy(0) + 4, "right", "top", font);
   }
   function axisLabels() {
-    const font = "italic 16px " + MATH_FONT;
+    const font = "italic 16px " + MATH_FONT2;
     if (C.xLabel) haloText(C.xLabel, W - 8, Math.min(Math.max(sy(0), 20), H - 24) - 6, "right", "bottom", font);
     if (C.yLabel) haloText(C.yLabel, Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, "left", "top", font);
   }
@@ -1707,7 +1707,7 @@ function graphRuntime(P, config) {
     return runs;
   }
   function contour(F, E, cellPx) {
-    const cell = cellPx || clamp2(6 / density(), 2, 4);
+    const cell = cellPx || clamp3(6 / density(), 2, 4);
     const nx = Math.ceil(W / cell) + 1, ny = Math.ceil(H / cell) + 1;
     const vals = new Float64Array(nx * ny);
     for (let j = 0; j < ny; j++) {
@@ -1853,7 +1853,7 @@ function graphRuntime(P, config) {
       strokeRuns(runs, Object.assign({}, e, { style: it.strict ? "dashed" : e.style }));
       return;
     }
-    const cell = clamp2(4.5 / density(), 1.5, 3);
+    const cell = clamp3(4.5 / density(), 1.5, 3);
     fillStyle(e);
     ctx.beginPath();
     for (let py = 0; py < H; py += cell) {
@@ -1989,7 +1989,7 @@ function graphRuntime(P, config) {
       const nm = prettyName(it.name);
       const base = document.createElement("i");
       base.textContent = nm.base;
-      base.style.fontFamily = MATH_FONT;
+      base.style.fontFamily = MATH_FONT2;
       base.style.fontSize = "15px";
       label.appendChild(base);
       if (nm.sub) {
@@ -2212,7 +2212,7 @@ function graphRuntime(P, config) {
     }
     if (!data || typeof data !== "object") return;
     if (data.type === "scale" && typeof data.scale === "number" && data.scale > 0) {
-      shownScale = clamp2(data.scale, 0.1, 8);
+      shownScale = clamp3(data.scale, 0.1, 8);
       resize();
       return;
     }
@@ -3249,6 +3249,673 @@ function tikzDiagramSvg(el) {
   return sanitizeSvg(el.svg).replace(/^<svg\b/i, '<svg style="width:100%;height:100%;display:block;overflow:visible"');
 }
 
+// client/src/utils/feynmanDiagram.js
+var UNIT = 64;
+var AMP = 0.085;
+var HALF = 0.155;
+var PITCH = 0.19;
+var COIL = 0.1;
+var DBL = 0.032;
+var LABEL = 0.3;
+var CAPTION = 0.27;
+var MATH_FONT = "'Latin Modern Roman', 'Times New Roman', Times, serif";
+var FEYNMAN_TYPES = {
+  fermion: { name: "Fermion", tikz: "fermion", arrow: 1, fermion: true, key: "f", usual: "e, μ, q, t", chips: ["e^-", "\\mu^-", "q", "t", "\\nu_e"] },
+  antifermion: { name: "Antifermion", tikz: "anti fermion", arrow: -1, fermion: true, key: "a", usual: "e⁺, antiquarks", chips: ["e^+", "\\bar{q}", "\\bar{\\nu}_e"] },
+  photon: { name: "Photon", tikz: "photon", deco: "wave", key: "p", usual: "γ, Z, W", chips: ["\\gamma", "\\gamma^*", "Z", "W^-"] },
+  chargedBoson: { name: "Charged boson", tikz: "charged boson", deco: "wave", arrow: 1, usual: "W⁺, W⁻", chips: ["W^+", "W^-"] },
+  gluon: { name: "Gluon", tikz: "gluon", deco: "coil", key: "g", usual: "g", chips: ["g"] },
+  scalar: { name: "Scalar", tikz: "scalar", dash: "7 5", key: "s", usual: "H, φ, π⁰", chips: ["H", "\\phi", "\\pi^0"] },
+  chargedScalar: { name: "Charged scalar", tikz: "charged scalar", dash: "7 5", arrow: 1, usual: "H⁺, π⁺, K⁺", chips: ["H^+", "\\pi^+", "K^+"] },
+  ghost: { name: "Ghost", tikz: "ghost", dash: "dot", arrow: 1, usual: "Faddeev–Popov ghost", chips: ["c", "\\bar{c}"] },
+  graviton: { name: "Graviton", tikz: "graviton", deco: "wave2", usual: "graviton", chips: ["h_{\\mu\\nu}"] },
+  plain: { name: "Plain", tikz: "plain", usual: "any, or a Majorana line", chips: [] },
+  double: { name: "Double", tikz: "double", deco: "double", usual: "heavy quark, composite", chips: ["Q", "B"] }
+};
+var VERTEX_KINDS = [["auto", "Auto"], ["none", "None"], ["dot", "Dot"], ["blob", "Blob"], ["crossed", "Crossed"], ["empty", "Empty"], ["square", "Square"]];
+var KIND_R = { blob: 0.36, crossed: 0.125, empty: 0.072 };
+var LABEL_AT = { above: [0, 1], below: [0, -1], left: [-1, 0], right: [1, 0] };
+var esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n1 = (v) => String(Math.round(v * 10) / 10);
+var clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+var ID = /^[A-Za-z0-9_-]{1,40}$/;
+var COLOR2 = /^#[0-9a-f]{6}$/i;
+var num3 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : dflt;
+var int2 = (v, lo, hi, dflt) => typeof v === "number" && isFinite(v) ? clamp(Math.round(v), lo, hi) : dflt;
+var str2 = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
+function feynmanModel(el) {
+  const vertices = [], edges = [], ids = /* @__PURE__ */ new Set();
+  for (const v of Array.isArray(el?.vertices) ? el.vertices.slice(0, 500) : []) {
+    if (!v || !ID.test(v.id) || ids.has(v.id)) continue;
+    ids.add(v.id);
+    vertices.push({
+      id: v.id,
+      x: num3(v.x, -1e3, 1e3, 0),
+      y: num3(v.y, -1e3, 1e3, 0),
+      kind: VERTEX_KINDS.some(([k]) => k === v.kind) ? v.kind : "auto",
+      label: str2(v.label, 200),
+      labelAt: LABEL_AT[v.labelAt] ? v.labelAt : "auto",
+      color: COLOR2.test(v.color || "") ? v.color : null,
+      step: v.step == null ? null : int2(v.step, 0, 1e3, null)
+    });
+  }
+  const edgeIds = /* @__PURE__ */ new Set();
+  for (const e of Array.isArray(el?.edges) ? el.edges.slice(0, 1e3) : []) {
+    if (!e || !ID.test(e.id) || edgeIds.has(e.id) || !ids.has(e.from) || !ids.has(e.to)) continue;
+    edgeIds.add(e.id);
+    const out = {
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      particle: FEYNMAN_TYPES[e.particle] ? e.particle : "plain",
+      bend: num3(e.bend, -1.6, 1.6, 0),
+      label: str2(e.label, 200),
+      labelSide: e.labelSide === -1 ? -1 : 1,
+      momentum: str2(e.momentum, 200),
+      momentumSide: e.momentumSide === 1 ? 1 : -1,
+      momentumReverse: !!e.momentumReverse,
+      color: COLOR2.test(e.color || "") ? e.color : null,
+      step: int2(e.step, 0, 1e3, 0)
+    };
+    if (e.from === e.to) {
+      out.loopAngle = int2(e.loopAngle, -360, 720, 90);
+      out.loopSize = num3(e.loopSize, 0.3, 6, 1.2);
+    }
+    edges.push(out);
+  }
+  const captions = {};
+  if (el?.captions && typeof el.captions === "object") {
+    for (const [k, v] of Object.entries(el.captions)) {
+      const n = Number(k);
+      if (Number.isInteger(n) && n >= 0 && n <= 1e3 && typeof v === "string" && v.trim()) captions[n] = v.slice(0, 500);
+    }
+  }
+  return {
+    vertices,
+    edges,
+    captions,
+    color: COLOR2.test(el?.color || "") ? el.color : "#ffffff",
+    stepStart: int2(el?.stepStart, 1, 1e3, 1),
+    dimPast: el?.dimPast !== false
+  };
+}
+var GREEK = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", upsilon: "υ", phi: "ϕ", varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω" };
+var SYM = { pm: "±", mp: "∓", to: "→", prime: "′", ell: "ℓ", ast: "∗", times: "×", cdot: "·", infty: "∞", partial: "∂", hbar: "ℏ", ",": " ", ";": " ", " ": " ", "!": "", quad: "  " };
+var ACCENT = { bar: 772, overline: 773, tilde: 771, hat: 770 };
+var UPRIGHT = { mathrm: 1, text: 1, rm: 1, mathbf: 1 };
+var COMBINING = new RegExp("[" + String.fromCharCode(768) + "-" + String.fromCharCode(879) + "]", "g");
+function texRuns(src) {
+  src = String(src || "");
+  const runs = [];
+  let i = 0;
+  const push = (t, lvl, it) => {
+    if (!t) return;
+    const r = runs[runs.length - 1];
+    if (r && r.lvl === lvl && r.it === it) r.t += t;
+    else runs.push({ t, lvl, it });
+  };
+  function atom(lvl, up) {
+    const c = src[i];
+    if (c === void 0) return;
+    if (c === "{") {
+      i++;
+      group(lvl, up, "}");
+      return;
+    }
+    if (c === "\\") {
+      const m = /^\\([A-Za-z]+|.)/.exec(src.slice(i));
+      if (!m) {
+        i++;
+        return;
+      }
+      i += m[0].length;
+      const name = m[1];
+      if (ACCENT[name]) {
+        const before = runs.length, lastLen = before ? runs[before - 1].t.length : 0;
+        while (src[i] === " ") i++;
+        atom(lvl, up);
+        const mark = String.fromCharCode(ACCENT[name]);
+        if (runs.length > before) {
+          const r = runs[before];
+          r.t = r.t.slice(0, 1) + mark + r.t.slice(1);
+        } else if (before && runs[before - 1].t.length > lastLen) {
+          const r = runs[before - 1];
+          r.t = r.t.slice(0, lastLen + 1) + mark + r.t.slice(lastLen + 1);
+        }
+        return;
+      }
+      if (UPRIGHT[name]) {
+        while (src[i] === " ") i++;
+        atom(lvl, true);
+        return;
+      }
+      if (GREEK[name]) {
+        push(GREEK[name], lvl, !up && name[0] === name[0].toLowerCase());
+        return;
+      }
+      if (SYM[name] !== void 0) {
+        push(SYM[name], lvl, false);
+        return;
+      }
+      push(name, lvl, false);
+      return;
+    }
+    i++;
+    if (/[A-Za-z]/.test(c)) push(c, lvl, !up);
+    else if (c === "-") push("−", lvl, false);
+    else if (c === "'") push("′", lvl, false);
+    else if (c === "~") push(" ", lvl, false);
+    else if (c !== " ") push(c, lvl, false);
+  }
+  function group(lvl, up, end) {
+    while (i < src.length && src[i] !== end) {
+      if (src[i] === "^" || src[i] === "_") {
+        const l = src[i] === "^" ? 1 : -1;
+        i++;
+        atom(lvl || l, up);
+        continue;
+      }
+      if (src[i] === "}") {
+        i++;
+        continue;
+      }
+      atom(lvl, up);
+    }
+    if (end && src[i] === end) i++;
+  }
+  group(0, false, null);
+  return runs;
+}
+function texBox(src, fs) {
+  let w = 0, sup = false, sub = false;
+  for (const r of texRuns(src)) {
+    w += r.t.replace(COMBINING, "").length * fs * 0.5 * (r.lvl ? 0.7 : 1);
+    if (r.lvl > 0) sup = true;
+    if (r.lvl < 0) sub = true;
+  }
+  return { w: Math.max(w, fs * 0.4), h: fs * (1 + (sup ? 0.25 : 0) + (sub ? 0.2 : 0)) };
+}
+function texSvg(src, X, Y, fs, fill) {
+  let cur = 0, spans = "";
+  for (const r of texRuns(src)) {
+    const target = r.lvl > 0 ? -0.42 : r.lvl < 0 ? 0.24 : 0;
+    const dy = (target - cur) * fs;
+    cur = target;
+    spans += `<tspan dy="${n1(dy)}" font-size="${n1(r.lvl ? fs * 0.7 : fs)}" font-style="${r.it ? "italic" : "normal"}">${esc(r.t)}</tspan>`;
+  }
+  return `<text x="${n1(X)}" y="${n1(Y + fs * 0.34)}" text-anchor="middle" font-family="${esc(MATH_FONT)}" font-size="${n1(fs)}" fill="${esc(fill)}">${spans}</text>`;
+}
+function lineGeometry(V, e) {
+  const A = V[e.from], B = V[e.to];
+  if (!A || !B) return null;
+  if (e.from === e.to) {
+    const r = (e.loopSize || 1.2) / 2, ang = (e.loopAngle ?? 90) * Math.PI / 180;
+    const cx2 = A.x + r * Math.cos(ang), cy2 = A.y + r * Math.sin(ang), a0 = ang + Math.PI;
+    return {
+      len: 2 * Math.PI * r,
+      curved: true,
+      at: (t) => {
+        const th = a0 - 2 * Math.PI * t;
+        return [cx2 + r * Math.cos(th), cy2 + r * Math.sin(th), Math.sin(th), -Math.cos(th)];
+      }
+    };
+  }
+  const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1e-9;
+  const b = e.bend || 0;
+  if (Math.abs(b) < 0.02) return { len: d, at: (t) => [A.x + dx * t, A.y + dy * t, dx / d, dy / d] };
+  const h = d / 2, s = b * h, R = (h * h + s * s) / (2 * Math.abs(s));
+  const nx = -dy / d, ny = dx / d, off = s - Math.sign(s) * R;
+  const cx = (A.x + B.x) / 2 + nx * off, cy = (A.y + B.y) / 2 + ny * off;
+  const th0 = Math.atan2(A.y - cy, A.x - cx), th1 = Math.atan2(B.y - cy, B.x - cx);
+  let sw = th1 - th0;
+  if (s > 0) {
+    while (sw >= 0) sw -= 2 * Math.PI;
+    while (sw < -2 * Math.PI) sw += 2 * Math.PI;
+  } else {
+    while (sw <= 0) sw += 2 * Math.PI;
+    while (sw > 2 * Math.PI) sw -= 2 * Math.PI;
+  }
+  const sg = Math.sign(sw);
+  return {
+    len: R * Math.abs(sw),
+    curved: true,
+    at: (t) => {
+      const th = th0 + sw * t;
+      return [cx + R * Math.cos(th), cy + R * Math.sin(th), -sg * Math.sin(th), sg * Math.cos(th)];
+    }
+  };
+}
+var part = (g, t0, t1) => ({ len: g.len * (t1 - t0), curved: g.curved, at: (t) => g.at(t0 + (t1 - t0) * t) });
+function basePoints(g, off = 0) {
+  const n = g.curved ? 72 : 1, pts = [];
+  for (let i = 0; i <= n; i++) {
+    const [x, y, tx, ty] = g.at(i / n);
+    pts.push([x - ty * off, y + tx * off]);
+  }
+  return pts;
+}
+function wavePoints(g, off = 0) {
+  const k = Math.max(2, Math.round(g.len / HALF)), n = k * 10, pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, [x, y, tx, ty] = g.at(t), o = AMP * Math.sin(Math.PI * k * t) + off;
+    pts.push([x - ty * o, y + tx * o]);
+  }
+  return pts;
+}
+function coilPoints(g) {
+  const L = g.len, N = Math.max(2, Math.round(L / PITCH)), n = N * 20, pts = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n, th = 2 * Math.PI * N * u;
+    const q = Math.min(u, 1 - u) * N * 2, w = q >= 1 ? 1 : q * q * (3 - 2 * q);
+    const s = u * L - COIL * w * Math.sin(th), o = -COIL * w * Math.cos(th);
+    const tc = clamp(s / L, 0, 1), [x, y, tx, ty] = g.at(tc), ex = s - tc * L;
+    pts.push([x + tx * ex - ty * o, y + ty * ex + tx * o]);
+  }
+  return pts;
+}
+var decoAmp = (t) => t.deco === "wave" ? AMP : t.deco === "wave2" ? AMP + DBL : t.deco === "coil" ? COIL + 0.02 : t.deco === "double" ? DBL : 0;
+function vertexMap(m) {
+  const V = {};
+  for (const v of m.vertices) V[v.id] = v;
+  return V;
+}
+function degrees(m) {
+  const d = {};
+  for (const v of m.vertices) d[v.id] = 0;
+  for (const e of m.edges) {
+    d[e.from] = (d[e.from] || 0) + 1;
+    d[e.to] = (d[e.to] || 0) + 1;
+  }
+  return d;
+}
+var shownKind = (v, deg) => v.kind && v.kind !== "auto" ? v.kind : deg[v.id] >= 3 ? "dot" : "none";
+function vertexStep(m, v) {
+  if (v.step != null) return v.step;
+  let s = Infinity;
+  for (const e of m.edges) if (e.from === v.id || e.to === v.id) s = Math.min(s, e.step || 0);
+  return isFinite(s) ? s : 0;
+}
+function maxStep(m) {
+  let s = 0;
+  for (const e of m.edges) s = Math.max(s, e.step || 0);
+  for (const v of m.vertices) if (v.step != null) s = Math.max(s, v.step);
+  return s;
+}
+function legDirections(m, V, v) {
+  const dirs = [];
+  for (const e of m.edges) {
+    if (e.from !== v.id && e.to !== v.id) continue;
+    const g = lineGeometry(V, e);
+    if (!g) continue;
+    if (e.from === v.id) {
+      const [, , tx, ty] = g.at(0.01);
+      dirs.push([tx, ty]);
+    }
+    if (e.to === v.id) {
+      const [, , tx, ty] = g.at(0.99);
+      dirs.push([-tx, -ty]);
+    }
+  }
+  return dirs;
+}
+function labelDirection(m, V, v) {
+  if (LABEL_AT[v.labelAt]) return LABEL_AT[v.labelAt];
+  const dirs = legDirections(m, V, v);
+  if (!dirs.length) return [0, 1];
+  let sx = 0, sy = 0;
+  for (const d of dirs) {
+    sx += d[0];
+    sy += d[1];
+  }
+  const sl = Math.hypot(sx, sy);
+  if (dirs.length === 1) return [-sx / sl, -sy / sl];
+  let best = [0, 1], score = -Infinity;
+  for (let k = 0; k < 16; k++) {
+    const a = k * Math.PI / 8, c = [Math.cos(a), Math.sin(a)];
+    let gap = Infinity;
+    for (const d of dirs) gap = Math.min(gap, Math.acos(clamp(c[0] * d[0] + c[1] * d[1], -1, 1)));
+    const sc = gap + (sl > 0.2 ? 0.25 * (-(sx * c[0] + sy * c[1]) / sl) : 0) + 0.06 * c[1];
+    if (sc > score) {
+      score = sc;
+      best = c;
+    }
+  }
+  return best;
+}
+function drawDiagram(m, o = {}) {
+  const u = o.U || UNIT, k = u / 64, V = vertexMap(m), deg = degrees(m);
+  const lw = o.lw || 2.2, fs = LABEL * u;
+  const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
+  const stepped = deck == null && o.step != null;
+  const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const grow = (X, Y, rx = 0, ry = rx) => {
+    box.x0 = Math.min(box.x0, X - rx);
+    box.x1 = Math.max(box.x1, X + rx);
+    box.y0 = Math.min(box.y0, Y - ry);
+    box.y1 = Math.max(box.y1, Y + ry);
+  };
+  const P = (pts, measure = true) => {
+    let d = "";
+    pts.forEach((p, i) => {
+      const X = p[0] * u, Y = -p[1] * u;
+      if (measure) grow(X, Y, lw);
+      d += (i ? "L" : "M") + n1(X) + " " + n1(Y);
+    });
+    return d;
+  };
+  const stroke = (d, ink, extra = "", w = lw) => `<path d="${d}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
+  const label = (tex, X, Y, size, ink) => {
+    const b = texBox(tex, size);
+    grow(X, Y, b.w / 2, b.h / 2);
+    if (o.labels === "deck" || typeof o.labels === "function") {
+      const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
+      const inner = o.labels === "deck" ? `<span data-math-latex="${esc(tex)}">${esc(tex)}</span>` : o.labels(tex);
+      return `<foreignObject x="${n1(X - w / 2)}" y="${n1(Y - h / 2)}" width="${n1(w)}" height="${n1(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n1(size / 1.21)}px;color:${esc(ink)}">${inner}</div></foreignObject>`;
+    }
+    return texSvg(tex, X, Y, size, ink);
+  };
+  const visible = (s) => !stepped || s <= o.step;
+  const wrap = (s, lines, labels, revealPts, isVertex, id) => {
+    if (deck != null) {
+      const cls = `pxfx-part${isVertex ? " pxfx-v" : ""}`;
+      if (s > 0 && revealPts) {
+        const mid = `pxfxm-${deck}-${id}`;
+        return `<g class="${cls}" data-fx-at="${s}"><mask id="${mid}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000"><path class="pxfx-reveal" pathLength="1" d="${P(revealPts, false)}" fill="none" stroke="#fff" stroke-width="${n1(40 * k)}" stroke-linecap="round"/></mask><g mask="url(#${mid})">${lines}</g><g class="pxfx-fade">${labels}</g></g>`;
+      }
+      return `<g class="${cls}" data-fx-at="${s}">${lines}${labels}</g>`;
+    }
+    const faded = stepped && o.dim && o.step > 0 && s < o.step;
+    return `<g${faded ? ' opacity=".34"' : ""}>${lines}${labels}</g>`;
+  };
+  let out = "";
+  if (o.editor && o.grid && o.view) {
+    const v = o.view, gx = v.x0 * u, gy = -(v.y0 + v.h) * u;
+    out += `<defs><pattern id="pxfx-g1" width="${u / 2}" height="${u / 2}" x="${-u / 4}" y="${-u / 4}" patternUnits="userSpaceOnUse"><circle cx="${u / 4}" cy="${u / 4}" r="1" fill="${esc(o.mark)}" fill-opacity=".5"/></pattern><pattern id="pxfx-g2" width="${u}" height="${u}" x="${-u / 2}" y="${-u / 2}" patternUnits="userSpaceOnUse"><circle cx="${u / 2}" cy="${u / 2}" r="1.7" fill="${esc(o.mark)}" fill-opacity=".75"/></pattern></defs><rect x="${n1(gx)}" y="${n1(gy)}" width="${n1(v.w * u)}" height="${n1(v.h * u)}" fill="url(#pxfx-g1)"/><rect x="${n1(gx)}" y="${n1(gy)}" width="${n1(v.w * u)}" height="${n1(v.h * u)}" fill="url(#pxfx-g2)"/>`;
+  }
+  for (const e of m.edges) {
+    const g0 = lineGeometry(V, e);
+    if (!g0) continue;
+    const s = e.step || 0;
+    if (!visible(s)) continue;
+    const t = FEYNMAN_TYPES[e.particle] || FEYNMAN_TYPES.plain;
+    const ink = e.color || o.ink || "#ffffff";
+    const loop = e.from === e.to;
+    const trim = (id) => (KIND_R[shownKind(V[id], deg)] || 0) / g0.len;
+    const t0 = loop ? 0 : Math.min(0.45, trim(e.from)), t1 = loop ? 1 : 1 - Math.min(0.45, trim(e.to));
+    const g = t0 > 0 || t1 < 1 ? part(g0, t0, t1) : g0;
+    let lines = "";
+    if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="${P(basePoints(g0))}" fill="none" stroke="${esc(o.accent)}" stroke-opacity=".32" stroke-width="${n1(14 * k)}" stroke-linecap="round"/>`;
+    if (t.deco === "wave") lines += stroke(P(wavePoints(g)), ink);
+    else if (t.deco === "wave2") lines += stroke(P(wavePoints(g, DBL)), ink) + stroke(P(wavePoints(g, -DBL)), ink);
+    else if (t.deco === "coil") lines += stroke(P(coilPoints(g)), ink);
+    else if (t.deco === "double") lines += stroke(P(basePoints(g, DBL)), ink, "", lw * 0.8) + stroke(P(basePoints(g, -DBL)), ink, "", lw * 0.8);
+    else if (t.dash === "dot") lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="0.1 ${n1(6 * k)}"`, lw * 1.45);
+    else if (t.dash) lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="${t.dash.split(" ").map((x) => n1(x * k)).join(" ")}"`);
+    else lines += stroke(P(basePoints(g)), ink);
+    if (t.arrow) {
+      const [x, y, tx, ty] = g.at(0.5), X = x * u, Y = -y * u;
+      const dx = tx * t.arrow, dy = -ty * t.arrow, nx = -dy, ny = dx, aL = 7.5 * k, aW = 5.4 * k;
+      lines += `<path d="M${n1(X + dx * aL)} ${n1(Y + dy * aL)}L${n1(X - dx * aL * 0.75 + nx * aW)} ${n1(Y - dy * aL * 0.75 + ny * aW)}L${n1(X - dx * aL * 0.75 - nx * aW)} ${n1(Y - dy * aL * 0.75 - ny * aW)}Z" fill="${esc(ink)}"/>`;
+    }
+    let labels = "";
+    const amp = decoAmp(t), ms = e.momentumSide || -1, ls = e.labelSide || 1;
+    if (e.momentum) {
+      const off = amp + 0.2, pts = [];
+      for (let i = 0; i <= 18; i++) {
+        const [x2, y2, tx2, ty2] = g.at(0.3 + 0.4 * i / 18);
+        pts.push([x2 - ty2 * off * ms, y2 + tx2 * off * ms]);
+      }
+      if (e.momentumReverse) pts.reverse();
+      const a = pts[pts.length - 2], b = pts[pts.length - 1];
+      const hx = (b[0] - a[0]) * u, hy = -(b[1] - a[1]) * u, hl = Math.hypot(hx, hy) || 1, ux = hx / hl, uy = hy / hl;
+      const BX = b[0] * u, BY = -b[1] * u, hs = 6 * k;
+      labels += stroke(P(pts), ink, "", 1.4 * k);
+      labels += `<path d="M${n1(BX - ux * hs - uy * hs * 0.6)} ${n1(BY - uy * hs + ux * hs * 0.6)}L${n1(BX)} ${n1(BY)}L${n1(BX - ux * hs + uy * hs * 0.6)} ${n1(BY - uy * hs - ux * hs * 0.6)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.4 * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const [x, y, tx, ty] = g.at(0.5), nX = -ty * ms, nY = tx * ms;
+      const bx = texBox(e.momentum, fs * 0.85), ext = (Math.abs(nX) * bx.w / 2 + Math.abs(nY) * bx.h / 2) / u;
+      const L = off + 0.1 + ext;
+      labels += label(e.momentum, (x + nX * L) * u, -(y + nY * L) * u, fs * 0.85, ink);
+    }
+    if (e.label) {
+      const [x, y, tx, ty] = g.at(0.5), nX = -ty * ls, nY = tx * ls;
+      const bx = texBox(e.label, fs), ext = (Math.abs(nX) * bx.w / 2 + Math.abs(nY) * bx.h / 2) / u;
+      const L = amp + 0.13 + ext + (e.momentum && ms === ls ? 0.5 : 0);
+      labels += label(e.label, (x + nX * L) * u, -(y + nY * L) * u, fs, ink);
+    }
+    if (o.editor) labels += `<path class="pxfx-hit" data-e="${esc(e.id)}" d="${P(basePoints(g0), false)}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="${n1(16 * k)}" pointer-events="stroke"/>`;
+    out += wrap(s, lines, labels, basePoints(g0), false, e.id);
+  }
+  const warn = new Set(o.warn || []);
+  for (const v of m.vertices) {
+    const s = vertexStep(m, v);
+    if (!visible(s)) continue;
+    const kind = shownKind(v, deg), ink = v.color || o.ink || "#ffffff", X = v.x * u, Y = -v.y * u;
+    let mark = "";
+    if (kind === "dot") {
+      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(4.3 * k)}" fill="${esc(ink)}"/>`;
+      grow(X, Y, 4.3 * k);
+    } else if (kind === "empty") {
+      const r = KIND_R.empty * u;
+      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.8 * k)}"/>`;
+      grow(X, Y, r);
+    } else if (kind === "square") {
+      mark += `<rect x="${n1(X - 4.6 * k)}" y="${n1(Y - 4.6 * k)}" width="${n1(9.2 * k)}" height="${n1(9.2 * k)}" fill="${esc(ink)}"/>`;
+      grow(X, Y, 4.6 * k);
+    } else if (kind === "crossed") {
+      const r = KIND_R.crossed * u, c = r * 0.7;
+      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="none" stroke="${esc(ink)}" stroke-width="${n1(1.8 * k)}"/><path d="M${n1(X - c)} ${n1(Y - c)}L${n1(X + c)} ${n1(Y + c)}M${n1(X - c)} ${n1(Y + c)}L${n1(X + c)} ${n1(Y - c)}" stroke="${esc(ink)}" stroke-width="${n1(1.6 * k)}"/>`;
+      grow(X, Y, r);
+    } else if (kind === "blob") {
+      const r = KIND_R.blob * u;
+      mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(r)}" fill="${esc(ink)}" fill-opacity=".22" stroke="${esc(ink)}" stroke-width="${n1(2 * k)}"/>`;
+      grow(X, Y, r);
+    } else if (o.editor) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="3" fill="none" stroke="${esc(o.mark)}" stroke-width="1.2"/>`;
+    let labels = "";
+    if (v.label) {
+      const d = labelDirection(m, V, v);
+      const bx = texBox(v.label, fs), ext = (Math.abs(d[0]) * bx.w / 2 + Math.abs(d[1]) * bx.h / 2) / u;
+      const L = (KIND_R[kind] || (kind === "none" ? 0 : 0.07)) + 0.12 + ext;
+      labels += label(v.label, (v.x + d[0] * L) * u, -(v.y + d[1] * L) * u, fs, ink);
+    }
+    if (o.editor) {
+      if (warn.has(v.id)) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(13 * k)}" fill="none" stroke="${esc(o.warnColor)}" stroke-width="2" stroke-dasharray="4 3"><title>Fermion arrows don’t flow through this vertex</title></circle>`;
+      if (o.sel && o.sel.kind === "v" && o.sel.id === v.id) mark += `<circle cx="${n1(X)}" cy="${n1(Y)}" r="${n1(10 * k)}" fill="${esc(o.accent)}" fill-opacity=".22" stroke="${esc(o.accent)}" stroke-width="2"/>`;
+      labels += `<circle data-v="${esc(v.id)}" cx="${n1(X)}" cy="${n1(Y)}" r="${n1(12 * k)}" fill="#000" fill-opacity="0"/>`;
+    }
+    out += wrap(s, mark, labels, null, true, v.id);
+  }
+  if (o.editor && o.sel && o.sel.kind === "e") {
+    const e = m.edges.find((x) => x.id === o.sel.id), g = e && lineGeometry(V, e);
+    if (g) {
+      const [x, y] = g.at(0.5), loop = e.from === e.to;
+      out += `<circle data-h="${loop ? "loop" : "bend"}" cx="${n1(x * u)}" cy="${n1(-y * u)}" r="${n1(6.5 * k)}" fill="${esc(o.accent)}" stroke="#fff" stroke-width="2"><title>${loop ? "Drag to turn and resize the loop" : "Drag to bend the line"}</title></circle>`;
+    }
+  }
+  const capSteps = Object.keys(m.captions || {}).map(Number).sort((a, b) => a - b);
+  if (o.captions && capSteps.length && isFinite(box.x0)) {
+    const cs = CAPTION * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
+    const one = (n, cls) => {
+      const text = m.captions[n];
+      if (o.labels === "text") return `<text${cls} x="${n1(cx)}" y="${n1(y + cs)}" text-anchor="middle" font-size="${n1(cs)}" fill="${esc(o.ink || "#ffffff")}">${esc(text)}</text>`;
+      return `<foreignObject${cls} x="${n1(cx - w / 2)}" y="${n1(y)}" width="${n1(w)}" height="${n1(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n1(cs)}px;line-height:1.3;color:${esc(o.ink || "#ffffff")}">${esc(text)}</div></foreignObject>`;
+    };
+    if (deck != null) out += capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
+    else {
+      const cur = stepped ? o.step : maxStep(m);
+      const shown = capSteps.filter((n) => n <= cur).pop();
+      if (shown != null) out += one(shown, "");
+    }
+    grow(cx, y + h / 2, w / 2, h / 2);
+  }
+  if (!isFinite(box.x0)) Object.assign(box, { x0: 0, y0: 0, x1: 5 * u, y1: 2.5 * u });
+  return { svg: out, box };
+}
+function feynmanBox(el) {
+  const { box } = drawDiagram(feynmanModel(el), { captions: true });
+  const pad = 0.18 * UNIT;
+  return { x: box.x0 - pad, y: box.y0 - pad, w: box.x1 - box.x0 + 2 * pad, h: box.y1 - box.y0 + 2 * pad };
+}
+function feynmanSvg(el, opts = {}) {
+  const m = feynmanModel(el);
+  const b = feynmanBox(el);
+  const { svg } = drawDiagram(m, { ink: m.color, labels: opts.labels || "text", captions: true, deck: opts.deck, step: opts.step, dim: m.dimPast });
+  const size = opts.standalone ? ` width="${n1(b.w)}" height="${n1(b.h)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n1(b.x)} ${n1(b.y)} ${n1(b.w)} ${n1(b.h)}" preserveAspectRatio="xMidYMid meet"${size} style="width:100%;height:100%;display:block;overflow:visible">${svg}</svg>`;
+}
+function feynmanSteps(el) {
+  if (el?.type !== "feynman") return [];
+  const m = feynmanModel(el), steps = /* @__PURE__ */ new Set();
+  for (const e of m.edges) if (e.step > 0) steps.add(e.step);
+  for (const v of m.vertices) if (v.step > 0) steps.add(v.step);
+  for (const n of Object.keys(m.captions)) if (+n > 0) steps.add(+n);
+  return [...steps].sort((a, b) => a - b).map((s) => [m.stepStart - 1 + s, s]).filter(([n]) => n <= 1e3);
+}
+function feynmanStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of feynmanSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasFeynman(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "feynman"));
+}
+function applyFeynmanStep(root, cur, animate, dim) {
+  var parts = root.querySelectorAll(".pxfx-part"), i, p, at, best = -1;
+  for (i = 0; i < parts.length; i++) {
+    p = parts[i];
+    at = +p.getAttribute("data-fx-at") || 0;
+    p.classList.toggle("pxfx-off", at > cur);
+    p.classList.toggle("pxfx-past", !!dim && cur > 0 && at < cur);
+    p.classList.remove("pxfx-new");
+    if (animate && at === cur && at > 0) {
+      void p.getBoundingClientRect();
+      p.classList.add("pxfx-new");
+    }
+  }
+  var caps = root.querySelectorAll("[data-fx-cap]");
+  for (i = 0; i < caps.length; i++) {
+    at = +caps[i].getAttribute("data-fx-cap");
+    if (at <= cur && at > best) best = at;
+  }
+  for (i = 0; i < caps.length; i++) caps[i].classList.toggle("pxfx-off", +caps[i].getAttribute("data-fx-cap") !== best);
+}
+var FEYNMAN_CSS = [
+  ".pxfx-part.pxfx-off,.pxfx-cap.pxfx-off{visibility:hidden}",
+  ".pxfx-part{transition:opacity .35s ease}",
+  ".pxfx-part.pxfx-past{opacity:.34}",
+  ".pxfx-reveal{stroke-dasharray:1 1;stroke-dashoffset:0}",
+  ".pxfx-new .pxfx-reveal{animation:pxfx-draw .75s ease-in-out both}",
+  ".pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:pxfx-fade .35s .45s ease-out both}",
+  "@keyframes pxfx-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}",
+  "@keyframes pxfx-fade{from{opacity:0}to{opacity:1}}",
+  "@media (prefers-reduced-motion:reduce){.pxfx-new .pxfx-reveal,.pxfx-new .pxfx-fade,.pxfx-new.pxfx-v{animation:none}.pxfx-part{transition:none}}"
+].join("\n");
+var deckScript = null;
+function feynmanDeckScript() {
+  if (!deckScript) deckScript = `
+    (function() {
+      var apply = (${applyFeynmanStep.toString()});
+      var css = document.createElement('style');
+      css.textContent = ${JSON.stringify(FEYNMAN_CSS)};
+      document.head.appendChild(css);
+      var items = [];
+      document.querySelectorAll('[data-fx]').forEach(function(el) {
+        items.push({ el: el, id: el.getAttribute('data-fx'), dim: el.getAttribute('data-fx-dim') === '1', at: -1 });
+      });
+      function stepOf(item) {
+        var slide = item.el.closest('section'), n = 0;
+        if (!slide) return 0;
+        slide.querySelectorAll('.fragment[data-fx-step]').forEach(function(m) {
+          if (m.getAttribute('data-fx-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-fx-step-at') || 0);
+        });
+        return n;
+      }
+      function sync(ev) {
+        var forward = !!ev && ev.type === 'fragmentshown';
+        items.forEach(function(item) {
+          var n = stepOf(item);
+          if (n === item.at) return;
+          apply(item.el, n, forward && n > item.at, item.dim);
+          item.at = n;
+        });
+      }
+      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
+      sync();
+    })();
+`;
+  return deckScript;
+}
+function template(key, name, verts, edges, captions) {
+  return { key, name, build() {
+    return {
+      vertices: verts.map(([id, x, y, label]) => ({ id, x, y, kind: "auto", label: label || "", labelAt: "auto", color: null, step: null })),
+      edges: edges.map(([from, to, particle, opts], i) => ({ id: "e" + (i + 1), from, to, particle, bend: 0, label: "", labelSide: 1, momentum: "", momentumSide: -1, momentumReverse: false, color: null, step: 0, ...opts || {} })),
+      captions: { ...captions || {} }
+    };
+  } };
+}
+var FEYNMAN_TEMPLATES = [
+  template(
+    "ee",
+    "e⁺e⁻ → μ⁺μ⁻",
+    [["i1", 0, 2, "e^-"], ["i2", 0, 0, "e^+"], ["a", 1.5, 1], ["b", 3.6, 1], ["f1", 5.1, 2, "\\mu^-"], ["f2", 5.1, 0, "\\mu^+"]],
+    [["i1", "a", "fermion", { step: 1 }], ["a", "i2", "fermion", { step: 1 }], ["a", "b", "photon", { label: "\\gamma", momentum: "q", step: 2 }], ["b", "f1", "fermion", { step: 3 }], ["f2", "b", "fermion", { step: 3 }]],
+    { 1: "An electron and a positron annihilate", 2: "into a virtual photon,", 3: "which makes a muon pair." }
+  ),
+  template(
+    "ggf",
+    "Gluon fusion to a Higgs",
+    [["g1", 0, 2.6, "g"], ["g2", 0, -0.6, "g"], ["a", 2, 2], ["b", 2, 0], ["c", 3.6, 1], ["h", 5.6, 1, "H"]],
+    [["g1", "a", "gluon", { step: 1 }], ["g2", "b", "gluon", { step: 1 }], ["a", "c", "fermion", { label: "t", step: 2 }], ["c", "b", "fermion", { step: 2 }], ["b", "a", "fermion", { step: 2 }], ["c", "h", "scalar", { step: 3 }]],
+    { 1: "Two gluons, one from each proton,", 2: "fuse through a loop of top quarks", 3: "and make a Higgs boson." }
+  ),
+  template(
+    "compton",
+    "Compton scattering",
+    [["i", 0, 0, "e^-"], ["a", 1.6, 0], ["b", 3.4, 0], ["f", 5, 0, "e^-"], ["g1", 0.2, 1.8, "\\gamma"], ["g2", 4.8, 1.8, "\\gamma"]],
+    [["i", "a", "fermion", { step: 1 }], ["g1", "a", "photon", { step: 1 }], ["a", "b", "fermion", { label: "e^-", labelSide: -1, step: 2 }], ["b", "f", "fermion", { step: 3 }], ["b", "g2", "photon", { step: 3 }]],
+    { 1: "An electron absorbs a photon,", 2: "travels as a virtual electron", 3: "and emits a photon." }
+  ),
+  template(
+    "moller",
+    "Møller scattering (t-channel)",
+    [["i1", 0, 2.6, "e^-"], ["a", 2.4, 2.2], ["f1", 4.8, 2.6, "e^-"], ["i2", 0, -0.4, "e^-"], ["b", 2.4, 0], ["f2", 4.8, -0.4, "e^-"]],
+    [["i1", "a", "fermion", { step: 1 }], ["i2", "b", "fermion", { step: 1 }], ["a", "b", "photon", { label: "\\gamma", momentum: "q", step: 2 }], ["a", "f1", "fermion", { step: 3 }], ["b", "f2", "fermion", { step: 3 }]],
+    { 1: "Two electrons approach,", 2: "exchange a virtual photon", 3: "and scatter." }
+  ),
+  template(
+    "self",
+    "Electron self-energy",
+    [["i", 0, 0, "e^-"], ["a", 1.4, 0], ["b", 3.6, 0], ["f", 5, 0, "e^-"]],
+    [["i", "a", "fermion", { step: 1 }], ["a", "b", "fermion", { step: 1 }], ["b", "f", "fermion", { step: 1 }], ["a", "b", "photon", { bend: 1, label: "\\gamma", step: 2 }]],
+    { 1: "An electron propagates,", 2: "emitting and reabsorbing a virtual photon." }
+  ),
+  template(
+    "vacpol",
+    "Vacuum polarization",
+    [["i", 0, 1], ["a", 1.6, 1], ["b", 3.4, 1], ["f", 5, 1]],
+    [["i", "a", "photon", { label: "\\gamma", step: 1 }], ["a", "b", "fermion", { bend: 1, label: "e^-", step: 2 }], ["b", "a", "fermion", { bend: 1, label: "e^+", step: 2 }], ["b", "f", "photon", { label: "\\gamma", step: 3 }]],
+    { 1: "A photon", 2: "briefly becomes an electron–positron pair", 3: "and carries on." }
+  ),
+  template(
+    "vertex",
+    "QED vertex correction",
+    [["g", 2.5, 3.1, "\\gamma"], ["v", 2.5, 2], ["a", 1.4, 0.9], ["b", 3.6, 0.9], ["i", 0.4, -0.3, "e^-"], ["f", 4.6, -0.3, "e^-"]],
+    [["i", "a", "fermion", { step: 1 }], ["a", "v", "fermion", { step: 1 }], ["v", "b", "fermion", { step: 1 }], ["b", "f", "fermion", { step: 1 }], ["g", "v", "photon", { step: 1 }], ["a", "b", "photon", { label: "\\gamma", labelSide: -1, step: 2 }]],
+    { 1: "An electron scatters off a photon.", 2: "A virtual photon across the vertex is the one-loop correction behind g − 2." }
+  ),
+  template(
+    "beta",
+    "β⁻ decay",
+    [["i", 0, 0, "d"], ["v1", 2, 0.5], ["u", 4.8, 0, "u"], ["v2", 3.2, 2.1], ["e", 4.8, 3, "e^-"], ["n", 4.8, 1.4, "\\bar{\\nu}_e"]],
+    [["i", "v1", "fermion", { step: 1 }], ["v1", "u", "fermion", { step: 1 }], ["v1", "v2", "photon", { label: "W^-", step: 2 }], ["v2", "e", "fermion", { step: 3 }], ["v2", "n", "antifermion", { step: 3 }]],
+    { 1: "A down quark turns into an up quark", 2: "by emitting a virtual W⁻,", 3: "which decays to an electron and an electron antineutrino." }
+  ),
+  { key: "blank", name: "Blank", build: () => ({ vertices: [], edges: [], captions: {} }) }
+];
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -3282,7 +3949,7 @@ var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
 var HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num3 = (key) => {
+  const num4 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
@@ -3290,14 +3957,14 @@ function text3dSettings(el, fallbackFont) {
   const color2 = (key) => HEX.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num3("depth"),
-    rotateX: num3("rotateX"),
-    rotateY: num3("rotateY"),
-    perspective: num3("perspective"),
-    fontSize: num3("fontSize"),
-    letterSpacing: num3("letterSpacing"),
-    lineHeight: num3("lineHeight"),
-    sideShade: num3("sideShade"),
+    depth: num4("depth"),
+    rotateX: num4("rotateX"),
+    rotateY: num4("rotateY"),
+    perspective: num4("perspective"),
+    fontSize: num4("fontSize"),
+    letterSpacing: num4("letterSpacing"),
+    lineHeight: num4("lineHeight"),
+    sideShade: num4("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -4007,9 +4674,9 @@ var STATE_EASINGS = {
 var DEFAULT_STATE_DURATION = 400;
 var SET_MODES = ["set", "toggle", "cycle"];
 var SAFE_ID = /^[A-Za-z0-9_-]+$/;
-var COLOR2 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
-var clamp = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
-var color = (v) => typeof v === "string" && COLOR2.test(v.trim()) ? v.trim() : null;
+var COLOR3 = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|[a-z]{3,20})$/i;
+var clamp2 = (v, min, max) => typeof v === "number" && Number.isFinite(v) ? +Math.min(max, Math.max(min, v)).toFixed(2) : null;
+var color = (v) => typeof v === "string" && COLOR3.test(v.trim()) ? v.trim() : null;
 var flip = (v) => v === true || v === 180 ? 180 : v === -180 ? -180 : 0;
 function elementStates(el) {
   if (typeof el?.id !== "string" || !SAFE_ID.test(el.id) || !Array.isArray(el.states)) return [];
@@ -4017,25 +4684,25 @@ function elementStates(el) {
 }
 function stateValues(st) {
   return {
-    x: clamp(st.x, -1e4, 1e4),
-    y: clamp(st.y, -1e4, 1e4),
-    width: clamp(st.width, 1, 1e4),
-    height: clamp(st.height, 1, 1e4),
-    rotation: clamp(st.rotation, -3600, 3600),
-    scale: clamp(st.scale, 0.05, 20),
+    x: clamp2(st.x, -1e4, 1e4),
+    y: clamp2(st.y, -1e4, 1e4),
+    width: clamp2(st.width, 1, 1e4),
+    height: clamp2(st.height, 1, 1e4),
+    rotation: clamp2(st.rotation, -3600, 3600),
+    scale: clamp2(st.scale, 0.05, 20),
     flipX: flip(st.flipX),
     flipY: flip(st.flipY),
-    opacity: clamp(st.opacity, 0, 1),
-    zIndex: st.zIndex == null ? null : Math.round(clamp(st.zIndex, -1e3, 1e5) ?? 0),
+    opacity: clamp2(st.opacity, 0, 1),
+    zIndex: st.zIndex == null ? null : Math.round(clamp2(st.zIndex, -1e3, 1e5) ?? 0),
     fill: color(st.fill),
     stroke: color(st.stroke),
     textColor: color(st.textColor),
-    filterBrightness: clamp(st.filterBrightness, 0, 400),
-    filterContrast: clamp(st.filterContrast, 0, 400),
-    filterGrayscale: clamp(st.filterGrayscale, 0, 100),
+    filterBrightness: clamp2(st.filterBrightness, 0, 400),
+    filterContrast: clamp2(st.filterContrast, 0, 400),
+    filterGrayscale: clamp2(st.filterGrayscale, 0, 100),
     shape: CLOSED_SHAPES.includes(st.shape) ? st.shape : null,
-    borderRadius: clamp(st.borderRadius, 0, 1e4),
-    duration: Math.round(clamp(st.duration, 0, 1e4) ?? DEFAULT_STATE_DURATION),
+    borderRadius: clamp2(st.borderRadius, 0, 1e4),
+    duration: Math.round(clamp2(st.duration, 0, 1e4) ?? DEFAULT_STATE_DURATION),
     easing: STATE_EASINGS[st.easing] || "ease"
   };
 }
@@ -4180,9 +4847,9 @@ function statesCss(slides) {
         if (paint.length) rules.push(`${where(on.join(", "))} > svg > ${line ? ":is(line, polyline)" : "g"} { ${paint.join("; ")}; }`);
         if (v.textColor) rules.push(`${where(on.join(", "))} > svg > text { fill:${v.textColor}; }`);
         if (v.filterBrightness != null || v.filterContrast != null || v.filterGrayscale != null) {
-          const b = v.filterBrightness ?? clamp(el.filterBrightness, 0, 400) ?? 100;
-          const c = v.filterContrast ?? clamp(el.filterContrast, 0, 400) ?? 100;
-          const g = v.filterGrayscale ?? clamp(el.filterGrayscale, 0, 100) ?? 0;
+          const b = v.filterBrightness ?? clamp2(el.filterBrightness, 0, 400) ?? 100;
+          const c = v.filterContrast ?? clamp2(el.filterContrast, 0, 400) ?? 100;
+          const g = v.filterGrayscale ?? clamp2(el.filterGrayscale, 0, 100) ?? 0;
           rules.push(`${where(on.join(", "))} img { filter:brightness(${b}%) contrast(${c}%) grayscale(${g}%) !important; }`);
         }
       });
@@ -4692,6 +5359,10 @@ function generateRevealHTML(presentation, opts = {}) {
       if (el.type === "tikz") {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}">${tikzDiagramSvg(el)}</div>`;
       }
+      if (el.type === "feynman") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${feynmanSvg(el, { deck: fxId, labels: "deck" })}</div>`;
+      }
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -4755,7 +5426,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc2 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -4773,10 +5444,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc2(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc2(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -4784,8 +5455,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc2(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc2(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -5011,7 +5682,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -5372,7 +6043,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) ? feynmanDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -5590,8 +6261,8 @@ function getBackgroundAttrs(bg) {
   if (bg.type === "gradient" && bg.gradient) return ` data-background-gradient="${sanitizeAttr(bg.gradient)}"`;
   return "";
 }
-function escapeHtml(str2) {
-  return String(str2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeHtml(str3) {
+  return String(str3).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>

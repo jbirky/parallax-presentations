@@ -37,6 +37,8 @@ import {
   MousePointerClick,
   Box,
   ChartSpline,
+  Atom,
+  Waypoints,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -74,10 +76,11 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
+  const [showDiagramMenu, setShowDiagramMenu] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showShapeMenu, setShowShapeMenu] = useState(false)
@@ -380,13 +383,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <Code size={14} /> p5.js
             </button>
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-            <button onClick={() => { setShowEmbedMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
-            </button>
-            <button onClick={() => { setShowEmbedMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
-            </button>
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button onClick={() => { setShowEmbedMenu(false); onAddAnime?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2728;</span> Anime.js
             </button>
@@ -397,6 +393,30 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           </div>
         </>)}
       </div>
+
+      {/* Diagrams dropdown */}
+      {(onAddDiagram || onAddTikz || onAddFeynman) && (
+        <div style={{ position: 'relative' }}>
+          <button className="btn-icon" onClick={() => setShowDiagramMenu(v => !v)} title="Diagram tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+            <Waypoints size={14} /> Diagrams <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+          </button>
+          {showDiagramMenu && (<>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowDiagramMenu(false)} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 180, overflow: 'hidden', padding: '4px 0' }}>
+              <button onClick={() => { setShowDiagramMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddFeynman?.() }} title="Particle physics diagrams that build up line by line and copy out as TikZ-Feynman" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Atom size={14} /> Feynman Diagram
+              </button>
+              <DocsLink page="diagrams" onClose={() => setShowDiagramMenu(false)} />
+            </div>
+          </>)}
+        </div>
+      )}
 
       {/* Media dropdown */}
       <div style={{ position: 'relative' }}>

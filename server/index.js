@@ -192,6 +192,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
+      { text: 'Feynman Diagrams', link: 'tutorials/feynman-diagrams' },
       { text: 'Graphs', link: 'tutorials/graphs' },
       { text: 'HTML Embeds & p5.js', link: 'tutorials/html-embeds' },
       { text: 'Images', link: 'tutorials/images' },

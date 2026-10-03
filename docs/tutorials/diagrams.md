@@ -4,8 +4,10 @@ The diagram editor lets you create flowcharts, system diagrams, and other schema
 
 ## Opening the diagram editor
 
-1. Click the **Embed** dropdown in the toolbar.
+1. Click the **Diagrams** dropdown in the toolbar.
 2. Select **Diagram**.
+
+The same menu has **TikZ Diagram**, for diagrams you also want as TikZ code, and **Feynman Diagram** (see [Feynman Diagrams](/tutorials/feynman-diagrams)).
 
 The diagram editor opens as a full-screen modal with a dark canvas and a tool panel on the left.
 
