@@ -183,6 +183,14 @@ export function texBox(src, fs) {
   return { w: Math.max(w, fs * 0.4), h: fs * (1 + (sup ? 0.25 : 0) + (sub ? 0.2 : 0)) }
 }
 
+// The same as HTML, in a deck until KaTeX draws it, so a label never shows as TeX
+function texLiteHtml(src) {
+  return texRuns(src).map(r => {
+    const t = r.it ? `<i>${esc(r.t)}</i>` : esc(r.t)
+    return r.lvl > 0 ? `<sup>${t}</sup>` : r.lvl < 0 ? `<sub>${t}</sub>` : t
+  }).join('')
+}
+
 function texSvg(src, X, Y, fs, fill) {
   let cur = 0, spans = ''
   for (const r of texRuns(src)) {
@@ -382,7 +390,7 @@ export function drawDiagram(m, o = {}) {
     grow(X, Y, b.w / 2, b.h / 2)
     if (o.labels === 'deck' || typeof o.labels === 'function') {
       const w = b.w * 2 + size * 2, h = b.h * 1.6 + size
-      const inner = o.labels === 'deck' ? `<span data-math-latex="${esc(tex)}">${esc(tex)}</span>` : o.labels(tex)
+      const inner = o.labels === 'deck' ? `<span data-math-latex="${esc(tex)}" style="font-family:${esc(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex)
       return `<foreignObject x="${n1(X - w / 2)}" y="${n1(Y - h / 2)}" width="${n1(w)}" height="${n1(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n1(size / 1.21)}px;color:${esc(ink)}">${inner}</div></foreignObject>`
     }
     return texSvg(tex, X, Y, size, ink)
@@ -676,6 +684,10 @@ export function feynmanDeckScript() {
   if (!deckScript) deckScript = `
     (function() {
       var apply = (${applyFeynmanStep.toString()});
+      // The labels, now rather than when the deck is ready
+      if (window.katex) document.querySelectorAll('[data-fx] span[data-math-latex]').forEach(function(el) {
+        try { window.katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false }); el.style.fontFamily = ''; } catch (e) {}
+      });
       var css = document.createElement('style');
       css.textContent = ${JSON.stringify(FEYNMAN_CSS)};
       document.head.appendChild(css);

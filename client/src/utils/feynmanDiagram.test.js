@@ -132,10 +132,26 @@ describe('labels', () => {
     expect(nu[1]).toEqual({ t: 'e', lvl: -1, it: true })
   })
 
-  it('leaves math for the page’s KaTeX in a deck', () => {
+  it('leaves math for KaTeX in a deck, readable until it’s drawn', () => {
     const svg = feynmanSvg(defaultFeynman(true), { labels: 'deck' })
     expect(svg).toContain('data-math-latex="\\mu^-"')
     expect(svg).toContain('<foreignObject')
+    // Until KaTeX draws it, μ with a superscript minus, not the TeX
+    const shown = [...svg.matchAll(/<span data-math-latex="[^"]*"[^>]*>(.*?)<\/span>/g)].map(m => m[1])
+    expect(shown).toContain('<i>μ</i><sup>−</sup>')
+    for (const html of shown) expect(html).not.toMatch(/[\\^_]/)
+  })
+
+  it('has the deck’s script draw its labels with KaTeX without waiting for the deck', async () => {
+    const { Window } = await import('happy-dom')
+    const win = new Window()
+    win.document.body.innerHTML = `<section><div data-fx="fd1" data-fx-dim="1">${feynmanSvg(defaultFeynman(true), { deck: 'fd1', labels: 'deck' })}</div></section>`
+    win.katex = { render: (tex, el) => { el.innerHTML = `<span class="katex">${tex}</span>` } }
+    win.Reveal = { on: () => {} }
+    new win.Function(feynmanDeckScript())()
+    const spans = [...win.document.querySelectorAll('span[data-math-latex]')]
+    expect(spans.length).toBeGreaterThan(0)
+    expect(spans.every(el => el.querySelector('.katex'))).toBe(true)
   })
 })
 
