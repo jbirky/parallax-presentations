@@ -64,6 +64,8 @@ import { FREEBODY_FIELDS } from '../utils/freebodySolve'
 import { defaultVenn, vennBox, VENN_FIELDS } from '../utils/vennDiagram'
 import TimingEditorModal from '../components/TimingEditorModal'
 import { defaultTiming, timingBox, TIMING_FIELDS } from '../utils/timingDiagram'
+import GeometryEditorModal from '../components/GeometryEditorModal'
+import { defaultGeometry, GEOMETRY_FIELDS, GEOMETRY_SIZE } from '../utils/geometryDiagram'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -433,6 +435,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [freebodyEditor, setFreebodyEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [vennEditor, setVennEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [timingEditor, setTimingEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [geometryEditor, setGeometryEditor] = useState(null) // { elementId (null for a new one), diagram, size, slideBg }
   const [moleculePicker, setMoleculePicker] = useState(null) // { elementId (null for a new one) }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
@@ -722,7 +725,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1664,6 +1667,38 @@ function draw() {
     }
     setTimingEditor(null)
   }, [timingEditor, presentation, updateElement, slideW, slideH])
+
+  const addGeometry = useCallback(() => {
+    setGeometryEditor({ elementId: null, diagram: defaultGeometry(slideIsDark()), size: GEOMETRY_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openGeometryEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'geometry' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of GEOMETRY_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setGeometryEditor({ elementId, diagram, size: { w: element.width || GEOMETRY_SIZE.w, h: element.height || GEOMETRY_SIZE.h }, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveGeometry = useCallback((diagram) => {
+    const elementId = geometryEditor?.elementId
+    if (elementId) {
+      // The figure was edited at the element's shape, so it keeps it
+      updateElement(elementId, diagram)
+    } else {
+      const w = Math.min(GEOMETRY_SIZE.w, Math.round(slideW * 0.9)), h = Math.round(w * GEOMETRY_SIZE.h / GEOMETRY_SIZE.w)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'geometry', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setGeometryEditor(null)
+  }, [geometryEditor, updateElement, slideW, slideH])
 
   const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
 
@@ -4203,6 +4238,7 @@ function draw() {
             onAddFreebody={addFreebody}
             onAddVenn={addVenn}
             onAddTiming={addTiming}
+            onAddGeometry={addGeometry}
             onAddMolecule={addMolecule}
             onAddPeriodic={addPeriodic}
             onAddMarkdown={addMarkdownElement}
@@ -4420,6 +4456,7 @@ function draw() {
               onOpenFreebodyEditor={openFreebodyEditor}
               onOpenVennEditor={openVennEditor}
               onOpenTimingEditor={openTimingEditor}
+              onOpenGeometryEditor={openGeometryEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4465,6 +4502,7 @@ function draw() {
           onEditFreebody={() => selectedElementId && openFreebodyEditor(selectedElementId)}
           onEditVenn={() => selectedElementId && openVennEditor(selectedElementId)}
           onEditTiming={() => selectedElementId && openTimingEditor(selectedElementId)}
+          onEditGeometry={() => selectedElementId && openGeometryEditor(selectedElementId)}
           onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
           onCiteElement={citeElement}
           presentation={presentation}
@@ -4880,6 +4918,17 @@ function draw() {
           isNew={!timingEditor.elementId}
           onSave={saveTiming}
           onClose={() => setTimingEditor(null)}
+        />
+      )}
+
+      {geometryEditor && (
+        <GeometryEditorModal
+          initial={geometryEditor.diagram}
+          size={geometryEditor.size}
+          slideBg={geometryEditor.slideBg}
+          isNew={!geometryEditor.elementId}
+          onSave={saveGeometry}
+          onClose={() => setGeometryEditor(null)}
         />
       )}
 

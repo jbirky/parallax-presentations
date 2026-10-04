@@ -9142,8 +9142,8 @@ function formatSI(v, unit) {
     pick2 = s;
     break;
   }
-  const num8 = v / pick2[0];
-  const str7 = Math.abs(num8) >= 99.95 ? String(Math.round(num8)) : String(Number(num8.toPrecision(3)));
+  const num9 = v / pick2[0];
+  const str7 = Math.abs(num9) >= 99.95 ? String(Math.round(num9)) : String(Number(num9.toPrecision(3)));
   return `${str7} ${pick2[1]}${unit}`;
 }
 var valueOf = (e) => {
@@ -12881,6 +12881,904 @@ function hasTiming(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "timing"));
 }
 
+// client/src/utils/geometryEngine.js
+function geometryRuntime() {
+  var NAME = /^[A-Za-zα-ωΑ-Ω][A-Za-z0-9α-ωΑ-Ω_']*$/;
+  var SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+  var SERIF = "'Latin Modern Roman', 'Times New Roman', Times, serif";
+  function esc9(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function n18(v) {
+    return String(Math.round(v * 10) / 10);
+  }
+  function n23(v) {
+    var r = Math.round(v * 100) / 100;
+    return String(r === 0 ? 0 : r);
+  }
+  var P = function(x, y) {
+    return { x, y };
+  };
+  var sub2 = function(a, b) {
+    return P(a.x - b.x, a.y - b.y);
+  };
+  var add2 = function(a, b) {
+    return P(a.x + b.x, a.y + b.y);
+  };
+  var mul2 = function(a, k) {
+    return P(a.x * k, a.y * k);
+  };
+  var dot2 = function(a, b) {
+    return a.x * b.x + a.y * b.y;
+  };
+  var cross = function(a, b) {
+    return a.x * b.y - a.y * b.x;
+  };
+  var len2 = function(a) {
+    return Math.sqrt(a.x * a.x + a.y * a.y);
+  };
+  var unit = function(a) {
+    var l = len2(a);
+    return l > 1e-12 ? mul2(a, 1 / l) : null;
+  };
+  var perp = function(a) {
+    return P(-a.y, a.x);
+  };
+  var dist = function(a, b) {
+    return len2(sub2(a, b));
+  };
+  var EPS = 1e-9;
+  var isLine = function(v) {
+    return !!v && !!v.kind && !!v.p;
+  };
+  var isCircle = function(v) {
+    return !!v && !!v.c && v.r != null;
+  };
+  var isPoint = function(v) {
+    return !!v && v.x != null && v.kind == null;
+  };
+  function inRange(l, t) {
+    return l.kind === "line" || t >= -1e-7 && (l.kind === "ray" || t <= 1 + 1e-7);
+  }
+  function interLL(l, m) {
+    var d1 = sub2(l.q, l.p), d2 = sub2(m.q, m.p), den = cross(d1, d2);
+    if (Math.abs(den) < EPS) return [];
+    var w = sub2(m.p, l.p), t = cross(w, d2) / den, u = cross(w, d1) / den;
+    return inRange(l, t) && inRange(m, u) ? [add2(l.p, mul2(d1, t))] : [];
+  }
+  function interLC(l, c) {
+    var d = sub2(l.q, l.p), f = sub2(l.p, c.c), A = dot2(d, d), B = 2 * dot2(f, d), C2 = dot2(f, f) - c.r * c.r, disc = B * B - 4 * A * C2;
+    if (A < EPS || disc < -1e-9) return [];
+    var s = Math.sqrt(Math.max(0, disc));
+    return [(-B - s) / (2 * A), (-B + s) / (2 * A)].map(function(t) {
+      return inRange(l, t) ? add2(l.p, mul2(d, t)) : null;
+    });
+  }
+  function interCC(a, b) {
+    var d = dist(a.c, b.c);
+    if (d < EPS || d > a.r + b.r + 1e-9 || d < Math.abs(a.r - b.r) - 1e-9) return [];
+    var x = (d * d + a.r * a.r - b.r * b.r) / (2 * d), h = Math.sqrt(Math.max(0, a.r * a.r - x * x));
+    var e = mul2(sub2(b.c, a.c), 1 / d), m = add2(a.c, mul2(e, x)), n = perp(e);
+    return [add2(m, mul2(n, h)), add2(m, mul2(n, -h))];
+  }
+  function intersections(u, v) {
+    if (isLine(u) && isLine(v)) return interLL(u, v);
+    if (isLine(u) && isCircle(v)) return interLC(u, v);
+    if (isCircle(u) && isLine(v)) return interLC(v, u);
+    if (isCircle(u) && isCircle(v)) return interCC(u, v);
+    return [];
+  }
+  function lineArg(a, at) {
+    if (isLine(a[at])) return a[at];
+    if (isPoint(a[at]) && isPoint(a[at + 1])) return { kind: "line", p: a[at], q: a[at + 1] };
+    return null;
+  }
+  function through(p, d) {
+    return d ? { kind: "line", p, q: add2(p, d) } : null;
+  }
+  var CMDS2 = {
+    Point: { sig: ["n", "n"], fn: function(a) {
+      return P(a[0], a[1]);
+    }, say: function(o) {
+      return "Mark a point " + o.name;
+    } },
+    PointOn: {
+      sig: ["o", "n"],
+      fn: function(a) {
+        var o = a[0], t = a[1];
+        if (isCircle(o)) return add2(o.c, P(o.r * Math.cos(t), o.r * Math.sin(t)));
+        if (isLine(o)) {
+          var tt = o.kind === "segment" ? Math.max(0, Math.min(1, t)) : o.kind === "ray" ? Math.max(0, t) : t;
+          return add2(o.p, mul2(sub2(o.q, o.p), tt));
+        }
+        return null;
+      },
+      say: function(o) {
+        return "Put a point " + o.name + " on " + o.args[0];
+      }
+    },
+    Intersect: { sig: ["o", "o", "n?"], fn: function(a) {
+      return intersections(a[0], a[1])[a[2] || 0] || null;
+    }, say: function(o) {
+      return o.name + " is where " + o.args[0] + " and " + o.args[1] + " cross";
+    } },
+    Midpoint: { sig: ["p", "p"], fn: function(a) {
+      return mul2(add2(a[0], a[1]), 0.5);
+    }, say: function(o) {
+      return o.name + " is the midpoint of " + o.args[0] + o.args[1];
+    } },
+    Segment: { sig: ["p", "p"], fn: function(a) {
+      return dist(a[0], a[1]) > EPS ? { kind: "segment", p: a[0], q: a[1] } : null;
+    }, say: function(o) {
+      return "Draw the segment " + o.args[0] + o.args[1];
+    } },
+    Line: { sig: ["p", "p"], fn: function(a) {
+      return dist(a[0], a[1]) > EPS ? { kind: "line", p: a[0], q: a[1] } : null;
+    }, say: function(o) {
+      return "Draw the line through " + o.args[0] + " and " + o.args[1];
+    } },
+    Ray: { sig: ["p", "p"], fn: function(a) {
+      return dist(a[0], a[1]) > EPS ? { kind: "ray", p: a[0], q: a[1] } : null;
+    }, say: function(o) {
+      return "Draw the ray from " + o.args[0] + " through " + o.args[1];
+    } },
+    Circle: {
+      sig: ["p", "p", "p?"],
+      fn: function(a) {
+        if (a.length === 2) {
+          var r = dist(a[0], a[1]);
+          return r > EPS ? { c: a[0], r, start: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) } : null;
+        }
+        var A = a[0], B = a[1], C2 = a[2], d = 2 * (A.x * (B.y - C2.y) + B.x * (C2.y - A.y) + C2.x * (A.y - B.y));
+        if (Math.abs(d) < EPS) return null;
+        var s = function(p) {
+          return p.x * p.x + p.y * p.y;
+        };
+        var c = P((s(A) * (B.y - C2.y) + s(B) * (C2.y - A.y) + s(C2) * (A.y - B.y)) / d, (s(A) * (C2.x - B.x) + s(B) * (A.x - C2.x) + s(C2) * (B.x - A.x)) / d);
+        return { c, r: dist(c, A), start: Math.atan2(A.y - c.y, A.x - c.x) };
+      },
+      say: function(o) {
+        return o.args.length === 2 ? "Draw the circle centered at " + o.args[0] + " through " + o.args[1] : "Draw the circle through " + o.args[0] + ", " + o.args[1] + " and " + o.args[2];
+      }
+    },
+    Perpendicular: {
+      sig: ["p", "x", "p?"],
+      fn: function(a) {
+        var l = lineArg(a, 1);
+        return l && through(a[0], unit(perp(sub2(l.q, l.p))));
+      },
+      say: function(o) {
+        return "Draw the line through " + o.args[0] + " perpendicular to " + o.args.slice(1).join("");
+      }
+    },
+    Parallel: {
+      sig: ["p", "x", "p?"],
+      fn: function(a) {
+        var l = lineArg(a, 1);
+        return l && through(a[0], unit(sub2(l.q, l.p)));
+      },
+      say: function(o) {
+        return "Draw the line through " + o.args[0] + " parallel to " + o.args.slice(1).join("");
+      }
+    },
+    PerpendicularBisector: {
+      sig: ["p", "p"],
+      fn: function(a) {
+        var d = unit(sub2(a[1], a[0]));
+        return d && through(mul2(add2(a[0], a[1]), 0.5), perp(d));
+      },
+      say: function(o) {
+        return "Draw the perpendicular bisector of " + o.args[0] + o.args[1];
+      }
+    },
+    AngleBisector: {
+      sig: ["p", "p", "p"],
+      fn: function(a) {
+        var u = unit(sub2(a[0], a[1])), v = unit(sub2(a[2], a[1]));
+        if (!u || !v) return null;
+        return through(a[1], unit(add2(u, v)) || perp(u));
+      },
+      say: function(o) {
+        return "Bisect the angle " + o.args.join("");
+      }
+    },
+    Polygon: {
+      sig: ["p", "p", "p+"],
+      fn: function(a) {
+        return { pts: a.slice() };
+      },
+      say: function(o) {
+        var n = o.args.length;
+        return "Draw the " + (n === 3 ? "triangle " : n === 4 ? "quadrilateral " : "polygon ") + o.args.join("");
+      }
+    },
+    Angle: {
+      sig: ["p", "p", "p"],
+      fn: function(a) {
+        var u = sub2(a[0], a[1]), v = sub2(a[2], a[1]);
+        if (len2(u) < EPS || len2(v) < EPS) return null;
+        return { a: a[0], b: a[1], c: a[2], deg: Math.acos(Math.max(-1, Math.min(1, dot2(u, v) / (len2(u) * len2(v))))) * 180 / Math.PI };
+      },
+      say: function(o) {
+        return "Measure the angle " + o.args.join("");
+      }
+    },
+    Distance: { sig: ["p", "p"], fn: function(a) {
+      return { p: a[0], q: a[1], d: dist(a[0], a[1]) };
+    }, say: function(o) {
+      return "Measure " + o.args[0] + o.args[1];
+    } }
+  };
+  var KIND = { p: isPoint, o: function(v) {
+    return isLine(v) || isCircle(v);
+  } };
+  var MAX_OBJECTS = 400;
+  function parse2(text) {
+    var objs = [], errors = [], names = {};
+    String(text == null ? "" : text).split("\n").forEach(function(raw, i) {
+      var line = i + 1, s = raw.replace(/#.*$/, "").trim();
+      if (!s) return;
+      if (objs.length >= MAX_OBJECTS) {
+        if (objs.length === MAX_OBJECTS) errors.push({ line, msg: "A construction can have up to " + MAX_OBJECTS + " objects" });
+        return;
+      }
+      var m = /^([^=\s]+)\s*=\s*([A-Za-z]+)\s*\(([^)]*)\)\s*(?:\{([^}]*)\})?\s*$/.exec(s);
+      if (!m) {
+        errors.push({ line, msg: "Write a line as name = Command(…), like c = Circle(A, B)" });
+        return;
+      }
+      var name = m[1], cmd = m[2], def = CMDS2[cmd];
+      if (!NAME.test(name) || name.length > 24) {
+        errors.push({ line, msg: '"' + name + '" can’t be a name: start with a letter, then letters, digits, _ or ’' });
+        return;
+      }
+      if (!def) {
+        errors.push({ line, msg: cmd + " isn’t a command. These are: " + Object.keys(CMDS2).join(", ") });
+        return;
+      }
+      if (names[name] != null) {
+        errors.push({ line, msg: name + " is named twice" });
+        return;
+      }
+      var args = m[3].split(",").map(function(x) {
+        return x.trim();
+      }).filter(Boolean).map(function(x) {
+        return /^-?\d*\.?\d+(e-?\d+)?$/i.test(x) ? +x : x;
+      });
+      for (var k = 0; k < args.length; k++) if (typeof args[k] === "string" && names[args[k]] == null) {
+        errors.push({ line, msg: args[k] + " isn’t made before this line" });
+        return;
+      }
+      var why = checkArgs(def, args, cmd, objs, names);
+      if (why) {
+        errors.push({ line, msg: why });
+        return;
+      }
+      var opts = {};
+      (m[4] || "").split(",").forEach(function(o) {
+        var kv = o.split("=").map(function(x) {
+          return x.trim();
+        });
+        if (!kv[0] || !/^(construction|hidden|dashed|color|label)$/.test(kv[0])) return;
+        opts[kv[0]] = kv.length > 1 ? kv.slice(1).join("=").replace(/^"|"$/g, "").slice(0, 60) : true;
+      });
+      names[name] = objs.length;
+      objs.push({ name, cmd, args, opts, line });
+    });
+    return { objs, errors };
+  }
+  function checkArgs(def, args, cmd) {
+    var sig = def.sig, min = sig.filter(function(s) {
+      return s.slice(-1) !== "?";
+    }).length, max = /\+$/.test(sig[sig.length - 1]) ? 50 : sig.length;
+    if (args.length < min || args.length > max) return cmd + " takes " + (min === max ? min : max === 50 ? min + " or more" : min + " or " + max) + " arguments, like " + example(cmd);
+    for (var i = 0; i < args.length; i++) {
+      var want = sig[Math.min(i, sig.length - 1)].charAt(0);
+      if (want === "n" && typeof args[i] !== "number") return cmd + "’s argument " + (i + 1) + " is a number, like " + example(cmd);
+      if (want !== "n" && typeof args[i] === "number") return cmd + "’s argument " + (i + 1) + " is a point or a curve, like " + example(cmd);
+    }
+    return null;
+  }
+  var EXAMPLES = { Point: "Point(1, 2)", PointOn: "PointOn(c, 0.5)", Intersect: "Intersect(c, d, 0)", Midpoint: "Midpoint(A, B)", Segment: "Segment(A, B)", Line: "Line(A, B)", Ray: "Ray(A, B)", Circle: "Circle(A, B)", Perpendicular: "Perpendicular(P, f)", Parallel: "Parallel(P, f)", PerpendicularBisector: "PerpendicularBisector(A, B)", AngleBisector: "AngleBisector(A, B, C)", Polygon: "Polygon(A, B, C)", Angle: "Angle(A, B, C)", Distance: "Distance(A, B)" };
+  function example(cmd) {
+    return EXAMPLES[cmd] || cmd + "(…)";
+  }
+  function serialize(objs) {
+    return objs.map(function(o) {
+      var opts = Object.keys(o.opts || {}).filter(function(k) {
+        return o.opts[k] != null && o.opts[k] !== false;
+      }).map(function(k) {
+        return o.opts[k] === true ? k : k + "=" + o.opts[k];
+      });
+      return o.name + " = " + o.cmd + "(" + o.args.map(function(a) {
+        return typeof a === "number" ? n23(a) : a;
+      }).join(", ") + ")" + (opts.length ? " {" + opts.join(", ") + "}" : "");
+    }).join("\n");
+  }
+  function compute(objs) {
+    var vals = {};
+    objs.forEach(function(o) {
+      var a = o.args.map(function(x) {
+        return typeof x === "number" ? x : vals[x];
+      });
+      if (a.some(function(x) {
+        return x == null;
+      })) {
+        vals[o.name] = null;
+        return;
+      }
+      for (var i = 0; i < a.length; i++) {
+        var want = CMDS2[o.cmd].sig[Math.min(i, CMDS2[o.cmd].sig.length - 1)].charAt(0);
+        if (KIND[want] && !KIND[want](a[i])) {
+          vals[o.name] = null;
+          return;
+        }
+      }
+      var v = null;
+      try {
+        v = CMDS2[o.cmd].fn(a);
+      } catch (e) {
+        v = null;
+      }
+      vals[o.name] = v && (v.x == null || isFinite(v.x) && isFinite(v.y)) ? v : null;
+    });
+    return vals;
+  }
+  function describe(o) {
+    return CMDS2[o.cmd] ? CMDS2[o.cmd].say(o) : o.name;
+  }
+  function labelTex(name) {
+    var m = /^([A-Za-zα-ωΑ-Ω]+'*)_?(\d+)('*)$/.exec(name);
+    return m ? m[1] + "_{" + m[2] + "}" + m[3] : name.replace(/_(\w+)/, "_{$1}");
+  }
+  var THEMES = {
+    dark: { ink: "#e7ebf3", soft: "#8d96aa", grid: "#3a4152", axis: "#7d8698", blue: "#5aa2ff", red: "#ff6f61", yellow: "#ffcc4d", green: "#52c78d", purple: "#b58cff", accent: "#ffcc4d", halo: "#1e1e2e", fillOp: 0.2 },
+    light: { ink: "#1b2230", soft: "#7a8396", grid: "#e1e5ec", axis: "#8790a2", blue: "#1f62c4", red: "#cc2f24", yellow: "#e3a400", green: "#2a8a57", purple: "#7a42c8", accent: "#cc2f24", halo: "#ffffff", fillOp: 0.26 }
+  };
+  function frame(o) {
+    var W = o.W || 960, H = o.H || 540, v = o.view || { x: 0, y: 0, w: 16 }, k = W / (v.w > 0 ? v.w : 16);
+    return { W, H, k, cx: W / 2 - v.x * k, cy: H / 2 + v.y * k };
+  }
+  function toScreen(F, p) {
+    return P(F.cx + p.x * F.k, F.cy - p.y * F.k);
+  }
+  function toWorld(o, sx, sy) {
+    var F = frame(o);
+    return P((sx - F.cx) / F.k, (F.cy - sy) / F.k);
+  }
+  function colorOf(ob, th, fallback) {
+    var c = ob.opts && ob.opts.color;
+    return c ? /^(red|blue|green|yellow|purple)$/.test(c) ? th[c] : /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c) ? c : fallback : fallback;
+  }
+  function clipLine(p, q, kind, R) {
+    var d = sub2(q, p), t0 = kind === "line" ? -Infinity : 0, t1 = kind === "segment" ? 1 : Infinity;
+    var cl = [[-d.x, p.x - R.x0], [d.x, R.x1 - p.x], [-d.y, p.y - R.y0], [d.y, R.y1 - p.y]];
+    for (var i = 0; i < 4; i++) {
+      var pp = cl[i][0], qq = cl[i][1];
+      if (Math.abs(pp) < 1e-12) {
+        if (qq < 0) return null;
+        continue;
+      }
+      var r = qq / pp;
+      if (pp < 0) {
+        if (r > t1) return null;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return null;
+        if (r < t1) t1 = r;
+      }
+    }
+    if (!isFinite(t0) || !isFinite(t1)) return null;
+    return [add2(p, mul2(d, t0)), add2(p, mul2(d, t1))];
+  }
+  function gridStep(k) {
+    var raw = 34 / k, p = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    return raw <= p ? p : raw <= 2 * p ? 2 * p : raw <= 5 * p ? 5 * p : 10 * p;
+  }
+  function render(objs, vals, o) {
+    var th = THEMES[o.dark ? "dark" : "light"], F = frame(o), W = F.W, H = F.H;
+    var S = function(p) {
+      return toScreen(F, p);
+    };
+    var R = { x0: -40, y0: -40, x1: W + 40, y1: H + 40 };
+    var label = o.label || function(tex, x, y, size, color2) {
+      return '<text x="' + n18(x) + '" y="' + n18(y + size * 0.34) + '" text-anchor="middle" font-family="' + SERIF + '" font-size="' + size + '" font-style="italic" fill="' + color2 + '">' + esc9(tex) + "</text>";
+    };
+    var upto = o.upto == null ? objs.length : o.upto, L = { back: "", fill: "", line: "", mark: "", point: "", label: "" };
+    var hl = function(name) {
+      return name === o.hover || (o.sel || []).indexOf(name) >= 0;
+    };
+    var halo = ' paint-order="stroke" stroke="' + th.halo + '" stroke-width="3.5" stroke-linejoin="round"';
+    if (o.grid || o.axes) L.back = backdrop(F, th, o);
+    var obs = [];
+    objs.slice(0, upto).forEach(function(ob) {
+      var v = vals[ob.name];
+      if (!v || ob.opts.hidden || o.tidy && ob.opts.construction) return;
+      if (isLine(v)) {
+        var sg = clipLine(S(v.p), S(v.q), v.kind, R);
+        if (sg) obs.push({ a: sg[0], b: sg[1], pad: 1 });
+      } else if (isCircle(v)) obs.push({ c: S(v.c), r: v.r * F.k, pad: 1 });
+      else if (v.pts) {
+        var ps = v.pts.map(S);
+        ps.forEach(function(p, k) {
+          obs.push({ a: p, b: ps[(k + 1) % ps.length], pad: 1 });
+        });
+      } else if (v.deg != null) {
+        var ta = angleAt(S(v.a), S(v.b), S(v.c));
+        if (ta) obs.push({ a: P(ta.t.x - 20, ta.t.y), b: P(ta.t.x + 20, ta.t.y), pad: 7 }, { p: ta.w, pad: 6 });
+      } else if (v.d != null) {
+        var td = distAt(S(v.p), S(v.q));
+        obs.push({ a: P(td.x - 30, td.y), b: P(td.x + 30, td.y), pad: 7 });
+      } else if (isPoint(v)) obs.push({ p: S(v), pad: 5 });
+    });
+    objs.slice(0, upto).forEach(function(ob, i) {
+      var v = vals[ob.name];
+      if (!v || ob.opts.hidden || o.tidy && ob.opts.construction) return;
+      var cons = !!ob.opts.construction, isNew = o.anim != null && i >= o.anim, h = hl(ob.name);
+      var fl = function(m) {
+        return isNew && m ? '<g class="pxgm-fade">' + m + "</g>" : m;
+      };
+      var w = cons ? 1.3 : 2.2, dash = cons ? ' stroke-dasharray="6 5"' : ob.opts.dashed ? ' stroke-dasharray="8 6"' : "";
+      var tag = ' data-name="' + esc9(ob.name) + '"' + (isNew ? dash ? ' class="pxgm-new pxgm-fade"' : ' class="pxgm-new" pathLength="1"' : "");
+      var glow = function(d2) {
+        return '<path d="' + d2 + '" stroke="' + th.accent + '" stroke-width="' + (w + 7) + '" stroke-opacity="0.35" fill="none" stroke-linecap="round"/>';
+      };
+      var nameLabel = function(at2, dx, dy) {
+        if (!ob.opts.label || ob.opts.label === "none") return "";
+        var t = ob.opts.label === true ? labelTex(ob.name) : ob.opts.label;
+        return label(t, at2.x + dx, at2.y + dy, 19, th.ink);
+      };
+      if (isLine(v)) {
+        var seg = clipLine(S(v.p), S(v.q), v.kind, R);
+        if (!seg) return;
+        var d = "M" + n18(seg[0].x) + " " + n18(seg[0].y) + "L" + n18(seg[1].x) + " " + n18(seg[1].y);
+        if (h) L.line += glow(d);
+        L.line += "<path" + tag + ' d="' + d + '" fill="none" stroke="' + (cons ? th.soft : colorOf(ob, th, th.ink)) + '" stroke-width="' + w + '"' + dash + ' stroke-linecap="round"/>';
+        L.label += fl(nameLabel(mul2(add2(seg[0], seg[1]), 0.5), 12, -12));
+      } else if (isCircle(v)) {
+        var c = S(v.c), r = v.r * F.k, s0 = v.start || 0;
+        if (r > 2e4) return;
+        var x1 = c.x + r * Math.cos(s0), y1 = c.y - r * Math.sin(s0), x2 = c.x - r * Math.cos(s0), y2 = c.y + r * Math.sin(s0);
+        var dc = "M" + n18(x1) + " " + n18(y1) + "A" + n18(r) + " " + n18(r) + " 0 1 0 " + n18(x2) + " " + n18(y2) + "A" + n18(r) + " " + n18(r) + " 0 1 0 " + n18(x1) + " " + n18(y1);
+        if (h) L.line += glow(dc);
+        L.line += "<path" + tag + ' d="' + dc + '" fill="none" stroke="' + (cons ? th.soft : colorOf(ob, th, th.blue)) + '" stroke-width="' + w + '"' + dash + "/>";
+        L.label += fl(nameLabel(P(c.x + r * 0.71, c.y - r * 0.71), 14, -10));
+      } else if (v.pts) {
+        var pts = v.pts.map(S), dp = "M" + pts.map(function(p) {
+          return n18(p.x) + " " + n18(p.y);
+        }).join("L") + "Z";
+        L.fill += "<path" + tag + ' d="' + dp + '" fill="' + colorOf(ob, th, th.yellow) + '" fill-opacity="' + th.fillOp + '" stroke="' + (h ? th.accent : th.ink) + '" stroke-width="' + (h ? 3.2 : 2) + '" stroke-linejoin="round"/>';
+      } else if (v.deg != null) {
+        L.mark += angleMark(S(v.a), S(v.b), S(v.c), v.deg, colorOf(ob, th, th.red), th, tag, h, halo, ob);
+      } else if (v.d != null) {
+        var at = distAt(S(v.p), S(v.q));
+        L.mark += "<text" + tag + ' x="' + n18(at.x) + '" y="' + n18(at.y + 5) + '" text-anchor="middle" font-family="' + SANS + '" font-size="15" fill="' + colorOf(ob, th, th.red) + '"' + halo + ">" + esc9((ob.opts.label && ob.opts.label !== true ? ob.opts.label : ob.args[0] + ob.args[1]) + " = " + v.d.toFixed(2)) + "</text>";
+      } else if (isPoint(v)) {
+        var sp = S(v), free = ob.cmd === "Point", glide = ob.cmd === "PointOn";
+        var pc = colorOf(ob, th, free ? th.blue : glide ? th.green : th.ink);
+        L.point += "<g" + tag + ">" + (h ? '<circle cx="' + n18(sp.x) + '" cy="' + n18(sp.y) + '" r="12" fill="' + th.accent + '" fill-opacity="0.35"/>' : "") + '<circle cx="' + n18(sp.x) + '" cy="' + n18(sp.y) + '" r="' + (free || glide ? 5.5 : 4.3) + '" fill="' + pc + '" stroke="' + th.halo + '" stroke-width="1.6"/></g>';
+        if (ob.opts.label !== "none" && !cons) {
+          var q = spot(sp, obs);
+          L.label += fl(label(ob.opts.label && ob.opts.label !== true ? ob.opts.label : labelTex(ob.name), q.x, q.y, 20, th.ink));
+          obs.push({ p: q, pad: 10 });
+        }
+      }
+    });
+    var cap = o.caption ? '<text x="' + n18(W / 2) + '" y="' + n18(H - 14) + '" text-anchor="middle" font-family="' + SANS + '" font-size="18" fill="' + th.ink + '"' + halo + ">" + esc9(o.caption) + "</text>" : "";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n18(W) + " " + n18(H) + '" preserveAspectRatio="xMidYMid meet"' + (o.standalone ? ' width="' + n18(W) + '" height="' + n18(H) + '"' : "") + ' style="display:block;width:100%;height:100%;overflow:hidden">' + L.back + "<g>" + L.fill + "</g><g>" + L.line + "</g><g>" + L.mark + "</g><g>" + L.point + '</g><g style="pointer-events:none">' + L.label + "</g>" + cap + "</svg>";
+  }
+  function backdrop(F, th, o) {
+    var s = gridStep(F.k), out = "", x0 = -F.cx / F.k, x1 = (F.W - F.cx) / F.k, y0 = (F.cy - F.H) / F.k, y1 = F.cy / F.k;
+    if (o.grid) {
+      var d = "";
+      for (var x = Math.ceil(x0 / s) * s; x <= x1; x += s) d += "M" + n18(F.cx + x * F.k) + " 0V" + n18(F.H);
+      for (var y = Math.ceil(y0 / s) * s; y <= y1; y += s) d += "M0 " + n18(F.cy - y * F.k) + "H" + n18(F.W);
+      out += '<path d="' + d + '" stroke="' + th.grid + '" stroke-width="1" fill="none"/>';
+    }
+    if (o.axes) {
+      var ax = '<path d="M0 ' + n18(F.cy) + "H" + n18(F.W) + "M" + n18(F.cx) + " 0V" + n18(F.H) + '" stroke="' + th.axis + '" stroke-width="1.4" fill="none"/>', lab = "";
+      for (var tx = Math.ceil(x0 / s) * s; tx <= x1; tx += s) if (Math.abs(tx) > s / 2) lab += '<text x="' + n18(F.cx + tx * F.k) + '" y="' + n18(Math.min(F.H - 4, Math.max(14, F.cy + 15))) + '" text-anchor="middle">' + n23(tx) + "</text>";
+      for (var ty = Math.ceil(y0 / s) * s; ty <= y1; ty += s) if (Math.abs(ty) > s / 2) lab += '<text x="' + n18(Math.min(F.W - 4, Math.max(16, F.cx - 6))) + '" y="' + n18(F.cy - ty * F.k + 4) + '" text-anchor="end">' + n23(ty) + "</text>";
+      out += ax + '<g font-family="' + SANS + '" font-size="11" fill="' + th.axis + '">' + lab + "</g>";
+    }
+    return out;
+  }
+  function angleAt(a, b, c) {
+    var u = unit(sub2(a, b)), v = unit(sub2(c, b));
+    if (!u || !v) return null;
+    var bis = unit(add2(u, v)) || perp(u);
+    return { t: add2(b, mul2(bis, 47)), w: add2(b, mul2(bis, 13)) };
+  }
+  function distAt(a, b) {
+    var nrm = unit(perp(sub2(b, a))) || P(0, -1);
+    if (nrm.y > 0) nrm = mul2(nrm, -1);
+    return add2(mul2(add2(a, b), 0.5), mul2(nrm, 15));
+  }
+  var SPOTS = [[1, -1], [-1, -1], [1, 1], [-1, 1], [0, -1.35], [1.35, 0], [-1.35, 0], [0, 1.35]];
+  function segDist(q, a, b) {
+    var d = sub2(b, a), l2 = dot2(d, d), t = l2 ? Math.max(0, Math.min(1, dot2(sub2(q, a), d) / l2)) : 0;
+    return dist(q, add2(a, mul2(d, t)));
+  }
+  function spot(sp, obs) {
+    var best = null, room = -Infinity;
+    for (var k = 0; k < SPOTS.length; k++) {
+      var q = P(sp.x + SPOTS[k][0] * 13, sp.y + SPOTS[k][1] * 13), m = Infinity;
+      for (var i = 0; i < obs.length; i++) {
+        var b = obs[i], d = b.a ? segDist(q, b.a, b.b) : b.c ? Math.abs(dist(q, b.c) - b.r) : dist(q, b.p);
+        if (d - b.pad < m) m = d - b.pad;
+      }
+      if (m >= 11) return q;
+      if (m > room) {
+        room = m;
+        best = q;
+      }
+    }
+    return best;
+  }
+  function angleMark(a, b, c, deg, col, th, tag, h, halo, ob) {
+    var u = unit(sub2(a, b)), v = unit(sub2(c, b));
+    if (!u || !v) return "";
+    var r = 26, out = "";
+    if (Math.abs(deg - 90) < 0.05) {
+      var p1 = add2(b, mul2(u, 14)), p2 = add2(p1, mul2(v, 14)), p3 = add2(b, mul2(v, 14));
+      out += "<path" + tag + ' d="M' + n18(p1.x) + " " + n18(p1.y) + "L" + n18(p2.x) + " " + n18(p2.y) + "L" + n18(p3.x) + " " + n18(p3.y) + '" fill="none" stroke="' + col + '" stroke-width="2"/>';
+    } else {
+      var s = add2(b, mul2(u, r)), e = add2(b, mul2(v, r));
+      out += "<path" + tag + ' d="M' + n18(b.x) + " " + n18(b.y) + "L" + n18(s.x) + " " + n18(s.y) + "A" + r + " " + r + " 0 0 " + (cross(u, v) < 0 ? 1 : 0) + " " + n18(e.x) + " " + n18(e.y) + 'Z" fill="' + col + '" fill-opacity="' + (h ? 0.45 : 0.22) + '" stroke="' + col + '" stroke-width="1.8"/>';
+    }
+    var t = angleAt(a, b, c).t, text = deg.toFixed(1) + "°";
+    if (ob.opts.label && ob.opts.label !== true) text = ob.opts.label + " = " + text;
+    return out + '<text x="' + n18(t.x) + '" y="' + n18(t.y + 5) + '" text-anchor="middle" font-family="' + SANS + '" font-size="15" font-weight="600" fill="' + col + '"' + halo + ">" + esc9(text) + "</text>";
+  }
+  function hit(objs, vals, o, sx, sy, upto) {
+    var F = frame(o), m = P(sx, sy), out = [];
+    objs.slice(0, upto == null ? objs.length : upto).forEach(function(ob) {
+      var v = vals[ob.name];
+      if (!v || ob.opts.hidden) return;
+      var d = Infinity;
+      if (isPoint(v)) d = dist(toScreen(F, v), m) - 4;
+      else if (isLine(v)) {
+        var a = toScreen(F, v.p), b = toScreen(F, v.q), ab = sub2(b, a), t = dot2(sub2(m, a), ab) / dot2(ab, ab);
+        if (v.kind === "segment") t = Math.max(0, Math.min(1, t));
+        else if (v.kind === "ray") t = Math.max(0, t);
+        d = dist(add2(a, mul2(ab, t)), m);
+      } else if (isCircle(v)) d = Math.abs(dist(toScreen(F, v.c), m) - v.r * F.k);
+      else if (v.pts) d = inside(v.pts.map(function(p) {
+        return toScreen(F, p);
+      }), m) ? 8 : Infinity;
+      if (d < 9) out.push({ name: ob.name, d, point: isPoint(v), curve: isLine(v) || isCircle(v), free: ob.cmd === "Point" || ob.cmd === "PointOn" });
+    });
+    return out.sort(function(a, b) {
+      return b.point - a.point || a.d - b.d;
+    });
+  }
+  function inside(pts, m) {
+    var c = false;
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) if (pts[i].y > m.y !== pts[j].y > m.y && m.x < (pts[j].x - pts[i].x) * (m.y - pts[i].y) / (pts[j].y - pts[i].y) + pts[i].x) c = !c;
+    return c;
+  }
+  function dragTo(ob, vals, w, snap) {
+    if (ob.cmd === "Point") {
+      ob.args = [snap ? Math.round(w.x / snap) * snap : Math.round(w.x * 100) / 100, snap ? Math.round(w.y / snap) * snap : Math.round(w.y * 100) / 100];
+      return true;
+    }
+    if (ob.cmd === "PointOn") {
+      var v = vals[ob.args[0]];
+      if (isCircle(v)) ob.args[1] = Math.round(Math.atan2(w.y - v.c.y, w.x - v.c.x) * 1e3) / 1e3;
+      else if (isLine(v)) {
+        var d = sub2(v.q, v.p);
+        ob.args[1] = Math.round(dot2(sub2(w, v.p), d) / dot2(d, d) * 1e3) / 1e3;
+      } else return false;
+      return true;
+    }
+    return false;
+  }
+  function attach(root, cfg, opts) {
+    opts = opts || {};
+    var saved = parse2(cfg.script).objs, objs = clone2(saved), vals = compute(objs), step = 0, drag = null, anim = null;
+    var plan = cfg.plan || { to: [objs.length], captions: [] };
+    var base = { W: cfg.W, H: cfg.H, view: cfg.view, dark: cfg.dark, axes: cfg.axes, grid: cfg.grid, label: opts.label };
+    var draggable = objs.some(function(o) {
+      return o.cmd === "Point" || o.cmd === "PointOn";
+    });
+    function clone2(list) {
+      return list.map(function(o) {
+        return { name: o.name, cmd: o.cmd, args: o.args.slice(), opts: o.opts, line: o.line };
+      });
+    }
+    function upto() {
+      return plan.to[Math.min(step, plan.to.length - 1)];
+    }
+    function draw() {
+      var o = {}, k;
+      for (k in base) o[k] = base[k];
+      o.upto = upto();
+      o.anim = anim;
+      o.tidy = plan.tidyAt != null && step >= plan.tidyAt;
+      o.caption = plan.captions[step] || "";
+      o.hover = drag ? drag.name : null;
+      root.innerHTML = render(objs, vals, o);
+      anim = null;
+    }
+    function point(ev) {
+      var svg = root.querySelector("svg"), m = svg && svg.getScreenCTM();
+      if (!m) return null;
+      var pt = svg.createSVGPoint();
+      pt.x = ev.clientX;
+      pt.y = ev.clientY;
+      return pt.matrixTransform(m.inverse());
+    }
+    function onDown(ev) {
+      var p = point(ev);
+      if (!p) return;
+      var h = hit(objs, vals, base, p.x, p.y, upto()).filter(function(x) {
+        return x.free;
+      })[0];
+      if (!h) return;
+      drag = { name: h.name };
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (root.setPointerCapture) try {
+        root.setPointerCapture(ev.pointerId);
+      } catch (e) {
+      }
+      draw();
+    }
+    function onMove(ev) {
+      var p = point(ev);
+      if (!p) return;
+      if (!drag) {
+        var h = hit(objs, vals, base, p.x, p.y, upto()).filter(function(x) {
+          return x.free;
+        })[0];
+        root.style.cursor = h ? "grab" : "";
+        return;
+      }
+      ev.preventDefault();
+      var ob = objs.filter(function(o) {
+        return o.name === drag.name;
+      })[0];
+      if (ob && dragTo(ob, vals, toWorld(base, p.x, p.y), cfg.grid ? gridStep(frame(base).k) : 0)) {
+        vals = compute(objs);
+        draw();
+      }
+      root.style.cursor = "grabbing";
+    }
+    function onUp() {
+      if (drag) {
+        drag = null;
+        root.style.cursor = "";
+        draw();
+      }
+    }
+    if (draggable) {
+      root.style.touchAction = "none";
+      root.setAttribute("data-prevent-swipe", "");
+      root.addEventListener("pointerdown", onDown);
+      root.addEventListener("pointermove", onMove);
+      root.addEventListener("pointerup", onUp);
+      root.addEventListener("pointercancel", onUp);
+    }
+    return {
+      // Show step n, drawing in what it adds when going forward
+      setStep: function(n, forward) {
+        var before = upto();
+        step = Math.max(0, Math.min(plan.to.length - 1, n));
+        if (forward && upto() > before) anim = before;
+        draw();
+      },
+      reset: function() {
+        objs = clone2(saved);
+        vals = compute(objs);
+        drag = null;
+        draw();
+      },
+      state: function() {
+        return { step, objs, vals };
+      }
+    };
+  }
+  return {
+    CMDS: CMDS2,
+    THEMES,
+    parse: parse2,
+    serialize,
+    compute,
+    describe,
+    labelTex,
+    render,
+    hit,
+    frame,
+    toWorld,
+    toScreen,
+    gridStep,
+    dragTo,
+    attach,
+    intersections,
+    isPoint,
+    isLine,
+    isCircle,
+    dist,
+    cross,
+    sub: sub2,
+    add: add2,
+    mul: mul2,
+    dot: dot2,
+    len: len2
+  };
+}
+var GEO = geometryRuntime();
+
+// client/src/utils/geometryDiagram.js
+var GEOMETRY_SIZE = { w: 640, h: 400 };
+var esc8 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n22 = (v) => String(Math.round(v * 100) / 100);
+var num8 = (v, lo, hi, d) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : d;
+function geometryModel(el) {
+  const v = el?.view || {};
+  const start = Math.round(Number(el?.stepStart));
+  return {
+    script: String(el?.script ?? "").slice(0, 4e4),
+    view: { x: num8(v.x, -1e6, 1e6, 0), y: num8(v.y, -1e6, 1e6, 0), w: num8(v.w, 0.01, 1e6, 12) },
+    theme: el?.theme === "light" ? "light" : "dark",
+    axes: !!el?.axes,
+    grid: !!el?.grid,
+    steps: (Array.isArray(el?.steps) ? el.steps : []).slice(0, 400).map((s) => ({ to: Math.max(0, Math.round(Number(s?.to) || 0)), caption: typeof s?.caption === "string" ? s.caption.slice(0, 200) : "" })),
+    start: el?.start == null || el.start === "" ? null : Math.max(0, Math.round(Number(el.start) || 0)),
+    tidy: !!el?.tidy,
+    captions: el?.captions !== false,
+    stepStart: start >= 1 && start <= 1e3 ? start : 1,
+    W: num8(el?.width, 20, 2e4, GEOMETRY_SIZE.w),
+    H: num8(el?.height, 20, 2e4, GEOMETRY_SIZE.h)
+  };
+}
+function geometryPlan(m, objs) {
+  const n = objs.length;
+  if (!m.steps.length) return { to: [n], captions: [""], tidyAt: null, rest: false };
+  const lead = objs.findIndex((o) => o.cmd !== "Point");
+  const start = Math.min(n, m.start == null ? lead < 0 ? n : lead : m.start);
+  const to = [start], captions = [""];
+  for (const s of m.steps) {
+    const t = Math.min(n, Math.max(to[to.length - 1], s.to));
+    to.push(t);
+    captions.push(m.captions ? s.caption || (t > 0 && t > to[to.length - 2] ? GEO.describe(objs[t - 1]) : "") : "");
+  }
+  const rest = to[to.length - 1] < n;
+  if (rest) {
+    to.push(n);
+    captions.push(m.captions ? GEO.describe(objs[n - 1]) : "");
+  }
+  let tidyAt = null;
+  if (m.tidy) {
+    to.push(n);
+    captions.push("");
+    tidyAt = to.length - 1;
+  }
+  return { to, captions, tidyAt, rest };
+}
+function labelBox(tex, x, y, size, color2, inner) {
+  const w = Math.max(28, tex.length * size * 0.9), h = size * 2;
+  return `<foreignObject x="${n22(x - w / 2)}" y="${n22(y - h / 2)}" width="${n22(w)}" height="${n22(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n22(size / 1.21)}px;color:${esc8(color2)}">${inner}</div></foreignObject>`;
+}
+function geometryLabeler(labels) {
+  if (labels === "deck") return (tex, x, y, size, color2) => labelBox(tex, x, y, size, color2, `<span data-math-latex="${esc8(tex)}" style="font-family:${esc8(MATH_FONT)}">${texLiteHtml(tex)}</span>`);
+  if (typeof labels === "function") return (tex, x, y, size, color2) => labelBox(tex, x, y, size, color2, labels(tex));
+  return (tex, x, y, size, color2) => texSvg(tex, x, y, size, color2);
+}
+function geometrySvg(el, opts = {}) {
+  const m = geometryModel(el), p = GEO.parse(m.script);
+  if (p.errors.length) return placeholder(m, `Line ${p.errors[0].line}: ${p.errors[0].msg}`, opts);
+  const vals = GEO.compute(p.objs), plan = geometryPlan(m, p.objs);
+  const at = opts.step == null ? null : Math.max(0, Math.min(plan.to.length - 1, opts.step));
+  return GEO.render(p.objs, vals, {
+    W: m.W,
+    H: m.H,
+    view: m.view,
+    dark: m.theme === "dark",
+    axes: m.axes,
+    grid: m.grid,
+    label: geometryLabeler(opts.labels),
+    upto: at == null ? null : plan.to[at],
+    tidy: at != null && plan.tidyAt != null && at >= plan.tidyAt,
+    caption: at == null ? "" : plan.captions[at],
+    standalone: opts.standalone,
+    hover: opts.hover,
+    sel: opts.sel,
+    anim: opts.anim
+  });
+}
+function placeholder(m, msg, opts) {
+  const dark = m.theme === "dark", W = m.W, H = m.H, c = dark ? "#f5a524" : "#b45309";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"${opts.standalone ? ` width="${W}" height="${H}"` : ""} style="display:block;width:100%;height:100%"><rect x="2" y="2" width="${W - 4}" height="${H - 4}" rx="10" fill="none" stroke="${c}" stroke-dasharray="7 5"/><text x="${W / 2}" y="${H / 2 - 8}" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="600" fill="${c}">Geometry</text><text x="${W / 2}" y="${H / 2 + 18}" text-anchor="middle" font-family="sans-serif" font-size="13" fill="${dark ? "#e7ebf3" : "#333"}">${esc8(msg.length > 80 ? msg.slice(0, 79) + "…" : msg)}</text></svg>`;
+}
+function geometrySteps(el) {
+  if (el?.type !== "geometry") return [];
+  const m = geometryModel(el), p = GEO.parse(m.script);
+  if (p.errors.length) return [];
+  const plan = geometryPlan(m, p.objs);
+  const out = [];
+  for (let k = 1; k < plan.to.length; k++) if (m.stepStart - 1 + k <= 1e3) out.push([m.stepStart - 1 + k, k]);
+  return out;
+}
+function geometryStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of geometrySteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-gm-step="${id}" data-gm-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasGeometry(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "geometry"));
+}
+function geometryDeckHtml(el) {
+  const m = geometryModel(el), p = GEO.parse(m.script);
+  const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+  if (p.errors.length) return { id, attrs: "", svg: geometrySvg(el) };
+  const plan = geometryPlan(m, p.objs);
+  const cfg = { script: GEO.serialize(p.objs), view: m.view, W: m.W, H: m.H, dark: m.theme === "dark", axes: m.axes, grid: m.grid, plan };
+  return { id, attrs: ` data-gm="${id}" data-gm-config="${esc8(JSON.stringify(cfg))}"`, svg: geometrySvg(el, { step: 0, labels: "deck" }) };
+}
+var GEOMETRY_CSS = [
+  ".pxgm-new[pathLength]{stroke-dasharray:1;animation:pxgm-draw .9s ease-in-out both}",
+  ".pxgm-fade,g.pxgm-new{animation:pxgm-fade .45s ease-out both}",
+  "@keyframes pxgm-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}",
+  "@keyframes pxgm-fade{from{opacity:0}to{opacity:1}}",
+  "@media (prefers-reduced-motion:reduce){.pxgm-new,.pxgm-fade{animation:none}}"
+].join("\n");
+var deckScript2 = null;
+function geometryDeckScript() {
+  if (!deckScript2) deckScript2 = `
+    (function() {
+      var G = (${geometryRuntime.toString()})();
+      var css = document.createElement('style');
+      css.textContent = ${JSON.stringify(GEOMETRY_CSS)};
+      document.head.appendChild(css);
+      var cache = {};
+      function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+      function label(tex, x, y, size, color) {
+        var html = cache[tex];
+        if (html == null) {
+          try { html = window.katex ? window.katex.renderToString(tex, { throwOnError: false }) : esc(tex); } catch (e) { html = esc(tex); }
+          cache[tex] = html;
+        }
+        var w = Math.max(28, tex.length * size * 0.9), h = size * 2;
+        return '<foreignObject x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:' + (size / 1.21) + 'px;color:' + color + '">' + html + '</div></foreignObject>';
+      }
+      var items = [];
+      document.querySelectorAll('[data-gm]').forEach(function(el) {
+        // Not the overview's pictures of slides
+        if (el.closest('[inert]')) return;
+        var cfg;
+        try { cfg = JSON.parse(el.getAttribute('data-gm-config')); } catch (e) { return; }
+        items.push({ el: el, id: el.getAttribute('data-gm'), at: -1, api: G.attach(el, cfg, { label: label }) });
+      });
+      function stepOf(item) {
+        var slide = item.el.closest('section'), n = 0;
+        if (!slide) return 0;
+        slide.querySelectorAll('.fragment[data-gm-step]').forEach(function(m) {
+          if (m.getAttribute('data-gm-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-gm-step-at') || 0);
+        });
+        return n;
+      }
+      function sync(ev) {
+        var forward = !!ev && ev.type === 'fragmentshown';
+        items.forEach(function(item) {
+          var n = stepOf(item);
+          if (n !== item.at) { item.api.setStep(n, forward && n > item.at); item.at = n; }
+        });
+      }
+      ['ready', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sync); });
+      Reveal.on('slidechanged', function() {
+        items.forEach(function(item) { item.api.reset(); item.at = -1; });
+        sync();
+      });
+      sync();
+    })();
+`;
+  return deckScript2;
+}
+
 // client/src/utils/periodicData.js
 var PERIODIC_ROWS = [
   [1, "H", "Hydrogen", "1.0080", "1s1", "", 2.2, 120, 13.598, 0.754, "+1, -1", "Gas", 0, 13.81, 20.28, 8988e-8, "Nonmetal", 1766],
@@ -13010,7 +13908,7 @@ function periodicRuntime(ROWS) {
   var SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   var MONO = "Menlo, Consolas, monospace";
   var NS = "http://www.w3.org/2000/svg";
-  function esc8(s) {
+  function esc9(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function n18(v) {
@@ -13389,15 +14287,15 @@ function periodicRuntime(ROWS) {
     return w > max ? Math.max(min || 5, fs * max / w) : fs;
   }
   function text(x, y, s, a) {
-    return '<text x="' + n18(x) + '" y="' + n18(y) + '"' + (a || "") + ">" + esc8(s) + "</text>";
+    return '<text x="' + n18(x) + '" y="' + n18(y) + '"' + (a || "") + ">" + esc9(s) + "</text>";
   }
   function supText(x, y, runs, fs, a, sep) {
     var out = "", down = false;
     runs.forEach(function(r, i) {
-      out += "<tspan" + (down ? ' dy="' + n18(fs * 0.38) + '"' : "") + ">" + esc8((i && sep ? sep : "") + r[0]) + "</tspan>";
+      out += "<tspan" + (down ? ' dy="' + n18(fs * 0.38) + '"' : "") + ">" + esc9((i && sep ? sep : "") + r[0]) + "</tspan>";
       down = false;
       if (r[1]) {
-        out += '<tspan dy="' + n18(-fs * 0.38) + '" font-size="' + n18(fs * 0.7) + '">' + esc8(r[1]) + "</tspan>";
+        out += '<tspan dy="' + n18(-fs * 0.38) + '" font-size="' + n18(fs * 0.7) + '">' + esc9(r[1]) + "</tspan>";
         down = true;
       }
     });
@@ -13434,7 +14332,7 @@ function periodicRuntime(ROWS) {
   function tileSvg(t, s, v, th, o) {
     var z = t.z, e = EL[z], lk = look(z, v, s, th);
     var a = ' data-pt-z="' + z + '" transform="translate(' + t.x + " " + t.y + ')"' + (dimmed(z, v, s, o.key) ? ' opacity="0.22"' : "");
-    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc8(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
+    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc9(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
     else if (o.mode === "canvas") a += ' style="cursor:pointer;transition:opacity .18s"';
     var h = "<g" + a + '><rect width="60" height="60" rx="6" fill="' + lk.fill + '"' + (lk.fillOp === 0 ? ' fill-opacity="0"' : "");
     h += lk.dash ? ' stroke="' + lk.stroke + '" stroke-dasharray="3 2"/>' : ' stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
@@ -13512,7 +14410,7 @@ function periodicRuntime(ROWS) {
     var x0 = 128, x1 = 364, runs = configRuns(z);
     var note = e.note ? " (" + e.note + ")" : "";
     var cfs = fit(runsW(runs, 13, 0.6, " ") + textW(note, 10, 0.55), 236, 13, 7);
-    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n18(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n18(cfs * 0.75) + '" fill="' + th.muted + '">' + esc8(note) + "</tspan></text>" : "</text>");
+    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n18(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n18(cfs * 0.75) + '" fill="' + th.muted + '">' + esc9(note) + "</tspan></text>" : "</text>");
     factRows(e).forEach(function(r, i) {
       var y = 48 + i * 16, hl = prop && (prop.key === r[0] || prop.key === "massNum" && r[0] === "mass");
       var col = hl ? th.accent : th.muted, vcol = hl ? th.accent : th.fg;
@@ -13791,7 +14689,7 @@ function periodicRuntime(ROWS) {
     h += '<rect data-pt-cloud data-n="' + s.n + '" data-l="' + s.l + '" data-e="' + s.e + '" data-x="' + n18(at.x + A.x) + '" data-y="' + n18(at.y + A.y) + '" data-w="' + n18(A.w) + '" data-h="' + n18(A.h) + '" x="' + n18(A.x) + '" y="' + n18(A.y) + '" width="' + n18(A.w) + '" height="' + n18(A.h) + '" fill="none"/>';
     cells.forEach(function(c) {
       var lab = ANG[s.l][c.m].lab, occ = c.occ === 2 ? " ↑↓" : c.occ === 1 ? " ↑" : "";
-      h += '<text x="' + n18(A.x + c.x + c.w / 2) + '" y="' + n18(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc8(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc8(lab[1]) + '</tspan><tspan dy="-2.5">' + esc8(occ) + "</tspan>" : esc8(occ)) + "</text>";
+      h += '<text x="' + n18(A.x + c.x + c.w / 2) + '" y="' + n18(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc9(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc9(lab[1]) + '</tspan><tspan dy="-2.5">' + esc9(occ) + "</tspan>" : esc9(occ)) + "</text>";
     });
     return h;
   }
@@ -13806,7 +14704,7 @@ function periodicRuntime(ROWS) {
           h += text(x, y, it.label, ' font-size="11" fill="' + th.muted + '" font-style="italic"');
           return;
         }
-        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc8(it.key) + '" style="cursor:pointer"' : "") + ">";
+        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc9(it.key) + '" style="cursor:pointer"' : "") + ">";
         h += '<rect x="' + n18(x - 3) + '" y="' + n18(y - 12) + '" width="' + n18(f.w + 6) + '" height="16" fill="' + th.surface + '" fill-opacity="0"' + (on ? ' stroke="' + th.accent + '" rx="4"' : "") + "/>";
         h += '<rect x="' + n18(x) + '" y="' + n18(y - 9) + '" width="10" height="10" rx="2" fill="' + hsl(it.hue, th.strongS, th.strongL) + '"/>';
         h += text(x + 15, y, it.label, ' font-size="11" fill="' + th.fg + '"') + "</g>";
@@ -13842,7 +14740,7 @@ function periodicRuntime(ROWS) {
     var x = L.ox - 17, y0 = L.ty0, y1 = L.ty1, my = (y0 + y1) / 2, th2 = Math.min(tw, y1 - y0 - 40), vfs = fit(tw - 16, th2 - 16, fs, 7);
     h += '<line x1="' + n18(x) + '" y1="' + n18(y0) + '" x2="' + n18(x) + '" y2="' + n18(my - th2 / 2) + '"' + a + '/><line x1="' + n18(x) + '" y1="' + n18(my + th2 / 2) + '" x2="' + n18(x) + '" y2="' + n18(y1) + '"' + a + "/>";
     h += t.up ? head(x, y0 - 2, 0, -1) : head(x, y1 + 2, 0, 1);
-    h += '<text transform="translate(' + n18(x + 4.2) + " " + n18(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n18(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc8(label) + "</text>";
+    h += '<text transform="translate(' + n18(x + 4.2) + " " + n18(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n18(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc9(label) + "</text>";
     return h;
   }
   function render(s, o) {
@@ -13876,7 +14774,7 @@ function periodicRuntime(ROWS) {
     if (L.card) h += '<g data-pt-card transform="translate(' + L.card.x + " " + L.card.y + ')">' + cardSvg(shown, s, v, th, ro, L.card, L.card) + "</g>";
     if (L.legend) h += "<g data-pt-legend>" + legendSvg(L, s, v, th, ro, shown) + "</g>";
     var vb = L.vb, size = o.standalone ? ' width="' + n18(vb.w) + '" height="' + n18(vb.h) + '"' : "";
-    return '<svg xmlns="' + NS + '" viewBox="' + n18(vb.x) + " " + n18(vb.y) + " " + n18(vb.w) + " " + n18(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc8(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
+    return '<svg xmlns="' + NS + '" viewBox="' + n18(vb.x) + " " + n18(vb.y) + " " + n18(vb.w) + " " + n18(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc9(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
   }
   var live = [], escOn = false;
   function attach(root, el, opts) {
@@ -14205,9 +15103,9 @@ function periodicDeckHtml(el) {
   const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
   return { id, attrs: ` data-pt="${id}" data-pt-config="${escAttr(JSON.stringify(s))}"`, svg: PT.render(s, { mode: "deck" }) };
 }
-var deckScript2 = null;
+var deckScript3 = null;
 function periodicDeckScript() {
-  if (!deckScript2) deckScript2 = `
+  if (!deckScript3) deckScript3 = `
     (function() {
       var PT = (${periodicRuntime.toString()})(${JSON.stringify(PERIODIC_ROWS)});
       var items = [];
@@ -14241,7 +15139,7 @@ function periodicDeckScript() {
       sync();
     })();
 `;
-  return deckScript2;
+  return deckScript3;
 }
 
 // client/src/utils/text3d.js
@@ -14277,7 +15175,7 @@ var STYLES = ["normal", "italic", "oblique"];
 var ALIGNS = { left: "flex-start", center: "center", right: "flex-end" };
 var HEX3 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function text3dSettings(el, fallbackFont) {
-  const num8 = (key) => {
+  const num9 = (key) => {
     const n = Number(el[key]);
     const [lo, hi] = TEXT3D_LIMITS[key];
     return Number.isFinite(n) && el[key] !== null && el[key] !== "" ? Math.min(hi, Math.max(lo, n)) : TEXT3D_DEFAULTS[key];
@@ -14285,14 +15183,14 @@ function text3dSettings(el, fallbackFont) {
   const color2 = (key) => HEX3.test(el[key] || "") ? el[key] : TEXT3D_DEFAULTS[key];
   const weight = String(el.fontWeight ?? "");
   return {
-    depth: num8("depth"),
-    rotateX: num8("rotateX"),
-    rotateY: num8("rotateY"),
-    perspective: num8("perspective"),
-    fontSize: num8("fontSize"),
-    letterSpacing: num8("letterSpacing"),
-    lineHeight: num8("lineHeight"),
-    sideShade: num8("sideShade"),
+    depth: num9("depth"),
+    rotateX: num9("rotateX"),
+    rotateY: num9("rotateY"),
+    perspective: num9("perspective"),
+    fontSize: num9("fontSize"),
+    letterSpacing: num9("letterSpacing"),
+    lineHeight: num9("lineHeight"),
+    sideShade: num9("sideShade"),
     color: color2("color"),
     sideColor: color2("sideColor"),
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
@@ -15037,7 +15935,7 @@ function stateValues(st) {
 function setList(action, modes = SET_MODES) {
   return (Array.isArray(action?.set) ? action.set : []).filter((s) => typeof s?.id === "string" && SAFE_ID.test(s.id) && (!s.state || typeof s.state === "string" && SAFE_ID.test(s.state)) && modes.includes(s.mode || "set"));
 }
-var NO_CLICK_ACTION = /* @__PURE__ */ new Set(["html", "p5", "model", "molecule", "periodic", "graph", "video", "audio", "drawing"]);
+var NO_CLICK_ACTION = /* @__PURE__ */ new Set(["html", "p5", "model", "molecule", "periodic", "geometry", "graph", "video", "audio", "drawing"]);
 function supportsClickAction(el) {
   return !!el?.type && !NO_CLICK_ACTION.has(el.type) && !el.type.startsWith("plugin:");
 }
@@ -15716,6 +16614,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="0" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${timingSvg(el, { deck: fxId })}</div>`;
       }
+      if (el.type === "geometry") {
+        const gm = geometryDeckHtml(el);
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${gm.attrs} style="${style.replace("overflow:hidden;", "overflow:visible;")}">${gm.svg}</div>`;
+      }
       if (el.type === "periodic") {
         const pt = periodicDeckHtml(el);
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${pt.attrs} style="${style.replace("overflow:hidden;", "overflow:visible;")}">${pt.svg}</div>`;
@@ -15789,7 +16691,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc8 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc9 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -15807,10 +16709,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc8(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc9(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc8(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc9(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -15818,8 +16720,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc8(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc8(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc9(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc9(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -16045,7 +16947,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + periodicStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -16407,7 +17309,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

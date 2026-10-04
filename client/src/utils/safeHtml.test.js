@@ -4,6 +4,8 @@ import { safeHtml, safeSvg } from './safeHtml'
 import { shapeSvgString } from './shapeUtils'
 import { periodicSvg, defaultPeriodic } from './periodicTable'
 import { timingSvg, TIMING_TEMPLATES } from './timingDiagram'
+import { geometrySvg, geometryFromTemplate, GEOMETRY_TEMPLATES } from './geometryDiagram'
+import { texHtml } from '../components/FeynmanView'
 
 const ATTACKS = [
   '<img src=x onerror="steal()"><img/src=x/onerror=steal()>',
@@ -76,6 +78,16 @@ describe('HTML from a deck, shown in the editor', () => {
       expect(count(clean, /<text/g)).toBe(count(svg, /<text/g))
       expect(count(clean, /<marker/g)).toBe(count(svg, /<marker/g))
       expect(clean).not.toMatch(/xml:space/)
+    }
+  })
+
+  it('keeps a geometry figure whole, with its KaTeX labels', () => {
+    for (const t of GEOMETRY_TEMPLATES) {
+      const svg = geometrySvg({ ...geometryFromTemplate(t.key), axes: true, grid: true, width: 640, height: 400 }, { labels: texHtml })
+      const clean = safeSvg(svg)
+      const count = (s, re) => (s.match(re) || []).length
+      for (const re of [/<path/g, /<circle/g, /<text/g, /<foreignObject/g, /class="katex"/g, /data-name=/g]) expect(count(clean, re)).toBe(count(svg, re))
+      expect(clean).toContain('pointer-events:none')
     }
   })
 

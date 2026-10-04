@@ -6,6 +6,7 @@ import { logicSvg } from './logicDiagram'
 import { freebodySvg } from './freebodyDiagram'
 import { vennSvg } from './vennDiagram'
 import { timingSvg } from './timingDiagram'
+import { geometrySvg } from './geometryDiagram'
 import { periodicSvg } from './periodicTable'
 import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
@@ -90,10 +91,10 @@ export function exportToPptx(presentation) {
             pptSlide.addImage({ path: src, x, y, w, h, rotate: rotation })
           }
         } catch {}
-      } else if (el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic' || el.type === 'freebody' || el.type === 'venn' || el.type === 'timing' || el.type === 'periodic') {
+      } else if (el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic' || el.type === 'freebody' || el.type === 'venn' || el.type === 'timing' || el.type === 'geometry' || el.type === 'periodic') {
         // As an image, with its labels as SVG text rather than KaTeX, which PowerPoint would leave out
         try {
-          const svg = (el.type === 'feynman' ? feynmanSvg : el.type === 'circuit' ? circuitSvg : el.type === 'logic' ? logicSvg : el.type === 'periodic' ? periodicSvg : el.type === 'venn' ? vennSvg : el.type === 'timing' ? timingSvg : freebodySvg)(el, { labels: 'text', standalone: true })
+          const svg = (el.type === 'feynman' ? feynmanSvg : el.type === 'circuit' ? circuitSvg : el.type === 'logic' ? logicSvg : el.type === 'periodic' ? periodicSvg : el.type === 'venn' ? vennSvg : el.type === 'timing' ? timingSvg : el.type === 'geometry' ? geometrySvg : freebodySvg)(el, { labels: 'text', standalone: true })
           const bytes = new TextEncoder().encode(svg)
           let binary = ''
           for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))

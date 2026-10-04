@@ -67,6 +67,7 @@ export default defineConfig({
             { text: 'Free-Body Diagrams', link: '/tutorials/free-body-diagrams' },
             { text: 'Venn Diagrams', link: '/tutorials/venn-diagrams' },
             { text: 'Timing Diagrams', link: '/tutorials/timing-diagrams' },
+            { text: 'Geometry Constructions', link: '/tutorials/geometry-constructions' },
             { text: 'Molecules', link: '/tutorials/molecules' },
             { text: 'Periodic Table', link: '/tutorials/periodic-table' },
           ]

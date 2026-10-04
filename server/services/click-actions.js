@@ -100,7 +100,7 @@ function setList(action, modes = SET_MODES) {
 }
 
 // Embeds, players and drawings take their own clicks, or none
-const NO_CLICK_ACTION = new Set(['html', 'p5', 'model', 'molecule', 'periodic', 'graph', 'video', 'audio', 'drawing'])
+const NO_CLICK_ACTION = new Set(['html', 'p5', 'model', 'molecule', 'periodic', 'geometry', 'graph', 'video', 'audio', 'drawing'])
 function supportsClickAction(el) {
   return !!el?.type && !NO_CLICK_ACTION.has(el.type) && !el.type.startsWith('plugin:')
 }
