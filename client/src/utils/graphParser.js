@@ -30,8 +30,10 @@ export function createMathParser() {
   const INVERSE = { sin: 'arcsin', cos: 'arccos', tan: 'arctan' }
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E }
   const GREEK = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'lambda', 'sigma', 'omega', 'phi', 'rho', 'mu', 'nu', 'kappa', 'eta']
-  // The variables curves are drawn over: never sliders
+  // The variables curves are drawn over: never sliders. A 3D graph adds z,
+  // and u and v for surfaces
   const RESERVED = ['x', 'y', 't', 'theta', 'r']
+  const RESERVED_3D = ['x', 'y', 'z', 't', 'u', 'v', 'theta', 'r']
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ['theta'], GREEK)
     .sort((a, b) => b.length - a.length)
   const UNICODE = {
@@ -562,8 +564,12 @@ export function createMathParser() {
 
   // Every expression of a graph, read together: what each one is, its
   // compiled functions, its error, and the names used but never defined
-  // (the sliders to offer). Expressions are { id, text }.
-  function analyze(expressions) {
+  // (the sliders to offer). Expressions are { id, text }; opts.dims 3 reads
+  // them for a 3D graph.
+  function analyze(expressions, opts) {
+    const dims3 = !!(opts && opts.dims === 3)
+    const RES = dims3 ? RESERVED_3D : RESERVED
+    const onlyRes = (set, names) => [...set].every(v => !RES.includes(v) || names.includes(v))
     const items = (expressions || []).map(e => ({ id: e.id, text: String(e.text || '') }))
     const fns = {}
     for (const item of items) {
@@ -615,8 +621,8 @@ export function createMathParser() {
       const { parts, ops } = item.stmt
       if (ops.length !== 1 || ops[0] !== '=' || parts[0].k !== 'var') continue
       const name = parts[0].n
-      if (RESERVED.includes(name) || name in CONSTANTS) continue
-      if (has(freeVars(parts[1]), RESERVED)) continue
+      if (RES.includes(name) || name in CONSTANTS) continue
+      if (has(freeVars(parts[1]), RES)) continue
       if (params.has(name)) { item.kind = 'error'; item.error = name + ' is defined twice'; continue }
       params.add(name)
       item.kind = 'param'
@@ -629,7 +635,7 @@ export function createMathParser() {
       if (fns[name]) Object.assign(fns[name].item, { kind: 'error', error: name + ' is already a slider' })
     }
 
-    const known = new Set(RESERVED.concat([...params], [...userFns]))
+    const known = new Set(RES.concat([...params], [...userFns]))
     const missing = new Set()
     const note = (vars, item) => vars.forEach(v => {
       if (known.has(v)) return
@@ -681,24 +687,31 @@ export function createMathParser() {
     }
 
     const cf = node => compile(node, null, callable)
-    readFields(items, params, callable, note)
+    if (dims3) {
+      for (const item of items) if (item.field) Object.assign(item, { kind: 'error', error: 'Fields and systems are drawn in 2D: switch this graph to 2D' })
+    } else readFields(items, params, callable, note)
 
     for (const item of items) {
       try {
         if (item.kind === 'function') {
           const vars = freeVars(item.body, null, item.formals)
           note(vars, item)
-          // f(x) = … is also drawn, as Desmos does
-          if (item.formals.length === 1 && item.formals[0] === 'x' && only(vars, ['x'])) {
+          // f(x) = … is also drawn, as Desmos does; in 3D, f(x, y) = …
+          if (!dims3 && item.formals.length === 1 && item.formals[0] === 'x' && only(vars, ['x'])) {
             item.graph = 'y'
             const def = callable[item.name]
             item.f = env => def.call(env, [env.x])
+          } else if (dims3 && item.formals.length === 2 && item.formals[0] === 'x' && item.formals[1] === 'y' && onlyRes(vars, ['x', 'y'])) {
+            item.graph = 'z'
+            const def = callable[item.name]
+            item.f = env => def.call(env, [env.x, env.y])
           }
         } else if (item.kind === 'param') {
           note(freeVars(item.value), item)
           item.f = cf(item.value)
         } else if (item.stmt && !item.kind) {
-          classify(item)
+          if (dims3) classify3(item)
+          else classify(item)
         }
       } catch (e) {
         if (!e.graphError) throw e
@@ -788,6 +801,57 @@ export function createMathParser() {
       })
     }
 
+    // A 3D graph's lines: surfaces z = f(x, y) (also x = f(y, z), y = f(x, z),
+    // and z = f(r, θ)), parametric surfaces over u and v, curves over t,
+    // points, and implicit surfaces F(x, y, z) = 0
+    function classify3(item) {
+      const { parts, ops } = item.stmt
+      const vars = new Set()
+      parts.forEach(p => freeVars(p, vars))
+      note(vars, item)
+      const uses = names => names.some(n => vars.has(n))
+      if (!ops.length) {
+        let node = parts[0], restrict = null
+        if (node.k === 'bin' && node.op === '*' && node.a.k === 'tuple') { restrict = node.b; node = node.a }
+        if (node.k === 'tuple') {
+          if (node.items.length !== 3) fail('In 3D, a point has three coordinates, like (1, 2, 3)')
+          const [nx, ny, nz] = restrict ? node.items.map(n => ({ k: 'bin', op: '*', a: n, b: restrict })) : node.items
+          if (uses(['u', 'v'])) {
+            if (!onlyRes(vars, ['u', 'v'])) fail('A surface (x(u, v), y(u, v), z(u, v)) can use only u, v and sliders')
+            item.kind = 'psurface'
+          } else if (vars.has('t')) {
+            if (!onlyRes(vars, ['t'])) fail('A curve (x(t), y(t), z(t)) can use only t and sliders')
+            item.kind = 'curve3'
+          } else {
+            if (has(vars, RES)) fail('A point’s coordinates are numbers or sliders; for a curve use t, for a surface u and v')
+            item.kind = 'point3'
+          }
+          item.fx = cf(nx); item.fy = cf(ny); item.fz = cf(nz)
+          return
+        }
+        if (vars.has('z')) fail('Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9')
+        if (!onlyRes(vars, ['x', 'y', 'r', 'theta'])) fail('A surface z = f(x, y) uses x, y (or r and θ) and sliders')
+        item.f = cf(node)
+        item.kind = uses(['x', 'y', 'r', 'theta']) ? 'surface' : 'value'
+        item.axis = 'z'
+        return
+      }
+      if (!ops.every(op => op === '=')) fail('Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}')
+      if (ops.length > 1) fail('Only one = per line')
+      const [l, r] = parts
+      for (const [side, other] of [[l, r], [r, l]]) {
+        const ov = freeVars(other)
+        if (isVar(side, 'z') && onlyRes(ov, ['x', 'y', 'r', 'theta'])) { Object.assign(item, { kind: 'surface', axis: 'z', f: cf(other) }); return }
+        if (isVar(side, 'x') && onlyRes(ov, ['y', 'z'])) { Object.assign(item, { kind: 'surface', axis: 'x', f: cf(other) }); return }
+        if (isVar(side, 'y') && onlyRes(ov, ['x', 'z'])) { Object.assign(item, { kind: 'surface', axis: 'y', f: cf(other) }); return }
+      }
+      if (uses(['t', 'u', 'v'])) fail('An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples')
+      if (!uses(['x', 'y', 'z', 'r', 'theta'])) fail('There’s no x, y or z to draw')
+      const lf = cf(l), rf = cf(r)
+      item.kind = 'implicit3'
+      item.F = env => lf(env) - rf(env)
+    }
+
     return { items, params: [...params], missing: [...missing], fns: Object.keys(callable) }
   }
 
@@ -813,5 +877,5 @@ export function createMathParser() {
     return env
   }
 
-  return { tokenize, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED }
+  return { tokenize, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED, RESERVED_3D }
 }

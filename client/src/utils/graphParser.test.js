@@ -256,3 +256,40 @@ describe('fields, systems and slope fields', () => {
   })
 })
 
+describe('3D graphs', () => {
+  const read3 = (...texts) => P.analyze(texts.map((text, i) => ({ id: 'e' + i, text })), { dims: 3 })
+  const kinds3 = (...texts) => read3(...texts).items.map(it => it.kind + (it.axis ? '(' + it.axis + ')' : '') + (it.error ? ': ' + it.error : ''))
+
+  it('reads surfaces along each axis, and in r and θ', () => {
+    expect(kinds3('z = sin x cos y', 'x^2 + y^2', 'x = y z', 'y = x^2 + z', 'z = 8 - r^2 {r < 4}')).toEqual(['surface(z)', 'surface(z)', 'surface(x)', 'surface(y)', 'surface(z)'])
+    const r = read3('z = a x y', 'a = 2'), E = { ...P.paramValues(r), x: 3, y: 4 }
+    expect(r.items[0].f(E)).toBe(24)
+    expect(r.items[1].kind).toBe('param')
+  })
+
+  it('reads parametric surfaces, curves, points and implicit surfaces', () => {
+    expect(kinds3('(cos u, sin u, v)', '(cos t, sin t, t/5)', '(1, 2, 3)', 'x^2 + y^2 + z^2 = 25', 'r = 4'))
+      .toEqual(['psurface', 'curve3', 'point3', 'implicit3', 'implicit3'])
+    const s = read3('x^2 + y^2 + z^2 = 25').items[0]
+    expect(s.F({ x: 3, y: 4, z: 0 })).toBe(0)
+  })
+
+  it('draws f(x, y) = … as a surface, and keeps z, u and v from being sliders', () => {
+    const r = read3('f(x, y) = x - y', 'z + u + v = w')
+    expect(r.items[0]).toMatchObject({ kind: 'function', graph: 'z' })
+    expect(r.items[0].f({ x: 5, y: 2 })).toBe(3)
+    expect(r.missing).toEqual(['w'])
+    // In 2D the same letters are sliders
+    expect(read('y = z u').missing).toEqual(['z', 'u'])
+  })
+
+  it('says what doesn’t work in 3D', () => {
+    const error = (...texts) => read3(...texts).items.find(it => it.error)?.error
+    expect(error('(1, 2)')).toMatch(/three coordinates/)
+    expect(error('z < x')).toMatch(/2D only/)
+    expect(error("x' = y", "y' = -x")).toMatch(/switch this graph to 2D/)
+    expect(error('z + 1')).toMatch(/equation/)
+    expect(error('(x, y, z)')).toMatch(/numbers or sliders/)
+  })
+})
+

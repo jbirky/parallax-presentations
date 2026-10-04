@@ -85,7 +85,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -491,6 +491,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                 <Box size={14} /> Upload STL / GLB
                 <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowModelMenu(false); onAddModelUpload(f) }} />
               </label>
+              {onAddGraph3d && <button onClick={() => { setShowModelMenu(false); onAddGraph3d() }} title="Surfaces z = f(x, y), parametric and implicit surfaces, curves and points, typed as in Graph, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <ChartSpline size={14} /> 3D Graph
+              </button>}
               <DocsLink page="media" onClose={() => setShowModelMenu(false)} />
             </div>
           </>)}
@@ -498,7 +501,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       )}
 
       {onAddGraph && (
-        <button className="btn-icon" title="Graph functions, curves and regions" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+        <button className="btn-icon" title="Graph functions, curves, regions and fields; switch it to 3D for surfaces" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
           <ChartSpline size={14} /> Graph
         </button>
       )}

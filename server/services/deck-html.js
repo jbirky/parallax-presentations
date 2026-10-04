@@ -5788,6 +5788,7 @@ function createMathParser() {
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E };
   const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho", "mu", "nu", "kappa", "eta"];
   const RESERVED = ["x", "y", "t", "theta", "r"];
+  const RESERVED_3D = ["x", "y", "z", "t", "u", "v", "theta", "r"];
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ["theta"], GREEK2).sort((a, b) => b.length - a.length);
   const UNICODE = {
     "−": "-",
@@ -6411,7 +6412,10 @@ function createMathParser() {
       else Object.assign(it, { kind: "error", error: it.kind === "solution" ? "y(…) = … needs a slope field, like dy/dx = x − y" : "(x, y)(0) = (…) needs a field or a system to follow" });
     }
   }
-  function analyze(expressions) {
+  function analyze(expressions, opts) {
+    const dims3 = !!(opts && opts.dims === 3);
+    const RES = dims3 ? RESERVED_3D : RESERVED;
+    const onlyRes = (set, names) => [...set].every((v) => !RES.includes(v) || names.includes(v));
     const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
     const fns = {};
     for (const item of items) {
@@ -6465,8 +6469,8 @@ function createMathParser() {
       const { parts, ops } = item.stmt;
       if (ops.length !== 1 || ops[0] !== "=" || parts[0].k !== "var") continue;
       const name = parts[0].n;
-      if (RESERVED.includes(name) || name in CONSTANTS) continue;
-      if (has3(freeVars(parts[1]), RESERVED)) continue;
+      if (RES.includes(name) || name in CONSTANTS) continue;
+      if (has3(freeVars(parts[1]), RES)) continue;
       if (params.has(name)) {
         item.kind = "error";
         item.error = name + " is defined twice";
@@ -6482,7 +6486,7 @@ function createMathParser() {
     for (const name of params) {
       if (fns[name]) Object.assign(fns[name].item, { kind: "error", error: name + " is already a slider" });
     }
-    const known = new Set(RESERVED.concat([...params], [...userFns]));
+    const known = new Set(RES.concat([...params], [...userFns]));
     const missing = /* @__PURE__ */ new Set();
     const note = (vars, item) => vars.forEach((v) => {
       if (known.has(v)) return;
@@ -6541,22 +6545,29 @@ function createMathParser() {
       }
     }
     const cf = (node) => compile(node, null, callable);
-    readFields(items, params, callable, note);
+    if (dims3) {
+      for (const item of items) if (item.field) Object.assign(item, { kind: "error", error: "Fields and systems are drawn in 2D: switch this graph to 2D" });
+    } else readFields(items, params, callable, note);
     for (const item of items) {
       try {
         if (item.kind === "function") {
           const vars = freeVars(item.body, null, item.formals);
           note(vars, item);
-          if (item.formals.length === 1 && item.formals[0] === "x" && only(vars, ["x"])) {
+          if (!dims3 && item.formals.length === 1 && item.formals[0] === "x" && only(vars, ["x"])) {
             item.graph = "y";
             const def = callable[item.name];
             item.f = (env) => def.call(env, [env.x]);
+          } else if (dims3 && item.formals.length === 2 && item.formals[0] === "x" && item.formals[1] === "y" && onlyRes(vars, ["x", "y"])) {
+            item.graph = "z";
+            const def = callable[item.name];
+            item.f = (env) => def.call(env, [env.x, env.y]);
           }
         } else if (item.kind === "param") {
           note(freeVars(item.value), item);
           item.f = cf(item.value);
         } else if (item.stmt && !item.kind) {
-          classify(item);
+          if (dims3) classify3(item);
+          else classify(item);
         }
       } catch (e) {
         if (!e.graphError) throw e;
@@ -6656,6 +6667,67 @@ function createMathParser() {
         return { g: (env) => lf(env) - rf(env), test: (env) => test(lf(env), rf(env)), strict: op === "<" || op === ">" };
       });
     }
+    function classify3(item) {
+      const { parts, ops } = item.stmt;
+      const vars = /* @__PURE__ */ new Set();
+      parts.forEach((p) => freeVars(p, vars));
+      note(vars, item);
+      const uses = (names) => names.some((n) => vars.has(n));
+      if (!ops.length) {
+        let node = parts[0], restrict = null;
+        if (node.k === "bin" && node.op === "*" && node.a.k === "tuple") {
+          restrict = node.b;
+          node = node.a;
+        }
+        if (node.k === "tuple") {
+          if (node.items.length !== 3) fail2("In 3D, a point has three coordinates, like (1, 2, 3)");
+          const [nx, ny, nz] = restrict ? node.items.map((n) => ({ k: "bin", op: "*", a: n, b: restrict })) : node.items;
+          if (uses(["u", "v"])) {
+            if (!onlyRes(vars, ["u", "v"])) fail2("A surface (x(u, v), y(u, v), z(u, v)) can use only u, v and sliders");
+            item.kind = "psurface";
+          } else if (vars.has("t")) {
+            if (!onlyRes(vars, ["t"])) fail2("A curve (x(t), y(t), z(t)) can use only t and sliders");
+            item.kind = "curve3";
+          } else {
+            if (has3(vars, RES)) fail2("A point’s coordinates are numbers or sliders; for a curve use t, for a surface u and v");
+            item.kind = "point3";
+          }
+          item.fx = cf(nx);
+          item.fy = cf(ny);
+          item.fz = cf(nz);
+          return;
+        }
+        if (vars.has("z")) fail2("Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9");
+        if (!onlyRes(vars, ["x", "y", "r", "theta"])) fail2("A surface z = f(x, y) uses x, y (or r and θ) and sliders");
+        item.f = cf(node);
+        item.kind = uses(["x", "y", "r", "theta"]) ? "surface" : "value";
+        item.axis = "z";
+        return;
+      }
+      if (!ops.every((op) => op === "=")) fail2("Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}");
+      if (ops.length > 1) fail2("Only one = per line");
+      const [l, r] = parts;
+      for (const [side, other] of [[l, r], [r, l]]) {
+        const ov = freeVars(other);
+        if (isVar(side, "z") && onlyRes(ov, ["x", "y", "r", "theta"])) {
+          Object.assign(item, { kind: "surface", axis: "z", f: cf(other) });
+          return;
+        }
+        if (isVar(side, "x") && onlyRes(ov, ["y", "z"])) {
+          Object.assign(item, { kind: "surface", axis: "x", f: cf(other) });
+          return;
+        }
+        if (isVar(side, "y") && onlyRes(ov, ["x", "z"])) {
+          Object.assign(item, { kind: "surface", axis: "y", f: cf(other) });
+          return;
+        }
+      }
+      if (uses(["t", "u", "v"])) fail2("An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples");
+      if (!uses(["x", "y", "z", "r", "theta"])) fail2("There’s no x, y or z to draw");
+      const lf = cf(l), rf = cf(r);
+      item.kind = "implicit3";
+      item.F = (env) => lf(env) - rf(env);
+    }
     return { items, params: [...params], missing: [...missing], fns: Object.keys(callable) };
   }
   function paramValues(analysis, values) {
@@ -6676,11 +6748,11 @@ function createMathParser() {
     }
     return env;
   }
-  return { tokenize: tokenize3, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED };
+  return { tokenize: tokenize3, parseStatement, freeVars, compile, analyze, paramValues, normalize, RESERVED, RESERVED_3D };
 }
 
 // client/src/utils/graphRuntime.js
-function graphRuntime(P, G2, config) {
+function graphRuntime(P, G2, G3, config) {
   let C2 = config;
   const THEMES = {
     light: {
@@ -6742,19 +6814,33 @@ function graphRuntime(P, G2, config) {
   let shownScale = 1;
   const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C2.print ? Math.max(shownScale, 3) : shownScale)));
   const clamp4 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-  const copyView = (v) => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax });
-  const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax"].every((k) => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
+  const copyView = (v) => {
+    const out = { xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax };
+    if (v.zMin !== void 0) {
+      out.zMin = +v.zMin;
+      out.zMax = +v.zMax;
+    }
+    return out;
+  };
+  const sameView = (a, b) => ["xMin", "xMax", "yMin", "yMax", "zMin", "zMax"].every((k) => a[k] === void 0 && b[k] === void 0 || Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])));
+  const is3d = () => C2.dims === 3;
+  let cam = { turn: 35, tilt: 25 }, spinAngle = 0, lastSpin = 0;
+  const copyCam = (c) => ({ turn: c && isFinite(+c.turn) ? +c.turn : 35, tilt: c && isFinite(+c.tilt) ? +c.tilt : 25 });
   function setConfig(next, keepState) {
     C2 = next;
     theme = THEMES[C2.theme] || THEMES.light;
-    analysis = P.analyze(C2.expressions || []);
+    analysis = P.analyze(C2.expressions || [], { dims: C2.dims });
     const kept = values;
     values = {};
     for (const it of analysis.items) {
       if (it.kind === "param" && it.slider) values[it.name] = keepState && typeof kept[it.name] === "number" && !C2.editor ? kept[it.name] : it.literal;
     }
-    if (!keepState || C2.editor) view = copyView(C2.view);
+    if (!keepState || C2.editor) {
+      view = copyView(C2.view);
+      cam = copyCam(C2.camera);
+    }
     if (!keepState) clicks = [];
+    geo3Key = "";
     fieldGeo = null;
     playing = {};
     for (const e of C2.expressions || []) {
@@ -6826,6 +6912,11 @@ function graphRuntime(P, G2, config) {
   }
   function draw() {
     if (!W || !H || !analysis) return;
+    if (is3d()) {
+      draw3d();
+      snapshot();
+      return;
+    }
     const v = shown();
     X0 = v.xMin;
     X1 = v.xMax;
@@ -6876,6 +6967,9 @@ function graphRuntime(P, G2, config) {
     fieldsDo(() => drawMoving(fg));
     if (hover) drawHover();
     if (eqHover) drawEquilibriumCard(eqHover);
+    snapshot();
+  }
+  function snapshot() {
     if (C2.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true;
       try {
@@ -6883,6 +6977,157 @@ function graphRuntime(P, G2, config) {
       } catch (e) {
       }
     }
+  }
+  const SURFACE_KINDS = ["surface", "psurface", "implicit3"];
+  let r3 = null, geo3 = null, geo3Key = "";
+  function box3() {
+    const v = view;
+    return { xMin: v.xMin, xMax: v.xMax, yMin: v.yMin, yMax: v.yMax, zMin: v.zMin !== void 0 ? v.zMin : -10, zMax: v.zMax !== void 0 ? v.zMax : 10 };
+  }
+  function env3() {
+    const e = env();
+    e.z = 0;
+    e.u = 0;
+    e.v = 0;
+    return e;
+  }
+  const num9 = (v, d) => v !== void 0 && v !== "" && isFinite(+v) ? +v : d;
+  function geometry3(E, box) {
+    const key = JSON.stringify([box, values, C2.expressions, step, C2.grid, C2.axes]);
+    if (geo3 && key === geo3Key) return geo3;
+    geo3Key = key;
+    if (geo3 && r3) {
+      geo3.surfaces.forEach((s) => r3.free(s.mesh));
+      geo3.lines.forEach((l) => r3.free(l.mesh));
+    }
+    const surfaces = [], lines = [], points = [], R = r3 || G3.renderer(document);
+    const span = (k) => box[k + "Max"] - box[k + "Min"];
+    const stepOf = (k) => G3.niceStep(span(k), 10);
+    for (const it of analysis.items) {
+      if (!visible(it)) continue;
+      const e = exprOf(it), color2 = e.color || "#c74440", o = e.surface || {};
+      const fine = o.detail === "fine";
+      try {
+        if (it.kind === "surface" || it.kind === "function" && it.graph === "z") {
+          const axis = it.axis || "z", A = axis === "z" ? ["x", "y"] : axis === "x" ? ["y", "z"] : ["x", "z"];
+          const mesh = G3.explicit(it.f, E, box, axis, fine ? 140 : 72);
+          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+        } else if (it.kind === "psurface") {
+          const u0 = num9(e.uMin, 0), u1 = num9(e.uMax, 2 * Math.PI), v0 = num9(e.vMin, 0), v1 = num9(e.vMax, Math.PI), n = fine ? 120 : 64;
+          const mesh = G3.parametric(it.fx, it.fy, it.fz, E, u0, u1, v0, v1, n, n);
+          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+        } else if (it.kind === "implicit3") {
+          const mesh = G3.implicit(it.F, E, box, fine ? 72 : 44);
+          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+        } else if (it.kind === "curve3") {
+          const runs = G3.curve(it.fx, it.fy, it.fz, E, num9(e.min, 0), num9(e.max, 2 * Math.PI), 800);
+          lines.push({ mesh: R.lines(runs), color: color2, width: e.width || 2.5, alpha: 1 });
+        } else if (it.kind === "point3") {
+          const p = [it.fx(E), it.fy(E), it.fz(E)];
+          if (p.every(isFinite)) points.push({ p, e, color: color2 });
+        }
+      } catch (err) {
+      }
+    }
+    const X = [box.xMin, box.xMax], Y = [box.yMin, box.yMax], Z = [box.zMin, box.zMax];
+    const edges = [];
+    for (const y of Y) for (const z of Z) edges.push([[X[0], y, z], [X[1], y, z]]);
+    for (const x of X) for (const z of Z) edges.push([[x, Y[0], z], [x, Y[1], z]]);
+    for (const x of X) for (const y of Y) edges.push([[x, y, Z[0]], [x, y, Z[1]]]);
+    lines.push({ mesh: R.lines(edges), color: theme.fg, width: 1, alpha: 0.28, clip: false });
+    const floor = Math.min(Math.max(0, box.zMin), box.zMax);
+    if (C2.grid !== false) {
+      const grid = [];
+      const tx = stepOf("x"), ty = stepOf("y");
+      for (let x = Math.ceil(box.xMin / tx) * tx; x <= box.xMax + 1e-9; x += tx) grid.push([[x, box.yMin, floor], [x, box.yMax, floor]]);
+      for (let y = Math.ceil(box.yMin / ty) * ty; y <= box.yMax + 1e-9; y += ty) grid.push([[box.xMin, y, floor], [box.xMax, y, floor]]);
+      lines.push({ mesh: R.lines(grid), color: theme.fg, width: 1, alpha: 0.13, clip: false });
+    }
+    if (C2.axes !== false) {
+      const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax);
+      lines.push({ mesh: R.lines([[[box.xMin, oy, floor], [box.xMax, oy, floor]], [[ox, box.yMin, floor], [ox, box.yMax, floor]], [[ox, oy, box.zMin], [ox, oy, box.zMax]]]), color: theme.fg, width: 1.6, alpha: 0.75, clip: false });
+    }
+    geo3 = { surfaces, lines, points, floor };
+    return geo3;
+  }
+  function draw3d() {
+    ctx.clearRect(0, 0, W, H);
+    if (C2.background && C2.background !== "transparent") {
+      ctx.fillStyle = C2.background;
+      ctx.fillRect(0, 0, W, H);
+    }
+    const box = box3(), E = env3();
+    if (!r3) r3 = G3.renderer(document);
+    const g = geometry3(E, box);
+    const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W, H);
+    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines);
+    if (!out) {
+      haloText("3D graphs need WebGL 2, which this browser has turned off.", W / 2, H / 2, "center", "middle", "14px " + FONT);
+      return;
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(out, 0, 0);
+    ctx.restore();
+    labels3(camera, box, g);
+  }
+  function labels3(camera, box, g) {
+    const font = "12px " + FONT, nameFont = "italic 16px " + MATH_FONT2;
+    const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax), oz = g.floor;
+    const taken = [];
+    const fits = (text, x, y, align, size) => {
+      ctx.font = size === 16 ? nameFont : font;
+      const w = ctx.measureText(text).width + 4, h = size + 2;
+      const x0 = align === "center" ? x - w / 2 : align === "right" ? x - w : x, y0 = y - h / 2;
+      if (taken.some((b) => x0 < b[2] && b[0] < x0 + w && y0 < b[3] && b[1] < y0 + h)) return false;
+      taken.push([x0, y0, x0 + w, y0 + h]);
+      return true;
+    };
+    if (C2.axes !== false) {
+      const names = [["x", C2.xLabel || "x", [box.xMax + (box.xMax - box.xMin) * 0.07, oy, oz]], ["y", C2.yLabel || "y", [ox, box.yMax + (box.yMax - box.yMin) * 0.07, oz]], ["z", C2.zLabel || "z", [ox, oy, box.zMax + (box.zMax - box.zMin) * 0.06]]];
+      for (const [, name, p] of names) {
+        const q = camera.project(p);
+        fits(name, q[0], q[1], "center", 16);
+        haloText(name, q[0], q[1], "center", "middle", nameFont);
+      }
+    }
+    if (C2.axes !== false && C2.axisNumbers !== false) {
+      for (const [k, at] of [["x", (t) => [t, oy, oz]], ["y", (t) => [ox, t, oz]], ["z", (t) => [ox, oy, t]]]) {
+        const s = G3.niceStep(box[k + "Max"] - box[k + "Min"], 5);
+        for (const t of ticksBetween(box[k + "Min"], box[k + "Max"], s)) {
+          if (Math.abs(t) < s * 1e-6 || t > box[k + "Max"] - s * 0.5) continue;
+          const q = camera.project(at(t)), text = tickLabel(t, s);
+          const x = q[0] + (k === "z" ? -8 : 0), y = q[1] + (k === "z" ? 0 : 10), align = k === "z" ? "right" : "center";
+          if (fits(text, x, y, align, 12)) haloText(text, x, y, align, "middle", font);
+        }
+      }
+    }
+    for (const { p, e, color: color2 } of g.points) {
+      const q = camera.project(p);
+      ctx.beginPath();
+      ctx.arc(q[0], q[1], (e.width || 2.5) + 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = color2;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = theme.halo;
+      ctx.stroke();
+      const label = e.label ? e.label : e.showCoords ? "(" + fmt(p[0]) + ", " + fmt(p[1]) + ", " + fmt(p[2]) + ")" : "";
+      if (label) haloText(label, q[0] + 9, q[1] - 7, "left", "bottom", "13px " + FONT, color2);
+    }
+  }
+  function zoom3(factor) {
+    const b = box3(), out = {};
+    for (const k of ["x", "y", "z"]) {
+      const mid = (b[k + "Min"] + b[k + "Max"]) / 2, half2 = (b[k + "Max"] - b[k + "Min"]) / 2 * factor;
+      if (!(half2 > 1e-9) || !(half2 < 1e12)) return;
+      out[k + "Min"] = mid - half2;
+      out[k + "Max"] = mid + half2;
+    }
+    view = out;
+    viewChanged();
+  }
+  function spinning() {
+    return is3d() && C2.spin && !C2.print && !C2.editor && !reduceMotion && !(drag && drag.kind === "turn");
   }
   function gridAndAxes() {
     const px = 90;
@@ -7850,8 +8095,12 @@ function graphRuntime(P, G2, config) {
       request();
     } else {
       last = 0;
+      if (spinning()) {
+        spinAngle += lastSpin ? Math.min(0.1, (now - lastSpin) / 1e3) * 12 : 0;
+        lastSpin = now;
+      } else lastSpin = 0;
       draw();
-      if (moving(fieldGeo)) request();
+      if (moving(fieldGeo) || spinning()) request();
     }
   }
   function sliderOf(name) {
@@ -7948,12 +8197,14 @@ function graphRuntime(P, G2, config) {
   reset.title = "Back to the starting view";
   document.body.appendChild(reset);
   function styleReset() {
-    const changed = view && C2.view && !sameView(view, copyView(C2.view));
+    const changed = view && C2.view && (!sameView(view, copyView(C2.view)) || is3d() && (Math.abs(cam.turn - copyCam(C2.camera).turn) > 1e-6 || Math.abs(cam.tilt - copyCam(C2.camera).tilt) > 1e-6));
     reset.style.cssText = "position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (changed && !C2.editor && !C2.print ? "block" : "none") + ";";
     if (typeof styleClear === "function") styleClear();
   }
   reset.addEventListener("click", () => {
     view = copyView(C2.view);
+    cam = copyCam(C2.camera);
+    spinAngle = 0;
     styleReset();
     request();
   });
@@ -7994,7 +8245,7 @@ function graphRuntime(P, G2, config) {
     styleReset();
     request();
     clearTimeout(viewTimer);
-    viewTimer = setTimeout(() => postEditor({ type: "view", view: copyView(view) }), 200);
+    viewTimer = setTimeout(() => postEditor(is3d() ? { type: "view", view: copyView(view), camera: { turn: Math.round(cam.turn * 10) / 10, tilt: Math.round(cam.tilt * 10) / 10 } } : { type: "view", view: copyView(view) }), 200);
   }
   function zoom(factor, px, py) {
     const v = shown();
@@ -8027,6 +8278,16 @@ function graphRuntime(P, G2, config) {
     pointers.set(ev.pointerId, [px, py]);
     canvas.setPointerCapture(ev.pointerId);
     hover = null;
+    if (is3d()) {
+      if (C2.lockView) {
+        drag = null;
+        return;
+      }
+      cam.turn += spinAngle;
+      spinAngle = 0;
+      drag = pointers.size === 2 ? { kind: "pinch3", box: box3(), start: [...pointers.values()] } : { kind: "turn", start: [px, py], turn: cam.turn, tilt: cam.tilt };
+      return;
+    }
     if (pointers.size === 2) {
       drag = { kind: "pinch", view: copyView(view), start: [...pointers.values()] };
       return;
@@ -8047,6 +8308,22 @@ function graphRuntime(P, G2, config) {
     if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, [px, py]);
     if (!drag) {
       trace(px, py);
+      return;
+    }
+    if (drag.kind === "turn") {
+      cam.turn = drag.turn - (px - drag.start[0]) * 0.5;
+      cam.tilt = Math.max(-89, Math.min(89, drag.tilt + (py - drag.start[1]) * 0.5));
+      styleReset();
+      request();
+      return;
+    }
+    if (drag.kind === "pinch3" && pointers.size === 2) {
+      const [a, b] = [...pointers.values()], [a0, b0] = drag.start;
+      const d0 = Math.hypot(a0[0] - b0[0], a0[1] - b0[1]), d1 = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (d0 > 10 && d1 > 10) {
+        view = Object.assign({}, drag.box);
+        zoom3(d0 / d1);
+      }
       return;
     }
     if (drag.kind === "point") {
@@ -8075,6 +8352,7 @@ function graphRuntime(P, G2, config) {
   });
   const end = (ev) => {
     pointers.delete(ev.pointerId);
+    if (drag && drag.kind === "turn" && !pointers.size) viewChanged();
     if (drag && drag.kind === "point") {
       for (const name of [drag.it.dragX, drag.it.dragY]) if (name) postEditor({ type: "param", name, value: values[name] });
     }
@@ -8096,16 +8374,28 @@ function graphRuntime(P, G2, config) {
   canvas.addEventListener("wheel", (ev) => {
     if (C2.lockView) return;
     ev.preventDefault();
+    if (is3d()) {
+      zoom3(Math.exp(ev.deltaY * 15e-4));
+      return;
+    }
     const [px, py] = pos(ev);
     zoom(Math.exp(ev.deltaY * 15e-4), px, py);
   }, { passive: false });
   canvas.addEventListener("dblclick", (ev) => {
     clearTimeout(clickTimer);
     if (C2.lockView) return;
+    if (is3d()) {
+      zoom3(0.5);
+      return;
+    }
     const [px, py] = pos(ev);
     zoom(0.5, px, py);
   });
   function trace(px, py) {
+    if (is3d()) {
+      canvas.style.cursor = C2.lockView ? "default" : "grab";
+      return;
+    }
     let near = null;
     if (fieldGeo) {
       for (const f of fieldGeo.fields) {
@@ -8539,28 +8829,524 @@ function graphFields() {
   };
 }
 
+// client/src/utils/graph3d.js
+function graph3d() {
+  "use strict";
+  function explicit(f, E, box, axis, n) {
+    var A = axis === "z" ? ["x", "y"] : axis === "x" ? ["y", "z"] : ["x", "z"];
+    var a0 = box[A[0] + "Min"], a1 = box[A[0] + "Max"], b0 = box[A[1] + "Min"], b1 = box[A[1] + "Max"];
+    var N = n + 1, pos = new Float32Array(N * N * 3), mesh = new Float32Array(N * N * 2), val = new Float64Array(N * N);
+    var k = { x: 0, y: 1, z: 2 }, ia = k[A[0]], ib = k[A[1]], iu = k[axis];
+    for (var j = 0; j < N; j++) for (var i = 0; i < N; i++) {
+      var a = a0 + (a1 - a0) * i / n, b = b0 + (b1 - b0) * j / n, p = j * N + i;
+      E[A[0]] = a;
+      E[A[1]] = b;
+      if (axis === "z") {
+        E.r = Math.hypot(a, b);
+        E.theta = Math.atan2(b, a);
+      }
+      var u = f(E);
+      val[p] = isFinite(u) ? u : NaN;
+      pos[3 * p + ia] = a;
+      pos[3 * p + ib] = b;
+      pos[3 * p + iu] = val[p];
+      mesh[2 * p] = a;
+      mesh[2 * p + 1] = b;
+    }
+    var at = function(a2, b2) {
+      E[A[0]] = a2;
+      E[A[1]] = b2;
+      if (axis === "z") {
+        E.r = Math.hypot(a2, b2);
+        E.theta = Math.atan2(b2, a2);
+      }
+      var u2 = f(E);
+      return isFinite(u2) ? u2 : NaN;
+    };
+    var extra = [];
+    var edgePoint = function(p2, q) {
+      var ap = pos[3 * p2 + ia], bp = pos[3 * p2 + ib], aq = pos[3 * q + ia], bq = pos[3 * q + ib], lo = 0, hi = 1, u2 = val[p2];
+      for (var it = 0; it < 12; it++) {
+        var mid = (lo + hi) / 2, w = at(ap + (aq - ap) * mid, bp + (bq - bp) * mid);
+        if (w === w) {
+          lo = mid;
+          u2 = w;
+        } else hi = mid;
+      }
+      var v = [0, 0, 0];
+      v[ia] = ap + (aq - ap) * lo;
+      v[ib] = bp + (bq - bp) * lo;
+      v[iu] = u2;
+      return v;
+    };
+    for (j = 0; j < n; j++) for (i = 0; i < n; i++) {
+      var corners = [j * N + i, j * N + i + 1, (j + 1) * N + i + 1, (j + 1) * N + i];
+      var ok = corners.map(function(c2) {
+        return val[c2] === val[c2];
+      });
+      var count = ok.filter(Boolean).length;
+      if (count === 0 || count === 4) continue;
+      var poly = [];
+      for (var c = 0; c < 4; c++) {
+        var cur = corners[c], next = corners[(c + 1) % 4];
+        if (ok[c]) poly.push([pos[3 * cur], pos[3 * cur + 1], pos[3 * cur + 2], cur]);
+        if (ok[c] !== ok[(c + 1) % 4]) poly.push(ok[c] ? edgePoint(cur, next) : edgePoint(next, cur));
+      }
+      if (poly.length >= 3) extra.push(poly);
+    }
+    E.x = 0;
+    E.y = 0;
+    E.z = 0;
+    E.r = 0;
+    E.theta = 0;
+    return grid(pos, mesh, N, N, false, extra, axis === "z" ? [ia, ib] : [ia, ib]);
+  }
+  function parametric(fx, fy, fz, E, u0, u1, v0, v1, nu, nv) {
+    var NU = nu + 1, NV = nv + 1, pos = new Float32Array(NU * NV * 3), mesh = new Float32Array(NU * NV * 2);
+    for (var j = 0; j < NV; j++) for (var i = 0; i < NU; i++) {
+      var u = u0 + (u1 - u0) * i / nu, v = v0 + (v1 - v0) * j / nv, p = j * NU + i;
+      E.u = u;
+      E.v = v;
+      var x = fx(E), y = fy(E), z = fz(E);
+      var ok = isFinite(x) && isFinite(y) && isFinite(z);
+      pos[3 * p] = ok ? x : NaN;
+      pos[3 * p + 1] = ok ? y : NaN;
+      pos[3 * p + 2] = ok ? z : NaN;
+      mesh[2 * p] = u;
+      mesh[2 * p + 1] = v;
+    }
+    E.u = 0;
+    E.v = 0;
+    return grid(pos, mesh, NU, NV, true);
+  }
+  function grid(pos, mesh, NU, NV, unused, extra, meshAxes) {
+    var idx = [];
+    var ok = function(p2) {
+      return pos[3 * p2] === pos[3 * p2] && pos[3 * p2 + 1] === pos[3 * p2 + 1] && pos[3 * p2 + 2] === pos[3 * p2 + 2];
+    };
+    for (var j = 0; j < NV - 1; j++) for (var i = 0; i < NU - 1; i++) {
+      var a = j * NU + i, b = a + 1, c = a + NU, d = c + 1;
+      var A = ok(a), B = ok(b), C2 = ok(c), D = ok(d);
+      if (A && B && C2 && D) {
+        idx.push(a, b, d, a, d, c);
+        continue;
+      }
+      if (extra) continue;
+      if (A && B && D) idx.push(a, b, d);
+      else if (A && D && C2) idx.push(a, d, c);
+      else if (A && B && C2) idx.push(a, b, c);
+      else if (B && D && C2) idx.push(b, d, c);
+    }
+    if (extra && extra.length) {
+      var more = [];
+      extra.forEach(function(poly) {
+        poly.forEach(function(q2) {
+          if (q2[3] === void 0) more.push(q2);
+        });
+      });
+      var base = NU * NV, P2 = new Float32Array(pos.length + more.length * 3), M2 = new Float32Array(mesh.length + more.length * 2);
+      P2.set(pos);
+      M2.set(mesh);
+      var k = 0;
+      extra.forEach(function(poly) {
+        var ids = poly.map(function(q2) {
+          if (q2[3] !== void 0) return q2[3];
+          var id = base + k++;
+          P2[3 * id] = q2[0];
+          P2[3 * id + 1] = q2[1];
+          P2[3 * id + 2] = q2[2];
+          M2[2 * id] = q2[meshAxes[0]];
+          M2[2 * id + 1] = q2[meshAxes[1]];
+          return id;
+        });
+        for (var t2 = 1; t2 < ids.length - 1; t2++) idx.push(ids[0], ids[t2], ids[t2 + 1]);
+      });
+      pos = P2;
+      mesh = M2;
+    }
+    var nor = new Float32Array(pos.length);
+    for (var t = 0; t < idx.length; t += 3) {
+      var p = 3 * idx[t], q = 3 * idx[t + 1], r = 3 * idx[t + 2];
+      var ux = pos[q] - pos[p], uy = pos[q + 1] - pos[p + 1], uz = pos[q + 2] - pos[p + 2];
+      var vx = pos[r] - pos[p], vy = pos[r + 1] - pos[p + 1], vz = pos[r + 2] - pos[p + 2];
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      for (var s = 0; s < 3; s++) {
+        var o = 3 * idx[t + s];
+        nor[o] += nx;
+        nor[o + 1] += ny;
+        nor[o + 2] += nz;
+      }
+    }
+    for (var k = 0; k < pos.length; k++) if (pos[k] !== pos[k]) pos[k] = 0;
+    return { pos, nor, mesh, idx: new Uint32Array(idx) };
+  }
+  var TETS = [[0, 1, 3, 7], [0, 3, 2, 7], [0, 2, 6, 7], [0, 6, 4, 7], [0, 4, 5, 7], [0, 5, 1, 7]];
+  var EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
+  function implicit(F, E, box, n) {
+    var N = n + 1, vals = new Float64Array(N * N * N);
+    var dx = (box.xMax - box.xMin) / n, dy = (box.yMax - box.yMin) / n, dz = (box.zMax - box.zMin) / n;
+    var at = function(i2, j2, k2) {
+      return (k2 * N + j2) * N + i2;
+    };
+    for (var k = 0; k < N; k++) for (var j = 0; j < N; j++) for (var i = 0; i < N; i++) {
+      E.x = box.xMin + dx * i;
+      E.y = box.yMin + dy * j;
+      E.z = box.zMin + dz * k;
+      E.r = Math.hypot(E.x, E.y);
+      E.theta = Math.atan2(E.y, E.x);
+      var v = F(E);
+      vals[at(i, j, k)] = isFinite(v) ? v : NaN;
+    }
+    E.x = 0;
+    E.y = 0;
+    E.z = 0;
+    E.r = 0;
+    E.theta = 0;
+    var grad = function(i2, j2, k2, out) {
+      var c2 = vals[at(i2, j2, k2)];
+      var gx = i2 > 0 && i2 < n ? (vals[at(i2 + 1, j2, k2)] - vals[at(i2 - 1, j2, k2)]) / (2 * dx) : i2 === 0 ? (vals[at(1, j2, k2)] - c2) / dx : (c2 - vals[at(i2 - 1, j2, k2)]) / dx;
+      var gy = j2 > 0 && j2 < n ? (vals[at(i2, j2 + 1, k2)] - vals[at(i2, j2 - 1, k2)]) / (2 * dy) : j2 === 0 ? (vals[at(i2, 1, k2)] - c2) / dy : (c2 - vals[at(i2, j2 - 1, k2)]) / dy;
+      var gz = k2 > 0 && k2 < n ? (vals[at(i2, j2, k2 + 1)] - vals[at(i2, j2, k2 - 1)]) / (2 * dz) : k2 === 0 ? (vals[at(i2, j2, 1)] - c2) / dz : (c2 - vals[at(i2, j2, k2 - 1)]) / dz;
+      out[0] = gx;
+      out[1] = gy;
+      out[2] = gz;
+    };
+    var pos = [], nor = [], cv = new Array(8), cp = new Array(8), cg = new Array(8);
+    for (var q = 0; q < 8; q++) {
+      cp[q] = [0, 0, 0];
+      cg[q] = [0, 0, 0];
+    }
+    var crossing = function(a2, b2) {
+      var va = cv[a2], vb = cv[b2], t2 = va / (va - vb);
+      pos.push(cp[a2][0] + (cp[b2][0] - cp[a2][0]) * t2, cp[a2][1] + (cp[b2][1] - cp[a2][1]) * t2, cp[a2][2] + (cp[b2][2] - cp[a2][2]) * t2);
+      nor.push(cg[a2][0] + (cg[b2][0] - cg[a2][0]) * t2, cg[a2][1] + (cg[b2][1] - cg[a2][1]) * t2, cg[a2][2] + (cg[b2][2] - cg[a2][2]) * t2);
+    };
+    for (k = 0; k < n; k++) for (j = 0; j < n; j++) for (i = 0; i < n; i++) {
+      var pos0 = false, neg0 = false, bad = false;
+      for (q = 0; q < 8; q++) {
+        var ii = i + (q & 1), jj = j + (q >> 1 & 1), kk = k + (q >> 2 & 1), w = vals[at(ii, jj, kk)];
+        if (w !== w) {
+          bad = true;
+          break;
+        }
+        cv[q] = w;
+        if (w > 0) pos0 = true;
+        else neg0 = true;
+      }
+      if (bad || !(pos0 && neg0)) continue;
+      var pole = false;
+      for (var e = 0; e < 12 && !pole; e++) {
+        var qa = EDGES[e][0], qb = EDGES[e][1], wa = cv[qa], wb = cv[qb];
+        if (wa > 0 === wb > 0) continue;
+        var f = wa / (wa - wb);
+        E.x = box.xMin + dx * (i + ((qa & 1) + ((qb & 1) - (qa & 1)) * f));
+        E.y = box.yMin + dy * (j + ((qa >> 1 & 1) + ((qb >> 1 & 1) - (qa >> 1 & 1)) * f));
+        E.z = box.zMin + dz * (k + ((qa >> 2 & 1) + ((qb >> 2 & 1) - (qa >> 2 & 1)) * f));
+        E.r = Math.hypot(E.x, E.y);
+        E.theta = Math.atan2(E.y, E.x);
+        var mid = F(E);
+        if (!(Math.abs(mid) < Math.min(Math.abs(wa), Math.abs(wb)))) pole = true;
+      }
+      if (pole) continue;
+      for (q = 0; q < 8; q++) {
+        ii = i + (q & 1);
+        jj = j + (q >> 1 & 1);
+        kk = k + (q >> 2 & 1);
+        cp[q][0] = box.xMin + dx * ii;
+        cp[q][1] = box.yMin + dy * jj;
+        cp[q][2] = box.zMin + dz * kk;
+        grad(ii, jj, kk, cg[q]);
+      }
+      for (var t = 0; t < 6; t++) {
+        var T = TETS[t], inside = [], outside = [];
+        for (var s = 0; s < 4; s++) (cv[T[s]] > 0 ? inside : outside).push(T[s]);
+        if (inside.length === 0 || inside.length === 4) continue;
+        if (inside.length === 1 || inside.length === 3) {
+          var lone = inside.length === 1 ? inside[0] : outside[0], rest = inside.length === 1 ? outside : inside;
+          crossing(lone, rest[0]);
+          crossing(lone, rest[1]);
+          crossing(lone, rest[2]);
+        } else {
+          var a = inside[0], b = inside[1], c = outside[0], d = outside[1];
+          crossing(a, c);
+          crossing(a, d);
+          crossing(b, d);
+          crossing(a, c);
+          crossing(b, d);
+          crossing(b, c);
+        }
+      }
+    }
+    E.x = 0;
+    E.y = 0;
+    E.z = 0;
+    E.r = 0;
+    E.theta = 0;
+    var idx = new Uint32Array(pos.length / 3);
+    for (q = 0; q < idx.length; q++) idx[q] = q;
+    var P = new Float32Array(pos);
+    return { pos: P, nor: new Float32Array(nor), mesh: new Float32Array(idx.length * 2).fill(0), idx };
+  }
+  function curve(fx, fy, fz, E, t0, t1, n) {
+    var runs = [], run = [];
+    for (var i = 0; i <= n; i++) {
+      E.t = t0 + (t1 - t0) * i / n;
+      var p = [fx(E), fy(E), fz(E)];
+      if (isFinite(p[0]) && isFinite(p[1]) && isFinite(p[2])) run.push(p);
+      else if (run.length) {
+        runs.push(run);
+        run = [];
+      }
+    }
+    E.t = 0;
+    if (run.length) runs.push(run);
+    return runs;
+  }
+  var FOV = 26 * Math.PI / 180, DIST = 7.6;
+  function perspective(aspect) {
+    var f = 1 / Math.tan(FOV / 2), near = 0.5, far = 20, nf = 1 / (near - far);
+    return [f / Math.max(aspect, 1e-6) * Math.min(1, aspect), 0, 0, 0, 0, f * Math.min(1, aspect), 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+  }
+  function lookAt(turn, tilt) {
+    var t = turn * Math.PI / 180, e = tilt * Math.PI / 180;
+    var ex = DIST * Math.cos(e) * Math.cos(t), ey = DIST * Math.cos(e) * Math.sin(t), ez = DIST * Math.sin(e);
+    var fx = -ex / DIST, fy = -ey / DIST, fz = -ez / DIST;
+    var sx = fy, sy = -fx, sl = Math.hypot(sx, sy) || 1;
+    sx /= sl;
+    sy /= sl;
+    var ux = sy * fz, uy = -sx * fz, uz = sx * fy - sy * fx;
+    return [sx, ux, -fx, 0, sy, uy, -fy, 0, 0, uz, -fz, 0, -(sx * ex + sy * ey), -(ux * ex + uy * ey + uz * ez), fx * ex + fy * ey + fz * ez, 1];
+  }
+  function mul2(a, b) {
+    var o = new Array(16);
+    for (var c = 0; c < 4; c++) for (var r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    return o;
+  }
+  function camera(box, turn, tilt, w, h) {
+    var cx = (box.xMin + box.xMax) / 2, cy = (box.yMin + box.yMax) / 2, cz = (box.zMin + box.zMax) / 2;
+    var hx = (box.xMax - box.xMin) / 2, hy = (box.yMax - box.yMin) / 2, hz = (box.zMax - box.zMin) / 2;
+    var model = [1 / hx, 0, 0, 0, 0, 1 / hy, 0, 0, 0, 0, 1 / hz, 0, -cx / hx, -cy / hy, -cz / hz, 1];
+    var view = lookAt(turn, tilt), proj = perspective(w / h);
+    var mvp = mul2(proj, mul2(view, model));
+    return {
+      mvp,
+      view,
+      center: [cx, cy, cz],
+      half: [hx, hy, hz],
+      w,
+      h,
+      // A point of the graph to the canvas: [x, y, depth] in CSS pixels
+      project: function(p) {
+        var x = p[0], y = p[1], z = p[2];
+        var X = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12], Y = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
+        var Z = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14], W = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+        return [(X / W * 0.5 + 0.5) * w, (0.5 - Y / W * 0.5) * h, Z / W];
+      }
+    };
+  }
+  var SURFACE_VS = "#version 300 es\nin vec3 aPos; in vec3 aNor; in vec2 aMesh;\nuniform mat4 uMVP, uView; uniform vec3 uCenter, uHalf;\nout vec3 vData; out vec3 vN; out vec3 vEye; out vec2 vMesh;\nvoid main() {\n  vec3 c = (aPos - uCenter) / uHalf;\n  vData = aPos; vMesh = aMesh;\n  vN = mat3(uView) * (aNor * uHalf);\n  vEye = (uView * vec4(c, 1.0)).xyz;\n  gl_Position = uMVP * vec4(aPos, 1.0);\n}";
+  var SURFACE_FS = "#version 300 es\nprecision highp float;\nin vec3 vData; in vec3 vN; in vec3 vEye; in vec2 vMesh;\nuniform vec3 uMin, uMax, uColor, uLineColor; uniform int uMode; uniform vec2 uMeshStep; uniform float uContour, uAlpha;\nout vec4 o;\nvec3 viridis(float t) {\n  t = clamp(t, 0.0, 1.0);\n  vec3 c0 = vec3(0.2777, 0.0054, 0.3341), c1 = vec3(0.1051, 1.4046, 1.3846), c2 = vec3(-0.3309, 0.2148, 0.0951);\n  vec3 c3 = vec3(-4.6342, -5.7991, -19.3324), c4 = vec3(6.2283, 14.1799, 56.6906), c5 = vec3(4.7764, -13.7451, -65.3530), c6 = vec3(-5.4355, 4.6459, 26.3124);\n  return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));\n}\nfloat gridLine(vec2 p) { vec2 d = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-6)); return min(d.x, d.y); }\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps))) discard;\n  vec3 col = uMode == 1 ? viridis((vData.z - uMin.z) / (uMax.z - uMin.z)) : uColor;\n  if (uMeshStep.x > 0.0) col = mix(col * 0.7, col, smoothstep(0.4, 1.4, gridLine(vMesh / uMeshStep)));\n  if (uContour > 0.0) { float c = vData.z / uContour; float d = abs(fract(c - 0.5) - 0.5) / max(fwidth(c), 1e-6); col = mix(uLineColor, col, smoothstep(0.5, 1.5, d)); }\n  vec3 v = normalize(-vEye), n = normalize(vN);\n  float under = dot(n, v) < 0.0 ? 1.0 : 0.0; if (under > 0.5) n = -n;\n  vec3 L1 = normalize(vec3(-0.4, 0.75, 0.55)), L2 = normalize(vec3(0.7, -0.3, 0.4));\n  float d1 = max(dot(n, L1), 0.0), d2 = max(dot(n, L2), 0.0), sp = pow(max(dot(n, normalize(L1 + v)), 0.0), 40.0);\n  vec3 lit = col * (0.42 + 0.5 * d1 + 0.18 * d2) + vec3(0.12 * sp);\n  if (under > 0.5) lit *= 0.88;\n  o = vec4(lit * uAlpha, uAlpha);\n}";
+  var LINE_VS = "#version 300 es\nin vec3 aPos; in vec3 aOther; in float aSide;\nuniform mat4 uMVP; uniform vec2 uViewport; uniform float uWidth;\nout vec3 vData;\nvoid main() {\n  vec4 a = uMVP * vec4(aPos, 1.0), b = uMVP * vec4(aOther, 1.0);\n  vec2 sa = a.xy / a.w * uViewport, sb = b.xy / b.w * uViewport;\n  vec2 dir = sb - sa; float len = length(dir); dir = len > 1e-6 ? dir / len : vec2(1.0, 0.0);\n  vec2 nrm = vec2(-dir.y, dir.x) * aSide * uWidth;\n  vData = aPos;\n  gl_Position = vec4((sa + nrm) / uViewport * a.w, a.z - 0.0015 * a.w, a.w);\n}";
+  var LINE_FS = "#version 300 es\nprecision highp float;\nin vec3 vData; uniform vec3 uMin, uMax; uniform vec4 uColor; uniform int uClip;\nout vec4 o;\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (uClip == 1 && (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps)))) discard;\n  o = vec4(uColor.rgb * uColor.a, uColor.a);\n}";
+  function renderer(doc) {
+    var cv = doc.createElement("canvas"), gl = null, progS = null, progL = null, U = {}, failed = false;
+    function compile(vs, fs, attrs) {
+      var mk = function(type, src) {
+        var s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+      };
+      var p = gl.createProgram();
+      gl.attachShader(p, mk(gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+      attrs.forEach(function(a, i) {
+        gl.bindAttribLocation(p, i, a);
+      });
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+      return p;
+    }
+    function init() {
+      if (gl || failed) return !!gl;
+      try {
+        gl = cv.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+        if (!gl) throw new Error("no WebGL 2");
+        progS = compile(SURFACE_VS, SURFACE_FS, ["aPos", "aNor", "aMesh"]);
+        progL = compile(LINE_VS, LINE_FS, ["aPos", "aOther", "aSide"]);
+        ["uMVP", "uView", "uCenter", "uHalf", "uMin", "uMax", "uColor", "uLineColor", "uMode", "uMeshStep", "uContour", "uAlpha"].forEach(function(n) {
+          U["s" + n] = gl.getUniformLocation(progS, n);
+        });
+        ["uMVP", "uViewport", "uWidth", "uMin", "uMax", "uColor", "uClip"].forEach(function(n) {
+          U["l" + n] = gl.getUniformLocation(progL, n);
+        });
+        return true;
+      } catch (e) {
+        failed = true;
+        gl = null;
+        return false;
+      }
+    }
+    function upload(m) {
+      if (m.vao && m.gl === gl) return m;
+      m.gl = gl;
+      m.vao = gl.createVertexArray();
+      gl.bindVertexArray(m.vao);
+      m.buffers = [[m.pos, 3], [m.nor, 3], [m.mesh, 2]].map(function(a, i) {
+        var b = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, a[0], gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, a[1], gl.FLOAT, false, 0, 0);
+        return b;
+      });
+      m.ib = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      return m;
+    }
+    function lines(runs) {
+      var pos = [], other = [], side = [], idx = [];
+      runs.forEach(function(run) {
+        for (var i = 0; i < run.length - 1; i++) {
+          var a = run[i], b = run[i + 1], base = pos.length / 3;
+          pos.push(a[0], a[1], a[2], a[0], a[1], a[2], b[0], b[1], b[2], b[0], b[1], b[2]);
+          other.push(b[0], b[1], b[2], b[0], b[1], b[2], a[0], a[1], a[2], a[0], a[1], a[2]);
+          side.push(1, -1, -1, 1);
+          idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        }
+      });
+      return { pos: new Float32Array(pos), nor: new Float32Array(other), mesh: new Float32Array(side), idx: new Uint32Array(idx), line: true };
+    }
+    function uploadLines(m) {
+      if (m.vao && m.gl === gl) return m;
+      m.gl = gl;
+      m.vao = gl.createVertexArray();
+      gl.bindVertexArray(m.vao);
+      m.buffers = [[m.pos, 3], [m.nor, 3], [m.mesh, 1]].map(function(a, i) {
+        var b = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, a[0], gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, a[1], gl.FLOAT, false, 0, 0);
+        return b;
+      });
+      m.ib = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      return m;
+    }
+    function free(m) {
+      if (!m || !m.vao || m.gl !== gl || !gl) return;
+      m.buffers.forEach(function(b) {
+        gl.deleteBuffer(b);
+      });
+      gl.deleteBuffer(m.ib);
+      gl.deleteVertexArray(m.vao);
+      m.vao = null;
+    }
+    function rgb(c) {
+      var n = parseInt(String(c).replace("#", "").slice(0, 6), 16);
+      return isFinite(n) ? [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255] : [0.5, 0.5, 0.5];
+    }
+    function draw(cam, box, w, h, dpr, surfaces, lineSets) {
+      if (!init()) return null;
+      var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+      if (cv.width !== W || cv.height !== H) {
+        cv.width = W;
+        cv.height = H;
+      }
+      gl.viewport(0, 0, W, H);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      var mn = [box.xMin, box.yMin, box.zMin], mx = [box.xMax, box.yMax, box.zMax];
+      gl.useProgram(progS);
+      gl.uniformMatrix4fv(U.suMVP, false, new Float32Array(cam.mvp));
+      gl.uniformMatrix4fv(U.suView, false, new Float32Array(cam.view));
+      gl.uniform3fv(U.suCenter, cam.center);
+      gl.uniform3fv(U.suHalf, cam.half);
+      gl.uniform3fv(U.suMin, mn);
+      gl.uniform3fv(U.suMax, mx);
+      surfaces.forEach(function(s) {
+        if (!s.mesh.idx.length) return;
+        upload(s.mesh);
+        gl.uniform3fv(U.suColor, rgb(s.color));
+        gl.uniform3fv(U.suLineColor, rgb(s.lineColor || "#000000"));
+        gl.uniform1i(U.suMode, s.mode || 0);
+        gl.uniform2fv(U.suMeshStep, s.meshStep || [0, 0]);
+        gl.uniform1f(U.suContour, s.contour || 0);
+        gl.uniform1f(U.suAlpha, s.alpha == null ? 1 : s.alpha);
+        gl.bindVertexArray(s.mesh.vao);
+        gl.drawElements(gl.TRIANGLES, s.mesh.idx.length, gl.UNSIGNED_INT, 0);
+      });
+      gl.useProgram(progL);
+      gl.uniformMatrix4fv(U.luMVP, false, new Float32Array(cam.mvp));
+      gl.uniform2f(U.luViewport, W / 2, H / 2);
+      gl.uniform3fv(U.luMin, mn);
+      gl.uniform3fv(U.luMax, mx);
+      lineSets.forEach(function(l) {
+        if (!l.mesh.idx.length) return;
+        uploadLines(l.mesh);
+        var c = rgb(l.color);
+        gl.uniform4f(U.luColor, c[0], c[1], c[2], l.alpha == null ? 1 : l.alpha);
+        gl.uniform1f(U.luWidth, (l.width || 2) * dpr / 2);
+        gl.uniform1i(U.luClip, l.clip === false ? 0 : 1);
+        gl.bindVertexArray(l.mesh.vao);
+        gl.drawElements(gl.TRIANGLES, l.mesh.idx.length, gl.UNSIGNED_INT, 0);
+      });
+      gl.bindVertexArray(null);
+      return cv;
+    }
+    return { init, draw, lines, free, available: function() {
+      return init();
+    } };
+  }
+  function niceStep(span, count) {
+    var raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+  }
+  return { explicit, parametric, implicit, curve, camera, renderer, niceStep };
+}
+
 // client/src/utils/graphPage.js
-var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "theme", "background", "showSliders", "lockView"];
+var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin"];
 var DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 };
-function validView(v) {
-  const n = (k) => v && isFinite(+v[k]) ? +v[k] : DEFAULT_VIEW[k];
+var DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 };
+var DEFAULT_CAMERA = { turn: 35, tilt: 25 };
+function validView(v, dims3) {
+  const base = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW;
+  const n = (k) => v && isFinite(+v[k]) ? +v[k] : base[k];
   let { xMin, xMax, yMin, yMax } = { xMin: n("xMin"), xMax: n("xMax"), yMin: n("yMin"), yMax: n("yMax") };
-  if (!(xMax > xMin)) ({ xMin, xMax } = DEFAULT_VIEW);
-  if (!(yMax > yMin)) ({ yMin, yMax } = DEFAULT_VIEW);
-  return { xMin, xMax, yMin, yMax };
+  if (!(xMax > xMin)) ({ xMin, xMax } = base);
+  if (!(yMax > yMin)) ({ yMin, yMax } = base);
+  if (!dims3) return { xMin, xMax, yMin, yMax };
+  let { zMin, zMax } = { zMin: n("zMin"), zMax: n("zMax") };
+  if (!(zMax > zMin)) ({ zMin, zMax } = base);
+  return { xMin, xMax, yMin, yMax, zMin, zMax };
 }
 function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false } = {}) {
   const config = {};
   for (const key of GRAPH_FIELDS) if (el[key] !== void 0) config[key] = el[key];
   config.expressions = Array.isArray(el.expressions) ? el.expressions : [];
-  config.view = validView(el.view);
+  config.view = validView(el.view, el.dims === 3);
+  if (el.dims === 3) {
+    const c = el.camera || {};
+    config.camera = { turn: isFinite(+c.turn) ? +c.turn : DEFAULT_CAMERA.turn, tilt: isFinite(+c.tilt) ? Math.max(-89, Math.min(89, +c.tilt)) : DEFAULT_CAMERA.tilt };
+  }
   return { ...config, snapshotKey, print, editor, showAll: showAll || print || editor };
 }
 var pageCode = null;
 function graphPageHtml(el, opts = {}) {
   const config = graphConfig(el, opts);
   if (!pageCode) {
-    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), `.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "< !--");
+    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), (${graph3d.toString()})(), `.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "< !--");
   }
   const code = `${pageCode}${JSON.stringify(config).replace(/</g, "\\u003c")});`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;-webkit-user-select:none;user-select:none}</style></head><body><script>${code}</script></body></html>`;

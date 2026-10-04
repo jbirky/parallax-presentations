@@ -9,7 +9,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Eye, EyeOff, X, Plus, SlidersHorizontal, Play } from 'lucide-react'
 import { createMathParser } from '../utils/graphParser'
-import { graphPageHtml, graphConfig, GRAPH_COLORS, DEFAULT_VIEW, newExpressionId } from '../utils/graphPage'
+import { graphPageHtml, graphConfig, GRAPH_COLORS, DEFAULT_VIEW, DEFAULT_VIEW_3D, DEFAULT_CAMERA, defaultGraph, defaultGraph3d, newExpressionId } from '../utils/graphPage'
 
 const EXAMPLES = [
   ['Function', 'y = x^2 - 2'],
@@ -29,6 +29,20 @@ const EXAMPLES = [
   ['Path from a point', '(x, y)(0) = (1, 0)'],
   ['Solution through a point', 'y(0) = 1'],
 ]
+
+// A 3D graph's examples; some set their parameters' ranges
+const EXAMPLES_3D = [
+  ['Surface', 'z = sin x cos y'],
+  ['Saddle', 'z = (x^2 - y^2)/10'],
+  ['Cylindrical (r, θ)', 'z = 8 - r^2/4 {r < 6}'],
+  ['Sphere', 'x^2 + y^2 + z^2 = 36'],
+  ['Cylinder', 'r = 4'],
+  ['Parametric surface (torus)', '((6 + 2cos v)cos u, (6 + 2cos v)sin u, 2sin v)', { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 * Math.PI }],
+  ['Curve (helix)', '(5cos t, 5sin t, t/2 - 8)', { min: 0, max: 32 }],
+  ['Point', '(2, 3, 4)'],
+  ['Define a function', 'f(x, y) = e^(-(x^2 + y^2)/20) 8'],
+]
+const SURFACE_KINDS = ['surface', 'psurface', 'implicit3']
 
 // What a field line's options offer, and their defaults by kind (graphRuntime's)
 const FIELD_DEFAULTS = {
@@ -109,11 +123,25 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   const [box, setBox] = useState({ w: 640, h: 420 })
 
   const expressions = graph.expressions || []
-  const analysis = useMemo(() => P.analyze(expressions), [P, expressions])
+  const dims3 = graph.dims === 3
+  const analysis = useMemo(() => P.analyze(expressions, { dims: graph.dims }), [P, expressions, graph.dims])
   const byId = useMemo(() => Object.fromEntries(analysis.items.map(it => [it.id, it])), [analysis])
   const palette = GRAPH_COLORS[graph.theme === 'dark' ? 'dark' : 'light']
 
   const update = patch => setGraph(g => ({ ...g, ...patch }))
+  // 2D ↔ 3D: the default graph trades for the other's default; anything
+  // typed stays, and is read the other way
+  const switchDims = d => setGraph(g => {
+    if ((g.dims === 3 ? 3 : 2) === d) return g
+    const dark = g.theme === 'dark'
+    const texts = list => (list || []).map(e => e.text).join('\n')
+    const untouched = d === 3 ? texts(g.expressions) === texts(defaultGraph(dark).expressions) : texts(g.expressions) === texts(defaultGraph3d(dark).expressions)
+    const next = d === 3
+      ? { ...g, dims: 3, view: { ...DEFAULT_VIEW_3D }, camera: { ...DEFAULT_CAMERA } }
+      : { ...g, dims: undefined, camera: undefined, view: { ...DEFAULT_VIEW } }
+    if (untouched) next.expressions = (d === 3 ? defaultGraph3d(dark) : defaultGraph(dark)).expressions
+    return next
+  })
   const setExpressions = fn => setGraph(g => ({ ...g, expressions: fn(g.expressions || []) }))
   const updateExpr = (id, patch) => setExpressions(list => list.map(e => (e.id === id ? { ...e, ...patch } : e)))
 
@@ -172,7 +200,7 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
       if (e.source !== frameRef.current?.contentWindow) return
       const d = e.data
       if (!d || d.source !== 'parallax-graph') return
-      if (d.type === 'view' && d.view) update({ view: d.view })
+      if (d.type === 'view' && d.view) update(d.camera ? { view: d.view, camera: d.camera } : { view: d.view })
       if (d.type === 'param' && typeof d.value === 'number') {
         setExpressions(list => list.map(ex => {
           const it = byId[ex.id]
@@ -211,6 +239,10 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
     const next = { ...view, ...patch }
     if (next.xMax > next.xMin && next.yMax > next.yMin) update({ view: next })
   }
+  const setView3 = patch => {
+    const next = { ...DEFAULT_VIEW_3D, ...view, ...patch }
+    if (next.xMax > next.xMin && next.yMax > next.yMin && next.zMax > next.zMin) update({ view: next })
+  }
 
   const onKeyDown = (e, ex, index) => {
     if (e.key === 'Enter') { e.preventDefault(); addExpression(ex.id) }
@@ -231,7 +263,17 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}>
       <div role="dialog" aria-label="Graph editor" style={{ background: 'var(--bg-card, #1e1e2e)', borderRadius: 12, width: 'min(1240px, 96vw)', height: 'min(800px, 94vh)', display: 'flex', flexDirection: 'column', border: '1px solid var(--border, #333)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--border, #333)' }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary, #fff)' }}>Graph</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary, #fff)' }}>Graph</span>
+            <div role="group" aria-label="2D or 3D" style={{ display: 'inline-flex', border: '1px solid var(--border, #333)', borderRadius: 6, overflow: 'hidden' }}>
+              {[[2, '2D'], [3, '3D']].map(([d, label]) => (
+                <button key={d} type="button" aria-pressed={(graph.dims === 3 ? 3 : 2) === d} onClick={() => switchDims(d)}
+                  style={{ border: 'none', padding: '3px 12px', fontSize: 12, cursor: 'pointer', background: (graph.dims === 3 ? 3 : 2) === d ? 'var(--accent)' : 'transparent', color: (graph.dims === 3 ? 3 : 2) === d ? '#fff' : 'var(--text-secondary, #ccc)' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <a href="/#docs/tutorials/graphs" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--text-muted, #888)' }}>How to use</a>
             <button onClick={onClose} aria-label="Close" style={{ ...iconButton, fontSize: 18 }}><X size={18} /></button>
@@ -247,8 +289,11 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                 const isSlider = it.kind === 'param' && it.slider
                 const isField = FIELD_KINDS.includes(it.kind)
                 const isPath = it.kind === 'trajectory' || it.kind === 'solution'
-                const drawn = ['explicit', 'implicit', 'region', 'polar', 'parametric', 'point'].includes(it.kind) || (it.kind === 'function' && it.graph) || isField || isPath
-                const curve = drawn && it.kind !== 'point' && !isField
+                const isSurface = SURFACE_KINDS.includes(it.kind) || (it.kind === 'function' && it.graph === 'z')
+                const drawn = ['explicit', 'implicit', 'region', 'polar', 'parametric', 'point', 'curve3', 'point3'].includes(it.kind) || (it.kind === 'function' && it.graph) || isField || isPath || isSurface
+                const curve = drawn && !['point', 'point3'].includes(it.kind) && !isField && !isSurface
+                const surf = { color: 'line', mesh: true, contours: false, detail: 'normal', ...(ex.surface || {}) }
+                const setSurface = patch => updateExpr(ex.id, { surface: { ...(ex.surface || {}), ...patch } })
                 const fieldOpts = isField ? { ...FIELD_DEFAULTS[it.kind], ...(ex.field || {}) } : null
                 const setField = patch => updateExpr(ex.id, { field: { ...(ex.field || {}), ...patch } })
                 const lineOf = id => expressions.findIndex(e => e.id === id) + 1
@@ -313,7 +358,18 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                           <NumberField value={slider.max} constant={constant} width={48} title="Greatest value" onCommit={v => updateExpr(ex.id, { slider: { ...slider, max: v ?? SLIDER_DEFAULTS.max } })} />
                         </div>
                       )}
-                      {(it.kind === 'parametric' || it.kind === 'polar') && (
+                      {it.kind === 'psurface' && (
+                        <div style={{ display: 'grid', gap: 4, marginTop: 6, ...smallLabel }}>
+                          {[['u', 'uMin', 'uMax', 2 * Math.PI], ['v', 'vMin', 'vMax', Math.PI]].map(([name, lo, hi, dflt]) => (
+                            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <NumberField value={ex[lo] ?? 0} constant={constant} width={62} onCommit={v => updateExpr(ex.id, { [lo]: v })} />
+                              <span>≤ <i style={{ fontFamily: 'serif', fontSize: 13 }}>{name}</i> ≤</span>
+                              <NumberField value={ex[hi] ?? dflt} constant={constant} width={62} onCommit={v => updateExpr(ex.id, { [hi]: v })} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(it.kind === 'parametric' || it.kind === 'polar' || it.kind === 'curve3') && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6, ...smallLabel }}>
                           <NumberField value={ex.min ?? 0} constant={constant} width={62} onCommit={v => updateExpr(ex.id, { min: v })} />
                           <span>≤ <i style={{ fontFamily: 'serif', fontSize: 13 }}>{it.kind === 'polar' ? 'θ' : 't'}</i> ≤</span>
@@ -427,6 +483,43 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                               </label>
                             </>
                           )}
+                          {isSurface && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Color</span>
+                                <select value={surf.color} onChange={e => setSurface({ color: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                                  <option value="line">The line’s color</option>
+                                  <option value="height">By height (viridis)</option>
+                                </select>
+                                <select value={surf.detail} onChange={e => setSurface({ detail: e.target.value })} style={{ ...inputStyle, width: 84 }} title="How finely it's drawn">
+                                  <option value="normal">Normal</option>
+                                  <option value="fine">Fine</option>
+                                </select>
+                              </div>
+                              {it.kind !== 'implicit3' && (
+                                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                  <input type="checkbox" checked={surf.mesh !== false} onChange={e => setSurface({ mesh: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                  Mesh lines
+                                </label>
+                              )}
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!surf.contours} onChange={e => setSurface({ contours: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                Contour lines (where z is a round number)
+                              </label>
+                            </>
+                          )}
+                          {it.kind === 'point3' && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Label</span>
+                                <input value={ex.label || ''} onChange={e => updateExpr(ex.id, { label: e.target.value })} placeholder="None" style={{ ...inputStyle, flex: 1 }} />
+                              </div>
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!ex.showCoords} onChange={e => updateExpr(ex.id, { showCoords: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                Show its coordinates
+                              </label>
+                            </>
+                          )}
                           {it.kind === 'trajectory' && (
                             <>
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -463,10 +556,14 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
               <button className="btn btn-secondary" onClick={() => addExpression(expressions[expressions.length - 1]?.id)} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={13} /> Expression
               </button>
-              <select value="" onChange={e => { if (e.target.value) addExpression(expressions[expressions.length - 1]?.id, e.target.value); e.target.value = '' }}
+              <select value="" onChange={e => {
+                const ex = (dims3 ? EXAMPLES_3D : EXAMPLES).find(([label]) => label === e.target.value)
+                if (ex) addExpression(expressions[expressions.length - 1]?.id, ex[1], ex[2] || {})
+                e.target.value = ''
+              }}
                 style={{ ...inputStyle, flex: 1, cursor: 'pointer' }} aria-label="Add an example">
                 <option value="">Add an example…</option>
-                {EXAMPLES.map(([label, text]) => <option key={label} value={text}>{label}: {text}</option>)}
+                {(dims3 ? EXAMPLES_3D : EXAMPLES).map(([label, text]) => <option key={label} value={label}>{label}: {text}</option>)}
               </select>
             </div>
           </div>
@@ -487,6 +584,19 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
             </div>
             <div style={{ borderTop: '1px solid var(--border, #333)', padding: '10px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 14, rowGap: 8, alignItems: 'center' }}>
               <span style={smallLabel}>View</span>
+              {dims3 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {['x', 'y', 'z'].map(k => (
+                    <span key={k} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginRight: 6 }}>
+                      <NumberField value={view[k + 'Min'] ?? DEFAULT_VIEW_3D[k + 'Min']} constant={constant} width={50} title={`Least ${k}`} onCommit={v => v !== undefined && setView3({ [k + 'Min']: v })} />
+                      <span>≤ <i style={{ fontFamily: 'serif' }}>{k}</i> ≤</span>
+                      <NumberField value={view[k + 'Max'] ?? DEFAULT_VIEW_3D[k + 'Max']} constant={constant} width={50} title={`Greatest ${k}`} onCommit={v => v !== undefined && setView3({ [k + 'Max']: v })} />
+                    </span>
+                  ))}
+                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => update({ view: { ...DEFAULT_VIEW_3D }, camera: { ...DEFAULT_CAMERA } })}>Reset</button>
+                  <span style={{ ...smallLabel, marginLeft: 4 }}>Drag the preview to turn it, scroll to zoom.</span>
+                </div>
+              ) : (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
                 <NumberField value={view.xMin} constant={constant} width={58} title="Left edge" onCommit={v => v !== undefined && setView({ xMin: v })} />
                 <span>≤ <i style={{ fontFamily: 'serif' }}>x</i> ≤</span>
@@ -506,19 +616,22 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                 <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 6 }} onClick={() => update({ view: { ...DEFAULT_VIEW } })}>Reset</button>
                 <span style={{ ...smallLabel, marginLeft: 4 }}>Drag the preview to move, scroll to zoom.</span>
               </div>
+              )}
               <span style={smallLabel}>Show</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                 {check('grid', 'Grid')}
                 {check('axes', 'Axes')}
                 {check('axisNumbers', 'Numbers')}
-                {check('equalScale', 'Equal scales')}
+                {!dims3 && check('equalScale', 'Equal scales')}
                 {check('showSliders', 'Sliders on the slide')}
-                {check('lockView', 'Lock panning and zooming', false)}
+                {check('lockView', dims3 ? 'Lock turning and zooming' : 'Lock panning and zooming', false)}
+                {dims3 && check('spin', 'Spin while presenting', false)}
               </div>
               <span style={smallLabel}>Axes</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                 <input value={graph.xLabel || ''} onChange={e => update({ xLabel: e.target.value })} placeholder="x-axis label" style={{ ...inputStyle, width: 130 }} />
                 <input value={graph.yLabel || ''} onChange={e => update({ yLabel: e.target.value })} placeholder="y-axis label" style={{ ...inputStyle, width: 130 }} />
+                {dims3 && <input value={graph.zLabel || ''} onChange={e => update({ zLabel: e.target.value })} placeholder="z-axis label" style={{ ...inputStyle, width: 130 }} />}
                 <span style={{ ...smallLabel, marginLeft: 10 }}>Colors</span>
                 <select value={graph.theme || 'light'} onChange={e => update({ theme: e.target.value })} style={inputStyle}>
                   <option value="light">For a light slide</option>

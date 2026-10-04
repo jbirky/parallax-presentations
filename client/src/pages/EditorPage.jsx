@@ -44,7 +44,7 @@ import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
-import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
+import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
@@ -1393,6 +1393,9 @@ function draw() {
 
   const addGraph = useCallback(() => {
     setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+  const addGraph3d = useCallback(() => {
+    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
   }, [slideIsDark, slideBackdrop])
 
   const openGraphEditor = useCallback((elementId) => {
@@ -4242,6 +4245,7 @@ function draw() {
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddGraph={addGraph}
+            onAddGraph3d={addGraph3d}
             onAddDiagram={() => setShowDiagramModal(true)}
             onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
             onAddP5={addP5Element}

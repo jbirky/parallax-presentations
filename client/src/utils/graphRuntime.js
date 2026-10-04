@@ -4,12 +4,16 @@
 // What runs in a graph element's iframe: draws the graph on a canvas, and
 // lets the audience pan, zoom, drag points, move sliders and play them.
 // Like createMathParser, it has nothing from outside it (the page embeds its
-// source): `P` is the parser, `G` the field numerics (graphFields.js),
-// `config` the graph (graphPage.js graphConfig).
+// source): `P` is the parser, `G` the field numerics (graphFields.js), `G3`
+// the 3D meshes and renderer (graph3d.js), `config` the graph (graphPage.js
+// graphConfig).
 //
 // Fields (vector fields, systems, slope fields) draw as arrows, streamlines,
 // slope marks or moving particles, with their equilibria, separatrices,
 // nullclines and paths; a click on the graph starts a path through it.
+//
+// A 3D graph (dims 3) draws surfaces, curves and points in a box with WebGL
+// 2, copied onto the same canvas, and turns when dragged.
 //
 // Messages it takes from its parent: 'parallax-resize' (its slide is shown);
 // { source: 'parallax-deck', type: 'graph-step', step } (the deck's step, for
@@ -18,7 +22,7 @@
 // { source: 'parallax-graph', type: 'view' | 'param' } when someone pans or
 // moves a slider there, and the slide panel its thumbnail.
 
-export function graphRuntime(P, G, config) {
+export function graphRuntime(P, G, G3, config) {
   let C = config
   const THEMES = {
     light: {
@@ -60,20 +64,29 @@ export function graphRuntime(P, G, config) {
   const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C.print ? Math.max(shownScale, 3) : shownScale)))
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 
-  const copyView = v => ({ xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax })
-  const sameView = (a, b) => ['xMin', 'xMax', 'yMin', 'yMax'].every(k => Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])))
+  const copyView = v => {
+    const out = { xMin: +v.xMin, xMax: +v.xMax, yMin: +v.yMin, yMax: +v.yMax }
+    if (v.zMin !== undefined) { out.zMin = +v.zMin; out.zMax = +v.zMax }
+    return out
+  }
+  const sameView = (a, b) => ['xMin', 'xMax', 'yMin', 'yMax', 'zMin', 'zMax'].every(k => (a[k] === undefined && b[k] === undefined) || Math.abs(a[k] - b[k]) < 1e-9 * Math.max(1, Math.abs(a[k])))
+  const is3d = () => C.dims === 3
+  // The 3D camera: turned about z from +x, tilted down to the box
+  let cam = { turn: 35, tilt: 25 }, spinAngle = 0, lastSpin = 0
+  const copyCam = c => ({ turn: c && isFinite(+c.turn) ? +c.turn : 35, tilt: c && isFinite(+c.tilt) ? +c.tilt : 25 })
 
   function setConfig(next, keepState) {
     C = next
     theme = THEMES[C.theme] || THEMES.light
-    analysis = P.analyze(C.expressions || [])
+    analysis = P.analyze(C.expressions || [], { dims: C.dims })
     const kept = values
     values = {}
     for (const it of analysis.items) {
       if (it.kind === 'param' && it.slider) values[it.name] = keepState && typeof kept[it.name] === 'number' && !C.editor ? kept[it.name] : it.literal
     }
-    if (!keepState || C.editor) view = copyView(C.view)
+    if (!keepState || C.editor) { view = copyView(C.view); cam = copyCam(C.camera) }
     if (!keepState) clicks = []
+    geo3Key = ''
     fieldGeo = null
     playing = {}
     for (const e of C.expressions || []) {
@@ -151,6 +164,7 @@ export function graphRuntime(P, G, config) {
 
   function draw() {
     if (!W || !H || !analysis) return
+    if (is3d()) { draw3d(); snapshot(); return }
     const v = shown()
     X0 = v.xMin; X1 = v.xMax; Y0 = v.yMin; Y1 = v.yMax
     ctx.clearRect(0, 0, W, H)
@@ -187,11 +201,154 @@ export function graphRuntime(P, G, config) {
     fieldsDo(() => drawMoving(fg))
     if (hover) drawHover()
     if (eqHover) drawEquilibriumCard(eqHover)
+    snapshot()
+  }
+  // The slide panel's thumbnail, once
+  function snapshot() {
     if (C.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true
       try { parent.postMessage({ source: 'parallax-embed', type: 'snapshot', key: C.snapshotKey, dataUrl: canvas.toDataURL('image/png') }, '*') } catch (e) { /* keeps its placeholder */ }
     }
   }
+
+  // ── 3D ───────────────────────────────────────────────────────────────────
+  const SURFACE_KINDS = ['surface', 'psurface', 'implicit3']
+  let r3 = null, geo3 = null, geo3Key = ''
+  function box3() {
+    const v = view
+    return { xMin: v.xMin, xMax: v.xMax, yMin: v.yMin, yMax: v.yMax, zMin: v.zMin !== undefined ? v.zMin : -10, zMax: v.zMax !== undefined ? v.zMax : 10 }
+  }
+  function env3() { const e = env(); e.z = 0; e.u = 0; e.v = 0; return e }
+  const num = (v, d) => (v !== undefined && v !== '' && isFinite(+v) ? +v : d)
+  // Meshes and lines, worked out again only when the box, sliders, lines or step change
+  function geometry3(E, box) {
+    const key = JSON.stringify([box, values, C.expressions, step, C.grid, C.axes])
+    if (geo3 && key === geo3Key) return geo3
+    geo3Key = key
+    if (geo3 && r3) { geo3.surfaces.forEach(s => r3.free(s.mesh)); geo3.lines.forEach(l => r3.free(l.mesh)) }
+    const surfaces = [], lines = [], points = [], R = r3 || G3.renderer(document)
+    const span = k => box[k + 'Max'] - box[k + 'Min']
+    const stepOf = k => G3.niceStep(span(k), 10)
+    for (const it of analysis.items) {
+      if (!visible(it)) continue
+      const e = exprOf(it), color = e.color || '#c74440', o = e.surface || {}
+      const fine = o.detail === 'fine'
+      try {
+        if (it.kind === 'surface' || (it.kind === 'function' && it.graph === 'z')) {
+          const axis = it.axis || 'z', A = axis === 'z' ? ['x', 'y'] : axis === 'x' ? ['y', 'z'] : ['x', 'z']
+          const mesh = G3.explicit(it.f, E, box, axis, fine ? 140 : 72)
+          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+        } else if (it.kind === 'psurface') {
+          const u0 = num(e.uMin, 0), u1 = num(e.uMax, 2 * Math.PI), v0 = num(e.vMin, 0), v1 = num(e.vMax, Math.PI), n = fine ? 120 : 64
+          const mesh = G3.parametric(it.fx, it.fy, it.fz, E, u0, u1, v0, v1, n, n)
+          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+        } else if (it.kind === 'implicit3') {
+          const mesh = G3.implicit(it.F, E, box, fine ? 72 : 44)
+          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+        } else if (it.kind === 'curve3') {
+          const runs = G3.curve(it.fx, it.fy, it.fz, E, num(e.min, 0), num(e.max, 2 * Math.PI), 800)
+          lines.push({ mesh: R.lines(runs), color, width: e.width || 2.5, alpha: 1 })
+        } else if (it.kind === 'point3') {
+          const p = [it.fx(E), it.fy(E), it.fz(E)]
+          if (p.every(isFinite)) points.push({ p, e, color })
+        }
+      } catch (err) { /* the others still draw */ }
+    }
+    // The box's edges, the floor's grid and the axes
+    const X = [box.xMin, box.xMax], Y = [box.yMin, box.yMax], Z = [box.zMin, box.zMax]
+    const edges = []
+    for (const y of Y) for (const z of Z) edges.push([[X[0], y, z], [X[1], y, z]])
+    for (const x of X) for (const z of Z) edges.push([[x, Y[0], z], [x, Y[1], z]])
+    for (const x of X) for (const y of Y) edges.push([[x, y, Z[0]], [x, y, Z[1]]])
+    lines.push({ mesh: R.lines(edges), color: theme.fg, width: 1, alpha: 0.28, clip: false })
+    const floor = Math.min(Math.max(0, box.zMin), box.zMax)
+    if (C.grid !== false) {
+      const grid = []
+      const tx = stepOf('x'), ty = stepOf('y')
+      for (let x = Math.ceil(box.xMin / tx) * tx; x <= box.xMax + 1e-9; x += tx) grid.push([[x, box.yMin, floor], [x, box.yMax, floor]])
+      for (let y = Math.ceil(box.yMin / ty) * ty; y <= box.yMax + 1e-9; y += ty) grid.push([[box.xMin, y, floor], [box.xMax, y, floor]])
+      lines.push({ mesh: R.lines(grid), color: theme.fg, width: 1, alpha: 0.13, clip: false })
+    }
+    if (C.axes !== false) {
+      const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax)
+      lines.push({ mesh: R.lines([[[box.xMin, oy, floor], [box.xMax, oy, floor]], [[ox, box.yMin, floor], [ox, box.yMax, floor]], [[ox, oy, box.zMin], [ox, oy, box.zMax]]]), color: theme.fg, width: 1.6, alpha: 0.75, clip: false })
+    }
+    geo3 = { surfaces, lines, points, floor }
+    return geo3
+  }
+  function draw3d() {
+    ctx.clearRect(0, 0, W, H)
+    if (C.background && C.background !== 'transparent') { ctx.fillStyle = C.background; ctx.fillRect(0, 0, W, H) }
+    const box = box3(), E = env3()
+    if (!r3) r3 = G3.renderer(document)
+    const g = geometry3(E, box)
+    const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W, H)
+    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines)
+    if (!out) {
+      haloText('3D graphs need WebGL 2, which this browser has turned off.', W / 2, H / 2, 'center', 'middle', '14px ' + FONT)
+      return
+    }
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.drawImage(out, 0, 0)
+    ctx.restore()
+    labels3(camera, box, g)
+  }
+  // Numbers along the axes, the axes' names, and the points
+  function labels3(camera, box, g) {
+    const font = '12px ' + FONT, nameFont = 'italic 16px ' + MATH_FONT
+    const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax), oz = g.floor
+    // Where an axis points toward the viewer its numbers bunch up over another's: keep the first of any that overlap
+    const taken = []
+    const fits = (text, x, y, align, size) => {
+      ctx.font = size === 16 ? nameFont : font
+      const w = ctx.measureText(text).width + 4, h = size + 2
+      const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y0 = y - h / 2
+      if (taken.some(b => x0 < b[2] && b[0] < x0 + w && y0 < b[3] && b[1] < y0 + h)) return false
+      taken.push([x0, y0, x0 + w, y0 + h])
+      return true
+    }
+    if (C.axes !== false) {
+      const names = [['x', C.xLabel || 'x', [box.xMax + (box.xMax - box.xMin) * 0.07, oy, oz]], ['y', C.yLabel || 'y', [ox, box.yMax + (box.yMax - box.yMin) * 0.07, oz]], ['z', C.zLabel || 'z', [ox, oy, box.zMax + (box.zMax - box.zMin) * 0.06]]]
+      for (const [, name, p] of names) { const q = camera.project(p); fits(name, q[0], q[1], 'center', 16); haloText(name, q[0], q[1], 'center', 'middle', nameFont) }
+    }
+    if (C.axes !== false && C.axisNumbers !== false) {
+      for (const [k, at] of [['x', t => [t, oy, oz]], ['y', t => [ox, t, oz]], ['z', t => [ox, oy, t]]]) {
+        const s = G3.niceStep(box[k + 'Max'] - box[k + 'Min'], 5)
+        for (const t of ticksBetween(box[k + 'Min'], box[k + 'Max'], s)) {
+          // Not 0, nor the far end, where the axis's name goes
+          if (Math.abs(t) < s * 1e-6 || t > box[k + 'Max'] - s * 0.5) continue
+          const q = camera.project(at(t)), text = tickLabel(t, s)
+          const x = q[0] + (k === 'z' ? -8 : 0), y = q[1] + (k === 'z' ? 0 : 10), align = k === 'z' ? 'right' : 'center'
+          if (fits(text, x, y, align, 12)) haloText(text, x, y, align, 'middle', font)
+        }
+      }
+    }
+    for (const { p, e, color } of g.points) {
+      const q = camera.project(p)
+      ctx.beginPath()
+      ctx.arc(q[0], q[1], (e.width || 2.5) + 2.5, 0, Math.PI * 2)
+      ctx.fillStyle = color
+      ctx.fill()
+      ctx.lineWidth = 1.5
+      ctx.strokeStyle = theme.halo
+      ctx.stroke()
+      const label = e.label ? e.label : e.showCoords ? '(' + fmt(p[0]) + ', ' + fmt(p[1]) + ', ' + fmt(p[2]) + ')' : ''
+      if (label) haloText(label, q[0] + 9, q[1] - 7, 'left', 'bottom', '13px ' + FONT, color)
+    }
+  }
+  // Scroll and pinch scale the box about its middle, as Desmos 3D does
+  function zoom3(factor) {
+    const b = box3(), out = {}
+    for (const k of ['x', 'y', 'z']) {
+      const mid = (b[k + 'Min'] + b[k + 'Max']) / 2, half = (b[k + 'Max'] - b[k + 'Min']) / 2 * factor
+      if (!(half > 1e-9) || !(half < 1e12)) return
+      out[k + 'Min'] = mid - half; out[k + 'Max'] = mid + half
+    }
+    view = out
+    viewChanged()
+  }
+  function spinning() { return is3d() && C.spin && !C.print && !C.editor && !reduceMotion && !(drag && drag.kind === 'turn') }
 
   function gridAndAxes() {
     const px = 90 // about this far apart, major lines
@@ -1009,8 +1166,12 @@ export function graphRuntime(P, G, config) {
       request()
     } else {
       last = 0
+      if (spinning()) {
+        spinAngle += lastSpin ? Math.min(0.1, (now - lastSpin) / 1000) * 12 : 0
+        lastSpin = now
+      } else lastSpin = 0
       draw()
-      if (moving(fieldGeo)) request()
+      if (moving(fieldGeo) || spinning()) request()
     }
   }
   function sliderOf(name) {
@@ -1102,12 +1263,12 @@ export function graphRuntime(P, G, config) {
   reset.title = 'Back to the starting view'
   document.body.appendChild(reset)
   function styleReset() {
-    const changed = view && C.view && !sameView(view, copyView(C.view))
+    const changed = view && C.view && (!sameView(view, copyView(C.view)) || (is3d() && (Math.abs(cam.turn - copyCam(C.camera).turn) > 1e-6 || Math.abs(cam.tilt - copyCam(C.camera).tilt) > 1e-6)))
     reset.style.cssText = 'position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;'
       + 'background:' + theme.panel + ';border:1px solid ' + theme.border + ';color:' + theme.panelText + ';display:' + (changed && !C.editor && !C.print ? 'block' : 'none') + ';'
     if (typeof styleClear === 'function') styleClear()
   }
-  reset.addEventListener('click', () => { view = copyView(C.view); styleReset(); request() })
+  reset.addEventListener('click', () => { view = copyView(C.view); cam = copyCam(C.camera); spinAngle = 0; styleReset(); request() })
   // Clear paths: those a click started
   const clear = document.createElement('button')
   clear.type = 'button'
@@ -1143,7 +1304,7 @@ export function graphRuntime(P, G, config) {
     styleReset()
     request()
     clearTimeout(viewTimer)
-    viewTimer = setTimeout(() => postEditor({ type: 'view', view: copyView(view) }), 200)
+    viewTimer = setTimeout(() => postEditor(is3d() ? { type: 'view', view: copyView(view), camera: { turn: Math.round(cam.turn * 10) / 10, tilt: Math.round(cam.tilt * 10) / 10 } } : { type: 'view', view: copyView(view) }), 200)
   }
 
   // No closer than a millionth of a millionth of where it's looking (floats
@@ -1176,6 +1337,13 @@ export function graphRuntime(P, G, config) {
     pointers.set(ev.pointerId, [px, py])
     canvas.setPointerCapture(ev.pointerId)
     hover = null
+    if (is3d()) {
+      if (C.lockView) { drag = null; return }
+      // A spin so far becomes where it was turned to
+      cam.turn += spinAngle; spinAngle = 0
+      drag = pointers.size === 2 ? { kind: 'pinch3', box: box3(), start: [...pointers.values()] } : { kind: 'turn', start: [px, py], turn: cam.turn, tilt: cam.tilt }
+      return
+    }
     if (pointers.size === 2) { drag = { kind: 'pinch', view: copyView(view), start: [...pointers.values()] }; return }
     const E = env()
     for (const it of analysis.items) {
@@ -1189,6 +1357,19 @@ export function graphRuntime(P, G, config) {
     const [px, py] = pos(ev)
     if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, [px, py])
     if (!drag) { trace(px, py); return }
+    if (drag.kind === 'turn') {
+      cam.turn = drag.turn - (px - drag.start[0]) * 0.5
+      cam.tilt = Math.max(-89, Math.min(89, drag.tilt + (py - drag.start[1]) * 0.5))
+      styleReset()
+      request()
+      return
+    }
+    if (drag.kind === 'pinch3' && pointers.size === 2) {
+      const [a, b] = [...pointers.values()], [a0, b0] = drag.start
+      const d0 = Math.hypot(a0[0] - b0[0], a0[1] - b0[1]), d1 = Math.hypot(a[0] - b[0], a[1] - b[1])
+      if (d0 > 10 && d1 > 10) { view = Object.assign({}, drag.box); zoom3(d0 / d1) }
+      return
+    }
     if (drag.kind === 'point') {
       const v = shown()
       if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, v.xMin + px / W * (v.xMax - v.xMin))
@@ -1215,6 +1396,7 @@ export function graphRuntime(P, G, config) {
   })
   const end = ev => {
     pointers.delete(ev.pointerId)
+    if (drag && drag.kind === 'turn' && !pointers.size) viewChanged()
     if (drag && drag.kind === 'point') {
       for (const name of [drag.it.dragX, drag.it.dragY]) if (name) postEditor({ type: 'param', name, value: values[name] })
     }
@@ -1230,18 +1412,21 @@ export function graphRuntime(P, G, config) {
   canvas.addEventListener('wheel', ev => {
     if (C.lockView) return
     ev.preventDefault()
+    if (is3d()) { zoom3(Math.exp(ev.deltaY * 0.0015)); return }
     const [px, py] = pos(ev)
     zoom(Math.exp(ev.deltaY * 0.0015), px, py)
   }, { passive: false })
   canvas.addEventListener('dblclick', ev => {
     clearTimeout(clickTimer)
     if (C.lockView) return
+    if (is3d()) { zoom3(0.5); return }
     const [px, py] = pos(ev)
     zoom(0.5, px, py)
   })
 
   // The value of the nearest y = f(x) under the pointer
   function trace(px, py) {
+    if (is3d()) { canvas.style.cursor = C.lockView ? 'default' : 'grab'; return }
     // Pointing at an equilibrium reads it
     let near = null
     if (fieldGeo) {

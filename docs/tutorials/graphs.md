@@ -30,8 +30,9 @@ In the expression list, **Enter** adds a line, **Backspace** on an empty line re
 | Vector field | `F(x, y) = (-y, x)` |
 | System of equations | `x' = y` and `y' = -sin x` |
 | Slope field | `dy/dx = x - y` |
+| Surface (in 3D) | `z = sin x cos y` |
 
-Vector fields, systems and slope fields have their own section below.
+Vector fields, systems and slope fields have their own section below, and so do 3D graphs.
 
 Multiplication doesn't need a sign: `2x`, `3(x + 1)`, `ab`. Functions work with or without parentheses: `sin 2x`, `sin^2 x`, `sin^-1 x`. You can use `π` or `pi`, `θ` or `theta`, `e`, `√` or `sqrt`, `|x|` for absolute value, and subscripts like `a_1`.
 
@@ -100,6 +101,41 @@ Click anywhere on the graph to start a path through that point, both ways in tim
 A path line can run forward, backward or both ways, and a dot can ride along it at the system's own pace. Paths stop where they come to rest, leave the view, or come round to where they started.
 
 In a PDF, particles are drawn as still streamlines, dots are at rest, and clicked paths are left out.
+
+## 3D graphs
+
+Switch a graph to **3D** at the top of its editor, or choose **3D Graph** in the toolbar's **3D Model** menu. The same expression list then draws surfaces, curves and points in a box, which you can turn while presenting.
+
+| Type | Example |
+| --- | --- |
+| Surface | `z = sin x cos y`, or just `sin x cos y` |
+| Surface along another axis | `x = y z`, `y = x^2 + z` |
+| Cylindrical coordinates | `z = 8 - r^2/4`, using r and θ |
+| Restricted surface | `z = 8 - r^2/4 {r < 6}` |
+| Implicit surface | `x^2 + y^2 + z^2 = 36`, `r = 4` (a cylinder) |
+| Parametric surface | `((6 + 2cos v)cos u, (6 + 2cos v)sin u, 2sin v)`, over u and v |
+| Curve | `(5cos t, 5sin t, t/2)`, over t |
+| Point | `(2, 3, 4)` |
+| Your own function | `f(x, y) = x y / 10`, drawn as z = f(x, y) |
+
+In 3D, `x`, `y`, `z`, `t`, `u`, `v`, `r` and `θ` are variables, so they can't be sliders; every other letter can. A parametric surface's u and v ranges are under the line (0 to 2π and 0 to π to start), as a curve's t range is. A surface ends where its restriction does, along the edge itself.
+
+Shaded regions, and the vector fields and systems above, are 2D only.
+
+In a surface's options:
+
+- **Color**: the line's color, or by height (the viridis color map, from the box's bottom to its top).
+- **Mesh lines**: the grid drawn on a surface, every so many units (or every 16th of u and v).
+- **Contour lines**: where z is a round number.
+- **Detail**: Fine draws it on a finer grid.
+
+### The view
+
+Under the preview, set the box's x, y and z ranges. Drag the preview to turn it, and scroll to zoom: zooming scales the box's ranges, so more or less of a surface shows. Where the preview is turned to is where the slide starts, and **Reset** goes back to −10 to 10 on every axis. The box is always drawn as a cube, so a surface fills it whatever its units.
+
+While presenting, drag to turn it, scroll or pinch to zoom, and double-click to zoom in; ⟲ goes back to the starting view. **Spin while presenting** turns it slowly until someone drags it. **Lock turning and zooming** keeps it as it is.
+
+3D graphs are drawn with WebGL 2, which current browsers have. In a PDF they're drawn at the starting view, still.
 
 ## Styling
 

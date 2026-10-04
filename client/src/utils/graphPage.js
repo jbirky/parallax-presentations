@@ -8,6 +8,7 @@
 import { createMathParser } from './graphParser'
 import { graphRuntime } from './graphRuntime'
 import { graphFields } from './graphFields'
+import { graph3d } from './graph3d'
 
 // Desmos's colors, and brighter ones that read on a dark slide
 export const GRAPH_COLORS = {
@@ -15,10 +16,13 @@ export const GRAPH_COLORS = {
   dark: ['#ff6b64', '#5aa9ff', '#4cc36a', '#b18cff', '#ffa447', '#ffffff'],
 }
 
-// What a graph element keeps, besides its place on the slide
-export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'theme', 'background', 'showSliders', 'lockView']
+// What a graph element keeps, besides its place on the slide. dims 3 makes
+// it a 3D graph, with a camera (turn, tilt) and maybe a spin when presented
+export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'zLabel', 'theme', 'background', 'showSliders', 'lockView', 'dims', 'camera', 'spin']
 
 export const DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 }
+export const DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 }
+export const DEFAULT_CAMERA = { turn: 35, tilt: 25 }
 
 export function newExpressionId() {
   return Math.random().toString(36).slice(2, 10)
@@ -46,12 +50,34 @@ export function defaultGraph(dark) {
   }
 }
 
-function validView(v) {
-  const n = k => (v && isFinite(+v[k]) ? +v[k] : DEFAULT_VIEW[k])
+// A 3D graph's surfaces wave across its box: a sliders' worth of z = f(x, y)
+export function defaultGraph3d(dark) {
+  const colors = GRAPH_COLORS[dark ? 'dark' : 'light']
+  return {
+    ...defaultGraph(dark),
+    dims: 3,
+    expressions: [
+      { id: newExpressionId(), text: 'z = a sin(bx) cos(by)', color: colors[1] },
+      { id: newExpressionId(), text: 'a = 4', slider: { min: -10, max: 10, step: 0.1 } },
+      { id: newExpressionId(), text: 'b = 0.5', slider: { min: 0, max: 2, step: 0.05 } },
+    ],
+    view: { ...DEFAULT_VIEW_3D },
+    camera: { ...DEFAULT_CAMERA },
+    zLabel: '',
+    spin: false,
+  }
+}
+
+function validView(v, dims3) {
+  const base = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW
+  const n = k => (v && isFinite(+v[k]) ? +v[k] : base[k])
   let { xMin, xMax, yMin, yMax } = { xMin: n('xMin'), xMax: n('xMax'), yMin: n('yMin'), yMax: n('yMax') }
-  if (!(xMax > xMin)) ({ xMin, xMax } = DEFAULT_VIEW)
-  if (!(yMax > yMin)) ({ yMin, yMax } = DEFAULT_VIEW)
-  return { xMin, xMax, yMin, yMax }
+  if (!(xMax > xMin)) ({ xMin, xMax } = base)
+  if (!(yMax > yMin)) ({ yMin, yMax } = base)
+  if (!dims3) return { xMin, xMax, yMin, yMax }
+  let { zMin, zMax } = { zMin: n('zMin'), zMax: n('zMax') }
+  if (!(zMax > zMin)) ({ zMin, zMax } = base)
+  return { xMin, xMax, yMin, yMax, zMin, zMax }
 }
 
 // The graph as its page reads it. `showAll` draws expressions that appear
@@ -60,7 +86,11 @@ export function graphConfig(el, { snapshotKey = null, print = false, editor = fa
   const config = {}
   for (const key of GRAPH_FIELDS) if (el[key] !== undefined) config[key] = el[key]
   config.expressions = Array.isArray(el.expressions) ? el.expressions : []
-  config.view = validView(el.view)
+  config.view = validView(el.view, el.dims === 3)
+  if (el.dims === 3) {
+    const c = el.camera || {}
+    config.camera = { turn: isFinite(+c.turn) ? +c.turn : DEFAULT_CAMERA.turn, tilt: isFinite(+c.tilt) ? Math.max(-89, Math.min(89, +c.tilt)) : DEFAULT_CAMERA.tilt }
+  }
   return { ...config, snapshotKey, print, editor, showAll: showAll || print || editor }
 }
 
@@ -70,7 +100,7 @@ export function graphSnapshotContent(el) {
 }
 
 
-// The runtime, parser and field numerics as source, made once
+// The runtime, parser, field numerics and 3D drawing as source, made once
 let pageCode = null
 
 export function graphPageHtml(el, opts = {}) {
@@ -78,7 +108,7 @@ export function graphPageHtml(el, opts = {}) {
   if (!pageCode) {
     // Its own code has no "</script" or "<!--", and a minifier can't make one
     // that ends the script: in code, "<!--" is "< !--"; in a string, "<\/" is "</"
-    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), `
+    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), (${graph3d.toString()})(), `
       .replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '< !--')
   }
   // What people typed can't end the script either: every < is \u003c
