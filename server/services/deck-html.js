@@ -4,10 +4,15 @@
 // Written by scripts/build-deck-html.js from client/src/utils/generateHTML.js and what it
 // imports; edit those, then run the script.
 
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -20,7 +25,4894 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// node_modules/logidrom/lib/tree-utils.js
+var require_tree_utils = __commonJS({
+  "node_modules/logidrom/lib/tree-utils.js"(exports2) {
+    "use strict";
+    var isAttrs2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && !Object.prototype.hasOwnProperty.call(v, "x");
+    var firstChildIdx = (tree) => isAttrs2(tree[1]) ? 2 : 1;
+    var getAttrs = (tree) => isAttrs2(tree[1]) ? tree[1] : null;
+    var isLeafCone = (tree) => Array.isArray(tree) && tree.length === firstChildIdx(tree);
+    var getWidth = (node) => {
+      if (!Array.isArray(node)) return 1;
+      const attrs = getAttrs(node);
+      return attrs && attrs.width || 1;
+    };
+    var widther = (w) => w === 0 ? "zeroer" : w === 1 ? "scalar" : "vector";
+    var nameOf = (node) => typeof node === "string" ? node : node.name;
+    var pinLabel = (op, attrs) => {
+      if (op !== "pin" && op !== "pout" && op !== "pinout") return null;
+      if (!attrs) return null;
+      const ins = attrs.instance || "";
+      const pin = attrs.pin || "";
+      return ins + "." + pin;
+    };
+    var pinLabels = (op, attrs) => {
+      if (!attrs) return { instance: "", pin: "" };
+      return { instance: attrs.instance || "", pin: attrs.pin || "" };
+    };
+    var leafDisplay = (branch) => {
+      if (!Array.isArray(branch)) return nameOf(branch);
+      const attrs = getAttrs(branch);
+      const name = nameOf(branch[0]);
+      const pl = pinLabel(name, attrs);
+      if (pl !== null) return pl;
+      return name;
+    };
+    var outDisplay = (assignTree) => {
+      const attrs = getAttrs(assignTree);
+      const op = nameOf(assignTree[0]);
+      const pl = pinLabel(op, attrs);
+      if (pl !== null) return pl;
+      const start = firstChildIdx(assignTree);
+      const branch = assignTree[start];
+      const visible = Array.isArray(branch) ? nameOf(branch[0]) : nameOf(branch);
+      return visible || (attrs && attrs.label || "");
+    };
+    var outTooltip = (assignTree) => {
+      const attrs = getAttrs(assignTree);
+      const op = nameOf(assignTree[0]);
+      const pl = pinLabel(op, attrs);
+      if (pl !== null) return pl;
+      if (attrs && attrs.label) return attrs.label;
+      const start = firstChildIdx(assignTree);
+      const branch = assignTree[start];
+      return Array.isArray(branch) ? nameOf(branch[0]) : nameOf(branch);
+    };
+    var inlineDisplay = (assignTree) => {
+      const attrs = getAttrs(assignTree);
+      const op = nameOf(assignTree[0]);
+      const pl = pinLabel(op, attrs);
+      if (pl !== null) return pl;
+      const start = firstChildIdx(assignTree);
+      const nameBranch = assignTree[start];
+      const node = Array.isArray(nameBranch) ? nameBranch[0] : nameBranch;
+      return node && node.name || "";
+    };
+    var isPinOp = (op) => op === "pin" || op === "pout" || op === "pinout";
+    exports2.isAttrs = isAttrs2;
+    exports2.firstChildIdx = firstChildIdx;
+    exports2.getAttrs = getAttrs;
+    exports2.isLeafCone = isLeafCone;
+    exports2.getWidth = getWidth;
+    exports2.widther = widther;
+    exports2.leafDisplay = leafDisplay;
+    exports2.outDisplay = outDisplay;
+    exports2.outTooltip = outTooltip;
+    exports2.inlineDisplay = inlineDisplay;
+    exports2.isPinOp = isPinOp;
+    exports2.pinLabel = pinLabel;
+    exports2.pinLabels = pinLabels;
+  }
+});
+
+// node_modules/logidrom/lib/render.js
+var require_render = __commonJS({
+  "node_modules/logidrom/lib/render.js"(exports2, module2) {
+    "use strict";
+    var { firstChildIdx } = require_tree_utils();
+    function render(tree, state) {
+      state.xmax = Math.max(state.xmax, state.x);
+      const y = state.y;
+      const start = firstChildIdx(tree);
+      const ilen = tree.length;
+      if (ilen === start) {
+        tree[0] = { name: tree[0], x: state.x, y: state.y };
+        state.y += 2;
+        state.x--;
+        return state;
+      }
+      const isAssign = tree[0] === "=" && ilen > start + 1;
+      const childStart = isAssign ? start + 1 : start;
+      const childYs = [];
+      for (let i = childStart; i < ilen; i++) {
+        const branch = tree[i];
+        if (Array.isArray(branch)) {
+          state = render(branch, {
+            x: state.x + 1,
+            y: state.y,
+            xmax: state.xmax
+          });
+          const node = branch[0];
+          if (node && typeof node === "object" && typeof node.y === "number") {
+            childYs.push(node.y);
+          }
+        } else {
+          const node = {
+            name: branch,
+            x: state.x + 1,
+            y: state.y
+          };
+          tree[i] = node;
+          state.xmax = Math.max(state.xmax, state.x + 1);
+          childYs.push(node.y);
+          state.y += 2;
+        }
+      }
+      let gateY;
+      if (childYs.length === 0) {
+        gateY = y;
+      } else {
+        childYs.sort((a, b) => a - b);
+        const mid = Math.floor(childYs.length / 2);
+        if (childYs.length % 2 === 1) {
+          gateY = childYs[mid];
+        } else {
+          gateY = Math.round((childYs[mid - 1] + childYs[mid]) / 2);
+        }
+      }
+      tree[0] = { name: tree[0], x: state.x, y: gateY };
+      if (isAssign) {
+        const nameBranch = tree[start];
+        if (Array.isArray(nameBranch)) {
+          nameBranch[0] = { name: nameBranch[0], x: state.x, y: gateY };
+        } else {
+          tree[start] = { name: nameBranch, x: state.x, y: gateY };
+        }
+      }
+      state.x--;
+      return state;
+    }
+    module2.exports = render;
+  }
+});
+
+// node_modules/tspan/lib/parse.js
+var require_parse = __commonJS({
+  "node_modules/tspan/lib/parse.js"(exports2, module2) {
+    "use strict";
+    var escapeMap = {
+      "&": "&amp;",
+      '"': "&quot;",
+      "<": "&lt;",
+      ">": "&gt;"
+    };
+    function xscape(val) {
+      if (typeof val !== "string") {
+        return val;
+      }
+      return val.replace(
+        /([&"<>])/g,
+        function(_, e) {
+          return escapeMap[e];
+        }
+      );
+    }
+    var token = /<o>|<ins>|<s>|<sub>|<sup>|<b>|<i>|<tt>|<\/o>|<\/ins>|<\/s>|<\/sub>|<\/sup>|<\/b>|<\/i>|<\/tt>/;
+    function update(s, cmd) {
+      if (cmd.add) {
+        cmd.add.split(";").forEach(function(e) {
+          var arr = e.split(" ");
+          s[arr[0]][arr[1]] = true;
+        });
+      }
+      if (cmd.del) {
+        cmd.del.split(";").forEach(function(e) {
+          var arr = e.split(" ");
+          delete s[arr[0]][arr[1]];
+        });
+      }
+    }
+    var trans = {
+      "<o>": { add: "text-decoration overline" },
+      "</o>": { del: "text-decoration overline" },
+      "<ins>": { add: "text-decoration underline" },
+      "</ins>": { del: "text-decoration underline" },
+      "<s>": { add: "text-decoration line-through" },
+      "</s>": { del: "text-decoration line-through" },
+      "<b>": { add: "font-weight bold" },
+      "</b>": { del: "font-weight bold" },
+      "<i>": { add: "font-style italic" },
+      "</i>": { del: "font-style italic" },
+      "<sub>": { add: "baseline-shift sub;font-size .7em" },
+      "</sub>": { del: "baseline-shift sub;font-size .7em" },
+      "<sup>": { add: "baseline-shift super;font-size .7em" },
+      "</sup>": { del: "baseline-shift super;font-size .7em" },
+      "<tt>": { add: "font-family monospace" },
+      "</tt>": { del: "font-family monospace" }
+    };
+    function dump(s) {
+      return Object.keys(s).reduce(function(pre, cur) {
+        var keys = Object.keys(s[cur]);
+        if (keys.length > 0) {
+          pre[cur] = keys.join(" ");
+        }
+        return pre;
+      }, {});
+    }
+    function parse2(str7) {
+      var state, res, i, m, a;
+      if (str7 === void 0) {
+        return [];
+      }
+      if (typeof str7 === "number") {
+        return [str7 + ""];
+      }
+      if (typeof str7 !== "string") {
+        return [str7];
+      }
+      res = [];
+      state = {
+        "text-decoration": {},
+        "font-weight": {},
+        "font-style": {},
+        "baseline-shift": {},
+        "font-size": {},
+        "font-family": {}
+      };
+      while (true) {
+        i = str7.search(token);
+        if (i === -1) {
+          res.push(["tspan", dump(state), xscape(str7)]);
+          return res;
+        }
+        if (i > 0) {
+          a = str7.slice(0, i);
+          res.push(["tspan", dump(state), xscape(a)]);
+        }
+        m = str7.match(token)[0];
+        update(state, trans[m]);
+        str7 = str7.slice(i + m.length);
+        if (str7.length === 0) {
+          return res;
+        }
+      }
+    }
+    module2.exports = parse2;
+  }
+});
+
+// node_modules/tspan/lib/reparse.js
+var require_reparse = __commonJS({
+  "node_modules/tspan/lib/reparse.js"(exports2, module2) {
+    "use strict";
+    var parse2 = require_parse();
+    function deDash(str7) {
+      var m = str7.match(/(\w+)-(\w)(\w+)/);
+      if (m === null) {
+        return str7;
+      }
+      var newStr = m[1] + m[2].toUpperCase() + m[3];
+      return newStr;
+    }
+    function reparse(React) {
+      var $ = React.createElement;
+      function reTspan(e, i) {
+        var tag = e[0];
+        var attr = e[1];
+        var newAttr = Object.keys(attr).reduce(function(res, key) {
+          var newKey = deDash(key);
+          res[newKey] = attr[key];
+          return res;
+        }, {});
+        var body = e[2];
+        newAttr.key = i;
+        return $(tag, newAttr, body);
+      }
+      return function(str7) {
+        return parse2(str7).map(reTspan);
+      };
+    }
+    module2.exports = reparse;
+  }
+});
+
+// node_modules/tspan/lib/index.js
+var require_lib = __commonJS({
+  "node_modules/tspan/lib/index.js"(exports2) {
+    "use strict";
+    var parse2 = require_parse();
+    var reparse = require_reparse();
+    exports2.parse = parse2;
+    exports2.reparse = reparse;
+  }
+});
+
+// node_modules/logidrom/lib/font-metrics.js
+var require_font_metrics = __commonJS({
+  "node_modules/logidrom/lib/font-metrics.js"(exports2) {
+    "use strict";
+    var CHAR_WIDTH_PX = 7.23;
+    var getLabelWidth = (s, fontWidth) => {
+      const charWidth = fontWidth !== void 0 ? fontWidth : CHAR_WIDTH_PX;
+      return Math.ceil((String(s).length + 0.3) * charWidth / 8) * 8;
+    };
+    exports2.CHAR_WIDTH_PX = CHAR_WIDTH_PX;
+    exports2.getLabelWidth = getLabelWidth;
+  }
+});
+
+// node_modules/logidrom/lib/draw_body.js
+var require_draw_body = __commonJS({
+  "node_modules/logidrom/lib/draw_body.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var { getLabelWidth } = require_font_metrics();
+    var circle = [
+      "m",
+      -6,
+      -0,
+      "a",
+      3,
+      3,
+      0,
+      1,
+      1,
+      6,
+      0,
+      "a",
+      3,
+      3,
+      0,
+      1,
+      1,
+      -6,
+      0
+    ];
+    var buf1 = ["m", -12, -6, 12, 6, -12, 6, "z"];
+    var and1 = [
+      // reduction AND with 1 input
+      "m",
+      -16,
+      -6,
+      "h",
+      6,
+      "a",
+      6,
+      6,
+      0,
+      1,
+      1,
+      0,
+      12,
+      "h",
+      -6,
+      "z",
+      "m",
+      12,
+      6,
+      "h",
+      4
+    ];
+    var or1 = [
+      // reduction OR with 1 input
+      "m",
+      -17,
+      6,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      0,
+      0,
+      -12,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      1,
+      13,
+      6,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      1,
+      -13,
+      6,
+      "z",
+      "m",
+      13,
+      -6,
+      "h",
+      4
+    ];
+    var xor1 = [
+      // reduction XOR with 1 input
+      "m",
+      -12,
+      6,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      0,
+      0,
+      -12,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      1,
+      9,
+      6,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      1,
+      -9,
+      6,
+      "z",
+      "m",
+      -4,
+      0,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      0,
+      2,
+      -6,
+      // second left
+      "m",
+      0,
+      0,
+      "a",
+      12,
+      12,
+      0,
+      0,
+      0,
+      -2,
+      -6,
+      "m",
+      13,
+      6,
+      "h",
+      3
+    ];
+    var and2 = [
+      // AND gate with >1 inputs
+      "m",
+      -16,
+      -12,
+      "h",
+      4,
+      "a",
+      12,
+      12,
+      0,
+      1,
+      1,
+      0,
+      24,
+      "h",
+      -4,
+      "z"
+    ];
+    var or2 = [
+      // OR gate with >1 inputs
+      "m",
+      -16,
+      12,
+      "a",
+      28,
+      28,
+      0,
+      0,
+      0,
+      0,
+      -24,
+      // left
+      "a",
+      18,
+      18,
+      0,
+      0,
+      1,
+      16,
+      12,
+      // top
+      "a",
+      18,
+      18,
+      0,
+      0,
+      1,
+      -16,
+      12,
+      // bottom
+      "z"
+    ];
+    var xor2 = [
+      // XOR gate with >1 inputs
+      "m",
+      -12,
+      12,
+      "a",
+      28,
+      28,
+      0,
+      0,
+      0,
+      0,
+      -24,
+      // left
+      "a",
+      18,
+      18,
+      0,
+      0,
+      1,
+      12,
+      12,
+      // top
+      "a",
+      18,
+      18,
+      0,
+      0,
+      1,
+      -12,
+      12,
+      // bottom
+      "z",
+      "m",
+      -4,
+      0,
+      "a",
+      28,
+      28,
+      0,
+      0,
+      0,
+      3,
+      -12,
+      // second left
+      "m",
+      0,
+      0,
+      "a",
+      28,
+      28,
+      0,
+      0,
+      0,
+      -3,
+      -12
+    ];
+    var circle2 = [
+      "m",
+      -10,
+      -10,
+      "a",
+      10,
+      10,
+      0,
+      1,
+      1,
+      0,
+      20,
+      "a",
+      10,
+      10,
+      0,
+      1,
+      1,
+      0,
+      -20
+    ];
+    var gates = {
+      "buf1": { w: 12, d: buf1 },
+      "~": { w: 18, d: [...circle, ...buf1] },
+      "&": { w: 16, d: and2 },
+      "~&": { w: 22, d: [...circle, ...and2] },
+      "&1": { w: 16, d: and1 },
+      "~&1": { w: 22, d: [...circle, ...and1] },
+      "|": { w: 16, d: or2 },
+      "~|": { w: 22, d: [...circle, ...or2] },
+      "|1": { w: 16, d: or1 },
+      "~|1": { w: 22, d: [...circle, ...or1] },
+      "^": { w: 16, d: xor2 },
+      "~^": { w: 22, d: [...circle, ...xor2] },
+      "^1": { w: 16, d: xor1 },
+      "~^1": { w: 22, d: [...circle, ...xor1] },
+      "+": { w: 16, d: ["m", -10, 5, 0, -10, "m", -5, 5, 10, 0, "m", 5, 0, ...circle2] },
+      "*": { w: 16, d: ["m", -6, 4, -8, -8, "m", 0, 8, 8, -8, "m", 6, 4, ...circle2] },
+      "-": { w: 16, d: ["m", -5, 0, -10, 0, "m", 15, 0, ...circle2] },
+      "/": { w: 16, d: ["m", -6, -4, -8, 8, "m", 14, -4, ...circle2] },
+      "%": { w: 16, d: [
+        "m",
+        -6,
+        -4,
+        -8,
+        8,
+        "m",
+        1,
+        -5,
+        "a",
+        2,
+        2,
+        0,
+        1,
+        1,
+        0,
+        -4,
+        "a",
+        2,
+        2,
+        0,
+        1,
+        1,
+        0,
+        4,
+        // top left
+        "m",
+        6,
+        2,
+        "a",
+        2,
+        2,
+        0,
+        1,
+        1,
+        0,
+        4,
+        "a",
+        2,
+        2,
+        0,
+        1,
+        1,
+        0,
+        -4,
+        // bottom right
+        "m",
+        7,
+        -1,
+        ...circle2
+      ] }
+    };
+    var aliasGates = {
+      add: "+",
+      mul: "*",
+      sub: "-",
+      and: "&",
+      or: "|",
+      xor: "^",
+      andr: "&",
+      orr: "|",
+      xorr: "^",
+      input: "buf1"
+    };
+    Object.keys(aliasGates).reduce((res, key) => {
+      res[key] = gates[aliasGates[key]];
+      return res;
+    }, gates);
+    var gater1 = {
+      is: (type) => gates[type] !== void 0,
+      render: (type) => ["path", { w: gates[type].w, h: 16, class: "gate", d: gates[type].d }]
+    };
+    var iec = {
+      eq: "==",
+      ne: "!=",
+      slt: "<",
+      sle: "<=",
+      sgt: ">",
+      sge: ">=",
+      ult: "<",
+      ule: "<=",
+      ugt: ">",
+      uge: ">=",
+      BUF: 1,
+      INV: 1,
+      AND: "&",
+      NAND: "&",
+      OR: "≥1",
+      NOR: "≥1",
+      XOR: "=1",
+      XNOR: "=1",
+      box: "",
+      CONCAT: "}",
+      case: "C",
+      casez: "Z",
+      casex: "X"
+    };
+    var circled = { INV: 1, NAND: 1, NOR: 1, XNOR: 1 };
+    var gater2 = {
+      is: (type) => iec[type] !== void 0,
+      render: (type, ymin, ymax) => {
+        if (ymin === ymax) {
+          ymin = -4;
+          ymax = 4;
+        }
+        return [
+          "g",
+          { w: 16, h: ymax - ymin + 6 },
+          ["path", {
+            class: "gate",
+            d: ["m", -16, ymin - 3, 16, 0, 0, ymax - ymin + 6, -16, 0, "z", ...circled[type] ? circle : []]
+          }],
+          ["text", { x: -14, y: 4, class: "wirename" }, ...tspan.parse(iec[type])]
+        ];
+      }
+    };
+    var isSlice = (type) => typeof type === "string" && type[0] === "[";
+    function drawBody(type, ymin, ymax, fontWidth, attrs) {
+      if (gater1.is(type)) {
+        return gater1.render(type);
+      }
+      if (gater2.is(type)) {
+        return gater2.render(type, ymin, ymax);
+      }
+      if (isSlice(type)) {
+        const bodyW2 = getLabelWidth(type, fontWidth) + 8;
+        return [
+          "text",
+          { w: bodyW2, h: 16, x: -bodyW2 / 2, y: 4, class: "slicelabel" },
+          ...tspan.parse(type)
+        ];
+      }
+      if (type === "MUX") {
+        return [
+          "g",
+          { w: 12, h: 40, o: -8 },
+          ["path", { class: "gate", d: [
+            "m",
+            -12,
+            -24,
+            12,
+            6,
+            0,
+            20,
+            -12,
+            6,
+            "z",
+            "m",
+            0,
+            40,
+            7,
+            0,
+            "m",
+            0,
+            0,
+            0,
+            -11
+          ] }],
+          ["text", { x: -7, y: -12, class: "bodylabel" }, "0"],
+          ["text", { x: -7, y: 2, class: "bodylabel" }, "1"]
+        ];
+      }
+      {
+        const m = type.match(/^ff(?<negedge>n)?(?<enable>e)?((?<syncReset>[cp])?(?<syncResetPolarity>n)?)?(?<asyncReset>[rs])?((?<asyncResetPolarity>n)?)?$/);
+        if (m) {
+          const { negedge, enable, syncReset, syncResetPolarity, asyncReset, asyncResetPolarity } = m.groups;
+          const hasNegedge = negedge === "n";
+          const hasEnable = enable === "e";
+          const hasSyncReset = syncReset !== void 0;
+          const hasSyncSet = syncReset === "p";
+          const hasSyncResetPolarity = syncResetPolarity === "n";
+          const hasAsyncReset = asyncReset !== void 0;
+          const hasAsyncSet = asyncReset === "s";
+          const hasAsyncResetPolarity = asyncResetPolarity === "n";
+          let h = 32;
+          if (hasEnable) h += 16;
+          if (hasSyncReset) h += 16;
+          if (hasSyncSet) h += 16;
+          if (hasAsyncReset) h += 16;
+          if (hasAsyncSet) h += 16;
+          let o = -(h / 2 - 8);
+          return [
+            "g",
+            { w: 32, h, o },
+            ["path", { class: "dff", d: [
+              "m",
+              -32,
+              o - 7,
+              "h",
+              32,
+              "v",
+              30 + (hasEnable ? 16 : 0) + (hasSyncReset ? 16 : 0) + (hasSyncSet ? 16 : 0),
+              "h",
+              -32,
+              "z",
+              "m",
+              0,
+              19,
+              6,
+              4,
+              -6,
+              4,
+              // wedge '>'
+              ...hasNegedge ? ["m", 0, -4, "a", 3, 3, 0, 1, 1, -6, 0, "a", 3, 3, 0, 1, 1, 6, 0, "z", "m", 0, 4] : [],
+              // negedge clock bubble
+              ...hasEnable ? ["m", 0, 16] : [],
+              // extra offset for enable
+              ...hasSyncReset ? [
+                "m",
+                0,
+                16,
+                ...hasSyncResetPolarity ? ["m", 0, -4, "a", 3, 3, 0, 1, 1, -6, 0, "a", 3, 3, 0, 1, 1, 6, 0, "z", "m", 0, 4] : []
+              ] : [],
+              // extra offset for sync reset
+              ...hasAsyncReset ? [
+                // async reset/set wire extension
+                "m",
+                0,
+                12 + (hasSyncSet ? 16 : 0),
+                "h",
+                16,
+                "m",
+                0,
+                0,
+                "v",
+                ...hasAsyncResetPolarity ? [-3, "m", -16, -9] : [-9, "m", -16, -1]
+              ] : [],
+              ...hasAsyncResetPolarity ? ["m", 16, 3, "a", 3, 3, 0, 1, 1, 0, 6, "a", 3, 3, 0, 1, 1, 0, -6, "z"] : []
+              // low-active async reset/set bubble
+            ] }],
+            // FF label
+            ["text", { x: -16, y: o + 4, class: "bodylabel" }, "DFF"],
+            // enable label
+            ...hasEnable ? [["text", { x: -28, y: o + 36, class: "bodylabel" }, "E"]] : [],
+            // sync reset label
+            ...hasSyncReset ? [[
+              "text",
+              { x: -28, y: o + 36 + (hasEnable ? 16 : 0), class: "bodylabel" },
+              hasSyncResetPolarity ? ["tspan", { "text-decoration": "overline" }, hasSyncSet ? "P" : "C"] : hasSyncSet ? "P" : "C"
+            ]] : [],
+            // sync preset value label
+            ...hasSyncSet ? [["text", { x: -28, y: o + 36 + (hasEnable ? 16 : 0) + 16, class: "bodylabel" }, "V"]] : [],
+            // async reset label
+            ...hasAsyncReset ? [[
+              "text",
+              { x: -16, y: o + 16 + 5 + (hasEnable ? 16 : 0) + (hasSyncReset ? 16 : 0) + (hasSyncSet ? 16 : 0), class: "bodylabel" },
+              hasAsyncResetPolarity ? ["tspan", { "text-decoration": "overline" }, hasAsyncSet ? "S" : "R"] : hasAsyncSet ? "S" : "R"
+            ]] : [],
+            // async set value label
+            ...hasAsyncSet ? [["text", { x: -16, y: o + 36 + 16 + (hasEnable ? 16 : 0) + (hasSyncReset ? 16 : 0) + (hasSyncSet ? 16 : 0), class: "bodylabel" }, "INI"]] : []
+          ];
+        }
+      }
+      const label = attrs && attrs.imm ? type + " " + attrs.imm : type;
+      const bodyW = getLabelWidth(label, fontWidth);
+      return [
+        "g",
+        { w: bodyW, h: 16 },
+        ["rect", { class: "gate", x: -bodyW, y: -8, width: bodyW, height: 16 }],
+        ["text", { x: -bodyW / 2, y: 4, class: "bodylabel" }, ...tspan.parse(label)]
+      ];
+    }
+    module2.exports = drawBody;
+    module2.exports.isShape = (type) => gater1.is(type);
+  }
+});
+
+// node_modules/logidrom/lib/draw_gate.js
+var require_draw_gate = __commonJS({
+  "node_modules/logidrom/lib/draw_gate.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var drawBody = require_draw_body();
+    var { widther } = require_tree_utils();
+    var INPUT_SPACING = 16;
+    var SHAPE_BODY_HALF_H = 10;
+    function drawGate(spec, attrs) {
+      const nInputs = spec.length - 2;
+      const [gateX, gateY] = spec[1];
+      const ret = ["g"];
+      const isShapeGate = drawBody.isShape(spec[0]);
+      const targetYs = Array.from({ length: nInputs }, () => 0);
+      if (nInputs) {
+        if (isShapeGate && nInputs > 2) {
+          for (let i = 0; i < nInputs; i++) {
+            targetYs[i] = spec[2 + i][1];
+          }
+        } else {
+          const baseYs = [];
+          for (let r = 0; r < nInputs; r++) {
+            baseYs.push(gateY + (r - (nInputs - 1) / 2) * INPUT_SPACING);
+          }
+          const order = [];
+          for (let i = 0; i < nInputs; i++) order.push(i);
+          order.sort((a, b) => {
+            const ca = spec[2 + a][1];
+            const cb = spec[2 + b][1];
+            return ca - cb;
+          });
+          for (let rank = 0; rank < nInputs; rank++) {
+            const idx = order[rank];
+            targetYs[idx] = baseYs[rank];
+          }
+        }
+      }
+      const ymin = nInputs ? Math.min.apply(null, targetYs) : gateY;
+      const ymax = nInputs ? Math.max.apply(null, targetYs) : gateY;
+      const body = drawBody(spec[0], ymin - gateY, ymax - gateY, void 0, attrs);
+      const bodyHalfL = body[1].w || 0;
+      if (nInputs <= 2 || isShapeGate) {
+        for (let i = 0; i < nInputs; i++) {
+          const [cx, cy, cw] = spec[2 + i];
+          const ty = targetYs[i];
+          const runLen = gateX - cx - bodyHalfL;
+          let d;
+          if (cy === ty) {
+            d = "M" + cx + "," + cy + " h" + runLen;
+          } else {
+            const half2 = runLen / 2;
+            d = "M" + cx + "," + cy + " h" + half2 + " v" + (ty - cy) + " h" + half2;
+          }
+          const path = ["path", { d, class: ["wire", widther(cw)] }];
+          if (cw > 1) path.push(["title", cw + " bits"]);
+          ret.push(path);
+        }
+      } else {
+        const inputs = [];
+        for (let i2 = 0; i2 < nInputs; i2++) {
+          const [cx, cy, cw] = spec[2 + i2];
+          const ty = targetYs[i2];
+          inputs.push({ cx, cy, cw, ty });
+        }
+        const backBaseX = gateX - bodyHalfL;
+        let i = 0;
+        for (; i < nInputs; i++) {
+          const inp = inputs[i];
+          const d = ["M", inp.cx, inp.cy];
+          const deltaY = inp.ty - inp.cy;
+          if (deltaY < 0) break;
+          if (deltaY === 0) {
+            d.push("H", backBaseX);
+          } else {
+            const x = backBaseX - (i + 1) * 8;
+            d.push("H", x, "V", inp.ty, "H", backBaseX);
+          }
+          const path = ["path", { d, class: ["wire", widther(inp.cw)] }];
+          if (inp.cw > 1) path.push(["title", inp.cw + " bits"]);
+          ret.push(path);
+        }
+        for (let j = nInputs - 1; j >= i; j--) {
+          const inp = inputs[j];
+          const d = ["M", inp.cx, inp.cy];
+          const channelIdx = nInputs - 1 - j;
+          const x = backBaseX - (channelIdx + 1) * 8;
+          d.push("H", x, "V", inp.ty, "H", backBaseX);
+          const path = ["path", { d, class: ["wire", widther(inp.cw)] }];
+          if (inp.cw > 1) path.push(["title", inp.cw + " bits"]);
+          ret.push(path);
+        }
+      }
+      if (nInputs > 2 && isShapeGate) {
+        let bodyHalfH = SHAPE_BODY_HALF_H;
+        if (Array.isArray(body) && body.length > 1 && body[1] && typeof body[1] === "object" && !Array.isArray(body[1])) {
+          if (typeof body[1].h === "number") {
+            bodyHalfH = Math.round(body[1].h / 2);
+          }
+        }
+        bodyHalfH = Math.round(bodyHalfH / 8) * 8;
+        const bodyTop = gateY - bodyHalfH - 4;
+        const bodyBottom = gateY + bodyHalfH + 4;
+        const backX = gateX - bodyHalfL;
+        let topY = Infinity;
+        let bottomY = -Infinity;
+        for (let i = 0; i < nInputs; i++) {
+          const ty = targetYs[i];
+          if (ty < bodyTop && ty < topY) topY = ty;
+          if (ty > bodyBottom && ty > bottomY) bottomY = ty;
+        }
+        const parts = [];
+        if (topY < Infinity) {
+          parts.push("M" + backX + "," + topY + " V" + bodyTop);
+        }
+        if (bottomY > -Infinity) {
+          parts.push("M" + backX + "," + bodyBottom + " V" + bottomY);
+        }
+        if (parts.length) {
+          ret.push(["path", { class: "gate", d: parts.join(" ") }]);
+        }
+      }
+      ret.push([
+        "g",
+        { transform: "translate(" + gateX + "," + gateY + ")" },
+        ["title", ...tspan.parse(spec[0])],
+        body
+      ]);
+      return ret;
+    }
+    module2.exports = drawGate;
+  }
+});
+
+// node_modules/logidrom/lib/draw_boxes.js
+var require_draw_boxes = __commonJS({
+  "node_modules/logidrom/lib/draw_boxes.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var drawGate = require_draw_gate();
+    var drawBody = require_draw_body();
+    var { getLabelWidth, CHAR_WIDTH_PX } = require_font_metrics();
+    var { firstChildIdx, getAttrs, getWidth, widther, leafDisplay, outDisplay, outTooltip, inlineDisplay, isPinOp, pinLabel, pinLabels } = require_tree_utils();
+    var LEAF_PAD_X = 4;
+    var LEAF_HALF_H = 8;
+    var INLINE_MIN_BOX_W = 32;
+    var OUT_MIN_BOX_W = 32;
+    var MIN_PASSTHRU_PX = 48;
+    var textWidth = (s, fontWidth) => Math.ceil(String(s || "").length * (fontWidth || CHAR_WIDTH_PX));
+    function portBoxWidth(gwInst, gwPin) {
+      return gwInst + gwPin + 24;
+    }
+    function dirInBoxWidth(gw) {
+      return gw + 14;
+    }
+    function dirOutBoxWidth(gw) {
+      return gw + 16;
+    }
+    function pinPortPathD(gwPin) {
+      return [
+        "m",
+        -gwPin - 14,
+        -8,
+        "l",
+        6,
+        8,
+        "l",
+        -6,
+        8,
+        "h",
+        gwPin + 14,
+        "v",
+        -16,
+        "z"
+      ];
+    }
+    function pinBindPathD(gwInst, gwPin) {
+      return [
+        "m",
+        -gwPin - 16,
+        -8,
+        "l",
+        6,
+        8,
+        "l",
+        -6,
+        8,
+        "h",
+        -gwInst,
+        "a",
+        8,
+        8,
+        0,
+        1,
+        1,
+        0,
+        -16,
+        "z"
+      ];
+    }
+    function poutBindPathD(gwInst) {
+      return [
+        "m",
+        -gwInst - 14,
+        -8,
+        "l",
+        6,
+        8,
+        "l",
+        -6,
+        8,
+        "h",
+        gwInst + 6,
+        "a",
+        8,
+        8,
+        0,
+        1,
+        0,
+        0,
+        -16,
+        "z"
+      ];
+    }
+    function poutPortPathD(gwInst, gwPin) {
+      return [
+        "m",
+        -gwInst - 16,
+        -8,
+        "l",
+        6,
+        8,
+        "l",
+        -6,
+        8,
+        "h",
+        -gwPin - 8,
+        "v",
+        -16,
+        "z"
+      ];
+    }
+    function dirInPathD(gw) {
+      return [
+        "m",
+        -gw - 14,
+        -8,
+        "l",
+        6,
+        8,
+        "l",
+        -6,
+        8,
+        "h",
+        gw + 14,
+        "v",
+        -16,
+        "z"
+      ];
+    }
+    function dirOutPathD(gw) {
+      return [
+        "m",
+        -6,
+        8,
+        "l",
+        6,
+        -8,
+        "l",
+        -6,
+        -8,
+        "h",
+        -gw - 10,
+        "v",
+        16,
+        "z"
+      ];
+    }
+    function applyNavAttrs(groupAttrs, attrs) {
+      if (!attrs) return;
+      if (attrs.nodeId || attrs.siteKey) {
+        groupAttrs.class = (groupAttrs.class ? groupAttrs.class + " " : "") + "rtl-node";
+        if (attrs.nodeId) groupAttrs["data-node-id"] = attrs.nodeId;
+        if (attrs.siteKey) groupAttrs["data-site-key"] = attrs.siteKey;
+        if (attrs.module) groupAttrs["data-module"] = attrs.module;
+        if (attrs.name) groupAttrs["data-name"] = attrs.name;
+        if (attrs.loc) groupAttrs["data-loc"] = attrs.loc;
+      }
+    }
+    function drawPortBox(tree, fx, fy, fontWidth) {
+      const op = tree[0].name;
+      const attrs = getAttrs(tree) || {};
+      const labels = pinLabels(op, attrs);
+      const gwInst = textWidth(labels.instance, fontWidth);
+      const gwPin = textWidth(labels.pin, fontWidth);
+      const tooltip = pinLabel(op, attrs) || "";
+      const isPout = op === "pout";
+      const portD = isPout ? poutPortPathD(gwInst, gwPin) : pinPortPathD(gwPin);
+      const bindD = isPout ? poutBindPathD(gwInst) : pinBindPathD(gwInst, gwPin);
+      let xLabelInst, xLabelPin;
+      if (isPout) {
+        xLabelInst = -Math.round((gwInst + 10) / 2);
+        xLabelPin = -Math.round((2 * gwInst + gwPin + 40) / 2);
+      } else {
+        xLabelPin = -Math.round((gwPin + 10) / 2);
+        xLabelInst = -Math.round((2 * gwPin + gwInst + 32) / 2);
+      }
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      applyNavAttrs(groupAttrs, attrs);
+      return [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(tooltip)],
+        ["path", { class: "port", d: portD }],
+        ["path", { class: "bind", d: bindD }],
+        ["text", { x: xLabelInst, y: 4, class: "bodylabel" }, ...tspan.parse(labels.instance)],
+        ["text", { x: xLabelPin, y: 4, class: "bodylabel" }, ...tspan.parse(labels.pin)]
+      ];
+    }
+    function drawDirInBox(label, attrs, fx, fy, fontWidth) {
+      const gw = textWidth(label, fontWidth);
+      const d = dirInPathD(gw);
+      const xLabel = -Math.round((gw + 10) / 2);
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      applyNavAttrs(groupAttrs, attrs);
+      return [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(label)],
+        ["path", { class: "port", d }],
+        ["text", { x: xLabel, y: 4, class: "bodylabel" }, ...tspan.parse(label)]
+      ];
+    }
+    function drawDirOutBox(label, attrs, fx, fy, fontWidth) {
+      const gw = textWidth(label, fontWidth);
+      const d = dirOutPathD(gw);
+      const xLabel = -Math.round((gw + 20) / 2);
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      applyNavAttrs(groupAttrs, attrs);
+      return [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(label)],
+        ["path", { class: "port", d }],
+        ["text", { x: xLabel, y: 4, class: "bodylabel" }, ...tspan.parse(label)]
+      ];
+    }
+    function leafNodeOf(branch) {
+      return Array.isArray(branch) ? branch[0] : branch;
+    }
+    function drawLeaf(branch, fontWidth) {
+      const node = leafNodeOf(branch);
+      const displayName = leafDisplay(branch);
+      const fx = node.fx;
+      const fy = node.fy;
+      const attrs = getAttrs(branch) || {};
+      if (Array.isArray(branch) && isPinOp(node.name)) {
+        return drawPortBox(branch, fx, fy, fontWidth);
+      }
+      if (attrs.dir === "in") {
+        return drawDirInBox(displayName, attrs, fx, fy, fontWidth);
+      }
+      const boxW = getLabelWidth(displayName, fontWidth) + 2 * LEAF_PAD_X;
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      if (attrs.nodeId || attrs.siteKey) {
+        groupAttrs.class = "rtl-node";
+        if (attrs.nodeId) groupAttrs["data-node-id"] = attrs.nodeId;
+        if (attrs.siteKey) groupAttrs["data-site-key"] = attrs.siteKey;
+        if (attrs.module) groupAttrs["data-module"] = attrs.module;
+        if (attrs.name) groupAttrs["data-name"] = attrs.name;
+        if (attrs.loc) groupAttrs["data-loc"] = attrs.loc;
+      }
+      return [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(node.name)],
+        ["rect", {
+          class: "siglabel",
+          x: -boxW,
+          y: -LEAF_HALF_H,
+          width: boxW,
+          height: 2 * LEAF_HALF_H
+        }],
+        ["text", { x: -LEAF_PAD_X, y: 4, class: "pinname" }, ...tspan.parse(displayName)]
+      ];
+    }
+    function outBoxWidth(displayName, fontWidth) {
+      return Math.max(getLabelWidth(displayName, fontWidth) + 2 * LEAF_PAD_X, OUT_MIN_BOX_W);
+    }
+    function drawOutLabel(tree, fx, fy, fontWidth) {
+      const displayName = outDisplay(tree);
+      const tooltip = outTooltip(tree);
+      const boxW = outBoxWidth(displayName, fontWidth);
+      const attrs = getAttrs(tree) || {};
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      if (attrs.nodeId) {
+        groupAttrs.class = "rtl-node";
+        groupAttrs["data-node-id"] = attrs.nodeId;
+        if (attrs.module) groupAttrs["data-module"] = attrs.module;
+        if (attrs.name) groupAttrs["data-name"] = attrs.name;
+        if (attrs.loc) groupAttrs["data-loc"] = attrs.loc;
+      }
+      const group = [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(tooltip)],
+        ["rect", {
+          class: "siglabel",
+          x: 0,
+          y: -LEAF_HALF_H,
+          width: boxW,
+          height: 2 * LEAF_HALF_H
+        }]
+      ];
+      if (displayName) {
+        group.push(["text", { x: LEAF_PAD_X, y: 4, class: "wirename" }, ...tspan.parse(displayName)]);
+      }
+      return group;
+    }
+    function inlineBoxWidth(visibleName, fontWidth) {
+      if (!visibleName) return 16;
+      return Math.max(getLabelWidth(visibleName, fontWidth) + 2 * LEAF_PAD_X, INLINE_MIN_BOX_W);
+    }
+    function drawInlineBox(tree, fx, fy, fontWidth) {
+      const attrs = getAttrs(tree) || {};
+      const start = firstChildIdx(tree);
+      const nameBranch = tree[start];
+      const node = leafNodeOf(nameBranch);
+      const visibleName = node && node.name || "";
+      const displayName = inlineDisplay(tree);
+      const tooltip = attrs.label || visibleName;
+      const boxW = inlineBoxWidth(displayName, fontWidth);
+      const groupAttrs = { transform: "translate(" + fx + "," + fy + ")" };
+      if (attrs.nodeId) {
+        groupAttrs.class = "rtl-node";
+        groupAttrs["data-node-id"] = attrs.nodeId;
+        if (attrs.module) groupAttrs["data-module"] = attrs.module;
+        if (attrs.name) groupAttrs["data-name"] = attrs.name;
+        if (attrs.loc) groupAttrs["data-loc"] = attrs.loc;
+      }
+      const group = [
+        "g",
+        groupAttrs,
+        ["title", ...tspan.parse(tooltip)],
+        ["rect", {
+          class: "siglabel",
+          x: -boxW,
+          y: -LEAF_HALF_H,
+          width: boxW,
+          height: 2 * LEAF_HALF_H
+        }]
+      ];
+      if (displayName) {
+        group.push(["text", { x: -boxW / 2, y: 4, class: "bodylabel" }, ...tspan.parse(displayName)]);
+      }
+      return group;
+    }
+    function shiftFxSubtree(branch, delta) {
+      if (!branch) return;
+      if (Array.isArray(branch)) {
+        const node = leafNodeOf(branch);
+        if (node && typeof node.fx === "number") node.fx -= delta;
+        const start = firstChildIdx(branch);
+        const ilen = branch.length;
+        for (let i = start; i < ilen; i++) {
+          shiftFxSubtree(branch[i], delta);
+        }
+      } else if (typeof branch === "object") {
+        if (typeof branch.fx === "number") branch.fx -= delta;
+      }
+    }
+    function childSpec(branch, fontWidth) {
+      if (Array.isArray(branch) && branch[0]) {
+        const op = branch[0].name;
+        const start = firstChildIdx(branch);
+        const isEq = op === "=" && branch.length > start + 1;
+        const isPin = isPinOp(op) && branch.length > start;
+        if (isEq || isPin) {
+          const exprBranch = isPin ? branch[start] : branch[start + 1];
+          const [, exprFy] = childSpec(exprBranch, fontWidth);
+          const node2 = leafNodeOf(branch);
+          return [node2.fx, exprFy, getWidth(branch)];
+        }
+      }
+      const node = leafNodeOf(branch);
+      let fx = node.fx;
+      let fy = node.fy;
+      if (node && typeof node.name === "string") {
+        const body = drawBody(node.name, 0, 0, fontWidth);
+        const o = body[1].o;
+        fy += o || 0;
+      }
+      return [fx, fy, getWidth(branch)];
+    }
+    function drawAssign(tree, xmax, start, isRoot, fontWidth) {
+      const op = tree[0].name;
+      const pinOp = isPinOp(op);
+      const attrs = getAttrs(tree) || {};
+      const dir = attrs.dir;
+      const gateFx = tree[0].fx;
+      const nameBranch = pinOp ? null : tree[start];
+      const exprBranch = pinOp ? tree[start] : tree[start + 1];
+      let [exprFx, exprFy] = childSpec(exprBranch, fontWidth);
+      const exprW = getWidth(exprBranch);
+      let boxW = 0;
+      let shapeKind;
+      if (pinOp) {
+        const labels = pinLabels(op, attrs);
+        boxW = portBoxWidth(
+          textWidth(labels.instance, fontWidth),
+          textWidth(labels.pin, fontWidth)
+        );
+        shapeKind = "port";
+      } else if (dir === "out") {
+        boxW = dirOutBoxWidth(textWidth(outDisplay(tree), fontWidth));
+        shapeKind = "dir-out";
+      } else if (dir === "in") {
+        boxW = dirInBoxWidth(textWidth(outDisplay(tree), fontWidth));
+        shapeKind = "dir-in";
+      } else if (!isRoot) {
+        const node = leafNodeOf(nameBranch);
+        const visibleName = node && node.name || "";
+        boxW = inlineBoxWidth(visibleName, fontWidth);
+        shapeKind = "inline";
+      } else {
+        shapeKind = "out";
+      }
+      if (!isRoot && boxW > 0) {
+        const gap = gateFx - exprFx;
+        const need = boxW + MIN_PASSTHRU_PX - gap;
+        if (need > 0) {
+          shiftFxSubtree(exprBranch, need);
+          [exprFx, exprFy] = childSpec(exprBranch, fontWidth);
+        }
+      }
+      const ret = ["g"];
+      const shapeFy = exprFy;
+      const passthruEndX = isRoot ? gateFx : gateFx - boxW;
+      let passthruD;
+      if (exprFy === shapeFy) {
+        passthruD = "M" + exprFx + "," + exprFy + " H" + passthruEndX;
+      } else {
+        const half2 = (passthruEndX - exprFx) / 2;
+        passthruD = "M" + exprFx + "," + exprFy + " h" + half2 + " v" + (shapeFy - exprFy) + " h" + half2;
+      }
+      const passthru = ["path", {
+        d: passthruD,
+        class: ["wire", widther(exprW)]
+      }];
+      if (exprW > 1) passthru.push(["title", exprW + " bits"]);
+      ret.push(passthru);
+      ret.push(drawBoxes(exprBranch, xmax, false, fontWidth));
+      const shapeAnchorX = isRoot ? gateFx + boxW : gateFx;
+      ret.push(drawShape(shapeKind, tree, attrs, shapeAnchorX, gateFx, shapeFy, fontWidth));
+      return ret;
+    }
+    function drawShape(shapeKind, tree, attrs, shapeAnchorX, gateFx, shapeFy, fontWidth) {
+      switch (shapeKind) {
+        case "port":
+          return drawPortBox(tree, shapeAnchorX, shapeFy, fontWidth);
+        case "dir-out":
+          return drawDirOutBox(outDisplay(tree), attrs, shapeAnchorX, shapeFy, fontWidth);
+        case "dir-in":
+          return drawDirInBox(outDisplay(tree), attrs, shapeAnchorX, shapeFy, fontWidth);
+        case "inline":
+          return drawInlineBox(tree, gateFx, shapeFy, fontWidth);
+        default:
+          return drawOutLabel(tree, gateFx, shapeFy, fontWidth);
+      }
+    }
+    var drawBoxesCallCount = 0;
+    var MAX_DRAWBOXES_CALLS = 1e6;
+    function resetDrawBoxesCallCount() {
+      drawBoxesCallCount = 0;
+    }
+    function drawBoxes(tree, xmax, isRoot, fontWidth) {
+      drawBoxesCallCount++;
+      if (drawBoxesCallCount > MAX_DRAWBOXES_CALLS) {
+        if (typeof console !== "undefined" && console.error) {
+          console.error("drawBoxes exceeded " + MAX_DRAWBOXES_CALLS + " calls - possible infinite loop");
+        }
+        throw new Error("drawBoxes exceeded " + MAX_DRAWBOXES_CALLS + " calls");
+      }
+      if (Array.isArray(tree)) {
+        const start = firstChildIdx(tree);
+        const ilen = tree.length;
+        if (ilen === start) {
+          return ["g", drawLeaf(tree, fontWidth)];
+        }
+        if (tree[0].name === "=" && ilen > start + 1) {
+          return drawAssign(tree, xmax, start, isRoot, fontWidth);
+        }
+        if (isPinOp(tree[0].name) && ilen > start) {
+          return drawAssign(tree, xmax, start, isRoot, fontWidth);
+        }
+        const spec = [];
+        spec.push(tree[0].name);
+        spec.push([tree[0].fx, tree[0].fy, getWidth(tree)]);
+        for (let i = start; i < ilen; i++) {
+          spec.push(childSpec(tree[i], fontWidth));
+        }
+        const ret = ["g", drawGate(spec, getAttrs(tree))];
+        for (let i = start; i < ilen; i++) {
+          ret.push(drawBoxes(tree[i], xmax, false, fontWidth));
+        }
+        return ret;
+      }
+      return ["g", drawLeaf(tree, fontWidth)];
+    }
+    module2.exports = drawBoxes;
+    module2.exports.resetCallCount = resetDrawBoxesCallCount;
+    module2.exports.portBoxWidth = portBoxWidth;
+    module2.exports.dirInBoxWidth = dirInBoxWidth;
+    module2.exports.dirOutBoxWidth = dirOutBoxWidth;
+    module2.exports.textWidth = textWidth;
+  }
+});
+
+// node_modules/logidrom/lib/insert-svg-template-assign.js
+var require_insert_svg_template_assign = __commonJS({
+  "node_modules/logidrom/lib/insert-svg-template-assign.js"(exports2, module2) {
+    "use strict";
+    function insertSVGTemplateAssign() {
+      return ["style", ".pinname {font-size:12px; font-style:normal; font-variant:normal; font-weight:500; font-stretch:normal; text-align:center; text-anchor:end; font-family:monospace} .wirename {font-size:12px; font-style:normal; font-variant:normal; font-weight:500; font-stretch:normal; text-align:center; text-anchor:start; font-family:monospace} .wirename:hover {fill:blue} .gate {color:#000; fill:#aaa; fill-opacity: 1;stroke:#000; stroke-width:1; stroke-opacity:1} .dff {color:#000; fill:#777; fill-opacity: 1; stroke:#000; stroke-width:1; stroke-opacity:1} .dff:hover {fill:#ff7 !important; } .gate:hover {fill:red !important; } .port {color:#000; fill:#cce; fill-opacity:1; stroke:#000; stroke-width:1; stroke-opacity:1} .port:hover {fill:#aaf !important; } .bind {color:#000; fill:#ecc; fill-opacity:1; stroke:#000; stroke-width:1; stroke-opacity:1} .bind:hover {fill:#faa !important; } .siglabel {fill:#eee; fill-opacity:1; stroke:#ccc; stroke-width:1} .slicelabel {font-size:12px; font-family:monospace; text-anchor:middle; font-weight:500; paint-order:stroke; stroke:#fff; stroke-width:3; fill:#000} .bodylabel {font-size:12px; font-family:monospace; text-anchor:middle; font-weight:500; fill:#000} .wire {fill:none; stroke:#000; stroke-width:1; stroke-opacity:1} .wire.vector {stroke-width:3} .wire.zeroer {stroke-width:0.5; stroke-dasharray:2,2} .grid {fill:#fff; fill-opacity:1; stroke:none}"];
+    }
+    module2.exports = insertSVGTemplateAssign;
+  }
+});
+
+// node_modules/logidrom/lib/render-assign.js
+var require_render_assign = __commonJS({
+  "node_modules/logidrom/lib/render-assign.js"(exports2, module2) {
+    "use strict";
+    var render = require_render();
+    var drawBoxes = require_draw_boxes();
+    var drawBody = require_draw_body();
+    var insertSVGTemplateAssign = require_insert_svg_template_assign();
+    var { getLabelWidth } = require_font_metrics();
+    var { firstChildIdx, getAttrs, leafDisplay, outDisplay, inlineDisplay, isPinOp, pinLabels } = require_tree_utils();
+    var { portBoxWidth, dirInBoxWidth, dirOutBoxWidth, textWidth } = drawBoxes;
+    var grid = 32;
+    var ceilGrid = (n) => grid * Math.ceil(n / grid);
+    var BOX_PAD_X = 4;
+    var MIN_BOX_W = 32;
+    var MIN_PASSTHRU_PX = 48;
+    var boxW = (visible, fontWidth) => Math.max(getLabelWidth(visible, fontWidth) + 2 * BOX_PAD_X, MIN_BOX_W);
+    var outBoxW = (tree, fontWidth) => boxW(outDisplay(tree), fontWidth);
+    var leafBoxW = (visible, fontWidth) => getLabelWidth(visible, fontWidth) + 2 * BOX_PAD_X;
+    var inlineBoxW = (visible, fontWidth) => visible ? boxW(visible, fontWidth) : 16;
+    var leafNodeOf = (branch) => Array.isArray(branch) ? branch[0] : branch;
+    var gateSize = (type, fontWidth, attrs) => {
+      const body = drawBody(type, 0, 0, fontWidth, attrs);
+      return {
+        w: body[1].w || 0,
+        h: body[1].h || 0
+      };
+    };
+    var eqBoxW = (node, fontWidth, midTree) => {
+      const attrs = getAttrs(node) || {};
+      if (attrs.dir === "out") return dirOutBoxWidth(textWidth(outDisplay(node), fontWidth));
+      if (attrs.dir === "in") return dirInBoxWidth(textWidth(outDisplay(node), fontWidth));
+      return midTree ? inlineBoxW(inlineDisplay(node), fontWidth) : outBoxW(node, fontWidth);
+    };
+    var portBoxW = (node, fontWidth) => {
+      const attrs = getAttrs(node) || {};
+      const labels = pinLabels(node[0].name, attrs);
+      return portBoxWidth(
+        textWidth(labels.instance, fontWidth),
+        textWidth(labels.pin, fontWidth)
+      );
+    };
+    var leafConeW = (node, fontWidth) => {
+      const op = node[0] && node[0].name;
+      if (isPinOp(op)) return portBoxW(node, fontWidth);
+      const attrs = getAttrs(node);
+      if (attrs && attrs.dir === "in") {
+        return dirInBoxWidth(textWidth(leafDisplay(node), fontWidth));
+      }
+      return leafBoxW(leafDisplay(node), fontWidth);
+    };
+    var measureExtents = (node, acc, isRoot, fontWidth) => {
+      if (!Array.isArray(node)) {
+        const fx = node && typeof node.fx === "number" ? node.fx : 0;
+        acc.left = Math.max(acc.left, leafBoxW(leafDisplay(node), fontWidth) - fx);
+        return;
+      }
+      const start = firstChildIdx(node);
+      const ilen = node.length;
+      if (ilen === start) {
+        const fx = node[0].fx || 0;
+        acc.left = Math.max(acc.left, leafConeW(node, fontWidth) - fx);
+        return;
+      }
+      if (node[0].name === "=" && ilen > start + 1) {
+        if (isRoot) {
+          acc.root = Math.max(acc.root, eqBoxW(node, fontWidth, false));
+        } else {
+          const fx = node[0].fx || 0;
+          acc.left = Math.max(acc.left, eqBoxW(node, fontWidth, true) - fx);
+        }
+        measureExtents(node[start + 1], acc, false, fontWidth);
+        return;
+      }
+      if (isPinOp(node[0].name) && ilen > start) {
+        const w = portBoxW(node, fontWidth);
+        if (isRoot) {
+          acc.root = Math.max(acc.root, w);
+        } else {
+          const fx = node[0].fx || 0;
+          acc.left = Math.max(acc.left, w - fx);
+        }
+        measureExtents(node[start], acc, false, fontWidth);
+        return;
+      }
+      for (let i = start; i < ilen; i++) {
+        measureExtents(node[i], acc, false, fontWidth);
+      }
+    };
+    var getNumChannels = (node) => {
+      let downward = 0;
+      let upward = 0;
+      const y = node[0].y;
+      const start = firstChildIdx(node);
+      const ilen = node.length;
+      for (let i = start; i < ilen; i++) {
+        const child = node[i];
+        if (!Array.isArray(child)) continue;
+        const inputYdx = y + (i - start - (ilen - start - 1) / 2) * 2;
+        if (child[0].y > inputYdx) {
+          downward++;
+        } else if (child[0].y < inputYdx) {
+          upward++;
+        }
+      }
+      const nChannels = Math.max(downward, upward);
+      return nChannels;
+    };
+    var collectSlacks = (node, slacks, fontWidth) => {
+      if (!Array.isArray(node)) return;
+      const start = firstChildIdx(node);
+      const ilen = node.length;
+      const nChildren = ilen - start;
+      if (nChildren > 0) {
+        const name = node[0].name;
+        if (name === "=") {
+          if (nChildren > 1) collectSlacks(node[start + 1], slacks, fontWidth);
+          return;
+        }
+        if (isPinOp(name)) {
+          if (nChildren > 0) collectSlacks(node[start], slacks, fontWidth);
+          return;
+        }
+        const { w } = gateSize(name, fontWidth, getAttrs(node));
+        const routingSpace = drawBody.isShape(name) ? 0 : getNumChannels(node) * 8;
+        const extra = w + routingSpace - (grid + 1 >> 1);
+        if (extra > 0) {
+          const col = node[0].x;
+          slacks[col] = Math.max(slacks[col] || 0, extra);
+        }
+      }
+      for (let i = start; i < ilen; i++) {
+        collectSlacks(node[i], slacks, fontWidth);
+      }
+    };
+    var shiftFxSubtree = (branch, delta) => {
+      if (!branch) return;
+      if (Array.isArray(branch)) {
+        const node = leafNodeOf(branch);
+        if (node && typeof node.fx === "number") node.fx -= delta;
+        const start = firstChildIdx(branch);
+        const ilen = branch.length;
+        for (let i = start; i < ilen; i++) {
+          shiftFxSubtree(branch[i], delta);
+        }
+      } else if (typeof branch === "object") {
+        if (typeof branch.fx === "number") branch.fx -= delta;
+      }
+    };
+    var shiftInlineExprs = (node, isRoot, fontWidth) => {
+      if (!Array.isArray(node)) return;
+      const start = firstChildIdx(node);
+      const ilen = node.length;
+      const op = node[0].name;
+      if (op === "=" && ilen > start + 1) {
+        if (!isRoot) {
+          const exprBranch = node[start + 1];
+          const exprNode = leafNodeOf(exprBranch);
+          const gap = node[0].fx - exprNode.fx;
+          const need = eqBoxW(node, fontWidth, true) + MIN_PASSTHRU_PX - gap;
+          if (need > 0) {
+            shiftFxSubtree(exprBranch, need);
+          }
+        }
+        shiftInlineExprs(node[start + 1], false, fontWidth);
+        return;
+      }
+      if (isPinOp(op) && ilen > start) {
+        if (!isRoot) {
+          const exprBranch = node[start];
+          const exprNode = leafNodeOf(exprBranch);
+          const gap = node[0].fx - exprNode.fx;
+          const need = portBoxW(node, fontWidth) + MIN_PASSTHRU_PX - gap;
+          if (need > 0) {
+            shiftFxSubtree(exprBranch, need);
+          }
+        }
+        shiftInlineExprs(node[start], false, fontWidth);
+        return;
+      }
+      for (let i = start; i < ilen; i++) {
+        shiftInlineExprs(node[i], false, fontWidth);
+      }
+    };
+    var computeTrailing = (slacks, xmax) => {
+      const trailing = Array.from({ length: xmax + 1 }, () => 0);
+      for (let x = xmax - 1; x >= 0; x--) {
+        trailing[x] = trailing[x + 1] + (slacks[x] || 0);
+      }
+      return trailing;
+    };
+    var pixelFx = (x, xmax, trailing) => 32 * (xmax - x) + (trailing[x] || 0);
+    var setNodeFxFy = (layoutNode, xmax, trailing) => {
+      layoutNode.fx = pixelFx(layoutNode.x, xmax, trailing);
+      layoutNode.fy = 8 * layoutNode.y;
+    };
+    var assignFx = (node, xmax, trailing) => {
+      if (!Array.isArray(node)) {
+        setNodeFxFy(node, xmax, trailing);
+        return;
+      }
+      const start = firstChildIdx(node);
+      const ilen = node.length;
+      setNodeFxFy(node[0], xmax, trailing);
+      if (node[0].name === "=" && ilen > start + 1) {
+        const nameBranch = node[start];
+        const nameNode = Array.isArray(nameBranch) ? nameBranch[0] : nameBranch;
+        setNodeFxFy(nameNode, xmax, trailing);
+        assignFx(node[start + 1], xmax, trailing);
+        return;
+      }
+      for (let i = start; i < ilen; i++) {
+        assignFx(node[i], xmax, trailing);
+      }
+    };
+    function renderAssign(index, source) {
+      if (drawBoxes.resetCallCount) drawBoxes.resetCallCount();
+      let state = { x: 0, y: 2, xmax: 0 };
+      const tree = source.assign;
+      const config = source.config || {};
+      const fontWidth = config.fontWidth || 7.23;
+      const treeSpacing = config.treeSpacing || 16;
+      const ilen = tree.length;
+      const treeSpacingY = Math.round(treeSpacing / 8);
+      for (let i = 0; i < ilen; i++) {
+        state = render(tree[i], state);
+        state.x++;
+        if (i < ilen - 1) {
+          state.y += treeSpacingY;
+        }
+      }
+      const xmax = state.xmax;
+      const trailings = Array.from({ length: ilen }, () => 0);
+      let totalSlack = 0;
+      for (let i = 0; i < ilen; i++) {
+        const slacks = [];
+        collectSlacks(tree[i], slacks, fontWidth);
+        const trailing = computeTrailing(slacks, xmax);
+        trailings[i] = trailing;
+        const coneSlack = trailing[0] || 0;
+        if (coneSlack > totalSlack) totalSlack = coneSlack;
+      }
+      const acc = { left: 0, root: 0 };
+      for (let i = 0; i < ilen; i++) {
+        assignFx(tree[i], xmax, trailings[i]);
+        shiftInlineExprs(tree[i], true, fontWidth);
+        measureExtents(tree[i], acc, true, fontWidth);
+      }
+      const leftPad = ceilGrid(Math.max(0, acc.left));
+      const rightPad = ceilGrid(Math.max(0, acc.root - (grid + 1)));
+      const svg = ["g"];
+      for (let i = 0; i < ilen; i++) {
+        svg.push(drawBoxes(tree[i], xmax, true, fontWidth));
+      }
+      const width = leftPad + 32 * (xmax + 1) + 1 + rightPad + totalSlack;
+      const height = 8 * (state.y + 1) - 7;
+      return [
+        "svg",
+        {
+          id: "svgcontent_" + index,
+          viewBox: "0 0 " + width + " " + height,
+          width,
+          height
+        },
+        ...index === 0 ? [insertSVGTemplateAssign()] : [],
+        ["g", { transform: "translate(" + (leftPad + 0.5) + ", 0.5)" }, svg]
+      ];
+    }
+    module2.exports = renderAssign;
+  }
+});
+
+// node_modules/bit-field/lib/render.js
+var require_render2 = __commonJS({
+  "node_modules/bit-field/lib/render.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var round3 = Math.round;
+    var getSVG = (w, h) => ["svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      // TODO link ns?
+      width: w,
+      height: h,
+      viewBox: [0, 0, w, h].join(" ")
+    }];
+    var tt = (x, y, obj) => Object.assign(
+      { transform: "translate(" + x + (y ? "," + y : "") + ")" },
+      typeof obj === "object" ? obj : {}
+    );
+    var colors = {
+      // TODO compare with WaveDrom
+      2: "#ff0000",
+      // 'hsl(0,100%,50%)'
+      3: "#aaff00",
+      // 'hsl(80,100%,50%)'
+      4: "#00ffd5",
+      // 'hsl(170,100%,50%)'
+      5: "#ffbf00",
+      // 'hsl(45,100%,50%)'
+      6: "#00ff19",
+      // 'hsl(126,100%,50%)'
+      7: "#006aff"
+      // 'hsl(215,100%,50%)'
+    };
+    var typeStyle = (t) => colors[t] !== void 0 ? ";fill:" + colors[t] : "";
+    var norm = (obj, other) => Object.assign(
+      Object.keys(obj).reduce((prev, key) => {
+        const val = Number(obj[key]);
+        const valInt = isNaN(val) ? 0 : Math.round(val);
+        if (valInt !== 0) {
+          prev[key] = valInt;
+        }
+        return prev;
+      }, {}),
+      other
+    );
+    var trimText = (text2, availableSpace, charWidth) => {
+      if (!(typeof text2 === "string" || text2 instanceof String))
+        return text2;
+      const textWidth = text2.length * charWidth;
+      if (textWidth <= availableSpace)
+        return text2;
+      var end = text2.length - (textWidth - availableSpace) / charWidth - 3;
+      if (end > 0)
+        return text2.substring(0, round3(end)) + "...";
+      return text2.substring(0, 1) + "...";
+    };
+    var text = (body, x, y, rotate) => {
+      const props = { y: 6 };
+      if (rotate !== void 0) {
+        props.transform = "rotate(" + rotate + ")";
+      }
+      return ["g", tt(round3(x), round3(y)), ["text", props].concat(tspan.parse(body))];
+    };
+    var hline = (len2, x, y) => ["line", norm({ x1: x, x2: x + len2, y1: y, y2: y })];
+    var vline = (len2, x, y) => ["line", norm({ x1: x, x2: x, y1: y, y2: y + len2 })];
+    var getLabel = (val, x, y, step, len2, rotate) => {
+      if (typeof val !== "number") {
+        return text(val, x, y, rotate);
+      }
+      const res = ["g", {}];
+      for (let i = 0; i < len2; i++) {
+        res.push(text(
+          val >> i & 1,
+          x + step * (len2 / 2 - i - 0.5),
+          y
+        ));
+      }
+      return res;
+    };
+    var getAttr = (e, opt, step, lsbm, msbm) => {
+      const x = opt.vflip ? step * ((msbm + lsbm) / 2) : step * (opt.mod - (msbm + lsbm) / 2 - 1);
+      if (!Array.isArray(e.attr)) {
+        return getLabel(e.attr, x, 0, step, e.bits);
+      }
+      return e.attr.reduce(
+        (prev, a, i) => a === void 0 || a === null ? prev : prev.concat([getLabel(a, x, opt.fontsize * i, step, e.bits)]),
+        ["g", {}]
+      );
+    };
+    var labelArr = (desc, opt) => {
+      const { margin, hspace, vspace, mod, index, fontsize, vflip, trim, compact, offset } = opt;
+      const width = hspace - margin.left - margin.right - 1;
+      const height = vspace - margin.top - margin.bottom;
+      const step = width / mod;
+      const blanks = ["g"];
+      const bits = ["g", tt(round3(step / 2), -round3(0.5 * fontsize + 4))];
+      const names = ["g", tt(round3(step / 2), round3(0.5 * height + 0.4 * fontsize - 6))];
+      const attrs = ["g", tt(round3(step / 2), round3(height + 0.7 * fontsize - 2))];
+      desc.map((e) => {
+        let lsbm = 0;
+        let msbm = mod - 1;
+        let lsb = index * mod;
+        let msb = (index + 1) * mod - 1;
+        if (e.lsb / mod >> 0 === index) {
+          lsbm = e.lsbm;
+          lsb = e.lsb;
+          if (e.msb / mod >> 0 === index) {
+            msb = e.msb;
+            msbm = e.msbm;
+          }
+        } else {
+          if (e.msb / mod >> 0 === index) {
+            msb = e.msb;
+            msbm = e.msbm;
+          } else if (!(lsb > e.lsb && msb < e.msb)) {
+            return;
+          }
+        }
+        if (!compact) {
+          bits.push(text(lsb + offset, step * (vflip ? lsbm : mod - lsbm - 1)));
+          if (lsbm !== msbm) {
+            bits.push(text(msb + offset, step * (vflip ? msbm : mod - msbm - 1)));
+          }
+        }
+        if (e.name !== void 0) {
+          names.push(getLabel(
+            trim ? trimText(e.name, step * e.bits, trim) : e.name,
+            step * (vflip ? (msbm + lsbm) / 2 : mod - (msbm + lsbm) / 2 - 1),
+            0,
+            step,
+            e.bits,
+            e.rotate
+          ));
+        }
+        if (e.name === void 0 || e.type !== void 0) {
+          if (!(opt.compact && e.type === void 0)) {
+            blanks.push(["rect", Object.assign(
+              {},
+              norm({
+                x: step * (vflip ? lsbm : mod - msbm - 1),
+                width: step * (msbm - lsbm + 1),
+                height
+              }, {
+                field: e.name,
+                style: "fill-opacity:0.1" + typeStyle(e.type)
+              }),
+              e.rect !== void 0 ? e.rect : {}
+            )]);
+          }
+        }
+        if (e.attr !== void 0) {
+          attrs.push(getAttr(e, opt, step, lsbm, msbm));
+        }
+      });
+      return ["g", blanks, bits, names, attrs];
+    };
+    var getLabelMask = (desc, mod) => {
+      const mask = [];
+      let idx = 0;
+      desc.map((e) => {
+        mask[idx % mod] = true;
+        idx += e.bits;
+        mask[(idx - 1) % mod] = true;
+      });
+      return mask;
+    };
+    var getLegendItems = (opt) => {
+      const { hspace, margin, fontsize, legend } = opt;
+      const width = hspace - margin.left - margin.right - 1;
+      const items = ["g", tt(margin.left, -10)];
+      const legendSquarePadding = 36;
+      const legendNamePadding = 24;
+      let x = width / 2 - Object.keys(legend).length / 2 * (legendSquarePadding + legendNamePadding);
+      for (const key in legend) {
+        const value = legend[key];
+        items.push(["rect", norm({
+          x,
+          width: 12,
+          height: 12
+        }, {
+          style: "fill-opacity:0.15; stroke: #000; stroke-width: 1.2;" + typeStyle(value)
+        })]);
+        x += legendSquarePadding;
+        items.push(text(
+          key,
+          x,
+          0.1 * fontsize + 4
+        ));
+        x += legendNamePadding;
+      }
+      return items;
+    };
+    var compactLabels = (desc, opt) => {
+      const { hspace, margin, mod, fontsize, vflip, legend, offset } = opt;
+      const width = hspace - margin.left - margin.right - 1;
+      const step = width / mod;
+      const labels = ["g", tt(margin.left, legend ? 0 : -3)];
+      const mask = getLabelMask(desc, mod);
+      for (let i = 0; i < mod; i++) {
+        const idx = vflip ? i : mod - i - 1;
+        if (mask[idx]) {
+          labels.push(text(
+            idx + offset,
+            step * (i + 0.5),
+            0.5 * fontsize + 4
+          ));
+        }
+      }
+      return labels;
+    };
+    var skipField = (desc, opt, globalIndex) => {
+      if (!opt.compact) {
+        return false;
+      }
+      const emptyField = (e) => e.name === void 0 && e.type === void 0;
+      if (desc.findIndex((e) => emptyField(e) && globalIndex > e.lsb && globalIndex <= e.msb + 1) !== -1) {
+        return true;
+      }
+      return false;
+    };
+    var cage = (desc, opt) => {
+      const { hspace, vspace, mod, margin, index, vflip } = opt;
+      const width = hspace - margin.left - margin.right - 1;
+      const height = vspace - margin.top - margin.bottom;
+      const res = [
+        "g",
+        {
+          stroke: "black",
+          "stroke-width": 1,
+          "stroke-linecap": "round"
+        }
+      ];
+      if (opt.sparse) {
+        const skipEdge = opt.uneven && opt.bits % 2 === 1 && index === opt.lanes - 1;
+        if (skipEdge) {
+          if (vflip) {
+            res.push(
+              hline(width - width / mod, 0, 0),
+              hline(width - width / mod, 0, height)
+            );
+          } else {
+            res.push(
+              hline(width - width / mod, width / mod, 0),
+              hline(width - width / mod, width / mod, height)
+            );
+          }
+        } else if (!opt.compact) {
+          res.push(
+            hline(width, 0, 0),
+            hline(width, 0, height),
+            vline(height, vflip ? width : 0, 0)
+          );
+        }
+      } else {
+        res.push(
+          hline(width, 0, 0),
+          vline(height, vflip ? width : 0, 0),
+          hline(width, 0, height)
+        );
+      }
+      let i = index * mod;
+      const delta = vflip ? 1 : -1;
+      let j = vflip ? 0 : mod;
+      if (opt.sparse) {
+        for (let k = 0; k <= mod; k++) {
+          const xj = j * (width / mod);
+          if (!skipField(desc, opt, i) && k !== 0 || !skipField(desc, opt, i + 1) && k !== mod) {
+            if (k === 0 || k === mod || desc.some((e) => e.msb + 1 === i)) {
+              res.push(vline(height, xj, 0));
+            } else {
+              res.push(vline(height >>> 3, xj, 0));
+              res.push(vline(-(height >>> 3), xj, height));
+            }
+          }
+          if (opt.compact && k !== 0 && !skipField(desc, opt, i)) {
+            res.push(hline(width / mod, xj, 0));
+            res.push(hline(width / mod, xj, height));
+          }
+          i++;
+          j += delta;
+        }
+      } else {
+        for (let k = 0; k < mod; k++) {
+          const xj = j * (width / mod);
+          if (k === 0 || desc.some((e) => e.lsb === i)) {
+            res.push(vline(height, xj, 0));
+          } else {
+            res.push(
+              vline(height >>> 3, xj, 0),
+              vline(-(height >>> 3), xj, height)
+            );
+          }
+          i++;
+          j += delta;
+        }
+      }
+      return res;
+    };
+    var lane = (desc, opt) => {
+      const { index, vspace, hspace, margin, hflip, lanes, compact, label } = opt;
+      const height = vspace - margin.top - margin.bottom;
+      const width = hspace - margin.left - margin.right - 1;
+      let tx = margin.left;
+      const idx = hflip ? index : lanes - index - 1;
+      let ty = round3(idx * vspace + margin.top);
+      if (compact) {
+        ty = round3(idx * height + margin.top);
+      }
+      const res = [
+        "g",
+        tt(tx, ty),
+        cage(desc, opt),
+        labelArr(desc, opt)
+      ];
+      if (label && label.left !== void 0) {
+        const lab = label.left;
+        let txt = index;
+        if (typeof lab === "string") {
+          txt = lab;
+        } else if (typeof lab === "number") {
+          txt += lab;
+        } else if (typeof lab === "object") {
+          txt = lab[index] || txt;
+        }
+        res.push([
+          "g",
+          { "text-anchor": "end" },
+          text(txt, -4, round3(height / 2))
+        ]);
+      }
+      if (label && label.right !== void 0) {
+        const lab = label.right;
+        let txt = index;
+        if (typeof lab === "string") {
+          txt = lab;
+        } else if (typeof lab === "number") {
+          txt += lab;
+        } else if (typeof lab === "object") {
+          txt = lab[index] || txt;
+        }
+        res.push([
+          "g",
+          { "text-anchor": "start" },
+          text(txt, width + 4, round3(height / 2))
+        ]);
+      }
+      return res;
+    };
+    var getMaxAttributes = (desc) => desc.reduce(
+      (prev, field) => Math.max(
+        prev,
+        field.attr === void 0 ? 0 : Array.isArray(field.attr) ? field.attr.length : 1
+      ),
+      0
+    );
+    var getTotalBits = (desc) => desc.reduce((prev, field) => prev + (field.bits === void 0 ? 0 : field.bits), 0);
+    var isIntGTorDefault = (opt) => (row) => {
+      const [key, min, def] = row;
+      const val = Math.round(opt[key]);
+      opt[key] = typeof val === "number" && val >= min ? val : def;
+    };
+    var optDefaults = (opt) => {
+      opt = typeof opt === "object" ? opt : {};
+      [
+        // key         min default
+        // ['vspace', 20, 60],
+        ["hspace", 40, 800],
+        ["lanes", 1, 1],
+        ["bits", 1, void 0],
+        ["fontsize", 6, 14]
+      ].map(isIntGTorDefault(opt));
+      opt.fontfamily = opt.fontfamily || "sans-serif";
+      opt.fontweight = opt.fontweight || "normal";
+      opt.compact = opt.compact || false;
+      opt.hflip = opt.hflip || false;
+      opt.uneven = opt.uneven || false;
+      opt.margin = opt.margin || {};
+      opt.offset = opt.offset || 0;
+      return opt;
+    };
+    var render = (desc, opt) => {
+      opt = optDefaults(opt);
+      const maxAttributes = getMaxAttributes(desc);
+      opt.vspace = opt.vspace || (maxAttributes + 4) * opt.fontsize;
+      if (opt.bits === void 0) {
+        opt.bits = getTotalBits(desc);
+      }
+      const { hspace, vspace, lanes, margin, compact, fontsize, bits, label, legend } = opt;
+      if (margin.right === void 0) {
+        if (label && label.right !== void 0) {
+          margin.right = round3(0.1 * hspace);
+        } else {
+          margin.right = 4;
+        }
+      }
+      if (margin.left === void 0) {
+        if (label && label.left !== void 0) {
+          margin.left = round3(0.1 * hspace);
+        } else {
+          margin.left = 4;
+        }
+      }
+      if (margin.top === void 0) {
+        margin.top = 1.5 * fontsize;
+        if (margin.bottom === void 0) {
+          margin.bottom = fontsize * maxAttributes + 4;
+        }
+      } else {
+        if (margin.bottom === void 0) {
+          margin.bottom = 4;
+        }
+      }
+      const width = hspace;
+      let height = vspace * lanes;
+      if (compact) {
+        height -= (lanes - 1) * (margin.top + margin.bottom);
+      }
+      if (legend) {
+        height += 12;
+      }
+      const res = [
+        "g",
+        tt(0.5, legend ? 12.5 : 0.5, {
+          "text-anchor": "middle",
+          "font-size": opt.fontsize,
+          "font-family": opt.fontfamily,
+          "font-weight": opt.fontweight
+        })
+      ];
+      let lsb = 0;
+      const mod = Math.ceil(bits * 1 / lanes);
+      opt.mod = mod | 0;
+      desc.map((e) => {
+        e.lsb = lsb;
+        e.lsbm = lsb % mod;
+        lsb += e.bits;
+        e.msb = lsb - 1;
+        e.msbm = e.msb % mod;
+      });
+      for (let i = 0; i < lanes; i++) {
+        opt.index = i;
+        res.push(lane(desc, opt));
+      }
+      if (compact) {
+        res.push(compactLabels(desc, opt));
+      }
+      if (legend) {
+        res.push(getLegendItems(opt));
+      }
+      return getSVG(width, height).concat([res]);
+    };
+    module2.exports = render;
+  }
+});
+
+// node_modules/wavedrom/lib/render-reg.js
+var require_render_reg = __commonJS({
+  "node_modules/wavedrom/lib/render-reg.js"(exports2, module2) {
+    "use strict";
+    var render = require_render2();
+    function renderReg(index, source) {
+      return render(source.reg, source.config);
+    }
+    module2.exports = renderReg;
+  }
+});
+
+// node_modules/wavedrom/lib/rec.js
+var require_rec = __commonJS({
+  "node_modules/wavedrom/lib/rec.js"(exports2, module2) {
+    "use strict";
+    function rec(tmp, state) {
+      let deltaX = 10;
+      let name;
+      if (typeof tmp[0] === "string" || typeof tmp[0] === "number") {
+        name = tmp[0];
+        deltaX = 25;
+      }
+      state.x += deltaX;
+      for (let i = 0; i < tmp.length; i++) {
+        if (typeof tmp[i] === "object") {
+          if (Array.isArray(tmp[i])) {
+            const oldY = state.y;
+            state = rec(tmp[i], state);
+            state.groups.push({ x: state.xx, y: oldY, height: state.y - oldY, name: state.name });
+          } else {
+            state.lanes.push(tmp[i]);
+            state.width.push(state.x);
+            state.y += 1;
+          }
+        }
+      }
+      state.xx = state.x;
+      state.x -= deltaX;
+      state.name = name;
+      return state;
+    }
+    module2.exports = rec;
+  }
+});
+
+// node_modules/wavedrom/lib/lane.js
+var require_lane = __commonJS({
+  "node_modules/wavedrom/lib/lane.js"(exports2, module2) {
+    "use strict";
+    var lane = {
+      xs: 20,
+      // tmpgraphlane0.width
+      ys: 20,
+      // tmpgraphlane0.height
+      xg: 120,
+      // tmpgraphlane0.x
+      // yg     : 0,     // head gap
+      yh0: 0,
+      // head gap title
+      yh1: 0,
+      // head gap
+      yf0: 0,
+      // foot gap
+      yf1: 0,
+      // foot gap
+      y0: 5,
+      // tmpgraphlane0.y
+      yo: 30,
+      // tmpgraphlane1.y - y0;
+      tgo: -10,
+      // tmptextlane0.x - xg;
+      ym: 15,
+      // tmptextlane0.y - y0
+      xlabel: 6,
+      // tmptextlabel.x - xg;
+      xmax: 1,
+      scale: 1,
+      head: {},
+      foot: {}
+    };
+    module2.exports = lane;
+  }
+});
+
+// node_modules/wavedrom/lib/parse-config.js
+var require_parse_config = __commonJS({
+  "node_modules/wavedrom/lib/parse-config.js"(exports2, module2) {
+    "use strict";
+    function parseConfig(source, lane) {
+      function tonumber(x) {
+        return x > 0 ? Math.round(x) : 1;
+      }
+      lane.hscale = 1;
+      if (lane.hscale0) {
+        lane.hscale = lane.hscale0;
+      }
+      if (source && source.config && source.config.hscale) {
+        let hscale = Math.round(tonumber(source.config.hscale));
+        if (hscale > 0) {
+          if (hscale > 100) {
+            hscale = 100;
+          }
+          lane.hscale = hscale;
+        }
+      }
+      lane.yh0 = 0;
+      lane.yh1 = 0;
+      lane.head = source.head;
+      lane.xmin_cfg = 0;
+      lane.xmax_cfg = 1e12;
+      if (source && source.config && source.config.hbounds && source.config.hbounds.length == 2) {
+        source.config.hbounds[0] = Math.floor(source.config.hbounds[0]);
+        source.config.hbounds[1] = Math.ceil(source.config.hbounds[1]);
+        if (source.config.hbounds[0] < source.config.hbounds[1]) {
+          lane.xmin_cfg = 2 * Math.floor(source.config.hbounds[0]);
+          lane.xmax_cfg = 2 * Math.floor(source.config.hbounds[1]);
+        }
+      }
+      if (source && source.head) {
+        if (source.head.tick || source.head.tick === 0 || source.head.tock || source.head.tock === 0) {
+          lane.yh0 = 20;
+        }
+        if (source.head.tick || source.head.tick === 0) {
+          source.head.tick = source.head.tick + lane.xmin_cfg / 2;
+        }
+        if (source.head.tock || source.head.tock === 0) {
+          source.head.tock = source.head.tock + lane.xmin_cfg / 2;
+        }
+        if (source.head.text) {
+          lane.yh1 = 46;
+          lane.head.text = source.head.text;
+        }
+      }
+      lane.yf0 = 0;
+      lane.yf1 = 0;
+      lane.foot = source.foot;
+      if (source && source.foot) {
+        if (source.foot.tick || source.foot.tick === 0 || source.foot.tock || source.foot.tock === 0) {
+          lane.yf0 = 20;
+        }
+        if (source.foot.tick || source.foot.tick === 0) {
+          source.foot.tick = source.foot.tick + lane.xmin_cfg / 2;
+        }
+        if (source.foot.tock || source.foot.tock === 0) {
+          source.foot.tock = source.foot.tock + lane.xmin_cfg / 2;
+        }
+        if (source.foot.text) {
+          lane.yf1 = 46;
+          lane.foot.text = source.foot.text;
+        }
+      }
+    }
+    module2.exports = parseConfig;
+  }
+});
+
+// node_modules/wavedrom/lib/gen-brick.js
+var require_gen_brick = __commonJS({
+  "node_modules/wavedrom/lib/gen-brick.js"(exports2, module2) {
+    "use strict";
+    var genBrick = (texts, extra, times) => {
+      const R = [];
+      if (!Array.isArray(texts)) {
+        texts = [texts];
+      }
+      if (texts.length === 4) {
+        for (let j = 0; j < times; j += 1) {
+          R.push(texts[0]);
+          for (let i = 0; i < extra; i += 1) {
+            R.push(texts[1]);
+          }
+          R.push(texts[2]);
+          for (let i = 0; i < extra; i += 1) {
+            R.push(texts[3]);
+          }
+        }
+        return R;
+      }
+      if (texts.length === 1) {
+        texts.push(texts[0]);
+      }
+      R.push(texts[0]);
+      for (let i = 0; i < times * (2 * (extra + 1)) - 1; i += 1) {
+        R.push(texts[1]);
+      }
+      return R;
+    };
+    module2.exports = genBrick;
+  }
+});
+
+// node_modules/wavedrom/lib/gen-first-wave-brick.js
+var require_gen_first_wave_brick = __commonJS({
+  "node_modules/wavedrom/lib/gen-first-wave-brick.js"(exports2, module2) {
+    "use strict";
+    var genBrick = require_gen_brick();
+    var lookUpTable = {
+      p: ["pclk", "111", "nclk", "000"],
+      n: ["nclk", "000", "pclk", "111"],
+      P: ["Pclk", "111", "nclk", "000"],
+      N: ["Nclk", "000", "pclk", "111"],
+      l: "000",
+      L: "000",
+      0: "000",
+      h: "111",
+      H: "111",
+      1: "111",
+      "=": "vvv-2",
+      2: "vvv-2",
+      3: "vvv-3",
+      4: "vvv-4",
+      5: "vvv-5",
+      6: "vvv-6",
+      7: "vvv-7",
+      8: "vvv-8",
+      9: "vvv-9",
+      d: "ddd",
+      u: "uuu",
+      z: "zzz",
+      default: "xxx"
+    };
+    var genFirstWaveBrick = (text, extra, times) => genBrick(lookUpTable[text] || lookUpTable.default, extra, times);
+    module2.exports = genFirstWaveBrick;
+  }
+});
+
+// node_modules/wavedrom/lib/gen-wave-brick.js
+var require_gen_wave_brick = __commonJS({
+  "node_modules/wavedrom/lib/gen-wave-brick.js"(exports2, module2) {
+    "use strict";
+    var genBrick = require_gen_brick();
+    function genWaveBrick(text, extra, times) {
+      const x1 = { p: "pclk", n: "nclk", P: "Pclk", N: "Nclk", h: "pclk", l: "nclk", H: "Pclk", L: "Nclk" };
+      const x2 = {
+        "0": "0",
+        "1": "1",
+        "x": "x",
+        "d": "d",
+        "u": "u",
+        "z": "z",
+        "=": "v",
+        "2": "v",
+        "3": "v",
+        "4": "v",
+        "5": "v",
+        "6": "v",
+        "7": "v",
+        "8": "v",
+        "9": "v"
+      };
+      const x3 = {
+        "0": "",
+        "1": "",
+        "x": "",
+        "d": "",
+        "u": "",
+        "z": "",
+        "=": "-2",
+        "2": "-2",
+        "3": "-3",
+        "4": "-4",
+        "5": "-5",
+        "6": "-6",
+        "7": "-7",
+        "8": "-8",
+        "9": "-9"
+      };
+      const y1 = {
+        "p": "0",
+        "n": "1",
+        "P": "0",
+        "N": "1",
+        "h": "1",
+        "l": "0",
+        "H": "1",
+        "L": "0",
+        "0": "0",
+        "1": "1",
+        "x": "x",
+        "d": "d",
+        "u": "u",
+        "z": "z",
+        "=": "v",
+        "2": "v",
+        "3": "v",
+        "4": "v",
+        "5": "v",
+        "6": "v",
+        "7": "v",
+        "8": "v",
+        "9": "v"
+      };
+      const y2 = {
+        "p": "",
+        "n": "",
+        "P": "",
+        "N": "",
+        "h": "",
+        "l": "",
+        "H": "",
+        "L": "",
+        "0": "",
+        "1": "",
+        "x": "",
+        "d": "",
+        "u": "",
+        "z": "",
+        "=": "-2",
+        "2": "-2",
+        "3": "-3",
+        "4": "-4",
+        "5": "-5",
+        "6": "-6",
+        "7": "-7",
+        "8": "-8",
+        "9": "-9"
+      };
+      const x4 = {
+        "p": "111",
+        "n": "000",
+        "P": "111",
+        "N": "000",
+        "h": "111",
+        "l": "000",
+        "H": "111",
+        "L": "000",
+        "0": "000",
+        "1": "111",
+        "x": "xxx",
+        "d": "ddd",
+        "u": "uuu",
+        "z": "zzz",
+        "=": "vvv-2",
+        "2": "vvv-2",
+        "3": "vvv-3",
+        "4": "vvv-4",
+        "5": "vvv-5",
+        "6": "vvv-6",
+        "7": "vvv-7",
+        "8": "vvv-8",
+        "9": "vvv-9"
+      };
+      const x5 = { p: "nclk", n: "pclk", P: "nclk", N: "pclk" };
+      const x6 = { p: "000", n: "111", P: "000", N: "111" };
+      const xclude = { hp: "111", Hp: "111", ln: "000", Ln: "000", nh: "111", Nh: "111", pl: "000", Pl: "000" };
+      const atext = text.split("");
+      const tmp0 = x4[atext[1]];
+      let tmp1 = x1[atext[1]];
+      if (tmp1 === void 0) {
+        const tmp2 = x2[atext[1]];
+        if (tmp2 === void 0) {
+          return genBrick("xxx", extra, times);
+        } else {
+          const tmp3 = y1[atext[0]];
+          if (tmp3 === void 0) {
+            return genBrick("xxx", extra, times);
+          }
+          return genBrick([tmp3 + "m" + tmp2 + y2[atext[0]] + x3[atext[1]], tmp0], extra, times);
+        }
+      } else {
+        const tmp4 = xclude[text];
+        if (tmp4 !== void 0) {
+          tmp1 = tmp4;
+        }
+        const tmp5 = x5[atext[1]];
+        if (tmp5 === void 0) {
+          return genBrick([tmp1, tmp0], extra, times);
+        }
+        return genBrick([tmp1, tmp0, tmp5, x6[atext[1]]], extra, times);
+      }
+    }
+    module2.exports = genWaveBrick;
+  }
+});
+
+// node_modules/wavedrom/lib/find-lane-markers.js
+var require_find_lane_markers = __commonJS({
+  "node_modules/wavedrom/lib/find-lane-markers.js"(exports2, module2) {
+    "use strict";
+    function findLaneMarkers(lanetext) {
+      let gcount = 0;
+      let lcount = 0;
+      const ret = [];
+      lanetext.forEach(function(e) {
+        if (e === "vvv-2" || e === "vvv-3" || e === "vvv-4" || e === "vvv-5" || e === "vvv-6" || e === "vvv-7" || e === "vvv-8" || e === "vvv-9") {
+          lcount += 1;
+        } else {
+          if (lcount !== 0) {
+            ret.push(gcount - (lcount + 1) / 2);
+            lcount = 0;
+          }
+        }
+        gcount += 1;
+      });
+      if (lcount !== 0) {
+        ret.push(gcount - (lcount + 1) / 2);
+      }
+      return ret;
+    }
+    module2.exports = findLaneMarkers;
+  }
+});
+
+// node_modules/wavedrom/lib/parse-wave-lane.js
+var require_parse_wave_lane = __commonJS({
+  "node_modules/wavedrom/lib/parse-wave-lane.js"(exports2, module2) {
+    "use strict";
+    var genFirstWaveBrick = require_gen_first_wave_brick();
+    var genWaveBrick = require_gen_wave_brick();
+    var findLaneMarkers = require_find_lane_markers();
+    function parseWaveLane(src, extra, lane) {
+      const Stack = src.split("");
+      let Next = Stack.shift();
+      let Repeats = 1;
+      while (Stack[0] === "." || Stack[0] === "|") {
+        Stack.shift();
+        Repeats += 1;
+      }
+      let R = [];
+      R = R.concat(genFirstWaveBrick(Next, extra, Repeats));
+      let Top;
+      let subCycle = false;
+      while (Stack.length) {
+        Top = Next;
+        Next = Stack.shift();
+        if (Next === "<") {
+          subCycle = true;
+          Next = Stack.shift();
+        }
+        if (Next === ">") {
+          subCycle = false;
+          Next = Stack.shift();
+        }
+        Repeats = 1;
+        while (Stack[0] === "." || Stack[0] === "|") {
+          Stack.shift();
+          Repeats += 1;
+        }
+        if (subCycle) {
+          R = R.concat(genWaveBrick(Top + Next, 0, Repeats - lane.period));
+        } else {
+          R = R.concat(genWaveBrick(Top + Next, extra, Repeats));
+        }
+      }
+      const unseen_bricks = [];
+      for (let i = 0; i < lane.phase; i += 1) {
+        unseen_bricks.push(R.shift());
+      }
+      let num_unseen_markers;
+      if (unseen_bricks.length > 0) {
+        num_unseen_markers = findLaneMarkers(unseen_bricks).length;
+        if (findLaneMarkers([unseen_bricks[unseen_bricks.length - 1]]).length == 1 && findLaneMarkers([R[0]]).length == 1) {
+          num_unseen_markers -= 1;
+        }
+      } else {
+        num_unseen_markers = 0;
+      }
+      return [R, num_unseen_markers];
+    }
+    module2.exports = parseWaveLane;
+  }
+});
+
+// node_modules/wavedrom/lib/parse-wave-lanes.js
+var require_parse_wave_lanes = __commonJS({
+  "node_modules/wavedrom/lib/parse-wave-lanes.js"(exports2, module2) {
+    "use strict";
+    var parseWaveLane = require_parse_wave_lane();
+    function data_extract(e, num_unseen_markers) {
+      let ret_data = e.data;
+      if (ret_data === void 0) {
+        return null;
+      }
+      if (typeof ret_data === "string") {
+        ret_data = ret_data.trim().split(/\s+/);
+      }
+      ret_data = ret_data.slice(num_unseen_markers);
+      return ret_data;
+    }
+    function parseWaveLanes(sig, lane) {
+      const content = [];
+      const tmp0 = [];
+      sig.map(function(sigx) {
+        const current = [];
+        content.push(current);
+        lane.period = sigx.period || 1;
+        lane.phase = (sigx.phase ? sigx.phase * 2 : 0) + lane.xmin_cfg;
+        tmp0[0] = sigx.name || " ";
+        tmp0[1] = (sigx.phase || 0) + lane.xmin_cfg / 2;
+        let content_wave = null;
+        let num_unseen_markers;
+        if (typeof sigx.wave === "string") {
+          const parsed_wave_lane = parseWaveLane(sigx.wave, lane.period * lane.hscale - 1, lane);
+          content_wave = parsed_wave_lane[0];
+          num_unseen_markers = parsed_wave_lane[1];
+        }
+        current.push(
+          tmp0.slice(0),
+          content_wave,
+          data_extract(sigx, num_unseen_markers),
+          sigx
+        );
+      });
+      return content;
+    }
+    module2.exports = parseWaveLanes;
+  }
+});
+
+// node_modules/onml/tt.js
+var require_tt = __commonJS({
+  "node_modules/onml/tt.js"(exports2, module2) {
+    "use strict";
+    module2.exports = (x, y, obj) => {
+      let objt = {};
+      if (x || y) {
+        const tt = [x || 0].concat(y ? [y] : []);
+        objt = { transform: "translate(" + tt.join(",") + ")" };
+      }
+      obj = typeof obj === "object" ? obj : {};
+      return Object.assign(objt, obj);
+    };
+  }
+});
+
+// node_modules/wavedrom/lib/render-groups.js
+var require_render_groups = __commonJS({
+  "node_modules/wavedrom/lib/render-groups.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var tt = require_tt();
+    function renderGroups(groups, index, lane) {
+      const res = ["g"];
+      groups.map((e, i) => {
+        res.push([
+          "path",
+          {
+            id: "group_" + i + "_" + index,
+            d: "m " + (e.x + 0.5) + "," + (e.y * lane.yo + 3.5 + lane.yh0 + lane.yh1) + " c -3,0 -5,2 -5,5 l 0," + (e.height * lane.yo - 16) + " c 0,3 2,5 5,5",
+            style: "stroke:#0041c4;stroke-width:1;fill:none"
+          }
+        ]);
+        if (e.name === void 0) {
+          return;
+        }
+        const x = e.x - 10;
+        const y = lane.yo * (e.y + e.height / 2) + lane.yh0 + lane.yh1;
+        const ts = tspan.parse(e.name);
+        res.push([
+          "g",
+          tt(x, y),
+          [
+            "g",
+            { transform: "rotate(270)" },
+            ["text", {
+              "text-anchor": "middle",
+              class: "info",
+              "xml:space": "preserve"
+            }].concat(ts)
+          ]
+        ]);
+      });
+      return res;
+    }
+    module2.exports = renderGroups;
+  }
+});
+
+// node_modules/wavedrom/lib/render-marks.js
+var require_render_marks = __commonJS({
+  "node_modules/wavedrom/lib/render-marks.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    function captext(cxt, anchor, y) {
+      if (cxt[anchor] && cxt[anchor].text) {
+        return [
+          ["text", {
+            x: cxt.xmax * cxt.xs / 2,
+            y,
+            fill: "#000",
+            "text-anchor": "middle",
+            "xml:space": "preserve"
+          }].concat(tspan.parse(cxt[anchor].text))
+        ];
+      }
+      return [];
+    }
+    function ticktock(cxt, ref1, ref2, x, dx, y, len2) {
+      let offset;
+      let L = [];
+      if (cxt[ref1] === void 0 || cxt[ref1][ref2] === void 0) {
+        return [];
+      }
+      let val = cxt[ref1][ref2];
+      if (typeof val === "string") {
+        val = val.trim().split(/\s+/);
+      } else if (typeof val === "number" || typeof val === "boolean") {
+        offset = Number(val);
+        val = [];
+        for (let i = 0; i < len2; i += 1) {
+          val.push(i + offset);
+        }
+      }
+      if (Array.isArray(val)) {
+        if (val.length === 0) {
+          return [];
+        } else if (val.length === 1) {
+          offset = Number(val[0]);
+          if (isNaN(offset)) {
+            L = val;
+          } else {
+            for (let i = 0; i < len2; i += 1) {
+              L[i] = i + offset;
+            }
+          }
+        } else if (val.length === 2) {
+          offset = Number(val[0]);
+          const step = Number(val[1]);
+          const tmp = val[1].split(".");
+          let dp = 0;
+          if (tmp.length === 2) {
+            dp = tmp[1].length;
+          }
+          if (isNaN(offset) || isNaN(step)) {
+            L = val;
+          } else {
+            offset = step * offset;
+            for (let i = 0; i < len2; i += 1) {
+              L[i] = (step * i + offset).toFixed(dp);
+            }
+          }
+        } else {
+          L = val;
+        }
+      } else {
+        return [];
+      }
+      const res = ["g", {
+        class: "muted",
+        "text-anchor": "middle",
+        "xml:space": "preserve"
+      }];
+      for (let i = 0; i < len2; i += 1) {
+        if (cxt[ref1] && cxt[ref1].every && (i + offset) % cxt[ref1].every != 0) {
+          continue;
+        }
+        res.push(["text", { x: i * dx + x, y }].concat(tspan.parse(L[i])));
+      }
+      return [res];
+    }
+    function renderMarks(content, index, lane, source) {
+      const mstep = 2 * lane.hscale;
+      const mmstep = mstep * lane.xs;
+      const marks = lane.xmax / mstep;
+      const gy = content.length * lane.yo;
+      const res = ["g", { id: "gmarks_" + index }];
+      const gmarkLines = ["g", { style: "stroke:#888;stroke-width:0.5;stroke-dasharray:1,3" }];
+      if (!(source && source.config && source.config.marks === false)) {
+        for (let i = 0; i < marks + 1; i += 1) {
+          gmarkLines.push(["line", {
+            id: "gmark_" + i + "_" + index,
+            x1: i * mmstep,
+            y1: 0,
+            x2: i * mmstep,
+            y2: gy
+          }]);
+        }
+        res.push(gmarkLines);
+      }
+      return res.concat(
+        captext(lane, "head", lane.yh0 ? -33 : -13),
+        captext(lane, "foot", gy + (lane.yf0 ? 45 : 25)),
+        ticktock(lane, "head", "tick", 0, mmstep, -5, marks + 1),
+        ticktock(lane, "head", "tock", mmstep / 2, mmstep, -5, marks),
+        ticktock(lane, "foot", "tick", 0, mmstep, gy + 15, marks + 1),
+        ticktock(lane, "foot", "tock", mmstep / 2, mmstep, gy + 15, marks)
+      );
+    }
+    module2.exports = renderMarks;
+  }
+});
+
+// node_modules/wavedrom/lib/arc-shape.js
+var require_arc_shape = __commonJS({
+  "node_modules/wavedrom/lib/arc-shape.js"(exports2, module2) {
+    "use strict";
+    function arcShape(Edge, from, to) {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      let lx = (from.x + to.x) / 2;
+      const ly = (from.y + to.y) / 2;
+      let d;
+      let style;
+      switch (Edge.shape) {
+        case "-": {
+          break;
+        }
+        case "~": {
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + 0.3 * dx + ", " + dy + " " + dx + ", " + dy;
+          break;
+        }
+        case "-~": {
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + dx + ", " + dy + " " + dx + ", " + dy;
+          if (Edge.label) {
+            lx = from.x + (to.x - from.x) * 0.75;
+          }
+          break;
+        }
+        case "~-": {
+          d = "M " + from.x + "," + from.y + " c 0, 0 " + 0.3 * dx + ", " + dy + " " + dx + ", " + dy;
+          if (Edge.label) {
+            lx = from.x + (to.x - from.x) * 0.25;
+          }
+          break;
+        }
+        case "-|": {
+          d = "m " + from.x + "," + from.y + " " + dx + ",0 0," + dy;
+          if (Edge.label) {
+            lx = to.x;
+          }
+          break;
+        }
+        case "|-": {
+          d = "m " + from.x + "," + from.y + " 0," + dy + " " + dx + ",0";
+          if (Edge.label) {
+            lx = from.x;
+          }
+          break;
+        }
+        case "-|-": {
+          d = "m " + from.x + "," + from.y + " " + dx / 2 + ",0 0," + dy + " " + dx / 2 + ",0";
+          break;
+        }
+        case "->": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          break;
+        }
+        case "~>": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + 0.3 * dx + ", " + dy + " " + dx + ", " + dy;
+          break;
+        }
+        case "-~>": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + dx + ", " + dy + " " + dx + ", " + dy;
+          if (Edge.label) {
+            lx = from.x + (to.x - from.x) * 0.75;
+          }
+          break;
+        }
+        case "~->": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "M " + from.x + "," + from.y + " c 0, 0 " + 0.3 * dx + ", " + dy + " " + dx + ", " + dy;
+          if (Edge.label) {
+            lx = from.x + (to.x - from.x) * 0.25;
+          }
+          break;
+        }
+        case "-|>": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "m " + from.x + "," + from.y + " " + dx + ",0 0," + dy;
+          if (Edge.label) {
+            lx = to.x;
+          }
+          break;
+        }
+        case "|->": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "m " + from.x + "," + from.y + " 0," + dy + " " + dx + ",0";
+          if (Edge.label) {
+            lx = from.x;
+          }
+          break;
+        }
+        case "-|->": {
+          style = "marker-end:url(#arrowhead);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "m " + from.x + "," + from.y + " " + dx / 2 + ",0 0," + dy + " " + dx / 2 + ",0";
+          break;
+        }
+        case "<->": {
+          style = "marker-end:url(#arrowhead);marker-start:url(#arrowtail);stroke:#0041c4;stroke-width:1;fill:none";
+          break;
+        }
+        case "<~>": {
+          style = "marker-end:url(#arrowhead);marker-start:url(#arrowtail);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + 0.3 * dx + ", " + dy + " " + dx + ", " + dy;
+          break;
+        }
+        case "<-~>": {
+          style = "marker-end:url(#arrowhead);marker-start:url(#arrowtail);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "M " + from.x + "," + from.y + " c " + 0.7 * dx + ", 0 " + dx + ", " + dy + " " + dx + ", " + dy;
+          if (Edge.label) {
+            lx = from.x + (to.x - from.x) * 0.75;
+          }
+          break;
+        }
+        case "<-|>": {
+          style = "marker-end:url(#arrowhead);marker-start:url(#arrowtail);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "m " + from.x + "," + from.y + " " + dx + ",0 0," + dy;
+          if (Edge.label) {
+            lx = to.x;
+          }
+          break;
+        }
+        case "<-|->": {
+          style = "marker-end:url(#arrowhead);marker-start:url(#arrowtail);stroke:#0041c4;stroke-width:1;fill:none";
+          d = "m " + from.x + "," + from.y + " " + dx / 2 + ",0 0," + dy + " " + dx / 2 + ",0";
+          break;
+        }
+        case "+": {
+          style = "marker-end:url(#tee);marker-start:url(#tee);fill:none;stroke:#00F;stroke-width:1";
+          break;
+        }
+        default: {
+          style = "fill:none;stroke:#F00;stroke-width:1";
+        }
+      }
+      return {
+        lx,
+        ly,
+        d,
+        style
+      };
+    }
+    module2.exports = arcShape;
+  }
+});
+
+// node_modules/wavedrom/lib/char-width.json
+var require_char_width = __commonJS({
+  "node_modules/wavedrom/lib/char-width.json"(exports2, module2) {
+    module2.exports = { chars: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 34, 47, 74, 74, 118, 89, 25, 44, 44, 52, 78, 37, 44, 37, 37, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 37, 37, 78, 78, 78, 74, 135, 89, 89, 96, 96, 89, 81, 103, 96, 37, 67, 89, 74, 109, 96, 103, 89, 103, 96, 89, 81, 96, 89, 127, 89, 87, 81, 37, 37, 37, 61, 74, 44, 74, 74, 67, 74, 74, 37, 74, 74, 30, 30, 67, 30, 112, 74, 74, 74, 74, 44, 67, 37, 74, 67, 95, 66, 65, 67, 44, 34, 44, 78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 43, 74, 74, 74, 74, 34, 74, 44, 98, 49, 74, 78, 0, 98, 73, 53, 73, 44, 44, 44, 77, 71, 37, 44, 44, 49, 74, 111, 111, 111, 81, 89, 89, 89, 89, 89, 89, 133, 96, 89, 89, 89, 89, 37, 37, 37, 37, 96, 96, 103, 103, 103, 103, 103, 78, 103, 96, 96, 96, 96, 87, 89, 81, 74, 74, 74, 74, 74, 74, 118, 67, 74, 74, 74, 74, 36, 36, 36, 36, 74, 74, 74, 74, 74, 74, 74, 73, 81, 74, 74, 74, 74, 65, 74, 65, 89, 74, 89, 74, 89, 74, 96, 67, 96, 67, 96, 67, 96, 67, 96, 82, 96, 74, 89, 74, 89, 74, 89, 74, 89, 74, 89, 74, 103, 74, 103, 74, 103, 74, 103, 74, 96, 74, 96, 74, 37, 36, 37, 36, 37, 36, 37, 30, 37, 36, 98, 59, 67, 30, 89, 67, 67, 74, 30, 74, 30, 74, 39, 74, 44, 74, 30, 96, 74, 96, 74, 96, 74, 80, 96, 74, 103, 74, 103, 74, 103, 74, 133, 126, 96, 44, 96, 44, 96, 44, 89, 67, 89, 67, 89, 67, 89, 67, 81, 38, 81, 50, 81, 37, 96, 74, 96, 74, 96, 74, 96, 74, 96, 74, 96, 74, 127, 95, 87, 65, 87, 81, 67, 81, 67, 81, 67, 30, 84, 97, 91, 84, 91, 84, 94, 92, 73, 104, 109, 91, 84, 81, 84, 100, 82, 76, 74, 103, 91, 131, 47, 40, 99, 77, 37, 79, 130, 100, 84, 104, 114, 87, 126, 101, 87, 84, 93, 84, 69, 84, 46, 52, 82, 52, 82, 114, 89, 102, 96, 100, 98, 91, 70, 88, 88, 77, 70, 85, 89, 77, 67, 84, 39, 65, 61, 39, 189, 173, 153, 111, 105, 61, 123, 123, 106, 89, 74, 37, 30, 103, 74, 96, 74, 96, 74, 96, 74, 96, 74, 96, 74, 81, 91, 81, 91, 81, 130, 131, 102, 84, 103, 84, 87, 78, 104, 81, 104, 81, 88, 76, 37, 189, 173, 153, 103, 84, 148, 90, 100, 84, 89, 74, 133, 118, 103, 81], other: 114 };
+  }
+});
+
+// node_modules/wavedrom/lib/text-width.js
+var require_text_width = __commonJS({
+  "node_modules/wavedrom/lib/text-width.js"(exports2, module2) {
+    "use strict";
+    var charWidth = require_char_width();
+    module2.exports = function(str7, size) {
+      size = size || 11;
+      let width = 0;
+      for (let i = 0; i < str7.length; i++) {
+        const c = str7.charCodeAt(i);
+        let w = charWidth.chars[c];
+        if (w === void 0) {
+          w = charWidth.other;
+        }
+        width += w;
+      }
+      return width * size / 100;
+    };
+  }
+});
+
+// node_modules/wavedrom/lib/render-label.js
+var require_render_label = __commonJS({
+  "node_modules/wavedrom/lib/render-label.js"(exports2, module2) {
+    "use strict";
+    var tspan = require_lib();
+    var tt = require_tt();
+    var textWidth = require_text_width();
+    function renderLabel(p, text, fontSize) {
+      fontSize = fontSize || 11;
+      const w = textWidth(text, fontSize) + 2;
+      return [
+        "g",
+        tt(p.x, p.y),
+        ["rect", {
+          x: -(w >> 1),
+          y: -(fontSize >> 1),
+          width: w,
+          height: fontSize,
+          style: "fill:#FFF;"
+        }],
+        ["text", {
+          "text-anchor": "middle",
+          y: Math.round(0.3 * fontSize),
+          style: "font-size:" + fontSize + "px;"
+        }].concat(tspan.parse(text))
+      ];
+    }
+    module2.exports = renderLabel;
+  }
+});
+
+// node_modules/wavedrom/lib/render-arcs.js
+var require_render_arcs = __commonJS({
+  "node_modules/wavedrom/lib/render-arcs.js"(exports2, module2) {
+    "use strict";
+    var arcShape = require_arc_shape();
+    var renderLabel = require_render_label();
+    var renderArc = (Edge, from, to, shapeProps) => ["path", {
+      id: "gmark_" + Edge.from + "_" + Edge.to,
+      d: shapeProps.d || "M " + from.x + "," + from.y + " " + to.x + "," + to.y,
+      style: shapeProps.style || "fill:none;stroke:#00F;stroke-width:1"
+    }];
+    var labeler = (lane, Events) => (element, i) => {
+      const text = element.node;
+      lane.period = element.period ? element.period : 1;
+      lane.phase = (element.phase ? element.phase * 2 : 0) + lane.xmin_cfg;
+      if (text) {
+        const stack = text.split("");
+        let pos = 0;
+        while (stack.length) {
+          const eventname = stack.shift();
+          if (eventname !== ".") {
+            Events[eventname] = {
+              x: lane.xs * (2 * pos * lane.period * lane.hscale - lane.phase) + lane.xlabel,
+              y: i * lane.yo + lane.y0 + lane.ys * 0.5
+            };
+          }
+          pos += 1;
+        }
+      }
+    };
+    var archer = (res, Events, arcFontSize) => (element) => {
+      const words = element.trim().split(/\s+/);
+      const Edge = {
+        words,
+        label: element.substring(words[0].length).substring(1),
+        from: words[0].substr(0, 1),
+        to: words[0].substr(-1, 1),
+        shape: words[0].slice(1, -1)
+      };
+      const from = Events[Edge.from];
+      const to = Events[Edge.to];
+      if (from && to) {
+        const shapeProps = arcShape(Edge, from, to);
+        const lx = shapeProps.lx;
+        const ly = shapeProps.ly;
+        res.push(renderArc(Edge, from, to, shapeProps));
+        if (Edge.label) {
+          res.push(renderLabel({ x: lx, y: ly }, Edge.label, arcFontSize));
+        }
+      }
+    };
+    function renderArcs(lanes, index, source, lane) {
+      const arcFontSize = source && source.config && source.config.arcFontSize ? source.config.arcFontSize : 11;
+      const res = ["g", { id: "wavearcs_" + index }];
+      const Events = {};
+      if (Array.isArray(lanes)) {
+        lanes.map(labeler(lane, Events));
+        if (Array.isArray(source.edge)) {
+          source.edge.map(archer(res, Events, arcFontSize));
+        }
+        Object.keys(Events).map(function(k) {
+          if (k === k.toLowerCase()) {
+            if (Events[k].x > 0) {
+              res.push(renderLabel({
+                x: Events[k].x,
+                y: Events[k].y
+              }, k + "", arcFontSize));
+            }
+          }
+        });
+      }
+      return res;
+    }
+    module2.exports = renderArcs;
+  }
+});
+
+// node_modules/wavedrom/lib/render-gaps.js
+var require_render_gaps = __commonJS({
+  "node_modules/wavedrom/lib/render-gaps.js"(exports2, module2) {
+    "use strict";
+    var tt = require_tt();
+    function renderGapUses(text, lane) {
+      const res = [];
+      const Stack = (text || "").split("");
+      let pos = 0;
+      let subCycle = false;
+      while (Stack.length) {
+        let next = Stack.shift();
+        if (next === "<") {
+          subCycle = true;
+          next = Stack.shift();
+        }
+        if (next === ">") {
+          subCycle = false;
+          next = Stack.shift();
+        }
+        if (subCycle) {
+          pos += 1;
+        } else {
+          pos += 2 * lane.period;
+        }
+        if (next === "|") {
+          res.push(["use", tt(
+            lane.xs * ((pos - (subCycle ? 0 : lane.period)) * lane.hscale - lane.phase),
+            0,
+            { "xlink:href": "#gap" }
+          )]);
+        }
+      }
+      return res;
+    }
+    function renderGaps(lanes, index, source, lane) {
+      let res = [];
+      if (lanes) {
+        const lanesLen = lanes.length;
+        const vline = (x) => ["line", {
+          x1: x,
+          x2: x,
+          y2: lanesLen * lane.yo,
+          style: "stroke:#000;stroke-width:1px"
+        }];
+        const lineStyle = "fill:none;stroke:#000;stroke-width:1px";
+        const bracket = {
+          square: {
+            left: ["path", { d: "M  2 0 h -4 v " + (lanesLen * lane.yo - 1) + " h  4", style: lineStyle }],
+            right: ["path", { d: "M -2 0 h  4 v " + (lanesLen * lane.yo - 1) + " h -4", style: lineStyle }]
+          },
+          round: {
+            left: ["path", { d: "M  2 0 a 4 4 0 0 0 -4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 0 0 0  4 4", style: lineStyle }],
+            right: ["path", { d: "M -2 0 a 4 4 1 0 1  4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 1 0 1 -4 4", style: lineStyle }],
+            rightLeft: ["path", {
+              d: "M -5 0 a 4 4 1 0 1  4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 1 0 1 -4 4M  5 0 a 4 4 0 0 0 -4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 0 0 0  4 4",
+              style: lineStyle
+            }],
+            leftLeft: ["path", {
+              d: "M  2 0 a 4 4 0 0 0 -4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 0 0 0  4 4M  5 1 a 3 3 0 0 0 -3 3 v " + (lanesLen * lane.yo - 9) + " a 3 3 0 0 0  3 3",
+              style: lineStyle
+            }],
+            rightRight: ["path", {
+              d: "M -5 1 a 3 3 1 0 1  3 3 v " + (lanesLen * lane.yo - 9) + " a 3 3 1 0 1 -3 3M -2 0 a 4 4 1 0 1  4 4 v " + (lanesLen * lane.yo - 9) + " a 4 4 1 0 1 -4 4",
+              style: lineStyle
+            }]
+          }
+        };
+        const backDrop = (w) => ["rect", {
+          x: -w / 2,
+          width: w,
+          height: lanesLen * lane.yo,
+          style: "fill:#ffffffcc;stroke:none"
+        }];
+        if (source && typeof source.gaps === "string") {
+          const scale = lane.hscale * lane.xs * 2;
+          const gaps = source.gaps.trim().split(/\s+/);
+          for (let x = 0; x < gaps.length; x++) {
+            const c = gaps[x];
+            if (c.match(/^[.]$/)) {
+              continue;
+            }
+            const offset = c === c.toLowerCase() ? 0.5 : 0;
+            let marks = [];
+            switch (c) {
+              case "0":
+                marks = [backDrop(4)];
+                break;
+              case "1":
+                marks = [backDrop(4), vline(0)];
+                break;
+              case "|":
+                marks = [backDrop(4), vline(0)];
+                break;
+              case "2":
+                marks = [backDrop(4), vline(-2), vline(2)];
+                break;
+              case "3":
+                marks = [backDrop(6), vline(-3), vline(0), vline(3)];
+                break;
+              case "[":
+                marks = [backDrop(4), bracket.square.left];
+                break;
+              case "]":
+                marks = [backDrop(4), bracket.square.right];
+                break;
+              case "(":
+                marks = [backDrop(4), bracket.round.left];
+                break;
+              case ")":
+                marks = [backDrop(4), bracket.round.right];
+                break;
+              case ")(":
+                marks = [backDrop(8), bracket.round.rightLeft];
+                break;
+              case "((":
+                marks = [backDrop(8), bracket.round.leftLeft];
+                break;
+              case "))":
+                marks = [backDrop(8), bracket.round.rightRight];
+                break;
+              case "s":
+                for (let idx = 0; idx < lanesLen; idx++) {
+                  if (lanes[idx] && lanes[idx].wave && lanes[idx].wave.length > x) {
+                    marks.push(["use", tt(2, 5 + lane.yo * idx, { "xlink:href": "#gap" })]);
+                  }
+                }
+                break;
+            }
+            res.push(["g", tt(scale * (x + offset))].concat(marks));
+          }
+        }
+        for (let idx = 0; idx < lanesLen; idx++) {
+          const val = lanes[idx];
+          lane.period = val.period ? val.period : 1;
+          lane.phase = (val.phase ? val.phase * 2 : 0) + lane.xmin_cfg;
+          if (typeof val.wave === "string") {
+            const gaps = renderGapUses(val.wave, lane);
+            res = res.concat([["g", tt(
+              0,
+              lane.y0 + idx * lane.yo,
+              { id: "wavegap_" + idx + "_" + index }
+            )].concat(gaps)]);
+          }
+        }
+      }
+      return ["g", { id: "wavegaps_" + index }].concat(res);
+    }
+    module2.exports = renderGaps;
+  }
+});
+
+// node_modules/wavedrom/lib/render-piece-wise.js
+var require_render_piece_wise = __commonJS({
+  "node_modules/wavedrom/lib/render-piece-wise.js"(exports2, module2) {
+    "use strict";
+    var tt = require_tt();
+    var scaled = (d, sx, sy) => {
+      if (sy === void 0) {
+        sy = sx;
+      }
+      let i = 0;
+      while (i < d.length) {
+        switch (d[i].toLowerCase()) {
+          case "h":
+            while (i < d.length && !isNaN(d[i + 1])) {
+              d[i + 1] *= sx;
+              i++;
+            }
+            break;
+          case "v":
+            while (i < d.length && !isNaN(d[i + 1])) {
+              d[i + 1] *= sy;
+              i++;
+            }
+            break;
+          case "m":
+          case "l":
+          case "t":
+            while (i + 1 < d.length && !isNaN(d[i + 1])) {
+              d[i + 1] *= sx;
+              d[i + 2] *= sy;
+              i += 2;
+            }
+            break;
+          case "q":
+            while (i + 3 < d.length && !isNaN(d[i + 1])) {
+              d[i + 1] *= sx;
+              d[i + 2] *= sy;
+              d[i + 3] *= sx;
+              d[i + 4] *= sy;
+              i += 4;
+            }
+            break;
+          case "a":
+            while (i + 6 < d.length && !isNaN(d[i + 1])) {
+              d[i + 1] *= sx;
+              d[i + 2] *= sy;
+              d[i + 6] *= sx;
+              d[i + 7] *= sy;
+              i += 7;
+            }
+            break;
+        }
+        i++;
+      }
+      return d;
+    };
+    function scale(d, cfg) {
+      if (typeof d === "string") {
+        d = d.trim().split(/[\s,]+/);
+      }
+      if (!Array.isArray(d)) {
+        return;
+      }
+      return scaled(d, 2 * cfg.xs, -cfg.ys);
+    }
+    function renderLane(wave, idx, cfg) {
+      if (Array.isArray(wave)) {
+        const tag = wave[0];
+        const attr = wave[1];
+        if (tag === "pw" && typeof attr === "object") {
+          const d = scale(attr.d, cfg);
+          return [
+            "g",
+            tt(0, cfg.yo * idx + cfg.ys + cfg.y0),
+            ["path", { style: "fill:none;stroke:#000;stroke-width:1px;", d }]
+          ];
+        }
+      }
+    }
+    function renderPieceWise(lanes, index, cfg) {
+      let res = ["g"];
+      lanes.map((row, idx) => {
+        const wave = row.wave;
+        if (Array.isArray(wave)) {
+          res.push(renderLane(wave, idx, cfg));
+        }
+      });
+      return res;
+    }
+    module2.exports = renderPieceWise;
+  }
+});
+
+// node_modules/wavedrom/lib/render-lanes.js
+var require_render_lanes = __commonJS({
+  "node_modules/wavedrom/lib/render-lanes.js"(exports2, module2) {
+    "use strict";
+    var renderMarks = require_render_marks();
+    var renderArcs = require_render_arcs();
+    var renderGaps = require_render_gaps();
+    var renderPieceWise = require_render_piece_wise();
+    function renderLanes(index, content, waveLanes, ret, source, lane) {
+      return [
+        renderMarks(content, index, lane, source)
+      ].concat(
+        waveLanes.res,
+        [
+          renderArcs(ret.lanes, index, source, lane),
+          renderGaps(ret.lanes, index, source, lane),
+          renderPieceWise(ret.lanes, index, lane)
+        ]
+      );
+    }
+    module2.exports = renderLanes;
+  }
+});
+
+// node_modules/wavedrom/lib/render-over-under.js
+var require_render_over_under = __commonJS({
+  "node_modules/wavedrom/lib/render-over-under.js"(exports2, module2) {
+    "use strict";
+    var tt = require_tt();
+    var colors = {
+      1: "#000000",
+      2: "#e90000",
+      3: "#3edd00",
+      4: "#0074cd",
+      5: "#ff15db",
+      6: "#af9800",
+      7: "#00864f",
+      8: "#a076ff"
+    };
+    function renderOverUnder(el, key, lane) {
+      const xs = lane.xs;
+      const ys = lane.ys;
+      const period = (el.period || 1) * 2 * xs;
+      const xoffset = -(el.phase || 0) * 2 * xs;
+      const gap1 = 12;
+      const serif = 7;
+      let color2;
+      const y = key === "under" ? ys : 0;
+      let start;
+      function line(x) {
+        return start === void 0 ? [] : [["line", {
+          style: "stroke:" + color2,
+          x1: period * start + gap1,
+          x2: period * x
+        }]];
+      }
+      if (el[key]) {
+        let res = ["g", tt(
+          xoffset,
+          y,
+          { style: "stroke-width:3" }
+        )];
+        const arr = el[key].split("");
+        arr.map(function(dot2, i) {
+          if (dot2 !== "." && start !== void 0) {
+            res = res.concat(line(i));
+            if (key === "over") {
+              res.push(["path", {
+                style: "stroke:none;fill:" + color2,
+                d: "m" + (period * i - serif) + " 0 l" + serif + " " + serif + " v-" + serif + " z"
+              }]);
+            }
+          }
+          if (dot2 === "0") {
+            start = void 0;
+          } else if (dot2 !== ".") {
+            start = i;
+            color2 = colors[dot2] || colors[1];
+          }
+        });
+        if (start !== void 0) {
+          res = res.concat(line(arr.length));
+        }
+        return [res];
+      }
+      return [];
+    }
+    module2.exports = renderOverUnder;
+  }
+});
+
+// node_modules/wavedrom/lib/render-wave-lane.js
+var require_render_wave_lane = __commonJS({
+  "node_modules/wavedrom/lib/render-wave-lane.js"(exports2, module2) {
+    "use strict";
+    var tt = require_tt();
+    var tspan = require_lib();
+    var textWidth = require_text_width();
+    var findLaneMarkers = require_find_lane_markers();
+    var renderOverUnder = require_render_over_under();
+    function renderLaneUses(cont, lane) {
+      const res = [];
+      if (cont[1]) {
+        cont[1].map(function(ref, i) {
+          res.push(["use", tt(i * lane.xs, 0, { "xlink:href": "#" + ref })]);
+        });
+        if (cont[2] && cont[2].length) {
+          const labels = findLaneMarkers(cont[1]);
+          if (labels.length) {
+            labels.map(function(label, i) {
+              if (cont[2] && cont[2][i] !== void 0) {
+                res.push(["text", {
+                  x: label * lane.xs + lane.xlabel,
+                  y: lane.ym,
+                  "text-anchor": "middle",
+                  "xml:space": "preserve"
+                }].concat(tspan.parse(cont[2][i])));
+              }
+            });
+          }
+        }
+      }
+      return res;
+    }
+    function renderWaveLane(content, index, lane) {
+      let xmax = 0;
+      const glengths = [];
+      const res = [];
+      content.map(function(el, j) {
+        const name = el[0][0];
+        if (name) {
+          let xoffset = el[0][1];
+          xoffset = xoffset > 0 ? Math.ceil(2 * xoffset) - 2 * xoffset : -2 * xoffset;
+          res.push(
+            ["g", tt(
+              0,
+              lane.y0 + j * lane.yo,
+              { id: "wavelane_" + j + "_" + index }
+            )].concat([
+              ["text", {
+                x: lane.tgo,
+                y: lane.ym,
+                class: "info",
+                "text-anchor": "end",
+                "xml:space": "preserve"
+              }].concat(tspan.parse(name))
+            ]).concat([
+              ["g", tt(
+                xoffset * lane.xs,
+                0,
+                { id: "wavelane_draw_" + j + "_" + index }
+              )].concat(renderLaneUses(el, lane))
+            ]).concat(
+              renderOverUnder(el[3], "over", lane),
+              renderOverUnder(el[3], "under", lane)
+            )
+          );
+          xmax = Math.max(xmax, (el[1] || []).length);
+          glengths.push(name.textWidth ? name.textWidth : name.charCodeAt ? textWidth(name, 11) : 0);
+        }
+      });
+      lane.xmax = Math.min(xmax, lane.xmax_cfg - lane.xmin_cfg);
+      const xgmax = 0;
+      lane.xg = xgmax + 20;
+      return { glengths, res };
+    }
+    module2.exports = renderWaveLane;
+  }
+});
+
+// node_modules/wavedrom/lib/w3.js
+var require_w3 = __commonJS({
+  "node_modules/wavedrom/lib/w3.js"(exports2, module2) {
+    "use strict";
+    module2.exports = {
+      svg: "http://www.w3.org/2000/svg",
+      xlink: "http://www.w3.org/1999/xlink",
+      xmlns: "http://www.w3.org/XML/1998/namespace"
+    };
+  }
+});
+
+// node_modules/wavedrom/lib/insert-svg-template.js
+var require_insert_svg_template = __commonJS({
+  "node_modules/wavedrom/lib/insert-svg-template.js"(exports2, module2) {
+    "use strict";
+    var tt = require_tt();
+    var w3 = require_w3();
+    function insertSVGTemplate(index, source, lane, waveSkin, content, lanes, groups, notFirstSignal) {
+      const waveSkinNames = Object.keys(waveSkin);
+      let skin = waveSkin.default || waveSkin[waveSkinNames[0]];
+      if (source && source.config && source.config.skin && waveSkin[source.config.skin]) {
+        skin = waveSkin[source.config.skin];
+      }
+      const e = notFirstSignal ? ["svg", { id: "svg", xmlns: w3.svg, "xmlns:xlink": w3.xlink }, ["g"]] : skin;
+      const width = lane.xg + lane.xs * (lane.xmax + 1);
+      const height = content.length * lane.yo + lane.yh0 + lane.yh1 + lane.yf0 + lane.yf1;
+      const body = e[e.length - 1];
+      body[1] = { id: "waves_" + index };
+      body[2] = ["rect", { width, height, style: "stroke:none;fill:white" }];
+      body[3] = ["g", tt(
+        lane.xg + 0.5,
+        lane.yh0 + lane.yh1 + 0.5,
+        { id: "lanes_" + index }
+      )].concat(lanes);
+      body[4] = ["g", {
+        id: "groups_" + index
+      }, groups];
+      const head = e[1];
+      head.id = "svgcontent_" + index;
+      head.xmlns = w3.svg;
+      head["xmlns:xlink"] = w3.xlink;
+      head.height = height;
+      head.width = width;
+      head.viewBox = "0 0 " + width + " " + height;
+      head.overflow = "hidden";
+      return e;
+    }
+    module2.exports = insertSVGTemplate;
+  }
+});
+
+// node_modules/wavedrom/lib/render-signal.js
+var require_render_signal = __commonJS({
+  "node_modules/wavedrom/lib/render-signal.js"(exports2, module2) {
+    "use strict";
+    var rec = require_rec();
+    var lane = require_lane();
+    var parseConfig = require_parse_config();
+    var parseWaveLanes = require_parse_wave_lanes();
+    var renderGroups = require_render_groups();
+    var renderLanes = require_render_lanes();
+    var renderWaveLane = require_render_wave_lane();
+    var insertSVGTemplate = require_insert_svg_template();
+    function laneParamsFromSkin(index, source, lane2, waveSkin) {
+      if (index !== 0) {
+        return;
+      }
+      const waveSkinNames = Object.keys(waveSkin);
+      if (waveSkinNames.length === 0) {
+        throw new Error("no skins found");
+      }
+      let skin = waveSkin.default || waveSkin[waveSkinNames[0]];
+      if (source && source.config && source.config.skin && waveSkin[source.config.skin]) {
+        skin = waveSkin[source.config.skin];
+      }
+      const socket = skin[3][1][2][1];
+      lane2.xs = Number(socket.width);
+      lane2.ys = Number(socket.height);
+      lane2.xlabel = Number(socket.x);
+      lane2.ym = Number(socket.y);
+    }
+    function renderSignal(index, source, waveSkin, notFirstSignal) {
+      laneParamsFromSkin(index, source, lane, waveSkin);
+      parseConfig(source, lane);
+      const ret = rec(source.signal, { x: 0, y: 0, xmax: 0, width: [], lanes: [], groups: [] });
+      const content = parseWaveLanes(ret.lanes, lane);
+      const waveLanes = renderWaveLane(content, index, lane);
+      const waveGroups = renderGroups(ret.groups, index, lane);
+      const xmax = waveLanes.glengths.reduce((res, len2, i) => Math.max(res, len2 + ret.width[i]), 0);
+      lane.xg = Math.ceil((xmax - lane.tgo) / lane.xs) * lane.xs;
+      return insertSVGTemplate(
+        index,
+        source,
+        lane,
+        waveSkin,
+        content,
+        renderLanes(index, content, waveLanes, ret, source, lane),
+        waveGroups,
+        notFirstSignal
+      );
+    }
+    module2.exports = renderSignal;
+  }
+});
+
+// node_modules/wavedrom/lib/render-any.js
+var require_render_any = __commonJS({
+  "node_modules/wavedrom/lib/render-any.js"(exports2, module2) {
+    "use strict";
+    var renderAssign = require_render_assign();
+    var renderReg = require_render_reg();
+    var renderSignal = require_render_signal();
+    var w3 = require_w3();
+    function renderAny2(index, source, waveSkin, notFirstSignal) {
+      const res = source.signal ? renderSignal(index, source, waveSkin, notFirstSignal) : source.assign ? renderAssign(index, source) : source.reg ? renderReg(index, source) : ["div", {}];
+      if (res[0] === "svg") {
+        res[1].xmlns = w3.svg;
+        res[1]["xmlns:xlink"] = w3.xlink;
+      }
+      res[1].class = "WaveDrom";
+      return res;
+    }
+    module2.exports = renderAny2;
+  }
+});
+
+// node_modules/wavedrom/skins/default.js
+var require_default = __commonJS({
+  "node_modules/wavedrom/skins/default.js"(exports2, module2) {
+    var WaveSkin = WaveSkin || {};
+    WaveSkin.default = ["svg", { id: "svg", height: "0" }, ["style", { type: "text/css" }, "text{font-size:11pt;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;fill-opacity:1;font-family:Helvetica}.h1{font-size:33pt;font-weight:bold}.h2{font-size:27pt;font-weight:bold}.h3{font-size:20pt;font-weight:bold}.h4{font-size:14pt;font-weight:bold}.h5{font-size:11pt;font-weight:bold}.h6{font-size:8pt;font-weight:bold}.muted{fill:#aaa}.warning{fill:#f6b900}.error{fill:#f60000}.info{fill:#0041c4}.success{fill:#00ab00}.s1{fill:none;stroke:#000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}.s2{fill:none;stroke:#000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}.s3{color:#000;fill:none;stroke:#000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:1, 3;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible}.s4{color:#000;fill:none;stroke:#000;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible}.s5{fill:#fff;stroke:none}.s6{fill:#000;fill-opacity:1;stroke:none}.s7{color:#000;fill:#fff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s8{color:#000;fill:#ffffb4;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s9{color:#000;fill:#ffe0b9;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s10{color:#000;fill:#b9e0ff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s11{color:#000;fill:#ccfdfe;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s12{color:#000;fill:#cdfdc5;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s13{color:#000;fill:#f0c1fb;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s14{color:#000;fill:#f5c2c0;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s15{fill:#0041c4;fill-opacity:1;stroke:none}.s16{fill:none;stroke:#0041c4;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}"], ["defs", ["g", { id: "socket" }, ["rect", { y: "15", x: "6", height: "20", width: "20" }]], ["g", { id: "pclk" }, ["path", { d: "M0,20 0,0 20,0", class: "s1" }]], ["g", { id: "nclk" }, ["path", { d: "m0,0 0,20 20,0", class: "s1" }]], ["g", { id: "000" }, ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "0m0" }, ["path", { d: "m0,20 3,0 3,-10 3,10 11,0", class: "s1" }]], ["g", { id: "0m1" }, ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "0mx" }, ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 5,20", class: "s2" }], ["path", { d: "M20,0 4,16", class: "s2" }], ["path", { d: "M15,0 6,9", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "0md" }, ["path", { d: "m8,20 10,0", class: "s3" }], ["path", { d: "m0,20 5,0", class: "s1" }]], ["g", { id: "0mu" }, ["path", { d: "m0,20 3,0 C 7,10 10.107603,0 20,0", class: "s1" }]], ["g", { id: "0mz" }, ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "111" }, ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "1m0" }, ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }]], ["g", { id: "1m1" }, ["path", { d: "M0,0 3,0 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "1mx" }, ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 6,9", class: "s2" }], ["path", { d: "M10,0 5,5", class: "s2" }], ["path", { d: "M3.5,1.5 5,0", class: "s2" }]], ["g", { id: "1md" }, ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }]], ["g", { id: "1mu" }, ["path", { d: "M0,0 5,0", class: "s1" }], ["path", { d: "M8,0 18,0", class: "s3" }]], ["g", { id: "1mz" }, ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }]], ["g", { id: "xxx" }, ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,5 5,0", class: "s2" }], ["path", { d: "M0,10 10,0", class: "s2" }], ["path", { d: "M0,15 15,0", class: "s2" }], ["path", { d: "M0,20 20,0", class: "s2" }], ["path", { d: "M5,20 20,5", class: "s2" }], ["path", { d: "M10,20 20,10", class: "s2" }], ["path", { d: "m15,20 5,-5", class: "s2" }]], ["g", { id: "xm0" }, ["path", { d: "M0,0 4,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,5 4,1", class: "s2" }], ["path", { d: "M0,10 5,5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 7,13", class: "s2" }], ["path", { d: "M5,20 8,17", class: "s2" }]], ["g", { id: "xm1" }, ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 4,20 9,0", class: "s1" }], ["path", { d: "M0,5 5,0", class: "s2" }], ["path", { d: "M0,10 9,1", class: "s2" }], ["path", { d: "M0,15 7,8", class: "s2" }], ["path", { d: "M0,20 5,15", class: "s2" }]], ["g", { id: "xmx" }, ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,5 5,0", class: "s2" }], ["path", { d: "M0,10 10,0", class: "s2" }], ["path", { d: "M0,15 15,0", class: "s2" }], ["path", { d: "M0,20 20,0", class: "s2" }], ["path", { d: "M5,20 20,5", class: "s2" }], ["path", { d: "M10,20 20,10", class: "s2" }], ["path", { d: "m15,20 5,-5", class: "s2" }]], ["g", { id: "xmd" }, ["path", { d: "m0,0 4,0 c 3,10 6,20 16,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,5 4,1", class: "s2" }], ["path", { d: "M0,10 5.5,4.5", class: "s2" }], ["path", { d: "M0,15 6.5,8.5", class: "s2" }], ["path", { d: "M0,20 8,12", class: "s2" }], ["path", { d: "m5,20 5,-5", class: "s2" }], ["path", { d: "m10,20 2.5,-2.5", class: "s2" }]], ["g", { id: "xmu" }, ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "m0,20 4,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,5 5,0", class: "s2" }], ["path", { d: "M0,10 10,0", class: "s2" }], ["path", { d: "M0,15 10,5", class: "s2" }], ["path", { d: "M0,20 6,14", class: "s2" }]], ["g", { id: "xmz" }, ["path", { d: "m0,0 4,0 c 6,10 11,10 16,10", class: "s1" }], ["path", { d: "m0,20 4,0 C 10,10 15,10 20,10", class: "s1" }], ["path", { d: "M0,5 4.5,0.5", class: "s2" }], ["path", { d: "M0,10 6.5,3.5", class: "s2" }], ["path", { d: "M0,15 8.5,6.5", class: "s2" }], ["path", { d: "M0,20 11.5,8.5", class: "s2" }]], ["g", { id: "ddd" }, ["path", { d: "m0,20 20,0", class: "s3" }]], ["g", { id: "dm0" }, ["path", { d: "m0,20 10,0", class: "s3" }], ["path", { d: "m12,20 8,0", class: "s1" }]], ["g", { id: "dm1" }, ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "dmx" }, ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 5,20", class: "s2" }], ["path", { d: "M20,0 4,16", class: "s2" }], ["path", { d: "M15,0 6,9", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "dmd" }, ["path", { d: "m0,20 20,0", class: "s3" }]], ["g", { id: "dmu" }, ["path", { d: "m0,20 3,0 C 7,10 10.107603,0 20,0", class: "s1" }]], ["g", { id: "dmz" }, ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "uuu" }, ["path", { d: "M0,0 20,0", class: "s3" }]], ["g", { id: "um0" }, ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }]], ["g", { id: "um1" }, ["path", { d: "M0,0 10,0", class: "s3" }], ["path", { d: "m12,0 8,0", class: "s1" }]], ["g", { id: "umx" }, ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 6,9", class: "s2" }], ["path", { d: "M10,0 5,5", class: "s2" }], ["path", { d: "M3.5,1.5 5,0", class: "s2" }]], ["g", { id: "umd" }, ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }]], ["g", { id: "umu" }, ["path", { d: "M0,0 20,0", class: "s3" }]], ["g", { id: "umz" }, ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s4" }]], ["g", { id: "zzz" }, ["path", { d: "m0,10 20,0", class: "s1" }]], ["g", { id: "zm0" }, ["path", { d: "m0,10 6,0 3,10 11,0", class: "s1" }]], ["g", { id: "zm1" }, ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "zmx" }, ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 6.5,8.5", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "zmd" }, ["path", { d: "m0,10 7,0 c 3,5 8,10 13,10", class: "s1" }]], ["g", { id: "zmu" }, ["path", { d: "m0,10 7,0 C 10,5 15,0 20,0", class: "s1" }]], ["g", { id: "zmz" }, ["path", { d: "m0,10 20,0", class: "s1" }]], ["g", { id: "gap" }, ["path", { d: "m7,-2 -4,0 c -5,0 -5,24 -10,24 l 4,0 C 2,22 2,-2 7,-2 z", class: "s5" }], ["path", { d: "M-7,22 C -2,22 -2,-2 3,-2", class: "s1" }], ["path", { d: "M-3,22 C 2,22 2,-2 7,-2", class: "s1" }]], ["g", { id: "Pclk" }, ["path", { d: "M-3,12 0,3 3,12 C 1,11 -1,11 -3,12 z", class: "s6" }], ["path", { d: "M0,20 0,0 20,0", class: "s1" }]], ["g", { id: "Nclk" }, ["path", { d: "M-3,8 0,17 3,8 C 1,9 -1,9 -3,8 z", class: "s6" }], ["path", { d: "m0,0 0,20 20,0", class: "s1" }]], ["g", { id: "0mv-2" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s7" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-2" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s7" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-2" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s7" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-2" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s7" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-2" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s7" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-2" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s7" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-2" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s7" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-2" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-2" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s7" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-2" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s7" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-2" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s7" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-3" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s8" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-3" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s8" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-3" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s8" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-3" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s8" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-3" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s8" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-3" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s8" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-3" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s8" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-3" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-3" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s8" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-3" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s8" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-3" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s8" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-4" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s9" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-4" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s9" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-4" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s9" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-4" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s9" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-4" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s9" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-4" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s9" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-4" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s9" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-4" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-4" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s9" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-4" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s9" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-4" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s9" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-5" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s10" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-5" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s10" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-5" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s10" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-5" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s10" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-5" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s10" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-5" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s10" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-5" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s10" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-5" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-5" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s10" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-5" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s10" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-5" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s10" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-6" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s11" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-6" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s11" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-6" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s11" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-6" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s11" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-6" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s11" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-6" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s11" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-6" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s11" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-6" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-6" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s11" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-6" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s11" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-6" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s11" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-7" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s12" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-7" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s12" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-7" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s12" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-7" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s12" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-7" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s12" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-7" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s12" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-7" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s12" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-7" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-7" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s12" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-7" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s12" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-7" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s12" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-8" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s13" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-8" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s13" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-8" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s13" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-8" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s13" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-8" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s13" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-8" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s13" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-8" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s13" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-8" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-8" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s13" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-8" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s13" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-8" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s13" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "0mv-9" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s14" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "1mv-9" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s14" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "xmv-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,5 3.5,1.5", class: "s2" }], ["path", { d: "M0,10 4.5,5.5", class: "s2" }], ["path", { d: "M0,15 6,9", class: "s2" }], ["path", { d: "M0,20 4,16", class: "s2" }]], ["g", { id: "dmv-9" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s14" }], ["path", { d: "M3,20 9,0 20,0", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "umv-9" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s14" }], ["path", { d: "m3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "zmv-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "m6,10 3,10 11,0", class: "s1" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s1" }]], ["g", { id: "vvv-9" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s14" }], ["path", { d: "m0,20 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vm0-9" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s14" }], ["path", { d: "M0,0 3,0 9,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vm1-9" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s14" }], ["path", { d: "M0,0 20,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0", class: "s1" }]], ["g", { id: "vmx-9" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }], ["path", { d: "m20,15 -5,5", class: "s2" }], ["path", { d: "M20,10 10,20", class: "s2" }], ["path", { d: "M20,5 8,17", class: "s2" }], ["path", { d: "M20,0 7,13", class: "s2" }], ["path", { d: "M15,0 7,8", class: "s2" }], ["path", { d: "M10,0 9,1", class: "s2" }]], ["g", { id: "vmd-9" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s14" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s1" }], ["path", { d: "m0,20 20,0", class: "s1" }]], ["g", { id: "vmu-9" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s14" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s1" }], ["path", { d: "M0,0 20,0", class: "s1" }]], ["g", { id: "vmz-9" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s14" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s1" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s1" }]], ["g", { id: "vmv-2-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s7" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-2-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s7" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-3-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-4-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-5-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-6-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-7-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-8-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "vmv-9-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s1" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s1" }]], ["g", { id: "arrow0" }, ["path", { d: "m-12,-3 9,3 -9,3 c 1,-2 1,-4 0,-6 z", class: "s15" }], ["path", { d: "M0,0 -15,0", class: "s16" }]], ["marker", { id: "arrowhead", style: "fill:#0041c4", markerHeight: 7, markerWidth: 10, markerUnits: "strokeWidth", viewBox: "0 -4 11 8", refX: 15, refY: 0, orient: "auto" }, ["path", { d: "M0 -4 11 0 0 4z" }]], ["marker", { id: "arrowtail", style: "fill:#0041c4", markerHeight: 7, markerWidth: 10, markerUnits: "strokeWidth", viewBox: "-11 -4 11 8", refX: -15, refY: 0, orient: "auto" }, ["path", { d: "M0 -4 -11 0 0 4z" }]], ["marker", { id: "tee", style: "fill:#0041c4", markerHeight: 6, markerWidth: 1, markerUnits: "strokeWidth", viewBox: "0 0 1 6", refX: 0, refY: 3, orient: "auto" }, ["path", { d: "M 0 0 L 0 6", style: "stroke:#0041c4;stroke-width:2" }]]], ["g", { id: "waves" }, ["g", { id: "lanes" }], ["g", { id: "groups" }]]];
+    try {
+      module2.exports = WaveSkin;
+    } catch (err) {
+    }
+  }
+});
+
+// node_modules/wavedrom/skins/dark.js
+var require_dark = __commonJS({
+  "node_modules/wavedrom/skins/dark.js"(exports2, module2) {
+    var WaveSkin = WaveSkin || {};
+    WaveSkin.dark = ["svg", { id: "svg", height: "0" }, ["style", { type: "text/css" }, "text{font-size:11pt;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:center;fill-opacity:1;font-family:Helvetica}.h1{font-size:33pt;font-weight:bold}.h2{font-size:27pt;font-weight:bold}.h3{font-size:20pt;font-weight:bold}.h4{font-size:14pt;font-weight:bold}.h5{font-size:11pt;font-weight:bold}.h6{font-size:8pt;font-weight:bold}.muted{fill:#aaa}.warning{fill:#ffe000}.error{fill:#ff232a}.info{fill:#b8fffc}.success{fill:#24ff23}text{fill:#ffffff}.s1{fill:none;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}.s2{fill:none;stroke:#fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}.s3{fill:none;stroke:#fff;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}.s4{color:#000;fill:none;stroke:#fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:1, 3;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible}.s5{color:#000;fill:none;stroke:#fff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;marker:none;visibility:visible;display:inline;overflow:visible}.s6{fill:#000000;stroke:none;fill-opacity:1}.s7{fill:#ffffff;fill-opacity:1;stroke:none}.s8{color:#000;fill:#000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s9{color:#000;fill:#0010c0;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s10{color:#000;fill:#2d6500;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s11{color:#000;fill:#870500;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s12{color:#000;fill:#007a80;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s13{color:#000;fill:#680066;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s14{color:#000;fill:#5f5f5f;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s15{color:#000;fill:#2e005e;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1px;marker:none;visibility:visible;display:inline;overflow:visible}.s16{fill:#fff400;fill-opacity:1;stroke:none}.s17{fill:none;stroke:#fff400;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none}"], ["defs", ["g", { id: "socket" }, ["rect", { y: "15", x: "6", height: "20", width: "20" }]], ["g", { id: "pclk" }, ["path", { d: "M0,20 0,0 20,0", class: "s1" }]], ["g", { id: "nclk" }, ["path", { d: "m0,0 0,20 20,0", class: "s2" }]], ["g", { id: "000" }, ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "0m0" }, ["path", { d: "m0,20 3,0 3,-10 3,10 11,0", class: "s2" }]], ["g", { id: "0m1" }, ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "0mx" }, ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 5,20", class: "s3" }], ["path", { d: "M20,0 4,16", class: "s3" }], ["path", { d: "M15,0 6,9", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "0md" }, ["path", { d: "m8,20 10,0", class: "s4" }], ["path", { d: "m0,20 5,0", class: "s2" }]], ["g", { id: "0mu" }, ["path", { d: "m0,20 3,0 C 7,10 10.107603,0 20,0", class: "s2" }]], ["g", { id: "0mz" }, ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "111" }, ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "1m0" }, ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }]], ["g", { id: "1m1" }, ["path", { d: "M0,0 3,0 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "1mx" }, ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 6,9", class: "s3" }], ["path", { d: "M10,0 5,5", class: "s3" }], ["path", { d: "M3.5,1.5 5,0", class: "s3" }]], ["g", { id: "1md" }, ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }]], ["g", { id: "1mu" }, ["path", { d: "M0,0 5,0", class: "s2" }], ["path", { d: "M8,0 18,0", class: "s4" }]], ["g", { id: "1mz" }, ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }]], ["g", { id: "xxx" }, ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,5 5,0", class: "s3" }], ["path", { d: "M0,10 10,0", class: "s3" }], ["path", { d: "M0,15 15,0", class: "s3" }], ["path", { d: "M0,20 20,0", class: "s3" }], ["path", { d: "M5,20 20,5", class: "s3" }], ["path", { d: "M10,20 20,10", class: "s3" }], ["path", { d: "m15,20 5,-5", class: "s3" }]], ["g", { id: "xm0" }, ["path", { d: "M0,0 4,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,5 4,1", class: "s3" }], ["path", { d: "M0,10 5,5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 7,13", class: "s3" }], ["path", { d: "M5,20 8,17", class: "s3" }]], ["g", { id: "xm1" }, ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 4,20 9,0", class: "s2" }], ["path", { d: "M0,5 5,0", class: "s3" }], ["path", { d: "M0,10 9,1", class: "s3" }], ["path", { d: "M0,15 7,8", class: "s3" }], ["path", { d: "M0,20 5,15", class: "s3" }]], ["g", { id: "xmx" }, ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,5 5,0", class: "s3" }], ["path", { d: "M0,10 10,0", class: "s3" }], ["path", { d: "M0,15 15,0", class: "s3" }], ["path", { d: "M0,20 20,0", class: "s3" }], ["path", { d: "M5,20 20,5", class: "s3" }], ["path", { d: "M10,20 20,10", class: "s3" }], ["path", { d: "m15,20 5,-5", class: "s3" }]], ["g", { id: "xmd" }, ["path", { d: "m0,0 4,0 c 3,10 6,20 16,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,5 4,1", class: "s3" }], ["path", { d: "M0,10 5.5,4.5", class: "s3" }], ["path", { d: "M0,15 6.5,8.5", class: "s3" }], ["path", { d: "M0,20 8,12", class: "s3" }], ["path", { d: "m5,20 5,-5", class: "s3" }], ["path", { d: "m10,20 2.5,-2.5", class: "s3" }]], ["g", { id: "xmu" }, ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "m0,20 4,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,5 5,0", class: "s3" }], ["path", { d: "M0,10 10,0", class: "s3" }], ["path", { d: "M0,15 10,5", class: "s3" }], ["path", { d: "M0,20 6,14", class: "s3" }]], ["g", { id: "xmz" }, ["path", { d: "m0,0 4,0 c 6,10 11,10 16,10", class: "s2" }], ["path", { d: "m0,20 4,0 C 10,10 15,10 20,10", class: "s2" }], ["path", { d: "M0,5 4.5,0.5", class: "s3" }], ["path", { d: "M0,10 6.5,3.5", class: "s3" }], ["path", { d: "M0,15 8.5,6.5", class: "s3" }], ["path", { d: "M0,20 11.5,8.5", class: "s3" }]], ["g", { id: "ddd" }, ["path", { d: "m0,20 20,0", class: "s4" }]], ["g", { id: "dm0" }, ["path", { d: "m0,20 10,0", class: "s4" }], ["path", { d: "m12,20 8,0", class: "s2" }]], ["g", { id: "dm1" }, ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "dmx" }, ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 5,20", class: "s3" }], ["path", { d: "M20,0 4,16", class: "s3" }], ["path", { d: "M15,0 6,9", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "dmd" }, ["path", { d: "m0,20 20,0", class: "s4" }]], ["g", { id: "dmu" }, ["path", { d: "m0,20 3,0 C 7,10 10.107603,0 20,0", class: "s2" }]], ["g", { id: "dmz" }, ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "uuu" }, ["path", { d: "M0,0 20,0", class: "s4" }]], ["g", { id: "um0" }, ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }]], ["g", { id: "um1" }, ["path", { d: "M0,0 10,0", class: "s4" }], ["path", { d: "m12,0 8,0", class: "s2" }]], ["g", { id: "umx" }, ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 6,9", class: "s3" }], ["path", { d: "M10,0 5,5", class: "s3" }], ["path", { d: "M3.5,1.5 5,0", class: "s3" }]], ["g", { id: "umd" }, ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }]], ["g", { id: "umu" }, ["path", { d: "M0,0 20,0", class: "s4" }]], ["g", { id: "umz" }, ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s5" }]], ["g", { id: "zzz" }, ["path", { d: "m0,10 20,0", class: "s2" }]], ["g", { id: "zm0" }, ["path", { d: "m0,10 6,0 3,10 11,0", class: "s2" }]], ["g", { id: "zm1" }, ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "zmx" }, ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 6.5,8.5", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "zmd" }, ["path", { d: "m0,10 7,0 c 3,5 8,10 13,10", class: "s2" }]], ["g", { id: "zmu" }, ["path", { d: "m0,10 7,0 C 10,5 15,0 20,0", class: "s2" }]], ["g", { id: "zmz" }, ["path", { d: "m0,10 20,0", class: "s2" }]], ["g", { id: "gap" }, ["path", { d: "m7,-2 -4,0 c -5,0 -5,24 -10,24 l 4,0 C 2,22 2,-2 7,-2 z", class: "s6" }], ["path", { d: "M-7,22 C -2,22 -2,-2 3,-2", class: "s2" }], ["path", { d: "M-3,22 C 2,22 2,-2 7,-2", class: "s2" }]], ["g", { id: "Pclk" }, ["path", { d: "M-3,12 0,3 3,12 C 1,11 -1,11 -3,12 z", class: "s7" }], ["path", { d: "M0,20 0,0 20,0", class: "s2" }]], ["g", { id: "Nclk" }, ["path", { d: "M-3,8 0,17 3,8 C 1,9 -1,9 -3,8 z", class: "s7" }], ["path", { d: "m0,0 0,20 20,0", class: "s2" }]], ["g", { id: "0mv-2" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s8" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-2" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s8" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-2" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s8" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-2" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s8" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-2" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s8" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-2" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s8" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-2" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s8" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-2" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-2" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s8" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-2" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s8" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-2" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s8" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-3" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s9" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-3" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s9" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-3" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s9" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-3" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s9" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-3" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s9" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-3" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s9" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-3" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s9" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-3" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-3" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s9" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-3" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s9" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-3" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s9" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-4" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s10" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-4" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s10" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-4" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s10" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-4" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s10" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-4" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s10" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-4" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s10" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-4" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s10" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-4" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-4" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s10" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-4" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s10" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-4" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s10" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-5" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s11" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-5" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s11" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-5" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s11" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-5" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s11" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-5" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s11" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-5" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s11" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-5" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s11" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-5" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-5" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s11" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-5" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s11" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-5" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s11" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-6" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s12" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-6" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s12" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-6" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s12" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-6" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s12" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-6" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s12" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-6" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s12" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-6" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s12" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-6" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-6" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s12" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-6" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s12" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-6" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s12" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-7" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s13" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-7" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s13" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-7" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s13" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-7" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s13" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-7" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s13" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-7" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s13" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-7" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s13" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-7" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-7" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s13" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-7" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s13" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-7" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s13" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-8" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s14" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-8" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s14" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-8" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s14" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-8" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s14" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-8" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s14" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-8" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s14" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-8" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s14" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-8" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-8" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s14" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-8" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s14" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-8" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s14" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "0mv-9" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s15" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "1mv-9" }, ["path", { d: "M2.875,0 20,0 20,20 9,20 z", class: "s15" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "xmv-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,5 3.5,1.5", class: "s3" }], ["path", { d: "M0,10 4.5,5.5", class: "s3" }], ["path", { d: "M0,15 6,9", class: "s3" }], ["path", { d: "M0,20 4,16", class: "s3" }]], ["g", { id: "dmv-9" }, ["path", { d: "M9,0 20,0 20,20 3,20 z", class: "s15" }], ["path", { d: "M3,20 9,0 20,0", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "umv-9" }, ["path", { d: "M3,0 20,0 20,20 9,20 z", class: "s15" }], ["path", { d: "m3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "zmv-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "m6,10 3,10 11,0", class: "s2" }], ["path", { d: "M0,10 6,10 9,0 20,0", class: "s2" }]], ["g", { id: "vvv-9" }, ["path", { d: "M20,20 0,20 0,0 20,0", class: "s15" }], ["path", { d: "m0,20 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vm0-9" }, ["path", { d: "M0,20 0,0 3,0 9,20", class: "s15" }], ["path", { d: "M0,0 3,0 9,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vm1-9" }, ["path", { d: "M0,0 0,20 3,20 9,0", class: "s15" }], ["path", { d: "M0,0 20,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0", class: "s2" }]], ["g", { id: "vmx-9" }, ["path", { d: "M0,0 0,20 3,20 6,10 3,0", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }], ["path", { d: "m20,15 -5,5", class: "s3" }], ["path", { d: "M20,10 10,20", class: "s3" }], ["path", { d: "M20,5 8,17", class: "s3" }], ["path", { d: "M20,0 7,13", class: "s3" }], ["path", { d: "M15,0 7,8", class: "s3" }], ["path", { d: "M10,0 9,1", class: "s3" }]], ["g", { id: "vmd-9" }, ["path", { d: "m0,0 0,20 20,0 C 10,20 7,10 3,0", class: "s15" }], ["path", { d: "m0,0 3,0 c 4,10 7,20 17,20", class: "s2" }], ["path", { d: "m0,20 20,0", class: "s2" }]], ["g", { id: "vmu-9" }, ["path", { d: "m0,0 0,20 3,0 C 7,10 10,0 20,0", class: "s15" }], ["path", { d: "m0,20 3,0 C 7,10 10,0 20,0", class: "s2" }], ["path", { d: "M0,0 20,0", class: "s2" }]], ["g", { id: "vmz-9" }, ["path", { d: "M0,0 3,0 C 10,10 15,10 20,10 15,10 10,10 3,20 L 0,20", class: "s15" }], ["path", { d: "m0,0 3,0 c 7,10 12,10 17,10", class: "s2" }], ["path", { d: "m0,20 3,0 C 10,10 15,10 20,10", class: "s2" }]], ["g", { id: "vmv-2-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-2" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s8" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-3" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s9" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-4" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s10" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-5" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s11" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-6" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s12" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-7" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s13" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-8" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s14" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-2-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s8" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-3-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s9" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-4-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s10" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-5-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s11" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-6-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s12" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-7-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s13" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-8-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s14" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "vmv-9-9" }, ["path", { d: "M9,0 20,0 20,20 9,20 6,10 z", class: "s15" }], ["path", { d: "M3,0 0,0 0,20 3,20 6,10 z", class: "s15" }], ["path", { d: "m0,0 3,0 6,20 11,0", class: "s2" }], ["path", { d: "M0,20 3,20 9,0 20,0", class: "s2" }]], ["g", { id: "arrow0" }, ["path", { d: "m-12,-3 9,3 -9,3 c 1,-2 1,-4 0,-6 z", class: "s16" }], ["path", { d: "M0,0 -15,0", class: "s17" }]], ["marker", { id: "arrowhead", style: "fill:#0041c4", markerHeight: 7, markerWidth: 10, markerUnits: "strokeWidth", viewBox: "0 -4 11 8", refX: 15, refY: 0, orient: "auto" }, ["path", { d: "M0 -4 11 0 0 4z" }]], ["marker", { id: "arrowtail", style: "fill:#0041c4", markerHeight: 7, markerWidth: 10, markerUnits: "strokeWidth", viewBox: "-11 -4 11 8", refX: -15, refY: 0, orient: "auto" }, ["path", { d: "M0 -4 -11 0 0 4z" }]], ["marker", { id: "tee", style: "fill:#0041c4", markerHeight: 6, markerWidth: 1, markerUnits: "strokeWidth", viewBox: "0 0 1 6", refX: 0, refY: 3, orient: "auto" }, ["path", { d: "M 0 0 L 0 6", style: "stroke:#0041c4;stroke-width:2" }]]], ["g", { id: "waves" }, ["g", { id: "lanes" }], ["g", { id: "groups" }]]];
+    try {
+      module2.exports = WaveSkin;
+    } catch (err) {
+    }
+  }
+});
+
+// node_modules/json5/lib/unicode.js
+var require_unicode = __commonJS({
+  "node_modules/json5/lib/unicode.js"(exports2, module2) {
+    module2.exports.Space_Separator = /[\u1680\u2000-\u200A\u202F\u205F\u3000]/;
+    module2.exports.ID_Start = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0370-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E\u066F\u0671-\u06D3\u06D5\u06E5\u06E6\u06EE\u06EF\u06FA-\u06FC\u06FF\u0710\u0712-\u072F\u074D-\u07A5\u07B1\u07CA-\u07EA\u07F4\u07F5\u07FA\u0800-\u0815\u081A\u0824\u0828\u0840-\u0858\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u0904-\u0939\u093D\u0950\u0958-\u0961\u0971-\u0980\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BD\u09CE\u09DC\u09DD\u09DF-\u09E1\u09F0\u09F1\u09FC\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A59-\u0A5C\u0A5E\u0A72-\u0A74\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABD\u0AD0\u0AE0\u0AE1\u0AF9\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3D\u0B5C\u0B5D\u0B5F-\u0B61\u0B71\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BD0\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D\u0C58-\u0C5A\u0C60\u0C61\u0C80\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBD\u0CDE\u0CE0\u0CE1\u0CF1\u0CF2\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D3A\u0D3D\u0D4E\u0D54-\u0D56\u0D5F-\u0D61\u0D7A-\u0D7F\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0E01-\u0E30\u0E32\u0E33\u0E40-\u0E46\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB0\u0EB2\u0EB3\u0EBD\u0EC0-\u0EC4\u0EC6\u0EDC-\u0EDF\u0F00\u0F40-\u0F47\u0F49-\u0F6C\u0F88-\u0F8C\u1000-\u102A\u103F\u1050-\u1055\u105A-\u105D\u1061\u1065\u1066\u106E-\u1070\u1075-\u1081\u108E\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176C\u176E-\u1770\u1780-\u17B3\u17D7\u17DC\u1820-\u1877\u1880-\u1884\u1887-\u18A8\u18AA\u18B0-\u18F5\u1900-\u191E\u1950-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u1A00-\u1A16\u1A20-\u1A54\u1AA7\u1B05-\u1B33\u1B45-\u1B4B\u1B83-\u1BA0\u1BAE\u1BAF\u1BBA-\u1BE5\u1C00-\u1C23\u1C4D-\u1C4F\u1C5A-\u1C7D\u1C80-\u1C88\u1CE9-\u1CEC\u1CEE-\u1CF1\u1CF5\u1CF6\u1D00-\u1DBF\u1E00-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u2071\u207F\u2090-\u209C\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CEE\u2CF2\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D80-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2E2F\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303C\u3041-\u3096\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA61F\uA62A\uA62B\uA640-\uA66E\uA67F-\uA69D\uA6A0-\uA6EF\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA801\uA803-\uA805\uA807-\uA80A\uA80C-\uA822\uA840-\uA873\uA882-\uA8B3\uA8F2-\uA8F7\uA8FB\uA8FD\uA90A-\uA925\uA930-\uA946\uA960-\uA97C\uA984-\uA9B2\uA9CF\uA9E0-\uA9E4\uA9E6-\uA9EF\uA9FA-\uA9FE\uAA00-\uAA28\uAA40-\uAA42\uAA44-\uAA4B\uAA60-\uAA76\uAA7A\uAA7E-\uAAAF\uAAB1\uAAB5\uAAB6\uAAB9-\uAABD\uAAC0\uAAC2\uAADB-\uAADD\uAAE0-\uAAEA\uAAF2-\uAAF4\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABE2\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D\uFB1F-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE70-\uFE74\uFE76-\uFEFC\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDE80-\uDE9C\uDEA0-\uDED0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF75\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00\uDE10-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE4\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC03-\uDC37\uDC83-\uDCAF\uDCD0-\uDCE8\uDD03-\uDD26\uDD50-\uDD72\uDD76\uDD83-\uDDB2\uDDC1-\uDDC4\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE2B\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEDE\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3D\uDF50\uDF5D-\uDF61]|\uD805[\uDC00-\uDC34\uDC47-\uDC4A\uDC80-\uDCAF\uDCC4\uDCC5\uDCC7\uDD80-\uDDAE\uDDD8-\uDDDB\uDE00-\uDE2F\uDE44\uDE80-\uDEAA\uDF00-\uDF19]|\uD806[\uDCA0-\uDCDF\uDCFF\uDE00\uDE0B-\uDE32\uDE3A\uDE50\uDE5C-\uDE83\uDE86-\uDE89\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC2E\uDC40\uDC72-\uDC8F\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD30\uDD46]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDED0-\uDEED\uDF00-\uDF2F\uDF40-\uDF43\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50\uDF93-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB]|\uD83A[\uDC00-\uDCC4\uDD00-\uDD43]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]/;
+    module2.exports.ID_Continue = /[\xAA\xB5\xBA\xC0-\xD6\xD8-\xF6\xF8-\u02C1\u02C6-\u02D1\u02E0-\u02E4\u02EC\u02EE\u0300-\u0374\u0376\u0377\u037A-\u037D\u037F\u0386\u0388-\u038A\u038C\u038E-\u03A1\u03A3-\u03F5\u03F7-\u0481\u0483-\u0487\u048A-\u052F\u0531-\u0556\u0559\u0561-\u0587\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u05D0-\u05EA\u05F0-\u05F2\u0610-\u061A\u0620-\u0669\u066E-\u06D3\u06D5-\u06DC\u06DF-\u06E8\u06EA-\u06FC\u06FF\u0710-\u074A\u074D-\u07B1\u07C0-\u07F5\u07FA\u0800-\u082D\u0840-\u085B\u0860-\u086A\u08A0-\u08B4\u08B6-\u08BD\u08D4-\u08E1\u08E3-\u0963\u0966-\u096F\u0971-\u0983\u0985-\u098C\u098F\u0990\u0993-\u09A8\u09AA-\u09B0\u09B2\u09B6-\u09B9\u09BC-\u09C4\u09C7\u09C8\u09CB-\u09CE\u09D7\u09DC\u09DD\u09DF-\u09E3\u09E6-\u09F1\u09FC\u0A01-\u0A03\u0A05-\u0A0A\u0A0F\u0A10\u0A13-\u0A28\u0A2A-\u0A30\u0A32\u0A33\u0A35\u0A36\u0A38\u0A39\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A59-\u0A5C\u0A5E\u0A66-\u0A75\u0A81-\u0A83\u0A85-\u0A8D\u0A8F-\u0A91\u0A93-\u0AA8\u0AAA-\u0AB0\u0AB2\u0AB3\u0AB5-\u0AB9\u0ABC-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AD0\u0AE0-\u0AE3\u0AE6-\u0AEF\u0AF9-\u0AFF\u0B01-\u0B03\u0B05-\u0B0C\u0B0F\u0B10\u0B13-\u0B28\u0B2A-\u0B30\u0B32\u0B33\u0B35-\u0B39\u0B3C-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B5C\u0B5D\u0B5F-\u0B63\u0B66-\u0B6F\u0B71\u0B82\u0B83\u0B85-\u0B8A\u0B8E-\u0B90\u0B92-\u0B95\u0B99\u0B9A\u0B9C\u0B9E\u0B9F\u0BA3\u0BA4\u0BA8-\u0BAA\u0BAE-\u0BB9\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD0\u0BD7\u0BE6-\u0BEF\u0C00-\u0C03\u0C05-\u0C0C\u0C0E-\u0C10\u0C12-\u0C28\u0C2A-\u0C39\u0C3D-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C58-\u0C5A\u0C60-\u0C63\u0C66-\u0C6F\u0C80-\u0C83\u0C85-\u0C8C\u0C8E-\u0C90\u0C92-\u0CA8\u0CAA-\u0CB3\u0CB5-\u0CB9\u0CBC-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CDE\u0CE0-\u0CE3\u0CE6-\u0CEF\u0CF1\u0CF2\u0D00-\u0D03\u0D05-\u0D0C\u0D0E-\u0D10\u0D12-\u0D44\u0D46-\u0D48\u0D4A-\u0D4E\u0D54-\u0D57\u0D5F-\u0D63\u0D66-\u0D6F\u0D7A-\u0D7F\u0D82\u0D83\u0D85-\u0D96\u0D9A-\u0DB1\u0DB3-\u0DBB\u0DBD\u0DC0-\u0DC6\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DE6-\u0DEF\u0DF2\u0DF3\u0E01-\u0E3A\u0E40-\u0E4E\u0E50-\u0E59\u0E81\u0E82\u0E84\u0E87\u0E88\u0E8A\u0E8D\u0E94-\u0E97\u0E99-\u0E9F\u0EA1-\u0EA3\u0EA5\u0EA7\u0EAA\u0EAB\u0EAD-\u0EB9\u0EBB-\u0EBD\u0EC0-\u0EC4\u0EC6\u0EC8-\u0ECD\u0ED0-\u0ED9\u0EDC-\u0EDF\u0F00\u0F18\u0F19\u0F20-\u0F29\u0F35\u0F37\u0F39\u0F3E-\u0F47\u0F49-\u0F6C\u0F71-\u0F84\u0F86-\u0F97\u0F99-\u0FBC\u0FC6\u1000-\u1049\u1050-\u109D\u10A0-\u10C5\u10C7\u10CD\u10D0-\u10FA\u10FC-\u1248\u124A-\u124D\u1250-\u1256\u1258\u125A-\u125D\u1260-\u1288\u128A-\u128D\u1290-\u12B0\u12B2-\u12B5\u12B8-\u12BE\u12C0\u12C2-\u12C5\u12C8-\u12D6\u12D8-\u1310\u1312-\u1315\u1318-\u135A\u135D-\u135F\u1380-\u138F\u13A0-\u13F5\u13F8-\u13FD\u1401-\u166C\u166F-\u167F\u1681-\u169A\u16A0-\u16EA\u16EE-\u16F8\u1700-\u170C\u170E-\u1714\u1720-\u1734\u1740-\u1753\u1760-\u176C\u176E-\u1770\u1772\u1773\u1780-\u17D3\u17D7\u17DC\u17DD\u17E0-\u17E9\u180B-\u180D\u1810-\u1819\u1820-\u1877\u1880-\u18AA\u18B0-\u18F5\u1900-\u191E\u1920-\u192B\u1930-\u193B\u1946-\u196D\u1970-\u1974\u1980-\u19AB\u19B0-\u19C9\u19D0-\u19D9\u1A00-\u1A1B\u1A20-\u1A5E\u1A60-\u1A7C\u1A7F-\u1A89\u1A90-\u1A99\u1AA7\u1AB0-\u1ABD\u1B00-\u1B4B\u1B50-\u1B59\u1B6B-\u1B73\u1B80-\u1BF3\u1C00-\u1C37\u1C40-\u1C49\u1C4D-\u1C7D\u1C80-\u1C88\u1CD0-\u1CD2\u1CD4-\u1CF9\u1D00-\u1DF9\u1DFB-\u1F15\u1F18-\u1F1D\u1F20-\u1F45\u1F48-\u1F4D\u1F50-\u1F57\u1F59\u1F5B\u1F5D\u1F5F-\u1F7D\u1F80-\u1FB4\u1FB6-\u1FBC\u1FBE\u1FC2-\u1FC4\u1FC6-\u1FCC\u1FD0-\u1FD3\u1FD6-\u1FDB\u1FE0-\u1FEC\u1FF2-\u1FF4\u1FF6-\u1FFC\u203F\u2040\u2054\u2071\u207F\u2090-\u209C\u20D0-\u20DC\u20E1\u20E5-\u20F0\u2102\u2107\u210A-\u2113\u2115\u2119-\u211D\u2124\u2126\u2128\u212A-\u212D\u212F-\u2139\u213C-\u213F\u2145-\u2149\u214E\u2160-\u2188\u2C00-\u2C2E\u2C30-\u2C5E\u2C60-\u2CE4\u2CEB-\u2CF3\u2D00-\u2D25\u2D27\u2D2D\u2D30-\u2D67\u2D6F\u2D7F-\u2D96\u2DA0-\u2DA6\u2DA8-\u2DAE\u2DB0-\u2DB6\u2DB8-\u2DBE\u2DC0-\u2DC6\u2DC8-\u2DCE\u2DD0-\u2DD6\u2DD8-\u2DDE\u2DE0-\u2DFF\u2E2F\u3005-\u3007\u3021-\u302F\u3031-\u3035\u3038-\u303C\u3041-\u3096\u3099\u309A\u309D-\u309F\u30A1-\u30FA\u30FC-\u30FF\u3105-\u312E\u3131-\u318E\u31A0-\u31BA\u31F0-\u31FF\u3400-\u4DB5\u4E00-\u9FEA\uA000-\uA48C\uA4D0-\uA4FD\uA500-\uA60C\uA610-\uA62B\uA640-\uA66F\uA674-\uA67D\uA67F-\uA6F1\uA717-\uA71F\uA722-\uA788\uA78B-\uA7AE\uA7B0-\uA7B7\uA7F7-\uA827\uA840-\uA873\uA880-\uA8C5\uA8D0-\uA8D9\uA8E0-\uA8F7\uA8FB\uA8FD\uA900-\uA92D\uA930-\uA953\uA960-\uA97C\uA980-\uA9C0\uA9CF-\uA9D9\uA9E0-\uA9FE\uAA00-\uAA36\uAA40-\uAA4D\uAA50-\uAA59\uAA60-\uAA76\uAA7A-\uAAC2\uAADB-\uAADD\uAAE0-\uAAEF\uAAF2-\uAAF6\uAB01-\uAB06\uAB09-\uAB0E\uAB11-\uAB16\uAB20-\uAB26\uAB28-\uAB2E\uAB30-\uAB5A\uAB5C-\uAB65\uAB70-\uABEA\uABEC\uABED\uABF0-\uABF9\uAC00-\uD7A3\uD7B0-\uD7C6\uD7CB-\uD7FB\uF900-\uFA6D\uFA70-\uFAD9\uFB00-\uFB06\uFB13-\uFB17\uFB1D-\uFB28\uFB2A-\uFB36\uFB38-\uFB3C\uFB3E\uFB40\uFB41\uFB43\uFB44\uFB46-\uFBB1\uFBD3-\uFD3D\uFD50-\uFD8F\uFD92-\uFDC7\uFDF0-\uFDFB\uFE00-\uFE0F\uFE20-\uFE2F\uFE33\uFE34\uFE4D-\uFE4F\uFE70-\uFE74\uFE76-\uFEFC\uFF10-\uFF19\uFF21-\uFF3A\uFF3F\uFF41-\uFF5A\uFF66-\uFFBE\uFFC2-\uFFC7\uFFCA-\uFFCF\uFFD2-\uFFD7\uFFDA-\uFFDC]|\uD800[\uDC00-\uDC0B\uDC0D-\uDC26\uDC28-\uDC3A\uDC3C\uDC3D\uDC3F-\uDC4D\uDC50-\uDC5D\uDC80-\uDCFA\uDD40-\uDD74\uDDFD\uDE80-\uDE9C\uDEA0-\uDED0\uDEE0\uDF00-\uDF1F\uDF2D-\uDF4A\uDF50-\uDF7A\uDF80-\uDF9D\uDFA0-\uDFC3\uDFC8-\uDFCF\uDFD1-\uDFD5]|\uD801[\uDC00-\uDC9D\uDCA0-\uDCA9\uDCB0-\uDCD3\uDCD8-\uDCFB\uDD00-\uDD27\uDD30-\uDD63\uDE00-\uDF36\uDF40-\uDF55\uDF60-\uDF67]|\uD802[\uDC00-\uDC05\uDC08\uDC0A-\uDC35\uDC37\uDC38\uDC3C\uDC3F-\uDC55\uDC60-\uDC76\uDC80-\uDC9E\uDCE0-\uDCF2\uDCF4\uDCF5\uDD00-\uDD15\uDD20-\uDD39\uDD80-\uDDB7\uDDBE\uDDBF\uDE00-\uDE03\uDE05\uDE06\uDE0C-\uDE13\uDE15-\uDE17\uDE19-\uDE33\uDE38-\uDE3A\uDE3F\uDE60-\uDE7C\uDE80-\uDE9C\uDEC0-\uDEC7\uDEC9-\uDEE6\uDF00-\uDF35\uDF40-\uDF55\uDF60-\uDF72\uDF80-\uDF91]|\uD803[\uDC00-\uDC48\uDC80-\uDCB2\uDCC0-\uDCF2]|\uD804[\uDC00-\uDC46\uDC66-\uDC6F\uDC7F-\uDCBA\uDCD0-\uDCE8\uDCF0-\uDCF9\uDD00-\uDD34\uDD36-\uDD3F\uDD50-\uDD73\uDD76\uDD80-\uDDC4\uDDCA-\uDDCC\uDDD0-\uDDDA\uDDDC\uDE00-\uDE11\uDE13-\uDE37\uDE3E\uDE80-\uDE86\uDE88\uDE8A-\uDE8D\uDE8F-\uDE9D\uDE9F-\uDEA8\uDEB0-\uDEEA\uDEF0-\uDEF9\uDF00-\uDF03\uDF05-\uDF0C\uDF0F\uDF10\uDF13-\uDF28\uDF2A-\uDF30\uDF32\uDF33\uDF35-\uDF39\uDF3C-\uDF44\uDF47\uDF48\uDF4B-\uDF4D\uDF50\uDF57\uDF5D-\uDF63\uDF66-\uDF6C\uDF70-\uDF74]|\uD805[\uDC00-\uDC4A\uDC50-\uDC59\uDC80-\uDCC5\uDCC7\uDCD0-\uDCD9\uDD80-\uDDB5\uDDB8-\uDDC0\uDDD8-\uDDDD\uDE00-\uDE40\uDE44\uDE50-\uDE59\uDE80-\uDEB7\uDEC0-\uDEC9\uDF00-\uDF19\uDF1D-\uDF2B\uDF30-\uDF39]|\uD806[\uDCA0-\uDCE9\uDCFF\uDE00-\uDE3E\uDE47\uDE50-\uDE83\uDE86-\uDE99\uDEC0-\uDEF8]|\uD807[\uDC00-\uDC08\uDC0A-\uDC36\uDC38-\uDC40\uDC50-\uDC59\uDC72-\uDC8F\uDC92-\uDCA7\uDCA9-\uDCB6\uDD00-\uDD06\uDD08\uDD09\uDD0B-\uDD36\uDD3A\uDD3C\uDD3D\uDD3F-\uDD47\uDD50-\uDD59]|\uD808[\uDC00-\uDF99]|\uD809[\uDC00-\uDC6E\uDC80-\uDD43]|[\uD80C\uD81C-\uD820\uD840-\uD868\uD86A-\uD86C\uD86F-\uD872\uD874-\uD879][\uDC00-\uDFFF]|\uD80D[\uDC00-\uDC2E]|\uD811[\uDC00-\uDE46]|\uD81A[\uDC00-\uDE38\uDE40-\uDE5E\uDE60-\uDE69\uDED0-\uDEED\uDEF0-\uDEF4\uDF00-\uDF36\uDF40-\uDF43\uDF50-\uDF59\uDF63-\uDF77\uDF7D-\uDF8F]|\uD81B[\uDF00-\uDF44\uDF50-\uDF7E\uDF8F-\uDF9F\uDFE0\uDFE1]|\uD821[\uDC00-\uDFEC]|\uD822[\uDC00-\uDEF2]|\uD82C[\uDC00-\uDD1E\uDD70-\uDEFB]|\uD82F[\uDC00-\uDC6A\uDC70-\uDC7C\uDC80-\uDC88\uDC90-\uDC99\uDC9D\uDC9E]|\uD834[\uDD65-\uDD69\uDD6D-\uDD72\uDD7B-\uDD82\uDD85-\uDD8B\uDDAA-\uDDAD\uDE42-\uDE44]|\uD835[\uDC00-\uDC54\uDC56-\uDC9C\uDC9E\uDC9F\uDCA2\uDCA5\uDCA6\uDCA9-\uDCAC\uDCAE-\uDCB9\uDCBB\uDCBD-\uDCC3\uDCC5-\uDD05\uDD07-\uDD0A\uDD0D-\uDD14\uDD16-\uDD1C\uDD1E-\uDD39\uDD3B-\uDD3E\uDD40-\uDD44\uDD46\uDD4A-\uDD50\uDD52-\uDEA5\uDEA8-\uDEC0\uDEC2-\uDEDA\uDEDC-\uDEFA\uDEFC-\uDF14\uDF16-\uDF34\uDF36-\uDF4E\uDF50-\uDF6E\uDF70-\uDF88\uDF8A-\uDFA8\uDFAA-\uDFC2\uDFC4-\uDFCB\uDFCE-\uDFFF]|\uD836[\uDE00-\uDE36\uDE3B-\uDE6C\uDE75\uDE84\uDE9B-\uDE9F\uDEA1-\uDEAF]|\uD838[\uDC00-\uDC06\uDC08-\uDC18\uDC1B-\uDC21\uDC23\uDC24\uDC26-\uDC2A]|\uD83A[\uDC00-\uDCC4\uDCD0-\uDCD6\uDD00-\uDD4A\uDD50-\uDD59]|\uD83B[\uDE00-\uDE03\uDE05-\uDE1F\uDE21\uDE22\uDE24\uDE27\uDE29-\uDE32\uDE34-\uDE37\uDE39\uDE3B\uDE42\uDE47\uDE49\uDE4B\uDE4D-\uDE4F\uDE51\uDE52\uDE54\uDE57\uDE59\uDE5B\uDE5D\uDE5F\uDE61\uDE62\uDE64\uDE67-\uDE6A\uDE6C-\uDE72\uDE74-\uDE77\uDE79-\uDE7C\uDE7E\uDE80-\uDE89\uDE8B-\uDE9B\uDEA1-\uDEA3\uDEA5-\uDEA9\uDEAB-\uDEBB]|\uD869[\uDC00-\uDED6\uDF00-\uDFFF]|\uD86D[\uDC00-\uDF34\uDF40-\uDFFF]|\uD86E[\uDC00-\uDC1D\uDC20-\uDFFF]|\uD873[\uDC00-\uDEA1\uDEB0-\uDFFF]|\uD87A[\uDC00-\uDFE0]|\uD87E[\uDC00-\uDE1D]|\uDB40[\uDD00-\uDDEF]/;
+  }
+});
+
+// node_modules/json5/lib/util.js
+var require_util = __commonJS({
+  "node_modules/json5/lib/util.js"(exports2, module2) {
+    var unicode = require_unicode();
+    module2.exports = {
+      isSpaceSeparator(c) {
+        return typeof c === "string" && unicode.Space_Separator.test(c);
+      },
+      isIdStartChar(c) {
+        return typeof c === "string" && (c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c === "$" || c === "_" || unicode.ID_Start.test(c));
+      },
+      isIdContinueChar(c) {
+        return typeof c === "string" && (c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9" || c === "$" || c === "_" || c === "‌" || c === "‍" || unicode.ID_Continue.test(c));
+      },
+      isDigit(c) {
+        return typeof c === "string" && /[0-9]/.test(c);
+      },
+      isHexDigit(c) {
+        return typeof c === "string" && /[0-9A-Fa-f]/.test(c);
+      }
+    };
+  }
+});
+
+// node_modules/json5/lib/parse.js
+var require_parse2 = __commonJS({
+  "node_modules/json5/lib/parse.js"(exports2, module2) {
+    var util = require_util();
+    var source;
+    var parseState;
+    var stack;
+    var pos;
+    var line;
+    var column;
+    var token;
+    var key;
+    var root;
+    module2.exports = function parse2(text, reviver) {
+      source = String(text);
+      parseState = "start";
+      stack = [];
+      pos = 0;
+      line = 1;
+      column = 0;
+      token = void 0;
+      key = void 0;
+      root = void 0;
+      do {
+        token = lex();
+        parseStates[parseState]();
+      } while (token.type !== "eof");
+      if (typeof reviver === "function") {
+        return internalize({ "": root }, "", reviver);
+      }
+      return root;
+    };
+    function internalize(holder, name, reviver) {
+      const value = holder[name];
+      if (value != null && typeof value === "object") {
+        if (Array.isArray(value)) {
+          for (let i = 0; i < value.length; i++) {
+            const key2 = String(i);
+            const replacement = internalize(value, key2, reviver);
+            if (replacement === void 0) {
+              delete value[key2];
+            } else {
+              Object.defineProperty(value, key2, {
+                value: replacement,
+                writable: true,
+                enumerable: true,
+                configurable: true
+              });
+            }
+          }
+        } else {
+          for (const key2 in value) {
+            const replacement = internalize(value, key2, reviver);
+            if (replacement === void 0) {
+              delete value[key2];
+            } else {
+              Object.defineProperty(value, key2, {
+                value: replacement,
+                writable: true,
+                enumerable: true,
+                configurable: true
+              });
+            }
+          }
+        }
+      }
+      return reviver.call(holder, name, value);
+    }
+    var lexState;
+    var buffer;
+    var doubleQuote;
+    var sign;
+    var c;
+    function lex() {
+      lexState = "default";
+      buffer = "";
+      doubleQuote = false;
+      sign = 1;
+      for (; ; ) {
+        c = peek();
+        const token2 = lexStates[lexState]();
+        if (token2) {
+          return token2;
+        }
+      }
+    }
+    function peek() {
+      if (source[pos]) {
+        return String.fromCodePoint(source.codePointAt(pos));
+      }
+    }
+    function read() {
+      const c2 = peek();
+      if (c2 === "\n") {
+        line++;
+        column = 0;
+      } else if (c2) {
+        column += c2.length;
+      } else {
+        column++;
+      }
+      if (c2) {
+        pos += c2.length;
+      }
+      return c2;
+    }
+    var lexStates = {
+      default() {
+        switch (c) {
+          case "	":
+          case "\v":
+          case "\f":
+          case " ":
+          case " ":
+          case "\uFEFF":
+          case "\n":
+          case "\r":
+          case "\u2028":
+          case "\u2029":
+            read();
+            return;
+          case "/":
+            read();
+            lexState = "comment";
+            return;
+          case void 0:
+            read();
+            return newToken("eof");
+        }
+        if (util.isSpaceSeparator(c)) {
+          read();
+          return;
+        }
+        return lexStates[parseState]();
+      },
+      comment() {
+        switch (c) {
+          case "*":
+            read();
+            lexState = "multiLineComment";
+            return;
+          case "/":
+            read();
+            lexState = "singleLineComment";
+            return;
+        }
+        throw invalidChar(read());
+      },
+      multiLineComment() {
+        switch (c) {
+          case "*":
+            read();
+            lexState = "multiLineCommentAsterisk";
+            return;
+          case void 0:
+            throw invalidChar(read());
+        }
+        read();
+      },
+      multiLineCommentAsterisk() {
+        switch (c) {
+          case "*":
+            read();
+            return;
+          case "/":
+            read();
+            lexState = "default";
+            return;
+          case void 0:
+            throw invalidChar(read());
+        }
+        read();
+        lexState = "multiLineComment";
+      },
+      singleLineComment() {
+        switch (c) {
+          case "\n":
+          case "\r":
+          case "\u2028":
+          case "\u2029":
+            read();
+            lexState = "default";
+            return;
+          case void 0:
+            read();
+            return newToken("eof");
+        }
+        read();
+      },
+      value() {
+        switch (c) {
+          case "{":
+          case "[":
+            return newToken("punctuator", read());
+          case "n":
+            read();
+            literal("ull");
+            return newToken("null", null);
+          case "t":
+            read();
+            literal("rue");
+            return newToken("boolean", true);
+          case "f":
+            read();
+            literal("alse");
+            return newToken("boolean", false);
+          case "-":
+          case "+":
+            if (read() === "-") {
+              sign = -1;
+            }
+            lexState = "sign";
+            return;
+          case ".":
+            buffer = read();
+            lexState = "decimalPointLeading";
+            return;
+          case "0":
+            buffer = read();
+            lexState = "zero";
+            return;
+          case "1":
+          case "2":
+          case "3":
+          case "4":
+          case "5":
+          case "6":
+          case "7":
+          case "8":
+          case "9":
+            buffer = read();
+            lexState = "decimalInteger";
+            return;
+          case "I":
+            read();
+            literal("nfinity");
+            return newToken("numeric", Infinity);
+          case "N":
+            read();
+            literal("aN");
+            return newToken("numeric", NaN);
+          case '"':
+          case "'":
+            doubleQuote = read() === '"';
+            buffer = "";
+            lexState = "string";
+            return;
+        }
+        throw invalidChar(read());
+      },
+      identifierNameStartEscape() {
+        if (c !== "u") {
+          throw invalidChar(read());
+        }
+        read();
+        const u = unicodeEscape();
+        switch (u) {
+          case "$":
+          case "_":
+            break;
+          default:
+            if (!util.isIdStartChar(u)) {
+              throw invalidIdentifier();
+            }
+            break;
+        }
+        buffer += u;
+        lexState = "identifierName";
+      },
+      identifierName() {
+        switch (c) {
+          case "$":
+          case "_":
+          case "‌":
+          case "‍":
+            buffer += read();
+            return;
+          case "\\":
+            read();
+            lexState = "identifierNameEscape";
+            return;
+        }
+        if (util.isIdContinueChar(c)) {
+          buffer += read();
+          return;
+        }
+        return newToken("identifier", buffer);
+      },
+      identifierNameEscape() {
+        if (c !== "u") {
+          throw invalidChar(read());
+        }
+        read();
+        const u = unicodeEscape();
+        switch (u) {
+          case "$":
+          case "_":
+          case "‌":
+          case "‍":
+            break;
+          default:
+            if (!util.isIdContinueChar(u)) {
+              throw invalidIdentifier();
+            }
+            break;
+        }
+        buffer += u;
+        lexState = "identifierName";
+      },
+      sign() {
+        switch (c) {
+          case ".":
+            buffer = read();
+            lexState = "decimalPointLeading";
+            return;
+          case "0":
+            buffer = read();
+            lexState = "zero";
+            return;
+          case "1":
+          case "2":
+          case "3":
+          case "4":
+          case "5":
+          case "6":
+          case "7":
+          case "8":
+          case "9":
+            buffer = read();
+            lexState = "decimalInteger";
+            return;
+          case "I":
+            read();
+            literal("nfinity");
+            return newToken("numeric", sign * Infinity);
+          case "N":
+            read();
+            literal("aN");
+            return newToken("numeric", NaN);
+        }
+        throw invalidChar(read());
+      },
+      zero() {
+        switch (c) {
+          case ".":
+            buffer += read();
+            lexState = "decimalPoint";
+            return;
+          case "e":
+          case "E":
+            buffer += read();
+            lexState = "decimalExponent";
+            return;
+          case "x":
+          case "X":
+            buffer += read();
+            lexState = "hexadecimal";
+            return;
+        }
+        return newToken("numeric", sign * 0);
+      },
+      decimalInteger() {
+        switch (c) {
+          case ".":
+            buffer += read();
+            lexState = "decimalPoint";
+            return;
+          case "e":
+          case "E":
+            buffer += read();
+            lexState = "decimalExponent";
+            return;
+        }
+        if (util.isDigit(c)) {
+          buffer += read();
+          return;
+        }
+        return newToken("numeric", sign * Number(buffer));
+      },
+      decimalPointLeading() {
+        if (util.isDigit(c)) {
+          buffer += read();
+          lexState = "decimalFraction";
+          return;
+        }
+        throw invalidChar(read());
+      },
+      decimalPoint() {
+        switch (c) {
+          case "e":
+          case "E":
+            buffer += read();
+            lexState = "decimalExponent";
+            return;
+        }
+        if (util.isDigit(c)) {
+          buffer += read();
+          lexState = "decimalFraction";
+          return;
+        }
+        return newToken("numeric", sign * Number(buffer));
+      },
+      decimalFraction() {
+        switch (c) {
+          case "e":
+          case "E":
+            buffer += read();
+            lexState = "decimalExponent";
+            return;
+        }
+        if (util.isDigit(c)) {
+          buffer += read();
+          return;
+        }
+        return newToken("numeric", sign * Number(buffer));
+      },
+      decimalExponent() {
+        switch (c) {
+          case "+":
+          case "-":
+            buffer += read();
+            lexState = "decimalExponentSign";
+            return;
+        }
+        if (util.isDigit(c)) {
+          buffer += read();
+          lexState = "decimalExponentInteger";
+          return;
+        }
+        throw invalidChar(read());
+      },
+      decimalExponentSign() {
+        if (util.isDigit(c)) {
+          buffer += read();
+          lexState = "decimalExponentInteger";
+          return;
+        }
+        throw invalidChar(read());
+      },
+      decimalExponentInteger() {
+        if (util.isDigit(c)) {
+          buffer += read();
+          return;
+        }
+        return newToken("numeric", sign * Number(buffer));
+      },
+      hexadecimal() {
+        if (util.isHexDigit(c)) {
+          buffer += read();
+          lexState = "hexadecimalInteger";
+          return;
+        }
+        throw invalidChar(read());
+      },
+      hexadecimalInteger() {
+        if (util.isHexDigit(c)) {
+          buffer += read();
+          return;
+        }
+        return newToken("numeric", sign * Number(buffer));
+      },
+      string() {
+        switch (c) {
+          case "\\":
+            read();
+            buffer += escape();
+            return;
+          case '"':
+            if (doubleQuote) {
+              read();
+              return newToken("string", buffer);
+            }
+            buffer += read();
+            return;
+          case "'":
+            if (!doubleQuote) {
+              read();
+              return newToken("string", buffer);
+            }
+            buffer += read();
+            return;
+          case "\n":
+          case "\r":
+            throw invalidChar(read());
+          case "\u2028":
+          case "\u2029":
+            separatorChar(c);
+            break;
+          case void 0:
+            throw invalidChar(read());
+        }
+        buffer += read();
+      },
+      start() {
+        switch (c) {
+          case "{":
+          case "[":
+            return newToken("punctuator", read());
+        }
+        lexState = "value";
+      },
+      beforePropertyName() {
+        switch (c) {
+          case "$":
+          case "_":
+            buffer = read();
+            lexState = "identifierName";
+            return;
+          case "\\":
+            read();
+            lexState = "identifierNameStartEscape";
+            return;
+          case "}":
+            return newToken("punctuator", read());
+          case '"':
+          case "'":
+            doubleQuote = read() === '"';
+            lexState = "string";
+            return;
+        }
+        if (util.isIdStartChar(c)) {
+          buffer += read();
+          lexState = "identifierName";
+          return;
+        }
+        throw invalidChar(read());
+      },
+      afterPropertyName() {
+        if (c === ":") {
+          return newToken("punctuator", read());
+        }
+        throw invalidChar(read());
+      },
+      beforePropertyValue() {
+        lexState = "value";
+      },
+      afterPropertyValue() {
+        switch (c) {
+          case ",":
+          case "}":
+            return newToken("punctuator", read());
+        }
+        throw invalidChar(read());
+      },
+      beforeArrayValue() {
+        if (c === "]") {
+          return newToken("punctuator", read());
+        }
+        lexState = "value";
+      },
+      afterArrayValue() {
+        switch (c) {
+          case ",":
+          case "]":
+            return newToken("punctuator", read());
+        }
+        throw invalidChar(read());
+      },
+      end() {
+        throw invalidChar(read());
+      }
+    };
+    function newToken(type, value) {
+      return {
+        type,
+        value,
+        line,
+        column
+      };
+    }
+    function literal(s) {
+      for (const c2 of s) {
+        const p = peek();
+        if (p !== c2) {
+          throw invalidChar(read());
+        }
+        read();
+      }
+    }
+    function escape() {
+      const c2 = peek();
+      switch (c2) {
+        case "b":
+          read();
+          return "\b";
+        case "f":
+          read();
+          return "\f";
+        case "n":
+          read();
+          return "\n";
+        case "r":
+          read();
+          return "\r";
+        case "t":
+          read();
+          return "	";
+        case "v":
+          read();
+          return "\v";
+        case "0":
+          read();
+          if (util.isDigit(peek())) {
+            throw invalidChar(read());
+          }
+          return "\0";
+        case "x":
+          read();
+          return hexEscape();
+        case "u":
+          read();
+          return unicodeEscape();
+        case "\n":
+        case "\u2028":
+        case "\u2029":
+          read();
+          return "";
+        case "\r":
+          read();
+          if (peek() === "\n") {
+            read();
+          }
+          return "";
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+        case "6":
+        case "7":
+        case "8":
+        case "9":
+          throw invalidChar(read());
+        case void 0:
+          throw invalidChar(read());
+      }
+      return read();
+    }
+    function hexEscape() {
+      let buffer2 = "";
+      let c2 = peek();
+      if (!util.isHexDigit(c2)) {
+        throw invalidChar(read());
+      }
+      buffer2 += read();
+      c2 = peek();
+      if (!util.isHexDigit(c2)) {
+        throw invalidChar(read());
+      }
+      buffer2 += read();
+      return String.fromCodePoint(parseInt(buffer2, 16));
+    }
+    function unicodeEscape() {
+      let buffer2 = "";
+      let count = 4;
+      while (count-- > 0) {
+        const c2 = peek();
+        if (!util.isHexDigit(c2)) {
+          throw invalidChar(read());
+        }
+        buffer2 += read();
+      }
+      return String.fromCodePoint(parseInt(buffer2, 16));
+    }
+    var parseStates = {
+      start() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        push();
+      },
+      beforePropertyName() {
+        switch (token.type) {
+          case "identifier":
+          case "string":
+            key = token.value;
+            parseState = "afterPropertyName";
+            return;
+          case "punctuator":
+            pop();
+            return;
+          case "eof":
+            throw invalidEOF();
+        }
+      },
+      afterPropertyName() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        parseState = "beforePropertyValue";
+      },
+      beforePropertyValue() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        push();
+      },
+      beforeArrayValue() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        if (token.type === "punctuator" && token.value === "]") {
+          pop();
+          return;
+        }
+        push();
+      },
+      afterPropertyValue() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        switch (token.value) {
+          case ",":
+            parseState = "beforePropertyName";
+            return;
+          case "}":
+            pop();
+        }
+      },
+      afterArrayValue() {
+        if (token.type === "eof") {
+          throw invalidEOF();
+        }
+        switch (token.value) {
+          case ",":
+            parseState = "beforeArrayValue";
+            return;
+          case "]":
+            pop();
+        }
+      },
+      end() {
+      }
+    };
+    function push() {
+      let value;
+      switch (token.type) {
+        case "punctuator":
+          switch (token.value) {
+            case "{":
+              value = {};
+              break;
+            case "[":
+              value = [];
+              break;
+          }
+          break;
+        case "null":
+        case "boolean":
+        case "numeric":
+        case "string":
+          value = token.value;
+          break;
+      }
+      if (root === void 0) {
+        root = value;
+      } else {
+        const parent2 = stack[stack.length - 1];
+        if (Array.isArray(parent2)) {
+          parent2.push(value);
+        } else {
+          Object.defineProperty(parent2, key, {
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true
+          });
+        }
+      }
+      if (value !== null && typeof value === "object") {
+        stack.push(value);
+        if (Array.isArray(value)) {
+          parseState = "beforeArrayValue";
+        } else {
+          parseState = "beforePropertyName";
+        }
+      } else {
+        const current = stack[stack.length - 1];
+        if (current == null) {
+          parseState = "end";
+        } else if (Array.isArray(current)) {
+          parseState = "afterArrayValue";
+        } else {
+          parseState = "afterPropertyValue";
+        }
+      }
+    }
+    function pop() {
+      stack.pop();
+      const current = stack[stack.length - 1];
+      if (current == null) {
+        parseState = "end";
+      } else if (Array.isArray(current)) {
+        parseState = "afterArrayValue";
+      } else {
+        parseState = "afterPropertyValue";
+      }
+    }
+    function invalidChar(c2) {
+      if (c2 === void 0) {
+        return syntaxError(`JSON5: invalid end of input at ${line}:${column}`);
+      }
+      return syntaxError(`JSON5: invalid character '${formatChar(c2)}' at ${line}:${column}`);
+    }
+    function invalidEOF() {
+      return syntaxError(`JSON5: invalid end of input at ${line}:${column}`);
+    }
+    function invalidIdentifier() {
+      column -= 5;
+      return syntaxError(`JSON5: invalid identifier character at ${line}:${column}`);
+    }
+    function separatorChar(c2) {
+      console.warn(`JSON5: '${formatChar(c2)}' in strings is not valid ECMAScript; consider escaping`);
+    }
+    function formatChar(c2) {
+      const replacements = {
+        "'": "\\'",
+        '"': '\\"',
+        "\\": "\\\\",
+        "\b": "\\b",
+        "\f": "\\f",
+        "\n": "\\n",
+        "\r": "\\r",
+        "	": "\\t",
+        "\v": "\\v",
+        "\0": "\\0",
+        "\u2028": "\\u2028",
+        "\u2029": "\\u2029"
+      };
+      if (replacements[c2]) {
+        return replacements[c2];
+      }
+      if (c2 < " ") {
+        const hexString = c2.charCodeAt(0).toString(16);
+        return "\\x" + ("00" + hexString).substring(hexString.length);
+      }
+      return c2;
+    }
+    function syntaxError(message) {
+      const err = new SyntaxError(message);
+      err.lineNumber = line;
+      err.columnNumber = column;
+      return err;
+    }
+  }
+});
+
+// node_modules/json5/lib/stringify.js
+var require_stringify = __commonJS({
+  "node_modules/json5/lib/stringify.js"(exports2, module2) {
+    var util = require_util();
+    module2.exports = function stringify(value, replacer, space) {
+      const stack = [];
+      let indent = "";
+      let propertyList;
+      let replacerFunc;
+      let gap = "";
+      let quote;
+      if (replacer != null && typeof replacer === "object" && !Array.isArray(replacer)) {
+        space = replacer.space;
+        quote = replacer.quote;
+        replacer = replacer.replacer;
+      }
+      if (typeof replacer === "function") {
+        replacerFunc = replacer;
+      } else if (Array.isArray(replacer)) {
+        propertyList = [];
+        for (const v of replacer) {
+          let item;
+          if (typeof v === "string") {
+            item = v;
+          } else if (typeof v === "number" || v instanceof String || v instanceof Number) {
+            item = String(v);
+          }
+          if (item !== void 0 && propertyList.indexOf(item) < 0) {
+            propertyList.push(item);
+          }
+        }
+      }
+      if (space instanceof Number) {
+        space = Number(space);
+      } else if (space instanceof String) {
+        space = String(space);
+      }
+      if (typeof space === "number") {
+        if (space > 0) {
+          space = Math.min(10, Math.floor(space));
+          gap = "          ".substr(0, space);
+        }
+      } else if (typeof space === "string") {
+        gap = space.substr(0, 10);
+      }
+      return serializeProperty("", { "": value });
+      function serializeProperty(key, holder) {
+        let value2 = holder[key];
+        if (value2 != null) {
+          if (typeof value2.toJSON5 === "function") {
+            value2 = value2.toJSON5(key);
+          } else if (typeof value2.toJSON === "function") {
+            value2 = value2.toJSON(key);
+          }
+        }
+        if (replacerFunc) {
+          value2 = replacerFunc.call(holder, key, value2);
+        }
+        if (value2 instanceof Number) {
+          value2 = Number(value2);
+        } else if (value2 instanceof String) {
+          value2 = String(value2);
+        } else if (value2 instanceof Boolean) {
+          value2 = value2.valueOf();
+        }
+        switch (value2) {
+          case null:
+            return "null";
+          case true:
+            return "true";
+          case false:
+            return "false";
+        }
+        if (typeof value2 === "string") {
+          return quoteString(value2, false);
+        }
+        if (typeof value2 === "number") {
+          return String(value2);
+        }
+        if (typeof value2 === "object") {
+          return Array.isArray(value2) ? serializeArray(value2) : serializeObject(value2);
+        }
+        return void 0;
+      }
+      function quoteString(value2) {
+        const quotes = {
+          "'": 0.1,
+          '"': 0.2
+        };
+        const replacements = {
+          "'": "\\'",
+          '"': '\\"',
+          "\\": "\\\\",
+          "\b": "\\b",
+          "\f": "\\f",
+          "\n": "\\n",
+          "\r": "\\r",
+          "	": "\\t",
+          "\v": "\\v",
+          "\0": "\\0",
+          "\u2028": "\\u2028",
+          "\u2029": "\\u2029"
+        };
+        let product = "";
+        for (let i = 0; i < value2.length; i++) {
+          const c = value2[i];
+          switch (c) {
+            case "'":
+            case '"':
+              quotes[c]++;
+              product += c;
+              continue;
+            case "\0":
+              if (util.isDigit(value2[i + 1])) {
+                product += "\\x00";
+                continue;
+              }
+          }
+          if (replacements[c]) {
+            product += replacements[c];
+            continue;
+          }
+          if (c < " ") {
+            let hexString = c.charCodeAt(0).toString(16);
+            product += "\\x" + ("00" + hexString).substring(hexString.length);
+            continue;
+          }
+          product += c;
+        }
+        const quoteChar = quote || Object.keys(quotes).reduce((a, b) => quotes[a] < quotes[b] ? a : b);
+        product = product.replace(new RegExp(quoteChar, "g"), replacements[quoteChar]);
+        return quoteChar + product + quoteChar;
+      }
+      function serializeObject(value2) {
+        if (stack.indexOf(value2) >= 0) {
+          throw TypeError("Converting circular structure to JSON5");
+        }
+        stack.push(value2);
+        let stepback = indent;
+        indent = indent + gap;
+        let keys = propertyList || Object.keys(value2);
+        let partial = [];
+        for (const key of keys) {
+          const propertyString = serializeProperty(key, value2);
+          if (propertyString !== void 0) {
+            let member = serializeKey(key) + ":";
+            if (gap !== "") {
+              member += " ";
+            }
+            member += propertyString;
+            partial.push(member);
+          }
+        }
+        let final;
+        if (partial.length === 0) {
+          final = "{}";
+        } else {
+          let properties;
+          if (gap === "") {
+            properties = partial.join(",");
+            final = "{" + properties + "}";
+          } else {
+            let separator = ",\n" + indent;
+            properties = partial.join(separator);
+            final = "{\n" + indent + properties + ",\n" + stepback + "}";
+          }
+        }
+        stack.pop();
+        indent = stepback;
+        return final;
+      }
+      function serializeKey(key) {
+        if (key.length === 0) {
+          return quoteString(key, true);
+        }
+        const firstChar = String.fromCodePoint(key.codePointAt(0));
+        if (!util.isIdStartChar(firstChar)) {
+          return quoteString(key, true);
+        }
+        for (let i = firstChar.length; i < key.length; i++) {
+          if (!util.isIdContinueChar(String.fromCodePoint(key.codePointAt(i)))) {
+            return quoteString(key, true);
+          }
+        }
+        return key;
+      }
+      function serializeArray(value2) {
+        if (stack.indexOf(value2) >= 0) {
+          throw TypeError("Converting circular structure to JSON5");
+        }
+        stack.push(value2);
+        let stepback = indent;
+        indent = indent + gap;
+        let partial = [];
+        for (let i = 0; i < value2.length; i++) {
+          const propertyString = serializeProperty(String(i), value2);
+          partial.push(propertyString !== void 0 ? propertyString : "null");
+        }
+        let final;
+        if (partial.length === 0) {
+          final = "[]";
+        } else {
+          if (gap === "") {
+            let properties = partial.join(",");
+            final = "[" + properties + "]";
+          } else {
+            let separator = ",\n" + indent;
+            let properties = partial.join(separator);
+            final = "[\n" + indent + properties + ",\n" + stepback + "]";
+          }
+        }
+        stack.pop();
+        indent = stepback;
+        return final;
+      }
+    };
+  }
+});
+
+// node_modules/json5/lib/index.js
+var require_lib2 = __commonJS({
+  "node_modules/json5/lib/index.js"(exports2, module2) {
+    var parse2 = require_parse2();
+    var stringify = require_stringify();
+    var JSON52 = {
+      parse: parse2,
+      stringify
+    };
+    module2.exports = JSON52;
+  }
+});
 
 // deck-html.js
 var deck_html_exports = {};
@@ -4655,7 +9547,7 @@ function drawCircuit(m, o = {}) {
     }
     return texSvg(tex, X, Y, size, ink);
   };
-  const plain = (t, X, Y, size, color2 = ink, weight = 400) => {
+  const plain2 = (t, X, Y, size, color2 = ink, weight = 400) => {
     grow(X, Y, Math.max(String(t).length * size * 0.5, size * 0.4) / 2, size * 0.55);
     return `<text x="${n13(X)}" y="${n13(Y + size * 0.34)}" text-anchor="middle" font-family="${esc3(MATH_FONT)}" font-size="${n13(size)}" font-weight="${weight}" fill="${esc3(color2)}">${esc3(t)}</text>`;
   };
@@ -4703,7 +9595,7 @@ function drawCircuit(m, o = {}) {
     lines += `<g transform="translate(${n13(X1)} ${n13(Y1)}) rotate(${n13(ang)})">${body}</g>`;
     for (const [gxs, gys, t, size, weight] of sh.glyphs) {
       const [gx, gy] = G2(gxs, gys);
-      lines += plain(t, gx, gy, size, ink, weight || 400);
+      lines += plain2(t, gx, gy, size, ink, weight || 400);
     }
     let labels = "";
     const side = e.flip ? 1 : -1;
@@ -4724,7 +9616,7 @@ function drawCircuit(m, o = {}) {
       const bx = { w: Math.max(valueText.length * fs * 0.9 * 0.5, fs * 0.4), h: fs * 0.95 };
       const [x, y, d] = place(len2 / 2, -side, 0.12 * u, bx);
       depth = d;
-      labels += plain(valueText, x, y, fs * 0.9);
+      labels += plain2(valueText, x, y, fs * 0.9);
     }
     if (e.current) {
       const sx = e.part === "wire" ? len2 * 0.62 : len2 - sh.a / 2, hs = 0.12 * u;
@@ -4736,7 +9628,7 @@ function drawCircuit(m, o = {}) {
     if (e.voltage && e.part !== "wire") {
       const inset = Math.max(Math.min(sh.a * 0.5, len2 * 0.2), 0.12 * u), off = -side * (sh.ext[side < 0 ? 1 : 0] + 0.2 * u);
       const [px, py] = G2(inset, off), [qx, qy] = G2(len2 - inset, off);
-      labels += plain("+", px, py, fs * 0.85) + plain("−", qx, qy, fs * 0.85);
+      labels += plain2("+", px, py, fs * 0.85) + plain2("−", qx, qy, fs * 0.85);
       const [x, y, d] = place(len2 / 2, -side, 0.12 * u + depth, texBox(e.voltage, fs * 0.9));
       depth += d + 0.06 * u;
       labels += label(e.voltage, x, y, fs * 0.9);
@@ -4810,7 +9702,7 @@ function drawCircuit(m, o = {}) {
       if (o.readings && meter) {
         const text = meter === "A" ? formatSI(Math.abs(I), "A") : formatSI(Math.abs((sol.V[e.from] || 0) - (sol.V[e.to] || 0)), "V");
         const [x, y] = p.reading(text, fs * 0.92);
-        over2 += plain(text, x, y, fs * 0.92, flowColor, 600);
+        over2 += plain2(text, x, y, fs * 0.92, flowColor, 600);
       }
     }
     return { under: under2, over: over2 };
@@ -7659,6 +12551,336 @@ function hasVenn(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "venn"));
 }
 
+// client/src/utils/timingDiagram.js
+var import_wavedrom_render_any = __toESM(require_render_any(), 1);
+var import_default = __toESM(require_default(), 1);
+var import_dark = __toESM(require_dark(), 1);
+var import_json5 = __toESM(require_lib2(), 1);
+var SKINS = { ...import_default.default, ...import_dark.default };
+var esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var n17 = (v) => String(Math.round(v * 10) / 10);
+var LIMITS = { source: 4e4, signals: 80, wave: 400, hscale: 8, bits: 512 };
+function parseTiming(source) {
+  const text = String(source ?? "");
+  if (text.length > LIMITS.source) return { error: `That's ${text.length.toLocaleString("en-US")} characters; a diagram can have up to ${LIMITS.source.toLocaleString("en-US")}.` };
+  let json;
+  try {
+    json = import_json5.default.parse(text);
+  } catch (err) {
+    const where = err.lineNumber ? `Line ${err.lineNumber}: ` : "";
+    return { error: where + String(err.message || err).replace(/^JSON5: /, "").replace(/ at \d+:\d+$/, "") };
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) return { error: "Write an object: { signal: [ … ] } for waveforms, or { reg: [ … ] } for a register." };
+  if (json.signal) {
+    if (!Array.isArray(json.signal)) return { error: 'signal must be a list: signal: [ { name: "clk", wave: "p...." } ]' };
+    let count = 0, bad = null;
+    const walk = (list) => list.forEach((s) => {
+      if (Array.isArray(s)) {
+        walk(s.slice(1));
+        return;
+      }
+      if (!s || typeof s !== "object") return;
+      count++;
+      if (s.wave != null && typeof s.wave !== "string") bad = bad || `${s.name || "A signal"}'s wave must be a string, like "p...."`;
+      else if (String(s.wave || "").length > LIMITS.wave) bad = bad || `${s.name || "A signal"}'s wave is ${s.wave.length} steps long; up to ${LIMITS.wave} are drawn`;
+      if (s.data != null && !Array.isArray(s.data) && typeof s.data !== "string") bad = bad || `${s.name || "A signal"}'s data must be a list of labels`;
+    });
+    walk(json.signal);
+    if (bad) return { error: bad };
+    if (count > LIMITS.signals) return { error: `${count} signals; a diagram can have up to ${LIMITS.signals}.` };
+    const hs = Number(json.config?.hscale);
+    if (json.config?.hscale != null && !(hs > 0 && hs <= LIMITS.hscale)) return { error: `hscale must be between 0 and ${LIMITS.hscale}.` };
+    return { json, kind: "signal" };
+  }
+  if (json.reg) {
+    if (!Array.isArray(json.reg)) return { error: 'reg must be a list of fields: reg: [ { bits: 8, name: "data" } ]' };
+    const bits = json.reg.reduce((n, f) => n + (Number(f?.bits) || 0), 0);
+    if (bits > LIMITS.bits) return { error: `${bits} bits; a register can have up to ${LIMITS.bits}.` };
+    return { json, kind: "reg" };
+  }
+  if (json.assign) {
+    if (!Array.isArray(json.assign)) return { error: 'assign must be a list, like assign: [ ["out", ["&", "a", "b"]] ]' };
+    return { json, kind: "assign" };
+  }
+  return { error: "Nothing to draw: give it a signal list for waveforms, reg for a register, or assign for logic." };
+}
+var ATTR_PROPS = /* @__PURE__ */ new Set([
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-miterlimit",
+  "stroke-opacity",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "opacity",
+  "font-size",
+  "font-style",
+  "font-weight",
+  "font-family",
+  "text-anchor"
+]);
+var DEFAULTS = { "stroke-linejoin": "miter", "stroke-miterlimit": "4", "stroke-opacity": "1", "stroke-dasharray": "none", "stroke-dashoffset": "0", "fill-opacity": "1", "font-style": "normal", "font-weight": "normal", "fill-rule": "nonzero", opacity: "1" };
+function parseCss(css) {
+  const rules = [];
+  String(css).replace(/\/\*[\s\S]*?\*\//g, "").split("}").forEach((chunk) => {
+    const at = chunk.indexOf("{");
+    if (at < 0) return;
+    const decls = {};
+    chunk.slice(at + 1).split(";").forEach((d) => {
+      const m = /^\s*([\w-]+)\s*:\s*(.+?)\s*(?:!important)?\s*$/.exec(d);
+      if (m && ATTR_PROPS.has(m[1])) decls[m[1]] = m[2];
+    });
+    chunk.slice(0, at).split(",").forEach((sel) => {
+      const s = sel.trim(), m = /^([a-z]+)$/i.exec(s) || /^\.([\w-]+)$/.exec(s);
+      if (m) rules.push(s[0] === "." ? { cls: m[1], decls } : { tag: m[1].toLowerCase(), decls });
+    });
+  });
+  return rules;
+}
+var TAGS = /* @__PURE__ */ new Set(["svg", "g", "path", "rect", "line", "polyline", "polygon", "circle", "ellipse", "text", "tspan", "marker", "defs", "clipPath", "title", "desc"]);
+var tagName = (t) => {
+  const s = String(t);
+  for (const k of TAGS) if (k.toLowerCase() === s.toLowerCase()) return k;
+  return null;
+};
+var ENT = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+var unesc = (s) => String(s).replace(/&(#x[0-9a-f]+|#\d+|lt|gt|amp|quot|apos);/gi, (m, e) => {
+  if (e[0] !== "#") return ENT[e.toLowerCase()];
+  const c = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : +e.slice(1);
+  return c > 0 && c <= 1114111 ? String.fromCodePoint(c) : m;
+});
+function toXml(n) {
+  if (!Array.isArray(n)) return n == null || typeof n === "object" ? "" : esc7(unesc(n));
+  const tag = tagName(n[0]);
+  if (!tag) return "";
+  let s = "<" + tag;
+  for (const [k, v] of Object.entries(attrsOf(n) || {})) {
+    if (v == null || typeof v === "object" && !Array.isArray(v)) continue;
+    if (!/^[A-Za-z][\w:-]*$/.test(k) || /^on/i.test(k) || /href$/i.test(k)) continue;
+    let val = Array.isArray(v) ? v.join(" ") : String(v);
+    if (/url\(/i.test(val)) val = val.replace(/url\(\s*(?!#[\w-]+\s*\))[^)]*\)/gi, "none");
+    if (/javascript:|expression\(/i.test(val)) continue;
+    s += " " + k + '="' + esc7(val) + '"';
+  }
+  const kids = kidsOf(n);
+  return kids.length ? s + ">" + kids.map(toXml).join("") + "</" + tag + ">" : s + "/>";
+}
+var isAttrs = (x) => x && typeof x === "object" && !Array.isArray(x);
+var attrsOf = (n) => isAttrs(n[1]) ? n[1] : null;
+var kidsOf = (n) => n.slice(isAttrs(n[1]) ? 2 : 1);
+var clone = (n) => JSON.parse(JSON.stringify(n));
+var DARK = { ink: "#e8ecf3", blue: "#79b8ff", soft: "#1e1e2e" };
+function recolor(value) {
+  return String(value).replace(/#0041c4|#00f\b|#0000ff/gi, DARK.blue).replace(/#ffffffcc/gi, DARK.soft + "cc").replace(/fill:\s*(?:#fff(?:fff)?|white)(?![\w-])/gi, "fill:" + DARK.soft).replace(/(^|[^\w#-])(?:#000000|#000|black)(?![\w-])/gi, (m, p) => p + DARK.ink);
+}
+function plain(tree, { prefix, dark }) {
+  const rules = [], bricks = {}, markers = [];
+  const gather = (n) => {
+    if (!Array.isArray(n)) return;
+    if (n[0] === "style") {
+      rules.push(...parseCss(kidsOf(n).filter((k) => typeof k === "string").join("")));
+      return;
+    }
+    if (n[0] === "defs") {
+      for (const k of kidsOf(n)) {
+        if (!Array.isArray(k)) continue;
+        const id = attrsOf(k)?.id;
+        if (k[0] === "marker" && id) markers.push(k);
+        else if (id) bricks[id] = k;
+      }
+      return;
+    }
+    kidsOf(n).forEach(gather);
+  };
+  gather(tree);
+  const tagRules = {}, clsRules = {};
+  rules.forEach((r) => {
+    if (r.tag) Object.assign(tagRules[r.tag] = tagRules[r.tag] || {}, r.decls);
+    else Object.assign(clsRules[r.cls] = clsRules[r.cls] || {}, r.decls);
+  });
+  const markerIds = new Set(markers.map((m) => attrsOf(m).id));
+  const fixUrls = (v) => String(v).replace(/url\(#([\w-]+)\)/g, (m, id) => markerIds.has(id) ? `url(#${prefix}-${id})` : "none");
+  let depth = 0;
+  const walk = (n) => {
+    if (!Array.isArray(n)) return n;
+    if (n[0] === "style" || n[0] === "defs") return null;
+    if (n[0] === "use") {
+      const a2 = attrsOf(n) || {}, id2 = String(a2["xlink:href"] || a2.href || "").replace(/^#/, ""), brick = bricks[id2];
+      if (!brick || depth > 8) return null;
+      depth++;
+      const g = ["g", a2.transform ? { transform: a2.transform } : {}, ...kidsOf(clone(brick)).map(walk).filter(Boolean)];
+      depth--;
+      return g;
+    }
+    const a = { ...attrsOf(n) || {} }, tag = String(n[0]).toLowerCase();
+    if (dark) {
+      for (const k of ["fill", "stroke", "style", "color"]) if (a[k] != null) a[k] = recolor(a[k]);
+    }
+    Object.assign(a, tagRules[tag] || {});
+    String(a.class || "").split(/\s+/).forEach((c) => {
+      if (clsRules[c]) Object.assign(a, clsRules[c]);
+    });
+    delete a.class;
+    for (const [k, v] of Object.entries(DEFAULTS)) if (a[k] != null && String(a[k]).trim() === v) delete a[k];
+    const id = String(a.id || "");
+    if (/^lanes_\d+$/.test(id)) a["data-tm"] = "lanes";
+    else if (/^(wavelane_draw_\d+_\d+|wavearcs_\d+|wavegaps_\d+)$/.test(id)) a["data-tm"] = "clip";
+    else if (/^gmarks_\d+$/.test(id)) a["data-tm"] = "marks";
+    else if (/^wavelane_\d+_\d+$/.test(id)) a["data-tm"] = "lane";
+    delete a.id;
+    for (const k of Object.keys(a)) {
+      if (k === "style" || k === "marker-end" || k === "marker-start") a[k] = fixUrls(a[k]);
+      if (k === "xml:space" || k === "xmlns:xlink") delete a[k];
+    }
+    if (tag === "rect" && /fill:\s*white/.test(a.style || "") && /stroke:\s*none/.test(a.style || "")) return null;
+    return [tag, a, ...kidsOf(n).map(walk).filter((x) => x != null)];
+  };
+  const out = walk(tree);
+  const defs = markers.map((m) => {
+    const c = clone(m), a = attrsOf(c);
+    a.id = `${prefix}-${a.id}`;
+    if (dark) {
+      for (const k of ["style", "fill", "stroke"]) if (a[k]) a[k] = recolor(a[k]);
+    }
+    return ["marker", a, ...kidsOf(c).map((k) => Array.isArray(k) && attrsOf(k) && dark ? [k[0], Object.fromEntries(Object.entries(attrsOf(k)).map(([key, v]) => [key, key === "style" || key === "fill" || key === "stroke" ? recolor(v) : v])), ...kidsOf(k)] : k)];
+  });
+  return { tree: out, defs };
+}
+function findAll(n, test, out = []) {
+  if (!Array.isArray(n)) return out;
+  if (test(n)) out.push(n);
+  kidsOf(n).forEach((k) => findAll(k, test, out));
+  return out;
+}
+var cache2 = /* @__PURE__ */ new Map();
+var CACHE_SIZE = 60;
+function drawTiming(el, prefix = "tm") {
+  const theme = el?.theme === "light" ? "light" : "dark";
+  const key = theme + "\n" + prefix + "\n" + (el?.source ?? "");
+  const hit = cache2.get(key);
+  if (hit) return hit;
+  let out;
+  const p = parseTiming(el?.source);
+  if (p.error) out = { error: p.error };
+  else {
+    try {
+      const json = clone(p.json);
+      if (p.kind === "signal") json.config = { ...json.config || {}, skin: theme === "dark" ? "dark" : "default" };
+      const tree = (0, import_wavedrom_render_any.default)(0, json, SKINS);
+      if (!Array.isArray(tree) || tree[0] !== "svg") throw new Error("WaveDrom drew nothing for this");
+      const a = attrsOf(tree);
+      const w = Number(a.width) || 400, h = Number(a.height) || 100;
+      const { tree: body, defs } = plain(tree, { prefix, dark: theme === "dark" });
+      out = { kind: p.kind, w, h, body: kidsOf(body), defs, rootAttrs: attrsOf(body) || {} };
+      if (p.kind === "signal") {
+        const lanes = findAll(body, (n) => attrsOf(n)?.["data-tm"] === "lanes")[0];
+        const t = /translate\(\s*([-\d.]+)[ ,]+([-\d.]+)\s*\)/.exec(attrsOf(lanes || [])?.transform || "");
+        const grid = findAll(lanes || [], (n) => attrsOf(n)?.["data-tm"] === "marks")[0] || [];
+        const lines = findAll(grid, (n) => n[0] === "line");
+        const marks = lines.map((n) => Number(attrsOf(n).x1)).sort((x, y) => x - y);
+        const hscale = Number(p.json.config?.hscale) || 1;
+        let period = marks.length > 1 ? marks[1] - marks[0] : 40 * hscale;
+        if (!(period > 0)) period = 40 * hscale;
+        const laneH = Math.max(0, ...lines.map((n) => Number(attrsOf(n).y2) || 0));
+        out.lanes = { x: t ? +t[1] : 0, y: t ? +t[2] : 0, h: laneH || h, period, cycles: marks.length > 1 ? marks.length - 1 : Math.round((w - (t ? +t[1] : 0)) / period) };
+      }
+    } catch (err) {
+      out = { error: "WaveDrom couldn’t draw this: " + (err?.message || String(err)) };
+    }
+  }
+  if (cache2.size >= CACHE_SIZE) cache2.delete(cache2.keys().next().value);
+  cache2.set(key, out);
+  return out;
+}
+function timingModel(el) {
+  const steps = (Array.isArray(el?.steps) ? el.steps : []).slice(0, 200).map((s) => ({
+    to: Math.max(0, Math.min(1e4, Math.round((Number(s?.to) || 0) * 2) / 2)),
+    caption: typeof s?.caption === "string" ? s.caption.slice(0, 300) : ""
+  }));
+  const start = Math.round(Number(el?.stepStart));
+  return {
+    source: String(el?.source ?? ""),
+    theme: el?.theme === "light" ? "light" : "dark",
+    steps,
+    revealFrom: Math.max(0, Math.min(1e4, Math.round((Number(el?.revealFrom) || 0) * 2) / 2)),
+    cursor: el?.cursor !== false,
+    stepStart: start >= 1 && start <= 1e3 ? start : 1
+  };
+}
+var CAPTION_H = 30;
+var idOf = (el) => "tm" + String(el?.id || "x").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+function timingSvg(el, opts = {}) {
+  const m = timingModel(el), prefix = idOf(el) + (opts.deck ? "" : opts.step != null ? "s" + opts.step : "c");
+  const d = drawTiming(m, prefix);
+  const dark = m.theme === "dark";
+  if (d.error) {
+    const w = 480, h = 120;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet"${opts.standalone ? ` width="${w}" height="${h}"` : ""} style="width:100%;height:100%;display:block;overflow:visible"><rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="8" fill="none" stroke="${dark ? "#f5a524" : "#b45309"}" stroke-dasharray="6 4"/><text x="${w / 2}" y="${h / 2 - 6}" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="600" fill="${dark ? "#f5a524" : "#b45309"}">Timing diagram</text><text x="${w / 2}" y="${h / 2 + 16}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="${dark ? "#e8ecf3" : "#333"}">${esc7(d.error.length > 70 ? d.error.slice(0, 69) + "…" : d.error)}</text></svg>`;
+  }
+  const hasCaps = m.steps.some((s) => s.caption);
+  const W = d.w, H = d.h + (hasCaps ? CAPTION_H : 0);
+  const ink = dark ? DARK.ink : "#222222", accent = dark ? "#ff8a65" : "#d9480f";
+  let defs = d.defs.map(toXml).join("");
+  let body = d.body;
+  const steps = d.kind === "signal" && m.steps.length ? m.steps : null;
+  const at = opts.step != null ? Math.max(0, Math.min(m.steps.length, opts.step)) : null;
+  let over = "";
+  if (steps && (opts.deck || at != null)) {
+    const L = d.lanes, x = (cyc) => cyc * L.period;
+    const reveal = (k) => k === 0 ? m.revealFrom : steps[k - 1].to;
+    const range = (k) => k === steps.length ? `${k}-` : `${k}-${k}`;
+    const ks = opts.deck ? steps.map((_, i) => i + 1).concat(0) : [at];
+    const clipId = `${prefix}-reveal`;
+    defs += `<clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">` + ks.map((k) => `<rect${opts.deck ? ` data-fx-in="${range(k)}"` : ""} x="-4" y="-10000" width="${n17(x(reveal(k)) + 4)}" height="20000"/>`).join("") + "</clipPath>";
+    body = clipLanes(body, clipId);
+    if (m.cursor) {
+      over += ks.filter((k) => reveal(k) > 0 && reveal(k) < L.cycles).map((k) => {
+        const cx = L.x + x(reveal(k));
+        return `<line${opts.deck ? ` data-fx-in="${range(k)}"` : ""} x1="${n17(cx)}" y1="${n17(L.y - 8)}" x2="${n17(cx)}" y2="${n17(L.y + L.h + 4)}" stroke="${accent}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      }).join("");
+    }
+  }
+  if (hasCaps && d.kind === "signal") {
+    const caps = m.steps.map((s, i) => [i + 1, s.caption]).filter(([, c]) => c);
+    const shown = opts.deck ? caps : at != null ? caps.filter(([k]) => k <= at).slice(-1) : [];
+    over += shown.map(([k, c]) => `<text class="pxfx-cap"${opts.deck ? ` data-fx-cap="${k}"` : ""} x="${n17(W / 2)}" y="${n17(d.h + CAPTION_H - 10)}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="${ink}">${esc7(c)}</text>`).join("");
+  }
+  const inner = body.map(toXml).join("");
+  const rootFill = d.kind !== "signal" && dark ? ` fill="${DARK.ink}"` : "";
+  const size = opts.standalone ? ` width="${n17(W)}" height="${n17(H)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n17(W)} ${n17(H)}" preserveAspectRatio="xMidYMid meet"${size}${rootFill} style="width:100%;height:100%;display:block;overflow:visible">` + (defs ? `<defs>${defs}</defs>` : "") + inner + over + "</svg>";
+}
+function clipLanes(nodes, clipId) {
+  const walk = (n) => {
+    if (!Array.isArray(n)) return n;
+    const a = attrsOf(n);
+    if (a && a["data-tm"] === "clip") return [n[0], { ...a, "clip-path": `url(#${clipId})` }, ...kidsOf(n)];
+    return [n[0], ...a ? [a] : [], ...kidsOf(n).map(walk)];
+  };
+  return nodes.map(walk);
+}
+function timingSteps(el) {
+  if (el?.type !== "timing") return [];
+  const m = timingModel(el);
+  if (!m.steps.length) return [];
+  return m.steps.map((_, i) => [m.stepStart + i, i + 1]).filter(([n]) => n <= 1e3);
+}
+function timingStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of timingSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-fx-step="${id}" data-fx-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasTiming(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "timing"));
+}
+
 // client/src/utils/periodicData.js
 var PERIODIC_ROWS = [
   [1, "H", "Hydrogen", "1.0080", "1s1", "", 2.2, 120, 13.598, 0.754, "+1, -1", "Gas", 0, 13.81, 20.28, 8988e-8, "Nonmetal", 1766],
@@ -7788,10 +13010,10 @@ function periodicRuntime(ROWS) {
   var SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
   var MONO = "Menlo, Consolas, monospace";
   var NS = "http://www.w3.org/2000/svg";
-  function esc7(s) {
+  function esc8(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function n17(v) {
+  function n18(v) {
     return String(Math.round(v * 10) / 10);
   }
   function clamp4(v, a, b) {
@@ -8167,19 +13389,19 @@ function periodicRuntime(ROWS) {
     return w > max ? Math.max(min || 5, fs * max / w) : fs;
   }
   function text(x, y, s, a) {
-    return '<text x="' + n17(x) + '" y="' + n17(y) + '"' + (a || "") + ">" + esc7(s) + "</text>";
+    return '<text x="' + n18(x) + '" y="' + n18(y) + '"' + (a || "") + ">" + esc8(s) + "</text>";
   }
   function supText(x, y, runs, fs, a, sep) {
     var out = "", down = false;
     runs.forEach(function(r, i) {
-      out += "<tspan" + (down ? ' dy="' + n17(fs * 0.38) + '"' : "") + ">" + esc7((i && sep ? sep : "") + r[0]) + "</tspan>";
+      out += "<tspan" + (down ? ' dy="' + n18(fs * 0.38) + '"' : "") + ">" + esc8((i && sep ? sep : "") + r[0]) + "</tspan>";
       down = false;
       if (r[1]) {
-        out += '<tspan dy="' + n17(-fs * 0.38) + '" font-size="' + n17(fs * 0.7) + '">' + esc7(r[1]) + "</tspan>";
+        out += '<tspan dy="' + n18(-fs * 0.38) + '" font-size="' + n18(fs * 0.7) + '">' + esc8(r[1]) + "</tspan>";
         down = true;
       }
     });
-    return '<text x="' + n17(x) + '" y="' + n17(y) + '" font-size="' + n17(fs) + '"' + (a || "") + ">" + out + "</text>";
+    return '<text x="' + n18(x) + '" y="' + n18(y) + '" font-size="' + n18(fs) + '"' + (a || "") + ">" + out + "</text>";
   }
   function runsW(runs, fs, k, sep) {
     return runs.reduce(function(w, r, i) {
@@ -8212,7 +13434,7 @@ function periodicRuntime(ROWS) {
   function tileSvg(t, s, v, th, o) {
     var z = t.z, e = EL[z], lk = look(z, v, s, th);
     var a = ' data-pt-z="' + z + '" transform="translate(' + t.x + " " + t.y + ')"' + (dimmed(z, v, s, o.key) ? ' opacity="0.22"' : "");
-    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc7(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
+    if (o.mode === "deck") a += ' tabindex="' + (z === o.tab ? 0 : -1) + '" role="button" aria-label="' + esc8(e.name + ", " + z) + '" style="cursor:pointer;outline:none;transition:opacity .18s"';
     else if (o.mode === "canvas") a += ' style="cursor:pointer;transition:opacity .18s"';
     var h = "<g" + a + '><rect width="60" height="60" rx="6" fill="' + lk.fill + '"' + (lk.fillOp === 0 ? ' fill-opacity="0"' : "");
     h += lk.dash ? ' stroke="' + lk.stroke + '" stroke-dasharray="3 2"/>' : ' stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
@@ -8222,12 +13444,12 @@ function periodicRuntime(ROWS) {
     var mode = s.tileLabel === "auto" ? lk.value != null ? "value" : "name" : s.tileLabel;
     var a2 = ' text-anchor="middle" fill="' + lk.ink + '"';
     if (mode === "value" || mode === "name" && lk.value != null && s.tileLabel === "auto") {
-      h += text(30, 50.5, lk.value, a2 + ' font-family="' + MONO + '" font-size="' + n17(fit(textW(lk.value, 8.6, 0.6), 54, 8.6)) + '"');
+      h += text(30, 50.5, lk.value, a2 + ' font-family="' + MONO + '" font-size="' + n18(fit(textW(lk.value, 8.6, 0.6), 54, 8.6)) + '"');
     } else if (mode === "name") {
-      h += text(30, 50.5, e.name, a2 + ' font-size="' + n17(fit(textW(e.name, 8.6), 54, 8.6, 6)) + '"');
+      h += text(30, 50.5, e.name, a2 + ' font-size="' + n18(fit(textW(e.name, 8.6), 54, 8.6, 6)) + '"');
     } else if (mode === "mass") {
       var m = shortMass(e.mass);
-      h += text(30, 50.5, m, a2 + ' font-family="' + MONO + '" font-size="' + n17(fit(textW(m, 8.6, 0.6), 54, 8.6)) + '"');
+      h += text(30, 50.5, m, a2 + ' font-family="' + MONO + '" font-size="' + n18(fit(textW(m, 8.6, 0.6), 54, 8.6)) + '"');
     } else if (mode === "valence") {
       var runs = configRuns(z).filter(function(r) {
         return r[1];
@@ -8277,27 +13499,27 @@ function periodicRuntime(ROWS) {
     h += '<rect x="8" y="8" width="108" height="104" rx="7" fill="' + (lk.fillOp === 0 ? th.code : lk.fill) + '" stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
     var ink = lk.fillOp === 0 ? th.fg : lk.ink;
     h += text(15, 21, z, ' font-family="' + MONO + '" font-size="11" fill="' + ink + '"');
-    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n17(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink + '" opacity="0.72"');
+    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n18(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink + '" opacity="0.72"');
     h += text(62, 72, e.sym, ' text-anchor="middle" font-size="44" font-weight="700" fill="' + ink + '"');
-    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n17(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink + '"');
+    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n18(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink + '"');
     var cat = hsl(CAT_HUE[e.cat], th.strongS, th.strongL);
     h += '<rect x="8" y="121" width="8" height="8" rx="2" fill="' + cat + '"/>';
-    h += text(20, 129, e.cat, ' font-size="' + n17(fit(textW(e.cat, 10.5), 96, 10.5, 7)) + '" font-weight="600" fill="' + th.fg + '"');
+    h += text(20, 129, e.cat, ' font-size="' + n18(fit(textW(e.cat, 10.5), 96, 10.5, 7)) + '" font-weight="600" fill="' + th.fg + '"');
     var meta = [(e.predicted ? "Predicted " + e.state.toLowerCase() : e.state) + " at 298 K", blockOf(z, s.group3) + "-block", e.year ? "Discovered " + e.year : e.yearText === "Ancient" ? "Known since antiquity" : ""];
     meta.forEach(function(m, i) {
-      if (m) h += text(8, 144 + i * 14, m, ' font-size="' + n17(fit(textW(m, 10.5), 108, 10.5, 7)) + '" fill="' + th.muted + '"');
+      if (m) h += text(8, 144 + i * 14, m, ' font-size="' + n18(fit(textW(m, 10.5), 108, 10.5, 7)) + '" fill="' + th.muted + '"');
     });
     var x0 = 128, x1 = 364, runs = configRuns(z);
     var note = e.note ? " (" + e.note + ")" : "";
     var cfs = fit(runsW(runs, 13, 0.6, " ") + textW(note, 10, 0.55), 236, 13, 7);
-    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n17(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n17(cfs * 0.75) + '" fill="' + th.muted + '">' + esc7(note) + "</tspan></text>" : "</text>");
+    h += supText(x0, 25, runs, cfs, ' font-family="' + MONO + '" fill="' + th.fg + '"', " ").replace("</text>", note ? '<tspan dy="' + (runs[runs.length - 1][1] ? n18(cfs * 0.38) : 0) + '" font-family="' + SANS + '" font-size="' + n18(cfs * 0.75) + '" fill="' + th.muted + '">' + esc8(note) + "</tspan></text>" : "</text>");
     factRows(e).forEach(function(r, i) {
       var y = 48 + i * 16, hl = prop && (prop.key === r[0] || prop.key === "massNum" && r[0] === "mass");
       var col = hl ? th.accent : th.muted, vcol = hl ? th.accent : th.fg;
       var lw = textW(r[1], 11) + 8, val = r[2];
       if (textW(val, 11, 0.6) > 236 - lw) val = val.replace(/, /g, ",");
       h += text(x0, y, r[1], ' font-size="11" fill="' + col + '"');
-      h += text(x1, y, val, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n17(fit(textW(val, 11, 0.6), 236 - lw, 11, 6.5)) + '" fill="' + vcol + '"');
+      h += text(x1, y, val, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n18(fit(textW(val, 11, 0.6), 236 - lw, 11, 6.5)) + '" fill="' + vcol + '"');
     });
     if (s.source) h += text(C2.mode === "wide" ? x1 : C2.w - 8, C2.h - 7, "Data: PubChem", ' text-anchor="end" font-size="8.5" fill="' + th.faint + '"');
     var B = C2.mode === "wide" ? { x: 376, y: 8, w: C2.w - 384, h: C2.h - 16 } : { x: 8, y: 190, w: C2.w - 16, h: C2.h - 210 };
@@ -8339,7 +13561,7 @@ function periodicRuntime(ROWS) {
       var X = area.x + it.x, Y = area.y + it.y;
       if (it.core) {
         var cw = textW(core, 11, 0.6) + 12;
-        h += '<rect x="' + n17(X) + '" y="' + n17(Y + 12) + '" width="' + n17(cw) + '" height="' + n17(place.bh) + '" rx="4" fill="' + th.code + '"/>';
+        h += '<rect x="' + n18(X) + '" y="' + n18(Y + 12) + '" width="' + n18(cw) + '" height="' + n18(place.bh) + '" rx="4" fill="' + th.code + '"/>';
         h += text(X + cw / 2, Y + 12 + place.bh / 2 + 3.8, core, ' text-anchor="middle" font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
         return;
       }
@@ -8348,11 +13570,11 @@ function periodicRuntime(ROWS) {
       h += text(X, Y + 9, subName(sb), ' font-family="' + MONO + '" font-size="10" fill="' + (isFront ? th.accent : th.muted) + '"');
       for (var i = 0; i < k; i++) {
         var bx = X + i * w + 0.5, by = Y + 12.5;
-        h += '<rect x="' + n17(bx) + '" y="' + n17(by) + '" width="' + w + '" height="' + bh2 + '" fill="none" stroke="' + th.muted + '"/>';
+        h += '<rect x="' + n18(bx) + '" y="' + n18(by) + '" width="' + w + '" height="' + bh2 + '" fill="none" stroke="' + th.muted + '"/>';
         var a1 = bx + w * 0.34, a2 = bx + w * 0.66, t = by + bh2 * 0.18, bt = by + bh2 * 0.82, hd = w * 0.2;
         var line = ' fill="none" stroke="' + th.fg + '" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
-        if (i < up) h += '<path d="M' + n17(a1) + " " + n17(bt) + "V" + n17(t) + "l" + n17(-hd) + " " + n17(hd * 1.2) + '"' + line;
-        if (i < down) h += '<path d="M' + n17(a2) + " " + n17(t) + "V" + n17(bt) + "l" + n17(hd) + " " + n17(-hd * 1.2) + '"' + line;
+        if (i < up) h += '<path d="M' + n18(a1) + " " + n18(bt) + "V" + n18(t) + "l" + n18(-hd) + " " + n18(hd * 1.2) + '"' + line;
+        if (i < down) h += '<path d="M' + n18(a2) + " " + n18(t) + "V" + n18(bt) + "l" + n18(hd) + " " + n18(-hd * 1.2) + '"' + line;
       }
     });
     return h;
@@ -8363,19 +13585,19 @@ function periodicRuntime(ROWS) {
     var area = { x: B.x, y: B.y + 16, w: B.w, h: B.h - 16 };
     var R = Math.max(20, Math.min(area.h / 2 - 2, (area.w - 56) / 2)), cx = area.x + R + 2, cy = area.y + area.h / 2;
     var rIn = Math.max(10, R * 0.28), nucleus = R * 0.17;
-    h += '<circle cx="' + n17(cx) + '" cy="' + n17(cy) + '" r="' + n17(nucleus) + '" fill="' + hsl(CAT_HUE[e.cat], th.strongS, th.strongL) + '"/>';
-    h += text(cx, cy + nucleus * 0.3, e.sym, ' text-anchor="middle" font-size="' + n17(nucleus * 0.85) + '" font-weight="700" fill="' + th.surface + '"');
+    h += '<circle cx="' + n18(cx) + '" cy="' + n18(cy) + '" r="' + n18(nucleus) + '" fill="' + hsl(CAT_HUE[e.cat], th.strongS, th.strongL) + '"/>';
+    h += text(cx, cy + nucleus * 0.3, e.sym, ' text-anchor="middle" font-size="' + n18(nucleus * 0.85) + '" font-weight="700" fill="' + th.surface + '"');
     for (var k = 0; k < N; k++) {
       var r = N === 1 ? R * 0.55 : rIn + k * (R - rIn) / (N - 1), outer = k === N - 1, n = counts[k], off = k * 0.5;
-      h += '<circle cx="' + n17(cx) + '" cy="' + n17(cy) + '" r="' + n17(r) + '" fill="none" stroke="' + th.line + '"/>';
+      h += '<circle cx="' + n18(cx) + '" cy="' + n18(cy) + '" r="' + n18(r) + '" fill="none" stroke="' + th.line + '"/>';
       h += "<g>";
       for (var j = 0; j < n; j++) {
         var a = off + j * 2 * Math.PI / n;
-        h += '<circle cx="' + n17(cx + r * Math.cos(a)) + '" cy="' + n17(cy + r * Math.sin(a)) + '" r="' + n17(R * (n > 18 ? 0.029 : 0.035)) + '" fill="' + (outer ? th.accent : th.fg) + '"/>';
+        h += '<circle cx="' + n18(cx + r * Math.cos(a)) + '" cy="' + n18(cy + r * Math.sin(a)) + '" r="' + n18(R * (n > 18 ? 0.029 : 0.035)) + '" fill="' + (outer ? th.accent : th.fg) + '"/>';
       }
       if (animate) {
         var dur = 14 + k * 7, from = k % 2 ? 360 : 0;
-        h += '<animateTransform attributeName="transform" type="rotate" from="' + from + " " + n17(cx) + " " + n17(cy) + '" to="' + (360 - from) + " " + n17(cx) + " " + n17(cy) + '" dur="' + dur + 's" repeatCount="indefinite"/>';
+        h += '<animateTransform attributeName="transform" type="rotate" from="' + from + " " + n18(cx) + " " + n18(cy) + '" to="' + (360 - from) + " " + n18(cx) + " " + n18(cy) + '" dur="' + dur + 's" repeatCount="indefinite"/>';
       }
       h += "</g>";
       h += text(cx + R + 14, area.y + 12 + k * 15, "KLMNOPQ"[k] + " " + n, ' font-family="' + MONO + '" font-size="10.5" fill="' + (outer ? th.accent : th.muted) + '"');
@@ -8544,7 +13766,7 @@ function periodicRuntime(ROWS) {
     var h = "", x = B.x;
     ch.valence.forEach(function(v) {
       var nm = subName(v), on = nm === subName(s), w = textW(nm, 10, 0.6) + 10;
-      h += "<g" + (o.mode !== "static" ? ' data-pt-sub="' + nm + '" style="cursor:pointer"' : "") + '><rect x="' + n17(x) + '" y="' + n17(B.y) + '" width="' + n17(w) + '" height="14" rx="3" fill="' + (on ? th.accent : th.surface) + '" stroke="' + (on ? th.accent : th.line) + '"/>';
+      h += "<g" + (o.mode !== "static" ? ' data-pt-sub="' + nm + '" style="cursor:pointer"' : "") + '><rect x="' + n18(x) + '" y="' + n18(B.y) + '" width="' + n18(w) + '" height="14" rx="3" fill="' + (on ? th.accent : th.surface) + '" stroke="' + (on ? th.accent : th.line) + '"/>';
       h += text(x + w / 2, B.y + 10.5, nm, ' text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (on ? th.onAccent : th.fg) + '"') + "</g>";
       x += w + 4;
     });
@@ -8557,19 +13779,19 @@ function periodicRuntime(ROWS) {
       projectCell(s, c, 0.6, STILL[s.l], function(px, py, depth, sign) {
         var bucket = Math.min(3, Math.floor((depth + 1) * 2)), key = (sign > 0 ? "p" : "n") + bucket + (base < 1 ? "e" : "");
         var d = paths[key] || (paths[key] = { d: [], sign, op: base * (0.42 - 0.22 * (bucket / 2 - 0.75)) });
-        d.d.push("M" + n17(A.x + px - sz / 2) + " " + n17(A.y + py - sz / 2) + "h" + sz + "v" + sz + "h-" + sz + "z");
+        d.d.push("M" + n18(A.x + px - sz / 2) + " " + n18(A.y + py - sz / 2) + "h" + sz + "v" + sz + "h-" + sz + "z");
       });
     });
     h += "<g data-pt-cloud-static>";
     Object.keys(paths).sort().forEach(function(key) {
       var p = paths[key];
-      h += '<path d="' + p.d.join("") + '" fill="' + (p.sign > 0 ? th.pos : th.neg) + '" fill-opacity="' + n17(p.op * 100) / 100 + '"/>';
+      h += '<path d="' + p.d.join("") + '" fill="' + (p.sign > 0 ? th.pos : th.neg) + '" fill-opacity="' + n18(p.op * 100) / 100 + '"/>';
     });
     h += "</g>";
-    h += '<rect data-pt-cloud data-n="' + s.n + '" data-l="' + s.l + '" data-e="' + s.e + '" data-x="' + n17(at.x + A.x) + '" data-y="' + n17(at.y + A.y) + '" data-w="' + n17(A.w) + '" data-h="' + n17(A.h) + '" x="' + n17(A.x) + '" y="' + n17(A.y) + '" width="' + n17(A.w) + '" height="' + n17(A.h) + '" fill="none"/>';
+    h += '<rect data-pt-cloud data-n="' + s.n + '" data-l="' + s.l + '" data-e="' + s.e + '" data-x="' + n18(at.x + A.x) + '" data-y="' + n18(at.y + A.y) + '" data-w="' + n18(A.w) + '" data-h="' + n18(A.h) + '" x="' + n18(A.x) + '" y="' + n18(A.y) + '" width="' + n18(A.w) + '" height="' + n18(A.h) + '" fill="none"/>';
     cells.forEach(function(c) {
       var lab = ANG[s.l][c.m].lab, occ = c.occ === 2 ? " ↑↓" : c.occ === 1 ? " ↑" : "";
-      h += '<text x="' + n17(A.x + c.x + c.w / 2) + '" y="' + n17(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc7(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc7(lab[1]) + '</tspan><tspan dy="-2.5">' + esc7(occ) + "</tspan>" : esc7(occ)) + "</text>";
+      h += '<text x="' + n18(A.x + c.x + c.w / 2) + '" y="' + n18(A.y + c.y + c.h + 10) + '" text-anchor="middle" font-family="' + MONO + '" font-size="10" fill="' + (c.occ ? th.fg : th.muted) + '">' + esc8(lab[0]) + (lab[1] ? '<tspan dy="2.5" font-size="7.5">' + esc8(lab[1]) + '</tspan><tspan dy="-2.5">' + esc8(occ) + "</tspan>" : esc8(occ)) + "</text>";
     });
     return h;
   }
@@ -8584,9 +13806,9 @@ function periodicRuntime(ROWS) {
           h += text(x, y, it.label, ' font-size="11" fill="' + th.muted + '" font-style="italic"');
           return;
         }
-        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc7(it.key) + '" style="cursor:pointer"' : "") + ">";
-        h += '<rect x="' + n17(x - 3) + '" y="' + n17(y - 12) + '" width="' + n17(f.w + 6) + '" height="16" fill="' + th.surface + '" fill-opacity="0"' + (on ? ' stroke="' + th.accent + '" rx="4"' : "") + "/>";
-        h += '<rect x="' + n17(x) + '" y="' + n17(y - 9) + '" width="10" height="10" rx="2" fill="' + hsl(it.hue, th.strongS, th.strongL) + '"/>';
+        h += "<g" + (o.mode === "deck" ? ' data-pt-key="' + esc8(it.key) + '" style="cursor:pointer"' : "") + ">";
+        h += '<rect x="' + n18(x - 3) + '" y="' + n18(y - 12) + '" width="' + n18(f.w + 6) + '" height="16" fill="' + th.surface + '" fill-opacity="0"' + (on ? ' stroke="' + th.accent + '" rx="4"' : "") + "/>";
+        h += '<rect x="' + n18(x) + '" y="' + n18(y - 9) + '" width="10" height="10" rx="2" fill="' + hsl(it.hue, th.strongS, th.strongL) + '"/>';
         h += text(x + 15, y, it.label, ' font-size="11" fill="' + th.fg + '"') + "</g>";
       });
       return h;
@@ -8597,13 +13819,13 @@ function periodicRuntime(ROWS) {
     var oneRow = G2.w >= 700, tw = oneRow ? Math.min(300, textW(title, 11.5) + 16) : 0;
     var by = oneRow ? G2.y + 3 : G2.y + ROW_H + 3, bx = G2.x + tw + textW(fmtVal(prop, lo), 11, 0.6) + 8;
     var bw = Math.max(80, Math.min(320, G2.w - (bx - G2.x) - textW(fmtVal(prop, hi), 11, 0.6) - 100));
-    h += text(G2.x, G2.y + 12, title, ' font-size="' + n17(fit(textW(title, 11.5), oneRow ? tw - 16 : G2.w, 11.5, 8)) + '" font-weight="600" fill="' + th.fg + '"');
+    h += text(G2.x, G2.y + 12, title, ' font-size="' + n18(fit(textW(title, 11.5), oneRow ? tw - 16 : G2.w, 11.5, 8)) + '" font-weight="600" fill="' + th.fg + '"');
     h += text(bx - 6, by + 10, fmtVal(prop, lo), ' text-anchor="end" font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
-    for (var i = 0; i < 24; i++) h += '<rect x="' + n17(bx + i * bw / 24) + '" y="' + by + '" width="' + n17(bw / 24 + 0.4) + '" height="12" fill="' + rampAt((i + 0.5) / 24, th.dark).bg + '"/>';
-    if (t != null) h += '<rect data-pt-mark x="' + n17(bx + t * bw - 1) + '" y="' + (by - 4) + '" width="2" height="20" rx="1" fill="' + th.fg + '"/>';
+    for (var i = 0; i < 24; i++) h += '<rect x="' + n18(bx + i * bw / 24) + '" y="' + by + '" width="' + n18(bw / 24 + 0.4) + '" height="12" fill="' + rampAt((i + 0.5) / 24, th.dark).bg + '"/>';
+    if (t != null) h += '<rect data-pt-mark x="' + n18(bx + t * bw - 1) + '" y="' + (by - 4) + '" width="2" height="20" rx="1" fill="' + th.fg + '"/>';
     h += text(bx + bw + 6, by + 10, fmtVal(prop, hi), ' font-family="' + MONO + '" font-size="11" fill="' + th.muted + '"');
     var nx = bx + bw + 14 + textW(fmtVal(prop, hi), 11, 0.6);
-    h += '<rect x="' + n17(nx) + '" y="' + by + '" width="12" height="12" rx="3" fill="none" stroke="' + th.faint + '" stroke-dasharray="3 2"/>' + text(nx + 17, by + 10, "no data", ' font-size="11" fill="' + th.muted + '"');
+    h += '<rect x="' + n18(nx) + '" y="' + by + '" width="12" height="12" rx="3" fill="none" stroke="' + th.faint + '" stroke-dasharray="3 2"/>' + text(nx + 17, by + 10, "no data", ' font-size="11" fill="' + th.muted + '"');
     return h;
   }
   function arrowsSvg(L, v, th) {
@@ -8611,16 +13833,16 @@ function periodicRuntime(ROWS) {
     var t = TRENDS[v.arrow], label = t.label + " increases", fs = 12, tw = textW(label, fs) + 16;
     var a = ' stroke="' + th.accent + '" stroke-width="2" stroke-linecap="round"';
     var head = function(x2, y2, dx, dy) {
-      return '<path d="M' + n17(x2) + " " + n17(y2) + "l" + n17(-dx * 10 + dy * 5) + " " + n17(-dy * 10 - dx * 5) + "l" + n17(-dy * 10) + " " + n17(dx * 10) + 'z" fill="' + th.accent + '"/>';
+      return '<path d="M' + n18(x2) + " " + n18(y2) + "l" + n18(-dx * 10 + dy * 5) + " " + n18(-dy * 10 - dx * 5) + "l" + n18(-dy * 10) + " " + n18(dx * 10) + 'z" fill="' + th.accent + '"/>';
     };
     var y = L.oy - 17, x0 = L.tx0, x1 = L.tx1, mx = (x0 + x1) / 2;
-    var h = '<line x1="' + n17(x0) + '" y1="' + n17(y) + '" x2="' + n17(mx - tw / 2) + '" y2="' + n17(y) + '"' + a + '/><line x1="' + n17(mx + tw / 2) + '" y1="' + n17(y) + '" x2="' + n17(x1) + '" y2="' + n17(y) + '"' + a + "/>";
+    var h = '<line x1="' + n18(x0) + '" y1="' + n18(y) + '" x2="' + n18(mx - tw / 2) + '" y2="' + n18(y) + '"' + a + '/><line x1="' + n18(mx + tw / 2) + '" y1="' + n18(y) + '" x2="' + n18(x1) + '" y2="' + n18(y) + '"' + a + "/>";
     h += t.right ? head(x1 + 2, y, 1, 0) : head(x0 - 2, y, -1, 0);
     h += text(mx, y + 4.2, label, ' text-anchor="middle" font-size="' + fs + '" font-weight="600" fill="' + th.accent + '"');
     var x = L.ox - 17, y0 = L.ty0, y1 = L.ty1, my = (y0 + y1) / 2, th2 = Math.min(tw, y1 - y0 - 40), vfs = fit(tw - 16, th2 - 16, fs, 7);
-    h += '<line x1="' + n17(x) + '" y1="' + n17(y0) + '" x2="' + n17(x) + '" y2="' + n17(my - th2 / 2) + '"' + a + '/><line x1="' + n17(x) + '" y1="' + n17(my + th2 / 2) + '" x2="' + n17(x) + '" y2="' + n17(y1) + '"' + a + "/>";
+    h += '<line x1="' + n18(x) + '" y1="' + n18(y0) + '" x2="' + n18(x) + '" y2="' + n18(my - th2 / 2) + '"' + a + '/><line x1="' + n18(x) + '" y1="' + n18(my + th2 / 2) + '" x2="' + n18(x) + '" y2="' + n18(y1) + '"' + a + "/>";
     h += t.up ? head(x, y0 - 2, 0, -1) : head(x, y1 + 2, 0, 1);
-    h += '<text transform="translate(' + n17(x + 4.2) + " " + n17(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n17(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc7(label) + "</text>";
+    h += '<text transform="translate(' + n18(x + 4.2) + " " + n18(my) + ') rotate(-90)" text-anchor="middle" font-size="' + n18(vfs) + '" font-weight="600" fill="' + th.accent + '">' + esc8(label) + "</text>";
     return h;
   }
   function render(s, o) {
@@ -8653,8 +13875,8 @@ function periodicRuntime(ROWS) {
     if (L.tiles.length) h += ringsSvg(L, shown, pinned, th);
     if (L.card) h += '<g data-pt-card transform="translate(' + L.card.x + " " + L.card.y + ')">' + cardSvg(shown, s, v, th, ro, L.card, L.card) + "</g>";
     if (L.legend) h += "<g data-pt-legend>" + legendSvg(L, s, v, th, ro, shown) + "</g>";
-    var vb = L.vb, size = o.standalone ? ' width="' + n17(vb.w) + '" height="' + n17(vb.h) + '"' : "";
-    return '<svg xmlns="' + NS + '" viewBox="' + n17(vb.x) + " " + n17(vb.y) + " " + n17(vb.w) + " " + n17(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc7(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
+    var vb = L.vb, size = o.standalone ? ' width="' + n18(vb.w) + '" height="' + n18(vb.h) + '"' : "";
+    return '<svg xmlns="' + NS + '" viewBox="' + n18(vb.x) + " " + n18(vb.y) + " " + n18(vb.w) + " " + n18(vb.h) + '" preserveAspectRatio="xMidYMid meet"' + size + ' role="group" aria-label="Periodic table" font-family="' + esc8(SANS) + '" style="width:100%;height:100%;display:block;overflow:visible">' + h + "</svg>";
   }
   var live = [], escOn = false;
   function attach(root, el, opts) {
@@ -10490,6 +15712,10 @@ function generateRevealHTML(presentation, opts = {}) {
         const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${vennSvg(el, { deck: fxId, labels: "deck" })}</div>`;
       }
+      if (el.type === "timing") {
+        const fxId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fx="${fxId}" data-fx-dim="0" style="${style.replace("overflow:hidden;", "overflow:visible;")}">${timingSvg(el, { deck: fxId })}</div>`;
+      }
       if (el.type === "periodic") {
         const pt = periodicDeckHtml(el);
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${pt.attrs} style="${style.replace("overflow:hidden;", "overflow:visible;")}">${pt.svg}</div>`;
@@ -10563,7 +15789,7 @@ function generateRevealHTML(presentation, opts = {}) {
             for (let y = d0.getFullYear(); y <= d1.getFullYear(); y += step) ticks.push({ date: `${y}-01-01`, label: String(y) });
           }
         }
-        const esc7 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const esc8 = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
         svg += `<line x1="${pad}" y1="${lineY}" x2="${w - pad}" y2="${lineY}" stroke="${lc}" stroke-width="2"/>`;
         for (const t of ticks) {
@@ -10581,10 +15807,10 @@ function generateRevealHTML(presentation, opts = {}) {
           svg += `<circle cx="${x}" cy="${lineY}" r="4" fill="${dc}"/>`;
           if (isTop) {
             let ty = cardY + fs;
-            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc7(item.label)}</text>`;
+            svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc8(item.label)}</text>`;
             ty += fs + 2;
             if (item.description) {
-              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc7(item.description)}</text>`;
+              svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc8(item.description)}</text>`;
               ty += fs;
             }
             svg += `<text x="${x}" y="${ty}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
@@ -10592,8 +15818,8 @@ function generateRevealHTML(presentation, opts = {}) {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${ty}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
           } else {
             if (item.image) svg += `<image href="${absoluteSrc(sanitizeUrl(item.image))}" x="${x - 40}" y="${cardY}" width="80" height="${imgH}" preserveAspectRatio="xMidYMid meet"/>`;
-            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc7(item.label)}</text>`;
-            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc7(item.description)}</text>`;
+            svg += `<text x="${x}" y="${cardY + imgH + fs + 2}" text-anchor="middle" fill="${tc}" font-size="${fs}" font-weight="600">${esc8(item.label)}</text>`;
+            if (item.description) svg += `<text x="${x}" y="${cardY + imgH + fs * 2 + 4}" text-anchor="middle" fill="${tc}" font-size="${fs - 1}" opacity="0.6">${esc8(item.description)}</text>`;
             svg += `<text x="${x}" y="${cardY + imgH + fs * (item.description ? 3 : 2) + 6}" text-anchor="middle" fill="${tc}" font-size="${fs - 2}" opacity="0.35">${itemDateLabel(item.date)}</text>`;
           }
           svg += "</g>";
@@ -10819,7 +16045,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + periodicStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + periodicStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -11181,7 +16407,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

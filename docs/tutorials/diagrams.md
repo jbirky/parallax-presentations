@@ -15,6 +15,7 @@ The same menu has the other diagram tools:
 - **Logic Diagram** (see [Logic Diagrams](/tutorials/logic-diagrams))
 - **Free-Body Diagram** (see [Free-Body Diagrams](/tutorials/free-body-diagrams))
 - **Venn Diagram**, shading the regions a set expression names (see [Venn Diagrams](/tutorials/venn-diagrams))
+- **Timing Diagram**, waveforms and register fields drawn by WaveDrom (see [Timing Diagrams](/tutorials/timing-diagrams))
 - **Molecule**, a 3D structure to turn while presenting (see [Molecules](/tutorials/molecules))
 - **Periodic Table**, showing each element's details and electrons as you point at it (see [Periodic Table](/tutorials/periodic-table))
 

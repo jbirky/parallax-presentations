@@ -53,6 +53,7 @@ function getElementLabel(el) {
   if (el.type === 'logic') return 'Logic diagram'
   if (el.type === 'freebody') return 'Free-body diagram'
   if (el.type === 'venn') return 'Venn diagram'
+  if (el.type === 'timing') return 'Timing diagram'
   if (el.type === 'periodic') return 'Periodic table'
   if (el.type === 'audio') return 'Audio'
   if (el.type === 'table') return 'Table'

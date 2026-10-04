@@ -3,8 +3,9 @@
 
 // What the diagram elements share (Feynman diagrams, feynmanDiagram.js,
 // circuits, circuitDiagram.js, logic, logicDiagram.js, free-body diagrams,
-// freebodyDiagram.js, and Venn diagrams, vennDiagram.js): labels from a small part of TeX, and the
-// steps of a presented deck. A diagram in a deck is a <div data-fx="id">
+// freebodyDiagram.js, Venn diagrams, vennDiagram.js, and timing diagrams,
+// timingDiagram.js, which uses only the steps): labels from a small part of
+// TeX, and the steps of a presented deck. A diagram in a deck is a <div data-fx="id">
 // holding its SVG, with a hidden fragment per step (data-fx-step="id",
 // data-fx-step-at="n") counted with the slide's others; diagramDeckScript
 // shows each at its slide's step. The server's pages have this through

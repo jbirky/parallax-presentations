@@ -69,9 +69,9 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
               {el.type === 'video' && (
                 <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {['html', 'code', 'latex', 'equation', 'feynman', 'circuit', 'logic', 'freebody', 'venn', 'periodic', 'markdown', 'audio', 'table', 'icon', 'callout', 'p5', 'model', 'molecule', 'graph'].includes(el.type) && (
+              {['html', 'code', 'latex', 'equation', 'feynman', 'circuit', 'logic', 'freebody', 'venn', 'timing', 'periodic', 'markdown', 'audio', 'table', 'icon', 'callout', 'p5', 'model', 'molecule', 'graph'].includes(el.type) && (
                 <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                  {el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'equation' ? 'x²' : el.type === 'feynman' ? 'γ' : el.type === 'circuit' ? 'Ω' : el.type === 'logic' ? '&' : el.type === 'freebody' ? '↓' : el.type === 'venn' ? '∩' : el.type === 'periodic' ? 'Fe' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'molecule' ? '⌬' : el.type === 'graph' ? 'y=' : 'MD'}
+                  {el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'equation' ? 'x²' : el.type === 'feynman' ? 'γ' : el.type === 'circuit' ? 'Ω' : el.type === 'logic' ? '&' : el.type === 'freebody' ? '↓' : el.type === 'venn' ? '∩' : el.type === 'timing' ? '⊓⊔' : el.type === 'periodic' ? 'Fe' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'molecule' ? '⌬' : el.type === 'graph' ? 'y=' : 'MD'}
                 </div>
               )}
             </div>

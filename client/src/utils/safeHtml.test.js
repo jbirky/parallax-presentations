@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { safeHtml, safeSvg } from './safeHtml'
 import { shapeSvgString } from './shapeUtils'
 import { periodicSvg, defaultPeriodic } from './periodicTable'
+import { timingSvg, TIMING_TEMPLATES } from './timingDiagram'
 
 const ATTACKS = [
   '<img src=x onerror="steal()"><img/src=x/onerror=steal()>',
@@ -64,6 +65,18 @@ describe('HTML from a deck, shown in the editor', () => {
     expect(clean).toContain('opacity="0.22"')
     expect(clean).toContain('pointer-events:none')
     expect(clean.length).toBeGreaterThan(svg.length * 0.95)
+  })
+
+  it('keeps a timing diagram whole: its shapes, arrowheads and text', () => {
+    for (const t of TIMING_TEMPLATES) {
+      const svg = timingSvg({ id: 't', source: t.source, theme: 'dark' })
+      const clean = safeSvg(svg)
+      const count = (s, re) => (s.match(re) || []).length
+      expect(count(clean, /<path/g)).toBe(count(svg, /<path/g))
+      expect(count(clean, /<text/g)).toBe(count(svg, /<text/g))
+      expect(count(clean, /<marker/g)).toBe(count(svg, /<marker/g))
+      expect(clean).not.toMatch(/xml:space/)
+    }
   })
 
   it('returns nothing for nothing', () => {

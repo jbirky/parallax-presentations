@@ -62,6 +62,8 @@ import { defaultFreebody, freebodyBox } from '../utils/freebodyDiagram'
 import { defaultPeriodic, periodicBox } from '../utils/periodicTable'
 import { FREEBODY_FIELDS } from '../utils/freebodySolve'
 import { defaultVenn, vennBox, VENN_FIELDS } from '../utils/vennDiagram'
+import TimingEditorModal from '../components/TimingEditorModal'
+import { defaultTiming, timingBox, TIMING_FIELDS } from '../utils/timingDiagram'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -430,6 +432,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [logicEditor, setLogicEditor] = useState(null) // { elementId (null for a new one), logic, slideBg }
   const [freebodyEditor, setFreebodyEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [vennEditor, setVennEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [timingEditor, setTimingEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
   const [moleculePicker, setMoleculePicker] = useState(null) // { elementId (null for a new one) }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
@@ -719,7 +722,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -1624,6 +1627,43 @@ function draw() {
     }
     setVennEditor(null)
   }, [vennEditor, presentation, updateElement, slideW, slideH])
+
+  const addTiming = useCallback(() => {
+    setTimingEditor({ elementId: null, diagram: defaultTiming(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openTimingEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'timing' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of TIMING_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setTimingEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveTiming = useCallback((diagram) => {
+    const elementId = timingEditor?.elementId
+    const box = timingBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      // As wide as fits: timing diagrams are long
+      const fit = Math.min(1.6, (slideW * 0.9) / box.w, (slideH * 0.8) / box.h)
+      const w = Math.round(box.w * fit), h = Math.round(box.h * fit)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'timing', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setTimingEditor(null)
+  }, [timingEditor, presentation, updateElement, slideW, slideH])
 
   const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
 
@@ -4162,6 +4202,7 @@ function draw() {
             onAddLogic={addLogic}
             onAddFreebody={addFreebody}
             onAddVenn={addVenn}
+            onAddTiming={addTiming}
             onAddMolecule={addMolecule}
             onAddPeriodic={addPeriodic}
             onAddMarkdown={addMarkdownElement}
@@ -4378,6 +4419,7 @@ function draw() {
               onOpenLogicEditor={openLogicEditor}
               onOpenFreebodyEditor={openFreebodyEditor}
               onOpenVennEditor={openVennEditor}
+              onOpenTimingEditor={openTimingEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4422,6 +4464,7 @@ function draw() {
           onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
           onEditFreebody={() => selectedElementId && openFreebodyEditor(selectedElementId)}
           onEditVenn={() => selectedElementId && openVennEditor(selectedElementId)}
+          onEditTiming={() => selectedElementId && openTimingEditor(selectedElementId)}
           onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
           onCiteElement={citeElement}
           presentation={presentation}
@@ -4827,6 +4870,16 @@ function draw() {
           isNew={!freebodyEditor.elementId}
           onSave={saveFreebody}
           onClose={() => setFreebodyEditor(null)}
+        />
+      )}
+
+      {timingEditor && (
+        <TimingEditorModal
+          initial={timingEditor.diagram}
+          slideBg={timingEditor.slideBg}
+          isNew={!timingEditor.elementId}
+          onSave={saveTiming}
+          onClose={() => setTimingEditor(null)}
         />
       )}
 

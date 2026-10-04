@@ -33,6 +33,8 @@ const serverSide = {
   name: 'server-side',
   setup(build) {
     build.onResolve({ filter: /^\.\/libraries$/ }, () => ({ path: './libraries', external: true }))
+    // WaveDrom's renderer, as client/vite.config.js names it
+    build.onResolve({ filter: /^wavedrom-render-any$/ }, () => ({ path: path.join(path.dirname(require.resolve('wavedrom/package.json')), 'lib/render-any.js') }))
     build.onResolve({ filter: /\/PluginRegistry$/ }, () => ({ path: 'plugin-registry', namespace: 'server' }))
     build.onLoad({ filter: /.*/, namespace: 'server' }, () => ({
       contents: 'export default { getSandboxHtml: () => null }', loader: 'js',

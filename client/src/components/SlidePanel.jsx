@@ -20,6 +20,7 @@ import CircuitView from './CircuitView'
 import LogicView from './LogicView'
 import FreebodyView from './FreebodyView'
 import VennView from './VennView'
+import TimingView from './TimingView'
 import PeriodicView from './PeriodicView'
 
 const THUMB_W = 150
@@ -114,6 +115,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
               {el.type === 'logic' && <LogicView element={el} />}
               {el.type === 'freebody' && <FreebodyView element={el} />}
               {el.type === 'venn' && <VennView element={el} />}
+              {el.type === 'timing' && <TimingView element={el} />}
               {el.type === 'periodic' && <PeriodicView element={el} />}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>

@@ -212,6 +212,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Shapes & Elements', link: 'features/shapes' },
       { text: 'Text & Formatting', link: 'features/text-formatting' },
       { text: 'Text & Typography', link: 'tutorials/text-typography' },
+      { text: 'Timing Diagrams', link: 'tutorials/timing-diagrams' },
       { text: 'Transitions', link: 'tutorials/transitions' },
       { text: 'Using LaTeX & Math', link: 'tutorials/using-latex' },
       { text: 'Venn Diagrams', link: 'tutorials/venn-diagrams' },
