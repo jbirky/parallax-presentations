@@ -47,6 +47,7 @@ import {
   FlaskConical,
   Grid3x3,
   DraftingCompass,
+  Globe,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -84,7 +85,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -403,7 +404,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       </div>
 
       {/* Diagrams dropdown */}
-      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic || onAddFreebody || onAddVenn || onAddTiming || onAddGeometry || onAddMolecule || onAddPeriodic) && (
+      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic || onAddFreebody || onAddVenn || onAddTiming || onAddGeometry || onAddMolecule || onAddPeriodic || onAddHarmonics) && (
         <div style={{ position: 'relative' }}>
           <button className="btn-icon" onClick={() => setShowDiagramMenu(v => !v)} title="Diagram tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
             <Waypoints size={14} /> Diagrams <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
@@ -443,6 +444,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               </button>}
               {onAddPeriodic && <button onClick={() => { setShowDiagramMenu(false); onAddPeriodic() }} title="PubChem's periodic table: point at an element to see its details and electrons, colored by category or a property, with steps" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <Grid3x3 size={14} /> Periodic Table
+              </button>}
+              {onAddHarmonics && <button onClick={() => { setShowDiagramMenu(false); onAddHarmonics() }} title="Spherical harmonics as lobes, a colored sphere, a vibrating shape, a sky map or the ℓ, m table, to turn while presenting, with steps that morph" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Globe size={14} /> Spherical Harmonics
               </button>}
               <DocsLink page="diagrams" onClose={() => setShowDiagramMenu(false)} />
             </div>

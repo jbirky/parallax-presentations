@@ -8,6 +8,7 @@ import { vennSvg } from './vennDiagram'
 import { timingSvg } from './timingDiagram'
 import { geometrySvg } from './geometryDiagram'
 import { periodicSvg } from './periodicTable'
+import { harmonicsPng } from './harmonicsView'
 import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
 import { buildCitationIndex, resolveCitationsInHtml } from './citationIndex'
@@ -100,6 +101,10 @@ export function exportToPptx(presentation) {
           for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
           pptSlide.addImage({ path: `data:image/svg+xml;base64,${btoa(binary)}`, x, y, w, h, rotate: rotation })
         } catch {}
+      } else if (el.type === 'harmonics') {
+        // As a picture, drawn by the same renderer as it rests, its label in plain text
+        const png = harmonicsPng(el)
+        if (png) pptSlide.addImage({ data: png, x, y, w, h, rotate: rotation })
       } else if (el.type === 'tikz' && el.svg) {
         // As an image; its math labels are HTML inside the SVG, which PowerPoint leaves out
         try {

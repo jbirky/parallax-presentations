@@ -21,6 +21,7 @@ import { vennSvg, vennStepMarkers, vennSteps, vennStepAt, hasVenn } from './venn
 import { timingSvg, timingStepMarkers, timingSteps, timingStepAt, hasTiming } from './timingDiagram'
 import { geometrySvg, geometryDeckHtml, geometryDeckScript, geometryStepMarkers, geometrySteps, geometryStepAt, hasGeometry } from './geometryDiagram'
 import { periodicSvg, periodicDeckHtml, periodicStepMarkers, periodicSteps, periodicStepAt, hasPeriodic, periodicDeckScript } from './periodicTable'
+import { harmonicsDeckAttrs, harmonicsStepMarkers, harmonicsSteps, harmonicsStepAt, hasHarmonics, harmonicsDeckScript, harmonicsPrintScript } from './harmonicsView'
 import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
@@ -388,6 +389,10 @@ export function generateRevealHTML(presentation, opts = {}) {
           const pt = periodicDeckHtml(el)
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
         }
+        if (el.type === 'harmonics') {
+          // An empty box the deck's harmonics script draws into, turns and steps
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
+        }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -709,7 +714,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -1065,7 +1070,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1387,6 +1392,7 @@ function generatePrintHTML(presentation) {
       ...(slide.elements || []).flatMap(el => timingSteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => geometrySteps(el).map(([step]) => step)),
       ...(slide.elements || []).flatMap(el => periodicSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => harmonicsSteps(el).map(([step]) => step)),
     ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
@@ -1475,6 +1481,11 @@ function generatePrintHTML(presentation) {
           // As at this page's step (a scrolling slide's, its last), clouds held still
           const at = maxIdx === Infinity ? Math.max(0, ...periodicSteps(el).map(([, s]) => s)) : periodicStepAt(el, maxIdx)
           return `<div data-pt-at-page="${at}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${periodicSvg(el, { step: at })}</div>`
+        }
+        if (el.type === 'harmonics') {
+          // Drawn still at this page's step (a scrolling slide's, its last) by the page's script
+          const at = maxIdx === Infinity ? Math.max(0, ...harmonicsSteps(el).map(([, s]) => s)) : harmonicsStepAt(el, maxIdx)
+          return `<div${harmonicsDeckAttrs(el, at)} style="${style}${vis}"></div>`
         }
         if (el.type === 'html') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`
@@ -1730,7 +1741,7 @@ ${pagesHtml}
         try { katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false, displayMode: el.getAttribute('data-math-display') === 'true' }); } catch(e) {}
       });
       setTimeout(function() { window.print(); }, 1000);
-    });${hasEquations(presentation) ? equationPrintScript() : ''}
+    });${hasEquations(presentation) ? equationPrintScript() : ''}${hasHarmonics(presentation) ? harmonicsPrintScript() : ''}
     // Printing these pages, not the one frame of them the window around shows
     window.addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }

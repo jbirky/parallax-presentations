@@ -60,6 +60,7 @@ import { defaultLogic, logicBox } from '../utils/logicDiagram'
 import { LOGIC_FIELDS } from '../utils/logicParts'
 import { defaultFreebody, freebodyBox } from '../utils/freebodyDiagram'
 import { defaultPeriodic, periodicBox } from '../utils/periodicTable'
+import { defaultHarmonics } from '../utils/harmonicsView'
 import { FREEBODY_FIELDS } from '../utils/freebodySolve'
 import { defaultVenn, vennBox, VENN_FIELDS } from '../utils/vennDiagram'
 import TimingEditorModal from '../components/TimingEditorModal'
@@ -1712,6 +1713,21 @@ function draw() {
     const newEl = {
       id: crypto.randomUUID(), type: 'periodic', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
       width: w, height: h, zIndex: 2, ...table,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideIsDark, slideW, slideH])
+
+  // Spherical harmonics, Y_2^1 to start, in the slide's colors; everything
+  // about it is set in the properties panel
+  const addHarmonics = useCallback(() => {
+    const w = Math.round(slideW * 0.6), h = Math.round(slideH * 0.72)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'harmonics', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...defaultHarmonics(slideIsDark()),
     }
     setPresentation(prev => {
       if (!prev) return prev
@@ -4241,6 +4257,7 @@ function draw() {
             onAddGeometry={addGeometry}
             onAddMolecule={addMolecule}
             onAddPeriodic={addPeriodic}
+            onAddHarmonics={addHarmonics}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}

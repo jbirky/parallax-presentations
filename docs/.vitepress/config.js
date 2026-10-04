@@ -70,6 +70,7 @@ export default defineConfig({
             { text: 'Geometry Constructions', link: '/tutorials/geometry-constructions' },
             { text: 'Molecules', link: '/tutorials/molecules' },
             { text: 'Periodic Table', link: '/tutorials/periodic-table' },
+            { text: 'Spherical Harmonics', link: '/tutorials/spherical-harmonics' },
           ]
         },
         {

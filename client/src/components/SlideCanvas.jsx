@@ -44,6 +44,7 @@ import VennView from './VennView'
 import TimingView from './TimingView'
 import GeometryView from './GeometryView'
 import PeriodicView from './PeriodicView'
+import HarmonicsView from './HarmonicsView'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey } from '../utils/embedSnapshots'
 import { supportsClickAction } from '../utils/clickActions'
@@ -1731,6 +1732,12 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           <PeriodicView element={element} interactive={isSelected && !element.locked}
             style={{ pointerEvents: isSelected ? 'auto' : 'none' }}
             onPick={z => onUpdateFields?.(element.id, { restingElement: z })} />
+        )}
+        {element.type === 'harmonics' && (
+          // Once selected, dragging turns it (the panel can keep the angle)
+          // and it shows the step the panel is editing
+          <HarmonicsView element={element} interactive={isSelected && !element.locked}
+            style={{ pointerEvents: isSelected && !element.locked ? 'auto' : 'none' }} />
         )}
         {element.type === 'tikz' && (
           <div style={{ width: '100%', height: '100%', pointerEvents: 'none' }}

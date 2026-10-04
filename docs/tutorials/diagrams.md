@@ -19,6 +19,7 @@ The same menu has the other diagram tools:
 - **Geometry**, ruler-and-compass constructions whose points can be dragged (see [Geometry Constructions](/tutorials/geometry-constructions))
 - **Molecule**, a 3D structure to turn while presenting (see [Molecules](/tutorials/molecules))
 - **Periodic Table**, showing each element's details and electrons as you point at it (see [Periodic Table](/tutorials/periodic-table))
+- **Spherical Harmonics**, drawn as lobes, a colored sphere, a vibrating shape, a sky map or a table, to turn while presenting (see [Spherical Harmonics](/tutorials/spherical-harmonics))
 
 The diagram editor opens as a full-screen modal with a dark canvas and a tool panel on the left.
 

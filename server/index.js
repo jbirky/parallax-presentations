@@ -210,6 +210,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
+      { text: 'Spherical Harmonics', link: 'tutorials/spherical-harmonics' },
       { text: 'Shapes & Elements', link: 'features/shapes' },
       { text: 'Text & Formatting', link: 'features/text-formatting' },
       { text: 'Text & Typography', link: 'tutorials/text-typography' },

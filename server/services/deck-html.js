@@ -6634,7 +6634,7 @@ function graphRuntime(P, config) {
     const E = env();
     const ticks = gridAndAxes();
     const items = analysis.items.filter(visible);
-    const each = (kinds, fn) => {
+    const each2 = (kinds, fn) => {
       for (const it of items) {
         if (!kinds.includes(it.kind)) continue;
         try {
@@ -6645,8 +6645,8 @@ function graphRuntime(P, config) {
         }
       }
     };
-    each(["region"], (it) => drawRegion(it, E));
-    each(["explicit", "function", "polar", "parametric", "implicit"], (it) => {
+    each2(["region"], (it) => drawRegion(it, E));
+    each2(["explicit", "function", "polar", "parametric", "implicit"], (it) => {
       if (it.kind === "explicit" || it.kind === "function" && it.graph) strokeRuns(explicitRuns(it.f, E, it.axis || "y"), exprOf(it));
       else if (it.kind === "polar") strokeRuns(curveRuns(it, E, "theta"), exprOf(it));
       else if (it.kind === "parametric") strokeRuns(curveRuns(it, E, "t"), exprOf(it));
@@ -6654,7 +6654,7 @@ function graphRuntime(P, config) {
     });
     axisNumbers(ticks);
     axisLabels();
-    each(["point"], (it) => drawPoint(it, E));
+    each2(["point"], (it) => drawPoint(it, E));
     if (hover) drawHover();
     if (C2.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true;
@@ -14648,14 +14648,14 @@ function periodicRuntime(ROWS) {
     });
     return cells;
   }
-  function projectCell(sub2, c, a, count, each) {
+  function projectCell(sub2, c, a, count, each2) {
     var data = samples(sub2.n, sub2.l, c.m), pts = data.pts, ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(0.42), sb = Math.sin(0.42);
     var R = Math.min(c.w, c.h) / 2 * 0.92 / data.r90, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
     var n = Math.min(count || Infinity, pts.length / 4);
     for (var i = 0; i < n * 4; i += 4) {
       var x = pts[i], y = pts[i + 1], z = pts[i + 2];
       var x1 = x * ca - y * sa, y1 = x * sa + y * ca, y2 = y1 * cb - z * sb, z2 = y1 * sb + z * cb;
-      each(cx + x1 * R, cy - z2 * R, clamp4(y2 / (data.r90 || 1), -1, 1), pts[i + 3]);
+      each2(cx + x1 * R, cy - z2 * R, clamp4(y2 / (data.r90 || 1), -1, 1), pts[i + 3]);
     }
   }
   var STILL = [900, 520, 340, 240];
@@ -15140,6 +15140,1913 @@ function periodicDeckScript() {
     })();
 `;
   return deckScript3;
+}
+
+// client/src/utils/sphericalHarmonics.js
+function harmonicsCore() {
+  var PI = Math.PI;
+  function idx(l, m) {
+    return l * (l + 1) / 2 + m;
+  }
+  function legendre(L, x, s, out) {
+    out = out || new Float64Array((L + 1) * (L + 2) / 2);
+    var ymm = 1 / Math.sqrt(4 * PI);
+    for (var m = 0; m <= L; m++) {
+      if (m > 0) ymm *= -Math.sqrt((2 * m + 1) / (2 * m)) * s;
+      out[idx(m, m)] = ymm;
+      if (m + 1 <= L) out[idx(m + 1, m)] = Math.sqrt(2 * m + 3) * x * ymm;
+      for (var l = m + 2; l <= L; l++) {
+        var a = Math.sqrt((4 * l * l - 1) / (l * l - m * m));
+        var b = Math.sqrt(((l - 1) * (l - 1) - m * m) / (4 * (l - 1) * (l - 1) - 1));
+        out[idx(l, m)] = a * (x * out[idx(l - 1, m)] - b * out[idx(l - 2, m)]);
+      }
+    }
+    return out;
+  }
+  function factRatio(l, m) {
+    var r = 1;
+    for (var k = l - m + 1; k <= l + m; k++) r /= k;
+    return r;
+  }
+  var NORMS = ["orthonormal", "4pi", "schmidt", "unnormalized"];
+  function normFactor(l, m, form, norm) {
+    var am = Math.abs(m);
+    if (norm === "4pi") return Math.sqrt(4 * PI);
+    if (norm === "schmidt") return Math.sqrt(4 * PI / (2 * l + 1));
+    if (norm === "unnormalized") {
+      var N = Math.sqrt((2 * l + 1) / (4 * PI) * factRatio(l, am));
+      return 1 / (N * (form === "real" && am ? Math.SQRT2 : 1));
+    }
+    return 1;
+  }
+  function coefs(L) {
+    var n = (L + 1) * (L + 2) / 2;
+    return { L, Ar: new Float64Array(n), Ai: new Float64Array(n), Br: new Float64Array(n), Bi: new Float64Array(n), terms: 0 };
+  }
+  function addTerm(C2, t, conv) {
+    var l = t.l, m = t.m, am = Math.abs(m), k = idx(l, am);
+    var f = normFactor(l, m, t.form, conv.norm), cr = t.c[0] * f, ci = t.c[1] * f;
+    var sg = am % 2 ? -1 : 1;
+    if (t.form === "real") {
+      if (m === 0) {
+        C2.Ar[k] += cr;
+        C2.Ai[k] += ci;
+      } else if (m > 0) {
+        C2.Ar[k] += Math.SQRT2 * sg * cr;
+        C2.Ai[k] += Math.SQRT2 * sg * ci;
+      } else {
+        C2.Br[k] += Math.SQRT2 * sg * cr;
+        C2.Bi[k] += Math.SQRT2 * sg * ci;
+      }
+    } else {
+      if (!conv.cs && m > 0) {
+        cr *= sg;
+        ci *= sg;
+      }
+      if (m >= 0) {
+        C2.Ar[k] += cr;
+        C2.Ai[k] += ci;
+        if (m > 0) {
+          C2.Br[k] -= ci;
+          C2.Bi[k] += cr;
+        }
+      } else {
+        C2.Ar[k] += sg * cr;
+        C2.Ai[k] += sg * ci;
+        C2.Br[k] += sg * ci;
+        C2.Bi[k] -= sg * cr;
+      }
+    }
+    C2.terms++;
+  }
+  function fromTerms(terms, conv) {
+    var L = 0;
+    terms.forEach(function(t) {
+      if (t.l > L) L = t.l;
+    });
+    var C2 = coefs(L);
+    terms.forEach(function(t) {
+      addTerm(C2, t, conv);
+    });
+    return C2;
+  }
+  function capCoefs(theta0, phi0, alpha2, L) {
+    var c = Math.cos(alpha2), P = [1, c];
+    for (var l = 1; l <= L; l++) P[l + 1] = ((2 * l + 1) * c * P[l] - l * P[l - 1]) / (l + 1);
+    var C2 = coefs(L), y = legendre(L, Math.cos(theta0), Math.sin(theta0));
+    for (l = 0; l <= L; l++) {
+      var al = 2 * PI * Math.sqrt((2 * l + 1) / (4 * PI)) * (l === 0 ? 1 - c : (P[l - 1] - P[l + 1]) / (2 * l + 1));
+      var w = al * Math.sqrt(4 * PI / (2 * l + 1));
+      for (var m = 0; m <= l; m++) {
+        var k = idx(l, m), yy = w * y[k] * (m ? 2 : 1);
+        C2.Ar[k] += yy * Math.cos(m * phi0);
+        C2.Br[k] += yy * Math.sin(m * phi0);
+      }
+    }
+    C2.terms = (L + 1) * (L + 1);
+    return C2;
+  }
+  function rng(seed) {
+    return function() {
+      seed = seed + 1831565813 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function skyCoefs(seed, slope, L, lmin) {
+    var rand = rng(seed * 7919 + 1), C2 = coefs(L);
+    var gauss2 = function() {
+      var u = 1 - rand(), v = rand();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * PI * v);
+    };
+    for (var l = 0; l <= L; l++) {
+      for (var m = 0; m <= l; m++) {
+        var g1 = gauss2(), g2 = gauss2();
+        if (l < lmin) continue;
+        var sd = Math.pow(l, -slope / 2), k = idx(l, m);
+        C2.Ar[k] = sd * g1 * (m ? Math.SQRT2 : 1);
+        if (m) C2.Br[k] = sd * g2 * Math.SQRT2;
+      }
+    }
+    C2.terms = (L + 1) * (L + 1);
+    return C2;
+  }
+  function synth(C2, thetas, phis) {
+    var L = C2.L, nt = thetas.length, np = phis.length;
+    var re = new Float64Array(nt * np), im = new Float64Array(nt * np);
+    var cs = new Float64Array((L + 1) * np), sn = new Float64Array((L + 1) * np);
+    for (var j = 0; j < np; j++) for (var m = 0; m <= L; m++) {
+      cs[m * np + j] = Math.cos(m * phis[j]);
+      sn[m * np + j] = Math.sin(m * phis[j]);
+    }
+    var y = new Float64Array((L + 1) * (L + 2) / 2);
+    var ar = new Float64Array(L + 1), ai = new Float64Array(L + 1), br = new Float64Array(L + 1), bi = new Float64Array(L + 1);
+    for (var i = 0; i < nt; i++) {
+      legendre(L, Math.cos(thetas[i]), Math.sin(thetas[i]), y);
+      for (m = 0; m <= L; m++) {
+        var sar = 0, sai = 0, sbr = 0, sbi = 0;
+        for (var l = m; l <= L; l++) {
+          var k = idx(l, m), v = y[k];
+          sar += v * C2.Ar[k];
+          sai += v * C2.Ai[k];
+          sbr += v * C2.Br[k];
+          sbi += v * C2.Bi[k];
+        }
+        ar[m] = sar;
+        ai[m] = sai;
+        br[m] = sbr;
+        bi[m] = sbi;
+      }
+      for (j = 0; j < np; j++) {
+        var r = 0, q2 = 0;
+        for (m = 0; m <= L; m++) {
+          var c = cs[m * np + j], s = sn[m * np + j];
+          r += ar[m] * c + br[m] * s;
+          q2 += ai[m] * c + bi[m] * s;
+        }
+        re[i * np + j] = r;
+        im[i * np + j] = q2;
+      }
+    }
+    return { re, im };
+  }
+  function evalAt(C2, theta, phi) {
+    var g = synth(C2, [theta], [phi]);
+    return [g.re[0], g.im[0]];
+  }
+  var ORBITALS = [
+    ["s"],
+    ["p_y", "p_z", "p_x"],
+    ["d_{xy}", "d_{yz}", "d_{z^2}", "d_{xz}", "d_{x^2-y^2}"],
+    ["f_{y(3x^2-y^2)}", "f_{xyz}", "f_{yz^2}", "f_{z^3}", "f_{xz^2}", "f_{z(x^2-y^2)}", "f_{x(x^2-3y^2)}"]
+  ];
+  function compactName(s) {
+    return s.replace(/[_{}^()]/g, "").replace(/²/g, "2").replace(/³/g, "3").replace(/−/g, "-");
+  }
+  var NAME_KEYS = {};
+  ORBITALS.forEach(function(row, l) {
+    row.forEach(function(n, i) {
+      NAME_KEYS[compactName(n)] = { l, m: i - l };
+    });
+  });
+  function orbitalTex(l, m) {
+    return l < ORBITALS.length ? ORBITALS[l][m + l] : null;
+  }
+  function basisTex(t) {
+    if (t.form === "real") return orbitalTex(t.l, t.m) || "Y_{" + t.l + "," + t.m + "}";
+    return "Y_{" + t.l + "}^{" + t.m + "}";
+  }
+  function parseExpr(src, form) {
+    var s = String(src || "").replace(/−/g, "-").replace(/·|×/g, "*").replace(/π/g, "pi");
+    var pos = 0;
+    function err(msg, at) {
+      var e = new Error(msg);
+      e.pos = at === void 0 ? pos : at;
+      throw e;
+    }
+    function ws() {
+      while (pos < s.length && /\s/.test(s[pos])) pos++;
+    }
+    function peek() {
+      ws();
+      return s[pos];
+    }
+    function lin(c) {
+      return { c, t: {} };
+    }
+    function isConst(a) {
+      return Object.keys(a.t).length === 0;
+    }
+    function cmul(a, b) {
+      return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+    }
+    function scale(a, c) {
+      var r2 = lin(cmul(a.c, c));
+      Object.keys(a.t).forEach(function(k) {
+        r2.t[k] = cmul(a.t[k], c);
+      });
+      return r2;
+    }
+    function add2(a, b, sign) {
+      var r2 = lin([a.c[0] + sign * b.c[0], a.c[1] + sign * b.c[1]]);
+      Object.keys(a.t).forEach(function(k) {
+        r2.t[k] = a.t[k].slice();
+      });
+      Object.keys(b.t).forEach(function(k) {
+        var v = r2.t[k] || [0, 0];
+        r2.t[k] = [v[0] + sign * b.t[k][0], v[1] + sign * b.t[k][1]];
+      });
+      return r2;
+    }
+    function basis(fm, l, m, at) {
+      if (!(l >= 0 && l <= 60)) err("ℓ has to be a whole number from 0 to 60", at);
+      if (Math.abs(m) > l) err("m has to lie between −ℓ and ℓ: |" + m + "| > " + l, at);
+      var r2 = lin([0, 0]);
+      r2.t[fm + ":" + l + ":" + m] = [1, 0];
+      return r2;
+    }
+    function int7() {
+      ws();
+      var m = /^[+-]?\s*\d+/.exec(s.slice(pos));
+      if (!m) err("Expected a whole number");
+      pos += m[0].length;
+      return parseInt(m[0].replace(/\s/g, ""), 10);
+    }
+    function braced() {
+      ws();
+      if (s[pos] === "{") {
+        pos++;
+        var v = int7();
+        ws();
+        if (s[pos] !== "}") err("Expected }");
+        pos++;
+        return v;
+      }
+      var m = /^[+-]?\d/.exec(s.slice(pos));
+      if (!m) err("Expected a number after _ or ^");
+      pos += m[0].length;
+      return parseInt(m[0], 10);
+    }
+    function primary() {
+      ws();
+      var at = pos, rest = s.slice(pos), m;
+      if (m = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(rest)) {
+        pos += m[0].length;
+        return lin([parseFloat(m[0]), 0]);
+      }
+      if (s[pos] === "(") {
+        pos++;
+        var e = expr();
+        if (peek() !== ")") err("A ( is never closed", at);
+        pos++;
+        return e;
+      }
+      if (m = /^(sqrt|√)\s*/.exec(rest)) {
+        pos += m[0].length;
+        var a = peek() === "(" ? primary() : primary();
+        if (!isConst(a) || a.c[1]) err("√ takes a plain number", at);
+        if (a.c[0] < 0) err("√ of a negative number", at);
+        return lin([Math.sqrt(a.c[0]), 0]);
+      }
+      if (/^pi\b/.test(rest)) {
+        pos += 2;
+        return lin([PI, 0]);
+      }
+      if (/^i(?![A-Za-z0-9_])/.test(rest)) {
+        pos += 1;
+        return lin([0, 1]);
+      }
+      if (m = /^Y\s*\(/.exec(rest)) {
+        pos += m[0].length;
+        var l = int7();
+        ws();
+        if (s[pos] !== ",") err("Write Y(ℓ, m)");
+        pos++;
+        var mm = int7();
+        ws();
+        if (s[pos] !== ")") err("Write Y(ℓ, m)");
+        pos++;
+        return basis(form === "real" ? "r" : "c", l, mm, at);
+      }
+      if (m = /^Y\s*_\s*\{\s*(\d+)\s*,\s*([+-]?\d+)\s*\}/.exec(rest)) {
+        pos += m[0].length;
+        return basis("r", +m[1], +m[2], at);
+      }
+      if (/^Y\s*_/.test(rest)) {
+        pos = s.indexOf("_", pos) + 1;
+        var l2 = braced();
+        ws();
+        if (s[pos] !== "^") err("Write Y_ℓ^m, or Y_{ℓ,m} for a real one");
+        pos++;
+        return basis("c", l2, braced(), at);
+      }
+      if (m = /^[spdf][A-Za-z0-9_{}^()²³\-−]*/.exec(rest)) {
+        for (var n = m[0].length; n > 0; n--) {
+          var key = compactName(m[0].slice(0, n));
+          if (NAME_KEYS[key] && (n === m[0].length || !/[A-Za-z0-9]/.test(m[0][n]) || m[0][n - 1] === "}")) {
+            if (m[0].slice(0, n).split("(").length !== m[0].slice(0, n).split(")").length) continue;
+            pos += n;
+            return basis("r", NAME_KEYS[key].l, NAME_KEYS[key].m, at);
+          }
+        }
+      }
+      if (pos >= s.length) err("Something is missing at the end");
+      err("“" + (/^\S+/.exec(rest) || [rest])[0].slice(0, 12) + "” isn’t a harmonic or a number", at);
+    }
+    function power() {
+      var a = primary();
+      if (peek() === "^") {
+        var at = pos;
+        pos++;
+        var b = unary();
+        if (!isConst(a) || !isConst(b) || a.c[1] || b.c[1]) err("Only numbers can be raised to a power", at);
+        return lin([Math.pow(a.c[0], b.c[0]), 0]);
+      }
+      return a;
+    }
+    function unary() {
+      var c = peek();
+      if (c === "-") {
+        pos++;
+        return scale(unary(), [-1, 0]);
+      }
+      if (c === "+") {
+        pos++;
+        return unary();
+      }
+      return power();
+    }
+    function term() {
+      var a = unary();
+      for (; ; ) {
+        var c = peek(), at = pos;
+        if (c === "*" || c === "/") pos++;
+        else if (c === void 0 || c === "+" || c === "-" || c === ")" || c === ",") return a;
+        var b = unary();
+        if (c === "/") {
+          if (!isConst(b)) err("Dividing by a harmonic doesn’t give a harmonic", at);
+          var d = b.c[0] * b.c[0] + b.c[1] * b.c[1];
+          if (!d) err("Division by zero", at);
+          a = scale(a, [b.c[0] / d, -b.c[1] / d]);
+        } else if (isConst(a)) a = scale(b, a.c);
+        else if (isConst(b)) a = scale(a, b.c);
+        else err("A product of two harmonics isn’t a sum of harmonics of one ℓ (it needs Clebsch–Gordan coefficients)", at);
+      }
+    }
+    function expr() {
+      var a = term();
+      for (; ; ) {
+        var c = peek();
+        if (c === "+" || c === "-") {
+          pos++;
+          a = add2(a, term(), c === "+" ? 1 : -1);
+        } else return a;
+      }
+    }
+    try {
+      if (!s.trim()) err("Type a sum of harmonics, like Y(2,1) + 0.5 d_{xy}", 0);
+      var r = expr();
+      if (pos < s.length && peek() !== void 0) err("Unexpected “" + s[pos] + "”");
+      if (Math.hypot(r.c[0], r.c[1]) > 1e-12) err("A number on its own isn’t a harmonic: write it times s (or Y(0,0))", 0);
+      var terms = Object.keys(r.t).map(function(k) {
+        var p2 = k.split(":");
+        return { form: p2[0] === "r" ? "real" : "complex", l: +p2[1], m: +p2[2], c: r.t[k] };
+      }).filter(function(t) {
+        return Math.hypot(t.c[0], t.c[1]) > 1e-12;
+      });
+      terms.sort(function(a, b) {
+        return a.l - b.l || a.m - b.m || (a.form < b.form ? -1 : 1);
+      });
+      if (!terms.length) err("Every term cancels", 0);
+      return { terms };
+    } catch (e) {
+      return { error: e.message, pos: e.pos };
+    }
+  }
+  var NICE = [
+    [1, "1"],
+    [0.5, "\\tfrac{1}{2}"],
+    [Math.SQRT1_2, "\\tfrac{1}{\\sqrt{2}}"],
+    [1 / Math.sqrt(3), "\\tfrac{1}{\\sqrt{3}}"],
+    [Math.sqrt(3) / 2, "\\tfrac{\\sqrt{3}}{2}"],
+    [Math.SQRT2, "\\sqrt{2}"],
+    [Math.sqrt(3), "\\sqrt{3}"],
+    [0.25, "\\tfrac{1}{4}"],
+    [1 / 3, "\\tfrac{1}{3}"],
+    [2 / 3, "\\tfrac{2}{3}"],
+    [1 / Math.sqrt(6), "\\tfrac{1}{\\sqrt{6}}"],
+    [Math.sqrt(2 / 3), "\\sqrt{\\tfrac{2}{3}}"]
+  ];
+  function realTex(v) {
+    var a = Math.abs(v);
+    for (var i = 0; i < NICE.length; i++) if (Math.abs(a - NICE[i][0]) < 5e-7) return NICE[i][1];
+    var t = String(+a.toPrecision(4));
+    return t;
+  }
+  function coefTex(c, first) {
+    var re = c[0], im = c[1], sgn;
+    if (Math.abs(im) < 1e-12) {
+      sgn = re < 0 ? "-" : first ? "" : "+";
+      var t = realTex(re);
+      return sgn + (t === "1" ? "" : t + "\\,");
+    }
+    if (Math.abs(re) < 1e-12) {
+      sgn = im < 0 ? "-" : first ? "" : "+";
+      var u = realTex(im);
+      return sgn + (u === "1" ? "" : u) + "i\\,";
+    }
+    return (first ? "" : "+") + "(" + (re < 0 ? "-" : "") + realTex(re) + (im < 0 ? "-" : "+") + realTex(im) + "i)\\,";
+  }
+  function termsTex(terms) {
+    return terms.map(function(t, i) {
+      return coefTex(t.c, i === 0) + basisTex(t);
+    }).join(" ");
+  }
+  function bgcd(a, b) {
+    a = a < BigInt(0) ? -a : a;
+    b = b < BigInt(0) ? -b : b;
+    while (b) {
+      var t = a % b;
+      a = b;
+      b = t;
+    }
+    return a;
+  }
+  function bfact(n) {
+    var r = BigInt(1);
+    for (var k = BigInt(2); k <= BigInt(n); k++) r *= k;
+    return r;
+  }
+  function legendreDeriv(l, m) {
+    var c = [];
+    for (var j = 0; j <= l; j++) c.push(BigInt(0));
+    for (var k = 0; 2 * k <= l; k++) {
+      var num9 = bfact(2 * l - 2 * k) / (bfact(k) * bfact(l - k) * bfact(l - 2 * k));
+      c[l - 2 * k] = (k % 2 ? -BigInt(1) : BigInt(1)) * num9;
+    }
+    for (var d = 0; d < m; d++) {
+      var n = [];
+      for (j = 1; j < c.length; j++) n.push(c[j] * BigInt(j));
+      c = n.length ? n : [BigInt(0)];
+    }
+    return { c, den: BigInt(1) << BigInt(l) };
+  }
+  var PRIMES = [];
+  for (var p = 2; p < 200; p++) {
+    var isP = true;
+    for (var q = 2; q * q <= p; q++) if (p % q === 0) isP = false;
+    if (isP) PRIMES.push(BigInt(p));
+  }
+  function squareOut(n) {
+    var a = BigInt(1), rest = BigInt(1);
+    PRIMES.forEach(function(p2) {
+      var e = 0;
+      while (n % p2 === BigInt(0)) {
+        n /= p2;
+        e++;
+      }
+      for (var i = 0; i < Math.floor(e / 2); i++) a *= p2;
+      if (e % 2) rest *= p2;
+    });
+    return { a, rest: rest * n };
+  }
+  function fracTex(n, d) {
+    return d === BigInt(1) ? String(n) : "\\frac{" + n + "}{" + d + "}";
+  }
+  function polyTex(c, u, uPow) {
+    var parts = [];
+    for (var j = c.length - 1; j >= 0; j--) {
+      if (!c[j]) continue;
+      var a = c[j] < BigInt(0) ? -c[j] : c[j], sgn = c[j] < BigInt(0) ? "-" : "+";
+      var mono = uPow(j);
+      parts.push({ sgn, s: (a === BigInt(1) && mono ? "" : String(a)) + mono });
+    }
+    return parts.map(function(t, i) {
+      return (i === 0 ? t.sgn === "-" ? "-" : "" : " " + t.sgn + " ") + t.s;
+    }).join("");
+  }
+  function pw(sym, k) {
+    return k === 0 ? "" : k === 1 ? sym : sym + "^{" + k + "}";
+  }
+  function trigPw(fn, k) {
+    return k === 0 ? "" : k === 1 ? "\\" + fn + "\\theta" : "\\" + fn + "^{" + k + "}\\theta";
+  }
+  function closedForm(l, m, form, conv) {
+    var am = Math.abs(m), D = legendreDeriv(l, am);
+    var g = BigInt(0);
+    D.c.forEach(function(v) {
+      g = bgcd(g, v);
+    });
+    var lead = D.c[D.c.length - 1] || BigInt(1);
+    if (lead < BigInt(0)) g = -g;
+    var poly = D.c.map(function(v) {
+      return v / g;
+    });
+    var gn = g < BigInt(0) ? -g : g, gd = D.den, sign = g < BigInt(0) ? -1 : 1;
+    var gg = bgcd(gn, gd);
+    gn /= gg;
+    gd /= gg;
+    var real = form === "real", two = real && am ? BigInt(2) : BigInt(1);
+    var num9, den, pp;
+    var fr = { n: bfact(l - am), d: bfact(l + am) };
+    if (conv.norm === "unnormalized") {
+      num9 = gn * gn;
+      den = gd * gd;
+      pp = 0;
+    } else if (conv.norm === "4pi") {
+      num9 = gn * gn * BigInt(2 * l + 1) * fr.n * two;
+      den = gd * gd * fr.d;
+      pp = 0;
+    } else if (conv.norm === "schmidt") {
+      num9 = gn * gn * fr.n * two;
+      den = gd * gd * fr.d;
+      pp = 0;
+    } else {
+      num9 = gn * gn * BigInt(2 * l + 1) * fr.n * two;
+      den = BigInt(4) * gd * gd * fr.d;
+      pp = -1;
+    }
+    if (!real && m > 0 && conv.cs && am % 2) sign = -sign;
+    var r = bgcd(num9, den);
+    num9 /= r;
+    den /= r;
+    var sn = squareOut(num9), sd = squareOut(den);
+    var ra = sn.a, rb = sd.a, k = bgcd(ra, rb);
+    ra /= k;
+    rb /= k;
+    function pref(extra) {
+      var A = ra * extra.n, B = rb * extra.d, kk = bgcd(A, B);
+      A /= kk;
+      B /= kk;
+      var rad = sn.rest === BigInt(1) && sd.rest === BigInt(1) && pp === 0 ? "" : "\\sqrt{" + fracTex(sn.rest, sd.rest).replace(/^(\d+)$/, "$1") + "}";
+      if (pp === -1) rad = sd.rest === BigInt(1) ? "\\sqrt{\\frac{" + sn.rest + "}{\\pi}}" : "\\sqrt{\\frac{" + sn.rest + "}{" + sd.rest + "\\pi}}";
+      if (pp === -1 && sn.rest === BigInt(1)) rad = "\\frac{1}{\\sqrt{" + (sd.rest === BigInt(1) ? "" : sd.rest) + "\\pi}}";
+      var front = A === BigInt(1) && B === BigInt(1) ? "" : B === BigInt(1) ? String(A) : "\\frac{" + A + "}{" + B + "}";
+      if (!front && !rad) front = "1";
+      return { tex: front + (front && rad ? "\\," : "") + rad, value: Number(A) / Number(B) * Math.sqrt(Number(sn.rest) / Number(sd.rest) * Math.pow(PI, pp)) };
+    }
+    var P0 = pref({ n: BigInt(1), d: BigInt(1) });
+    var x = poly.length === 1 ? "" : polyTex(poly, "", function(j) {
+      return trigPw("cos", j);
+    });
+    var nonzero = poly.filter(function(v) {
+      return v;
+    }).length;
+    var angular = trigPw("sin", am);
+    var body = angular + (x ? nonzero > 1 ? (angular ? "\\," : "") + "(" + x + ")" : (angular ? "\\," : "") + x : "");
+    var phase = "";
+    if (am) {
+      if (real) phase = "\\" + (m > 0 ? "cos" : "sin") + (am === 1 ? "" : am) + "\\varphi";
+      else phase = "e^{" + (m < 0 ? "-" : "") + (am === 1 ? "" : am) + "i\\varphi}";
+    }
+    var name = real ? orbitalTex(l, m) ? orbitalTex(l, m) : "Y_{" + l + "," + m + "}" : "Y_{" + l + "}^{" + m + "}";
+    var tex = (sign < 0 ? "-" : "") + P0.tex + (body ? "\\," + body : "") + (phase ? "\\," + phase : "");
+    var out = { name, tex, prefactor: sign * P0.value, poly: poly.map(Number), m, l, form };
+    if (real) out.cartesian = cartesian(l, m, poly, sign, pref);
+    return out;
+  }
+  function cartesian(l, m, poly, sign, pref) {
+    var am = Math.abs(m), xy = [];
+    for (var k = 0; k <= am; k++) {
+      if (m >= 0 !== (k % 2 === 0)) continue;
+      var c = BigInt(binom(am, k)) * ((m >= 0 ? k : k - 1) / 2 % 2 ? -BigInt(1) : BigInt(1));
+      xy.push([c, am - k, k]);
+    }
+    var g = BigInt(0);
+    xy.forEach(function(t) {
+      g = bgcd(g, t[0]);
+    });
+    if (xy.length && xy[0][0] < BigInt(0)) g = -g;
+    xy.forEach(function(t) {
+      t[0] /= g;
+    });
+    var P = pref({ n: g < BigInt(0) ? -g : g, d: BigInt(1) }), s = sign * (g < BigInt(0) ? -1 : 1);
+    var zr = [];
+    for (var j = poly.length - 1; j >= 0; j--) if (poly[j]) zr.push([poly[j], j, l - am - j]);
+    var zmin = Math.min.apply(null, zr.map(function(t) {
+      return t[1];
+    }));
+    var xmin = Math.min.apply(null, xy.map(function(t) {
+      return t[1];
+    })), ymin = Math.min.apply(null, xy.map(function(t) {
+      return t[2];
+    }));
+    function mono(ts, f) {
+      return ts.map(function(t, i) {
+        var a = t[0] < BigInt(0) ? -t[0] : t[0], vars = f(t);
+        return (i === 0 ? t[0] < BigInt(0) ? "-" : "" : t[0] < BigInt(0) ? " - " : " + ") + (a === BigInt(1) && vars ? "" : String(a)) + vars;
+      }).join("");
+    }
+    var common = pw("x", xmin) + pw("y", ymin) + pw("z", zmin);
+    var xyRest = xy.length > 1 ? "(" + mono(xy, function(t) {
+      return pw("x", t[1] - xmin) + pw("y", t[2] - ymin);
+    }) + ")" : "";
+    var zRest = zr.length > 1 ? "(" + mono(zr, function(t) {
+      return pw("z", t[1] - zmin) + pw("r", t[2]);
+    }) + ")" : "";
+    var numer = common + xyRest + zRest;
+    if (!common && !(xyRest && zRest) && /^\([^()]*\)$/.test(numer)) numer = numer.slice(1, -1);
+    var frac = l === 0 ? "" : "\\frac{" + (numer || "1") + "}{" + pw("r", l) + "}";
+    return (s < 0 ? "-" : "") + P.tex + (frac ? "\\," + frac : "");
+  }
+  function binom(n, k) {
+    var r = 1;
+    for (var i = 1; i <= k; i++) r = r * (n - k + i) / i;
+    return Math.round(r);
+  }
+  function nodes(l, m, form, part2) {
+    var am = Math.abs(m), lat = l - am;
+    var cplx = form === "complex" && (part2 === "auto" || part2 === "abs" || part2 === "abs2");
+    var a = lat === 0 ? "no nodal circles of latitude" : lat === 1 ? "1 nodal circle of latitude" : lat + " nodal circles of latitude";
+    if (cplx) return a + (am ? "; the phase turns " + (am === 1 ? "once" : am + " times") + " around the z axis" : "") + ". ℓ = " + l + " in all.";
+    var b = am === 0 ? "no nodal meridians" : am === 1 ? "1 nodal great circle through the poles" : am + " nodal great circles through the poles";
+    return a + " and " + b + ": ℓ = " + l + " nodal circles in all.";
+  }
+  var CONV0 = { cs: true, norm: "orthonormal" };
+  function functionOf(s) {
+    var conv = { cs: s.cs !== false, norm: NORMS.indexOf(s.norm) >= 0 ? s.norm : "orthonormal" };
+    if (s.source === "sum") {
+      var p2 = parseExpr(s.expr, s.form);
+      if (p2.error) return { error: p2.error, pos: p2.pos };
+      return { C: fromTerms(p2.terms, conv), terms: p2.terms, tex: termsTex(p2.terms), real: p2.terms.every(function(t2) {
+        return t2.form === "real" && !t2.c[1];
+      }) };
+    }
+    if (s.source === "cap") {
+      var cp = s.cap || {};
+      return { C: capCoefs((cp.theta || 0) * PI / 180, (cp.phi || 0) * PI / 180, (cp.radius || 30) * PI / 180, cp.lmax || 0), real: true, tex: "\\text{cap of radius } " + (cp.radius || 30) + "^\\circ" };
+    }
+    if (s.source === "sky") {
+      var sk = s.sky || {};
+      return { C: skyCoefs(sk.seed || 1, sk.slope == null ? 2 : sk.slope, sk.lmax || 2, 2), real: true, tex: "C_\\ell \\propto \\ell^{-" + (sk.slope == null ? 2 : sk.slope) + "}" };
+    }
+    var t = { form: s.form === "real" ? "real" : "complex", l: s.l | 0, m: s.m | 0, c: [1, 0] };
+    return { C: fromTerms([t], conv), terms: [t], tex: basisTex(t), real: t.form === "real", single: t };
+  }
+  function grid(nt, np, wrap) {
+    var th = [], ph = [];
+    for (var i = 0; i <= nt; i++) th.push(PI * i / nt);
+    for (var j = 0; j < np + (wrap ? 0 : 1); j++) ph.push(wrap ? 2 * PI * j / np : -PI + 2 * PI * j / np);
+    return { th, ph, nt: nt + 1, np: ph.length, wrap };
+  }
+  function indices(G2, keepPoles) {
+    var out = [], np = G2.np, cols = G2.wrap ? np : np - 1;
+    for (var i = 0; i < G2.nt - 1; i++) {
+      for (var j = 0; j < cols; j++) {
+        var j1 = (j + 1) % np, a = i * np + j, b = (i + 1) * np + j, c = i * np + j1, d = (i + 1) * np + j1;
+        if (i > 0 || keepPoles) out.push(a, b, c);
+        if (i < G2.nt - 2 || keepPoles) out.push(b, d, c);
+      }
+    }
+    return new Uint32Array(out);
+  }
+  function values(F, part2, isReal) {
+    var n = F.re.length, re = new Float32Array(n), im = new Float32Array(n), amax = 0;
+    var complexShown = !isReal && part2 === "auto";
+    for (var k = 0; k < n; k++) {
+      var a = F.re[k], b = F.im[k], v, w = 0;
+      if (part2 === "re" || part2 === "auto" && isReal) v = a;
+      else if (part2 === "im") v = b;
+      else if (part2 === "abs") v = Math.hypot(a, b);
+      else if (part2 === "abs2") v = a * a + b * b;
+      else {
+        v = a;
+        w = b;
+      }
+      re[k] = v;
+      im[k] = w;
+      var mag = Math.hypot(v, w);
+      if (mag > amax) amax = mag;
+    }
+    return { re, im, amax: amax || 1, complex: complexShown, positive: part2 === "abs" || part2 === "abs2" };
+  }
+  function radii(V, view, amplitude, t) {
+    var n = V.re.length, r = new Float32Array(n), inv = 1 / V.amax;
+    var c = Math.cos(t || 0), s = Math.sin(t || 0);
+    for (var k = 0; k < n; k++) {
+      if (view === "lobes") r[k] = Math.hypot(V.re[k], V.im[k]) * inv;
+      else if (view === "shape") r[k] = 1 + amplitude * (V.re[k] * c + V.im[k] * s) * inv;
+      else r[k] = 1;
+    }
+    return r;
+  }
+  function surface(G2, r, idx3, out) {
+    var n = G2.nt * G2.np;
+    var pos = out && out.pos || new Float32Array(n * 3), nor = out && out.nor || new Float32Array(n * 3);
+    for (var i = 0; i < G2.nt; i++) {
+      var st = Math.sin(G2.th[i]), ct = Math.cos(G2.th[i]);
+      for (var j = 0; j < G2.np; j++) {
+        var k = i * G2.np + j, rr = r[k];
+        pos[3 * k] = rr * st * Math.cos(G2.ph[j]);
+        pos[3 * k + 1] = rr * st * Math.sin(G2.ph[j]);
+        pos[3 * k + 2] = rr * ct;
+      }
+    }
+    nor.fill(0);
+    for (var t = 0; t < idx3.length; t += 3) {
+      var a = 3 * idx3[t], b = 3 * idx3[t + 1], c = 3 * idx3[t + 2];
+      var ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      var vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      nor[a] += nx;
+      nor[a + 1] += ny;
+      nor[a + 2] += nz;
+      nor[b] += nx;
+      nor[b + 1] += ny;
+      nor[b + 2] += nz;
+      nor[c] += nx;
+      nor[c + 1] += ny;
+      nor[c + 2] += nz;
+    }
+    ;
+    [0, G2.nt - 1].forEach(function(row) {
+      var sx = 0, sy = 0, sz = 0;
+      for (var j2 = 0; j2 < G2.np; j2++) {
+        var k2 = 3 * (row * G2.np + j2);
+        sx += nor[k2];
+        sy += nor[k2 + 1];
+        sz += nor[k2 + 2];
+      }
+      for (j2 = 0; j2 < G2.np; j2++) {
+        var q2 = 3 * (row * G2.np + j2);
+        nor[q2] = sx;
+        nor[q2 + 1] = sy;
+        nor[q2 + 2] = sz;
+      }
+    });
+    for (var p2 = 0; p2 < n * 3; p2 += 3) {
+      var len2 = Math.hypot(nor[p2], nor[p2 + 1], nor[p2 + 2]) || 1;
+      nor[p2] /= len2;
+      nor[p2 + 1] /= len2;
+      nor[p2 + 2] /= len2;
+    }
+    return { pos, nor };
+  }
+  function mollweide(lat, lon) {
+    var t = lat, target = PI * Math.sin(lat);
+    if (Math.abs(Math.abs(lat) - PI / 2) < 1e-9) t = lat;
+    else for (var k = 0; k < 30; k++) {
+      var d = (2 * t + Math.sin(2 * t) - target) / (2 + 2 * Math.cos(2 * t));
+      t -= d;
+      if (Math.abs(d) < 1e-12) break;
+    }
+    return [2 * Math.SQRT2 / PI * lon * Math.cos(t), Math.SQRT2 * Math.sin(t)];
+  }
+  function project(projection, lat, lon) {
+    return projection === "plate" ? [lon, lat] : mollweide(lat, lon);
+  }
+  function projBox(projection) {
+    return projection === "plate" ? [PI, PI / 2] : [2 * Math.SQRT2, Math.SQRT2];
+  }
+  return {
+    legendre,
+    idx,
+    normFactor,
+    NORMS,
+    CONV0,
+    coefs,
+    addTerm,
+    fromTerms,
+    capCoefs,
+    skyCoefs,
+    synth,
+    evalAt,
+    parseExpr,
+    termsTex,
+    basisTex,
+    orbitalTex,
+    closedForm,
+    nodes,
+    functionOf,
+    grid,
+    indices,
+    values,
+    radii,
+    surface,
+    mollweide,
+    project,
+    projBox,
+    realTex,
+    rng
+  };
+}
+var SH = harmonicsCore();
+
+// client/src/utils/harmonicsView.js
+function harmonicsRuntime(SH2) {
+  var PI = Math.PI, DEG = PI / 180;
+  var GL = /* @__PURE__ */ function() {
+    var cv = null, gl = null, prog = null, U = {}, failed = false;
+    var VS = "#version 300 es\nin vec3 aPos; in vec3 aNor; in vec2 aVal;\nuniform mat4 uView, uProj;\nout vec3 vN; out vec3 vV; out vec2 vVal;\nvoid main() { vec4 p = uView * vec4(aPos, 1.0); vV = p.xyz; vN = mat3(uView) * aNor; vVal = aVal; gl_Position = uProj * p; }";
+    var FS = "#version 300 es\nprecision highp float;\nin vec3 vN; in vec3 vV; in vec2 vVal;\nuniform int uMode; uniform vec3 uPos, uNeg, uMid, uSolid, uNodeCol, uZero;\nuniform float uLit, uNodes, uHue0, uL, uC;\nout vec4 o;\nvec3 lin(vec3 c) { return pow(c, vec3(2.2)); }\nvec3 oklch(float L, float C, float h) {\n  float a = C * cos(h), b = C * sin(h);\n  float l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.2914855480 * b;\n  float l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;\n  return clamp(vec3(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s), 0.0, 1.0);\n}\nvoid main() {\n  float re = vVal.x, im = vVal.y; vec3 col;\n  if (uMode == 0) col = lin(re >= 0.0 ? uPos : uNeg);\n  else if (uMode == 1) { float t = clamp(re, -1.0, 1.0); col = mix(lin(uMid), lin(t >= 0.0 ? uPos : uNeg), pow(abs(t), 0.8)); }\n  else if (uMode == 2 || uMode == 3) {\n    col = oklch(uL, uC, uHue0 + atan(im, re));\n    if (uMode == 3) col = mix(lin(uZero), col, smoothstep(0.0, 0.55, length(vVal)));\n  }\n  else if (uMode == 5) col = mix(lin(uMid), lin(uPos), pow(clamp(re, 0.0, 1.0), 0.8));\n  else col = lin(uSolid);\n  if (uNodes > 0.0) {\n    float q = (uMode == 2 || uMode == 3) ? length(vVal) : re;\n    float d = abs(q) / max(fwidth(q), 1e-7);\n    col = mix(col, lin(uNodeCol), (1.0 - smoothstep(uNodes * 0.5, uNodes * 0.5 + 1.0, d)) * 0.9);\n  }\n  if (uLit > 0.0) {\n    vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;\n    vec3 v = normalize(-vV), L1 = normalize(vec3(-0.45, 0.7, 0.6)), L2 = normalize(vec3(0.75, -0.25, 0.45));\n    float d1 = max(dot(n, L1), 0.0), d2 = max(dot(n, L2), 0.0);\n    float sp = pow(max(dot(n, normalize(L1 + v)), 0.0), 56.0);\n    vec3 shaded = col * (0.34 + 0.6 * d1 + 0.16 * d2) + vec3(0.2 * sp);\n    col = mix(col, shaded, uLit);\n  }\n  o = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);\n}";
+    function init() {
+      if (gl || failed) return !!gl;
+      try {
+        cv = document.createElement("canvas");
+        cv.width = 16;
+        cv.height = 16;
+        gl = cv.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+        if (!gl) throw new Error("no WebGL 2");
+        var sh = function(type, src) {
+          var s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+          return s;
+        };
+        prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+        gl.bindAttribLocation(prog, 0, "aPos");
+        gl.bindAttribLocation(prog, 1, "aNor");
+        gl.bindAttribLocation(prog, 2, "aVal");
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        ["uView", "uProj", "uMode", "uPos", "uNeg", "uMid", "uSolid", "uNodeCol", "uZero", "uLit", "uNodes", "uHue0", "uL", "uC"].forEach(function(n) {
+          U[n] = gl.getUniformLocation(prog, n);
+        });
+        cv.addEventListener("webglcontextlost", function(e) {
+          e.preventDefault();
+          gl = null;
+          prog = null;
+          meshesLost();
+        });
+        return true;
+      } catch (e) {
+        failed = true;
+        gl = null;
+        return false;
+      }
+    }
+    function mesh(pos, nor, val, idx) {
+      var m = { vao: gl.createVertexArray(), count: idx.length, b: [], gl };
+      gl.bindVertexArray(m.vao);
+      [[pos, 3], [nor, 3], [val, 2]].forEach(function(a, i) {
+        var b = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, a[0], gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, a[1], gl.FLOAT, false, 0, 0);
+        m.b.push(b);
+      });
+      m.ib = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      return m;
+    }
+    function update(m, pos, nor, val) {
+      ;
+      [pos, nor, val].forEach(function(a, i) {
+        if (a) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, m.b[i]);
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, a);
+        }
+      });
+    }
+    function free(m) {
+      if (!m || !gl || m.gl !== gl) return;
+      m.b.forEach(function(b) {
+        gl.deleteBuffer(b);
+      });
+      gl.deleteBuffer(m.ib);
+      gl.deleteVertexArray(m.vao);
+    }
+    function valid(m) {
+      return !!(m && gl && m.gl === gl);
+    }
+    function hex(c) {
+      var n = parseInt(c.slice(1), 16);
+      return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+    }
+    function render(ctx, w, h, dpr, passes) {
+      if (!init()) return false;
+      var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+      if (cv.width < W || cv.height < H) {
+        cv.width = Math.max(cv.width, W);
+        cv.height = Math.max(cv.height, H);
+      }
+      gl.viewport(0, 0, cv.width, cv.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.useProgram(prog);
+      passes.forEach(function(P) {
+        var vx = Math.round(P.vp[0] * dpr), vw = Math.round(P.vp[2] * dpr), vh = Math.round(P.vp[3] * dpr);
+        var vy = H - Math.round(P.vp[1] * dpr) - vh;
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(vx, vy, vw, vh);
+        gl.viewport(vx, vy, vw, vh);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+        gl.uniformMatrix4fv(U.uView, false, new Float32Array(P.cam.view));
+        gl.uniformMatrix4fv(U.uProj, false, new Float32Array(P.cam.proj));
+        P.draws.forEach(function(d) {
+          var s = d.style, c = s.colors;
+          gl.uniform1i(U.uMode, s.mode);
+          gl.uniform1f(U.uLit, s.lit);
+          gl.uniform1f(U.uNodes, (s.nodes || 0) * dpr);
+          gl.uniform3fv(U.uPos, hex(c.pos));
+          gl.uniform3fv(U.uNeg, hex(c.neg));
+          gl.uniform3fv(U.uMid, hex(c.mid));
+          gl.uniform3fv(U.uSolid, hex(s.solid || c.axis));
+          gl.uniform3fv(U.uNodeCol, hex(c.node));
+          gl.uniform3fv(U.uZero, hex(c.zero));
+          gl.uniform1f(U.uHue0, c.hue0);
+          gl.uniform1f(U.uL, c.L);
+          gl.uniform1f(U.uC, c.C);
+          gl.bindVertexArray(d.mesh.vao);
+          gl.drawElements(gl.TRIANGLES, d.mesh.count, gl.UNSIGNED_INT, 0);
+        });
+        gl.disable(gl.SCISSOR_TEST);
+      });
+      gl.bindVertexArray(null);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(cv, 0, cv.height - H, W, H, 0, 0, W, H);
+      ctx.restore();
+      return true;
+    }
+    return { init, mesh, update, free, valid, render };
+  }();
+  function perspective(fovy, aspect, near, far) {
+    var f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+    return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+  }
+  function ortho(l, r, b, t) {
+    return [2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -1, 0, -(r + l) / (r - l), -(t + b) / (t - b), 0, 1];
+  }
+  function lookAt(turn, tilt, dist) {
+    var ct = Math.cos(tilt), ex = dist * ct * Math.cos(turn), ey = dist * ct * Math.sin(turn), ez = dist * Math.sin(tilt);
+    var fx = -ex / dist, fy = -ey / dist, fz = -ez / dist;
+    var sx = fy, sy = -fx, sz = 0, sl = Math.hypot(sx, sy) || 1;
+    sx /= sl;
+    sy /= sl;
+    var ux = sy * fz - sz * fy, uy = sz * fx - sx * fz, uz = sx * fy - sy * fx;
+    return [
+      sx,
+      ux,
+      -fx,
+      0,
+      sy,
+      uy,
+      -fy,
+      0,
+      sz,
+      uz,
+      -fz,
+      0,
+      -(sx * ex + sy * ey + sz * ez),
+      -(ux * ex + uy * ey + uz * ez),
+      fx * ex + fy * ey + fz * ez,
+      1
+    ];
+  }
+  function apply(M, p) {
+    var x = p[0], y = p[1], z = p[2];
+    return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[3] * x + M[7] * y + M[11] * z + M[15]];
+  }
+  var THEMES = {
+    light: { pos: "#cf5a1f", neg: "#2470cc", mid: "#e7e5e0", node: "#1f2328", zero: "#34363d", axis: "#8a939d", fg: "#16202a", muted: "#56636f", hue0: 42 * DEG, L: 0.69, C: 0.12 },
+    dark: { pos: "#ff9759", neg: "#63a6f7", mid: "#d8d5cf", node: "#15181b", zero: "#26282e", axis: "#8f9aa6", fg: "#e3e8ed", muted: "#9ba7b3", hue0: 42 * DEG, L: 0.74, C: 0.115 }
+  };
+  var SOURCES = ["single", "sum", "cap", "sky"], FORMS = ["complex", "real"], PARTS = ["auto", "re", "im", "abs", "abs2"];
+  var VIEWS = ["lobes", "sphere", "shape", "map", "table"], MOTIONS = ["none", "spin", "wave"], LABELS = ["none", "name", "formula"];
+  var DEFAULTS2 = {
+    source: "single",
+    l: 2,
+    m: 1,
+    form: "complex",
+    expr: "(s + p_x + p_y + p_z)/2",
+    cap: { theta: 35, phi: 20, radius: 25, lmax: 12 },
+    sky: { seed: 7, slope: 2, lmax: 24 },
+    part: "auto",
+    view: "lobes",
+    tableMax: 3,
+    tableCell: "lobes",
+    projection: "mollweide",
+    eastLeft: false,
+    amplitude: 0.3,
+    motion: "none",
+    speed: 1,
+    turn: 52,
+    tilt: 20,
+    nodes: true,
+    axes: true,
+    key: true,
+    label: "name",
+    cs: true,
+    norm: "orthonormal",
+    theme: "dark",
+    stepStart: 1,
+    steps: []
+  };
+  var PICTURE_FIELDS = ["source", "l", "m", "form", "expr", "cap", "sky", "part", "view", "tableMax", "tableCell", "projection", "eastLeft", "amplitude", "motion", "turn", "tilt", "nodes", "axes"];
+  function pick2(v, list, dflt) {
+    return list.indexOf(v) >= 0 ? v : dflt;
+  }
+  function num9(v, lo, hi, dflt) {
+    v = +v;
+    return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : dflt;
+  }
+  function int7(v, lo, hi, dflt) {
+    return Math.round(num9(v, lo, hi, dflt));
+  }
+  function clean(o, base) {
+    var s = {};
+    s.source = pick2(o.source, SOURCES, base.source);
+    s.l = int7(o.l, 0, 60, base.l);
+    s.m = int7(o.m, -s.l, s.l, Math.max(-s.l, Math.min(s.l, base.m)));
+    s.form = pick2(o.form, FORMS, base.form);
+    s.expr = typeof o.expr === "string" ? o.expr.slice(0, 2e3) : base.expr;
+    var c = o.cap || {}, bc = base.cap;
+    s.cap = { theta: num9(c.theta, 0, 180, bc.theta), phi: num9(c.phi, -180, 360, bc.phi), radius: num9(c.radius, 1, 179, bc.radius), lmax: int7(c.lmax, 0, 60, bc.lmax) };
+    var k = o.sky || {}, bk = base.sky;
+    s.sky = { seed: int7(k.seed, 1, 1e9, bk.seed), slope: num9(k.slope, 0, 6, bk.slope), lmax: int7(k.lmax, 2, 60, bk.lmax) };
+    s.part = pick2(o.part, PARTS, base.part);
+    s.view = pick2(o.view, VIEWS, base.view);
+    s.tableMax = int7(o.tableMax, 0, 5, base.tableMax);
+    s.tableCell = pick2(o.tableCell, ["lobes", "sphere"], base.tableCell);
+    s.projection = pick2(o.projection, ["mollweide", "plate"], base.projection);
+    s.eastLeft = o.eastLeft === void 0 ? base.eastLeft : !!o.eastLeft;
+    s.amplitude = num9(o.amplitude, 0.05, 0.6, base.amplitude);
+    s.motion = pick2(o.motion, MOTIONS, base.motion);
+    s.turn = num9(o.turn, -720, 720, base.turn);
+    s.tilt = num9(o.tilt, -89, 89, base.tilt);
+    s.nodes = o.nodes === void 0 ? base.nodes : !!o.nodes;
+    s.axes = o.axes === void 0 ? base.axes : !!o.axes;
+    return s;
+  }
+  function normalize(el) {
+    el = el || {};
+    var s = clean(el, DEFAULTS2);
+    s.speed = num9(el.speed, 0.1, 4, 1);
+    s.key = el.key === void 0 ? true : !!el.key;
+    s.label = pick2(el.label, LABELS, "name");
+    s.cs = el.cs !== false;
+    s.norm = pick2(el.norm, SH2.NORMS, "orthonormal");
+    s.theme = pick2(el.theme, ["dark", "light"], "dark");
+    s.stepStart = int7(el.stepStart, 1, 1e3, 1);
+    var prev = s;
+    s.steps = (Array.isArray(el.steps) ? el.steps : []).slice(0, 60).map(function(st) {
+      st = st && typeof st === "object" ? st : {};
+      var out = clean(st, prev);
+      out.caption = typeof st.caption === "string" ? st.caption.slice(0, 300) : "";
+      prev = out;
+      return out;
+    });
+    return s;
+  }
+  function stepState(s, n) {
+    var st = n > 0 ? s.steps[Math.min(n, s.steps.length) - 1] : null;
+    var out = {};
+    for (var k in s) if (k !== "steps") out[k] = s[k];
+    if (st) PICTURE_FIELDS.forEach(function(f) {
+      out[f] = st[f];
+    });
+    out.caption = st ? st.caption : "";
+    return out;
+  }
+  var grids = {};
+  function gridFor(kind, L) {
+    var nt = Math.max(48, Math.min(170, 4 * L + 28)), np = 2 * nt;
+    if (kind === "cell") {
+      nt = Math.max(36, 2 * L + 30);
+      np = 2 * nt;
+    }
+    var key = kind + nt;
+    if (grids[key]) return grids[key];
+    var G2 = SH2.grid(nt, np, kind !== "map");
+    G2.idx = SH2.indices(G2, kind === "map");
+    G2.key = key;
+    return grids[key] = G2;
+  }
+  var meshes = {}, axesMeshes = {}, cellMeshes = [];
+  function meshesLost() {
+    meshes = {};
+    axesMeshes = {};
+    cellMeshes.forEach(function(c) {
+      c.mesh = null;
+    });
+    cellMeshes = [];
+  }
+  function meshFor(G2) {
+    var M = meshes[G2.key], n = G2.nt * G2.np;
+    if (!GL.valid(M)) M = meshes[G2.key] = GL.mesh(new Float32Array(n * 3), new Float32Array(n * 3), new Float32Array(n * 2), G2.idx);
+    return M;
+  }
+  function picture(s) {
+    var F = SH2.functionOf(s);
+    if (F.error) return { s, error: F.error, pos: F.pos };
+    var pic = { s, F, view: s.view };
+    if (s.view === "table") {
+      pic.cells = [];
+      for (var l = 0; l <= s.tableMax; l++) for (var m = -l; m <= l; m++) {
+        var c = { source: "single", l, m, form: s.form, part: s.part, cs: s.cs, norm: s.norm, view: s.tableCell, amplitude: s.amplitude, nodes: s.nodes };
+        var Fc = SH2.functionOf(c), G2 = gridFor("cell", l);
+        pic.cells.push({ l, m, s: c, F: Fc, G: G2, field: SH2.synth(Fc.C, G2.th, G2.ph) });
+      }
+      return pic;
+    }
+    var Gk = gridFor(s.view === "map" ? "map" : "3d", F.C.L);
+    pic.G = Gk;
+    pic.field = SH2.synth(F.C, Gk.th, Gk.ph);
+    if (s.view === "map") {
+      var n = Gk.nt * Gk.np, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), flip2 = s.eastLeft ? -1 : 1;
+      for (var i = 0; i < Gk.nt; i++) for (var j = 0; j < Gk.np; j++) {
+        var xy = SH2.project(s.projection, PI / 2 - Gk.th[i], Gk.ph[j]), k = i * Gk.np + j;
+        pos[3 * k] = flip2 * xy[0];
+        pos[3 * k + 1] = xy[1];
+        nor[3 * k + 2] = 1;
+      }
+      pic.mapPos = pos;
+      pic.mapNor = nor;
+    }
+    return pic;
+  }
+  function rotate(field, wt) {
+    if (!wt) return field;
+    var c = Math.cos(wt), sn = Math.sin(wt), n = field.re.length, re = new Float64Array(n), im = new Float64Array(n);
+    for (var k = 0; k < n; k++) {
+      re[k] = field.re[k] * c + field.im[k] * sn;
+      im[k] = field.im[k] * c - field.re[k] * sn;
+    }
+    return { re, im };
+  }
+  function frameData(s, F, field, wt, view) {
+    var V = SH2.values(rotate(field, wt), s.part, F.real);
+    var r = SH2.radii(V, view, s.amplitude);
+    var n = V.re.length, val = new Float32Array(2 * n), inv = 1 / V.amax;
+    for (var k = 0; k < n; k++) {
+      val[2 * k] = V.re[k] * inv;
+      val[2 * k + 1] = V.im[k] * inv;
+    }
+    var mode = view === "lobes" ? V.complex ? 2 : 0 : V.complex ? 3 : V.positive ? 5 : 1;
+    return { r, val, mode };
+  }
+  function lerp(a, b, u) {
+    var o = new Float32Array(a.length);
+    for (var k = 0; k < a.length; k++) o[k] = a[k] + (b[k] - a[k]) * u;
+    return o;
+  }
+  function axesMesh(len2) {
+    var key = len2.toFixed(2);
+    if (GL.valid(axesMeshes[key])) return axesMeshes[key];
+    var P = [], N = [], I = [], seg = 14, rad = 75e-4 * len2, cone = 0.075 * len2, crad = 0.026 * len2;
+    function add2(d) {
+      var u = Math.abs(d[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
+      var v = [d[1] * u[2] - d[2] * u[1], d[2] * u[0] - d[0] * u[2], d[0] * u[1] - d[1] * u[0]];
+      u = [v[1] * d[2] - v[2] * d[1], v[2] * d[0] - v[0] * d[2], v[0] * d[1] - v[1] * d[0]];
+      var base = P.length / 3;
+      for (var i = 0; i <= seg; i++) {
+        var a = 2 * PI * i / seg, ca = Math.cos(a), sa = Math.sin(a);
+        var nx = u[0] * ca + v[0] * sa, ny = u[1] * ca + v[1] * sa, nz = u[2] * ca + v[2] * sa;
+        [-len2, len2 - cone].forEach(function(t) {
+          P.push(d[0] * t + nx * rad, d[1] * t + ny * rad, d[2] * t + nz * rad);
+          N.push(nx, ny, nz);
+        });
+        P.push(d[0] * (len2 - cone) + nx * crad, d[1] * (len2 - cone) + ny * crad, d[2] * (len2 - cone) + nz * crad);
+        N.push(nx * 0.9 + d[0] * 0.4, ny * 0.9 + d[1] * 0.4, nz * 0.9 + d[2] * 0.4);
+        P.push(d[0] * len2, d[1] * len2, d[2] * len2);
+        N.push(nx * 0.9 + d[0] * 0.4, ny * 0.9 + d[1] * 0.4, nz * 0.9 + d[2] * 0.4);
+      }
+      for (i = 0; i < seg; i++) {
+        var a0 = base + 4 * i, a1 = base + 4 * (i + 1);
+        I.push(a0, a1, a0 + 1, a1, a1 + 1, a0 + 1, a0 + 2, a1 + 2, a0 + 3, a1 + 2, a1 + 3, a0 + 3);
+      }
+    }
+    add2([1, 0, 0]);
+    add2([0, 1, 0]);
+    add2([0, 0, 1]);
+    return axesMeshes[key] = GL.mesh(new Float32Array(P), new Float32Array(N), new Float32Array(P.length / 3 * 2), new Uint32Array(I));
+  }
+  var FOV = 24 * DEG;
+  function camera(turn, tilt, R, w, h) {
+    var aspect = w / h, half2 = Math.atan(Math.tan(FOV / 2) * Math.min(1, aspect));
+    var dist = R / Math.sin(half2) * 1.02;
+    return { view: lookAt(turn * DEG, tilt * DEG, dist), proj: perspective(FOV, aspect, dist / 20, dist * 4) };
+  }
+  function mapCamera(s, w, h) {
+    var B = SH2.projBox(s.projection), bx = B[0] * 1.06, by = B[1] * 1.06;
+    if (bx / by > w / h) by = bx * h / w;
+    else bx = by * w / h;
+    return { view: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], proj: ortho(-bx, bx, -by, by), bx, by };
+  }
+  function toScreen(cam, p, vp) {
+    var q = apply(cam.view, p), c = apply(cam.proj, [q[0], q[1], q[2]]);
+    return [vp[0] + (c[0] / c[3] * 0.5 + 0.5) * vp[2], vp[1] + (0.5 - c[1] / c[3] * 0.5) * vp[3]];
+  }
+  function style(th, mode, lit, nodes) {
+    return { mode, lit, nodes, colors: th };
+  }
+  function draw(canvas, pic, o) {
+    o = o || {};
+    var w = o.w, h = o.h, dpr = o.dpr || 1;
+    var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== W || canvas.height !== H) {
+      canvas.width = W;
+      canvas.height = H;
+    }
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    if (!pic || pic.error) {
+      ctx.clearRect(0, 0, W, H);
+      return true;
+    }
+    var s = pic.s, th = THEMES[s.theme] || THEMES.dark, t = o.t || 0;
+    var turn = (o.turn != null ? o.turn : s.turn) + (s.motion === "spin" ? t * 24 * s.speed : 0);
+    var tilt = o.tilt != null ? o.tilt : s.tilt;
+    var wt = s.motion === "wave" ? t * 2.2 * s.speed : 0;
+    var from = o.from && !o.from.error && o.u < 1 ? o.from : null, u = from ? ease(o.u) : 1;
+    if (from && o.fromTurn != null) {
+      turn = o.fromTurn + (turn - o.fromTurn) * u;
+      tilt = o.fromTilt + (tilt - o.fromTilt) * u;
+    }
+    var one = function(c, p, f, uu) {
+      return p.view === "table" ? drawTable(c, p, w, h, dpr, th, turn, tilt, wt) : drawSingle(c, p, w, h, dpr, th, turn, tilt, wt, f, uu);
+    };
+    if (!from) return one(ctx, pic);
+    if (sameKind(from, pic)) return one(ctx, pic, from, u);
+    var a = scratch(0, W, H), b = scratch(1, W, H);
+    if (!one(a.getContext("2d"), from) || !one(b.getContext("2d"), pic)) return false;
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 1 - u;
+    ctx.drawImage(a, 0, 0);
+    ctx.globalAlpha = u;
+    ctx.drawImage(b, 0, 0);
+    ctx.globalAlpha = 1;
+    return true;
+  }
+  function ease(u) {
+    u = Math.max(0, Math.min(1, u));
+    return u * u * (3 - 2 * u);
+  }
+  function sameKind(a, b) {
+    return a.view !== "table" && b.view !== "table" && a.view === "map" === (b.view === "map") && a.G.key === b.G.key && (a.view !== "map" || a.s.projection === b.s.projection && a.s.eastLeft === b.s.eastLeft);
+  }
+  var scratches = [];
+  function scratch(i, W, H) {
+    var c = scratches[i] || (scratches[i] = document.createElement("canvas"));
+    c.width = W;
+    c.height = H;
+    return c;
+  }
+  function drawSingle(ctx, pic, w, h, dpr, th, turn, tilt, wt, from, u) {
+    var s = pic.s, G2 = pic.G, view = pic.view;
+    var D = frameData(s, pic.F, pic.field, wt, view), r = D.r, val = D.val, mode = D.mode;
+    if (from) {
+      var E = frameData(from.s, from.F, from.field, wt, from.view);
+      r = lerp(E.r, D.r, u);
+      val = lerp(E.val, D.val, u);
+      mode = u < 0.5 ? E.mode : D.mode;
+    }
+    if (!GL.init()) return false;
+    var M = meshFor(G2), vp = [0, 0, w, h], cam, nodes = s.nodes && view !== "lobes" ? 1.6 : 0;
+    if (view === "map") {
+      cam = mapCamera(s, w, h);
+      GL.update(M, pic.mapPos, pic.mapNor, val);
+      if (!GL.render(ctx, w, h, dpr, [{ vp, cam, draws: [{ mesh: M, style: style(th, mode, 0, nodes) }] }])) return false;
+      overlayMap(ctx, s, cam, vp, dpr, th);
+    } else {
+      var S = SH2.surface(G2, r, G2.idx, pic.surfBuf);
+      pic.surfBuf = S;
+      var R = 0;
+      for (var k = 0; k < r.length; k++) if (r[k] > R) R = r[k];
+      var axisLen = Math.max(1, R) * 1.28;
+      cam = camera(turn, tilt, s.axes ? axisLen * 1.08 : Math.max(R, 0.3) * 1.04, w, h);
+      GL.update(M, S.pos, S.nor, val);
+      var draws = [{ mesh: M, style: style(th, mode, 1, nodes) }];
+      if (s.axes) draws.push({ mesh: axesMesh(axisLen), style: { mode: 4, lit: 0.6, nodes: 0, colors: th, solid: th.axis } });
+      if (!GL.render(ctx, w, h, dpr, [{ vp, cam, draws }])) return false;
+      if (s.axes) overlayAxes(ctx, cam, vp, axisLen, dpr, th, Math.min(w, h));
+    }
+    if (s.key) overlayKey(ctx, mode, w, h, dpr, th);
+    return true;
+  }
+  function drawTable(ctx, pic, w, h, dpr, th, turn, tilt, wt) {
+    var s = pic.s, Lt = s.tableMax, rows = Lt + 1, cols = 2 * Lt + 1;
+    var lab = Math.max(10, Math.min(26, h / rows * 0.24)), names = s.names !== false && h / rows > 40;
+    var gap = names ? lab * 0.6 : 0;
+    var cell = Math.min(w / cols, (h - 4) / rows - gap), passes = [], places = [];
+    var x0 = (w - cell * cols) / 2, y0 = (h - rows * (cell + gap)) / 2;
+    if (!GL.init()) return false;
+    pic.cells.forEach(function(c) {
+      var x = x0 + (c.m + Lt) * cell, y = y0 + c.l * (cell + gap);
+      var D = frameData(c.s, c.F, c.field, wt, c.s.view);
+      var S = SH2.surface(c.G, D.r, c.G.idx, c.surfBuf);
+      c.surfBuf = S;
+      if (!GL.valid(c.mesh)) {
+        c.mesh = GL.mesh(S.pos, S.nor, D.val, c.G.idx);
+        cellMeshes.push(c);
+      } else GL.update(c.mesh, S.pos, S.nor, D.val);
+      var vp = [x + cell * 0.04, y, cell * 0.92, cell * 0.92];
+      passes.push({ vp, cam: camera(turn, tilt, 1.04, vp[2], vp[3]), draws: [{ mesh: c.mesh, style: style(th, D.mode, 1, c.s.view === "lobes" ? 0 : s.nodes ? 1.2 : 0) }] });
+      places.push([c, x + cell / 2, y + cell * 0.92 + lab * 0.45, D.mode]);
+    });
+    if (!GL.render(ctx, w, h, dpr, passes)) return false;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    if (names) places.forEach(function(p) {
+      drawName(ctx, p[1], p[2], p[0].s.form, p[0].l, p[0].m, lab * 0.7, th.fg);
+    });
+    ctx.restore();
+    if (s.key && places.length) overlayKey(ctx, places[places.length - 1][3], w, h, dpr, th, true);
+    return true;
+  }
+  function freePicture(pic) {
+    if (!pic || !pic.cells) return;
+    pic.cells.forEach(function(c) {
+      GL.free(c.mesh);
+      c.mesh = null;
+      var i = cellMeshes.indexOf(c);
+      if (i >= 0) cellMeshes.splice(i, 1);
+    });
+  }
+  var SERIF = '"KaTeX_Main", "STIX Two Text", "Times New Roman", Times, serif';
+  function overlayAxes(ctx, cam, vp, len2, dpr, th, size) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = th.muted;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "italic " + Math.max(10, Math.min(24, size * 0.045)).toFixed(1) + "px " + SERIF;
+    [["x", [1, 0, 0]], ["y", [0, 1, 0]], ["z", [0, 0, 1]]].forEach(function(a) {
+      var tip = toScreen(cam, [a[1][0] * len2, a[1][1] * len2, a[1][2] * len2], vp), o = toScreen(cam, [0, 0, 0], vp);
+      var dx = tip[0] - o[0], dy = tip[1] - o[1], d = Math.hypot(dx, dy) || 1, off = Math.max(8, size * 0.03);
+      ctx.fillText(a[0], tip[0] + dx / d * off, tip[1] + dy / d * off);
+    });
+    ctx.restore();
+  }
+  function overlayMap(ctx, s, cam, vp, dpr, th) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    var sx = vp[2] / (2 * cam.bx), sy = vp[3] / (2 * cam.by), flip2 = s.eastLeft ? -1 : 1;
+    var pt = function(lat2, lon2) {
+      var p2 = SH2.project(s.projection, lat2, lon2);
+      return [vp[0] + vp[2] / 2 + flip2 * p2[0] * sx, vp[1] + vp[3] / 2 - p2[1] * sy];
+    };
+    ctx.strokeStyle = th.fg;
+    ctx.globalAlpha = 0.18;
+    ctx.lineWidth = 0.8;
+    var lat, lon, i, p;
+    for (lat = -60; lat <= 60; lat += 30) {
+      ctx.beginPath();
+      for (i = 0; i <= 120; i++) {
+        p = pt(lat * DEG, -PI + 2 * PI * i / 120);
+        if (i) ctx.lineTo(p[0], p[1]);
+        else ctx.moveTo(p[0], p[1]);
+      }
+      ctx.stroke();
+    }
+    for (lon = -120; lon <= 120; lon += 60) {
+      ctx.beginPath();
+      for (i = 0; i <= 90; i++) {
+        p = pt(-PI / 2 + PI * i / 90, lon * DEG);
+        if (i) ctx.lineTo(p[0], p[1]);
+        else ctx.moveTo(p[0], p[1]);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (i = 0; i <= 90; i++) {
+      p = pt(-PI / 2 + PI * i / 90, PI);
+      if (i) ctx.lineTo(p[0], p[1]);
+      else ctx.moveTo(p[0], p[1]);
+    }
+    for (i = 0; i <= 90; i++) {
+      p = pt(PI / 2 - PI * i / 90, -PI);
+      ctx.lineTo(p[0], p[1]);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    var fs = Math.max(9, Math.min(16, vp[3] * 0.04));
+    ctx.fillStyle = th.muted;
+    ctx.font = "italic " + fs.toFixed(1) + "px " + SERIF;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    var e = pt(0, 0);
+    ctx.fillText(flip2 > 0 ? "φ = 0 →" : "← φ = 0", e[0] + (flip2 > 0 ? fs * 0.75 : -fs * 0.75), pt(-PI / 2, 0)[1] + 3);
+    ctx.restore();
+  }
+  function overlayKey(ctx, mode, w, h, dpr, th, top) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    var k = Math.max(0.6, Math.min(1.8, Math.min(w, h) / 320)), x = w - 10 * k, y = top ? 34 * k : h - 12 * k, fs = 11 * k;
+    ctx.font = fs.toFixed(1) + "px " + SERIF;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = th.muted;
+    if (mode === 0) {
+      ;
+      [["−", th.neg], ["+", th.pos]].forEach(function(c, i2) {
+        var xx = x - (1 - i2) * 30 * k - 24 * k;
+        ctx.fillStyle = c[1];
+        roundRect(ctx, xx, y - 5 * k, 10 * k, 10 * k, 2 * k);
+        ctx.fill();
+        ctx.fillStyle = th.muted;
+        ctx.textAlign = "left";
+        ctx.fillText(c[0], xx + 13 * k, y);
+      });
+    } else if (mode === 1 || mode === 5) {
+      var bw = 86 * k, bx = x - bw, g = ctx.createLinearGradient(bx, 0, x, 0);
+      if (mode === 1) {
+        g.addColorStop(0, th.neg);
+        g.addColorStop(0.5, th.mid);
+        g.addColorStop(1, th.pos);
+      } else {
+        g.addColorStop(0, th.mid);
+        g.addColorStop(1, th.pos);
+      }
+      ctx.fillStyle = g;
+      roundRect(ctx, bx, y - 4 * k, bw, 8 * k, 2 * k);
+      ctx.fill();
+      ctx.fillStyle = th.muted;
+      ctx.textAlign = "center";
+      ctx.fillText(mode === 1 ? "−" : "0", bx, y - 12 * k);
+      ctx.fillText(mode === 1 ? "+" : "max", x, y - 12 * k);
+      if (mode === 1) ctx.fillText("0", bx + bw / 2, y - 12 * k);
+    } else if (mode === 2 || mode === 3) {
+      var R = 13 * k, cx = x - R, cy = y - R + 6 * k;
+      for (var i = 0; i < 48; i++) {
+        var a0 = 2 * PI * i / 48, a1 = 2 * PI * (i + 1) / 48 + 0.01;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, -a1, -a0);
+        ctx.arc(cx, cy, R * 0.55, -a0, -a1, true);
+        ctx.closePath();
+        ctx.fillStyle = oklchHex(th.L, th.C, th.hue0 + (a0 + a1) / 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = th.muted;
+      ctx.textAlign = "right";
+      ctx.fillText("arg", cx - R - 5 * k, cy - 6 * k);
+      ctx.fillText("0 →", cx - R - 5 * k, cy + 7 * k);
+    }
+    ctx.restore();
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function oklchHex(L, C2, h) {
+    var a = C2 * Math.cos(h), b = C2 * Math.sin(h);
+    var l_ = L + 0.3963377774 * a + 0.2158037573 * b, m_ = L - 0.1055613458 * a - 0.0638541728 * b, s_ = L - 0.0894841775 * a - 1.291485548 * b;
+    var l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+    var rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+    return "#" + rgb.map(function(v) {
+      v = Math.max(0, Math.min(1, v));
+      return ("0" + Math.round(Math.pow(v, 1 / 2.2) * 255).toString(16)).slice(-2);
+    }).join("");
+  }
+  function uni(t) {
+    return t.replace(/\^\{?2\}?/g, "²").replace(/\^\{?3\}?/g, "³").replace(/-/g, "−").replace(/[{}]/g, "");
+  }
+  function drawName(ctx, x, y, form, l, m, size, color2) {
+    var base, sub2, sup = "";
+    var orb = form === "real" ? SH2.orbitalTex(l, m) : null;
+    if (orb) {
+      base = orb[0];
+      sub2 = uni(orb.slice(2));
+    } else if (form === "real") {
+      base = "Y";
+      sub2 = l + "," + String(m).replace("-", "−");
+    } else {
+      base = "Y";
+      sub2 = String(l);
+      sup = String(m).replace("-", "−");
+    }
+    var big = "italic " + size.toFixed(1) + "px " + SERIF, small = (orb ? "italic " : "") + (size * 0.68).toFixed(1) + "px " + SERIF;
+    ctx.font = big;
+    var bw = ctx.measureText(base).width;
+    ctx.font = small;
+    var sw = Math.max(ctx.measureText(sub2).width, ctx.measureText(sup).width);
+    var x0 = x - (bw + sw + 1) / 2;
+    ctx.fillStyle = color2;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = big;
+    ctx.fillText(base, x0, y + size * 0.3);
+    ctx.font = small;
+    ctx.fillText(sub2, x0 + bw + 1, y + size * 0.52);
+    if (sup) ctx.fillText(sup, x0 + bw + 1, y - size * 0.12);
+  }
+  function labelTex(s) {
+    if (s.label === "none") return "";
+    if (s.view === "table") return s.form === "real" ? "Y_{\\ell,m}" : "Y_\\ell^m";
+    var F = SH2.functionOf(s);
+    if (F.error) return "";
+    var f = F.tex, wrap = s.source === "sum" && F.terms.length > 1 ? "(" + f + ")" : f;
+    var sp = s.source === "single" ? "\\," : "";
+    var name = s.part === "re" ? "\\operatorname{Re}" + sp + wrap : s.part === "im" ? "\\operatorname{Im}" + sp + wrap : s.part === "abs" ? "|" + f + "|" : s.part === "abs2" ? "|" + f + "|^2" : f;
+    if (s.label === "formula" && s.source === "single" && s.part === "auto") name += " = " + SH2.closedForm(s.l, s.m, s.form, { cs: s.cs, norm: s.norm }).tex;
+    return name;
+  }
+  function attach(root, el, opts) {
+    opts = opts || {};
+    var mode = opts.mode === "canvas" || opts.mode === "static" ? opts.mode : "deck";
+    var doc = root.ownerDocument, win = doc.defaultView || window;
+    var reduce = !!(win.matchMedia && win.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    var s = normalize(el), step = opts.step || 0;
+    var st = { pic: null, from: null, morph0: 0, fromTurn: null, fromTilt: null, turn: null, tilt: null, t0: now(), dirty: true, raf: 0, gone: false, broken: false };
+    function now() {
+      return win.performance ? win.performance.now() : Date.now();
+    }
+    root.innerHTML = "";
+    if (win.getComputedStyle && win.getComputedStyle(root).position === "static") root.style.position = "relative";
+    var canvas = doc.createElement("canvas");
+    canvas.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;display:block;" + (mode === "static" ? "" : "cursor:grab;touch-action:none;");
+    canvas.setAttribute("role", "img");
+    root.appendChild(canvas);
+    var label = doc.createElement("div"), caption = doc.createElement("div"), note = doc.createElement("div");
+    label.style.cssText = "position:absolute;left:1.5%;top:1%;pointer-events:none;white-space:nowrap;line-height:1.2;";
+    caption.style.cssText = "position:absolute;left:0;right:0;bottom:0;text-align:center;pointer-events:none;line-height:1.2;";
+    note.style.cssText = "position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:8px;font:13px sans-serif;pointer-events:none;";
+    root.appendChild(label);
+    root.appendChild(caption);
+    root.appendChild(note);
+    function texInto(node, src) {
+      var k = opts.katex || win.katex;
+      node.textContent = "";
+      if (!src) return;
+      if (k) {
+        try {
+          k.render(src, node, { throwOnError: false });
+          return;
+        } catch (e) {
+        }
+      }
+      node.textContent = src.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\^/g, "").replace(/_/g, "");
+    }
+    function sized() {
+      var h = root.clientHeight || 0, th = THEMES[s.theme] || THEMES.dark;
+      var fs = Math.max(10, Math.min(48, h * 0.06));
+      label.style.fontSize = fs + "px";
+      label.style.color = th.fg;
+      caption.style.fontSize = Math.max(10, Math.min(44, h * 0.055)) + "px";
+      caption.style.color = th.fg;
+      note.style.color = th.muted;
+      var capH = caption.textContent ? caption.offsetHeight + h * 0.01 : 0;
+      canvas.style.height = capH ? "calc(100% - " + capH + "px)" : "100%";
+    }
+    function show(n, animate) {
+      var state = stepState(s, n), next = picture(state);
+      if (animate && !reduce && st.pic && !st.pic.error && !next.error) {
+        if (st.from && st.from !== st.pic) freePicture(st.from);
+        st.from = st.pic;
+        st.morph0 = now();
+        st.fromTurn = st.turn != null ? st.turn : st.pic.s.turn;
+        st.fromTilt = st.tilt != null ? st.tilt : st.pic.s.tilt;
+      } else {
+        if (st.pic) freePicture(st.pic);
+        if (st.from) freePicture(st.from);
+        st.from = null;
+      }
+      st.pic = next;
+      st.turn = null;
+      st.tilt = null;
+      st.dirty = true;
+      texInto(label, next.error ? "" : labelTex(state));
+      caption.textContent = state.caption || "";
+      canvas.setAttribute("aria-label", next.error ? "Spherical harmonics: " + next.error : "Spherical harmonics" + (state.caption ? ": " + state.caption : ""));
+      sized();
+    }
+    function visible() {
+      if (mode !== "deck") return true;
+      var sec = root.closest && root.closest("section");
+      return !sec || sec.classList.contains("present");
+    }
+    function render(t) {
+      var w = root.clientWidth, h = canvas.clientHeight || root.clientHeight;
+      if (!w || !h) return false;
+      var rect = root.getBoundingClientRect(), zoom = rect.width / w || 1;
+      var dpr = opts.dpr || Math.min(3, (win.devicePixelRatio || 1) * zoom);
+      dpr = Math.min(dpr, Math.sqrt(6e6 / (w * h)));
+      var u = st.from ? (now() - st.morph0) / 750 : 1;
+      if (u >= 1 && st.from) {
+        freePicture(st.from);
+        st.from = null;
+      }
+      var ok = draw(canvas, st.pic, { w, h, dpr, t, turn: st.turn, tilt: st.tilt, from: st.from, u, fromTurn: st.fromTurn, fromTilt: st.fromTilt });
+      if (ok === false && !st.broken) {
+        st.broken = true;
+        note.textContent = "Drawing this needs WebGL 2, which this browser has turned off.";
+        note.style.display = "flex";
+      }
+      return true;
+    }
+    function moving() {
+      return st.pic && !st.pic.error && st.pic.s.motion !== "none" && !reduce;
+    }
+    function loop() {
+      st.raf = 0;
+      if (st.gone) return;
+      if (visible() && (st.dirty || st.from || moving())) {
+        if (render(moving() ? (now() - st.t0) / 1e3 : 0)) st.dirty = false;
+      }
+      if (mode !== "static") st.raf = win.requestAnimationFrame(loop);
+    }
+    var drag = null;
+    function onDown(e) {
+      if (mode === "static" || !st.pic || st.pic.error || st.pic.view === "map" || e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var p = st.pic.s;
+      drag = { x: e.clientX, y: e.clientY, turn: st.turn != null ? st.turn : p.turn, tilt: st.tilt != null ? st.tilt : p.tilt, zoom: root.getBoundingClientRect().width / (root.clientWidth || 1) || 1 };
+      if (canvas.setPointerCapture && e.pointerId != null) {
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch (er) {
+        }
+      }
+      canvas.style.cursor = "grabbing";
+    }
+    function onMove(e) {
+      if (!drag) return;
+      e.stopPropagation();
+      st.turn = drag.turn - (e.clientX - drag.x) / drag.zoom * 0.45;
+      st.tilt = Math.max(-89, Math.min(89, drag.tilt + (e.clientY - drag.y) / drag.zoom * 0.35));
+      st.dirty = true;
+    }
+    function onUp(e) {
+      if (!drag) return;
+      if (e) e.stopPropagation();
+      drag = null;
+      canvas.style.cursor = "grab";
+      if (opts.onTurn && st.turn != null) opts.onTurn({ turn: Math.round((st.turn % 360 + 360) % 360), tilt: Math.round(st.tilt) });
+    }
+    function stop(e) {
+      if (mode !== "static") e.stopPropagation();
+    }
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+    canvas.addEventListener("mousedown", stop);
+    canvas.addEventListener("touchstart", stop);
+    canvas.addEventListener("dblclick", stop);
+    var ro = win.ResizeObserver ? new win.ResizeObserver(function() {
+      sized();
+      st.dirty = true;
+      if (mode === "static") loop();
+    }) : null;
+    if (ro) ro.observe(root);
+    show(step, false);
+    if (mode === "static") loop();
+    else st.raf = win.requestAnimationFrame(loop);
+    return {
+      // Show step n (0: as the slide opens), morphing to it when animate
+      setStep: function(n, animate) {
+        step = n;
+        show(n, animate);
+        if (mode === "static") loop();
+      },
+      // New fields (the editor's), at step n
+      update: function(next, n, animate) {
+        s = normalize(next);
+        step = n == null ? step : n;
+        show(step, animate);
+        if (mode === "static") loop();
+      },
+      // Back to the step's own angle
+      resetTurn: function() {
+        st.turn = null;
+        st.tilt = null;
+        st.dirty = true;
+      },
+      redraw: function() {
+        st.dirty = true;
+        if (mode === "static") loop();
+      },
+      // The canvas now, as a PNG (print, PowerPoint)
+      png: function() {
+        render(0);
+        return canvas.toDataURL("image/png");
+      },
+      state: function() {
+        return { step, turn: st.turn, tilt: st.tilt, morphing: !!st.from, picture: st.pic, broken: st.broken };
+      },
+      destroy: function() {
+        st.gone = true;
+        if (st.raf) win.cancelAnimationFrame(st.raf);
+        if (ro) ro.disconnect();
+        canvas.removeEventListener("pointerdown", onDown);
+        canvas.removeEventListener("pointermove", onMove);
+        canvas.removeEventListener("pointerup", onUp);
+        canvas.removeEventListener("pointercancel", onUp);
+        freePicture(st.pic);
+        freePicture(st.from);
+      }
+    };
+  }
+  function still(el, w, h, dpr, n) {
+    var s = normalize(el), state = stepState(s, n || 0), pic = picture(state);
+    var c = document.createElement("canvas"), th = THEMES[s.theme] || THEMES.dark;
+    var capH = state.caption ? Math.max(10, h * 0.055) * 1.4 : 0;
+    if (!draw(c, pic, { w, h: h - capH, dpr })) {
+      freePicture(pic);
+      return null;
+    }
+    var out = document.createElement("canvas");
+    out.width = Math.round(w * dpr);
+    out.height = Math.round(h * dpr);
+    var ctx = out.getContext("2d");
+    ctx.drawImage(c, 0, 0);
+    ctx.scale(dpr, dpr);
+    var fs = Math.max(10, Math.min(48, h * 0.06));
+    if (state.label !== "none" && state.source === "single" && state.view !== "table") {
+      var name = state.part === "re" ? "Re " : state.part === "im" ? "Im " : "";
+      ctx.fillStyle = th.fg;
+      ctx.font = fs + "px " + SERIF;
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(name, w * 0.015, fs * 1.2);
+      drawName(ctx, w * 0.015 + ctx.measureText(name).width + fs * 0.45, fs * 0.95, state.form, state.l, state.m, fs, th.fg);
+    }
+    if (state.caption) {
+      ctx.fillStyle = th.fg;
+      ctx.font = Math.max(10, h * 0.055) + "px " + SERIF;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(state.caption, w / 2, h - 2);
+    }
+    freePicture(pic);
+    return out.toDataURL("image/png");
+  }
+  return {
+    THEMES,
+    DEFAULTS: DEFAULTS2,
+    PICTURE_FIELDS,
+    SOURCES,
+    VIEWS,
+    PARTS,
+    MOTIONS,
+    normalize,
+    stepState,
+    picture,
+    draw,
+    labelTex,
+    attach,
+    still,
+    oklchHex,
+    available: function() {
+      return GL.init();
+    }
+  };
+}
+var HV = harmonicsRuntime(SH);
+var each = (arr, f) => arr.map(f);
+var HARMONICS_TEMPLATES = [
+  { id: "phase", name: "Y₂¹, colored by phase", el: { source: "single", l: 2, m: 1, form: "complex", part: "auto", view: "lobes", turn: 52, tilt: 20, axes: true } },
+  { id: "d", name: "The five d orbitals, as steps", el: {
+    source: "single",
+    l: 2,
+    m: -2,
+    form: "real",
+    part: "auto",
+    view: "lobes",
+    turn: 52,
+    tilt: 24,
+    axes: true,
+    steps: each([-1, 0, 1, 2], (m) => ({ l: 2, m, caption: "" }))
+  } },
+  { id: "table", name: "Real harmonics, ℓ ≤ 3", el: { view: "table", form: "real", part: "auto", tableMax: 3, tableCell: "lobes", turn: 52, tilt: 20 } },
+  { id: "ctable", name: "Complex harmonics, ℓ ≤ 3", el: { view: "table", form: "complex", part: "auto", tableMax: 3, tableCell: "lobes", turn: 52, tilt: 20 } },
+  { id: "nodes", name: "Nodal lines on a sphere", el: { source: "single", l: 5, m: 3, form: "real", part: "auto", view: "sphere", nodes: true, turn: 40, tilt: 24, axes: true } },
+  { id: "star", name: "A star ringing (a traveling mode)", el: { source: "single", l: 3, m: 2, form: "complex", part: "re", view: "shape", motion: "wave", amplitude: 0.22, nodes: true, axes: false, turn: 40, tilt: 26 } },
+  { id: "sp3", name: "An sp³ hybrid, term by term", el: {
+    source: "sum",
+    expr: "s",
+    form: "real",
+    part: "auto",
+    view: "lobes",
+    turn: -42,
+    tilt: 12,
+    axes: true,
+    steps: [{ expr: "(s + p_x)/sqrt(2)", caption: "+ p_x" }, { expr: "(s + p_x + p_y)/sqrt(3)", caption: "+ p_y" }, { expr: "(s + p_x + p_y + p_z)/2", caption: "+ p_z: one lobe along (1, 1, 1)" }]
+  } },
+  { id: "cap", name: "A polar cap, band-limited", el: {
+    source: "cap",
+    cap: { theta: 38, phi: 30, radius: 30, lmax: 1 },
+    part: "auto",
+    view: "sphere",
+    nodes: false,
+    axes: false,
+    turn: 30,
+    tilt: 30,
+    steps: each([2, 4, 8, 16, 32], (L) => ({ cap: { theta: 38, phi: 30, radius: 30, lmax: L }, caption: `ℓ ≤ ${L}` }))
+  } },
+  { id: "sky", name: "A random sky map", el: {
+    source: "sky",
+    sky: { seed: 7, slope: 2, lmax: 4 },
+    part: "auto",
+    view: "map",
+    projection: "mollweide",
+    eastLeft: true,
+    nodes: false,
+    axes: false,
+    steps: each([8, 16, 32], (L) => ({ sky: { seed: 7, slope: 2, lmax: L }, caption: `ℓ ≤ ${L}` }))
+  } }
+];
+function harmonicsSteps(el) {
+  if (el?.type !== "harmonics") return [];
+  const s = HV.normalize(el);
+  return s.steps.map((_, i) => [s.stepStart + i, i + 1]).filter(([n]) => n <= 1e3);
+}
+function harmonicsStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+    for (const [n, s] of harmonicsSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-sh-step="${id}" data-sh-step-at="${s}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function hasHarmonics(presentation) {
+  return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "harmonics"));
+}
+var escAttr2 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function harmonicsDeckAttrs(el, step = null) {
+  const s = HV.normalize(el);
+  const id = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
+  return ` data-sh="${id}" data-sh-config="${escAttr2(JSON.stringify(s))}"${step == null ? " data-prevent-swipe" : ` data-sh-at="${step}"`}`;
+}
+var runtimeSource2 = null;
+function runtimeJs() {
+  if (!runtimeSource2) runtimeSource2 = `var HV = (${harmonicsRuntime.toString()})((${harmonicsCore.toString()})());`;
+  return runtimeSource2;
+}
+var deckScript4 = null;
+function harmonicsDeckScript() {
+  if (!deckScript4) deckScript4 = `
+    (function() {
+      ${runtimeJs()}
+      var items = [];
+      function config(el) { try { return JSON.parse(el.getAttribute('data-sh-config')); } catch (e) { return null; } }
+      document.querySelectorAll('[data-sh]').forEach(function(el) {
+        if (el.closest('[inert]')) return;
+        var cfg = config(el);
+        if (!cfg) return;
+        items.push({ el: el, id: el.getAttribute('data-sh'), at: 0, api: HV.attach(el, cfg, { mode: 'deck' }) });
+      });
+      function stepOf(item) {
+        var slide = item.el.closest('section'), n = 0;
+        if (!slide) return 0;
+        slide.querySelectorAll('.fragment[data-sh-step]').forEach(function(m) {
+          if (m.getAttribute('data-sh-step') === item.id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-sh-step-at') || 0);
+        });
+        return n;
+      }
+      function sync(animate) {
+        items.forEach(function(item) {
+          var n = stepOf(item);
+          if (n !== item.at) { item.api.setStep(n, animate); item.at = n; }
+        });
+      }
+      // The overview's pictures of slides, drawn still
+      function stills() {
+        document.querySelectorAll('[inert] [data-sh]').forEach(function(el) {
+          if (el.__shStill) return;
+          var cfg = config(el);
+          if (!cfg) return;
+          el.__shStill = true;
+          var a = HV.attach(el, cfg, { mode: 'static', step: +el.getAttribute('data-sh-at') || 0, dpr: 0.5 });
+          a.destroy();
+        });
+      }
+      Reveal.on('ready', function() { sync(false); setTimeout(stills, 0); });
+      Reveal.on('fragmentshown', function() { sync(true); });
+      Reveal.on('fragmenthidden', function() { sync(true); });
+      Reveal.on('slidechanged', function() { items.forEach(function(item) { item.api.resetTurn(); }); sync(false); });
+      sync(false);
+    })();
+`;
+  return deckScript4;
 }
 
 // client/src/utils/text3d.js
@@ -15935,7 +17842,7 @@ function stateValues(st) {
 function setList(action, modes = SET_MODES) {
   return (Array.isArray(action?.set) ? action.set : []).filter((s) => typeof s?.id === "string" && SAFE_ID.test(s.id) && (!s.state || typeof s.state === "string" && SAFE_ID.test(s.state)) && modes.includes(s.mode || "set"));
 }
-var NO_CLICK_ACTION = /* @__PURE__ */ new Set(["html", "p5", "model", "molecule", "periodic", "geometry", "graph", "video", "audio", "drawing"]);
+var NO_CLICK_ACTION = /* @__PURE__ */ new Set(["html", "p5", "model", "molecule", "periodic", "geometry", "harmonics", "graph", "video", "audio", "drawing"]);
 function supportsClickAction(el) {
   return !!el?.type && !NO_CLICK_ACTION.has(el.type) && !el.type.startsWith("plugin:");
 }
@@ -16622,6 +18529,9 @@ function generateRevealHTML(presentation, opts = {}) {
         const pt = periodicDeckHtml(el);
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${pt.attrs} style="${style.replace("overflow:hidden;", "overflow:visible;")}">${pt.svg}</div>`;
       }
+      if (el.type === "harmonics") {
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${harmonicsDeckAttrs(el)} style="${style}"></div>`;
+      }
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -16947,7 +18857,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
 ${bodyHtml}
 ${footerHtml}
@@ -17309,7 +19219,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

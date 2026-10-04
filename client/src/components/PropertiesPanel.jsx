@@ -22,6 +22,7 @@ import { getCanvasHeight, getCanvasWidth, scrollAxis, isScrolling, isPinned, MAX
 import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
 import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
 import PeriodicProperties from './PeriodicProperties'
+import HarmonicsProperties from './HarmonicsProperties'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -690,6 +691,10 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
           {/* Free-body diagram */}
           {selectedElement.type === 'periodic' && (
             <PeriodicProperties element={selectedElement} onUpdateElement={onUpdateElement} />
+          )}
+
+          {selectedElement.type === 'harmonics' && (
+            <HarmonicsProperties key={selectedElement.id} element={selectedElement} onUpdateElement={onUpdateElement} />
           )}
 
           {selectedElement.type === 'freebody' && (
