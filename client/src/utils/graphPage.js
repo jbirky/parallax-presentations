@@ -7,6 +7,7 @@
 
 import { createMathParser } from './graphParser'
 import { graphRuntime } from './graphRuntime'
+import { graphFields } from './graphFields'
 
 // Desmos's colors, and brighter ones that read on a dark slide
 export const GRAPH_COLORS = {
@@ -69,7 +70,7 @@ export function graphSnapshotContent(el) {
 }
 
 
-// The runtime and parser as source, made once
+// The runtime, parser and field numerics as source, made once
 let pageCode = null
 
 export function graphPageHtml(el, opts = {}) {
@@ -77,7 +78,7 @@ export function graphPageHtml(el, opts = {}) {
   if (!pageCode) {
     // Its own code has no "</script" or "<!--", and a minifier can't make one
     // that ends the script: in code, "<!--" is "< !--"; in a string, "<\/" is "</"
-    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), `
+    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), `
       .replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '< !--')
   }
   // What people typed can't end the script either: every < is \u003c
@@ -89,8 +90,13 @@ export function graphPageHtml(el, opts = {}) {
 export function graphSteps(el) {
   const steps = new Set()
   for (const e of el?.expressions || []) {
-    const n = Number(e?.step)
-    if (Number.isInteger(n) && n >= 1 && n <= 1000 && !e.hidden) steps.add(n)
+    if (e?.hidden) continue
+    // A line's own step, and its field overlays' (equilibria, nullclines…)
+    const at = [e?.step].concat(e?.field?.steps ? Object.values(e.field.steps) : [])
+    for (const v of at) {
+      const n = Number(v)
+      if (Number.isInteger(n) && n >= 1 && n <= 1000) steps.add(n)
+    }
   }
   return [...steps].sort((a, b) => a - b)
 }

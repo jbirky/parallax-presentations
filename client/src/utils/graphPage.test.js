@@ -96,3 +96,19 @@ describe('graphs in decks', () => {
     expect(html).not.toContain('data-action="next"')
   })
 })
+
+describe('graphs with fields', () => {
+  it('carry the field numerics in the page’s one script', () => {
+    const html = graphPageHtml(graph([{ id: 'a', text: "x' = y" }, { id: 'b', text: "y' = -sin x" }]))
+    expect(script(html)).toContain('function graphFields')
+    expect(() => new Function(script(html))).not.toThrow()
+    expect(config(html).expressions[0].text).toBe("x' = y")
+  })
+
+  it('step in their overlays at their own steps', () => {
+    const el = graph([{ id: 'a', text: "x' = y", step: 1, field: { equilibria: true, separatrices: true, steps: { equilibria: 2, separatrices: 3 } } }, { id: 'b', text: "y' = -x" }])
+    expect(graphSteps(el)).toEqual([1, 2, 3])
+    expect(graphSteps({ ...el, expressions: [{ ...el.expressions[0], hidden: true }] })).toEqual([])
+  })
+})
+

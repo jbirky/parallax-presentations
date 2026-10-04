@@ -6,6 +6,9 @@
 // parentheses (sin x, sin^2 x, sin^-1 x), |x|, π and θ, subscripts (a_1),
 // piecewise braces ({x < 0: -x, x}), which also restrict a curve
 // (y = x^2 {0 < x < 2}), f(x) = … definitions, and a = 1 for sliders.
+// Also fields: F(x, y) = (−y, x) and ∇f, systems x′ = …, y′ = … (or r′, θ′),
+// slope fields dy/dx = …, and their paths, y(0) = 1 and (x, y)(0) = (1, 0);
+// graphFields.js draws them.
 //
 // createMathParser has nothing from outside it: the graph page (graphPage.js)
 // embeds its source, and the editor runs the same parser to show errors and
@@ -26,7 +29,7 @@ export function createMathParser() {
   const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2] }
   const INVERSE = { sin: 'arcsin', cos: 'arccos', tan: 'arctan' }
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E }
-  const GREEK = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'lambda', 'sigma', 'omega', 'phi', 'rho']
+  const GREEK = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'lambda', 'sigma', 'omega', 'phi', 'rho', 'mu', 'nu', 'kappa', 'eta']
   // The variables curves are drawn over: never sliders
   const RESERVED = ['x', 'y', 't', 'theta', 'r']
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ['theta'], GREEK)
@@ -35,7 +38,7 @@ export function createMathParser() {
     '−': '-', '–': '-', '·': '*', '×': '*', '⋅': '*', '÷': '/', '≤': '<=', '≥': '>=',
     'π': 'pi', 'θ': 'theta', 'τ': 'tau', '√': 'sqrt', '²': '^2', '³': '^3',
     'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta', 'ε': 'epsilon', 'λ': 'lambda',
-    'σ': 'sigma', 'ω': 'omega', 'φ': 'phi', 'ρ': 'rho',
+    'σ': 'sigma', 'ω': 'omega', 'φ': 'phi', 'ρ': 'rho', 'μ': 'mu', 'ν': 'nu', 'κ': 'kappa', 'η': 'eta',
   }
   const CMP = ['=', '<', '>', '<=', '>=']
 
@@ -381,15 +384,196 @@ export function createMathParser() {
   const only = (set, names) => [...set].every(v => !RESERVED.includes(v) || names.includes(v))
   const has = (set, names) => names.some(n => set.has(n))
 
+  // ── Fields ────────────────────────────────────────────────────────────
+  // Lines graphFields draws, told apart by how they're written
+
+  function fieldText(text) {
+    return normalize(text).replace(/[′’ʹ]/g, "'").replace(/ẋ/g, "x'").replace(/ẏ/g, "y'").replace(/ṙ/g, "r'").trim()
+  }
+  // "(a, b)" to ["a", "b"], split at the comma outside any brackets
+  function pairOf(text) {
+    const s = text.trim()
+    if (s[0] !== '(' || s[s.length - 1] !== ')') return null
+    let depth = 0, cut = -1
+    for (let i = 1; i < s.length - 1; i++) {
+      const c = s[i]
+      if (c === '(' || c === '{') depth++
+      else if (c === ')' || c === '}') { if (--depth < 0) return null } else if (c === ',' && depth === 0) { if (cut >= 0) return null; cut = i }
+    }
+    return cut < 0 || depth !== 0 ? null : [s.slice(1, cut), s.slice(cut + 1, -1)]
+  }
+  // (P, Q) {x² + y² > 1}: the field only where that holds, as a curve is restricted
+  const restrictTo = (p, cond) => (cond ? p.map(c => '(' + c + ')' + cond) : p)
+  const FIELD_NAME = '([A-Za-z](?:_(?:\\{[A-Za-z0-9]+\\}|[A-Za-z0-9]+))?)'
+  const FIELD = {
+    sys: /^\(\s*x\s*'\s*,\s*y\s*'\s*\)\s*=(.*?)\s*(\{[^{}]*\})?$/,
+    rate: /^(?:(x|y|r|theta)\s*'|d(x|y|r|theta)\s*\/\s*dt)\s*=(?![=<>])(.*)$/,
+    slope: /^dy\s*\/\s*dx\s*=(?![=<>])(.*)$/,
+    ic1: /^y\s*\(([^()]*)\)\s*=(?![=<>])(.*)$/,
+    ic2: /^\(\s*x\s*,\s*y\s*\)\s*\(([^()]*)\)\s*=(?![=<>])(.*)$/,
+    grad: new RegExp('^(?:∇|grad\\s+|grad(?=\\s*[A-Za-z]))\\s*' + FIELD_NAME + '\\s*$'),
+    vec: new RegExp('^' + FIELD_NAME + '\\s*\\(\\s*x\\s*,\\s*y\\s*\\)\\s*=(?![=<>])\\s*(\\(.*\\))\\s*(\\{[^{}]*\\})?$'),
+    bare: /^(\(.*\))\s*(\{[^{}]*\})?$/,
+  }
+  // What a field line is, or null for Graph's other lines
+  function fieldOf(text) {
+    const s = fieldText(text)
+    let m, p
+    if (!s) return null
+    if ((m = FIELD.sys.exec(s))) return (p = pairOf(m[1])) ? { type: 'system', comps: restrictTo(p, m[2]) } : { type: 'bad', error: 'Write (x′, y′) = (…, …)' }
+    if ((m = FIELD.rate.exec(s))) return { type: 'rate', v: m[1] || m[2], rhs: m[3] }
+    if ((m = FIELD.slope.exec(s))) return { type: 'slope', rhs: m[1] }
+    if ((m = FIELD.ic2.exec(s))) return (p = pairOf(m[2])) ? { type: 'ic2', at: m[1], comps: p } : { type: 'bad', error: 'Write (x, y)(0) = (a, b)' }
+    if ((m = FIELD.ic1.exec(s))) return { type: 'ic1', at: m[1], val: m[2] }
+    if ((m = FIELD.grad.exec(s))) return { type: 'grad', f: m[1].replace(/[{}]/g, '') }
+    if ((m = FIELD.vec.exec(s)) && (p = pairOf(m[2]))) return { type: 'vector', name: m[1].replace(/[{}]/g, ''), comps: restrictTo(p, m[3]) }
+    // A bare (P, Q) using both x and y is a field; with t it's a curve, without
+    // them a point (and (x, 2) is still a mistaken point, not a field)
+    if ((m = FIELD.bare.exec(s)) && (p = pairOf(m[1]))) {
+      try {
+        const vars = new Set()
+        p.forEach(c => freeVars(parseStatement(c).parts[0], vars))
+        if (vars.has('x') && vars.has('y') && !vars.has('t')) return { type: 'vector', name: null, comps: restrictTo(p, m[2]) }
+      } catch (e) {
+        if (!e.graphError) throw e
+      }
+    }
+    return null
+  }
+
+  // The field lines of a graph, once its sliders and functions are known:
+  // each gets its kind and compiled functions (F(env, x, y, out) for a
+  // vector field or system, f(env, x, y) for a slope field), or an error
+  function readFields(items, params, callable, note) {
+    const fnNames = new Set(Object.keys(callable))
+    // A compiled expression in the given variables, sliders from env
+    const compiled = (item, text, own) => {
+      const st = parseStatement(text, fnNames)
+      if (st.ops.length) fail('One expression here, without =, < or >')
+      const node = st.parts[0]
+      if (node.k === 'tuple') fail('A component is one number, not a point')
+      const vars = freeVars(node)
+      for (const v of vars) {
+        if (own.includes(v) || params.has(v) || fnNames.has(v)) continue
+        if (RESERVED.includes(v)) fail(!own.length ? 'A starting point is numbers or sliders' : v === 't' ? 'A field here doesn’t change with t: use x, y and sliders' : 'Use ' + own.map(o => (o === 'theta' ? 'θ' : o)).join(' and ') + ' and sliders here')
+      }
+      note(vars, item)
+      return { f: compile(node, own.length ? own : null, callable), node }
+    }
+    const xy = (fx, fy) => (env, x, y, out) => { const a = [x, y]; out[0] = fx(env, a); out[1] = fy(env, a) }
+    const sliderOf = node => (node.k === 'var' && params.has(node.n) ? node.n : null)
+    const guard = (item, fn) => {
+      try { fn() } catch (e) {
+        if (!e.graphError) throw e
+        Object.assign(item, { kind: 'error', error: e.message })
+      }
+    }
+    const fields = items.filter(it => it.field)
+    // x′ and y′ (or r′ and θ′) make a system, kept on the first of the two
+    const rates = fields.filter(it => it.field.type === 'rate')
+    const byVar = {}
+    for (const it of rates) (byVar[it.field.v] = byVar[it.field.v] || []).push(it)
+    for (const it of rates) {
+      guard(it, () => {
+        const v = it.field.v, name = v === 'theta' ? 'θ' : v
+        if (byVar[v].length > 1) fail(name + '′ is defined twice')
+        const mate = (byVar[{ x: 'y', y: 'x', r: 'theta', theta: 'r' }[v]] || [])[0]
+        if (!mate) {
+          // y′ = … on its own is dy/dx
+          if (v === 'y') { it.field = { type: 'slope', rhs: it.field.rhs }; return }
+          fail(v === 'x' ? 'x′ = … needs a y′ = … line too' : v === 'r' ? 'r′ = … needs a θ′ = … line too' : 'θ′ = … needs an r′ = … line too')
+        }
+        if (items.indexOf(mate) < items.indexOf(it)) { Object.assign(it, { kind: 'partner', partnerOf: mate.id }); return }
+        it.partner = mate.id
+        const rhs = w => (it.field.v === w ? it : mate).field.rhs
+        if (v === 'x' || v === 'y') {
+          const fx = compiled(it, rhs('x'), ['x', 'y']).f, fy = compiled(it, rhs('y'), ['x', 'y']).f
+          Object.assign(it, { kind: 'system', F: xy(fx, fy) })
+        } else {
+          const fr = compiled(it, rhs('r'), ['r', 'theta']).f, ft = compiled(it, rhs('theta'), ['r', 'theta']).f
+          Object.assign(it, {
+            kind: 'system', polar: true,
+            F: (env, x, y, out) => {
+              const r = Math.hypot(x, y), th = Math.atan2(y, x), a = [r, th], dr = fr(env, a), dt = ft(env, a)
+              out[0] = dr * Math.cos(th) - r * dt * Math.sin(th)
+              out[1] = dr * Math.sin(th) + r * dt * Math.cos(th)
+            },
+          })
+        }
+      })
+      // An error in either line is the system's: its partner says so too
+      if (it.kind === 'error' && it.partner) {
+        const mate = items.find(o => o.id === it.partner)
+        if (mate && !mate.kind) Object.assign(mate, { kind: 'partner', partnerOf: it.id })
+      }
+    }
+    for (const it of fields) {
+      if (it.kind) continue
+      guard(it, () => {
+        const d = it.field
+        if (d.type === 'bad') fail(d.error)
+        if (d.type === 'system' || d.type === 'vector') {
+          const fx = compiled(it, d.comps[0], ['x', 'y']).f, fy = compiled(it, d.comps[1], ['x', 'y']).f
+          Object.assign(it, { kind: d.type, F: xy(fx, fy), name: d.name || null })
+        } else if (d.type === 'grad') {
+          const def = callable[d.f]
+          if (!def) fail(d.f + '(x, y) = … isn’t defined')
+          if (def.formals.length !== 2) fail('∇' + d.f + ' needs ' + d.f + '(x, y), with two variables')
+          Object.assign(it, {
+            kind: 'vector', gradOf: d.f,
+            F: (env, x, y, out) => {
+              const hx = 1e-5 * (1 + Math.abs(x)), hy = 1e-5 * (1 + Math.abs(y))
+              out[0] = (def.call(env, [x + hx, y]) - def.call(env, [x - hx, y])) / (2 * hx)
+              out[1] = (def.call(env, [x, y + hy]) - def.call(env, [x, y - hy])) / (2 * hy)
+            },
+          })
+        } else if (d.type === 'slope') {
+          const g = compiled(it, d.rhs, ['x', 'y']).f
+          Object.assign(it, { kind: 'slope', f: (env, x, y) => g(env, [x, y]) })
+        } else if (d.type === 'ic1') {
+          const x0 = compiled(it, d.at, []), y0 = compiled(it, d.val, [])
+          Object.assign(it, { kind: 'solution', x0: x0.f, y0: y0.f, dragY: sliderOf(y0.node) })
+        } else if (d.type === 'ic2') {
+          const px = compiled(it, d.comps[0], []), py = compiled(it, d.comps[1], [])
+          compiled(it, d.at, [])
+          Object.assign(it, { kind: 'trajectory', px: px.f, py: py.f, dragX: sliderOf(px.node), dragY: sliderOf(py.node) })
+        }
+      })
+    }
+    // A field's name, like a function's, is defined once
+    const names = {}
+    for (const it of fields) {
+      if (it.kind !== 'vector' || !it.name) continue
+      if (names[it.name]) Object.assign(it, { kind: 'error', error: it.name + ' is defined twice' })
+      names[it.name] = true
+    }
+    // A solution or path follows the field above it, or else the first below
+    for (const it of fields) {
+      if (it.kind !== 'solution' && it.kind !== 'trajectory') continue
+      const want = it.kind === 'solution' ? ['slope'] : ['system', 'vector']
+      const i = items.indexOf(it)
+      let owner = null
+      for (let j = i - 1; j >= 0 && !owner; j--) if (want.includes(items[j].kind)) owner = items[j]
+      for (let j = i + 1; j < items.length && !owner; j++) if (want.includes(items[j].kind)) owner = items[j]
+      if (owner) it.owner = owner.id
+      else Object.assign(it, { kind: 'error', error: it.kind === 'solution' ? 'y(…) = … needs a slope field, like dy/dx = x − y' : '(x, y)(0) = (…) needs a field or a system to follow' })
+    }
+  }
+
   // Every expression of a graph, read together: what each one is, its
   // compiled functions, its error, and the names used but never defined
   // (the sliders to offer). Expressions are { id, text }.
   function analyze(expressions) {
     const items = (expressions || []).map(e => ({ id: e.id, text: String(e.text || '') }))
     const fns = {}
+    for (const item of items) {
+      const field = fieldOf(item.text)
+      if (field) item.field = field
+    }
 
     // Function definitions first, so f(x) reads as a call everywhere
     for (const item of items) {
+      if (item.field) continue
       const text = normalize(item.text)
       const m = FN_DEF.exec(text)
       if (!m) continue
@@ -407,7 +591,7 @@ export function createMathParser() {
     const userFns = new Set(Object.keys(fns))
 
     for (const item of items) {
-      if (item.kind === 'error') continue
+      if (item.kind === 'error' || item.field) continue
       if (!item.text.trim()) { item.kind = 'empty'; continue }
       try {
         if (item.kind === 'function') {
@@ -497,6 +681,7 @@ export function createMathParser() {
     }
 
     const cf = node => compile(node, null, callable)
+    readFields(items, params, callable, note)
 
     for (const item of items) {
       try {
@@ -539,7 +724,7 @@ export function createMathParser() {
             if (!only(vars, ['t'])) fail('A curve (x(t), y(t)) can use only t and sliders')
             item.kind = 'parametric'
           } else {
-            if (has(vars, RESERVED)) fail('A point’s coordinates are numbers or sliders; for a curve use t')
+            if (has(vars, RESERVED)) fail('A point’s coordinates are numbers or sliders; for a curve use t, for a vector field write F(x, y) = (…)')
             item.kind = 'point'
             // (a, b) with sliders a and b can be dragged
             item.dragX = node.items[0].k === 'var' && params.has(node.items[0].n) ? node.items[0].n : null

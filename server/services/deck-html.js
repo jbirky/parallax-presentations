@@ -5786,7 +5786,7 @@ function createMathParser() {
   const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2] };
   const INVERSE = { sin: "arcsin", cos: "arccos", tan: "arctan" };
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E };
-  const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho"];
+  const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho", "mu", "nu", "kappa", "eta"];
   const RESERVED = ["x", "y", "t", "theta", "r"];
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ["theta"], GREEK2).sort((a, b) => b.length - a.length);
   const UNICODE = {
@@ -5813,7 +5813,11 @@ function createMathParser() {
     "σ": "sigma",
     "ω": "omega",
     "φ": "phi",
-    "ρ": "rho"
+    "ρ": "rho",
+    "μ": "mu",
+    "ν": "nu",
+    "κ": "kappa",
+    "η": "eta"
   };
   const CMP = ["=", "<", ">", "<=", ">="];
   function fail2(message) {
@@ -6231,10 +6235,191 @@ function createMathParser() {
   const isVar = (node, name) => node.k === "var" && node.n === name;
   const only = (set, names) => [...set].every((v) => !RESERVED.includes(v) || names.includes(v));
   const has3 = (set, names) => names.some((n) => set.has(n));
+  function fieldText(text) {
+    return normalize(text).replace(/[′’ʹ]/g, "'").replace(/ẋ/g, "x'").replace(/ẏ/g, "y'").replace(/ṙ/g, "r'").trim();
+  }
+  function pairOf(text) {
+    const s = text.trim();
+    if (s[0] !== "(" || s[s.length - 1] !== ")") return null;
+    let depth = 0, cut = -1;
+    for (let i = 1; i < s.length - 1; i++) {
+      const c = s[i];
+      if (c === "(" || c === "{") depth++;
+      else if (c === ")" || c === "}") {
+        if (--depth < 0) return null;
+      } else if (c === "," && depth === 0) {
+        if (cut >= 0) return null;
+        cut = i;
+      }
+    }
+    return cut < 0 || depth !== 0 ? null : [s.slice(1, cut), s.slice(cut + 1, -1)];
+  }
+  const restrictTo = (p, cond) => cond ? p.map((c) => "(" + c + ")" + cond) : p;
+  const FIELD_NAME = "([A-Za-z](?:_(?:\\{[A-Za-z0-9]+\\}|[A-Za-z0-9]+))?)";
+  const FIELD = {
+    sys: /^\(\s*x\s*'\s*,\s*y\s*'\s*\)\s*=(.*?)\s*(\{[^{}]*\})?$/,
+    rate: /^(?:(x|y|r|theta)\s*'|d(x|y|r|theta)\s*\/\s*dt)\s*=(?![=<>])(.*)$/,
+    slope: /^dy\s*\/\s*dx\s*=(?![=<>])(.*)$/,
+    ic1: /^y\s*\(([^()]*)\)\s*=(?![=<>])(.*)$/,
+    ic2: /^\(\s*x\s*,\s*y\s*\)\s*\(([^()]*)\)\s*=(?![=<>])(.*)$/,
+    grad: new RegExp("^(?:∇|grad\\s+|grad(?=\\s*[A-Za-z]))\\s*" + FIELD_NAME + "\\s*$"),
+    vec: new RegExp("^" + FIELD_NAME + "\\s*\\(\\s*x\\s*,\\s*y\\s*\\)\\s*=(?![=<>])\\s*(\\(.*\\))\\s*(\\{[^{}]*\\})?$"),
+    bare: /^(\(.*\))\s*(\{[^{}]*\})?$/
+  };
+  function fieldOf(text) {
+    const s = fieldText(text);
+    let m, p;
+    if (!s) return null;
+    if (m = FIELD.sys.exec(s)) return (p = pairOf(m[1])) ? { type: "system", comps: restrictTo(p, m[2]) } : { type: "bad", error: "Write (x′, y′) = (…, …)" };
+    if (m = FIELD.rate.exec(s)) return { type: "rate", v: m[1] || m[2], rhs: m[3] };
+    if (m = FIELD.slope.exec(s)) return { type: "slope", rhs: m[1] };
+    if (m = FIELD.ic2.exec(s)) return (p = pairOf(m[2])) ? { type: "ic2", at: m[1], comps: p } : { type: "bad", error: "Write (x, y)(0) = (a, b)" };
+    if (m = FIELD.ic1.exec(s)) return { type: "ic1", at: m[1], val: m[2] };
+    if (m = FIELD.grad.exec(s)) return { type: "grad", f: m[1].replace(/[{}]/g, "") };
+    if ((m = FIELD.vec.exec(s)) && (p = pairOf(m[2]))) return { type: "vector", name: m[1].replace(/[{}]/g, ""), comps: restrictTo(p, m[3]) };
+    if ((m = FIELD.bare.exec(s)) && (p = pairOf(m[1]))) {
+      try {
+        const vars = /* @__PURE__ */ new Set();
+        p.forEach((c) => freeVars(parseStatement(c).parts[0], vars));
+        if (vars.has("x") && vars.has("y") && !vars.has("t")) return { type: "vector", name: null, comps: restrictTo(p, m[2]) };
+      } catch (e) {
+        if (!e.graphError) throw e;
+      }
+    }
+    return null;
+  }
+  function readFields(items, params, callable, note) {
+    const fnNames = new Set(Object.keys(callable));
+    const compiled = (item, text, own) => {
+      const st = parseStatement(text, fnNames);
+      if (st.ops.length) fail2("One expression here, without =, < or >");
+      const node = st.parts[0];
+      if (node.k === "tuple") fail2("A component is one number, not a point");
+      const vars = freeVars(node);
+      for (const v of vars) {
+        if (own.includes(v) || params.has(v) || fnNames.has(v)) continue;
+        if (RESERVED.includes(v)) fail2(!own.length ? "A starting point is numbers or sliders" : v === "t" ? "A field here doesn’t change with t: use x, y and sliders" : "Use " + own.map((o) => o === "theta" ? "θ" : o).join(" and ") + " and sliders here");
+      }
+      note(vars, item);
+      return { f: compile(node, own.length ? own : null, callable), node };
+    };
+    const xy = (fx, fy) => (env, x, y, out) => {
+      const a = [x, y];
+      out[0] = fx(env, a);
+      out[1] = fy(env, a);
+    };
+    const sliderOf = (node) => node.k === "var" && params.has(node.n) ? node.n : null;
+    const guard = (item, fn) => {
+      try {
+        fn();
+      } catch (e) {
+        if (!e.graphError) throw e;
+        Object.assign(item, { kind: "error", error: e.message });
+      }
+    };
+    const fields = items.filter((it) => it.field);
+    const rates = fields.filter((it) => it.field.type === "rate");
+    const byVar = {};
+    for (const it of rates) (byVar[it.field.v] = byVar[it.field.v] || []).push(it);
+    for (const it of rates) {
+      guard(it, () => {
+        const v = it.field.v, name = v === "theta" ? "θ" : v;
+        if (byVar[v].length > 1) fail2(name + "′ is defined twice");
+        const mate = (byVar[{ x: "y", y: "x", r: "theta", theta: "r" }[v]] || [])[0];
+        if (!mate) {
+          if (v === "y") {
+            it.field = { type: "slope", rhs: it.field.rhs };
+            return;
+          }
+          fail2(v === "x" ? "x′ = … needs a y′ = … line too" : v === "r" ? "r′ = … needs a θ′ = … line too" : "θ′ = … needs an r′ = … line too");
+        }
+        if (items.indexOf(mate) < items.indexOf(it)) {
+          Object.assign(it, { kind: "partner", partnerOf: mate.id });
+          return;
+        }
+        it.partner = mate.id;
+        const rhs = (w) => (it.field.v === w ? it : mate).field.rhs;
+        if (v === "x" || v === "y") {
+          const fx = compiled(it, rhs("x"), ["x", "y"]).f, fy = compiled(it, rhs("y"), ["x", "y"]).f;
+          Object.assign(it, { kind: "system", F: xy(fx, fy) });
+        } else {
+          const fr = compiled(it, rhs("r"), ["r", "theta"]).f, ft = compiled(it, rhs("theta"), ["r", "theta"]).f;
+          Object.assign(it, {
+            kind: "system",
+            polar: true,
+            F: (env, x, y, out) => {
+              const r = Math.hypot(x, y), th = Math.atan2(y, x), a = [r, th], dr = fr(env, a), dt = ft(env, a);
+              out[0] = dr * Math.cos(th) - r * dt * Math.sin(th);
+              out[1] = dr * Math.sin(th) + r * dt * Math.cos(th);
+            }
+          });
+        }
+      });
+      if (it.kind === "error" && it.partner) {
+        const mate = items.find((o) => o.id === it.partner);
+        if (mate && !mate.kind) Object.assign(mate, { kind: "partner", partnerOf: it.id });
+      }
+    }
+    for (const it of fields) {
+      if (it.kind) continue;
+      guard(it, () => {
+        const d = it.field;
+        if (d.type === "bad") fail2(d.error);
+        if (d.type === "system" || d.type === "vector") {
+          const fx = compiled(it, d.comps[0], ["x", "y"]).f, fy = compiled(it, d.comps[1], ["x", "y"]).f;
+          Object.assign(it, { kind: d.type, F: xy(fx, fy), name: d.name || null });
+        } else if (d.type === "grad") {
+          const def = callable[d.f];
+          if (!def) fail2(d.f + "(x, y) = … isn’t defined");
+          if (def.formals.length !== 2) fail2("∇" + d.f + " needs " + d.f + "(x, y), with two variables");
+          Object.assign(it, {
+            kind: "vector",
+            gradOf: d.f,
+            F: (env, x, y, out) => {
+              const hx = 1e-5 * (1 + Math.abs(x)), hy = 1e-5 * (1 + Math.abs(y));
+              out[0] = (def.call(env, [x + hx, y]) - def.call(env, [x - hx, y])) / (2 * hx);
+              out[1] = (def.call(env, [x, y + hy]) - def.call(env, [x, y - hy])) / (2 * hy);
+            }
+          });
+        } else if (d.type === "slope") {
+          const g = compiled(it, d.rhs, ["x", "y"]).f;
+          Object.assign(it, { kind: "slope", f: (env, x, y) => g(env, [x, y]) });
+        } else if (d.type === "ic1") {
+          const x0 = compiled(it, d.at, []), y0 = compiled(it, d.val, []);
+          Object.assign(it, { kind: "solution", x0: x0.f, y0: y0.f, dragY: sliderOf(y0.node) });
+        } else if (d.type === "ic2") {
+          const px = compiled(it, d.comps[0], []), py = compiled(it, d.comps[1], []);
+          compiled(it, d.at, []);
+          Object.assign(it, { kind: "trajectory", px: px.f, py: py.f, dragX: sliderOf(px.node), dragY: sliderOf(py.node) });
+        }
+      });
+    }
+    const names = {};
+    for (const it of fields) {
+      if (it.kind !== "vector" || !it.name) continue;
+      if (names[it.name]) Object.assign(it, { kind: "error", error: it.name + " is defined twice" });
+      names[it.name] = true;
+    }
+    for (const it of fields) {
+      if (it.kind !== "solution" && it.kind !== "trajectory") continue;
+      const want = it.kind === "solution" ? ["slope"] : ["system", "vector"];
+      const i = items.indexOf(it);
+      let owner = null;
+      for (let j = i - 1; j >= 0 && !owner; j--) if (want.includes(items[j].kind)) owner = items[j];
+      for (let j = i + 1; j < items.length && !owner; j++) if (want.includes(items[j].kind)) owner = items[j];
+      if (owner) it.owner = owner.id;
+      else Object.assign(it, { kind: "error", error: it.kind === "solution" ? "y(…) = … needs a slope field, like dy/dx = x − y" : "(x, y)(0) = (…) needs a field or a system to follow" });
+    }
+  }
   function analyze(expressions) {
     const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
     const fns = {};
     for (const item of items) {
+      const field = fieldOf(item.text);
+      if (field) item.field = field;
+    }
+    for (const item of items) {
+      if (item.field) continue;
       const text = normalize(item.text);
       const m = FN_DEF.exec(text);
       if (!m) continue;
@@ -6255,7 +6440,7 @@ function createMathParser() {
     }
     const userFns = new Set(Object.keys(fns));
     for (const item of items) {
-      if (item.kind === "error") continue;
+      if (item.kind === "error" || item.field) continue;
       if (!item.text.trim()) {
         item.kind = "empty";
         continue;
@@ -6356,6 +6541,7 @@ function createMathParser() {
       }
     }
     const cf = (node) => compile(node, null, callable);
+    readFields(items, params, callable, note);
     for (const item of items) {
       try {
         if (item.kind === "function") {
@@ -6397,7 +6583,7 @@ function createMathParser() {
             if (!only(vars, ["t"])) fail2("A curve (x(t), y(t)) can use only t and sliders");
             item.kind = "parametric";
           } else {
-            if (has3(vars, RESERVED)) fail2("A point’s coordinates are numbers or sliders; for a curve use t");
+            if (has3(vars, RESERVED)) fail2("A point’s coordinates are numbers or sliders; for a curve use t, for a vector field write F(x, y) = (…)");
             item.kind = "point";
             item.dragX = node.items[0].k === "var" && params.has(node.items[0].n) ? node.items[0].n : null;
             item.dragY = node.items[1].k === "var" && params.has(node.items[1].n) ? node.items[1].n : null;
@@ -6494,7 +6680,7 @@ function createMathParser() {
 }
 
 // client/src/utils/graphRuntime.js
-function graphRuntime(P, config) {
+function graphRuntime(P, G2, config) {
   let C2 = config;
   const THEMES = {
     light: {
@@ -6506,7 +6692,14 @@ function graphRuntime(P, config) {
       panel: "rgba(255,255,255,0.94)",
       panelText: "#222",
       border: "rgba(0,0,0,0.14)",
-      accent: "#2d70b3"
+      accent: "#2d70b3",
+      fg: "#1d2430",
+      pos: "#cf5a1f",
+      neg: "#2470cc",
+      mid: "rgba(255,255,255,0)",
+      null1: "#388c46",
+      null2: "#6042a6",
+      path: "#2b2b2b"
     },
     dark: {
       axis: "rgba(255,255,255,0.85)",
@@ -6517,7 +6710,14 @@ function graphRuntime(P, config) {
       panel: "rgba(24,24,36,0.9)",
       panelText: "#eee",
       border: "rgba(255,255,255,0.16)",
-      accent: "#6fa8ff"
+      accent: "#6fa8ff",
+      fg: "#eef1f6",
+      pos: "#ff9759",
+      neg: "#63a6f7",
+      mid: "rgba(0,0,0,0)",
+      null1: "#4cc36a",
+      null2: "#b18cff",
+      path: "rgba(255,255,255,0.9)"
     }
   };
   const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
@@ -6536,6 +6736,9 @@ function graphRuntime(P, config) {
   let playing = {};
   let snapshotSent = false;
   let frame = 0;
+  let clicks = [];
+  let eqHover = null;
+  const reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   let shownScale = 1;
   const density = () => Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * (C2.print ? Math.max(shownScale, 3) : shownScale)));
   const clamp4 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -6551,6 +6754,8 @@ function graphRuntime(P, config) {
       if (it.kind === "param" && it.slider) values[it.name] = keepState && typeof kept[it.name] === "number" && !C2.editor ? kept[it.name] : it.literal;
     }
     if (!keepState || C2.editor) view = copyView(C2.view);
+    if (!keepState) clicks = [];
+    fieldGeo = null;
     playing = {};
     for (const e of C2.expressions || []) {
       const it = analysis.items.find((i) => i.id === e.id);
@@ -6634,6 +6839,16 @@ function graphRuntime(P, config) {
     const E = env();
     const ticks = gridAndAxes();
     const items = analysis.items.filter(visible);
+    const fg = fieldGeometry(E);
+    const fieldsDo = (fn) => {
+      try {
+        fn();
+      } catch (e) {
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([]);
+      }
+    };
+    fieldsDo(() => drawShades(fg));
     const each2 = (kinds, fn) => {
       for (const it of items) {
         if (!kinds.includes(it.kind)) continue;
@@ -6646,16 +6861,21 @@ function graphRuntime(P, config) {
       }
     };
     each2(["region"], (it) => drawRegion(it, E));
+    fieldsDo(() => drawFieldMarks(fg, E));
     each2(["explicit", "function", "polar", "parametric", "implicit"], (it) => {
       if (it.kind === "explicit" || it.kind === "function" && it.graph) strokeRuns(explicitRuns(it.f, E, it.axis || "y"), exprOf(it));
       else if (it.kind === "polar") strokeRuns(curveRuns(it, E, "theta"), exprOf(it));
       else if (it.kind === "parametric") strokeRuns(curveRuns(it, E, "t"), exprOf(it));
       else if (it.kind === "implicit") strokeRuns(contour(it.F, E), exprOf(it));
     });
+    fieldsDo(() => drawFieldPaths(fg, E));
     axisNumbers(ticks);
     axisLabels();
     each2(["point"], (it) => drawPoint(it, E));
+    fieldsDo(() => drawFieldPoints(fg, E));
+    fieldsDo(() => drawMoving(fg));
     if (hover) drawHover();
+    if (eqHover) drawEquilibriumCard(eqHover);
     if (C2.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true;
       try {
@@ -7068,6 +7288,552 @@ function graphRuntime(P, config) {
     ctx.textBaseline = "middle";
     ctx.fillText(text, bx + 6, by + 11);
   }
+  const FIELD_DEFAULTS = {
+    vector: { draw: "arrows", density: "normal", length: "scaled", colorBy: "magnitude", shade: "none", equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
+    system: { draw: "streamlines", density: "normal", length: "scaled", colorBy: "line", shade: "none", equilibria: true, separatrices: true, nullclines: false, traceDet: false, clicks: true },
+    slope: { draw: "slopes", density: "normal", length: "equal", colorBy: "line", shade: "none", equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true }
+  };
+  const GRID_PX = { sparse: 54, normal: 38, dense: 27 };
+  const STREAM_PX = { sparse: 34, normal: 24, dense: 16 };
+  const FIELD_KINDS = ["vector", "system", "slope"];
+  function fieldOptions(e, kind) {
+    const d = FIELD_DEFAULTS[kind], f = e.field || {}, o = {};
+    for (const k in d) o[k] = f[k] === void 0 ? d[k] : f[k];
+    if (o.draw === "particles" && (C2.print || reduceMotion)) o.draw = "streamlines";
+    return o;
+  }
+  function overlayShown(e, o, key) {
+    if (!o[key]) return false;
+    const at = e.field && e.field.steps ? Number(e.field.steps[key]) : 0;
+    return !(at > 0) || at <= step;
+  }
+  let fieldGeo = null, fieldKey = "";
+  function fieldGeometry(E) {
+    const fieldItems = analysis.items.filter((it) => FIELD_KINDS.includes(it.kind) && visible(it));
+    const pathItems = analysis.items.filter((it) => (it.kind === "trajectory" || it.kind === "solution") && visible(it));
+    if (!fieldItems.length) {
+      fieldGeo = null;
+      return null;
+    }
+    const box = { xMin: X0, xMax: X1, yMin: Y0, yMax: Y1 };
+    const key = JSON.stringify([box, W, H, step, values, C2.expressions, clicks]);
+    if (fieldGeo && key === fieldKey) return fieldGeo;
+    fieldKey = key;
+    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0);
+    const fields = fieldItems.map((it) => {
+      const e = exprOf(it), o = fieldOptions(e, it.kind);
+      const F = it.kind === "slope" ? (env2, x, y, r) => {
+        r[0] = 1;
+        r[1] = it.f(env2, x, y);
+      } : it.F;
+      const f = { it, e, o, F, color: e.color || "#c74440" };
+      const mags = [];
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 16; j++) {
+        F(E, wx((i + 0.5) * W / 24), wy((j + 0.5) * H / 16), out);
+        const m = Math.hypot(out[0], out[1]);
+        if (isFinite(m)) mags.push(m);
+      }
+      mags.sort((a, b) => a - b);
+      f.mRef = mags.length && (mags[Math.floor(mags.length * 0.85)] || mags[mags.length - 1]) || 1;
+      f.V = (px, py, r) => {
+        F(E, wx(px), wy(py), out);
+        r[0] = out[0] * kx;
+        r[1] = -out[1] * ky;
+      };
+      if (o.draw === "streamlines") f.lines = G2.streamlines(f.V, W, H, STREAM_PX[o.density] || 24, { budget: 3e5 });
+      if (it.kind !== "slope" && (overlayShown(e, o, "equilibria") || overlayShown(e, o, "separatrices") || overlayShown(e, o, "traceDet"))) {
+        f.eq = G2.equilibria(F, E, box);
+        if (overlayShown(e, o, "separatrices")) f.seps = [].concat(...f.eq.map((q) => G2.separatrices(F, E, q, box)));
+      }
+      if (it.kind === "vector" && o.shade !== "none") f.shade = shadeGrid(F, E, o.shade);
+      return f;
+    });
+    const fieldOf = (id) => fields.find((f) => f.it.id === id);
+    const paths = [];
+    for (const it of pathItems) {
+      const owner = fieldOf(it.owner);
+      if (!owner) continue;
+      const e = exprOf(it);
+      if (it.kind === "solution") {
+        const x02 = it.x0(E), y02 = it.y0(E);
+        if (isFinite(x02) && isFinite(y02)) paths.push({ it, e, x0: x02, y0: y02, color: e.color || owner.color, solution: G2.solution(owner.it.f, E, x02, y02, box) });
+        continue;
+      }
+      const x0 = it.px(E), y0 = it.py(E), dir = e.traj && e.traj.dir || "forward", runs = [];
+      if (!isFinite(x0) || !isFinite(y0)) continue;
+      if (dir !== "backward") runs.push(G2.trajectory(owner.F, E, x0, y0, 1, box, { tMax: 400 }));
+      if (dir !== "forward") runs.push(G2.trajectory(owner.F, E, x0, y0, -1, box, { tMax: 400 }));
+      paths.push({ it, e, x0, y0, runs, color: e.color || owner.color, moving: !!(e.traj && e.traj.moving) });
+    }
+    const clicked = C2.print ? [] : clicks.map((c) => {
+      const f = fieldOf(c.field);
+      if (!f) return null;
+      if (f.it.kind === "slope") return { x0: c.x, y0: c.y, color: theme.path, click: true, solution: G2.solution(f.it.f, E, c.x, c.y, box) };
+      return { x0: c.x, y0: c.y, color: theme.path, click: true, runs: [G2.trajectory(f.F, E, c.x, c.y, 1, box, { tMax: 400 }), G2.trajectory(f.F, E, c.x, c.y, -1, box, { tMax: 400 })] };
+    }).filter(Boolean);
+    fieldGeo = { fields, paths, clicked };
+    return fieldGeo;
+  }
+  function shadeGrid(F, E, what) {
+    const cell = 8, nx = Math.ceil(W / cell), ny = Math.ceil(H / cell), vals = new Float64Array(nx * ny), a = [0, 0], b = [0, 0], all = [];
+    const hx = (X1 - X0) * 1e-4, hy = (Y1 - Y0) * 1e-4;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const x = wx((i + 0.5) * cell), y = wy((j + 0.5) * cell);
+      let v;
+      if (what === "magnitude") {
+        F(E, x, y, a);
+        v = Math.hypot(a[0], a[1]);
+      } else {
+        F(E, x + hx, y, a);
+        F(E, x - hx, y, b);
+        const dPdx = (a[0] - b[0]) / (2 * hx), dQdx = (a[1] - b[1]) / (2 * hx);
+        F(E, x, y + hy, a);
+        F(E, x, y - hy, b);
+        const dPdy = (a[0] - b[0]) / (2 * hy), dQdy = (a[1] - b[1]) / (2 * hy);
+        v = what === "divergence" ? dPdx + dQdy : dQdx - dPdy;
+      }
+      vals[j * nx + i] = v;
+      if (isFinite(v)) all.push(Math.abs(v));
+    }
+    all.sort((p, q) => p - q);
+    return { cell, nx, ny, vals, ref: all[Math.floor(all.length * 0.95)] || 1, what };
+  }
+  const shadeCanvas = document.createElement("canvas"), shadeCtx = shadeCanvas.getContext("2d");
+  function rgbOf(color2) {
+    shadeCtx.fillStyle = "#000";
+    shadeCtx.fillStyle = color2;
+    const c = shadeCtx.fillStyle;
+    if (c[0] === "#") {
+      const n = parseInt(c.slice(1, 7), 16);
+      return [n >> 16 & 255, n >> 8 & 255, n & 255];
+    }
+    const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(c);
+    return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128];
+  }
+  function drawShades(g) {
+    if (!g) return;
+    for (const f of g.fields) {
+      const s = f.shade;
+      if (!s) continue;
+      shadeCanvas.width = s.nx;
+      shadeCanvas.height = s.ny;
+      const img = shadeCtx.createImageData(s.nx, s.ny), pos2 = rgbOf(s.what === "magnitude" ? f.color : theme.pos), neg = rgbOf(theme.neg);
+      for (let k = 0; k < s.nx * s.ny; k++) {
+        const v = s.vals[k];
+        if (!isFinite(v)) continue;
+        const t = Math.max(-1, Math.min(1, v / s.ref)), c = t > 0 || s.what === "magnitude" ? pos2 : neg;
+        img.data[4 * k] = c[0];
+        img.data[4 * k + 1] = c[1];
+        img.data[4 * k + 2] = c[2];
+        img.data[4 * k + 3] = Math.round(255 * (s.what === "magnitude" ? 0.42 * Math.abs(t) : 0.5 * Math.pow(Math.abs(t), 0.8)));
+      }
+      shadeCtx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(shadeCanvas, 0, 0, s.nx * s.cell, s.ny * s.cell);
+    }
+  }
+  function arrowHead(x, y, ux, uy, size) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - ux * size - uy * size * 0.55, y - uy * size + ux * size * 0.55);
+    ctx.lineTo(x - ux * size + uy * size * 0.55, y - uy * size - ux * size * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function drawFieldMarks(g, E) {
+    if (!g) return;
+    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const f of g.fields) {
+      const o = f.o, s = GRID_PX[o.density] || 38;
+      ctx.strokeStyle = f.color;
+      ctx.fillStyle = f.color;
+      if (o.draw === "arrows") {
+        ctx.lineWidth = 1.7;
+        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+          f.F(E, wx(px), wy(py), out);
+          const vx = out[0] * kx, vy = -out[1] * ky, m = Math.hypot(out[0], out[1]), pm = Math.hypot(vx, vy);
+          if (!(pm > 0) || !isFinite(pm)) continue;
+          const rel = Math.min(1, m / f.mRef), L = s * 0.8 * (o.length === "scaled" ? Math.max(0.18, rel) : 1);
+          const ux = vx / pm, uy = vy / pm, head = Math.max(3.5, Math.min(7, L * 0.32));
+          ctx.globalAlpha = o.colorBy === "magnitude" ? 0.28 + 0.72 * rel : 1;
+          ctx.beginPath();
+          ctx.moveTo(px - ux * L / 2, py - uy * L / 2);
+          ctx.lineTo(px + ux * (L / 2 - head * 0.6), py + uy * (L / 2 - head * 0.6));
+          ctx.stroke();
+          arrowHead(px + ux * L / 2, py + uy * L / 2, ux, uy, head);
+        }
+      } else if (o.draw === "slopes") {
+        ctx.lineWidth = 1.6;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+          const m = f.it.f(E, wx(px), wy(py));
+          if (!isFinite(m)) continue;
+          const vx = kx, vy = -m * ky, pm = Math.hypot(vx, vy), L = s * 0.62;
+          ctx.moveTo(px - vx / pm * L / 2, py - vy / pm * L / 2);
+          ctx.lineTo(px + vx / pm * L / 2, py + vy / pm * L / 2);
+        }
+        ctx.stroke();
+      } else if (o.draw === "streamlines" && f.lines) {
+        ctx.lineWidth = 1.25;
+        for (const l of f.lines) {
+          const pts = l.pts;
+          if (o.colorBy === "magnitude") {
+            for (let i = 1; i < pts.length; i++) {
+              f.F(E, wx(pts[i][0]), wy(pts[i][1]), out);
+              ctx.globalAlpha = 0.25 + 0.7 * Math.min(1, Math.hypot(out[0], out[1]) / f.mRef);
+              ctx.beginPath();
+              ctx.moveTo(pts[i - 1][0], pts[i - 1][1]);
+              ctx.lineTo(pts[i][0], pts[i][1]);
+              ctx.stroke();
+            }
+          } else {
+            ctx.globalAlpha = 0.62;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 0.85;
+          let acc = 0, next = 130 * 0.45;
+          for (let k = 1; k < pts.length; k++) {
+            const dx = pts[k][0] - pts[k - 1][0], dy = pts[k][1] - pts[k - 1][1], d = Math.hypot(dx, dy);
+            acc += d;
+            if (acc >= next && d > 0) {
+              arrowHead(pts[k][0], pts[k][1], dx / d, dy / d, 5.5);
+              next += 130;
+            }
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+  function strokePath(run, color2, width, alpha2) {
+    const pts = run.pts;
+    if (!pts || pts.length < 2) return;
+    ctx.strokeStyle = color2;
+    ctx.fillStyle = color2;
+    ctx.globalAlpha = alpha2;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(clampPx(sx(pts[0][0])), clampPx(sy(pts[0][1])));
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(clampPx(sx(pts[i][0])), clampPx(sy(pts[i][1])));
+    ctx.stroke();
+    const forward = pts[pts.length - 1][2] >= pts[0][2];
+    let acc = 0, next = 60;
+    for (let k = 1; k < pts.length; k++) {
+      const x0 = sx(pts[k - 1][0]), y0 = sy(pts[k - 1][1]), x1 = sx(pts[k][0]), y1 = sy(pts[k][1]), d = Math.hypot(x1 - x0, y1 - y0);
+      if (x1 < 0 || x1 > W || y1 < 0 || y1 > H) continue;
+      acc += d;
+      if (acc >= next && d > 0) {
+        const s = forward ? 1 : -1;
+        arrowHead(x1, y1, s * (x1 - x0) / d, s * (y1 - y0) / d, 7);
+        next += 120;
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawFieldPaths(g, E) {
+    if (!g) return;
+    const out = [0, 0];
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const f of g.fields) {
+      if (f.it.kind !== "slope" && overlayShown(f.e, f.o, "nullclines")) {
+        strokeRuns(contour((env2) => {
+          f.F(env2, env2.x, env2.y, out);
+          return out[0];
+        }, E), { color: theme.null1, style: "dashed", width: 2 });
+        strokeRuns(contour((env2) => {
+          f.F(env2, env2.x, env2.y, out);
+          return out[1];
+        }, E), { color: theme.null2, style: "dashed", width: 2 });
+        E.x = 0;
+        E.y = 0;
+      }
+      for (const sep of f.seps || []) strokePath(sep, f.color, 2.6, 1);
+    }
+    for (const p of g.paths.concat(g.clicked)) {
+      if (p.solution) {
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = p.click ? 2 : p.e.width || 2.5;
+        ctx.beginPath();
+        p.solution.forEach((q, i) => i ? ctx.lineTo(sx(q[0]), clampPx(sy(q[1]))) : ctx.moveTo(sx(q[0]), clampPx(sy(q[1]))));
+        ctx.stroke();
+      } else for (const r of p.runs) strokePath(r, p.color, p.click ? 2 : p.e.width || 2.5, p.click ? 0.9 : 1);
+    }
+  }
+  function drawFieldPoints(g) {
+    if (!g) return;
+    for (const p of g.paths.concat(g.clicked)) {
+      const x = sx(p.x0), y = sy(p.y0), drag2 = p.it && (p.it.dragX || p.it.dragY);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(x, y, p.click ? 3.5 : drag2 ? 6 : 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (drag2) {
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(x, y, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+    for (const f of g.fields) if (f.eq && overlayShown(f.e, f.o, "equilibria")) for (const q of f.eq) marker(q);
+    let keyY = 10;
+    for (const f of g.fields) {
+      if (f.it.kind !== "slope" && overlayShown(f.e, f.o, "nullclines")) {
+        const polar = f.it.polar;
+        keyY = nullclineKey(keyY, [[theme.null1, polar ? "ẋ = 0" : "x′ = 0"], [theme.null2, polar ? "ẏ = 0" : "y′ = 0"]]);
+      }
+      if (f.shade && f.shade.what !== "magnitude") keyY = shadeKey(keyY, f.shade.what);
+    }
+    const td = g.fields.find((f) => f.eq && overlayShown(f.e, f.o, "traceDet"));
+    if (td) traceDet(td);
+  }
+  function marker(q) {
+    const x = sx(q.x), y = sy(q.y), r = 6.5;
+    if (x < -r || x > W + r || y < -r || y > H + r) return;
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = theme.fg;
+    ctx.fillStyle = C2.background && C2.background !== "transparent" ? C2.background : theme.halo;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = theme.fg;
+    if (/^stable/.test(q.kind)) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (q.kind === "saddle") {
+      ctx.beginPath();
+      ctx.arc(x, y, r, Math.PI / 2, 3 * Math.PI / 2);
+      ctx.closePath();
+      ctx.fill();
+    } else if (q.kind === "center") {
+      ctx.beginPath();
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  function nullclineKey(y, entries) {
+    let x = 10;
+    ctx.font = "italic 14px " + MATH_FONT2;
+    for (const [color2, text] of entries) {
+      ctx.strokeStyle = color2;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(x, y + 8);
+      ctx.lineTo(x + 24, y + 8);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      haloText(text, x + 30, y + 8, "left", "middle", "italic 14px " + MATH_FONT2);
+      x += 30 + ctx.measureText(text).width + 16;
+    }
+    return y + 24;
+  }
+  function shadeKey(y, what) {
+    const x = 10, w = 110;
+    haloText(what === "divergence" ? "divergence" : "curl", x, y + 6, "left", "middle", "12px " + FONT);
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, theme.neg);
+    grad.addColorStop(0.5, theme.mid);
+    grad.addColorStop(1, theme.pos);
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y + 16, w, 7);
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y + 16, w, 7);
+    haloText("−", x, y + 26, "left", "top", "11px " + FONT);
+    haloText("0", x + w / 2, y + 26, "center", "top", "11px " + FONT);
+    haloText("+", x + w, y + 26, "right", "top", "11px " + FONT);
+    return y + 46;
+  }
+  function traceDet(f) {
+    const w = 190, h = 140, x0 = W - w - 10, y0 = 42;
+    ctx.fillStyle = theme.panel;
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(x0, y0, w, h);
+    ctx.fill();
+    ctx.stroke();
+    let R = 2.4;
+    for (const q of f.eq) R = Math.max(R, Math.abs(q.trace) * 1.3, Math.sqrt(Math.abs(q.det)) * 1.3);
+    const ix = x0 + 10, iy = y0 + 14, iw = w - 20, ih = h - 34;
+    const tx = (t) => ix + (t + R) / (2 * R) * iw, dy = (d) => iy + ih * 0.72 - d / (R * R / 4 * 1.25) * ih * 0.72;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ix, iy, iw, ih);
+    ctx.clip();
+    ctx.fillStyle = theme.neg;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(ix, dy(0), iw, ih);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = theme.axis;
+    ctx.beginPath();
+    ctx.moveTo(ix, dy(0));
+    ctx.lineTo(ix + iw, dy(0));
+    ctx.moveTo(tx(0), iy);
+    ctx.lineTo(tx(0), iy + ih);
+    ctx.stroke();
+    ctx.strokeStyle = theme.text;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    for (let k = 0; k <= 60; k++) {
+      const t = -R + 2 * R * k / 60;
+      if (k) ctx.lineTo(tx(t), dy(t * t / 4));
+      else ctx.moveTo(tx(t), dy(t * t / 4));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "9.5px " + FONT;
+    ctx.fillStyle = theme.text;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText("saddles", tx(0), dy(0) + 14);
+    ctx.fillText("spirals", tx(-R * 0.32), dy(R * R / 4 * 0.85));
+    ctx.fillText("spirals", tx(R * 0.32), dy(R * R / 4 * 0.85));
+    ctx.textAlign = "left";
+    ctx.fillText("nodes", ix + 2, dy(R * R / 4 * 0.12));
+    ctx.textAlign = "right";
+    ctx.fillText("nodes", ix + iw - 2, dy(R * R / 4 * 0.12));
+    for (const q of f.eq) {
+      ctx.fillStyle = f.color;
+      ctx.strokeStyle = theme.halo;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(tx(q.trace), Math.max(iy + 3, Math.min(iy + ih - 3, dy(q.det))), 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.font = "italic 12px " + MATH_FONT2;
+    ctx.fillStyle = theme.text;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.fillText("Δ = det", x0 + 8, y0 + h - 7);
+    ctx.textAlign = "right";
+    ctx.fillText("τ = trace", x0 + w - 8, y0 + h - 7);
+  }
+  function drawEquilibriumCard(q) {
+    const x = sx(q.x), y = sy(q.y);
+    const at = (v) => fmt(Math.abs(v) < (X1 - X0) * 1e-9 ? 0 : v);
+    const lines = [
+      q.kind === "center" ? "Center (of the linearization)" : q.kind[0].toUpperCase() + q.kind.slice(1),
+      "(" + at(q.x) + ", " + at(q.y) + ")",
+      "λ = " + (q.eig[0][1] ? fmt(q.eig[0][0]) + " ± " + fmt(Math.abs(q.eig[0][1])) + "i" : fmt(q.eig[0][0]) + ", " + fmt(q.eig[1][0])),
+      "τ = " + fmt(q.trace) + ",  Δ = " + fmt(q.det)
+    ];
+    ctx.font = "12.5px " + FONT;
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12;
+    const bx = x + 14 + w > W ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H - h - 4, y - h / 2));
+    ctx.fillStyle = theme.panel;
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(bx, by, w, h);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    lines.forEach((l, i) => {
+      ctx.fillStyle = theme.panelText;
+      ctx.font = (i ? "" : "600 ") + "12.5px " + FONT;
+      ctx.fillText(l, bx + 10, by + 8 + i * 18);
+    });
+  }
+  function startAt(it, E) {
+    const x = it.kind === "solution" ? it.x0(E) : it.px(E), y = it.kind === "solution" ? it.y0(E) : it.py(E);
+    return isFinite(x) && isFinite(y) ? { x, y, px: sx(x), py: sy(y) } : null;
+  }
+  let particles = [], lastStep = 0;
+  const trailCanvas = document.createElement("canvas"), trail = trailCanvas.getContext("2d");
+  const startTime = typeof performance !== "undefined" ? performance.now() : 0;
+  function moving(g) {
+    if (!g || C2.print || reduceMotion) return false;
+    return g.fields.some((f) => f.o.draw === "particles") || g.paths.some((p) => p.moving);
+  }
+  function drawMoving(g) {
+    if (!moving(g)) {
+      particles = [];
+      return;
+    }
+    const now = performance.now(), d = density();
+    const flows = g.fields.filter((f) => f.o.draw === "particles");
+    if (flows.length) {
+      const dt = lastStep ? Math.min(0.05, (now - lastStep) / 1e3) : 0;
+      lastStep = now;
+      const TW = Math.round(W * d), TH = Math.round(H * d);
+      if (trailCanvas.width !== TW || trailCanvas.height !== TH) {
+        trailCanvas.width = TW;
+        trailCanvas.height = TH;
+        particles = [];
+      }
+      trail.setTransform(d, 0, 0, d, 0, 0);
+      trail.globalCompositeOperation = "destination-out";
+      trail.fillStyle = "rgba(0,0,0,0.075)";
+      trail.fillRect(0, 0, W, H);
+      trail.globalCompositeOperation = "source-over";
+      const want = Math.round(W * H / 700 / flows.length), v = [0, 0], scale = Math.min(W / (X1 - X0), H / (Y1 - Y0));
+      for (const f of flows) {
+        let mine = particles.filter((q) => q.f === f.it.id);
+        while (mine.length < want) {
+          const q = { x: Math.random() * W, y: Math.random() * H, age: Math.random() * 4, f: f.it.id };
+          particles.push(q);
+          mine.push(q);
+        }
+        trail.strokeStyle = f.color;
+        trail.globalAlpha = 0.9;
+        trail.lineWidth = 1.6;
+        trail.lineCap = "round";
+        trail.beginPath();
+        for (const q of mine) {
+          f.V(q.x, q.y, v);
+          const m = Math.hypot(v[0], v[1]), speed = 70 * Math.min(2.5, m / (f.mRef * scale || 1));
+          const nx = q.x + (m ? v[0] / m * speed * dt : 0), ny = q.y + (m ? v[1] / m * speed * dt : 0);
+          q.age += dt;
+          if (!isFinite(nx) || !isFinite(ny) || nx < 0 || ny < 0 || nx > W || ny > H || q.age > 5 || !m) {
+            q.x = Math.random() * W;
+            q.y = Math.random() * H;
+            q.age = 0;
+            continue;
+          }
+          trail.moveTo(q.x, q.y);
+          trail.lineTo(nx, ny);
+          q.x = nx;
+          q.y = ny;
+        }
+        trail.stroke();
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(trailCanvas, 0, 0);
+      ctx.restore();
+    }
+    for (const p of g.paths) {
+      if (!p.moving || !p.runs[0]) continue;
+      const pts = p.runs[0].pts, T = Math.abs(pts[pts.length - 1][2]);
+      if (!(T > 0)) continue;
+      const t = (now - startTime) / 1e3 * 1.2 % T;
+      let k = 0;
+      while (k < pts.length - 1 && Math.abs(pts[k + 1][2]) < t) k++;
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = theme.halo;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx(pts[k][0]), sy(pts[k][1]), 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
   let last = 0;
   function request() {
     if (!frame) frame = requestAnimationFrame(tick);
@@ -7085,6 +7851,7 @@ function graphRuntime(P, config) {
     } else {
       last = 0;
       draw();
+      if (moving(fieldGeo)) request();
     }
   }
   function sliderOf(name) {
@@ -7183,12 +7950,38 @@ function graphRuntime(P, config) {
   function styleReset() {
     const changed = view && C2.view && !sameView(view, copyView(C2.view));
     reset.style.cssText = "position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (changed && !C2.editor && !C2.print ? "block" : "none") + ";";
+    if (typeof styleClear === "function") styleClear();
   }
   reset.addEventListener("click", () => {
     view = copyView(C2.view);
     styleReset();
     request();
   });
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "Clear paths";
+  document.body.appendChild(clear);
+  function styleClear() {
+    const right = reset.style.display === "block" ? 42 : 8;
+    clear.style.cssText = "position:absolute;top:8px;right:" + right + "px;height:28px;border-radius:6px;cursor:pointer;font:12px " + FONT + ";padding:0 10px;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (clicks.length && !C2.print ? "block" : "none") + ";";
+  }
+  clear.addEventListener("click", () => {
+    clicks = [];
+    styleClear();
+    request();
+  });
+  let clickTimer = 0;
+  function clickAt(px, py) {
+    if (C2.print) return;
+    const it = analysis.items.find((i) => FIELD_KINDS.includes(i.kind) && visible(i) && fieldOptions(exprOf(i), i.kind).clicks);
+    if (!it) return;
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      clicks = clicks.concat([{ x: wx(px), y: wy(py), field: it.id }]).slice(-16);
+      styleClear();
+      request();
+    }, 260);
+  }
   function postEditor(msg) {
     if (!C2.editor) return;
     try {
@@ -7240,14 +8033,14 @@ function graphRuntime(P, config) {
     }
     const E = env();
     for (const it of analysis.items) {
-      if (it.kind !== "point" || !(it.dragX || it.dragY) || !visible(it)) continue;
-      const p = pointAt(it, E);
+      if (!["point", "trajectory", "solution"].includes(it.kind) || !(it.dragX || it.dragY) || !visible(it)) continue;
+      const p = it.kind === "point" ? pointAt(it, E) : startAt(it, E);
       if (p && Math.hypot(p.px - px, p.py - py) < 14) {
         drag = { kind: "point", it };
         return;
       }
     }
-    if (!C2.lockView) drag = { kind: "pan", view: copyView(view), start: [px, py], shown: shown() };
+    drag = C2.lockView ? { kind: "click", start: [px, py] } : { kind: "pan", view: copyView(view), start: [px, py], shown: shown() };
   });
   canvas.addEventListener("pointermove", (ev) => {
     const [px, py] = pos(ev);
@@ -7265,6 +8058,7 @@ function graphRuntime(P, config) {
       syncPanel();
       request();
     } else if (drag.kind === "pan") {
+      if (Math.hypot(px - drag.start[0], py - drag.start[1]) > 4) drag.moved = true;
       const dx = (px - drag.start[0]) / W * (drag.shown.xMax - drag.shown.xMin);
       const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin);
       view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
@@ -7284,13 +8078,18 @@ function graphRuntime(P, config) {
     if (drag && drag.kind === "point") {
       for (const name of [drag.it.dragX, drag.it.dragY]) if (name) postEditor({ type: "param", name, value: values[name] });
     }
+    if (drag && (drag.kind === "click" || drag.kind === "pan" && !drag.moved) && ev.type === "pointerup" && !pointers.size) {
+      const [px, py] = pos(ev);
+      if (Math.hypot(px - drag.start[0], py - drag.start[1]) <= 4) clickAt(px, py);
+    }
     if (!pointers.size) drag = null;
   };
   canvas.addEventListener("pointerup", end);
   canvas.addEventListener("pointercancel", end);
   canvas.addEventListener("pointerleave", () => {
-    if (hover) {
+    if (hover || eqHover) {
       hover = null;
+      eqHover = null;
       request();
     }
   });
@@ -7301,11 +8100,28 @@ function graphRuntime(P, config) {
     zoom(Math.exp(ev.deltaY * 15e-4), px, py);
   }, { passive: false });
   canvas.addEventListener("dblclick", (ev) => {
+    clearTimeout(clickTimer);
     if (C2.lockView) return;
     const [px, py] = pos(ev);
     zoom(0.5, px, py);
   });
   function trace(px, py) {
+    let near = null;
+    if (fieldGeo) {
+      for (const f of fieldGeo.fields) {
+        if (!f.eq || !overlayShown(f.e, f.o, "equilibria")) continue;
+        for (const q of f.eq) if (Math.hypot(sx(q.x) - px, sy(q.y) - py) < 10) near = q;
+      }
+    }
+    if (near !== eqHover) {
+      eqHover = near;
+      request();
+    }
+    if (near) {
+      hover = null;
+      canvas.style.cursor = "default";
+      return;
+    }
     let best = null;
     const E = env();
     for (const it of analysis.items) {
@@ -7355,6 +8171,8 @@ function graphRuntime(P, config) {
     if (ev.source !== window.parent) return;
     const data = ev.data;
     if (data === "parallax-resize") {
+      clicks = [];
+      styleClear();
       resize();
       return;
     }
@@ -7378,6 +8196,349 @@ function graphRuntime(P, config) {
   resize();
 }
 
+// client/src/utils/graphFields.js
+function graphFields() {
+  "use strict";
+  var A = [
+    [],
+    [1 / 5],
+    [3 / 40, 9 / 40],
+    [44 / 45, -56 / 15, 32 / 9],
+    [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729],
+    [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656],
+    [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84]
+  ];
+  var C2 = [0, 0.2, 0.3, 0.8, 8 / 9, 1, 1];
+  var E = [71 / 57600, 0, -71 / 16695, 71 / 1920, -17253 / 339200, 22 / 525, -1 / 40];
+  function dopri(f, n, t0, s0, tEnd, opts, each2) {
+    var dir = tEnd >= t0 ? 1 : -1, t = t0, s = s0.slice(), h = (opts.h0 || 0.01) * dir;
+    var k = [], tmp = new Array(n), sn = new Array(n), steps = 0, maxSteps = opts.maxSteps || 2e4;
+    for (var i = 0; i < 7; i++) k.push(new Array(n));
+    var atol = opts.atol || 1e-9, rtol = opts.rtol || 1e-9;
+    f(t, s, k[0]);
+    while (dir * (tEnd - t) > 1e-14 * Math.max(1, Math.abs(t)) && steps < maxSteps) {
+      if (dir * (t + h - tEnd) > 0) h = tEnd - t;
+      if (opts.hmax) {
+        var hm = opts.hmax(t, s, k[0]);
+        if (Math.abs(h) > hm) h = hm * dir;
+      }
+      for (var st = 1; st < 7; st++) {
+        for (var j = 0; j < n; j++) {
+          var acc = s[j];
+          for (var q = 0; q < st; q++) acc += h * A[st][q] * k[q][j];
+          tmp[j] = acc;
+        }
+        f(t + h * C2[st], tmp, k[st]);
+        if (st === 6) for (j = 0; j < n; j++) sn[j] = tmp[j];
+      }
+      var err = 0;
+      for (j = 0; j < n; j++) {
+        var ej = 0;
+        for (q = 0; q < 7; q++) ej += E[q] * k[q][j];
+        ej *= h;
+        var sc = atol + rtol * Math.max(Math.abs(s[j]), Math.abs(sn[j]));
+        err += ej / sc * (ej / sc);
+      }
+      err = Math.sqrt(err / n);
+      if (!isFinite(err)) {
+        h *= 0.25;
+        if (Math.abs(h) < 1e-14) return "blowup";
+        f(t, s, k[0]);
+        steps++;
+        continue;
+      }
+      var fac = Math.min(5, Math.max(0.2, 0.9 * Math.pow(err || 1e-10, -0.2)));
+      if (err <= 1) {
+        t += h;
+        for (j = 0; j < n; j++) s[j] = sn[j];
+        for (j = 0; j < n; j++) k[0][j] = k[6][j];
+        steps++;
+        if (each2(t, s, k[0]) === false) return "stopped";
+        h *= fac;
+      } else h *= Math.max(0.2, fac);
+      if (Math.abs(h) < 1e-13 * Math.max(1, Math.abs(t))) return "stiff";
+    }
+    return steps >= maxSteps ? "steps" : "end";
+  }
+  function trajectory(F, env, x0, y0, dir, box, opts) {
+    opts = opts || {};
+    var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), out = [0, 0];
+    var mx = (box.xMax - box.xMin) * 0.5, my = (box.yMax - box.yMin) * 0.5;
+    var pts = [[x0, y0, 0]], closed = false, left = false, len2 = 0, eps = span * 4e-3, fastest = 0;
+    var f = function(t, s, o) {
+      F(env, s[0], s[1], out);
+      o[0] = dir * out[0];
+      o[1] = dir * out[1];
+    };
+    var res = dopri(f, 2, 0, [x0, y0], opts.tMax || 1e3, {
+      atol: span * 1e-8,
+      rtol: 1e-8,
+      h0: 1e-3,
+      maxSteps: opts.maxSteps || 3e4,
+      // Steps short enough to draw: at most 1/300 of the view
+      hmax: function(t, s, ds) {
+        var sp = Math.hypot(ds[0], ds[1]);
+        return sp > 0 ? span / 300 / sp : 1e3;
+      }
+    }, function(t, s, ds) {
+      var p = pts[pts.length - 1];
+      len2 += Math.hypot(s[0] - p[0], s[1] - p[1]);
+      pts.push([s[0], s[1], dir * t]);
+      if (!(isFinite(s[0]) && isFinite(s[1]))) return false;
+      if (s[0] < box.xMin - mx || s[0] > box.xMax + mx || s[1] < box.yMin - my || s[1] > box.yMax + my) return false;
+      var speed = Math.hypot(ds[0], ds[1]);
+      if (speed > fastest) fastest = speed;
+      if (speed < span * 1e-12 || speed < fastest * 1e-6) return false;
+      var back = pts[pts.length - 51];
+      if (back && Math.hypot(s[0] - back[0], s[1] - back[1]) < span * 1e-6) return false;
+      var d = Math.hypot(s[0] - x0, s[1] - y0);
+      if (d > 3 * eps) left = true;
+      if (left && d < eps && len2 > 8 * eps) {
+        closed = true;
+        pts.push([x0, y0, dir * t]);
+        return false;
+      }
+    });
+    return { pts, closed, end: closed ? "closed" : res };
+  }
+  function solution(f, env, x0, y0, box) {
+    var span = box.yMax - box.yMin, my = span * 2, out = [];
+    [-1, 1].forEach(function(dir) {
+      var seg = [[x0, y0]];
+      var g = function(x, s, o) {
+        o[0] = f(env, x, s[0]);
+      };
+      dopri(g, 1, x0, [y0], dir > 0 ? box.xMax : box.xMin, {
+        atol: span * 1e-9,
+        rtol: 1e-9,
+        h0: (box.xMax - box.xMin) / 1e3,
+        maxSteps: 2e4,
+        hmax: function(x, s, ds) {
+          var w = (box.xMax - box.xMin) / 400;
+          return Math.min(w, Math.abs(ds[0]) > 0 ? span / 300 / Math.abs(ds[0]) : w);
+        }
+      }, function(x, s) {
+        seg.push([x, s[0]]);
+        if (!isFinite(s[0]) || s[0] < box.yMin - my || s[0] > box.yMax + my) return false;
+      });
+      if (dir < 0) seg.reverse();
+      out = dir < 0 ? seg : out.concat(seg.slice(1));
+    });
+    return out;
+  }
+  function jacobian(F, env, x, y, h) {
+    var a = [0, 0], b = [0, 0];
+    F(env, x + h, y, a);
+    F(env, x - h, y, b);
+    var j11 = (a[0] - b[0]) / (2 * h), j21 = (a[1] - b[1]) / (2 * h);
+    F(env, x, y + h, a);
+    F(env, x, y - h, b);
+    return [[j11, (a[0] - b[0]) / (2 * h)], [j21, (a[1] - b[1]) / (2 * h)]];
+  }
+  function classify(J) {
+    var a = J[0][0], b = J[0][1], c = J[1][0], d = J[1][1];
+    var tr = a + d, det = a * d - b * c, disc = tr * tr - 4 * det;
+    var s2 = Math.max(tr * tr, Math.abs(det), 1e-300), tiny = 1e-8 * s2, tinyT = 1e-5 * Math.sqrt(s2);
+    var kind, stable = tr < 0;
+    if (det < -tiny) kind = "saddle";
+    else if (Math.abs(det) <= tiny) kind = "degenerate";
+    else if (disc < -tiny) kind = Math.abs(tr) <= tinyT ? "center" : stable ? "stable spiral" : "unstable spiral";
+    else if (Math.abs(disc) <= tiny) kind = stable ? "stable degenerate node" : "unstable degenerate node";
+    else kind = stable ? "stable node" : "unstable node";
+    var eig, vecs = null;
+    if (disc >= 0) {
+      var r = Math.sqrt(Math.max(0, disc)), l1 = (tr - r) / 2, l2 = (tr + r) / 2;
+      eig = [[l1, 0], [l2, 0]];
+      var vec = function(l) {
+        var v = Math.abs(b) > Math.abs(c) ? [b, l - a] : Math.abs(c) > 0 ? [l - d, c] : Math.abs(l - a) < Math.abs(l - d) ? [1, 0] : [0, 1];
+        var m = Math.hypot(v[0], v[1]) || 1;
+        return [v[0] / m, v[1] / m];
+      };
+      vecs = [vec(l1), vec(l2)];
+    } else eig = [[tr / 2, Math.sqrt(-disc) / 2], [tr / 2, -Math.sqrt(-disc) / 2]];
+    return { kind, trace: tr, det, eig, vecs };
+  }
+  function equilibria(F, env, box, opts) {
+    opts = opts || {};
+    var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), h = span * 1e-6;
+    var nx = opts.nx || 14, ny = opts.ny || 10, found = [], out = [0, 0];
+    var mx = (box.xMax - box.xMin) * 0.04, my = (box.yMax - box.yMin) * 0.04;
+    var scale = 0, samples = 0;
+    for (var i = 0; i <= nx; i++) for (var j = 0; j <= ny; j++) {
+      F(env, box.xMin + (box.xMax - box.xMin) * i / nx, box.yMin + (box.yMax - box.yMin) * j / ny, out);
+      var m = Math.hypot(out[0], out[1]);
+      if (isFinite(m)) {
+        scale += m;
+        samples++;
+      }
+    }
+    scale = samples ? scale / samples : 1;
+    for (i = 0; i < nx; i++) for (j = 0; j < ny; j++) {
+      var x = box.xMin + (box.xMax - box.xMin) * (i + 0.5) / nx, y = box.yMin + (box.yMax - box.yMin) * (j + 0.5) / ny;
+      for (var it = 0; it < 40; it++) {
+        F(env, x, y, out);
+        if (!isFinite(out[0]) || !isFinite(out[1])) break;
+        var J = jacobian(F, env, x, y, h), det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+        if (!det || !isFinite(det)) break;
+        var dx = (J[1][1] * out[0] - J[0][1] * out[1]) / det, dy = (-J[1][0] * out[0] + J[0][0] * out[1]) / det;
+        var stepLen = Math.hypot(dx, dy), lim = span * 0.25;
+        if (stepLen > lim) {
+          dx *= lim / stepLen;
+          dy *= lim / stepLen;
+        }
+        x -= dx;
+        y -= dy;
+        if (stepLen < span * 1e-13) break;
+      }
+      F(env, x, y, out);
+      if (!(Math.hypot(out[0], out[1]) <= scale * 1e-9 + 1e-14)) continue;
+      if (x < box.xMin - mx || x > box.xMax + mx || y < box.yMin - my || y > box.yMax + my) continue;
+      if (found.some(function(p) {
+        return Math.hypot(p.x - x, p.y - y) < span * 1e-5;
+      })) continue;
+      found.push({ x, y });
+    }
+    found.forEach(function(p) {
+      var c = classify(jacobian(F, env, p.x, p.y, h));
+      for (var k in c) p[k] = c[k];
+    });
+    found.sort(function(a, b) {
+      return a.x - b.x || a.y - b.y;
+    });
+    return found;
+  }
+  function separatrices(F, env, eq, box) {
+    if (eq.kind !== "saddle" || !eq.vecs) return [];
+    var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), e = span * 1e-4, out = [];
+    eq.vecs.forEach(function(v, i) {
+      var unstable = eq.eig[i][0] > 0;
+      [1, -1].forEach(function(sgn) {
+        var tr = trajectory(F, env, eq.x + sgn * e * v[0], eq.y + sgn * e * v[1], unstable ? 1 : -1, box, { tMax: 200 });
+        tr.unstable = unstable;
+        out.push(tr);
+      });
+    });
+    return out;
+  }
+  function streamlines(V, W, H, dsep, opts) {
+    opts = opts || {};
+    var dtest = dsep * (opts.test || 0.5), step = Math.max(0.6, dsep / 16), cell = dsep;
+    var cols = Math.ceil(W / cell) + 1, rows = Math.ceil(H / cell) + 1, grid = new Array(cols * rows);
+    var lines = [], v = [0, 0], maxLen = opts.maxLen || 4 * (W + H), budget = opts.budget || 4e5;
+    function cellOf(x, y) {
+      var c = Math.floor(x / cell), r = Math.floor(y / cell);
+      return c < 0 || r < 0 || c >= cols || r >= rows ? -1 : r * cols + c;
+    }
+    function free(x, y, d, own, sAt) {
+      if (x < 0 || y < 0 || x > W || y > H) return false;
+      var c0 = Math.floor(x / cell), r0 = Math.floor(y / cell), d2 = d * d;
+      for (var r = r0 - 1; r <= r0 + 1; r++) for (var c = c0 - 1; c <= c0 + 1; c++) {
+        if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+        var k = r * cols + c, lists = [grid[k], own ? own[k] : null];
+        for (var L = 0; L < 2; L++) {
+          var list = lists[L];
+          if (!list) continue;
+          for (var i = 0; i < list.length; i++) {
+            var p = list[i];
+            if (L === 1 && Math.abs(p[2] - sAt) < skip) continue;
+            var dx = p[0] - x, dy = p[1] - y;
+            if (dx * dx + dy * dy < d2) return false;
+          }
+        }
+      }
+      return true;
+    }
+    var skip = Math.ceil(2.2 * dsep / step);
+    function dirAt(x, y, sgn, o) {
+      V(x, y, v);
+      var m = Math.hypot(v[0], v[1]);
+      if (!(m > 0) || !isFinite(m)) return false;
+      o[0] = sgn * v[0] / m;
+      o[1] = sgn * v[1] / m;
+      return true;
+    }
+    var k1 = [0, 0], k2 = [0, 0], k3 = [0, 0], k4 = [0, 0];
+    function grow(x, y, sgn, own) {
+      var pts = [], len2 = 0, sx = x, sy = y;
+      for (var n = 1; n < maxLen / step && budget > 0; n++, budget--) {
+        if (!dirAt(x, y, sgn, k1)) break;
+        if (!dirAt(x + k1[0] * step / 2, y + k1[1] * step / 2, sgn, k2)) break;
+        if (!dirAt(x + k2[0] * step / 2, y + k2[1] * step / 2, sgn, k3)) break;
+        if (!dirAt(x + k3[0] * step, y + k3[1] * step, sgn, k4)) break;
+        var nx = x + step * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) / 6, ny = y + step * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) / 6;
+        if ((nx - x) * k1[0] + (ny - y) * k1[1] < 0.2 * step) break;
+        if (!free(nx, ny, dtest, own, sgn * n)) {
+          if (len2 > 3 * dsep && Math.hypot(nx - sx, ny - sy) < dsep * 0.75) {
+            pts.push([sx, sy]);
+            pts.loop = true;
+          }
+          break;
+        }
+        pts.push([nx, ny]);
+        len2 += step;
+        x = nx;
+        y = ny;
+        var k = cellOf(nx, ny);
+        if (k >= 0) (own[k] = own[k] || []).push([nx, ny, sgn * n]);
+      }
+      return pts;
+    }
+    function add2(line, id2) {
+      line.forEach(function(p) {
+        var k = cellOf(p[0], p[1]);
+        if (k >= 0) (grid[k] = grid[k] || []).push([p[0], p[1], id2]);
+      });
+    }
+    var queue = [], id = 0;
+    function tryLine(x, y) {
+      if (!free(x, y, dsep, null, 0)) return false;
+      var own = {}, fwd = grow(x, y, 1, own), back = fwd.loop ? [] : grow(x, y, -1, own);
+      var line = back.reverse().concat([[x, y]], fwd);
+      if (line.length * step < (opts.minLen || dsep * 0.6)) return false;
+      var obj = { pts: line, loop: !!fwd.loop };
+      add2(line, id++);
+      lines.push(obj);
+      var every = Math.max(1, Math.round(dsep / step / 2));
+      for (var i = 0; i < line.length - 1; i += every) {
+        var p = line[i], q = line[i + 1], dx = q[0] - p[0], dy = q[1] - p[1], m = Math.hypot(dx, dy) || 1;
+        queue.push([p[0] - dy / m * dsep, p[1] + dx / m * dsep], [p[0] + dy / m * dsep, p[1] - dx / m * dsep]);
+      }
+      return true;
+    }
+    tryLine(W / 2 + 0.37, H / 2 + 0.41);
+    var tried = {};
+    for (var pass = 0; pass < 4 && budget > 0; pass++) {
+      while (queue.length && budget > 0) {
+        var sd = queue.shift();
+        tryLine(sd[0], sd[1]);
+      }
+      var more = false;
+      for (var gy = dsep / 2; gy < H && budget > 0; gy += dsep) for (var gx = dsep / 2; gx < W; gx += dsep) {
+        var key = gx + "," + gy;
+        if (tried[key] || !free(gx, gy, dsep, null, 0)) continue;
+        tried[key] = true;
+        if (tryLine(gx + 0.13, gy + 0.17)) more = true;
+        while (queue.length && budget > 0) {
+          sd = queue.shift();
+          tryLine(sd[0], sd[1]);
+        }
+      }
+      if (!more) break;
+    }
+    return lines;
+  }
+  return {
+    dopri,
+    trajectory,
+    solution,
+    jacobian,
+    classify,
+    equilibria,
+    separatrices,
+    streamlines
+  };
+}
+
 // client/src/utils/graphPage.js
 var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "theme", "background", "showSliders", "lockView"];
 var DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 };
@@ -7399,7 +8560,7 @@ var pageCode = null;
 function graphPageHtml(el, opts = {}) {
   const config = graphConfig(el, opts);
   if (!pageCode) {
-    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), `.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "< !--");
+    pageCode = `(${graphRuntime.toString()})((${createMathParser.toString()})(), (${graphFields.toString()})(), `.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "< !--");
   }
   const code = `${pageCode}${JSON.stringify(config).replace(/</g, "\\u003c")});`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;-webkit-user-select:none;user-select:none}</style></head><body><script>${code}</script></body></html>`;
@@ -7407,8 +8568,12 @@ function graphPageHtml(el, opts = {}) {
 function graphSteps(el) {
   const steps = /* @__PURE__ */ new Set();
   for (const e of el?.expressions || []) {
-    const n = Number(e?.step);
-    if (Number.isInteger(n) && n >= 1 && n <= 1e3 && !e.hidden) steps.add(n);
+    if (e?.hidden) continue;
+    const at = [e?.step].concat(e?.field?.steps ? Object.values(e.field.steps) : []);
+    for (const v of at) {
+      const n = Number(v);
+      if (Number.isInteger(n) && n >= 1 && n <= 1e3) steps.add(n);
+    }
   }
   return [...steps].sort((a, b) => a - b);
 }

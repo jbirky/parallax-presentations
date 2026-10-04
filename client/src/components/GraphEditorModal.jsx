@@ -23,7 +23,34 @@ const EXAMPLES = [
   ['Piecewise', 'y = {x < 0: -x, x^2}'],
   ['Restricted domain', 'y = √x {0 < x < 4}'],
   ['Define a function', 'f(x) = e^(-x^2)'],
+  ['Vector field', 'F(x, y) = (-y, x)'],
+  ['System (phase portrait)', "(x', y') = (y, -sin x - 0.3y)"],
+  ['Slope field', 'dy/dx = x - y'],
+  ['Path from a point', '(x, y)(0) = (1, 0)'],
+  ['Solution through a point', 'y(0) = 1'],
 ]
+
+// What a field line's options offer, and their defaults by kind (graphRuntime's)
+const FIELD_DEFAULTS = {
+  vector: { draw: 'arrows', density: 'normal', length: 'scaled', colorBy: 'magnitude', shade: 'none', equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
+  system: { draw: 'streamlines', density: 'normal', length: 'scaled', colorBy: 'line', shade: 'none', equilibria: true, separatrices: true, nullclines: false, traceDet: false, clicks: true },
+  slope: { draw: 'slopes', density: 'normal', length: 'equal', colorBy: 'line', shade: 'none', equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
+}
+const FIELD_KINDS = ['vector', 'system', 'slope']
+const OVERLAYS = [['equilibria', 'Equilibria, classified'], ['separatrices', 'Separatrices of saddles'], ['nullclines', 'Nullclines (x′ = 0, y′ = 0)'], ['traceDet', 'Trace–determinant plane']]
+
+// What a field line was read as, under it
+function fieldNote(it, lineOf) {
+  switch (it.kind) {
+    case 'vector': return it.gradOf ? `Vector field, the gradient of ${it.gradOf}` : 'Vector field'
+    case 'system': return `${it.polar ? 'Polar system' : 'System'}, with line ${lineOf(it.partner)}`
+    case 'partner': return `Part of line ${lineOf(it.partnerOf)}’s system`
+    case 'slope': return 'Slope field, dy/dx'
+    case 'solution': return `Solution of line ${lineOf(it.owner)}’s slope field`
+    case 'trajectory': return `Path along line ${lineOf(it.owner)}${it.dragX || it.dragY ? '; drag its start' : ''}`
+    default: return ''
+  }
+}
 
 const SLIDER_DEFAULTS = { min: -10, max: 10, step: 0.1 }
 
@@ -218,8 +245,14 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
               {expressions.map((ex, index) => {
                 const it = byId[ex.id] || {}
                 const isSlider = it.kind === 'param' && it.slider
-                const drawn = ['explicit', 'implicit', 'region', 'polar', 'parametric', 'point'].includes(it.kind) || (it.kind === 'function' && it.graph)
-                const curve = drawn && it.kind !== 'point'
+                const isField = FIELD_KINDS.includes(it.kind)
+                const isPath = it.kind === 'trajectory' || it.kind === 'solution'
+                const drawn = ['explicit', 'implicit', 'region', 'polar', 'parametric', 'point'].includes(it.kind) || (it.kind === 'function' && it.graph) || isField || isPath
+                const curve = drawn && it.kind !== 'point' && !isField
+                const fieldOpts = isField ? { ...FIELD_DEFAULTS[it.kind], ...(ex.field || {}) } : null
+                const setField = patch => updateExpr(ex.id, { field: { ...(ex.field || {}), ...patch } })
+                const lineOf = id => expressions.findIndex(e => e.id === id) + 1
+                const note = fieldNote(it, lineOf)
                 const slider = { ...SLIDER_DEFAULTS, ...(ex.slider || {}) }
                 const missing = (it.missing || []).filter(n => analysis.missing.includes(n))
                 return (
@@ -258,6 +291,7 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                       </div>
 
                       {it.kind === 'error' && <div style={{ fontSize: 11, color: '#e5484d', marginTop: 4 }}>{it.error}</div>}
+                      {note && <div style={{ ...smallLabel, marginTop: 4 }}>{note}</div>}
                       {it.kind === 'value' && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>= {fmtNumber(it.f(P.paramValues(analysis)))}</div>}
                       {missing.length > 0 && it.kind !== 'error' && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5, alignItems: 'center' }}>
@@ -330,6 +364,83 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                                 <Play size={11} /> Play when the slide opens
                               </label>
                               <div style={smallLabel}>Hide it (the eye) to leave it off the slide’s sliders.</div>
+                            </>
+                          )}
+                          {isField && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Draw as</span>
+                                <select value={fieldOpts.draw} onChange={e => setField({ draw: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                                  {(it.kind === 'slope' ? [['slopes', 'Slope marks'], ['streamlines', 'Streamlines']] : [['streamlines', 'Streamlines'], ['arrows', 'Arrows'], ['particles', 'Particles moving'], ['none', 'Nothing']])
+                                    .map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                                </select>
+                                <select value={fieldOpts.density} onChange={e => setField({ density: e.target.value })} style={{ ...inputStyle, width: 82 }} title="How close together">
+                                  <option value="sparse">Sparse</option>
+                                  <option value="normal">Normal</option>
+                                  <option value="dense">Dense</option>
+                                </select>
+                              </div>
+                              {it.kind !== 'slope' && (fieldOpts.draw === 'arrows' || fieldOpts.draw === 'streamlines') && (
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <span style={{ ...smallLabel, width: 44 }}>Color</span>
+                                  <select value={fieldOpts.colorBy} onChange={e => setField({ colorBy: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                                    <option value="line">The line’s color</option>
+                                    <option value="magnitude">Fainter where weaker</option>
+                                  </select>
+                                  {fieldOpts.draw === 'arrows' && (
+                                    <select value={fieldOpts.length} onChange={e => setField({ length: e.target.value })} style={{ ...inputStyle, width: 104 }} title="Arrow length">
+                                      <option value="scaled">Length by strength</option>
+                                      <option value="equal">All one length</option>
+                                    </select>
+                                  )}
+                                </div>
+                              )}
+                              {it.kind === 'vector' && (
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <span style={{ ...smallLabel, width: 44 }}>Shade</span>
+                                  <select value={fieldOpts.shade} onChange={e => setField({ shade: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                                    <option value="none">Nothing behind it</option>
+                                    <option value="magnitude">Its strength</option>
+                                    <option value="divergence">Its divergence</option>
+                                    <option value="curl">Its curl</option>
+                                  </select>
+                                </div>
+                              )}
+                              {it.kind !== 'slope' && OVERLAYS.map(([key, label]) => (
+                                <div key={key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer', flex: 1 }}>
+                                    <input type="checkbox" checked={!!fieldOpts[key]} onChange={e => setField({ [key]: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                    {key === 'equilibria' && it.kind === 'vector' ? 'Zeros, classified' : label}
+                                  </label>
+                                  {fieldOpts[key] && (
+                                    <select value={(ex.field?.steps || {})[key] || 0} title="When it appears"
+                                      onChange={e => setField({ steps: { ...(ex.field?.steps || {}), [key]: +e.target.value || undefined } })} style={{ ...inputStyle, width: 104 }}>
+                                      <option value={0}>With the line</option>
+                                      {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>At step {n}</option>)}
+                                    </select>
+                                  )}
+                                </div>
+                              ))}
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!fieldOpts.clicks} onChange={e => setField({ clicks: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                                {it.kind === 'slope' ? 'A click starts a solution through it' : 'A click starts a path through it'}
+                              </label>
+                            </>
+                          )}
+                          {it.kind === 'trajectory' && (
+                            <>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ ...smallLabel, width: 44 }}>Runs</span>
+                                <select value={ex.traj?.dir || 'forward'} onChange={e => updateExpr(ex.id, { traj: { ...(ex.traj || {}), dir: e.target.value } })} style={{ ...inputStyle, flex: 1 }}>
+                                  <option value="forward">Forward in time</option>
+                                  <option value="backward">Backward in time</option>
+                                  <option value="both">Both ways</option>
+                                </select>
+                              </div>
+                              <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={!!ex.traj?.moving} onChange={e => updateExpr(ex.id, { traj: { ...(ex.traj || {}), moving: e.target.checked } })} style={{ accentColor: 'var(--accent)' }} />
+                                A dot rides along it while presenting
+                              </label>
                             </>
                           )}
                           {drawn && (

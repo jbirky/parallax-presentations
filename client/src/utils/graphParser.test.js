@@ -175,3 +175,84 @@ describe('what each expression draws', () => {
     expect(read('y = x_constructor').items[0].missing).toEqual(['x_constructor'])
   })
 })
+
+describe('fields, systems and slope fields', () => {
+  const kinds = (...texts) => read(...texts).items.map(it => it.kind + (it.error ? ': ' + it.error : ''))
+
+  it('reads vector fields, named, bare or as a gradient', () => {
+    expect(kinds('F(x, y) = (-y, x)')).toEqual(['vector'])
+    expect(kinds('(-y, x)', '(cos t, sin t)', '(2, 3)')).toEqual(['vector', 'parametric', 'point'])
+    expect(kinds('f(x, y) = x^2 - y^2', '∇f', 'grad f')).toEqual(['function', 'vector', 'vector'])
+    const g = read('f(x, y) = x^2 - y^2', '∇f').items[1], o = [0, 0]
+    g.F({}, 1.5, 2, o)
+    expect(o[0]).toBeCloseTo(3, 7)
+    expect(o[1]).toBeCloseTo(-4, 7)
+  })
+
+  it('pairs x′ and y′ into a system on the first of the two', () => {
+    expect(kinds("x' = y", "y' = -sin x - c y", 'c = 0.2')).toEqual(['system', 'partner', 'param'])
+    expect(kinds('dy/dt = -x', 'dx/dt = y')).toEqual(['system', 'partner'])
+    expect(kinds('ẋ = y', 'ẏ = -x')).toEqual(['system', 'partner'])
+    expect(kinds("(x′, y′) = (y, -x)")).toEqual(['system'])
+    const r = read("x' = y", "y' = -sin x - c y", 'c = 0.5'), o = [0, 0]
+    r.items[0].F(P.paramValues(r), 1, 2, o)
+    expect(o).toEqual([2, -Math.sin(1) - 1])
+    expect(r.items[0].partner).toBe(r.items[1].id)
+    expect(r.items[1].partnerOf).toBe(r.items[0].id)
+  })
+
+  it('reads polar systems in Cartesian, with μ as a slider', () => {
+    const r = read("r′ = μ r - r^3", 'θ′ = 1', 'μ = 0.25'), o = [0, 0]
+    expect(r.items.map(it => it.kind)).toEqual(['system', 'partner', 'param'])
+    expect(r.items[0].polar).toBe(true)
+    r.items[0].F(P.paramValues(r), 0.5, 0, o)
+    expect(o[0]).toBeCloseTo(0.25 * 0.5 - 0.125, 12)
+    expect(o[1]).toBeCloseTo(0.5, 12)
+    expect(r.items[2].name).toBe('mu')
+  })
+
+  it('reads slope fields and their solutions, and paths', () => {
+    expect(kinds("y' = x - y", 'y(0) = 1')).toEqual(['slope', 'solution'])
+    expect(kinds('dy/dx = x - y', 'y(-2) = a', 'a = 1')).toEqual(['slope', 'solution', 'param'])
+    const r = read('dy/dx = x - y', 'y(-2) = a', 'a = 1')
+    expect(r.items[1]).toMatchObject({ owner: r.items[0].id, dragY: 'a' })
+    expect(r.items[1].x0({})).toBe(-2)
+    const t = read("x' = y", "y' = -x", '(x, y)(0) = (p, 1)', 'p = 2')
+    expect(t.items[2]).toMatchObject({ kind: 'trajectory', owner: t.items[0].id, dragX: 'p', dragY: null })
+    expect(t.items[2].px(P.paramValues(t))).toBe(2)
+  })
+
+  it('follows the field above a path, or else the one below', () => {
+    const r = read('(x, y)(0) = (1, 0)', 'F(x, y) = (1, 0)', 'G(x, y) = (0, 1)', '(x, y)(0) = (2, 0)')
+    expect(r.items[0].owner).toBe(r.items[1].id)
+    expect(r.items[3].owner).toBe(r.items[2].id)
+  })
+
+  it('restricts a field as Graph restricts a curve', () => {
+    const f = read('F(x, y) = (1, x) {x > 0}').items[0], o = [0, 0]
+    f.F({}, 2, 0, o)
+    expect(o).toEqual([1, 2])
+    f.F({}, -2, 0, o)
+    expect(o.every(Number.isNaN)).toBe(true)
+  })
+
+  it('offers sliders, and says what’s wrong', () => {
+    expect(read("x' = a y", "y' = -x").missing).toEqual(['a'])
+    const error = (...texts) => read(...texts).items.find(it => it.error)?.error
+    expect(error("x' = y")).toMatch(/needs a y′/)
+    expect(error("x' = y", "y' = -x + cos t")).toMatch(/doesn’t change with t/)
+    expect(error('(x, y)(0) = (1, 0)')).toMatch(/needs a field/)
+    expect(error('y(0) = 1')).toMatch(/needs a slope field/)
+    expect(error('∇g')).toMatch(/isn’t defined/)
+    expect(error("x' = y", "x' = 2", "y' = 1")).toMatch(/defined twice/)
+    expect(error('F(x, y) = (1, 2)', 'F(x, y) = (2, 1)')).toMatch(/defined twice/)
+    expect(error('(x, y)(0) = (x, 1)', 'F(x, y) = (1, 2)')).toMatch(/numbers or sliders/)
+    // A point with x in it is still a mistaken point
+    expect(error('(x, 2)')).toMatch(/F\(x, y\)/)
+  })
+
+  it('leaves Graph’s other lines as they were', () => {
+    expect(kinds('y = x^2', 'x^2 + y^2 = 9', 'f(x) = x', 'r = 2', 'y < x')).toEqual(['explicit', 'implicit', 'function', 'polar', 'region'])
+  })
+})
+

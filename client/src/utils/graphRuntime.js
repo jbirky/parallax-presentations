@@ -4,7 +4,12 @@
 // What runs in a graph element's iframe: draws the graph on a canvas, and
 // lets the audience pan, zoom, drag points, move sliders and play them.
 // Like createMathParser, it has nothing from outside it (the page embeds its
-// source): `P` is the parser, `config` the graph (graphPage.js graphConfig).
+// source): `P` is the parser, `G` the field numerics (graphFields.js),
+// `config` the graph (graphPage.js graphConfig).
+//
+// Fields (vector fields, systems, slope fields) draw as arrows, streamlines,
+// slope marks or moving particles, with their equilibria, separatrices,
+// nullclines and paths; a click on the graph starts a path through it.
 //
 // Messages it takes from its parent: 'parallax-resize' (its slide is shown);
 // { source: 'parallax-deck', type: 'graph-step', step } (the deck's step, for
@@ -13,16 +18,18 @@
 // { source: 'parallax-graph', type: 'view' | 'param' } when someone pans or
 // moves a slider there, and the slide panel its thumbnail.
 
-export function graphRuntime(P, config) {
+export function graphRuntime(P, G, config) {
   let C = config
   const THEMES = {
     light: {
       axis: '#2b2b2b', major: 'rgba(0,0,0,0.14)', minor: 'rgba(0,0,0,0.055)', text: '#3a3a3a',
       halo: 'rgba(255,255,255,0.85)', panel: 'rgba(255,255,255,0.94)', panelText: '#222', border: 'rgba(0,0,0,0.14)', accent: '#2d70b3',
+      fg: '#1d2430', pos: '#cf5a1f', neg: '#2470cc', mid: 'rgba(255,255,255,0)', null1: '#388c46', null2: '#6042a6', path: '#2b2b2b',
     },
     dark: {
       axis: 'rgba(255,255,255,0.85)', major: 'rgba(255,255,255,0.16)', minor: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.8)',
       halo: 'rgba(18,18,28,0.8)', panel: 'rgba(24,24,36,0.9)', panelText: '#eee', border: 'rgba(255,255,255,0.16)', accent: '#6fa8ff',
+      fg: '#eef1f6', pos: '#ff9759', neg: '#63a6f7', mid: 'rgba(0,0,0,0)', null1: '#4cc36a', null2: '#b18cff', path: 'rgba(255,255,255,0.9)',
     },
   }
   const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
@@ -42,6 +49,9 @@ export function graphRuntime(P, config) {
   let playing = {} // name -> direction
   let snapshotSent = false
   let frame = 0
+  let clicks = []   // paths started with a click: { x, y, field }
+  let eqHover = null
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   // How much the deck, editor or preview enlarges this frame, which it
   // can't see (a CSS transform): it draws at that size to stay sharp
   let shownScale = 1
@@ -63,6 +73,8 @@ export function graphRuntime(P, config) {
       if (it.kind === 'param' && it.slider) values[it.name] = keepState && typeof kept[it.name] === 'number' && !C.editor ? kept[it.name] : it.literal
     }
     if (!keepState || C.editor) view = copyView(C.view)
+    if (!keepState) clicks = []
+    fieldGeo = null
     playing = {}
     for (const e of C.expressions || []) {
       const it = analysis.items.find(i => i.id === e.id)
@@ -149,6 +161,9 @@ export function graphRuntime(P, config) {
     const E = env()
     const ticks = gridAndAxes()
     const items = analysis.items.filter(visible)
+    const fg = fieldGeometry(E)
+    const fieldsDo = fn => { try { fn() } catch (e) { ctx.globalAlpha = 1; ctx.setLineDash([]) } }
+    fieldsDo(() => drawShades(fg))
     // One expression that fails to draw leaves the others drawn
     const each = (kinds, fn) => {
       for (const it of items) {
@@ -157,16 +172,21 @@ export function graphRuntime(P, config) {
       }
     }
     each(['region'], it => drawRegion(it, E))
+    fieldsDo(() => drawFieldMarks(fg, E))
     each(['explicit', 'function', 'polar', 'parametric', 'implicit'], it => {
       if (it.kind === 'explicit' || (it.kind === 'function' && it.graph)) strokeRuns(explicitRuns(it.f, E, it.axis || 'y'), exprOf(it))
       else if (it.kind === 'polar') strokeRuns(curveRuns(it, E, 'theta'), exprOf(it))
       else if (it.kind === 'parametric') strokeRuns(curveRuns(it, E, 't'), exprOf(it))
       else if (it.kind === 'implicit') strokeRuns(contour(it.F, E), exprOf(it))
     })
+    fieldsDo(() => drawFieldPaths(fg, E))
     axisNumbers(ticks)
     axisLabels()
     each(['point'], it => drawPoint(it, E))
+    fieldsDo(() => drawFieldPoints(fg, E))
+    fieldsDo(() => drawMoving(fg))
     if (hover) drawHover()
+    if (eqHover) drawEquilibriumCard(eqHover)
     if (C.snapshotKey && !snapshotSent && analysis.items.length) {
       snapshotSent = true
       try { parent.postMessage({ source: 'parallax-embed', type: 'snapshot', key: C.snapshotKey, dataUrl: canvas.toDataURL('image/png') }, '*') } catch (e) { /* keeps its placeholder */ }
@@ -511,6 +531,469 @@ export function graphRuntime(P, config) {
     ctx.fillText(text, bx + 6, by + 11)
   }
 
+
+  // ── Fields ───────────────────────────────────────────────────────────────
+  // How a field line draws unless its options say otherwise
+  const FIELD_DEFAULTS = {
+    vector: { draw: 'arrows', density: 'normal', length: 'scaled', colorBy: 'magnitude', shade: 'none', equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
+    system: { draw: 'streamlines', density: 'normal', length: 'scaled', colorBy: 'line', shade: 'none', equilibria: true, separatrices: true, nullclines: false, traceDet: false, clicks: true },
+    slope: { draw: 'slopes', density: 'normal', length: 'equal', colorBy: 'line', shade: 'none', equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
+  }
+  const GRID_PX = { sparse: 54, normal: 38, dense: 27 }
+  const STREAM_PX = { sparse: 34, normal: 24, dense: 16 }
+  const FIELD_KINDS = ['vector', 'system', 'slope']
+  function fieldOptions(e, kind) {
+    const d = FIELD_DEFAULTS[kind], f = e.field || {}, o = {}
+    for (const k in d) o[k] = f[k] === undefined ? d[k] : f[k]
+    // Particles stand still in a PDF and with reduced motion: streamlines instead
+    if (o.draw === 'particles' && (C.print || reduceMotion)) o.draw = 'streamlines'
+    return o
+  }
+  // An overlay (equilibria, nullclines…) is shown from its own step, if it has one
+  function overlayShown(e, o, key) {
+    if (!o[key]) return false
+    const at = e.field && e.field.steps ? Number(e.field.steps[key]) : 0
+    return !(at > 0) || at <= step
+  }
+  let fieldGeo = null, fieldKey = ''
+  // What the fields draw, worked out again only when the view, size, sliders,
+  // lines, step or clicked paths change
+  function fieldGeometry(E) {
+    const fieldItems = analysis.items.filter(it => FIELD_KINDS.includes(it.kind) && visible(it))
+    const pathItems = analysis.items.filter(it => (it.kind === 'trajectory' || it.kind === 'solution') && visible(it))
+    if (!fieldItems.length) { fieldGeo = null; return null }
+    const box = { xMin: X0, xMax: X1, yMin: Y0, yMax: Y1 }
+    const key = JSON.stringify([box, W, H, step, values, C.expressions, clicks])
+    if (fieldGeo && key === fieldKey) return fieldGeo
+    fieldKey = key
+    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0)
+    const fields = fieldItems.map(it => {
+      const e = exprOf(it), o = fieldOptions(e, it.kind)
+      const F = it.kind === 'slope' ? (env, x, y, r) => { r[0] = 1; r[1] = it.f(env, x, y) } : it.F
+      const f = { it, e, o, F, color: e.color || '#c74440' }
+      // A typical strength (85th percentile), for arrows' lengths and colors
+      const mags = []
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 16; j++) {
+        F(E, wx((i + 0.5) * W / 24), wy((j + 0.5) * H / 16), out)
+        const m = Math.hypot(out[0], out[1])
+        if (isFinite(m)) mags.push(m)
+      }
+      mags.sort((a, b) => a - b)
+      f.mRef = (mags.length && (mags[Math.floor(mags.length * 0.85)] || mags[mags.length - 1])) || 1
+      f.V = (px, py, r) => { F(E, wx(px), wy(py), out); r[0] = out[0] * kx; r[1] = -out[1] * ky }
+      if (o.draw === 'streamlines') f.lines = G.streamlines(f.V, W, H, STREAM_PX[o.density] || 24, { budget: 3e5 })
+      if (it.kind !== 'slope' && (overlayShown(e, o, 'equilibria') || overlayShown(e, o, 'separatrices') || overlayShown(e, o, 'traceDet'))) {
+        f.eq = G.equilibria(F, E, box)
+        if (overlayShown(e, o, 'separatrices')) f.seps = [].concat(...f.eq.map(q => G.separatrices(F, E, q, box)))
+      }
+      if (it.kind === 'vector' && o.shade !== 'none') f.shade = shadeGrid(F, E, o.shade)
+      return f
+    })
+    const fieldOf = id => fields.find(f => f.it.id === id)
+    const paths = []
+    for (const it of pathItems) {
+      const owner = fieldOf(it.owner)
+      if (!owner) continue
+      const e = exprOf(it)
+      if (it.kind === 'solution') {
+        const x0 = it.x0(E), y0 = it.y0(E)
+        if (isFinite(x0) && isFinite(y0)) paths.push({ it, e, x0, y0, color: e.color || owner.color, solution: G.solution(owner.it.f, E, x0, y0, box) })
+        continue
+      }
+      const x0 = it.px(E), y0 = it.py(E), dir = (e.traj && e.traj.dir) || 'forward', runs = []
+      if (!isFinite(x0) || !isFinite(y0)) continue
+      if (dir !== 'backward') runs.push(G.trajectory(owner.F, E, x0, y0, 1, box, { tMax: 400 }))
+      if (dir !== 'forward') runs.push(G.trajectory(owner.F, E, x0, y0, -1, box, { tMax: 400 }))
+      paths.push({ it, e, x0, y0, runs, color: e.color || owner.color, moving: !!(e.traj && e.traj.moving) })
+    }
+    const clicked = C.print ? [] : clicks.map(c => {
+      const f = fieldOf(c.field)
+      if (!f) return null
+      if (f.it.kind === 'slope') return { x0: c.x, y0: c.y, color: theme.path, click: true, solution: G.solution(f.it.f, E, c.x, c.y, box) }
+      return { x0: c.x, y0: c.y, color: theme.path, click: true, runs: [G.trajectory(f.F, E, c.x, c.y, 1, box, { tMax: 400 }), G.trajectory(f.F, E, c.x, c.y, -1, box, { tMax: 400 })] }
+    }).filter(Boolean)
+    fieldGeo = { fields, paths, clicked }
+    return fieldGeo
+  }
+  // Divergence, curl or strength on a grid of 8 px cells
+  function shadeGrid(F, E, what) {
+    const cell = 8, nx = Math.ceil(W / cell), ny = Math.ceil(H / cell), vals = new Float64Array(nx * ny), a = [0, 0], b = [0, 0], all = []
+    const hx = (X1 - X0) * 1e-4, hy = (Y1 - Y0) * 1e-4
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const x = wx((i + 0.5) * cell), y = wy((j + 0.5) * cell)
+      let v
+      if (what === 'magnitude') { F(E, x, y, a); v = Math.hypot(a[0], a[1]) } else {
+        F(E, x + hx, y, a); F(E, x - hx, y, b)
+        const dPdx = (a[0] - b[0]) / (2 * hx), dQdx = (a[1] - b[1]) / (2 * hx)
+        F(E, x, y + hy, a); F(E, x, y - hy, b)
+        const dPdy = (a[0] - b[0]) / (2 * hy), dQdy = (a[1] - b[1]) / (2 * hy)
+        v = what === 'divergence' ? dPdx + dQdy : dQdx - dPdy
+      }
+      vals[j * nx + i] = v
+      if (isFinite(v)) all.push(Math.abs(v))
+    }
+    all.sort((p, q) => p - q)
+    return { cell, nx, ny, vals, ref: all[Math.floor(all.length * 0.95)] || 1, what }
+  }
+  // A pixel a cell, scaled up smoothly
+  const shadeCanvas = document.createElement('canvas'), shadeCtx = shadeCanvas.getContext('2d')
+  function rgbOf(color) {
+    shadeCtx.fillStyle = '#000'
+    shadeCtx.fillStyle = color
+    const c = shadeCtx.fillStyle
+    if (c[0] === '#') { const n = parseInt(c.slice(1, 7), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255] }
+    const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(c)
+    return m ? [+m[1], +m[2], +m[3]] : [128, 128, 128]
+  }
+  function drawShades(g) {
+    if (!g) return
+    for (const f of g.fields) {
+      const s = f.shade
+      if (!s) continue
+      shadeCanvas.width = s.nx
+      shadeCanvas.height = s.ny
+      const img = shadeCtx.createImageData(s.nx, s.ny), pos = rgbOf(s.what === 'magnitude' ? f.color : theme.pos), neg = rgbOf(theme.neg)
+      for (let k = 0; k < s.nx * s.ny; k++) {
+        const v = s.vals[k]
+        if (!isFinite(v)) continue
+        const t = Math.max(-1, Math.min(1, v / s.ref)), c = t > 0 || s.what === 'magnitude' ? pos : neg
+        img.data[4 * k] = c[0]; img.data[4 * k + 1] = c[1]; img.data[4 * k + 2] = c[2]
+        img.data[4 * k + 3] = Math.round(255 * (s.what === 'magnitude' ? 0.42 * Math.abs(t) : 0.5 * Math.pow(Math.abs(t), 0.8)))
+      }
+      shadeCtx.putImageData(img, 0, 0)
+      ctx.imageSmoothingEnabled = true
+      ctx.drawImage(shadeCanvas, 0, 0, s.nx * s.cell, s.ny * s.cell)
+    }
+  }
+  function arrowHead(x, y, ux, uy, size) {
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x - ux * size - uy * size * 0.55, y - uy * size + ux * size * 0.55)
+    ctx.lineTo(x - ux * size + uy * size * 0.55, y - uy * size - ux * size * 0.55)
+    ctx.closePath()
+    ctx.fill()
+  }
+  // Arrows, slope marks or streamlines
+  function drawFieldMarks(g, E) {
+    if (!g) return
+    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const f of g.fields) {
+      const o = f.o, s = GRID_PX[o.density] || 38
+      ctx.strokeStyle = f.color
+      ctx.fillStyle = f.color
+      if (o.draw === 'arrows') {
+        ctx.lineWidth = 1.7
+        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+          f.F(E, wx(px), wy(py), out)
+          const vx = out[0] * kx, vy = -out[1] * ky, m = Math.hypot(out[0], out[1]), pm = Math.hypot(vx, vy)
+          if (!(pm > 0) || !isFinite(pm)) continue
+          const rel = Math.min(1, m / f.mRef), L = s * 0.8 * (o.length === 'scaled' ? Math.max(0.18, rel) : 1)
+          const ux = vx / pm, uy = vy / pm, head = Math.max(3.5, Math.min(7, L * 0.32))
+          ctx.globalAlpha = o.colorBy === 'magnitude' ? 0.28 + 0.72 * rel : 1
+          ctx.beginPath()
+          ctx.moveTo(px - ux * L / 2, py - uy * L / 2)
+          ctx.lineTo(px + ux * (L / 2 - head * 0.6), py + uy * (L / 2 - head * 0.6))
+          ctx.stroke()
+          arrowHead(px + ux * L / 2, py + uy * L / 2, ux, uy, head)
+        }
+      } else if (o.draw === 'slopes') {
+        ctx.lineWidth = 1.6
+        ctx.globalAlpha = 0.8
+        ctx.beginPath()
+        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+          const m = f.it.f(E, wx(px), wy(py))
+          if (!isFinite(m)) continue
+          const vx = kx, vy = -m * ky, pm = Math.hypot(vx, vy), L = s * 0.62
+          ctx.moveTo(px - vx / pm * L / 2, py - vy / pm * L / 2)
+          ctx.lineTo(px + vx / pm * L / 2, py + vy / pm * L / 2)
+        }
+        ctx.stroke()
+      } else if (o.draw === 'streamlines' && f.lines) {
+        ctx.lineWidth = 1.25
+        for (const l of f.lines) {
+          const pts = l.pts
+          if (o.colorBy === 'magnitude') {
+            for (let i = 1; i < pts.length; i++) {
+              f.F(E, wx(pts[i][0]), wy(pts[i][1]), out)
+              ctx.globalAlpha = 0.25 + 0.7 * Math.min(1, Math.hypot(out[0], out[1]) / f.mRef)
+              ctx.beginPath(); ctx.moveTo(pts[i - 1][0], pts[i - 1][1]); ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke()
+            }
+          } else {
+            ctx.globalAlpha = 0.62
+            ctx.beginPath()
+            ctx.moveTo(pts[0][0], pts[0][1])
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+            ctx.stroke()
+          }
+          // Arrowheads along it, with the flow
+          ctx.globalAlpha = 0.85
+          let acc = 0, next = 130 * 0.45
+          for (let k = 1; k < pts.length; k++) {
+            const dx = pts[k][0] - pts[k - 1][0], dy = pts[k][1] - pts[k - 1][1], d = Math.hypot(dx, dy)
+            acc += d
+            if (acc >= next && d > 0) { arrowHead(pts[k][0], pts[k][1], dx / d, dy / d, 5.5); next += 130 }
+          }
+        }
+      }
+      ctx.globalAlpha = 1
+    }
+  }
+  // A path in graph coordinates, with arrows the way time runs
+  function strokePath(run, color, width, alpha) {
+    const pts = run.pts
+    if (!pts || pts.length < 2) return
+    ctx.strokeStyle = color
+    ctx.fillStyle = color
+    ctx.globalAlpha = alpha
+    ctx.lineWidth = width
+    ctx.beginPath()
+    ctx.moveTo(clampPx(sx(pts[0][0])), clampPx(sy(pts[0][1])))
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(clampPx(sx(pts[i][0])), clampPx(sy(pts[i][1])))
+    ctx.stroke()
+    const forward = pts[pts.length - 1][2] >= pts[0][2]
+    let acc = 0, next = 60
+    for (let k = 1; k < pts.length; k++) {
+      const x0 = sx(pts[k - 1][0]), y0 = sy(pts[k - 1][1]), x1 = sx(pts[k][0]), y1 = sy(pts[k][1]), d = Math.hypot(x1 - x0, y1 - y0)
+      if (x1 < 0 || x1 > W || y1 < 0 || y1 > H) continue
+      acc += d
+      if (acc >= next && d > 0) { const s = forward ? 1 : -1; arrowHead(x1, y1, s * (x1 - x0) / d, s * (y1 - y0) / d, 7); next += 120 }
+    }
+    ctx.globalAlpha = 1
+  }
+  // Nullclines, separatrices, paths and solutions
+  function drawFieldPaths(g, E) {
+    if (!g) return
+    const out = [0, 0]
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const f of g.fields) {
+      if (f.it.kind !== 'slope' && overlayShown(f.e, f.o, 'nullclines')) {
+        strokeRuns(contour(env => { f.F(env, env.x, env.y, out); return out[0] }, E), { color: theme.null1, style: 'dashed', width: 2 })
+        strokeRuns(contour(env => { f.F(env, env.x, env.y, out); return out[1] }, E), { color: theme.null2, style: 'dashed', width: 2 })
+        E.x = 0; E.y = 0
+      }
+      for (const sep of f.seps || []) strokePath(sep, f.color, 2.6, 1)
+    }
+    for (const p of g.paths.concat(g.clicked)) {
+      if (p.solution) {
+        ctx.strokeStyle = p.color
+        ctx.lineWidth = p.click ? 2 : (p.e.width || 2.5)
+        ctx.beginPath()
+        p.solution.forEach((q, i) => (i ? ctx.lineTo(sx(q[0]), clampPx(sy(q[1]))) : ctx.moveTo(sx(q[0]), clampPx(sy(q[1])))))
+        ctx.stroke()
+      } else for (const r of p.runs) strokePath(r, p.color, p.click ? 2 : (p.e.width || 2.5), p.click ? 0.9 : 1)
+    }
+  }
+  // Equilibria, paths' starting points, keys and the trace–determinant plane
+  function drawFieldPoints(g) {
+    if (!g) return
+    for (const p of g.paths.concat(g.clicked)) {
+      const x = sx(p.x0), y = sy(p.y0), drag = p.it && (p.it.dragX || p.it.dragY)
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(x, y, p.click ? 3.5 : drag ? 6 : 4.5, 0, Math.PI * 2)
+      ctx.fill()
+      if (drag) {
+        ctx.globalAlpha = 0.25
+        ctx.beginPath()
+        ctx.arc(x, y, 11, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+      }
+    }
+    for (const f of g.fields) if (f.eq && overlayShown(f.e, f.o, 'equilibria')) for (const q of f.eq) marker(q)
+    let keyY = 10
+    for (const f of g.fields) {
+      if (f.it.kind !== 'slope' && overlayShown(f.e, f.o, 'nullclines')) {
+        const polar = f.it.polar
+        keyY = nullclineKey(keyY, [[theme.null1, polar ? 'ẋ = 0' : 'x′ = 0'], [theme.null2, polar ? 'ẏ = 0' : 'y′ = 0']])
+      }
+      if (f.shade && f.shade.what !== 'magnitude') keyY = shadeKey(keyY, f.shade.what)
+    }
+    const td = g.fields.find(f => f.eq && overlayShown(f.e, f.o, 'traceDet'))
+    if (td) traceDet(td)
+  }
+  // Filled: attracts. Open: repels. Half filled: a saddle. A dot in a ring: a center
+  function marker(q) {
+    const x = sx(q.x), y = sy(q.y), r = 6.5
+    if (x < -r || x > W + r || y < -r || y > H + r) return
+    ctx.lineWidth = 2.2
+    ctx.strokeStyle = theme.fg
+    ctx.fillStyle = C.background && C.background !== 'transparent' ? C.background : theme.halo
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = theme.fg
+    if (/^stable/.test(q.kind)) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
+    else if (q.kind === 'saddle') { ctx.beginPath(); ctx.arc(x, y, r, Math.PI / 2, 3 * Math.PI / 2); ctx.closePath(); ctx.fill() }
+    else if (q.kind === 'center') { ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill() }
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+  }
+  function nullclineKey(y, entries) {
+    let x = 10
+    ctx.font = 'italic 14px ' + MATH_FONT
+    for (const [color, text] of entries) {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2
+      ctx.setLineDash([7, 5])
+      ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x + 24, y + 8); ctx.stroke()
+      ctx.setLineDash([])
+      haloText(text, x + 30, y + 8, 'left', 'middle', 'italic 14px ' + MATH_FONT)
+      x += 30 + ctx.measureText(text).width + 16
+    }
+    return y + 24
+  }
+  function shadeKey(y, what) {
+    const x = 10, w = 110
+    haloText(what === 'divergence' ? 'divergence' : 'curl', x, y + 6, 'left', 'middle', '12px ' + FONT)
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0)
+    grad.addColorStop(0, theme.neg); grad.addColorStop(0.5, theme.mid); grad.addColorStop(1, theme.pos)
+    ctx.fillStyle = grad
+    ctx.fillRect(x, y + 16, w, 7)
+    ctx.strokeStyle = theme.border
+    ctx.lineWidth = 1
+    ctx.strokeRect(x, y + 16, w, 7)
+    haloText('−', x, y + 26, 'left', 'top', '11px ' + FONT)
+    haloText('0', x + w / 2, y + 26, 'center', 'top', '11px ' + FONT)
+    haloText('+', x + w, y + 26, 'right', 'top', '11px ' + FONT)
+    return y + 46
+  }
+  // The trace–determinant plane, top right, with where each equilibrium sits
+  function traceDet(f) {
+    const w = 190, h = 140, x0 = W - w - 10, y0 = 42
+    ctx.fillStyle = theme.panel
+    ctx.strokeStyle = theme.border
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.fill(); ctx.stroke()
+    let R = 2.4
+    for (const q of f.eq) R = Math.max(R, Math.abs(q.trace) * 1.3, Math.sqrt(Math.abs(q.det)) * 1.3)
+    const ix = x0 + 10, iy = y0 + 14, iw = w - 20, ih = h - 34
+    const tx = t => ix + (t + R) / (2 * R) * iw, dy = d => iy + ih * 0.72 - d / (R * R / 4 * 1.25) * ih * 0.72
+    ctx.save()
+    ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip()
+    ctx.fillStyle = theme.neg
+    ctx.globalAlpha = 0.1
+    ctx.fillRect(ix, dy(0), iw, ih)
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = theme.axis
+    ctx.beginPath(); ctx.moveTo(ix, dy(0)); ctx.lineTo(ix + iw, dy(0)); ctx.moveTo(tx(0), iy); ctx.lineTo(tx(0), iy + ih); ctx.stroke()
+    ctx.strokeStyle = theme.text
+    ctx.setLineDash([3, 3])
+    ctx.beginPath()
+    for (let k = 0; k <= 60; k++) { const t = -R + 2 * R * k / 60; if (k) ctx.lineTo(tx(t), dy(t * t / 4)); else ctx.moveTo(tx(t), dy(t * t / 4)) }
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.font = '9.5px ' + FONT
+    ctx.fillStyle = theme.text
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'center'
+    ctx.fillText('saddles', tx(0), dy(0) + 14)
+    ctx.fillText('spirals', tx(-R * 0.32), dy(R * R / 4 * 0.85))
+    ctx.fillText('spirals', tx(R * 0.32), dy(R * R / 4 * 0.85))
+    ctx.textAlign = 'left'; ctx.fillText('nodes', ix + 2, dy(R * R / 4 * 0.12))
+    ctx.textAlign = 'right'; ctx.fillText('nodes', ix + iw - 2, dy(R * R / 4 * 0.12))
+    for (const q of f.eq) {
+      ctx.fillStyle = f.color
+      ctx.strokeStyle = theme.halo
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.arc(tx(q.trace), Math.max(iy + 3, Math.min(iy + ih - 3, dy(q.det))), 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    }
+    ctx.restore()
+    ctx.font = 'italic 12px ' + MATH_FONT
+    ctx.fillStyle = theme.text
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'; ctx.fillText('Δ = det', x0 + 8, y0 + h - 7)
+    ctx.textAlign = 'right'; ctx.fillText('τ = trace', x0 + w - 8, y0 + h - 7)
+  }
+  function drawEquilibriumCard(q) {
+    const x = sx(q.x), y = sy(q.y)
+    // Zero to within the view's rounding reads as 0
+    const at = v => fmt(Math.abs(v) < (X1 - X0) * 1e-9 ? 0 : v)
+    const lines = [
+      q.kind === 'center' ? 'Center (of the linearization)' : q.kind[0].toUpperCase() + q.kind.slice(1),
+      '(' + at(q.x) + ', ' + at(q.y) + ')',
+      'λ = ' + (q.eig[0][1] ? fmt(q.eig[0][0]) + ' ± ' + fmt(Math.abs(q.eig[0][1])) + 'i' : fmt(q.eig[0][0]) + ', ' + fmt(q.eig[1][0])),
+      'τ = ' + fmt(q.trace) + ',  Δ = ' + fmt(q.det),
+    ]
+    ctx.font = '12.5px ' + FONT
+    const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12
+    const bx = x + 14 + w > W ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H - h - 4, y - h / 2))
+    ctx.fillStyle = theme.panel
+    ctx.strokeStyle = theme.border
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke()
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    lines.forEach((l, i) => { ctx.fillStyle = theme.panelText; ctx.font = (i ? '' : '600 ') + '12.5px ' + FONT; ctx.fillText(l, bx + 10, by + 8 + i * 18) })
+  }
+  // A path's or solution's starting point, where it can be dragged from
+  function startAt(it, E) {
+    const x = it.kind === 'solution' ? it.x0(E) : it.px(E), y = it.kind === 'solution' ? it.y0(E) : it.py(E)
+    return isFinite(x) && isFinite(y) ? { x, y, px: sx(x), py: sy(y) } : null
+  }
+
+  // ── Moving: particles, and dots riding along paths ──────────────────────
+  let particles = [], lastStep = 0
+  const trailCanvas = document.createElement('canvas'), trail = trailCanvas.getContext('2d')
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0
+  function moving(g) {
+    if (!g || C.print || reduceMotion) return false
+    return g.fields.some(f => f.o.draw === 'particles') || g.paths.some(p => p.moving)
+  }
+  function drawMoving(g) {
+    if (!moving(g)) { particles = []; return }
+    const now = performance.now(), d = density()
+    const flows = g.fields.filter(f => f.o.draw === 'particles')
+    if (flows.length) {
+      const dt = lastStep ? Math.min(0.05, (now - lastStep) / 1000) : 0
+      lastStep = now
+      const TW = Math.round(W * d), TH = Math.round(H * d)
+      if (trailCanvas.width !== TW || trailCanvas.height !== TH) { trailCanvas.width = TW; trailCanvas.height = TH; particles = [] }
+      trail.setTransform(d, 0, 0, d, 0, 0)
+      trail.globalCompositeOperation = 'destination-out'
+      trail.fillStyle = 'rgba(0,0,0,0.075)'
+      trail.fillRect(0, 0, W, H)
+      trail.globalCompositeOperation = 'source-over'
+      const want = Math.round(W * H / 700 / flows.length), v = [0, 0], scale = Math.min(W / (X1 - X0), H / (Y1 - Y0))
+      for (const f of flows) {
+        let mine = particles.filter(q => q.f === f.it.id)
+        while (mine.length < want) { const q = { x: Math.random() * W, y: Math.random() * H, age: Math.random() * 4, f: f.it.id }; particles.push(q); mine.push(q) }
+        trail.strokeStyle = f.color
+        trail.globalAlpha = 0.9
+        trail.lineWidth = 1.6
+        trail.lineCap = 'round'
+        trail.beginPath()
+        for (const q of mine) {
+          f.V(q.x, q.y, v)
+          const m = Math.hypot(v[0], v[1]), speed = 70 * Math.min(2.5, m / (f.mRef * scale || 1))
+          const nx = q.x + (m ? v[0] / m * speed * dt : 0), ny = q.y + (m ? v[1] / m * speed * dt : 0)
+          q.age += dt
+          if (!isFinite(nx) || !isFinite(ny) || nx < 0 || ny < 0 || nx > W || ny > H || q.age > 5 || !m) { q.x = Math.random() * W; q.y = Math.random() * H; q.age = 0; continue }
+          trail.moveTo(q.x, q.y); trail.lineTo(nx, ny)
+          q.x = nx; q.y = ny
+        }
+        trail.stroke()
+      }
+      ctx.save()
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.drawImage(trailCanvas, 0, 0)
+      ctx.restore()
+    }
+    // Dots ride along their paths at the system's own pace
+    for (const p of g.paths) {
+      if (!p.moving || !p.runs[0]) continue
+      const pts = p.runs[0].pts, T = Math.abs(pts[pts.length - 1][2])
+      if (!(T > 0)) continue
+      const t = ((now - startTime) / 1000 * 1.2) % T
+      let k = 0
+      while (k < pts.length - 1 && Math.abs(pts[k + 1][2]) < t) k++
+      ctx.fillStyle = p.color
+      ctx.strokeStyle = theme.halo
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(sx(pts[k][0]), sy(pts[k][1]), 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    }
+  }
+
   // ── Redrawing ────────────────────────────────────────────────────────────
   let last = 0
   function request() { if (!frame) frame = requestAnimationFrame(tick) }
@@ -527,6 +1010,7 @@ export function graphRuntime(P, config) {
     } else {
       last = 0
       draw()
+      if (moving(fieldGeo)) request()
     }
   }
   function sliderOf(name) {
@@ -621,8 +1105,34 @@ export function graphRuntime(P, config) {
     const changed = view && C.view && !sameView(view, copyView(C.view))
     reset.style.cssText = 'position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:0;'
       + 'background:' + theme.panel + ';border:1px solid ' + theme.border + ';color:' + theme.panelText + ';display:' + (changed && !C.editor && !C.print ? 'block' : 'none') + ';'
+    if (typeof styleClear === 'function') styleClear()
   }
   reset.addEventListener('click', () => { view = copyView(C.view); styleReset(); request() })
+  // Clear paths: those a click started
+  const clear = document.createElement('button')
+  clear.type = 'button'
+  clear.textContent = 'Clear paths'
+  document.body.appendChild(clear)
+  function styleClear() {
+    const right = reset.style.display === 'block' ? 42 : 8
+    clear.style.cssText = 'position:absolute;top:8px;right:' + right + 'px;height:28px;border-radius:6px;cursor:pointer;font:12px ' + FONT + ';padding:0 10px;'
+      + 'background:' + theme.panel + ';border:1px solid ' + theme.border + ';color:' + theme.panelText + ';display:' + (clicks.length && !C.print ? 'block' : 'none') + ';'
+  }
+  clear.addEventListener('click', () => { clicks = []; styleClear(); request() })
+  // A click (a press that doesn't move) starts a path through it, of the first
+  // field that takes clicks; a double-click zooms instead
+  let clickTimer = 0
+  function clickAt(px, py) {
+    if (C.print) return
+    const it = analysis.items.find(i => FIELD_KINDS.includes(i.kind) && visible(i) && fieldOptions(exprOf(i), i.kind).clicks)
+    if (!it) return
+    clearTimeout(clickTimer)
+    clickTimer = setTimeout(() => {
+      clicks = clicks.concat([{ x: wx(px), y: wy(py), field: it.id }]).slice(-16)
+      styleClear()
+      request()
+    }, 260)
+  }
 
   function postEditor(msg) {
     if (!C.editor) return
@@ -669,11 +1179,11 @@ export function graphRuntime(P, config) {
     if (pointers.size === 2) { drag = { kind: 'pinch', view: copyView(view), start: [...pointers.values()] }; return }
     const E = env()
     for (const it of analysis.items) {
-      if (it.kind !== 'point' || !(it.dragX || it.dragY) || !visible(it)) continue
-      const p = pointAt(it, E)
+      if (!['point', 'trajectory', 'solution'].includes(it.kind) || !(it.dragX || it.dragY) || !visible(it)) continue
+      const p = it.kind === 'point' ? pointAt(it, E) : startAt(it, E)
       if (p && Math.hypot(p.px - px, p.py - py) < 14) { drag = { kind: 'point', it }; return }
     }
-    if (!C.lockView) drag = { kind: 'pan', view: copyView(view), start: [px, py], shown: shown() }
+    drag = C.lockView ? { kind: 'click', start: [px, py] } : { kind: 'pan', view: copyView(view), start: [px, py], shown: shown() }
   })
   canvas.addEventListener('pointermove', ev => {
     const [px, py] = pos(ev)
@@ -688,6 +1198,7 @@ export function graphRuntime(P, config) {
       syncPanel()
       request()
     } else if (drag.kind === 'pan') {
+      if (Math.hypot(px - drag.start[0], py - drag.start[1]) > 4) drag.moved = true
       const dx = (px - drag.start[0]) / W * (drag.shown.xMax - drag.shown.xMin)
       const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin)
       view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy }
@@ -707,11 +1218,15 @@ export function graphRuntime(P, config) {
     if (drag && drag.kind === 'point') {
       for (const name of [drag.it.dragX, drag.it.dragY]) if (name) postEditor({ type: 'param', name, value: values[name] })
     }
+    if (drag && (drag.kind === 'click' || (drag.kind === 'pan' && !drag.moved)) && ev.type === 'pointerup' && !pointers.size) {
+      const [px, py] = pos(ev)
+      if (Math.hypot(px - drag.start[0], py - drag.start[1]) <= 4) clickAt(px, py)
+    }
     if (!pointers.size) drag = null
   }
   canvas.addEventListener('pointerup', end)
   canvas.addEventListener('pointercancel', end)
-  canvas.addEventListener('pointerleave', () => { if (hover) { hover = null; request() } })
+  canvas.addEventListener('pointerleave', () => { if (hover || eqHover) { hover = null; eqHover = null; request() } })
   canvas.addEventListener('wheel', ev => {
     if (C.lockView) return
     ev.preventDefault()
@@ -719,6 +1234,7 @@ export function graphRuntime(P, config) {
     zoom(Math.exp(ev.deltaY * 0.0015), px, py)
   }, { passive: false })
   canvas.addEventListener('dblclick', ev => {
+    clearTimeout(clickTimer)
     if (C.lockView) return
     const [px, py] = pos(ev)
     zoom(0.5, px, py)
@@ -726,6 +1242,16 @@ export function graphRuntime(P, config) {
 
   // The value of the nearest y = f(x) under the pointer
   function trace(px, py) {
+    // Pointing at an equilibrium reads it
+    let near = null
+    if (fieldGeo) {
+      for (const f of fieldGeo.fields) {
+        if (!f.eq || !overlayShown(f.e, f.o, 'equilibria')) continue
+        for (const q of f.eq) if (Math.hypot(sx(q.x) - px, sy(q.y) - py) < 10) near = q
+      }
+    }
+    if (near !== eqHover) { eqHover = near; request() }
+    if (near) { hover = null; canvas.style.cursor = 'default'; return }
     let best = null
     const E = env()
     for (const it of analysis.items) {
@@ -774,7 +1300,7 @@ export function graphRuntime(P, config) {
   window.addEventListener('message', ev => {
     if (ev.source !== window.parent) return
     const data = ev.data
-    if (data === 'parallax-resize') { resize(); return }
+    if (data === 'parallax-resize') { clicks = []; styleClear(); resize(); return }
     if (!data || typeof data !== 'object') return
     if (data.type === 'scale' && typeof data.scale === 'number' && data.scale > 0) {
       shownScale = clamp(data.scale, 0.1, 8)
