@@ -5,13 +5,25 @@ import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'reac
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
+import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { pointsToPath } from '../utils/drawingUtils'
 import { snapshotKey, getSnapshot, subscribeSnapshots, getSnapshotVersion } from '../utils/embedSnapshots'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { text3dHtml, text3dShadowFilter } from '../utils/text3d'
-import { getCanvasHeight } from '../utils/scrollingSlides'
+import { getCanvasHeight, getCanvasWidth } from '../utils/scrollingSlides'
 import { modelSnapshotContent } from '../utils/modelViewer'
+import { moleculeSnapshotContent } from '../utils/moleculeViewer'
 import { graphSnapshotContent } from '../utils/graphPage'
+import EquationView from './EquationView'
+import FeynmanView from './FeynmanView'
+import CircuitView from './CircuitView'
+import LogicView from './LogicView'
+import FreebodyView from './FreebodyView'
+import VennView from './VennView'
+import TimingView from './TimingView'
+import GeometryView from './GeometryView'
+import PeriodicView from './PeriodicView'
+import HarmonicsView from './HarmonicsView'
 
 const THUMB_W = 150
 
@@ -23,11 +35,12 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
   const scale = THUMB_W / slideW
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
   const canvasH = getCanvasHeight(slide, slideH)
+  const canvasW = getCanvasWidth(slide, slideW, slideH)
 
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', flexShrink: 0, borderRadius: 3 }}>
@@ -46,7 +59,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
-              overflow: el.type === 'text3d' ? 'visible' : 'hidden',
+              overflow: el.type === 'text3d' || el.type === 'equation' || el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic' || el.type === 'freebody' || el.type === 'venn' || el.type === 'periodic' ? 'visible' : 'hidden',
               zIndex: el.zIndex || 1,
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
               boxShadow: el.type !== 'text3d' && (el.shadowBlur || el.shadowX || el.shadowY)
@@ -56,7 +69,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
             }}>
               {el.type === 'text' && (
                 <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
+                  dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(el.content, citationLabels)) }} />
               )}
               {el.type === 'image' && (() => {
                 const imgFilter = [
@@ -98,6 +111,16 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
               {el.type === 'text3d' && (
                 <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: safeHtml(text3dHtml(el, { fontFamily: globalFont, resolution: 1 })) }} />
               )}
+              {el.type === 'equation' && <EquationView element={el} />}
+              {el.type === 'feynman' && <FeynmanView element={el} />}
+              {el.type === 'circuit' && <CircuitView element={el} />}
+              {el.type === 'logic' && <LogicView element={el} />}
+              {el.type === 'freebody' && <FreebodyView element={el} />}
+              {el.type === 'venn' && <VennView element={el} />}
+              {el.type === 'timing' && <TimingView element={el} />}
+              {el.type === 'geometry' && <GeometryView element={el} />}
+              {el.type === 'periodic' && <PeriodicView element={el} />}
+              {el.type === 'harmonics' && <HarmonicsView element={el} />}
               {el.type === 'drawing' && (
                 <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', overflow: 'visible' }}>
                   {(el.paths || []).map((path, pi) => (
@@ -118,12 +141,13 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
                   ? <img src={el.poster} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} draggable={false} />
                   : <div style={{ width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: el.height * 0.4 }}>▶</div>
               )}
-              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5' || el.type === 'model' || el.type === 'graph') && (() => {
+              {(el.type === 'html' || el.type === 'code' || el.type === 'latex' || el.type === 'markdown' || el.type === 'audio' || el.type === 'table' || el.type === 'icon' || el.type === 'callout' || el.type === 'p5' || el.type === 'model' || el.type === 'molecule' || el.type === 'graph') && (() => {
                 // A still captured while this embed was live on the canvas, so the
                 // thumbnail costs nothing to draw. Placeholder tile until then.
                 const snap = (el.type === 'html' || el.type === 'p5')
                   ? getSnapshot(snapshotKey(el.id, el.content))
                   : el.type === 'model' ? getSnapshot(snapshotKey(el.id, modelSnapshotContent(el)))
+                  : el.type === 'molecule' ? getSnapshot(snapshotKey(el.id, moleculeSnapshotContent(el)))
                   : el.type === 'graph' ? getSnapshot(snapshotKey(el.id, graphSnapshotContent(el)))
                   : null
                 if (snap) {
@@ -132,7 +156,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
                 }
                 return (
                   <div style={{ width: '100%', height: '100%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.35)', fontSize: el.height * 0.25 }}>
-                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'graph' ? 'y=' : 'MD' }
+                    { el.type === 'code' ? '</>' : el.type === 'latex' ? 'TeX' : el.type === 'table' ? '⊞' : el.type === 'audio' ? '♪' : el.type === 'callout' ? el.calloutNumber || '●' : el.type === 'icon' ? '★' : el.type === 'p5' ? 'p5' : el.type === 'model' ? '3D' : el.type === 'molecule' ? '⌬' : el.type === 'graph' ? 'y=' : 'MD' }
                   </div>
                 )
               })()}
@@ -140,12 +164,12 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont }) {
           ))
         }
       </div>
-      {canvasH > slideH && (
-        <div title="Scrolling slide" style={{
+      {(canvasH > slideH || canvasW > slideW) && (
+        <div title={canvasW > slideW ? 'Scrolls sideways' : 'Scrolls down'} style={{
           position: 'absolute', bottom: 2, right: 2, pointerEvents: 'none',
           background: 'rgba(99,102,241,0.85)', color: '#fff', fontSize: 8, fontWeight: 600,
           padding: '1px 4px', borderRadius: 2, letterSpacing: 0.2,
-        }}>&#8597; {+(canvasH / slideH).toFixed(2)}&times;</div>
+        }}>{canvasW > slideW ? <>&#8596; {+(canvasW / slideW).toFixed(2)}</> : <>&#8597; {+(canvasH / slideH).toFixed(2)}</>}&times;</div>
       )}
     </div>
   )
@@ -182,7 +206,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '' }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {} }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -329,7 +353,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -471,7 +495,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onClick={e => handleItemClick(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>

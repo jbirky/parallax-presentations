@@ -37,6 +37,17 @@ import {
   MousePointerClick,
   Box,
   ChartSpline,
+  Atom,
+  Waypoints,
+  CircuitBoard,
+  Binary,
+  ArrowDownToDot,
+  Blend,
+  Activity,
+  FlaskConical,
+  Grid3x3,
+  DraftingCompass,
+  Globe,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -74,10 +85,11 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddDiagram, onAddTikz, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
+  const [showDiagramMenu, setShowDiagramMenu] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showShapeMenu, setShowShapeMenu] = useState(false)
@@ -314,6 +326,11 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <button onClick={() => { setShowTextMenu(false); onAddLatex() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <span style={{ fontSize: 14, fontFamily: 'serif', fontWeight: 'bold', width: 14, textAlign: 'center' }}>T<sub style={{ fontSize: 9 }}>E</sub>X</span> LaTeX / TikZ
               </button>
+              {onAddEquation && (
+                <button onClick={() => { setShowTextMenu(false); onAddEquation() }} title="An equation whose terms are colored and labeled one at a time" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <span style={{ fontSize: 13, fontFamily: 'serif', fontStyle: 'italic', width: 14, textAlign: 'center', color: 'var(--accent)' }}>x²</span> Interactive Equation
+                </button>
+              )}
               <button onClick={() => { setShowTextMenu(false); onAddMarkdown() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <span style={{ fontSize: 13, fontWeight: 700, width: 14, textAlign: 'center' }}>M&#8595;</span> Markdown
               </button>
@@ -375,13 +392,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <Code size={14} /> p5.js
             </button>
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-            <button onClick={() => { setShowEmbedMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
-            </button>
-            <button onClick={() => { setShowEmbedMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
-            </button>
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button onClick={() => { setShowEmbedMenu(false); onAddAnime?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2728;</span> Anime.js
             </button>
@@ -392,6 +402,57 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           </div>
         </>)}
       </div>
+
+      {/* Diagrams dropdown */}
+      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic || onAddFreebody || onAddVenn || onAddTiming || onAddGeometry || onAddMolecule || onAddPeriodic || onAddHarmonics) && (
+        <div style={{ position: 'relative' }}>
+          <button className="btn-icon" onClick={() => setShowDiagramMenu(v => !v)} title="Diagram tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+            <Waypoints size={14} /> Diagrams <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+          </button>
+          {showDiagramMenu && (<>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowDiagramMenu(false)} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 180, overflow: 'hidden', padding: '4px 0' }}>
+              <button onClick={() => { setShowDiagramMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddFeynman?.() }} title="Particle physics diagrams that build up line by line and copy out as TikZ-Feynman" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Atom size={14} /> Feynman Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddCircuit?.() }} title="Circuit schematics, solved so they can show their current and meter readings, and copied out as CircuiTikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <CircuitBoard size={14} /> Circuit Diagram
+              </button>
+              <button onClick={() => { setShowDiagramMenu(false); onAddLogic?.() }} title="Logic gates, latches and flip-flops, simulated so each step shows its signals, with a truth table" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Binary size={14} /> Logic Diagram
+              </button>
+              {onAddFreebody && <button onClick={() => { setShowDiagramMenu(false); onAddFreebody() }} title="A body and the forces on it, with the unknown ones worked out, built up force by force and copied out as TikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <ArrowDownToDot size={14} /> Free-Body Diagram
+              </button>}
+              {onAddVenn && <button onClick={() => { setShowDiagramMenu(false); onAddVenn() }} title="Sets shaded from an expression like A ∩ (B ∪ C), or by clicking regions, built up step by step, with counts worked out and copied out as TikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Blend size={14} /> Venn Diagram
+              </button>}
+              {onAddTiming && <button onClick={() => { setShowDiagramMenu(false); onAddTiming() }} title="Clock, signal and bus waveforms written in WaveJSON and drawn by WaveDrom, revealed cycle by cycle; register fields too" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Activity size={14} /> Timing Diagram
+              </button>}
+              {onAddGeometry && <button onClick={() => { setShowDiagramMenu(false); onAddGeometry() }} title="Ruler-and-compass constructions in GeoGebra's commands: drag a point and the rest follows, built up line by line and copied out as tkz-euclide" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <DraftingCompass size={14} /> Geometry
+              </button>}
+              {onAddMolecule && <button onClick={() => { setShowDiagramMenu(false); onAddMolecule() }} title="A 3D structure from PubChem, the Protein Data Bank or a file, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <FlaskConical size={14} /> Molecule
+              </button>}
+              {onAddPeriodic && <button onClick={() => { setShowDiagramMenu(false); onAddPeriodic() }} title="PubChem's periodic table: point at an element to see its details and electrons, colored by category or a property, with steps" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Grid3x3 size={14} /> Periodic Table
+              </button>}
+              {onAddHarmonics && <button onClick={() => { setShowDiagramMenu(false); onAddHarmonics() }} title="Spherical harmonics as lobes, a colored sphere, a vibrating shape, a sky map or the ℓ, m table, to turn while presenting, with steps that morph" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Globe size={14} /> Spherical Harmonics
+              </button>}
+              <DocsLink page="diagrams" onClose={() => setShowDiagramMenu(false)} />
+            </div>
+          </>)}
+        </div>
+      )}
 
       {/* Media dropdown */}
       <div style={{ position: 'relative' }}>
@@ -430,6 +491,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                 <Box size={14} /> Upload STL / GLB
                 <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowModelMenu(false); onAddModelUpload(f) }} />
               </label>
+              {onAddGraph3d && <button onClick={() => { setShowModelMenu(false); onAddGraph3d() }} title="Surfaces z = f(x, y), parametric and implicit surfaces, curves and points, typed as in Graph, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <ChartSpline size={14} /> 3D Graph
+              </button>}
               <DocsLink page="media" onClose={() => setShowModelMenu(false)} />
             </div>
           </>)}
@@ -437,7 +501,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       )}
 
       {onAddGraph && (
-        <button className="btn-icon" title="Graph functions, curves and regions" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
+        <button className="btn-icon" title="Graph functions, curves, regions and fields; switch it to 3D for surfaces" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
           <ChartSpline size={14} /> Graph
         </button>
       )}

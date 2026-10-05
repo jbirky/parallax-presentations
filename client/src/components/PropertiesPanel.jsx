@@ -6,13 +6,23 @@ import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
+import { feynmanTikz, feynmanSteps } from '../utils/feynmanDiagram'
+import { circuitTikz, circuitSteps } from '../utils/circuitDiagram'
+import { logicTikz, logicSteps, logicTableLatex } from '../utils/logicDiagram'
+import { freebodyTikz, freebodySteps } from '../utils/freebodyDiagram'
+import { vennTikz, vennSteps, vennExprTex } from '../utils/vennDiagram'
+import { timingSteps } from '../utils/timingDiagram'
+import { geometrySteps, geometryTikz } from '../utils/geometryDiagram'
 import { SHAPES } from '../utils/shapeUtils'
 import { TEXT3D_DEFAULTS, TEXT3D_PRESETS, TEXT3D_LIMITS, TEXT3D_EXTRUDED_DEPTH } from '../utils/text3d'
 
 const EASING_NAMES = { ease: 'Smooth', 'ease-in-out': 'Ease in and out', 'ease-out': 'Ease out', 'ease-in': 'Ease in', linear: 'Steady', spring: 'Spring' }
 import { parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
-import { getCanvasHeight, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
+import { getCanvasHeight, getCanvasWidth, scrollAxis, isScrolling, isPinned, MAX_SCREENS } from '../utils/scrollingSlides'
 import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
+import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
+import PeriodicProperties from './PeriodicProperties'
+import HarmonicsProperties from './HarmonicsProperties'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -47,9 +57,12 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
   const [selectedKey, setSelectedKey] = useState(null)
   const inputRef = useRef(null)
 
-  const prevTextRef = useRef(citationText)
-  if (citationText !== prevTextRef.current) {
-    prevTextRef.current = citationText
+  // Text set from outside (Cite PubChem, undo) shows here. The last value is
+  // kept in state, not a ref: a ref written in a render React throws away
+  // stays written, and the field never caught up.
+  const [prevText, setPrevText] = useState(citationText)
+  if (citationText !== prevText) {
+    setPrevText(citationText)
     if (citationText !== query) setQuery(citationText)
   }
 
@@ -73,7 +86,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
     setQuery(text)
     setSelectedKey(entry.key)
     setShowSuggestions(false)
-    const updates = { citationText: text }
+    const updates = { citationText: text, citationKey: entry.key }
     if (entry.doi) updates.citationLink = `https://doi.org/${entry.doi}`
     else if (entry.url) updates.citationLink = entry.url
     onUpdate(updates)
@@ -83,7 +96,7 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
     setQuery(val)
     setSelectedKey(null)
     setShowSuggestions(val.length > 0)
-    onUpdate({ citationText: val || null })
+    onUpdate(val ? { citationText: val } : { citationText: null, citationKey: null })
   }
 
   function handleBlur() {
@@ -133,8 +146,68 @@ function CitationAutocomplete({ bibliography, citationText, citationLink, onUpda
   )
 }
 
+// An image's or molecule's citation: a caption under it or a side reference,
+// citing the library entry it was picked from (citationKey) as well as what
+// its text names. children go above it: a molecule's Cite PubChem.
+function CitationFields({ element, bibliography, onUpdate, children }) {
+  const cited = element.citationKey && (element.citationText || element.citationLink)
+    ? bibliography.find(e => e.key === element.citationKey) : null
+  return (
+    <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Citation</div>
+      {children}
+      <CitationAutocomplete
+        bibliography={bibliography}
+        citationText={element.citationText || ''}
+        citationLink={element.citationLink || ''}
+        onUpdate={onUpdate}
+      />
+      {cited && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+          <span title={cited.title || cited.key} style={{ flex: 1, minWidth: 0, fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Cites {cited.title || cited.key}
+          </span>
+          <button className="btn btn-ghost" style={{ padding: '0 4px', fontSize: 12, lineHeight: 1 }}
+            title="Stop citing it, unless the text names it" aria-label="Stop citing it"
+            onClick={() => onUpdate({ citationKey: null })}>×</button>
+        </div>
+      )}
+      {(element.citationText || element.citationLink) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Color</div>
+            <input type="color" value={element.citationColor || '#808080'}
+              onChange={e => onUpdate({ citationColor: e.target.value })}
+              style={{ width: '100%', height: 24, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Display</div>
+            <select className="prop-input" value={element.citationMode || 'caption'}
+              onChange={e => onUpdate({ citationMode: e.target.value })}
+              style={{ padding: '4px 6px' }}>
+              <option value="caption">Caption bar</option>
+              <option value="side">Side reference</option>
+            </select>
+          </div>
+          {(element.citationMode || 'caption') === 'caption' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Align</div>
+              <select className="prop-input" value={element.citationAlign || 'left'}
+                onChange={e => onUpdate({ citationAlign: e.target.value })}
+                style={{ padding: '4px 6px' }}>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Copies a TikZ diagram's code, for pasting into a LaTeX document
-function CopyTikzButton({ tikz }) {
+function CopyTikzButton({ tikz, label = 'Copy TikZ' }) {
   const [copied, setCopied] = useState(false)
   async function copy() {
     try {
@@ -147,7 +220,7 @@ function CopyTikzButton({ tikz }) {
   }
   return (
     <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={copy} disabled={!tikz}>
-      {copied ? 'Copied' : 'Copy TikZ'}
+      {copied ? 'Copied' : label}
     </button>
   )
 }
@@ -222,7 +295,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -497,6 +570,260 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 Edit p5.js Sketch
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open sketch editor</p>
+            </div>
+          )}
+
+          {/* Feynman diagram */}
+          {selectedElement.type === 'feynman' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditFeynman?.()}>
+                Edit Diagram…
+              </button>
+              <CopyTikzButton tikz={feynmanTikz(selectedElement)} label="Copy TikZ-Feynman" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              {feynmanSteps(selectedElement).length > 0 && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedElement.dimPast !== false} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Fade earlier steps
+                  </label>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the whole diagram. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Circuit diagram */}
+          {selectedElement.type === 'circuit' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditCircuit?.()}>
+                Edit Circuit…
+              </button>
+              <CopyTikzButton tikz={circuitTikz(selectedElement)} label="Copy CircuiTikZ" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+                <select className="prop-input" value={selectedElement.symbols === 'iec' ? 'iec' : 'us'} onChange={e => onUpdateElement({ symbols: e.target.value })} style={{ flex: 1, fontSize: 11 }} aria-label="Symbols">
+                  <option value="us">US symbols</option>
+                  <option value="iec">IEC symbols</option>
+                </select>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedElement.flow !== false} onChange={e => onUpdateElement({ flow: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Show the current, and lamps lit
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedElement.readings !== false} onChange={e => onUpdateElement({ readings: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Show meter readings
+              </label>
+              {circuitSteps(selectedElement).length > 0 && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selectedElement.dimPast} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Fade earlier steps
+                  </label>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the circuit as it ends; the current moves when presenting. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Logic diagram */}
+          {selectedElement.type === 'logic' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditLogic?.()}>
+                Edit Logic Diagram…
+              </button>
+              <CopyTikzButton tikz={logicTikz(selectedElement)} label="Copy CircuiTikZ" />
+              <CopyTikzButton tikz={logicTableLatex(selectedElement).startsWith('%') ? '' : logicTableLatex(selectedElement)} label="Copy truth table" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+                <select className="prop-input" value={selectedElement.symbols === 'iec' ? 'iec' : 'us'} onChange={e => onUpdateElement({ symbols: e.target.value })} style={{ flex: 1, fontSize: 11 }} aria-label="Symbols">
+                  <option value="us">US symbols</option>
+                  <option value="iec">IEC symbols</option>
+                </select>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedElement.values !== false} onChange={e => onUpdateElement({ values: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Color wires by signal
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!selectedElement.table} onChange={e => onUpdateElement({ table: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Show the truth table
+              </label>
+              {logicSteps(selectedElement).length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the diagram as the slide starts. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Free-body diagram */}
+          {selectedElement.type === 'periodic' && (
+            <PeriodicProperties element={selectedElement} onUpdateElement={onUpdateElement} />
+          )}
+
+          {selectedElement.type === 'harmonics' && (
+            <HarmonicsProperties key={selectedElement.id} element={selectedElement} onUpdateElement={onUpdateElement} />
+          )}
+
+          {selectedElement.type === 'freebody' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditFreebody?.()}>
+                Edit Free-Body Diagram…
+              </button>
+              <CopyTikzButton tikz={freebodyTikz(selectedElement)} label="Copy TikZ" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!selectedElement.values} onChange={e => onUpdateElement({ values: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                Write values on the labels
+              </label>
+              {freebodySteps(selectedElement).length > 0 && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selectedElement.dimPast} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Dim earlier steps
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows every force. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Timing diagram */}
+          {selectedElement.type === 'timing' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditTiming?.()}>
+                Edit Timing Diagram…
+              </button>
+              <CopyTikzButton tikz={selectedElement.source || ''} label="Copy WaveJSON" />
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Colors</div>
+                <select className="prop-input" value={selectedElement.theme === 'light' ? 'light' : 'dark'} onChange={e => onUpdateElement({ theme: e.target.value })} style={{ padding: '4px 6px', width: '100%' }}>
+                  <option value="dark">For a dark slide</option>
+                  <option value="light">For a light slide</option>
+                </select>
+              </div>
+              {timingSteps(selectedElement).length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows every cycle. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Geometry construction */}
+          {selectedElement.type === 'geometry' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditGeometry?.()}>
+                Edit Geometry…
+              </button>
+              <CopyTikzButton tikz={geometryTikz(selectedElement)} label="Copy tkz-euclide" />
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Colors</div>
+                <select className="prop-input" value={selectedElement.theme === 'light' ? 'light' : 'dark'} onChange={e => onUpdateElement({ theme: e.target.value })} style={{ padding: '4px 6px', width: '100%' }}>
+                  <option value="dark">For a dark slide</option>
+                  <option value="light">For a light slide</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!selectedElement.axes} onChange={e => onUpdateElement({ axes: e.target.checked })} /> Axes
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!selectedElement.grid} onChange={e => onUpdateElement({ grid: e.target.checked })} /> Grid
+                </label>
+              </div>
+              {geometrySteps(selectedElement).length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the whole construction. Presented, anyone can drag its blue and green points; it's back as saved when the slide is shown again. Double-click to edit it.</p>
+            </div>
+          )}
+
+          {/* Venn diagram */}
+          {selectedElement.type === 'venn' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditVenn?.()}>
+                Edit Venn Diagram…
+              </button>
+              <CopyTikzButton tikz={vennTikz(selectedElement)} label="Copy TikZ" />
+              <CopyTikzButton tikz={vennExprTex(selectedElement)} label="Copy expression" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lines</div>
+                <input type="color" value={selectedElement.color || '#ffffff'} title="Line and label color"
+                  onChange={e => onUpdateElement({ color: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              {vennSteps(selectedElement).length > 0 && (
+                <>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selectedElement.dimPast} onChange={e => onUpdateElement({ dimPast: e.target.checked })} style={{ accentColor: 'var(--accent)' }} />
+                    Dim earlier steps
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                    <input className="prop-input" type="number" min={1} max={1000} step={1}
+                      value={selectedElement.stepStart || 1}
+                      onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                      style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                  </div>
+                </>
+              )}
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows the last step. Double-click to edit it.</p>
             </div>
           )}
 
@@ -1007,45 +1334,7 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                   </div>
                 </div>
               )}
-              <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Citation</div>
-                <CitationAutocomplete
-                  bibliography={presentation?.bibliography || []}
-                  citationText={selectedElement.citationText || ''}
-                  citationLink={selectedElement.citationLink || ''}
-                  onUpdate={onUpdateElement}
-                />
-                {(selectedElement.citationText || selectedElement.citationLink) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Color</div>
-                      <input type="color" value={selectedElement.citationColor || '#808080'}
-                        onChange={e => onUpdateElement({ citationColor: e.target.value })}
-                        style={{ width: '100%', height: 24, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Display</div>
-                      <select className="prop-input" value={selectedElement.citationMode || 'caption'}
-                        onChange={e => onUpdateElement({ citationMode: e.target.value })}
-                        style={{ padding: '4px 6px' }}>
-                        <option value="caption">Caption bar</option>
-                        <option value="side">Side reference</option>
-                      </select>
-                    </div>
-                    {(selectedElement.citationMode || 'caption') === 'caption' && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Align</div>
-                        <select className="prop-input" value={selectedElement.citationAlign || 'left'}
-                          onChange={e => onUpdateElement({ citationAlign: e.target.value })}
-                          style={{ padding: '4px 6px' }}>
-                          <option value="left">Left</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <CitationFields element={selectedElement} bibliography={presentation?.bibliography || []} onUpdate={onUpdateElement} />
             </div>
           )}
 
@@ -1425,6 +1714,65 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </div>
           )}
 
+          {selectedElement.type === 'equation' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '6px 8px' }} onClick={() => onEditEquation?.()}>
+                Edit Equation…
+              </button>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Labels</div>
+                <div role="group" aria-label="Label style" style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+                  {[['callout', 'Callout'], ['brace', 'Brace'], ['sentence', 'Sentence']].map(([v, label]) => {
+                    const on = (selectedElement.labelStyle || 'callout') === v
+                    return (
+                      <button key={v} type="button" aria-pressed={on} onClick={() => onUpdateElement({ labelStyle: v })}
+                        style={{ flex: 1, border: 'none', borderRadius: 4, padding: '4px 6px', fontSize: 11, cursor: 'pointer', background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-secondary)' }}>
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>When presenting</div>
+                <select className="prop-input" value={selectedElement.interaction || 'steps'} onChange={e => onUpdateElement({ interaction: e.target.value })} style={{ width: '100%', fontSize: 11 }}>
+                  <option value="steps">One term per step</option>
+                  <option value="hover">Term under the pointer</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+              {selectedElement.interaction !== 'hover' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First term at step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1}
+                    value={selectedElement.stepStart || 1}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Size</div>
+                  <input className="prop-input" type="number" min={8} max={200} step={1}
+                    value={selectedElement.fontSize || 44}
+                    onChange={e => onUpdateElement({ fontSize: Number(e.target.value) || 44 })}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Labels</div>
+                  <input className="prop-input" type="number" min={6} max={120} step={1}
+                    value={selectedElement.labelSize || 18}
+                    onChange={e => onUpdateElement({ labelSize: Number(e.target.value) || 18 })}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+                <input type="color" value={selectedElement.textColor || '#ffffff'} title="Text color"
+                  onChange={e => onUpdateElement({ textColor: e.target.value })}
+                  style={{ width: 28, height: 22, border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>The canvas shows every term labeled. Double-click to edit the terms.</p>
+            </div>
+          )}
+
           {selectedElement.type === 'model' && (
             <div style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Model File</div>
@@ -1498,6 +1846,20 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                 Drag to turn it, scroll to zoom, right-drag to pan: on the canvas once it's selected, and when presenting.
               </div>
             </div>
+          )}
+
+          {selectedElement.type === 'molecule' && (
+            <>
+              <MoleculeProperties element={selectedElement} onUpdateElement={onUpdateElement} onChangeMolecule={onEditMolecule} />
+              <div style={{ marginBottom: 10 }}>
+                <CitationFields element={selectedElement} bibliography={presentation?.bibliography || []} onUpdate={onUpdateElement}>
+                  {selectedElement.source?.db === 'pubchem' && onCiteElement && (
+                    <CitePubChem key={selectedElement.id} cid={selectedElement.source.id}
+                      onCite={(entry, caption) => onCiteElement(selectedElement.id, entry, caption)} />
+                  )}
+                </CitationFields>
+              </div>
+            </>
           )}
 
           {/* Audio options */}
@@ -1617,8 +1979,9 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
 
           {/* Pinned on a scrolling slide */}
           {(() => {
+            const vw = presentation?.slideWidth || 960
             const vh = presentation?.slideHeight || 540
-            if (getCanvasHeight(slide, vh) <= vh) return null
+            if (!isScrolling(slide, vw, vh)) return null
             return (
               <div style={{ marginBottom: 10 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}>
@@ -1627,9 +1990,10 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                     checked={isPinned(selectedElement)}
                     onChange={e => {
                       if (!e.target.checked) { onUpdateElement({ scrollBehavior: undefined }); return }
-                      // A pinned element's y is on the screen, so it has to be within the first one
+                      // A pinned element's x and y are on the screen, so it has to be within the first one
+                      const maxX = Math.max(0, vw - (selectedElement.width || 0))
                       const maxY = Math.max(0, vh - (selectedElement.height || 0))
-                      onUpdateElement({ scrollBehavior: 'pin', y: Math.min(selectedElement.y ?? 0, maxY) })
+                      onUpdateElement({ scrollBehavior: 'pin', x: Math.min(selectedElement.x ?? 0, maxX), y: Math.min(selectedElement.y ?? 0, maxY) })
                     }}
                     style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
                   />
@@ -2358,54 +2722,80 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
         </>)}
       </div>
 
-      {/* Scrolling: a canvas taller than the screen */}
+      {/* Scrolling: a canvas taller or wider than the screen */}
       <div className="prop-section">
         <SectionHead k="scroll">Scrolling</SectionHead>
         {!collapsed.scroll && (() => {
+          const vw = presentation?.slideWidth || 960
           const vh = presentation?.slideHeight || 540
+          const axis = scrollAxis(slide, vw, vh)
+          const canvasW = getCanvasWidth(slide, vw, vh)
           const canvasH = getCanvasHeight(slide, vh)
-          const screens = canvasH / vh
-          const setHeight = h => onUpdateSlide({ scrollHeight: h > vh ? Math.min(Math.round(h), vh * MAX_SCREENS) : undefined })
-          const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && (el.y ?? 0) >= canvasH).length
+          const screen = axis === 'x' ? vw : vh
+          const length = axis === 'x' ? canvasW : canvasH
+          const screens = length / screen
+          // A slide scrolls one way, so a length for one clears the other's
+          const setScroll = (to, px) => onUpdateSlide(to === 'x'
+            ? { scrollWidth: px > vw ? Math.min(Math.round(px), vw * MAX_SCREENS) : undefined, scrollHeight: undefined }
+            : { scrollHeight: px > vh ? Math.min(Math.round(px), vh * MAX_SCREENS) : undefined, scrollWidth: undefined })
+          const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && ((el.x ?? 0) >= canvasW || (el.y ?? 0) >= canvasH)).length
           return (<>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas height</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Scroll</div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              {[1, 1.5, 2, 3].map(k => (
+              {[[null, 'Off'], ['y', '\u2193 Down'], ['x', '\u2192 Sideways']].map(([to, label]) => (
                 <button
-                  key={k}
-                  className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                  key={label}
+                  className={`btn ${axis === to ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
-                  onClick={() => setHeight(vh * k)}
+                  // Turning the other way keeps how many screens the canvas is
+                  onClick={() => to ? setScroll(to, (axis ? screens : 2) * (to === 'x' ? vw : vh)) : setScroll('y', 0)}
                 >
-                  {k === 1 ? 'Off' : `${k}\u00d7`}
+                  {label}
                 </button>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Height (px)</div>
-                {/* Set on Enter or leaving the field: a height typed a digit at a
-                    time would turn scrolling off and on as it went */}
-                <input className="prop-input" type="number" min={vh} max={vh * MAX_SCREENS} step={20}
-                  key={`${slide?.id}:${canvasH}`}
-                  defaultValue={canvasH}
-                  onBlur={e => setHeight(Number(e.target.value) || 0)}
-                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                />
+            {axis && (<>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas {axis === 'x' ? 'width' : 'height'}</div>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                {[1.5, 2, 3].map(k => (
+                  <button
+                    key={k}
+                    className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                    onClick={() => setScroll(axis, screen * k)}
+                  >
+                    {`${k}\u00d7`}
+                  </button>
+                ))}
               </div>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
-                <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{axis === 'x' ? 'Width' : 'Height'} (px)</div>
+                  {/* Set on Enter or leaving the field: a length typed a digit at a
+                      time would turn scrolling off and on as it went */}
+                  <input className="prop-input" type="number" min={screen} max={screen * MAX_SCREENS} step={20}
+                    key={`${slide?.id}:${axis}:${length}`}
+                    defaultValue={length}
+                    onBlur={e => setScroll(axis, Number(e.target.value) || 0)}
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
+                  <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+                </div>
               </div>
-            </div>
+            </>)}
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              {canvasH > vh
+              {axis === 'y'
                 ? 'Presenting shows one screen at a time. \u2193 and Space scroll down, showing fragments as they come into view, then go on to the next slide. PDF and PowerPoint export give a page per screen.'
-                : 'Make the canvas taller than the screen to scroll through this slide while presenting.'}
+                : axis === 'x'
+                  ? 'Presenting shows one screen at a time. \u2192 and Space scroll across, showing fragments as they come into view, then go on to the next slide; the mouse wheel and a swipe scroll it too. PDF and PowerPoint export give a page per screen.'
+                  : 'Make the canvas taller or wider than the screen to scroll through this slide while presenting.'}
             </div>
             {offCanvas > 0 && (
               <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>
-                {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} below the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
+                {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} off the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
               </div>
             )}
           </>)

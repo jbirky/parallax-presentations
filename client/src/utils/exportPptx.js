@@ -1,7 +1,17 @@
 import pptxgen from 'pptxgenjs'
 import { sanitizeSvg } from './tikzDiagram'
-import { getScreenCount, isScrolling, isPinned } from './scrollingSlides'
+import { feynmanSvg } from './feynmanDiagram'
+import { circuitSvg } from './circuitDiagram'
+import { logicSvg } from './logicDiagram'
+import { freebodySvg } from './freebodyDiagram'
+import { vennSvg } from './vennDiagram'
+import { timingSvg } from './timingDiagram'
+import { geometrySvg } from './geometryDiagram'
+import { periodicSvg } from './periodicTable'
+import { harmonicsPng } from './harmonicsView'
+import { getScreenCount, scrollAxis, isPinned } from './scrollingSlides'
 import { text3dSettings, text3dExtrusion, darken } from './text3d'
+import { buildCitationIndex, resolveCitationsInHtml } from './citationIndex'
 
 function stripHtml(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
@@ -29,13 +39,15 @@ export function exportToPptx(presentation) {
 
   // PowerPoint can't scroll, so a scrolling slide gives a slide per screen, as
   // the PDF does, with its pinned elements on each
+  const slideW = presentation.slideWidth || 960
   const slideH = presentation.slideHeight || 540
+  const citationLabels = buildCitationIndex(presentation).labelByKey
   const pages = (presentation.slides || []).flatMap(slide =>
-    Array.from({ length: getScreenCount(slide, slideH) }, (_, screen) => ({ slide, screen })))
+    Array.from({ length: getScreenCount(slide, slideW, slideH) }, (_, screen) => ({ slide, screen })))
 
   for (const { slide, screen } of pages) {
     const pptSlide = pptx.addSlide()
-    const scrolling = isScrolling(slide, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
 
     // Background
     const bg = slide.background
@@ -49,16 +61,20 @@ export function exportToPptx(presentation) {
     const elements = [...(slide.elements || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
 
     for (const el of elements) {
-      const elY = scrolling && !isPinned(el) ? el.y - screen * slideH : el.y
-      if (scrolling && (elY + el.height <= 0 || elY >= slideH)) continue
-      const x = el.x * SCALE_X
+      // Where it is on this page's screen: the canvas moves up (or left) a screen a page
+      const onCanvas = axis && !isPinned(el)
+      const elX = onCanvas && axis === 'x' ? el.x - screen * slideW : el.x
+      const elY = onCanvas && axis === 'y' ? el.y - screen * slideH : el.y
+      if (axis && (elX + el.width <= 0 || elX >= slideW || elY + el.height <= 0 || elY >= slideH)) continue
+      const x = elX * SCALE_X
       const y = elY * SCALE_Y
       const w = el.width * SCALE_X
       const h = el.height * SCALE_Y
       const rotation = el.rotation || 0
 
       if (el.type === 'text' || el.type === 'markdown') {
-        const text = stripHtml(el.type === 'text' ? el.content : el.content)
+        // Citations read as the index numbers them now
+        const text = stripHtml(el.type === 'text' ? resolveCitationsInHtml(el.content, citationLabels) : el.content)
         if (text.trim()) {
           pptSlide.addText(text, {
             x, y, w, h,
@@ -76,6 +92,19 @@ export function exportToPptx(presentation) {
             pptSlide.addImage({ path: src, x, y, w, h, rotate: rotation })
           }
         } catch {}
+      } else if (el.type === 'feynman' || el.type === 'circuit' || el.type === 'logic' || el.type === 'freebody' || el.type === 'venn' || el.type === 'timing' || el.type === 'geometry' || el.type === 'periodic') {
+        // As an image, with its labels as SVG text rather than KaTeX, which PowerPoint would leave out
+        try {
+          const svg = (el.type === 'feynman' ? feynmanSvg : el.type === 'circuit' ? circuitSvg : el.type === 'logic' ? logicSvg : el.type === 'periodic' ? periodicSvg : el.type === 'venn' ? vennSvg : el.type === 'timing' ? timingSvg : el.type === 'geometry' ? geometrySvg : freebodySvg)(el, { labels: 'text', standalone: true })
+          const bytes = new TextEncoder().encode(svg)
+          let binary = ''
+          for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+          pptSlide.addImage({ path: `data:image/svg+xml;base64,${btoa(binary)}`, x, y, w, h, rotate: rotation })
+        } catch {}
+      } else if (el.type === 'harmonics') {
+        // As a picture, drawn by the same renderer as it rests, its label in plain text
+        const png = harmonicsPng(el)
+        if (png) pptSlide.addImage({ data: png, x, y, w, h, rotate: rotation })
       } else if (el.type === 'tikz' && el.svg) {
         // As an image; its math labels are HTML inside the SVG, which PowerPoint leaves out
         try {

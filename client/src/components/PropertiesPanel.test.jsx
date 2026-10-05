@@ -109,3 +109,29 @@ describe('Steps in the Properties panel', () => {
     expect(html).toContain('step 1 is the first press of → or a clicker. Going back undoes them.')
   })
 })
+
+describe('A molecule’s citation in the Properties panel', () => {
+  const pubchem = { key: 'pubchem-cid-2519', type: 'misc', author: '{National Center for Biotechnology Information}', title: 'PubChem Compound Summary for CID 2519, Caffeine', year: '2026' }
+  const molecule = (extra = {}) => ({ id: 'mol', type: 'molecule', x: 0, y: 0, width: 300, height: 260, zIndex: 1, src: '/uploads/p/caffeine.sdf', format: 'sdf', name: 'Caffeine', source: { db: 'pubchem', id: '2519' }, ...extra })
+  const show = (el, props = {}) => panel({ id: 's1', elements: [el] }, el, { onCiteElement: () => {}, ...props })
+
+  it('offers to cite PubChem, above fields like an image’s', () => {
+    const { lines } = show(molecule())
+    const at = lines.indexOf('Citation')
+    expect(lines.slice(at, at + 4)).toEqual(['Citation', 'Cite PubChem', 'Text', 'Link (optional)'])
+  })
+
+  it('doesn’t offer it for a molecule from elsewhere', () => {
+    const { lines } = show(molecule({ source: { db: 'pdb', id: '1UBQ' } }))
+    expect(lines).toContain('Citation')
+    expect(lines).not.toContain('Cite PubChem')
+  })
+
+  it('says which entry its caption cites', () => {
+    const el = molecule({ citationText: 'PubChem CID 2519', citationKey: 'pubchem-cid-2519' })
+    const { lines, html } = show(el, { presentation: { id: 'p', slides: [], bibliography: [pubchem] } })
+    expect(lines).toContain('Cites PubChem Compound Summary for CID 2519, Caffeine')
+    expect(html).toContain('aria-label="Stop citing it"')
+    expect(show(el).lines.some(l => l.startsWith('Cites'))).toBe(false)
+  })
+})

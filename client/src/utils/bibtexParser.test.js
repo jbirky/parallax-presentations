@@ -6,6 +6,7 @@ import {
   formatAuthorsFull,
   formatCitation,
   formatReference,
+  webLink,
 } from './bibtexParser'
 
 describe('parseBibtex', () => {
@@ -253,5 +254,38 @@ describe('formatReference', () => {
     const entry = { title: 'Paper', booktitle: 'ICML 2023' }
     const ref = formatReference(entry, 0)
     expect(ref).toContain('<em>ICML 2023</em>')
+  })
+})
+
+describe('organisations as authors', () => {
+  it('keeps a braced name whole, as BibTeX does', () => {
+    expect(parseAuthors('{National Center for Biotechnology Information}')).toEqual([{ first: '', last: 'National Center for Biotechnology Information' }])
+    expect(formatAuthorsShort(parseAuthors('{National Center for Biotechnology Information}'))).toBe('National Center for Biotechnology Information')
+  })
+
+  it('doesn’t split a braced name at its "and"', () => {
+    const authors = parseAuthors('{Centers for Disease Control and Prevention} and Doe, Jane')
+    expect(authors).toEqual([{ first: '', last: 'Centers for Disease Control and Prevention' }, { first: 'Jane', last: 'Doe' }])
+    expect(formatAuthorsShort(authors)).toBe('Centers for Disease Control and Prevention & Doe')
+  })
+
+  it('still splits at AND, and drops stray braces from a person’s name', () => {
+    expect(parseAuthors('Smith, John AND Doe, Jane')).toHaveLength(2)
+    expect(parseAuthors('{van} Dyke, Dick')).toEqual([{ first: 'Dick', last: 'van Dyke' }])
+  })
+})
+
+describe('webLink', () => {
+  it('names a web link by its site', () => {
+    expect(webLink('https://pubchem.ncbi.nlm.nih.gov/compound/2519#section=3D-Conformer'))
+      .toEqual({ href: 'https://pubchem.ncbi.nlm.nih.gov/compound/2519#section=3D-Conformer', site: 'pubchem.ncbi.nlm.nih.gov' })
+    expect(webLink(' http://www.example.org/x ').site).toBe('example.org')
+  })
+
+  it('has none for what isn’t a web link', () => {
+    expect(webLink('')).toBe(null)
+    expect(webLink(undefined)).toBe(null)
+    expect(webLink('javascript:alert(1)')).toBe(null)
+    expect(webLink('doi:10.1/x')).toBe(null)
   })
 })

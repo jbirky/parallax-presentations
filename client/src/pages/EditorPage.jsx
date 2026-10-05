@@ -26,7 +26,7 @@ import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, li
 import { reorderSlides } from '../utils/slideReorder'
 import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
-import { getCanvasHeight, isPinned } from '../utils/scrollingSlides'
+import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
@@ -41,9 +41,32 @@ import MathGridModal from '../components/MathGridModal'
 import AnimeModal from '../components/AnimeModal'
 import ThreeModal from '../components/ThreeModal'
 import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
+import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
-import { defaultGraph, GRAPH_FIELDS } from '../utils/graphPage'
+import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
+import EquationEditorModal from '../components/EquationEditorModal'
+import FeynmanEditorModal from '../components/FeynmanEditorModal'
+import CircuitEditorModal from '../components/CircuitEditorModal'
+import LogicEditorModal from '../components/LogicEditorModal'
+import FreebodyEditorModal from '../components/FreebodyEditorModal'
+import VennEditorModal from '../components/VennEditorModal'
+import MoleculeModal from '../components/MoleculeModal'
+import { defaultEquation, EQUATION_FIELDS, EQUATION_SIZE } from '../utils/equationTerms'
+import { defaultFeynman, FEYNMAN_FIELDS, feynmanBox } from '../utils/feynmanDiagram'
+import { defaultCircuit, circuitBox } from '../utils/circuitDiagram'
+import { CIRCUIT_FIELDS } from '../utils/circuitParts'
+import { defaultLogic, logicBox } from '../utils/logicDiagram'
+import { LOGIC_FIELDS } from '../utils/logicParts'
+import { defaultFreebody, freebodyBox } from '../utils/freebodyDiagram'
+import { defaultPeriodic, periodicBox } from '../utils/periodicTable'
+import { defaultHarmonics } from '../utils/harmonicsView'
+import { FREEBODY_FIELDS } from '../utils/freebodySolve'
+import { defaultVenn, vennBox, VENN_FIELDS } from '../utils/vennDiagram'
+import TimingEditorModal from '../components/TimingEditorModal'
+import { defaultTiming, timingBox, TIMING_FIELDS } from '../utils/timingDiagram'
+import GeometryEditorModal from '../components/GeometryEditorModal'
+import { defaultGeometry, GEOMETRY_FIELDS, GEOMETRY_SIZE } from '../utils/geometryDiagram'
 import BibliographyModal from '../components/BibliographyModal'
 import DiagramModal from '../components/DiagramModal'
 import TikzEditorModal from '../components/TikzEditorModal'
@@ -59,8 +82,11 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
 import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
-import { formatCitation, getReferencedEntries, parseAuthors, formatAuthorsFull } from '../utils/bibtexParser'
+import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
+import { workFinder } from '../utils/bibDuplicates'
+import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
+import { CitationNode } from '../extensions/CitationExtension'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
 import { FontWeight } from '../extensions/FontWeight'
@@ -403,6 +429,15 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showDiagramModal, setShowDiagramModal] = useState(false)
   const [tikzEditor, setTikzEditor] = useState(null) // { elementId (null for a new diagram), state, dark }
   const [graphEditor, setGraphEditor] = useState(null) // { elementId (null for a new graph), graph, size, slideBg }
+  const [equationEditor, setEquationEditor] = useState(null) // { elementId (null for a new one), equation, size, slideBg, dark }
+  const [feynmanEditor, setFeynmanEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [circuitEditor, setCircuitEditor] = useState(null) // { elementId (null for a new one), circuit, slideBg }
+  const [logicEditor, setLogicEditor] = useState(null) // { elementId (null for a new one), logic, slideBg }
+  const [freebodyEditor, setFreebodyEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [vennEditor, setVennEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [timingEditor, setTimingEditor] = useState(null) // { elementId (null for a new one), diagram, slideBg }
+  const [geometryEditor, setGeometryEditor] = useState(null) // { elementId (null for a new one), diagram, size, slideBg }
+  const [moleculePicker, setMoleculePicker] = useState(null) // { elementId (null for a new one) }
   const [liveSession, setLiveSession] = useState(null) // { sessionId, url }
   const [liveViewers, setLiveViewers] = useState(0)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -691,7 +726,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -791,7 +826,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     const mode = previewForSelection(currentSlide.elements, selectedElementIds[0], preview.mode)
     if (mode) setPreviewMode(mode)
   }, [selectedElementIds, currentSlide?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  const referencedEntries = presentation ? getReferencedEntries(presentation.bibliography || [], presentation.slides || []) : []
+  // Only what the deck cites is numbered, in the order the deck is set to, and
+  // the references slide lists the same entries (utils/citationIndex.js)
+  const citationIndex = useMemo(() => buildCitationIndex(presentation), [presentation])
+  const referencedEntries = citationIndex.entries
+  const citationMarkerCounts = useMemo(() => (showBibliographyModal ? countStaleMarkers(presentation) : { stale: 0, unlinked: 0 }), [showBibliographyModal, presentation])
   const hasReferencesSlide = referencedEntries.length > 0
   const referencesSlideIndex = hasReferencesSlide ? presentation.slides.length : -1
   const isViewingReferences = currentSlideIndex === referencesSlideIndex && hasReferencesSlide
@@ -808,6 +847,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder: 'Click to start typing...' }),
       MathNode,
+      CitationNode,
       FontFamily,
       FontSize,
       FontWeight,
@@ -951,6 +991,26 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
             )
           } : s
         )
+      }
+    })
+  }, [])
+
+  // A caption citing `entry`, fetched for an element (a PubChem compound's
+  // record): the entry joins the library unless it holds the same work, and
+  // the caption cites whichever is there. By id, on whichever slide it's on,
+  // since the slide or the selection may have changed while it was fetched.
+  const citeElement = useCallback((id, entry, caption) => {
+    setPresentation(prev => {
+      if (!prev) return prev
+      const library = prev.bibliography || []
+      const known = workFinder(library)(entry)
+      return {
+        ...prev,
+        bibliography: known ? library : [...library, entry],
+        slides: prev.slides.map(s => s.elements?.some(el => el.id === id) ? {
+          ...s,
+          elements: s.elements.map(el => el.id === id ? { ...el, ...caption, citationKey: (known || entry).key } : el),
+        } : s),
       }
     })
   }, [])
@@ -1334,6 +1394,9 @@ function draw() {
   const addGraph = useCallback(() => {
     setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
   }, [slideIsDark, slideBackdrop])
+  const addGraph3d = useCallback(() => {
+    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
 
   const openGraphEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
@@ -1360,6 +1423,352 @@ function draw() {
     }
     setGraphEditor(null)
   }, [graphEditor, updateElement, slideW, slideH])
+
+  const addEquation = useCallback(() => {
+    setEquationEditor({ elementId: null, equation: defaultEquation(slideIsDark()), size: EQUATION_SIZE, slideBg: slideBackdrop(), dark: slideIsDark() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openEquationEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'equation' || heldByOther(elementId)) return
+    const equation = {}
+    for (const key of EQUATION_FIELDS) if (element[key] !== undefined) equation[key] = element[key]
+    setEquationEditor({ elementId, equation, size: { w: element.width, h: element.height }, slideBg: slideBackdrop(), dark: slideIsDark() })
+  }, [presentation, slideBackdrop, slideIsDark])
+
+  const saveEquation = useCallback((equation, size) => {
+    const elementId = equationEditor?.elementId
+    const w = Math.round(size?.w || EQUATION_SIZE.w), h = Math.round(size?.h || EQUATION_SIZE.h)
+    if (elementId) {
+      updateElement(elementId, { ...equation, width: w, height: h })
+    } else {
+      const newEl = {
+        id: crypto.randomUUID(), type: 'equation', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...equation,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setEquationEditor(null)
+  }, [equationEditor, updateElement, slideW, slideH])
+
+  const addFeynman = useCallback(() => {
+    setFeynmanEditor({ elementId: null, diagram: defaultFeynman(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openFeynmanEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'feynman' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of FEYNMAN_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setFeynmanEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveFeynman = useCallback((diagram) => {
+    const elementId = feynmanEditor?.elementId
+    const box = feynmanBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.7) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'feynman', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setFeynmanEditor(null)
+  }, [feynmanEditor, presentation, updateElement, slideW, slideH])
+
+  const addCircuit = useCallback(() => {
+    setCircuitEditor({ elementId: null, circuit: defaultCircuit(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openCircuitEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'circuit' || heldByOther(elementId)) return
+    const circuit = {}
+    for (const key of CIRCUIT_FIELDS) if (element[key] !== undefined) circuit[key] = element[key]
+    setCircuitEditor({ elementId, circuit, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveCircuit = useCallback((circuit) => {
+    const elementId = circuitEditor?.elementId
+    const box = circuitBox(circuit)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the circuit's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...circuit, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.7) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'circuit', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...circuit,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setCircuitEditor(null)
+  }, [circuitEditor, presentation, updateElement, slideW, slideH])
+
+  const addLogic = useCallback(() => {
+    setLogicEditor({ elementId: null, logic: defaultLogic(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openLogicEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'logic' || heldByOther(elementId)) return
+    const logic = {}
+    for (const key of LOGIC_FIELDS) if (element[key] !== undefined) logic[key] = element[key]
+    setLogicEditor({ elementId, logic, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveLogic = useCallback((logic) => {
+    const elementId = logicEditor?.elementId
+    const box = logicBox(logic)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...logic, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.7) / box.w, (slideH * 0.7) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'logic', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...logic,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setLogicEditor(null)
+  }, [logicEditor, presentation, updateElement, slideW, slideH])
+
+  const addFreebody = useCallback(() => {
+    setFreebodyEditor({ elementId: null, diagram: defaultFreebody(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openFreebodyEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'freebody' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of FREEBODY_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setFreebodyEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveFreebody = useCallback((diagram) => {
+    const elementId = freebodyEditor?.elementId
+    const box = freebodyBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const scale = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.75) / box.h)
+      const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'freebody', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setFreebodyEditor(null)
+  }, [freebodyEditor, presentation, updateElement, slideW, slideH])
+
+  const addVenn = useCallback(() => {
+    setVennEditor({ elementId: null, diagram: defaultVenn(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openVennEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'venn' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of VENN_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setVennEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveVenn = useCallback((diagram) => {
+    const elementId = vennEditor?.elementId
+    const box = vennBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      const fit = Math.min(1, (slideW * 0.6) / box.w, (slideH * 0.75) / box.h)
+      const w = Math.round(box.w * fit), h = Math.round(box.h * fit)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'venn', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setVennEditor(null)
+  }, [vennEditor, presentation, updateElement, slideW, slideH])
+
+  const addTiming = useCallback(() => {
+    setTimingEditor({ elementId: null, diagram: defaultTiming(slideIsDark()), slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openTimingEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'timing' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of TIMING_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setTimingEditor({ elementId, diagram, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveTiming = useCallback((diagram) => {
+    const elementId = timingEditor?.elementId
+    const box = timingBox(diagram)
+    if (elementId) {
+      const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+      // Keep its width; its height follows the diagram's new shape
+      const w = element?.width || Math.round(box.w)
+      updateElement(elementId, { ...diagram, height: Math.max(20, Math.round(w * box.h / box.w)) })
+    } else {
+      // As wide as fits: timing diagrams are long
+      const fit = Math.min(1.6, (slideW * 0.9) / box.w, (slideH * 0.8) / box.h)
+      const w = Math.round(box.w * fit), h = Math.round(box.h * fit)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'timing', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setTimingEditor(null)
+  }, [timingEditor, presentation, updateElement, slideW, slideH])
+
+  const addGeometry = useCallback(() => {
+    setGeometryEditor({ elementId: null, diagram: defaultGeometry(slideIsDark()), size: GEOMETRY_SIZE, slideBg: slideBackdrop() })
+  }, [slideIsDark, slideBackdrop])
+
+  const openGeometryEditor = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'geometry' || heldByOther(elementId)) return
+    const diagram = {}
+    for (const key of GEOMETRY_FIELDS) if (element[key] !== undefined) diagram[key] = element[key]
+    setGeometryEditor({ elementId, diagram, size: { w: element.width || GEOMETRY_SIZE.w, h: element.height || GEOMETRY_SIZE.h }, slideBg: slideBackdrop() })
+  }, [presentation, slideBackdrop])
+
+  const saveGeometry = useCallback((diagram) => {
+    const elementId = geometryEditor?.elementId
+    if (elementId) {
+      // The figure was edited at the element's shape, so it keeps it
+      updateElement(elementId, diagram)
+    } else {
+      const w = Math.min(GEOMETRY_SIZE.w, Math.round(slideW * 0.9)), h = Math.round(w * GEOMETRY_SIZE.h / GEOMETRY_SIZE.w)
+      const newEl = {
+        id: crypto.randomUUID(), type: 'geometry', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...diagram,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setGeometryEditor(null)
+  }, [geometryEditor, updateElement, slideW, slideH])
+
+  const addMolecule = useCallback(() => setMoleculePicker({ elementId: null }), [])
+
+  // A periodic table, as large as the slide allows, in the slide's colors;
+  // everything about it is set in the properties panel
+  const addPeriodic = useCallback(() => {
+    const table = defaultPeriodic(slideIsDark())
+    const box = periodicBox(table)
+    const scale = Math.min((slideW * 0.94) / box.w, (slideH * 0.92) / box.h)
+    const w = Math.round(box.w * scale), h = Math.round(box.h * scale)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'periodic', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...table,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideIsDark, slideW, slideH])
+
+  // Spherical harmonics, Y_2^1 to start, in the slide's colors; everything
+  // about it is set in the properties panel
+  const addHarmonics = useCallback(() => {
+    const w = Math.round(slideW * 0.6), h = Math.round(slideH * 0.72)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'harmonics', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...defaultHarmonics(slideIsDark()),
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+  }, [slideIsDark, slideW, slideH])
+
+  const openMoleculePicker = useCallback((elementId) => {
+    const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
+    if (!element || element.type !== 'molecule' || heldByOther(elementId)) return
+    setMoleculePicker({ elementId })
+  }, [presentation])
+
+  // The structure is uploaded like any other file, so presenting it needs
+  // nothing from PubChem or the PDB; a new structure starts framed to fit
+  const pickMolecule = useCallback(async (structure) => {
+    const elementId = moleculePicker?.elementId
+    const file = new File([structure.text], structure.fileName, { type: 'text/plain' })
+    const result = await api.uploadFileToPresentation(presentation.id, file)
+    if (!result?.url) throw new Error('The structure couldn’t be uploaded.')
+    const fields = { src: result.url, format: structure.format, name: structure.name, source: structure.source || null, view: null }
+    if (elementId) {
+      updateElement(elementId, fields)
+    } else {
+      const w = 420, h = 360
+      const newEl = {
+        id: crypto.randomUUID(), type: 'molecule', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+        width: w, height: h, zIndex: 2, ...MOLECULE_DEFAULTS, ...fields,
+      }
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+      })
+      setSelectedElementIds([newEl.id])
+    }
+    setMoleculePicker(null)
+  }, [moleculePicker, presentation?.id, updateElement, slideW, slideH])
 
   const saveTikzDiagram = useCallback(({ state, tikz, svg, width, height }) => {
     const elementId = tikzEditor?.elementId
@@ -1773,12 +2182,17 @@ function draw() {
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
     settingContent.current = true
-    editor?.commands.setContent(element.content || '', false)
+    // With its citations' labels as the index has them now
+    editor?.commands.setContent(resolveCitationsInHtml(element.content || '', citationIndex.labelByKey), false)
     settingContent.current = false
     setTimeout(() => editor?.commands.focus(), 10)
-  }, [presentation, editor])
+  }, [presentation, editor, citationIndex])
 
   const stopEditingElement = useCallback(() => {
+    // A citation inserted while editing was labelled as if it came last; with
+    // the text in place, the stored labels catch up with the index (a deck
+    // with nothing to change comes back as it was)
+    if (editingElementIdRef.current) setPresentation(prev => prev && applyCitationNumbering(prev))
     setEditingElementId(null)
     editingElementIdRef.current = null
   }, [])
@@ -1844,8 +2258,10 @@ function draw() {
       const element = selectedElementId
         ? presentation?.slides[currentSlideIndex]?.elements?.find(el => el.id === selectedElementId)
         : null
-      // How far down a pasted or duplicated element can go: the canvas, or the screen when it's pinned
+      // How far down and across a pasted or duplicated element can go: the
+      // canvas, or the screen when it's pinned
       const bottomOf = el => isPinned(el) ? slideH : getCanvasHeight(presentation?.slides[currentSlideIndex], slideH)
+      const rightOf = el => isPinned(el) ? slideW : getCanvasWidth(presentation?.slides[currentSlideIndex], slideW, slideH)
       if (e.key === 'f') {
         setShowFindReplace(v => !v)
         e.preventDefault()
@@ -1861,7 +2277,7 @@ function draw() {
       } else if (e.key === 'v' && clipboard) {
         const newEl = {
           ...copyElement(clipboard, crypto.randomUUID()),
-          x: Math.min((clipboard.x || 0) + 20, slideW - (clipboard.width || 100)),
+          x: Math.min((clipboard.x || 0) + 20, rightOf(clipboard) - (clipboard.width || 100)),
           y: Math.min((clipboard.y || 0) + 20, bottomOf(clipboard) - (clipboard.height || 100))
         }
         setPresentation(prev => ({
@@ -1875,7 +2291,7 @@ function draw() {
       } else if (e.key === 'd' && element) {
         const newEl = {
           ...copyElement(element, crypto.randomUUID()),
-          x: Math.min((element.x || 0) + 20, slideW - (element.width || 100)),
+          x: Math.min((element.x || 0) + 20, rightOf(element) - (element.width || 100)),
           y: Math.min((element.y || 0) + 20, bottomOf(element) - (element.height || 100))
         }
         setPresentation(prev => ({
@@ -3772,6 +4188,7 @@ function draw() {
         <SlidePanel
           slides={presentation.slides}
           globalFont={presentation.globalFont || ''}
+          citationLabels={citationIndex.labelByKey}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
           onSelect={selectSlide}
@@ -3828,11 +4245,23 @@ function draw() {
             onAddAnime={() => setShowAnimeModal(true)}
             onAddThree={() => setShowThreeModal(true)}
             onAddGraph={addGraph}
+            onAddGraph3d={addGraph3d}
             onAddDiagram={() => setShowDiagramModal(true)}
             onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
             onAddP5={addP5Element}
             onAddCode={addCodeElement}
             onAddLatex={addLatexElement}
+            onAddEquation={addEquation}
+            onAddFeynman={addFeynman}
+            onAddCircuit={addCircuit}
+            onAddLogic={addLogic}
+            onAddFreebody={addFreebody}
+            onAddVenn={addVenn}
+            onAddTiming={addTiming}
+            onAddGeometry={addGeometry}
+            onAddMolecule={addMolecule}
+            onAddPeriodic={addPeriodic}
+            onAddHarmonics={addHarmonics}
             onAddMarkdown={addMarkdownElement}
             onAddTimeline={addTimelineElement}
             onAddCallout={addCalloutElement}
@@ -3943,11 +4372,13 @@ function draw() {
                       const authorStr = formatAuthorsFull(authors)
                       return (
                         <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
-                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{i + 1}]</span>
+                          <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>
                           {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
                           {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
-                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}.
+                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}
+                          {entry.journal || entry.booktitle || entry.volume || entry.pages ? '.' : ''}
                           {entry.doi && <a href={`https://doi.org/${entry.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>DOI</a>}
+                          {!entry.doi && webLink(entry.url) && <a href={webLink(entry.url).href} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>{webLink(entry.url).site}</a>}
                         </div>
                       )
                     })}
@@ -3997,6 +4428,7 @@ function draw() {
               footerColor={presentation.footerColor || 'rgba(255,255,255,0.65)'}
               footerInactiveColor={presentation.footerInactiveColor || 'rgba(255,255,255,0.25)'}
               citationFontSize={presentation.citationFontSize || 10}
+              citationLabels={citationIndex.labelByKey}
               citationFontFamily={presentation.citationFontFamily || '-apple-system,sans-serif'}
               footerMode={presentation.footerMode || 'basic'}
               sequenceSections={presentation.sequenceSections || []}
@@ -4038,6 +4470,14 @@ function draw() {
               onOpenLatexEditor={openLatexEditor}
               onOpenTikzEditor={openTikzEditor}
               onOpenGraphEditor={openGraphEditor}
+              onOpenEquationEditor={openEquationEditor}
+              onOpenFeynmanEditor={openFeynmanEditor}
+              onOpenCircuitEditor={openCircuitEditor}
+              onOpenLogicEditor={openLogicEditor}
+              onOpenFreebodyEditor={openFreebodyEditor}
+              onOpenVennEditor={openVennEditor}
+              onOpenTimingEditor={openTimingEditor}
+              onOpenGeometryEditor={openGeometryEditor}
               onOpenDynSysEditor={(elementId) => {
                 const el = currentSlide?.elements?.find(e => e.id === elementId)
                 if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
@@ -4076,6 +4516,16 @@ function draw() {
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
           onEditTikz={() => selectedElementId && openTikzEditor(selectedElementId)}
           onEditGraph={() => selectedElementId && openGraphEditor(selectedElementId)}
+          onEditEquation={() => selectedElementId && openEquationEditor(selectedElementId)}
+          onEditFeynman={() => selectedElementId && openFeynmanEditor(selectedElementId)}
+          onEditCircuit={() => selectedElementId && openCircuitEditor(selectedElementId)}
+          onEditLogic={() => selectedElementId && openLogicEditor(selectedElementId)}
+          onEditFreebody={() => selectedElementId && openFreebodyEditor(selectedElementId)}
+          onEditVenn={() => selectedElementId && openVennEditor(selectedElementId)}
+          onEditTiming={() => selectedElementId && openTimingEditor(selectedElementId)}
+          onEditGeometry={() => selectedElementId && openGeometryEditor(selectedElementId)}
+          onEditMolecule={() => selectedElementId && openMoleculePicker(selectedElementId)}
+          onCiteElement={citeElement}
           presentation={presentation}
           onUpdatePresentation={(updates) => setPresentation(prev => ({ ...prev, ...updates }))}
           selectedElementIds={selectedElementIds}
@@ -4396,12 +4846,16 @@ function draw() {
         <BibliographyModal
           bibliography={presentation.bibliography || []}
           citationStyle={presentation.citationStyle || 'numbered'}
-          onUpdate={updates => setPresentation(prev => ({ ...prev, ...updates }))}
-          onInsertCitation={(entry, index) => {
-            const cite = formatCitation(entry, presentation.citationStyle || 'numbered', index)
-            if (editor && editingElementId) {
-              editor.chain().focus().insertContent(`<sup style="color:#6366f1;font-weight:700;cursor:default">${cite}</sup>`).run()
-            }
+          citationOrder={presentation.citationOrder || 'presentation'}
+          citationIndex={citationIndex}
+          markerCounts={citationMarkerCounts}
+          // A style, order or library change moves the index under the markers
+          // already in the slides, so their stored labels move with it
+          onUpdate={updates => setPresentation(prev => applyCitationNumbering({ ...prev, ...updates }))}
+          onRenumber={opts => setPresentation(prev => applyCitationNumbering(prev, opts))}
+          onInsertCitation={entry => {
+            if (!editor || !editingElementId) return
+            editor.chain().focus().insertContent({ type: 'citation', attrs: { cite: entry.key, label: nextCitationLabel(presentation, entry) } }).run()
           }}
           onClose={() => setShowBibliographyModal(false)}
         />
@@ -4433,6 +4887,97 @@ function draw() {
           isNew={!graphEditor.elementId}
           onSave={saveGraph}
           onClose={() => setGraphEditor(null)}
+        />
+      )}
+
+      {equationEditor && (
+        <EquationEditorModal
+          initial={equationEditor.equation}
+          size={equationEditor.size}
+          slideBg={equationEditor.slideBg}
+          dark={equationEditor.dark}
+          isNew={!equationEditor.elementId}
+          onSave={saveEquation}
+          onClose={() => setEquationEditor(null)}
+        />
+      )}
+
+      {feynmanEditor && (
+        <FeynmanEditorModal
+          initial={feynmanEditor.diagram}
+          slideBg={feynmanEditor.slideBg}
+          isNew={!feynmanEditor.elementId}
+          onSave={saveFeynman}
+          onClose={() => setFeynmanEditor(null)}
+        />
+      )}
+
+      {circuitEditor && (
+        <CircuitEditorModal
+          initial={circuitEditor.circuit}
+          slideBg={circuitEditor.slideBg}
+          isNew={!circuitEditor.elementId}
+          onSave={saveCircuit}
+          onClose={() => setCircuitEditor(null)}
+        />
+      )}
+
+      {freebodyEditor && (
+        <FreebodyEditorModal
+          initial={freebodyEditor.diagram}
+          slideBg={freebodyEditor.slideBg}
+          isNew={!freebodyEditor.elementId}
+          onSave={saveFreebody}
+          onClose={() => setFreebodyEditor(null)}
+        />
+      )}
+
+      {timingEditor && (
+        <TimingEditorModal
+          initial={timingEditor.diagram}
+          slideBg={timingEditor.slideBg}
+          isNew={!timingEditor.elementId}
+          onSave={saveTiming}
+          onClose={() => setTimingEditor(null)}
+        />
+      )}
+
+      {geometryEditor && (
+        <GeometryEditorModal
+          initial={geometryEditor.diagram}
+          size={geometryEditor.size}
+          slideBg={geometryEditor.slideBg}
+          isNew={!geometryEditor.elementId}
+          onSave={saveGeometry}
+          onClose={() => setGeometryEditor(null)}
+        />
+      )}
+
+      {vennEditor && (
+        <VennEditorModal
+          initial={vennEditor.diagram}
+          slideBg={vennEditor.slideBg}
+          isNew={!vennEditor.elementId}
+          onSave={saveVenn}
+          onClose={() => setVennEditor(null)}
+        />
+      )}
+
+      {logicEditor && (
+        <LogicEditorModal
+          initial={logicEditor.logic}
+          slideBg={logicEditor.slideBg}
+          isNew={!logicEditor.elementId}
+          onSave={saveLogic}
+          onClose={() => setLogicEditor(null)}
+        />
+      )}
+
+      {moleculePicker && (
+        <MoleculeModal
+          isNew={!moleculePicker.elementId}
+          onPick={pickMolecule}
+          onClose={() => setMoleculePicker(null)}
         />
       )}
 

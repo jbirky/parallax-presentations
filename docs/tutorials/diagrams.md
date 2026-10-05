@@ -4,8 +4,22 @@ The diagram editor lets you create flowcharts, system diagrams, and other schema
 
 ## Opening the diagram editor
 
-1. Click the **Embed** dropdown in the toolbar.
+1. Click the **Diagrams** dropdown in the toolbar.
 2. Select **Diagram**.
+
+The same menu has the other diagram tools:
+
+- **TikZ Diagram**, for diagrams you also want as TikZ code
+- **Feynman Diagram** (see [Feynman Diagrams](/tutorials/feynman-diagrams))
+- **Circuit Diagram** (see [Circuit Diagrams](/tutorials/circuit-diagrams))
+- **Logic Diagram** (see [Logic Diagrams](/tutorials/logic-diagrams))
+- **Free-Body Diagram** (see [Free-Body Diagrams](/tutorials/free-body-diagrams))
+- **Venn Diagram**, shading the regions a set expression names (see [Venn Diagrams](/tutorials/venn-diagrams))
+- **Timing Diagram**, waveforms and register fields drawn by WaveDrom (see [Timing Diagrams](/tutorials/timing-diagrams))
+- **Geometry**, ruler-and-compass constructions whose points can be dragged (see [Geometry Constructions](/tutorials/geometry-constructions))
+- **Molecule**, a 3D structure to turn while presenting (see [Molecules](/tutorials/molecules))
+- **Periodic Table**, showing each element's details and electrons as you point at it (see [Periodic Table](/tutorials/periodic-table))
+- **Spherical Harmonics**, drawn as lobes, a colored sphere, a vibrating shape, a sky map or a table, to turn while presenting (see [Spherical Harmonics](/tutorials/spherical-harmonics))
 
 The diagram editor opens as a full-screen modal with a dark canvas and a tool panel on the left.
 

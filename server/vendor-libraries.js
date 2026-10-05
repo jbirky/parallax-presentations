@@ -18,7 +18,8 @@ module.exports = {
       files: ['dist/reset.css', 'dist/reveal.css', 'dist/reveal.js', 'dist/theme/**',
         'plugin/notes/notes.js', 'plugin/highlight/highlight.js'],
     },
-    katex: { files: ['dist/katex.min.js', 'dist/katex.min.css', 'dist/fonts/*.woff2'] },
+    // mhchem adds \ce and \pu, for chemical equations and units
+    katex: { files: ['dist/katex.min.js', 'dist/katex.min.css', 'dist/fonts/*.woff2', 'dist/contrib/mhchem.min.js'] },
     '@highlightjs/cdn-assets': { files: ['highlight.min.js', 'styles/*.min.css'] },
     gsap: { files: ['dist/gsap.min.js'] },
     p5: { files: ['lib/p5.min.js'] },
@@ -42,6 +43,8 @@ module.exports = {
     // for links in people's own embeds to cdnjs's pdf.js
     'pdfjs-dist': { files: ['build/pdf.min.mjs', 'build/pdf.worker.min.mjs', 'legacy/build/pdf.min.mjs', 'legacy/build/pdf.worker.min.mjs'] },
     jsxgraph: { files: ['distrib/jsxgraphcore.js', 'distrib/jsxgraph.css'] },
+    // Draws molecule elements (moleculeViewer.js)
+    '3dmol': { files: ['build/3Dmol-min.js'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },
   },

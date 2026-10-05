@@ -47,7 +47,9 @@ export function installAnnotations(config) {
   // What ink goes on: a scrolling slide's canvas (utils/scrollingSlides.js), or the slide
   const scrollerOf = section => section && section.querySelector(':scope > .slide-scroller')
   const surfaceOf = section => scrollerOf(section)?.querySelector(':scope > .slide-scroll-inner') || section
+  const widthOf = section => Number(section.getAttribute('data-scroll-width')) || W
   const heightOf = section => Number(section.getAttribute('data-scroll-height')) || H
+  const sideways = scroller => scroller.getAttribute('data-scroll') === 'x'
 
   // ── Drawing ──────────────────────────────────────────────────────────────
   function layerOf(section) {
@@ -56,7 +58,7 @@ export function installAnnotations(config) {
     if (!svg) {
       svg = document.createElementNS(NS, 'svg')
       svg.setAttribute('class', 'pp-ink')
-      svg.setAttribute('viewBox', `0 0 ${W} ${heightOf(section)}`)
+      svg.setAttribute('viewBox', `0 0 ${widthOf(section)} ${heightOf(section)}`)
       surface.appendChild(svg)
     }
     return svg
@@ -90,7 +92,7 @@ export function installAnnotations(config) {
   function toSlide(e, section) {
     const r = surfaceOf(section).getBoundingClientRect()
     const round = v => Math.round(v * 10) / 10
-    return [round((e.clientX - r.left) * W / r.width), round((e.clientY - r.top) * heightOf(section) / r.height)]
+    return [round((e.clientX - r.left) * widthOf(section) / r.width), round((e.clientY - r.top) * heightOf(section) / r.height)]
   }
   // Ramer–Douglas–Peucker, to keep strokes small
   function simplify(points, tolerance) {
@@ -294,33 +296,37 @@ export function installAnnotations(config) {
     }, { passive: false })
   }
   // The layer is over a scrolling slide's canvas, so it scrolls the canvas for
-  // the wheel, and for a finger dragged up or down once a stylus draws. A
-  // sideways drag still reaches reveal.js, to change slides.
+  // the wheel, and for a finger dragged the way the canvas scrolls once a
+  // stylus draws. A drag the other way still reaches reveal.js: on a slide
+  // that scrolls down, a sideways drag changes slides.
   shield.addEventListener('wheel', e => {
     const scroller = scrollerOf(currentPage())
     if (!scroller) return
     e.preventDefault()
-    scroller.scrollTop += e.deltaY
+    if (sideways(scroller)) scroller.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+    else scroller.scrollTop += e.deltaY
   }, { passive: false })
   let drag = null
   shield.addEventListener('touchstart', e => {
     const scroller = scrollerOf(currentPage())
     const t = e.touches[0]
     drag = tool && penSeen && scroller && e.touches.length === 1 && t.touchType !== 'stylus'
-      ? { scroller, x: t.clientX, y: t.clientY, vertical: null } : null
+      ? { scroller, x: t.clientX, y: t.clientY, along: null } : null
   }, { passive: true })
   shield.addEventListener('touchmove', e => {
     if (!drag) return
-    const t = e.touches[0]
-    if (drag.vertical === null) {
+    const t = e.touches[0], x = sideways(drag.scroller)
+    if (drag.along === null) {
       const dx = t.clientX - drag.x, dy = t.clientY - drag.y
       if (Math.hypot(dx, dy) < 8) return
-      drag.vertical = Math.abs(dy) > Math.abs(dx)
+      drag.along = x ? Math.abs(dx) > Math.abs(dy) : Math.abs(dy) > Math.abs(dx)
     }
-    if (!drag.vertical) return
+    if (!drag.along) return
     e.stopPropagation()
-    const scale = drag.scroller.clientHeight / (drag.scroller.getBoundingClientRect().height || 1)
-    drag.scroller.scrollTop -= (t.clientY - drag.y) * scale
+    const rect = drag.scroller.getBoundingClientRect()
+    if (x) drag.scroller.scrollLeft -= (t.clientX - drag.x) * drag.scroller.clientWidth / (rect.width || 1)
+    else drag.scroller.scrollTop -= (t.clientY - drag.y) * drag.scroller.clientHeight / (rect.height || 1)
+    drag.x = t.clientX
     drag.y = t.clientY
   }, { passive: true })
   shield.addEventListener('touchend', () => { drag = null })

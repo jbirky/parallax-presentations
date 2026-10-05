@@ -138,6 +138,34 @@ describe('the self-hosted version', () => {
     assert.equal((await upload('part.step', 'ISO-10303-21;')).status, 400)
   })
 
+  it('takes molecular structures, served as downloads a sandboxed deck can read', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'Molecules' })).body
+    const upload = (name, text) => {
+      const form = new FormData()
+      form.append('file', new Blob([text], { type: 'text/plain' }), name)
+      return fetch(`${base}/api/presentations/${id}/upload`, { method: 'POST', body: form })
+    }
+    const files = [
+      ['1UBQ.pdb', 'HEADER    CHROMOSOMAL PROTEIN\nATOM      1  N   MET A   1      27.340  24.430   2.614  1.00  9.67           N\nEND\n'],
+      ['4V6X.cif', 'data_4V6X\n_struct.title "Ribosome"\n'],
+      ['caffeine.sdf', '2519\n  -OEChem-\n\n  0  0  0     0  0  0  0  0  0999 V2000\nM  END\n$$$$\n'],
+      ['water.xyz', '3\nwater\nO 0 0 0\nH 0.76 0.59 0\nH -0.76 0.59 0\n'],
+      ['ligand.mol2', '@<TRIPOS>MOLECULE\nligand\n'],
+    ]
+    for (const [name, text] of files) {
+      const res = await upload(name, text)
+      assert.equal(res.status, 200, name)
+      const { url } = await res.json()
+      const file = await fetch(base + url, { headers: { Origin: 'null' } })
+      assert.equal(file.status, 200)
+      assert.equal(file.headers.get('access-control-allow-origin'), '*')
+      // Never shown as a page on this site
+      assert.equal(file.headers.get('content-type'), 'application/octet-stream')
+      assert.equal(file.headers.get('content-disposition'), 'attachment')
+      assert.equal(await file.text(), text)
+    }
+  })
+
   it('answers only this computer, and no other site’s pages', async () => {
     const http = require('http')
     // A raw request, since fetch won't set Host

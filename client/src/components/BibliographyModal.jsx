@@ -1,14 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect } from 'react'
-import { parseBibtex, parseAuthors, formatAuthorsShort, formatCitation } from '../utils/bibtexParser'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { parseBibtex, parseAuthors, formatAuthorsShort } from '../utils/bibtexParser'
+import { splitDuplicates, workFinder, duplicatesInLibrary } from '../utils/bibDuplicates'
 import { api } from '../utils/api'
 
-export default function BibliographyModal({ bibliography = [], citationStyle = 'numbered', onUpdate, onInsertCitation, onClose }) {
-  const [tab, setTab] = useState('library') // library | import | zotero
+// Lowercase, without accents, whether typed (ö) or left as LaTeX (\"o, {\"o})
+const foldForSearch = s => String(s ?? '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/\\[`'^"~=.]/g, '').replace(/[{}]/g, '')
+  .toLowerCase()
+
+// Whether a library entry has every word of the query somewhere in its key,
+// title, authors, year, journal or book title, in any order
+export function matchesLibrarySearch(entry, query) {
+  const words = foldForSearch(query).split(/\s+/).filter(Boolean)
+  const text = foldForSearch([entry.key, entry.title, entry.author, entry.year, entry.journal, entry.booktitle].join(' '))
+  return words.every(w => text.includes(w))
+}
+
+export default function BibliographyModal({ bibliography = [], citationStyle = 'numbered', citationOrder = 'presentation', citationIndex = null, markerCounts = { stale: 0, unlinked: 0 }, onUpdate, onInsertCitation, onRenumber, onClose }) {
+  const [tab, setTab] = useState('library') // library | import | zotero | settings
   const [bibtexInput, setBibtexInput] = useState('')
   const [importError, setImportError] = useState(null)
+  const [importNote, setImportNote] = useState(null) // what an import skipped, shown on the Library tab
+  const [librarySearch, setLibrarySearch] = useState('')
   const fileRef = useRef(null)
 
   // Zotero state
@@ -32,15 +49,15 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
         setImportError('No valid BibTeX entries found')
         return
       }
-      const existing = new Set(bibliography.map(e => e.key))
-      const newEntries = entries.filter(e => !existing.has(e.key))
-      if (newEntries.length === 0) {
-        setImportError('All entries already exist in bibliography')
+      const { kept, skipped } = splitDuplicates(entries, bibliography)
+      if (kept.length === 0) {
+        setImportError(`${entries.length === 1 ? 'That entry is' : `All ${entries.length} entries are`} already in your library (the same key, DOI, or title and year)`)
         return
       }
-      onUpdate({ bibliography: [...bibliography, ...newEntries] })
+      onUpdate({ bibliography: [...bibliography, ...kept] })
       setBibtexInput('')
       setImportError(null)
+      setImportNote(skipped.length ? { added: kept.length, skipped } : null)
       setTab('library')
     } catch (e) {
       setImportError('Failed to parse BibTeX: ' + e.message)
@@ -137,13 +154,13 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
     }
   }
 
-  function importZoteroItem(item) {
+  function zoteroEntry(item) {
     const d = item.data
     const authors = (d.creators || [])
       .filter(c => c.creatorType === 'author')
       .map(c => c.lastName ? `${c.lastName}, ${c.firstName || ''}` : c.name || '')
       .join(' and ')
-    const entry = {
+    return {
       type: mapZoteroType(d.itemType),
       key: d.citationKey || item.key,
       title: d.title || '',
@@ -156,37 +173,18 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
       url: d.url || '',
       booktitle: d.proceedingsTitle || d.bookTitle || '',
     }
-    const existing = new Set(bibliography.map(e => e.key))
-    if (existing.has(entry.key)) return
+  }
+
+  function importZoteroItem(item) {
+    const entry = zoteroEntry(item)
+    if (findWork(entry)) return
     onUpdate({ bibliography: [...bibliography, entry] })
   }
 
   function importAllZoteroItems() {
-    const existing = new Set(bibliography.map(e => e.key))
-    const newEntries = zoteroItems
-      .map(item => {
-        const d = item.data
-        const authors = (d.creators || [])
-          .filter(c => c.creatorType === 'author')
-          .map(c => c.lastName ? `${c.lastName}, ${c.firstName || ''}` : c.name || '')
-          .join(' and ')
-        return {
-          type: mapZoteroType(d.itemType),
-          key: d.citationKey || item.key,
-          title: d.title || '',
-          author: authors,
-          year: d.date ? d.date.match(/\d{4}/)?.[0] || '' : '',
-          journal: d.publicationTitle || '',
-          volume: d.volume || '',
-          pages: d.pages || '',
-          doi: d.DOI || '',
-          url: d.url || '',
-          booktitle: d.proceedingsTitle || d.bookTitle || '',
-        }
-      })
-      .filter(e => !existing.has(e.key))
-    if (newEntries.length > 0) {
-      onUpdate({ bibliography: [...bibliography, ...newEntries] })
+    const { kept } = splitDuplicates(zoteroItems.map(zoteroEntry), bibliography)
+    if (kept.length > 0) {
+      onUpdate({ bibliography: [...bibliography, ...kept] })
     }
   }
 
@@ -195,10 +193,23 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
     return map[zt] || 'misc'
   }
 
-  const isInBib = (key) => bibliography.some(e => e.key === key)
+  // The library entry that is the same paper as a given one, whatever its key;
+  // and, for each later copy of a paper already in the library, its first's key
+  const findWork = useMemo(() => workFinder(bibliography), [bibliography])
+  const repeats = useMemo(() => duplicatesInLibrary(bibliography), [bibliography])
+
+  // While searching, the list skips entries that don't match but keeps each
+  // one's place in the whole library, which the arrows go by
+  const searching = librarySearch.trim() !== ''
+  const matchCount = searching ? bibliography.filter(e => matchesLibrarySearch(e, librarySearch)).length : bibliography.length
+
+  // Cited entries and the label each one carries, keyed so the library list can
+  // show an entry's index — or that it has none yet.
+  const indexed = new Map((citationIndex?.entries || []).map(e => [e.key, citationIndex.labelByKey[e.key]]))
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+    // Held at the top, not centered, so the search box stays put as results shrink the list
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '7.5vh', background: 'rgba(0,0,0,0.5)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, width: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
 
@@ -206,19 +217,16 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Bibliography</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <select className="prop-input" value={citationStyle}
-              onChange={e => onUpdate({ citationStyle: e.target.value })}
-              style={{ fontSize: 12, padding: '4px 8px' }}>
-              <option value="numbered">[1], [2], [3]</option>
-              <option value="author-year">(Author, Year)</option>
-            </select>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {indexed.size} of {bibliography.length} cited
+            </span>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
           </div>
         </div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          {[['library', 'Library'], ['import', 'Import BibTeX'], ['zotero', 'Zotero']].map(([id, label]) => (
+          {[['library', 'Library'], ['import', 'Import BibTeX'], ['zotero', 'Zotero'], ['settings', 'Settings']].map(([id, label]) => (
             <button key={id}
               onClick={() => setTab(id)}
               style={{ flex: 1, padding: '8px 0', fontSize: 13, border: 'none', cursor: 'pointer',
@@ -238,6 +246,51 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
           {/* Library tab */}
           {tab === 'library' && (
             <>
+              {importNote && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 12, padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  <div style={{ flex: 1 }}>
+                    Added {importNote.added} {importNote.added === 1 ? 'entry' : 'entries'}.
+                    Skipped {importNote.skipped.length} already in your library:{' '}
+                    {importNote.skipped.slice(0, 3).map(({ entry, of }) => `“${entry.title || entry.key}”${of.key !== entry.key ? ` (as ${of.key})` : ''}`).join(', ')}
+                    {importNote.skipped.length > 3 ? `, and ${importNote.skipped.length - 3} more` : ''}.
+                  </div>
+                  <button onClick={() => setImportNote(null)} aria-label="Dismiss"
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>&times;</button>
+                </div>
+              )}
+              {bibliography.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <input className="prop-input" type="search" value={librarySearch}
+                    onChange={e => setLibrarySearch(e.target.value)}
+                    onKeyDown={e => {
+                      // Esc clears the search and goes no further: the editor
+                      // would stop editing the text box that Cite writes into
+                      if (e.key === 'Escape' && librarySearch) { setLibrarySearch(''); e.stopPropagation() }
+                    }}
+                    placeholder="Search title, author, year, key..."
+                    aria-label="Search the library"
+                    style={{ flex: 1, padding: '6px 10px', fontSize: 12 }} />
+                  {searching && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                      {matchCount} of {bibliography.length}
+                    </span>
+                  )}
+                </div>
+              )}
+              {repeats.size > 0 && (
+                <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+                  <span style={{ padding: '1px 6px', borderRadius: 3, background: 'rgba(245,158,11,0.18)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    {repeats.size} duplicate{repeats.size === 1 ? '' : 's'}
+                  </span>{' '}
+                  The same paper is in the library more than once, so it can be listed twice in the
+                  references. Remove the copies marked below.
+                </div>
+              )}
+              {bibliography.length > 0 && matchCount === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                  No entries match &ldquo;{librarySearch.trim()}&rdquo;
+                </div>
+              )}
               {bibliography.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                   <p style={{ fontSize: 14, marginBottom: 8 }}>No bibliography entries yet</p>
@@ -246,11 +299,14 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {bibliography.map((entry, i) => {
+                    if (searching && !matchesLibrarySearch(entry, librarySearch)) return null
                     const authors = parseAuthors(entry.author)
                     return (
                       <div key={entry.key} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
-                        <div style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700, minWidth: 28, textAlign: 'center', paddingTop: 2 }}>
-                          {citationStyle === 'numbered' ? `[${i + 1}]` : ''}
+                        <div style={{ fontSize: 13, fontWeight: 700, minWidth: 34, textAlign: 'center', paddingTop: 2,
+                          color: indexed.has(entry.key) ? 'var(--accent)' : 'var(--text-muted)' }}
+                          title={indexed.has(entry.key) ? 'Cited in this presentation' : 'Not cited yet — it gets no index and stays off the references slide'}>
+                          {indexed.get(entry.key) || '—'}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -262,23 +318,31 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                           </div>
                           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1, fontFamily: 'monospace' }}>
                             @{entry.type}{'{' + entry.key + '}'}
+                            {repeats.has(entry.key) && (
+                              <span title="The same DOI, or the same title and year: remove this copy so the paper is listed once in the references"
+                                style={{ marginLeft: 6, padding: '0 5px', borderRadius: 3, background: 'rgba(245,158,11,0.18)', color: 'var(--text-primary)' }}>
+                                duplicate of {repeats.get(entry.key)}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
                           {onInsertCitation && (
-                            <button onClick={() => onInsertCitation(entry, i)}
+                            <button onClick={() => onInsertCitation(entry)}
                               title="Insert citation at cursor"
                               style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 4, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
                               Cite
                             </button>
                           )}
                           <div style={{ display: 'flex', gap: 2 }}>
-                            <button onClick={() => moveEntry(i, -1)} disabled={i === 0}
-                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: i === 0 ? 0.3 : 1 }}>
+                            <button onClick={() => moveEntry(i, -1)} disabled={searching || i === 0}
+                              title={searching ? 'Clear the search to reorder' : undefined}
+                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: searching || i === 0 ? 0.3 : 1 }}>
                               &uarr;
                             </button>
-                            <button onClick={() => moveEntry(i, 1)} disabled={i === bibliography.length - 1}
-                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: i === bibliography.length - 1 ? 0.3 : 1 }}>
+                            <button onClick={() => moveEntry(i, 1)} disabled={searching || i === bibliography.length - 1}
+                              title={searching ? 'Clear the search to reorder' : undefined}
+                              style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', color: 'var(--text-muted)', opacity: searching || i === bibliography.length - 1 ? 0.3 : 1 }}>
                               &darr;
                             </button>
                             <button onClick={() => removeEntry(entry.key)}
@@ -294,10 +358,90 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
               )}
               {bibliography.length > 0 && (
                 <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)', fontSize: 11, color: 'var(--text-muted)' }}>
-                  A "References" slide will be auto-generated at the end of your presentation.
+                  Only cited entries are indexed and listed on the auto-generated
+                  &ldquo;References&rdquo; slide. The arrows order the library itself —
+                  numbering follows <strong>{citationOrder === 'alphabetical' ? 'alphabetical order' : 'presentation order'}</strong>,
+                  set under Settings.
                 </div>
               )}
             </>
+          )}
+
+          {/* Settings tab */}
+          {tab === 'settings' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Citation style</div>
+                <select className="prop-input" value={citationStyle}
+                  onChange={e => onUpdate({ citationStyle: e.target.value })}
+                  style={{ fontSize: 12, padding: '5px 8px', width: '100%' }}>
+                  <option value="numbered">Numbered — [1], [2], [3]</option>
+                  <option value="author-year">Author &amp; year — (Smith et al., 2020)</option>
+                </select>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Index order</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[
+                    ['presentation', 'Presentation order', 'Numbered as citations first appear, slide by slide and top to bottom within a slide.'],
+                    ['alphabetical', 'Alphabetical order', 'Numbered by first author, then year, then title.'],
+                  ].map(([value, label, help]) => (
+                    <label key={value} style={{ display: 'flex', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
+                      background: citationOrder === value ? 'rgba(99,102,241,0.12)' : 'var(--bg-card)',
+                      border: `1px solid ${citationOrder === value ? 'rgba(99,102,241,0.45)' : 'var(--border)'}` }}>
+                      <input type="radio" name="citation-order" value={value} checked={citationOrder === value}
+                        onChange={() => onUpdate({ citationOrder: value })}
+                        style={{ accentColor: 'var(--accent)', marginTop: 2, cursor: 'pointer' }} />
+                      <span>
+                        <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>{label}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{help}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
+                  Index &middot; {indexed.size} cited of {bibliography.length} in the library
+                </div>
+                {indexed.size === 0 ? (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                    Nothing is cited yet, so nothing is indexed and no references slide is generated.
+                    Cite an entry from the Library tab to give it a number.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 200, overflowY: 'auto' }}>
+                    {(citationIndex?.entries || []).map(entry => (
+                      <div key={entry.key} style={{ display: 'flex', gap: 8, fontSize: 11, padding: '4px 8px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 5 }}>
+                        <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0 }}>
+                          {citationIndex.labelByKey[entry.key]}
+                        </span>
+                        <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {formatAuthorsShort(parseAuthors(entry.author))}{entry.year ? `, ${entry.year}` : ''} — {entry.title || 'Untitled'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {onRenumber && (markerCounts.stale > 0 || markerCounts.unlinked > 0) && (
+                <div style={{ padding: '10px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    {markerCounts.stale > 0 && <>{markerCounts.stale} marker{markerCounts.stale === 1 ? '' : 's'} in your slides still show an older number. </>}
+                    {markerCounts.unlinked > 0 && <>{markerCounts.unlinked} marker{markerCounts.unlinked === 1 ? '' : 's'} were written before markers carried their entry, so they cannot follow the index. </>}
+                    Presenting and exporting always use the index above; this rewrites what is stored in the slides to match.
+                  </div>
+                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => onRenumber({ linkLegacy: markerCounts.unlinked > 0 })}>
+                    {markerCounts.unlinked > 0 ? 'Link and renumber markers' : 'Renumber markers'}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Import BibTeX tab */}
@@ -409,8 +553,8 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {zoteroItems.map(item => {
                           const d = item.data
-                          const itemKey = d.citationKey || item.key
-                          const added = isInBib(itemKey)
+                          const inLibrary = findWork(zoteroEntry(item))
+                          const added = !!inLibrary
                           const authorList = (d.creators || []).filter(c => c.creatorType === 'author')
                           const authorStr = authorList.length > 2
                             ? `${authorList[0].lastName} et al.`
@@ -428,13 +572,14 @@ export default function BibliographyModal({ bibliography = [], citationStyle = '
                               </div>
                               <button onClick={() => importZoteroItem(item)}
                                 disabled={added}
+                                title={added && inLibrary.key !== (d.citationKey || item.key) ? `Already in your library as ${inLibrary.key}` : undefined}
                                 style={{
                                   background: added ? 'var(--success)' : 'var(--accent)',
                                   color: 'white', border: 'none', borderRadius: 4,
                                   padding: '4px 10px', fontSize: 11, cursor: added ? 'default' : 'pointer',
                                   fontWeight: 500, flexShrink: 0, opacity: added ? 0.7 : 1,
                                 }}>
-                                {added ? 'Added' : 'Import'}
+                                {!added ? 'Import' : inLibrary.key === (d.citationKey || item.key) ? 'Added' : 'In library'}
                               </button>
                             </div>
                           )

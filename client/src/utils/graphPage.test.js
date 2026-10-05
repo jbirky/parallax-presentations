@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
-import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, graphSnapshotContent, GRAPH_DECK_SCRIPT } from './graphPage'
+import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, defaultGraph3d, graphSnapshotContent, GRAPH_DECK_SCRIPT } from './graphPage'
 import { generateRevealHTML } from './generateHTML'
 
 const graph = (expressions, extra = {}) => ({
@@ -96,3 +96,39 @@ describe('graphs in decks', () => {
     expect(html).not.toContain('data-action="next"')
   })
 })
+
+describe('graphs with fields', () => {
+  it('carry the field numerics in the page’s one script', () => {
+    const html = graphPageHtml(graph([{ id: 'a', text: "x' = y" }, { id: 'b', text: "y' = -sin x" }]))
+    expect(script(html)).toContain('function graphFields')
+    expect(() => new Function(script(html))).not.toThrow()
+    expect(config(html).expressions[0].text).toBe("x' = y")
+  })
+
+  it('step in their overlays at their own steps', () => {
+    const el = graph([{ id: 'a', text: "x' = y", step: 1, field: { equilibria: true, separatrices: true, steps: { equilibria: 2, separatrices: 3 } } }, { id: 'b', text: "y' = -x" }])
+    expect(graphSteps(el)).toEqual([1, 2, 3])
+    expect(graphSteps({ ...el, expressions: [{ ...el.expressions[0], hidden: true }] })).toEqual([])
+  })
+})
+
+describe('3D graphs', () => {
+  it('start as a surface with sliders, in a box, with a camera', () => {
+    const g = defaultGraph3d(true)
+    expect(g).toMatchObject({ dims: 3, camera: { turn: 35, tilt: 25 }, theme: 'dark', view: { zMin: -10, zMax: 10 } })
+    expect(g.expressions[0].text).toBe('z = a sin(bx) cos(by)')
+  })
+
+  it('carry their box and camera to the page, kept in range', () => {
+    const el = { ...graph([{ id: 'a', text: 'z = x y' }]), dims: 3, view: { xMin: -2, xMax: 2, yMin: -3, yMax: 3, zMin: 5, zMax: 1 }, camera: { turn: 10, tilt: 120 } }
+    const c = graphConfig(el)
+    expect(c.view).toEqual({ xMin: -2, xMax: 2, yMin: -3, yMax: 3, zMin: -10, zMax: 10 })
+    expect(c.camera).toEqual({ turn: 10, tilt: 89 })
+    expect(graphConfig(graph([{ id: 'a', text: 'y = x' }])).view.zMin).toBeUndefined()
+    const html = graphPageHtml(el)
+    expect(script(html)).toContain('function graph3d')
+    expect(() => new Function(script(html))).not.toThrow()
+    expect(config(html).dims).toBe(3)
+  })
+})
+

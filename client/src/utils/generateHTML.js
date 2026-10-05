@@ -3,18 +3,31 @@
 
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
-import { getReferencedEntries } from './bibtexParser'
+import { buildCitationIndex, resolveCitationsInHtml, CITATION_CSS } from './citationIndex'
+import { webLink } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
 import { modelViewerHtml } from './modelViewer'
+import { moleculeViewerHtml } from './moleculeViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
+import { equationConfigAttr, equationStepMarkers, equationSteps, equationDeckScript, equationPrintScript, hasEquations } from './equationTerms'
 import { tikzDiagramSvg } from './tikzDiagram'
+import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman } from './feynmanDiagram'
+import { circuitSvg, circuitStepMarkers, circuitSteps, circuitStepAt, hasCircuits } from './circuitDiagram'
+import { logicSvg, logicStepMarkers, logicSteps, logicStepAt, hasLogic } from './logicDiagram'
+import { freebodySvg, freebodyStepMarkers, freebodySteps, freebodyStepAt, hasFreebody } from './freebodyDiagram'
+import { vennSvg, vennStepMarkers, vennSteps, vennStepAt, hasVenn } from './vennDiagram'
+import { timingSvg, timingStepMarkers, timingSteps, timingStepAt, hasTiming } from './timingDiagram'
+import { geometrySvg, geometryDeckHtml, geometryDeckScript, geometryStepMarkers, geometrySteps, geometryStepAt, hasGeometry } from './geometryDiagram'
+import { periodicSvg, periodicDeckHtml, periodicStepMarkers, periodicSteps, periodicStepAt, hasPeriodic, periodicDeckScript } from './periodicTable'
+import { harmonicsDeckAttrs, harmonicsStepMarkers, harmonicsSteps, harmonicsStepAt, hasHarmonics, harmonicsDeckScript, harmonicsPrintScript } from './harmonicsView'
+import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
-import { getCanvasHeight, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
+import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -83,6 +96,27 @@ function sanitizeUrl(url) {
   if (/^(javascript|vbscript):/i.test(trimmed)) return ''
   if (/^data:/i.test(trimmed) && !/^data:(image|video|audio)\//i.test(trimmed)) return ''
   return sanitizeAttr(trimmed)
+}
+
+// What can carry a citation: a caption under it, or a number on it that the
+// slide's side references list
+const CITABLE_TYPES = ['image', 'molecule']
+
+function citationParts(el, sideCitations) {
+  const hasCite = el.citationText || el.citationLink
+  const citeCaption = !!hasCite && (el.citationMode || 'caption') === 'caption'
+  let capHtml = ''
+  if (citeCaption) {
+    const align = cssValue(el.citationAlign) || 'left'
+    const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const cc = el.citationColor ? `color:${cssValue(el.citationColor)};` : ''
+    capHtml = el.citationLink
+      ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${sanitizeUrl(el.citationLink)}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
+      : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
+  }
+  const sIdx = hasCite && el.citationMode === 'side' ? sideCitations.findIndex(c => c.id === el.id) : -1
+  const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
+  return { citeCaption, capHtml, sup }
 }
 
 // In a style attribute or a rule. Parentheses stay, for rgba(…) and gradients.
@@ -166,6 +200,38 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // open; opts.customFonts are the fonts the deck may use, as /api/fonts lists
 // them; opts.pluginSandbox(el) gives a plugin element's sandbox page (the
 // editor's plugin registry otherwise)
+// The references slide's heading and list: the entries the deck cites, in the
+// order and with the numbers the citation index gives them
+function referencesHtml(citations, markerColor) {
+  const items = citations.entries.map(entry => {
+    const year = entry.year || ''
+    const journal = entry.journal || entry.booktitle || ''
+    const vol = entry.volume || ''
+    const pages = entry.pages || ''
+    const doi = entry.doi || ''
+    let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`
+    // An organisation's name is braced, as BibTeX writes one
+    line += `${escapeHtml(String(entry.author || '').replace(/[{}]/g, ''))}`
+    if (year) line += ` (${escapeHtml(year)})`
+    line += `. ${escapeHtml(entry.title || '')}.`
+    if (journal) line += ` <em>${escapeHtml(journal)}</em>`
+    if (vol) line += `, ${escapeHtml(vol)}`
+    if (pages) line += `, ${escapeHtml(pages)}`
+    if (journal || vol || pages) line += '.'
+    if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
+    else if (webLink(entry.url)) line += ` <a href="${sanitizeUrl(webLink(entry.url).href)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">${escapeHtml(webLink(entry.url).site)}</a>`
+    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
+  }).join('\n          ')
+  return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+          ${items}
+        </div>`
+}
+
+// Whether any text in the deck holds a citation marker, which needs CITATION_CSS
+const hasCitationMarkers = presentation => (presentation.slides || [])
+  .some(slide => (slide.elements || []).some(el => typeof el.content === 'string' && el.content.includes('data-cite')))
+
 export function generateRevealHTML(presentation, opts = {}) {
   // Numbers: they're written into pages' scripts and styles
   const slideW = Number(presentation.slideWidth) || 960
@@ -178,6 +244,9 @@ export function generateRevealHTML(presentation, opts = {}) {
   const showTimeWidget = footerTimeMode !== 'none'
   const laserPointer = presentation.laserPointer || 'off'
   const bibliography = presentation.bibliography || []
+  // Markers keep their entry's key and a cached label, refreshed here, so a
+  // deck is never numbered by a stale one (utils/citationIndex.js)
+  const citations = buildCitationIndex(presentation)
   const pageNumberFormat = presentation.pageNumberFormat || 'c/t'
   // Names in library paths
   const theme = /^[\w-]+$/.test(presentation.theme || '') ? presentation.theme : 'black'
@@ -212,12 +281,14 @@ export function generateRevealHTML(presentation, opts = {}) {
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
-      .filter(el => el.type === 'image' && (el.citationText || el.citationLink) && el.citationMode === 'side')
+      .filter(el => CITABLE_TYPES.includes(el.type) && (el.citationText || el.citationLink) && el.citationMode === 'side')
       .map(el => ({ id: el.id, text: el.citationText, link: el.citationLink }))
 
     const clickTargets = visibilityTargets(slide)
     const canvasH = getCanvasHeight(slide, slideH)
-    const scrolling = canvasH > slideH
+    const canvasW = getCanvasWidth(slide, slideW, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
+    const scrolling = axis !== null
     const sortedElements = (slide.elements || [])
       .slice()
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
@@ -244,7 +315,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${el.content || ''}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -257,21 +328,8 @@ export function generateRevealHTML(presentation, opts = {}) {
           const expandAttr = el.clickToExpand ? ' data-expand="true"' : ''
           const popupAttr = el.popupText ? ` data-popup="${el.popupText.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" data-popup-pos="${el.popupPosition || 'below'}" data-popup-fs="${el.popupFontSize || 15}"` : ''
           const interactiveCursor = (el.clickToExpand || el.popupText) ? 'cursor:pointer;' : ''
-          const hasCite = el.citationText || el.citationLink
-          const citeCaption = hasCite && (el.citationMode || 'caption') === 'caption'
-          const citeSide = hasCite && el.citationMode === 'side'
+          const { citeCaption, capHtml, sup } = citationParts(el, sideCitations)
           const cStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
-          let capHtml = ''
-          if (citeCaption) {
-            const align = cssValue(el.citationAlign) || 'left'
-            const ct = (el.citationText || el.citationLink || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-            const cc = el.citationColor ? `color:${cssValue(el.citationColor)};` : ''
-            capHtml = el.citationLink
-              ? `<div class="image-caption" style="text-align:${align};${cc}"><a href="${sanitizeUrl(el.citationLink)}" target="_blank" rel="noopener" style="${cc}">${ct}</a></div>`
-              : `<div class="image-caption" style="text-align:${align};${cc}">${ct}</div>`
-          }
-          const sIdx = citeSide ? sideCitations.findIndex(c => c.id === el.id) : -1
-          const sup = sIdx >= 0 ? `<span class="cite-sup">${sIdx + 1}</span>` : ''
           const clipOpen = citeCaption ? `<div style="width:100%;height:100%;overflow:hidden;position:relative;${borderRadiusStyle}">` : ''
           const clipClose = citeCaption ? '</div>' : ''
           if (el.imageW != null) {
@@ -289,6 +347,52 @@ export function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'tikz') {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
+        if (el.type === 'feynman') {
+          // Every part, shown from its step by the deck's Feynman script; labels can reach past its box
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'circuit') {
+          // Every part, and every step's current, shown at its step by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${circuitSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'logic') {
+          // Every part, and each step's signals, shown at its step by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'freebody') {
+          // Every force, drawn in at its step by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'venn') {
+          // Every layer, number and caption, each shown at its steps by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'timing') {
+          // Every waveform, revealed to each step's cycle by the same script
+          const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${timingSvg(el, { deck: fxId })}</div>`
+        }
+        if (el.type === 'geometry') {
+          // The figure as the slide opens, which the deck's geometry script
+          // redraws as its steps come and its points are dragged
+          const gm = geometryDeckHtml(el)
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${gm.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${gm.svg}</div>`
+        }
+        if (el.type === 'periodic') {
+          // The table as it rests, which the deck's periodic script makes follow
+          // the pointer and the slide's steps
+          const pt = periodicDeckHtml(el)
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
+        }
+        if (el.type === 'harmonics') {
+          // An empty box the deck's harmonics script draws into, turns and steps
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
+        }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -302,6 +406,12 @@ export function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'model') {
           const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+        }
+        if (el.type === 'molecule') {
+          const srcdoc = moleculeViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const { citeCaption, capHtml, sup } = citationParts(el, sideCitations)
+          const mStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
@@ -415,6 +525,11 @@ export function generateRevealHTML(presentation, opts = {}) {
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
+        if (el.type === 'equation') {
+          // Drawn by the deck's equation script; its labels can reach past its box
+          const eqId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`
+        }
         if (el.type === 'video') {
           const src = absoluteSrc(sanitizeUrl(el.src))
           const attrs = []
@@ -520,7 +635,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = pluginSandbox(el)
@@ -543,7 +658,7 @@ export function generateRevealHTML(presentation, opts = {}) {
       const items = sideCitations.map((c, i) => {
         const t = (c.text || c.link || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
         const content = c.link
-          ? `<a href="${c.link.replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${t}</a>`
+          ? `<a href="${sanitizeUrl(c.link)}" target="_blank" rel="noopener">${t}</a>`
           : t
         return `${i + 1}. ${content}`
       }).join('&ensp;&middot;&ensp;')
@@ -596,10 +711,10 @@ export function generateRevealHTML(presentation, opts = {}) {
     const perSlideTransition = slide.transition ? ` data-transition="${isCustomTrans ? 'none' : sanitizeAttr(slide.transition)}"` : ''
     const customTransAttr = isCustomTrans ? ` data-custom-transition="${slide.transition}"` : ''
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : ''
-    const scrollAttr = scrolling ? ` data-scroll-height="${canvasH}"` : ''
+    const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasH, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -615,39 +730,14 @@ export function generateRevealHTML(presentation, opts = {}) {
     return `    <section>\n${sections}\n    </section>`
   }).join('\n')
 
-  if (bibliography.length > 0) {
-    const referencedEntries = getReferencedEntries(bibliography, presentation.slides)
-
-    if (referencedEntries.length > 0) {
-      const refItems = referencedEntries.map((entry, i) => {
-        const authors = entry.author || ''
-        const year = entry.year || ''
-        const title = escapeHtml(entry.title || '')
-        const journal = entry.journal || entry.booktitle || ''
-        const vol = entry.volume || ''
-        const pages = entry.pages || ''
-        const doi = entry.doi || ''
-        let line = `<span style="color:${footerColor};font-weight:700;margin-right:6px">[${i + 1}]</span>`
-        line += `${escapeHtml(authors)}`
-        if (year) line += ` (${escapeHtml(year)})`
-        line += `. ${title}.`
-        if (journal) line += ` <em>${escapeHtml(journal)}</em>`
-        if (vol) line += `, ${escapeHtml(vol)}`
-        if (pages) line += `, ${escapeHtml(pages)}`
-        line += '.'
-        if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`
-        return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`
-      }).join('\n          ')
-      const refSlide = `    <section data-slide-id="references">
+  if (citations.entries.length > 0) {
+    // Sized like every other slide: without it, the section is 0px tall and
+    // clips the list, so the slide showed empty
+    slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        <h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
-        <div style="columns:${referencedEntries.length > 8 ? 2 : 1};column-gap:30px">
-          ${refItems}
-        </div>
+        ${referencesHtml(citations, footerColor)}
       </div>
     </section>`
-      slidesHtml += '\n' + refSlide
-    }
   }
 
   return `<!doctype html>
@@ -717,7 +807,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .image-popup { position:fixed;z-index:10001;background:rgba(20,20,30,0.95);color:#fff;padding:12px 18px;border-radius:8px;font-family:-apple-system,sans-serif;font-size:15px;line-height:1.5;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);opacity:0;transition:opacity 0.2s;white-space:pre-wrap;pointer-events:auto; }
     .image-popup.active { opacity:1; }
     [data-popup] { transition:box-shadow 0.2s, outline 0.2s; outline:2px solid transparent; outline-offset:2px; }
-    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}
+    [data-popup]:hover { outline-color:rgba(251,191,36,0.5); box-shadow:0 0 12px rgba(251,191,36,0.2); }${CLICK_ACTION_CSS}${statesCss(presentation.slides)}${scrollingDeck ? SCROLLING_CSS : ''}${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
     .image-caption { position:absolute;left:0;right:0;top:100%;font-size:${Number(presentation.citationFontSize) || 10}px;color:rgba(255,255,255,0.5);font-family:${cssValue(presentation.citationFontFamily) || '-apple-system,sans-serif'};line-height:1.3;padding:3px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .image-caption a { color:rgba(255,255,255,0.5);text-decoration:underline;text-decoration-color:rgba(255,255,255,0.25); }
     .cite-sup { position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.85);font-size:10px;font-weight:700;font-family:-apple-system,sans-serif;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;line-height:1; }
@@ -772,6 +862,7 @@ ${slidesHtml}
   <script src="${libUrl('reveal.js', 'plugin/notes/notes.js')}"></script>
   <script src="${libUrl('reveal.js', 'plugin/highlight/highlight.js')}"></script>
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
+  <script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || 'slide')};
@@ -979,7 +1070,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1284,7 +1375,7 @@ function generatePrintHTML(presentation) {
   const pages = []
   let printPageCounter = 0
   presentation.slides.forEach((slide, slideIndex) => {
-    const screens = getScreenCount(slide, slideH)
+    const screens = getScreenCount(slide, slideW, slideH)
     if (screens > 1) {
       for (let screen = 0; screen < screens; screen++) pages.push({ slide, slideIndex, maxIdx: Infinity, screen, first: screen === 0 })
       return
@@ -1292,12 +1383,23 @@ function generatePrintHTML(presentation) {
     const fragIndices = [...new Set([
       ...(slide.elements || []).filter(el => el.fragment).map(el => el.fragmentIndex || 1),
       ...stateSteps(slide).map(([step]) => step),
+      ...(slide.elements || []).flatMap(el => equationSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => feynmanSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => circuitSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => logicSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => freebodySteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => vennSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => timingSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => geometrySteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => periodicSteps(el).map(([step]) => step)),
+      ...(slide.elements || []).flatMap(el => harmonicsSteps(el).map(([step]) => step)),
     ])].sort((a, b) => a - b)
     pages.push({ slide, slideIndex, maxIdx: -Infinity, first: true })           // initial: no fragments
     fragIndices.forEach(idx => pages.push({ slide, slideIndex, maxIdx: idx }))
   })
   const totalPages = pages.length
 
+  const citations = buildCitationIndex(presentation)
   const pagesHtml = pages.map(({ slide, slideIndex, maxIdx, screen, first }, pageIndex) => {
     // As the slide opens: fragments up to this step, without what a click
     // shows, and each element in its first state or the one a step put it in
@@ -1305,7 +1407,9 @@ function generatePrintHTML(presentation) {
     const stateOnPage = el => stepped.has(el.id) ? stepped.get(el.id) : el.initialState
     const hiddenOnPage = el => (el.fragment && (el.fragmentIndex || 1) > maxIdx) || !!el.startHidden || hiddenByState(el, stateOnPage(el))
     const canvasH = getCanvasHeight(slide, slideH)
-    const scrolling = canvasH > slideH
+    const canvasW = getCanvasWidth(slide, slideW, slideH)
+    const axis = scrollAxis(slide, slideW, slideH)
+    const scrolling = axis !== null
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     const bgStyle = canvasBg ? getBgPrintStyle(null) : getBgPrintStyle(slide.background)
 
@@ -1321,7 +1425,7 @@ function generatePrintHTML(presentation) {
         const vis = isHidden ? 'visibility:hidden;' : ''
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${el.content || ''}</div>`
+          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(el.src)
@@ -1338,11 +1442,60 @@ function generatePrintHTML(presentation) {
         if (el.type === 'tikz') {
           return `<div style="${style}${vis}">${tikzDiagramSvg(el)}</div>`
         }
+        if (el.type === 'feynman') {
+          // As it is at this page's step; the page's KaTeX fills in its labels
+          const at = maxIdx === Infinity ? null : feynmanStepAt(el, maxIdx)
+          return `<div data-fx-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${feynmanSvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'circuit') {
+          // As it is at this page's step, with that step's readings
+          const at = maxIdx === Infinity ? null : circuitStepAt(el, maxIdx)
+          return `<div data-cx-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${circuitSvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'logic') {
+          // As it is at this page's step, its signals then
+          const at = maxIdx === Infinity ? Math.max(0, ...logicSteps(el).map(([, s]) => s)) : logicStepAt(el, maxIdx)
+          return `<div data-lg-at-page="${at}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${logicSvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'freebody') {
+          // The forces drawn by this page's step
+          const at = maxIdx === Infinity ? null : freebodyStepAt(el, maxIdx)
+          return `<div data-fb-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${freebodySvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'venn') {
+          // As at this page's step; a scrolling slide's page, as at its last
+          const at = maxIdx === Infinity ? null : vennStepAt(el, maxIdx)
+          return `<div data-vn-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${vennSvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'timing') {
+          // Revealed to this page's step; a scrolling slide's page, all of it
+          const at = maxIdx === Infinity ? null : timingStepAt(el, maxIdx)
+          return `<div data-tm-at-page="${at ?? 'all'}" style="${style}${vis}">${timingSvg(el, at == null || !timingSteps(el).length ? {} : { step: at })}</div>`
+        }
+        if (el.type === 'geometry') {
+          // As built by this page's step; a scrolling slide's page, all of it
+          const at = maxIdx === Infinity ? null : geometryStepAt(el, maxIdx)
+          return `<div data-gm-at-page="${at ?? 'all'}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${geometrySvg(el, { step: at, labels: 'deck' })}</div>`
+        }
+        if (el.type === 'periodic') {
+          // As at this page's step (a scrolling slide's, its last), clouds held still
+          const at = maxIdx === Infinity ? Math.max(0, ...periodicSteps(el).map(([, s]) => s)) : periodicStepAt(el, maxIdx)
+          return `<div data-pt-at-page="${at}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}${vis}">${periodicSvg(el, { step: at })}</div>`
+        }
+        if (el.type === 'harmonics') {
+          // Drawn still at this page's step (a scrolling slide's, its last) by the page's script
+          const at = maxIdx === Infinity ? Math.max(0, ...harmonicsSteps(el).map(([, s]) => s)) : harmonicsStepAt(el, maxIdx)
+          return `<div${harmonicsDeckAttrs(el, at)} style="${style}${vis}"></div>`
+        }
         if (el.type === 'html') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">&lt;/&gt;</div>`
         }
         if (el.type === 'p5') {
           return `<div style="${style}${vis}display:flex;align-items:center;justify-content:center;background:rgba(99,102,241,0.15);border:1px dashed rgba(99,102,241,0.4);color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:16px;">p5</div>`
+        }
+        if (el.type === 'equation') {
+          const at = maxIdx === Infinity ? 'all' : Math.max(0, maxIdx)
+          return `<div data-eq-config="${equationConfigAttr(el)}" data-eq-at="${at}" style="${style}${vis}overflow:visible;"></div>`
         }
         if (el.type === 'graph') {
           // Finished: every expression, no controls
@@ -1353,6 +1506,11 @@ function generatePrintHTML(presentation) {
           // Drawn for real, held still, so the page prints what the slide shows
           const srcdoc = modelViewerHtml({ ...el, autoRotate: false }, { src: absoluteSrc(el.src), print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+        }
+        if (el.type === 'molecule') {
+          // Drawn for real, held still (moleculeViewerHtml stops a spin in print)
+          const srcdoc = moleculeViewerHtml(el, { src: absoluteSrc(el.src), print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
@@ -1451,7 +1609,7 @@ function generatePrintHTML(presentation) {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg style="position:absolute;left:0;top:0;width:${slideW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -1502,13 +1660,20 @@ function generatePrintHTML(presentation) {
       // This page's screen of the canvas, whose links move with it, under the pinned elements
       const pinnedHtml = renderedElements.filter((_, i) => pinned(i)).join('\n')
       bodyHtml = printScreenBody({
-        slideW, slideH, canvasH, screen, background: canvasBg,
+        slideW, slideH, canvasW, canvasH, axis, screen, background: canvasBg,
         elementsHtml: `${printSlideLinks(elementsHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || isPinned(el))}`,
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })
     }
     return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${bodyHtml}\n${footerHtml}\n</div>`
-  }).join('\n')
+  }).join('\n') + (citations.entries.length > 0
+    // The references, last, as the presented deck has them
+    ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
+      <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:hidden;z-index:1">
+        ${referencesHtml(citations, footerColor)}
+      </div>
+</div>`
+    : '')
 
   const title = escapeHtml(presentation.title || 'Presentation')
   return `<!doctype html>
@@ -1553,20 +1718,21 @@ function generatePrintHTML(presentation) {
     #print-bar button { padding: 7px 18px; background: #6366f1; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; }
     #print-bar button:hover { background: #5254cc; }
     #print-bar .hint { color: rgba(255,255,255,0.5); font-size: 12px; }
-    @media print { #print-bar { display: none; } body { margin-top: 0; } }
+    @media print { #print-bar { display: none; } body { margin-top: 0; } }${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
   </style>${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
 </head>
 <body>
   <div id="print-bar">
     <div>
       <strong>${title}</strong>
-      <span class="hint"> &nbsp;·&nbsp; ${totalPages} page${totalPages !== 1 ? 's' : ''} (fragments expanded)
+      <span class="hint"> &nbsp;·&nbsp; ${totalPages + (citations.entries.length > 0 ? 1 : 0)} page${totalPages !== 1 ? 's' : ''} (fragments expanded)
         &nbsp;·&nbsp; enable <em>Background graphics</em> in print settings</span>
     </div>
     <button onclick="window.print()">Print / Save as PDF</button>
   </div>
 ${pagesHtml}
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
+  <script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"></script>
   <script src="${libUrl('@highlightjs/cdn-assets', 'highlight.min.js')}"></script>
   <script>
     window.addEventListener('load', function() {
@@ -1575,7 +1741,7 @@ ${pagesHtml}
         try { katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false, displayMode: el.getAttribute('data-math-display') === 'true' }); } catch(e) {}
       });
       setTimeout(function() { window.print(); }, 1000);
-    });
+    });${hasEquations(presentation) ? equationPrintScript() : ''}${hasHarmonics(presentation) ? harmonicsPrintScript() : ''}
     // Printing these pages, not the one frame of them the window around shows
     window.addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); window.print(); }

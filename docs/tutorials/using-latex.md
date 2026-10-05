@@ -126,8 +126,25 @@ KaTeX ships with built-in support for the most common LaTeX packages. A selectio
 | `physics` (partial) | `\bra{}`, `\ket{}`, `\braket{}` |
 | `cancel` | `\cancel{x}`, `\bcancel{x}` |
 | `color` | `\color{red}{x}` |
+| `mhchem` | `\ce{H2O}`, `\pu{9.81 m/s^2}` |
 
 See the [KaTeX support table](https://katex.org/docs/support_table.html) for a full list of supported functions.
+
+### Chemical equations
+
+`\ce{…}`, from the mhchem package, writes chemical formulas and reactions, and `\pu{…}` writes physical units:
+
+| You type | You get |
+|---|---|
+| `\ce{H2O}` | H₂O |
+| `\ce{2H2 + O2 -> 2H2O}` | 2H₂ + O₂ → 2H₂O |
+| `\ce{N2 + 3H2 <=> 2NH3}` | an equilibrium, with ⇌ |
+| `\ce{SO4^2-}` | SO₄²⁻ |
+| `\ce{^{14}_{6}C}` | carbon-14, with its mass and atomic numbers |
+| `\ce{CaCO3 ->[\Delta] CaO + CO2}` | a condition over the arrow |
+| `\pu{25 kJ mol-1}` | 25 kJ mol⁻¹ |
+
+They work wherever math does: inline math in text boxes, LaTeX blocks, equations and diagram labels, in the editor and when presenting. The TikZ diagram editor is the exception, since its labels are written for LaTeX, which needs `\usepackage{mhchem}`. For 3D structures, see [Molecules](/tutorials/molecules).
 
 ## 6. Troubleshooting rendering issues
 

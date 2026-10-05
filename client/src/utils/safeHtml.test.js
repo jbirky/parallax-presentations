@@ -2,6 +2,10 @@
 import { describe, it, expect } from 'vitest'
 import { safeHtml, safeSvg } from './safeHtml'
 import { shapeSvgString } from './shapeUtils'
+import { periodicSvg, defaultPeriodic } from './periodicTable'
+import { timingSvg, TIMING_TEMPLATES } from './timingDiagram'
+import { geometrySvg, geometryFromTemplate, GEOMETRY_TEMPLATES } from './geometryDiagram'
+import { texHtml } from '../components/FeynmanView'
 
 const ATTACKS = [
   '<img src=x onerror="steal()"><img/src=x/onerror=steal()>',
@@ -52,6 +56,39 @@ describe('HTML from a deck, shown in the editor', () => {
     expect(safeSvg(ATTACKS)).toBe(LEFT)
     // Text boxes don't take HTML in SVG
     expect(safeHtml(svg)).not.toContain('katex')
+  })
+
+  it('keeps a periodic table whole, with what its pointing and pins use', () => {
+    const svg = periodicSvg({ ...defaultPeriodic(), highlight: 'block:p', orbitalView: 'clouds' }, { mode: 'canvas' })
+    const clean = safeSvg(svg)
+    expect(clean.match(/data-pt-z=/g)).toHaveLength(118)
+    expect(clean).toContain('data-pt-card')
+    expect(clean).toContain('data-pt-sub')
+    expect(clean).toContain('opacity="0.22"')
+    expect(clean).toContain('pointer-events:none')
+    expect(clean.length).toBeGreaterThan(svg.length * 0.95)
+  })
+
+  it('keeps a timing diagram whole: its shapes, arrowheads and text', () => {
+    for (const t of TIMING_TEMPLATES) {
+      const svg = timingSvg({ id: 't', source: t.source, theme: 'dark' })
+      const clean = safeSvg(svg)
+      const count = (s, re) => (s.match(re) || []).length
+      expect(count(clean, /<path/g)).toBe(count(svg, /<path/g))
+      expect(count(clean, /<text/g)).toBe(count(svg, /<text/g))
+      expect(count(clean, /<marker/g)).toBe(count(svg, /<marker/g))
+      expect(clean).not.toMatch(/xml:space/)
+    }
+  })
+
+  it('keeps a geometry figure whole, with its KaTeX labels', () => {
+    for (const t of GEOMETRY_TEMPLATES) {
+      const svg = geometrySvg({ ...geometryFromTemplate(t.key), axes: true, grid: true, width: 640, height: 400 }, { labels: texHtml })
+      const clean = safeSvg(svg)
+      const count = (s, re) => (s.match(re) || []).length
+      for (const re of [/<path/g, /<circle/g, /<text/g, /<foreignObject/g, /class="katex"/g, /data-name=/g]) expect(count(clean, re)).toBe(count(svg, re))
+      expect(clean).toContain('pointer-events:none')
+    }
   })
 
   it('returns nothing for nothing', () => {

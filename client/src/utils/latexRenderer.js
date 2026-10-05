@@ -61,6 +61,7 @@ function buildLatexIframeHtml(content, textColor, fontSize) {
 <meta charset="utf-8">
 <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
 <script src="${libUrl('katex', 'dist/katex.min.js')}"><\/script>
+<script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"><\/script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: transparent; overflow: hidden; color: ${c}; }

@@ -60,6 +60,17 @@ export default defineConfig({
             { text: 'Citations & Bibliography', link: '/tutorials/citations' },
             { text: 'Diagram Editor', link: '/tutorials/diagrams' },
             { text: 'Equation Palette', link: '/tutorials/equation-palette' },
+            { text: 'Interactive Equations', link: '/tutorials/interactive-equations' },
+            { text: 'Feynman Diagrams', link: '/tutorials/feynman-diagrams' },
+            { text: 'Circuit Diagrams', link: '/tutorials/circuit-diagrams' },
+            { text: 'Logic Diagrams', link: '/tutorials/logic-diagrams' },
+            { text: 'Free-Body Diagrams', link: '/tutorials/free-body-diagrams' },
+            { text: 'Venn Diagrams', link: '/tutorials/venn-diagrams' },
+            { text: 'Timing Diagrams', link: '/tutorials/timing-diagrams' },
+            { text: 'Geometry Constructions', link: '/tutorials/geometry-constructions' },
+            { text: 'Molecules', link: '/tutorials/molecules' },
+            { text: 'Periodic Table', link: '/tutorials/periodic-table' },
+            { text: 'Spherical Harmonics', link: '/tutorials/spherical-harmonics' },
           ]
         },
         {

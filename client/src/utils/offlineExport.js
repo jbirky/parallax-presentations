@@ -15,6 +15,7 @@ const CDN_RESOURCES = {
     libUrl('reveal.js', 'plugin/notes/notes.js'),
     libUrl('reveal.js', 'plugin/highlight/highlight.js'),
     libUrl('katex', 'dist/katex.min.js'),
+    libUrl('katex', 'dist/contrib/mhchem.min.js'),
   ],
 }
 

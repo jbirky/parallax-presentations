@@ -29,6 +29,7 @@ updates:
       - dependency-name: pdfjs-dist
       - dependency-name: jsxgraph
       - dependency-name: svgcanvas
+      - dependency-name: "3dmol"
     groups:
       bundled-libraries:
         patterns: ["*"]

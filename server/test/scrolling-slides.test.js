@@ -65,6 +65,19 @@ describe('scrolling slides in pages the server builds', () => {
     assert.ok(html.includes('<div class="slide-scroll-inner" style="position:relative;width:960px;height:1080px;background:linear-gradient(#111, #333);">'))
   })
 
+  it('scrolls a slide sideways, its canvas as wide as it is set', async () => {
+    const html = await exported({ slideWidth: 960, slideHeight: 540, slides: [
+      { id: 'wide', scrollWidth: 1920, elements: [text('right', { x: 1400 }), text('title', { x: 10, scrollBehavior: 'pin' })] },
+    ] })
+    const section = html.match(/<section data-slide-id="wide" id="s-wide"[\s\S]*?<\/section>/)[0]
+    assert.match(section, /^<section data-slide-id="wide" id="s-wide" data-scroll-width="1920" style="padding:0;width:960px;height:540px;/)
+    assert.match(section, /<div class="slide-scroller" data-scroll="x" data-prevent-swipe style="[^"]*overflow-x:auto;overflow-y:hidden;">/)
+    const canvas = section.match(/<div class="slide-scroll-inner" style="position:relative;width:1920px;height:540px;">([\s\S]*?)\n {8}<\/div>/)[1]
+    assert.match(canvas, />\s*<p>right<\/p>/)
+    assert.doesNotMatch(canvas, /title/)
+    assert.ok(html.includes(SCROLLING_SCRIPT))
+  })
+
   it('leaves a deck without one as it was', async () => {
     const html = await exported({ slides: [{ id: 'flat', elements: [text('a', { scrollBehavior: 'pin' })] }] })
     for (const marker of ['slide-scroller', 'data-scroll-height', 'Scrolling slides']) assert.ok(!html.includes(marker), marker)
