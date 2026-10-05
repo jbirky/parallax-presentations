@@ -31,6 +31,7 @@ In the expression list, **Enter** adds a line, **Backspace** on an empty line re
 | System of equations | `x' = y` and `y' = -sin x` |
 | Slope field | `dy/dx = x - y` |
 | Surface (in 3D) | `z = sin x cos y` |
+| Value in space, as color (in 3D) | `w = x y z` |
 
 Vector fields, systems and slope fields have their own section below, and so do 3D graphs.
 
@@ -118,16 +119,41 @@ Switch a graph to **3D** at the top of its editor, or choose **3D Graph** in the
 | Point | `(2, 3, 4)` |
 | Your own function | `f(x, y) = x y / 10`, drawn as z = f(x, y) |
 
-In 3D, `x`, `y`, `z`, `t`, `u`, `v`, `r` and `θ` are variables, so they can't be sliders; every other letter can. A parametric surface's u and v ranges are under the line (0 to 2π and 0 to π to start), as a curve's t range is. A surface ends where its restriction does, along the edge itself.
+In 3D, `x`, `y`, `z`, `t`, `u`, `v`, `r`, `θ` and `w` are variables, so they can't be sliders; every other letter can. A parametric surface's u and v ranges are under the line (0 to 2π and 0 to π to start), as a curve's t range is. A surface ends where its restriction does, along the edge itself.
 
 Shaded regions, and the vector fields and systems above, are 2D only.
 
 In a surface's options:
 
-- **Color**: the line's color, or by height (the viridis color map, from the box's bottom to its top).
+- **Color**: the line's color, by height (the viridis color map, from the box's bottom to its top), or by a function (see below).
 - **Mesh lines**: the grid drawn on a surface, every so many units (or every 16th of u and v).
 - **Contour lines**: where z is a round number.
 - **Detail**: Fine draws it on a finer grid.
+
+### A fourth dimension, as color
+
+A value at every point of space, such as a temperature or a density, is three dimensions of place and one of color.
+
+| Type | Example |
+| --- | --- |
+| Value in space | `w = sin x + sin y + sin z` |
+| As a function | `f(x, y, z) = x^2 + y^2 - z^2` |
+| Restricted | `w = x y z {x^2 + y^2 + z^2 < 64}` |
+
+In its options, **Draw as**:
+
+- **Slices through it**: planes at x, y and z, colored by the value and left unlit so the colors read true. Each starts in the middle of the box. Type a number to move one, or a slider's name (like `c`) to move it with the slider; played while presenting, the slice sweeps through. **Contour lines** add lines where the value is a round number.
+- **Level surfaces**: see-through surfaces where the value is constant, evenly spaced within the color range, so `x^2 + y^2 - z^2` shows its cone between the two kinds of hyperboloid. Choose how many and how see-through.
+- **Points**: a grid of dots, each colored by the value there. With **Size by value**, dots are larger toward the top of the range (or, for blue to orange, toward either end), so where the value is large stands out.
+
+Any surface or curve can be colored by a function too: under its options, choose **Color: By a function…** and type it, such as `x y z` on a sphere, or `t` along a curve. A surface's function can use x, y and z (and r and θ); a parametric surface's, u and v too; a curve's, t. It can call your own function, like `f(x, y, z)`; hide the eye on f's line to color by it without drawing it as well.
+
+Colors come from one of two maps:
+
+- **Viridis**, dark purple to yellow, for values that only go up.
+- **Blue to orange**, gray at 0, for values that are both negative and positive.
+
+**Auto** chooses blue to orange when the values have both signs, and viridis otherwise. The range runs from the least value to the greatest, rounded out; set either end to fix it. A color bar at the right labels each line shown in color; turn it off with **Color bars**.
 
 ### The view
 

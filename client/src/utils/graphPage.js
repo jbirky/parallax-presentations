@@ -18,7 +18,7 @@ export const GRAPH_COLORS = {
 
 // What a graph element keeps, besides its place on the slide. dims 3 makes
 // it a 3D graph, with a camera (turn, tilt) and maybe a spin when presented
-export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'zLabel', 'theme', 'background', 'showSliders', 'lockView', 'dims', 'camera', 'spin']
+export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'zLabel', 'theme', 'background', 'showSliders', 'lockView', 'dims', 'camera', 'spin', 'colorBar']
 
 export const DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 }
 export const DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 }

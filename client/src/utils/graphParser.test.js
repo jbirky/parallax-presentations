@@ -274,11 +274,12 @@ describe('3D graphs', () => {
     expect(s.F({ x: 3, y: 4, z: 0 })).toBe(0)
   })
 
-  it('draws f(x, y) = … as a surface, and keeps z, u and v from being sliders', () => {
-    const r = read3('f(x, y) = x - y', 'z + u + v = w')
+  it('draws f(x, y) = … as a surface, and keeps z, u, v and w from being sliders', () => {
+    const r = read3('f(x, y) = x - y', 'z + u + v = k')
     expect(r.items[0]).toMatchObject({ kind: 'function', graph: 'z' })
     expect(r.items[0].f({ x: 5, y: 2 })).toBe(3)
-    expect(r.missing).toEqual(['w'])
+    expect(r.missing).toEqual(['k'])
+    expect(read3('w = 2').items[0].kind).not.toBe('param')
     // In 2D the same letters are sliders
     expect(read('y = z u').missing).toEqual(['z', 'u'])
   })
@@ -290,6 +291,50 @@ describe('3D graphs', () => {
     expect(error("x' = y", "y' = -x")).toMatch(/switch this graph to 2D/)
     expect(error('z + 1')).toMatch(/equation/)
     expect(error('(x, y, z)')).toMatch(/numbers or sliders/)
+    expect(error('x + w = 3')).toMatch(/line of its own/)
+    expect(error('w = t')).toMatch(/uses x, y, z/)
+  })
+
+  it('reads a value in space, w = F(x, y, z) or f(x, y, z) = …', () => {
+    const r = read3('w = x y z + a', 'a = 1', 'f(x, y, z) = x^2 + y^2 - z^2', 'r = 2 + w')
+    expect(r.items[0]).toMatchObject({ kind: 'field3', name: 'w' })
+    expect(r.items[0].f({ ...P.paramValues(r), x: 1, y: 2, z: 3 })).toBe(7)
+    expect(r.items[2]).toMatchObject({ kind: 'function', graph: 'w', name: 'f' })
+    expect(r.items[2].f({ x: 1, y: 2, z: 3 })).toBe(-4)
+    expect(r.items[3].kind).toBe('error')
+    // r and θ, and restrictions, as for surfaces
+    const c = read3('w = r cos θ {z > 0}').items[0]
+    expect(c.kind).toBe('field3')
+    expect(c.f({ x: 3, y: 4, z: 1, r: 5, theta: Math.atan2(4, 3) })).toBeCloseTo(3)
+    expect(c.f({ x: 3, y: 4, z: -1, r: 5, theta: 0 })).toBeNaN()
+    // In 2D, w is a slider still
+    expect(read('y = w x').missing).toEqual(['w'])
+  })
+
+  it('compiles a surface’s or curve’s color function, and a value’s slices', () => {
+    const r = P.analyze([
+      { id: 'a', text: 'x^2 + y^2 + z^2 = 9', surface: { color: 'function', colorBy: 'f(x, y, z) + k' } },
+      { id: 'b', text: 'f(x, y, z) = x y z' },
+      { id: 'c', text: '(cos t, sin t, t)', surface: { color: 'function', colorBy: 't^2' } },
+      { id: 'd', text: '(cos u, sin u, v)', surface: { color: 'function', colorBy: 'u + v' } },
+      { id: 'e', text: 'z = x', surface: { color: 'function', colorBy: 'u' } },
+      { id: 'g', text: 'w = x', volume: { at: { x: '2c', y: '', z: 'x' } } },
+      { id: 'h', text: 'z = y', surface: { color: 'height', colorBy: 'x' } },
+    ], { dims: 3 })
+    const [a, , c, d, e, g, h] = r.items
+    expect(a.colorF({ x: 1, y: 2, z: 3, k: 1 })).toBe(7)
+    expect(c.colorF({ t: 3 })).toBe(9)
+    expect(d.colorF({ u: 1, v: 2 })).toBe(3)
+    // u belongs to parametric surfaces; the surface itself still draws
+    expect(e.kind).toBe('surface')
+    expect(e.colorF).toBeUndefined()
+    expect(e.colorError).toMatch(/can use x, y, z, r, θ and sliders/)
+    expect(g.at.x({ c: 1.5 })).toBe(3)
+    expect(g.at.y).toBeUndefined()
+    expect(g.atError).toMatch(/a number, or uses sliders/)
+    // Only when coloring by a function
+    expect(h.colorF).toBeUndefined()
+    expect(r.missing.sort()).toEqual(['c', 'k'])
   })
 })
 

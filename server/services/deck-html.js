@@ -5788,7 +5788,7 @@ function createMathParser() {
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E };
   const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho", "mu", "nu", "kappa", "eta"];
   const RESERVED = ["x", "y", "t", "theta", "r"];
-  const RESERVED_3D = ["x", "y", "z", "t", "u", "v", "theta", "r"];
+  const RESERVED_3D = ["x", "y", "z", "t", "u", "v", "theta", "r", "w"];
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ["theta"], GREEK2).sort((a, b) => b.length - a.length);
   const UNICODE = {
     "−": "-",
@@ -6417,6 +6417,12 @@ function createMathParser() {
     const RES = dims3 ? RESERVED_3D : RESERVED;
     const onlyRes = (set, names) => [...set].every((v) => !RES.includes(v) || names.includes(v));
     const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
+    const extras = /* @__PURE__ */ new Map();
+    if (dims3) (expressions || []).forEach((e, i) => {
+      const colorBy = e.surface && e.surface.color === "function" ? String(e.surface.colorBy || "").trim() : "";
+      const at = e.volume && e.volume.at && typeof e.volume.at === "object" ? e.volume.at : null;
+      if (colorBy || at) extras.set(items[i], { colorBy, at });
+    });
     const fns = {};
     for (const item of items) {
       const field = fieldOf(item.text);
@@ -6561,6 +6567,10 @@ function createMathParser() {
             item.graph = "z";
             const def = callable[item.name];
             item.f = (env) => def.call(env, [env.x, env.y]);
+          } else if (dims3 && item.formals.join() === "x,y,z" && onlyRes(vars, ["x", "y", "z", "r", "theta"])) {
+            item.graph = "w";
+            const def = callable[item.name];
+            item.f = (env) => def.call(env, [env.x, env.y, env.z]);
           }
         } else if (item.kind === "param") {
           note(freeVars(item.value), item);
@@ -6573,6 +6583,41 @@ function createMathParser() {
         if (!e.graphError) throw e;
         item.kind = "error";
         item.error = e.message;
+      }
+    }
+    const COLOR_VARS = { surface: ["x", "y", "z", "r", "theta"], implicit3: ["x", "y", "z", "r", "theta"], psurface: ["x", "y", "z", "r", "theta", "u", "v"], curve3: ["x", "y", "z", "t"] };
+    const said = { theta: "θ" };
+    const list = (names) => names.map((n) => said[n] || n).join(", ");
+    const extra = (item, text, allowed, what) => {
+      const st = parseStatement(text, userFns);
+      if (st.ops.length) fail2(what + " is one expression, without =");
+      const vars = freeVars(st.parts[0]);
+      note(vars, item);
+      if (!onlyRes(vars, allowed)) fail2(what + (allowed.length ? " can use " + list(allowed) + " and sliders" : " is a number, or uses sliders"));
+      return cf(st.parts[0]);
+    };
+    for (const [item, { colorBy, at }] of extras) {
+      const kind = item.kind === "function" && item.graph === "z" ? "surface" : item.kind;
+      if (colorBy && COLOR_VARS[kind]) {
+        try {
+          item.colorF = extra(item, colorBy, COLOR_VARS[kind], "The color");
+        } catch (e) {
+          if (!e.graphError) throw e;
+          item.colorError = e.message;
+        }
+      }
+      if (at && (item.kind === "field3" || item.kind === "function" && item.graph === "w")) {
+        item.at = {};
+        for (const k of ["x", "y", "z"]) {
+          const text = String(at[k] == null ? "" : at[k]).trim();
+          if (!text) continue;
+          try {
+            item.at[k] = extra(item, text, [], "A slice’s place");
+          } catch (e) {
+            if (!e.graphError) throw e;
+            item.atError = e.message;
+          }
+        }
       }
     }
     function classify(item) {
@@ -6697,7 +6742,7 @@ function createMathParser() {
           item.fz = cf(nz);
           return;
         }
-        if (vars.has("z")) fail2("Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9");
+        if (vars.has("z") || vars.has("w")) fail2("Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9, or as a value in space, like w = x y z");
         if (!onlyRes(vars, ["x", "y", "r", "theta"])) fail2("A surface z = f(x, y) uses x, y (or r and θ) and sliders");
         item.f = cf(node);
         item.kind = uses(["x", "y", "r", "theta"]) ? "surface" : "value";
@@ -6707,6 +6752,12 @@ function createMathParser() {
       if (!ops.every((op) => op === "=")) fail2("Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}");
       if (ops.length > 1) fail2("Only one = per line");
       const [l, r] = parts;
+      if (isVar(l, "w") || isVar(r, "w")) {
+        const other = isVar(l, "w") ? r : l, ov = freeVars(other);
+        if (!onlyRes(ov, ["x", "y", "z", "r", "theta"])) fail2("A value in space, w = …, uses x, y, z (or r and θ) and sliders");
+        Object.assign(item, { kind: "field3", name: "w", f: cf(other) });
+        return;
+      }
       for (const [side, other] of [[l, r], [r, l]]) {
         const ov = freeVars(other);
         if (isVar(side, "z") && onlyRes(ov, ["x", "y", "r", "theta"])) {
@@ -6722,6 +6773,7 @@ function createMathParser() {
           return;
         }
       }
+      if (vars.has("w")) fail2("w is a value in space: give it a line of its own, like w = x y z");
       if (uses(["t", "u", "v"])) fail2("An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples");
       if (!uses(["x", "y", "z", "r", "theta"])) fail2("There’s no x, y or z to draw");
       const lf = cf(l), rf = cf(r);
@@ -6992,6 +7044,11 @@ function graphRuntime(P, G2, G3, config) {
     return e;
   }
   const num9 = (v, d) => v !== void 0 && v !== "" && isFinite(+v) ? +v : d;
+  const VOLUME = { draw: "slices", levels: 5, opacity: 0.5, density: "normal", sizeBy: true, contours: false, cmap: "auto" };
+  const isVolume = (it) => it.kind === "field3" || it.kind === "function" && it.graph === "w";
+  const optNum = (v) => v === void 0 || v === null || v === "" || !isFinite(+v) ? null : +v;
+  const scaleOpts = (o) => ({ cmap: o.cmap, min: optNum(o.wMin), max: optNum(o.wMax) });
+  const modeOf = (sc) => sc.kind === "diverging" ? 3 : 2;
   function geometry3(E, box) {
     const key = JSON.stringify([box, values, C2.expressions, step, C2.grid, C2.axes]);
     if (geo3 && key === geo3Key) return geo3;
@@ -6999,10 +7056,19 @@ function graphRuntime(P, G2, G3, config) {
     if (geo3 && r3) {
       geo3.surfaces.forEach((s) => r3.free(s.mesh));
       geo3.lines.forEach((l) => r3.free(l.mesh));
+      geo3.dots.forEach((d) => r3.free(d.mesh));
     }
-    const surfaces = [], lines = [], points = [], R = r3 || G3.renderer(document);
+    const surfaces = [], lines = [], points = [], dots = [], bars = [], R = r3 || G3.renderer(document);
     const span = (k) => box[k + "Max"] - box[k + "Min"];
     const stepOf = (k) => G3.niceStep(span(k), 10);
+    const byFunction = (s, it, o, uv) => {
+      if (o.color !== "function" || !it.colorF) return s;
+      G3.values(s.mesh, it.colorF, E, uv);
+      const sc = G3.colorScale(G3.usedValues(s.mesh), scaleOpts(o));
+      G3.fillMissing(s.mesh, sc);
+      bars.push({ title: o.colorBy, scale: sc });
+      return Object.assign(s, { mode: modeOf(sc), wRange: [sc.min, sc.max] });
+    };
     for (const it of analysis.items) {
       if (!visible(it)) continue;
       const e = exprOf(it), color2 = e.color || "#c74440", o = e.surface || {};
@@ -7011,17 +7077,43 @@ function graphRuntime(P, G2, G3, config) {
         if (it.kind === "surface" || it.kind === "function" && it.graph === "z") {
           const axis = it.axis || "z", A = axis === "z" ? ["x", "y"] : axis === "x" ? ["y", "z"] : ["x", "z"];
           const mesh = G3.explicit(it.f, E, box, axis, fine ? 140 : 72);
-          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+          surfaces.push(byFunction({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg }, it, o, false));
         } else if (it.kind === "psurface") {
           const u0 = num9(e.uMin, 0), u1 = num9(e.uMax, 2 * Math.PI), v0 = num9(e.vMin, 0), v1 = num9(e.vMax, Math.PI), n = fine ? 120 : 64;
           const mesh = G3.parametric(it.fx, it.fy, it.fz, E, u0, u1, v0, v1, n, n);
-          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+          surfaces.push(byFunction({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg }, it, o, true));
         } else if (it.kind === "implicit3") {
           const mesh = G3.implicit(it.F, E, box, fine ? 72 : 44);
-          surfaces.push({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg });
+          surfaces.push(byFunction({ mesh, color: color2, mode: o.color === "height" ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span("z"), 12) : 0, lineColor: theme.fg }, it, o, false));
         } else if (it.kind === "curve3") {
           const runs = G3.curve(it.fx, it.fy, it.fz, E, num9(e.min, 0), num9(e.max, 2 * Math.PI), 800);
-          lines.push({ mesh: R.lines(runs), color: color2, width: e.width || 2.5, alpha: 1 });
+          if (o.color === "function" && it.colorF) {
+            const wOf = (p) => {
+              E.x = p[0];
+              E.y = p[1];
+              E.z = p[2];
+              E.t = p[3];
+              E.r = Math.hypot(p[0], p[1]);
+              E.theta = Math.atan2(p[1], p[0]);
+              const v = it.colorF(E);
+              return isFinite(v) ? v : NaN;
+            };
+            const sc = G3.colorScale(runs.flatMap((run) => run.map(wOf)), scaleOpts(o)), mid = (sc.min + sc.max) / 2;
+            const mesh = R.lines(runs, (p) => {
+              const v = wOf(p);
+              return v === v ? v : mid;
+            });
+            E.x = 0;
+            E.y = 0;
+            E.z = 0;
+            E.t = 0;
+            E.r = 0;
+            E.theta = 0;
+            lines.push({ mesh, color: color2, width: e.width || 2.5, alpha: 1, mode: modeOf(sc), wRange: [sc.min, sc.max] });
+            bars.push({ title: o.colorBy, scale: sc });
+          } else lines.push({ mesh: R.lines(runs), color: color2, width: e.width || 2.5, alpha: 1 });
+        } else if (isVolume(it)) {
+          volume(it, e, E, box, surfaces, dots, bars);
         } else if (it.kind === "point3") {
           const p = [it.fx(E), it.fy(E), it.fz(E)];
           if (p.every(isFinite)) points.push({ p, e, color: color2 });
@@ -7047,8 +7139,41 @@ function graphRuntime(P, G2, G3, config) {
       const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax);
       lines.push({ mesh: R.lines([[[box.xMin, oy, floor], [box.xMax, oy, floor]], [[ox, box.yMin, floor], [ox, box.yMax, floor]], [[ox, oy, box.zMin], [ox, oy, box.zMax]]]), color: theme.fg, width: 1.6, alpha: 0.75, clip: false });
     }
-    geo3 = { surfaces, lines, points, floor };
+    geo3 = { surfaces, lines, points, dots, bars, floor };
     return geo3;
+  }
+  function volume(it, e, E, box, surfaces, dots, bars) {
+    const v = { ...VOLUME, ...e.volume || {} }, F = it.f, fine = v.detail === "fine";
+    const bar = { title: it.name || "w" };
+    if (v.draw === "levels") {
+      const n = fine ? 60 : 40, grid = G3.sample(F, E, box, n);
+      const sc = G3.colorScale(grid, scaleOpts(v)), count = Math.max(1, Math.min(12, Math.round(+v.levels) || 5));
+      bar.marks = [];
+      for (let k = 1; k <= count; k++) {
+        const level = sc.min + (sc.max - sc.min) * k / (count + 1);
+        const mesh = G3.implicit(F, E, box, n, level, grid);
+        mesh.w = new Float32Array(mesh.pos.length / 3).fill(level);
+        surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], alpha: Math.min(1, Math.max(0.1, +v.opacity || 0.5)), meshStep: [0, 0], contour: 0, lineColor: theme.fg });
+        bar.marks.push(level);
+      }
+      bars.push(Object.assign(bar, { scale: sc }));
+    } else if (v.draw === "points") {
+      const n = v.density === "sparse" ? 9 : v.density === "dense" ? 18 : 13;
+      const mesh = G3.cloud(F, E, box, n), sc = G3.colorScale(mesh.w, scaleOpts(v));
+      dots.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], size: n === 9 ? 14 : n === 13 ? 10 : 7, sizeBy: v.sizeBy !== false });
+      bars.push(Object.assign(bar, { scale: sc }));
+    } else {
+      const sc = G3.colorScale(G3.sample(F, E, box, 24), scaleOpts(v));
+      for (const k of ["x", "y", "z"]) {
+        if (v.slices && v.slices[k] === false) continue;
+        const c = it.at && it.at[k] ? it.at[k](E) : (box[k + "Min"] + box[k + "Max"]) / 2;
+        if (!(c >= box[k + "Min"] && c <= box[k + "Max"])) continue;
+        const mesh = G3.slice(F, E, box, k, c, fine ? 120 : 64);
+        G3.fillMissing(mesh, sc);
+        surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], lit: 0, meshStep: [0, 0], contour: v.contours ? G3.niceStep(sc.max - sc.min, 10) : 0, contourW: true, lineColor: theme.fg });
+      }
+      bars.push(Object.assign(bar, { scale: sc }));
+    }
   }
   function draw3d() {
     ctx.clearRect(0, 0, W, H);
@@ -7060,7 +7185,7 @@ function graphRuntime(P, G2, G3, config) {
     if (!r3) r3 = G3.renderer(document);
     const g = geometry3(E, box);
     const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W, H);
-    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines);
+    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines, g.dots);
     if (!out) {
       haloText("3D graphs need WebGL 2, which this browser has turned off.", W / 2, H / 2, "center", "middle", "14px " + FONT);
       return;
@@ -7070,6 +7195,46 @@ function graphRuntime(P, G2, G3, config) {
     ctx.drawImage(out, 0, 0);
     ctx.restore();
     labels3(camera, box, g);
+    colorBars(g.bars);
+  }
+  function colorBars(bars) {
+    if (C2.colorBar === false || !bars.length) return;
+    const top = 66, h = Math.max(60, Math.min(160, H - top - 80)), bw = 10;
+    const label = (v) => String(parseFloat(v.toPrecision(3))).replace("-", "−");
+    let right = W - 14;
+    for (const b of bars.slice(0, 3)) {
+      const sc = b.scale, x = right - bw;
+      const yOf = (v) => top + h - (v - sc.min) / (sc.max - sc.min) * h;
+      const grad = ctx.createLinearGradient(0, top + h, 0, top);
+      for (let i = 0; i <= 20; i++) grad.addColorStop(i / 20, "rgb(" + G3.colormap(i / 20, sc.kind).map((c) => Math.round(c * 255)).join(",") + ")");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, top, bw, h);
+      ctx.strokeStyle = theme.border;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, top + 0.5, bw - 1, h - 1);
+      if (b.marks) {
+        ctx.beginPath();
+        for (const m of b.marks) {
+          const y = Math.round(yOf(m)) + 0.5;
+          ctx.moveTo(x - 3, y);
+          ctx.lineTo(x + bw + 3, y);
+        }
+        ctx.strokeStyle = theme.fg;
+        ctx.stroke();
+      }
+      const mid = sc.kind === "diverging" && sc.min < 0 && sc.max > 0 ? 0 : (sc.min + sc.max) / 2;
+      let widest = 0;
+      ctx.font = "11px " + FONT;
+      for (const v of [sc.max, mid, sc.min]) {
+        const t = label(v);
+        widest = Math.max(widest, ctx.measureText(t).width);
+        haloText(t, x - 5, yOf(v), "right", "middle", "11px " + FONT);
+      }
+      const title = String(b.title || "").trim(), name = title.length > 16 ? title.slice(0, 15) + "…" : title;
+      haloText(name, right, top - 17, "right", "middle", "italic 14px " + MATH_FONT2);
+      ctx.font = "italic 14px " + MATH_FONT2;
+      right -= Math.max(widest + 5 + bw, ctx.measureText(name).width) + 18;
+    }
   }
   function labels3(camera, box, g) {
     const font = "12px " + FONT, nameFont = "italic 16px " + MATH_FONT2;
@@ -8982,26 +9147,36 @@ function graph3d() {
   }
   var TETS = [[0, 1, 3, 7], [0, 3, 2, 7], [0, 2, 6, 7], [0, 6, 4, 7], [0, 4, 5, 7], [0, 5, 1, 7]];
   var EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
-  function implicit(F, E, box, n) {
+  function sample(F, E, box, n) {
     var N = n + 1, vals = new Float64Array(N * N * N);
     var dx = (box.xMax - box.xMin) / n, dy = (box.yMax - box.yMin) / n, dz = (box.zMax - box.zMin) / n;
-    var at = function(i2, j2, k2) {
-      return (k2 * N + j2) * N + i2;
-    };
-    for (var k = 0; k < N; k++) for (var j = 0; j < N; j++) for (var i = 0; i < N; i++) {
+    for (var k = 0, p = 0; k < N; k++) for (var j = 0; j < N; j++) for (var i = 0; i < N; i++, p++) {
       E.x = box.xMin + dx * i;
       E.y = box.yMin + dy * j;
       E.z = box.zMin + dz * k;
       E.r = Math.hypot(E.x, E.y);
       E.theta = Math.atan2(E.y, E.x);
       var v = F(E);
-      vals[at(i, j, k)] = isFinite(v) ? v : NaN;
+      vals[p] = isFinite(v) ? v : NaN;
     }
     E.x = 0;
     E.y = 0;
     E.z = 0;
     E.r = 0;
     E.theta = 0;
+    return vals;
+  }
+  function implicit(F, E, box, n, level, grid2) {
+    level = level || 0;
+    var N = n + 1, src = grid2 || sample(F, E, box, n);
+    var vals = level ? src.map(function(v) {
+      return v - level;
+    }) : src;
+    var dx = (box.xMax - box.xMin) / n, dy = (box.yMax - box.yMin) / n, dz = (box.zMax - box.zMin) / n;
+    var at = function(i2, j2, k2) {
+      return (k2 * N + j2) * N + i2;
+    };
+    var i, j, k;
     var grad = function(i2, j2, k2, out) {
       var c2 = vals[at(i2, j2, k2)];
       var gx = i2 > 0 && i2 < n ? (vals[at(i2 + 1, j2, k2)] - vals[at(i2 - 1, j2, k2)]) / (2 * dx) : i2 === 0 ? (vals[at(1, j2, k2)] - c2) / dx : (c2 - vals[at(i2 - 1, j2, k2)]) / dx;
@@ -9044,8 +9219,8 @@ function graph3d() {
         E.z = box.zMin + dz * (k + ((qa >> 2 & 1) + ((qb >> 2 & 1) - (qa >> 2 & 1)) * f));
         E.r = Math.hypot(E.x, E.y);
         E.theta = Math.atan2(E.y, E.x);
-        var mid = F(E);
-        if (!(Math.abs(mid) < Math.min(Math.abs(wa), Math.abs(wb)))) pole = true;
+        var mid = F(E) - level;
+        if (!(Math.abs(mid) <= Math.min(Math.abs(wa), Math.abs(wb)) + 1e-9 * Math.max(Math.abs(wa), Math.abs(wb)))) pole = true;
       }
       if (pole) continue;
       for (q = 0; q < 8; q++) {
@@ -9091,7 +9266,7 @@ function graph3d() {
     var runs = [], run = [];
     for (var i = 0; i <= n; i++) {
       E.t = t0 + (t1 - t0) * i / n;
-      var p = [fx(E), fy(E), fz(E)];
+      var p = [fx(E), fy(E), fz(E), E.t];
       if (isFinite(p[0]) && isFinite(p[1]) && isFinite(p[2])) run.push(p);
       else if (run.length) {
         runs.push(run);
@@ -9101,6 +9276,139 @@ function graph3d() {
     E.t = 0;
     if (run.length) runs.push(run);
     return runs;
+  }
+  function values(m, F, E, uv) {
+    var n = m.pos.length / 3, w = new Float32Array(n);
+    for (var p = 0; p < n; p++) {
+      var x = m.pos[3 * p], y = m.pos[3 * p + 1], z = m.pos[3 * p + 2];
+      E.x = x;
+      E.y = y;
+      E.z = z;
+      E.r = Math.hypot(x, y);
+      E.theta = Math.atan2(y, x);
+      if (uv) {
+        E.u = m.mesh[2 * p];
+        E.v = m.mesh[2 * p + 1];
+      }
+      var v = F(E);
+      w[p] = isFinite(v) ? v : NaN;
+    }
+    E.x = 0;
+    E.y = 0;
+    E.z = 0;
+    E.r = 0;
+    E.theta = 0;
+    E.u = 0;
+    E.v = 0;
+    m.w = w;
+    return w;
+  }
+  function usedValues(m) {
+    var seen = new Uint8Array(m.w.length), out = [];
+    for (var i = 0; i < m.idx.length; i++) {
+      var p = m.idx[i];
+      if (!seen[p]) {
+        seen[p] = 1;
+        out.push(m.w[p]);
+      }
+    }
+    return out;
+  }
+  function fillMissing(m, scale) {
+    var mid = (scale.min + scale.max) / 2;
+    for (var i = 0; i < m.w.length; i++) if (m.w[i] !== m.w[i]) m.w[i] = mid;
+  }
+  function colorScale(vals, o) {
+    o = o || {};
+    var f = [], i;
+    for (i = 0; i < vals.length; i++) if (isFinite(vals[i])) f.push(vals[i]);
+    var lo = 0, hi = 1;
+    if (f.length) {
+      f = Float64Array.from(f).sort();
+      var q = function(p) {
+        return f[Math.round(p * (f.length - 1))];
+      };
+      lo = f[0];
+      hi = f[f.length - 1];
+      var p1 = q(0.01), p99 = q(0.99);
+      if (p99 > p1 && hi - lo > 4 * (p99 - p1)) {
+        lo = p1;
+        hi = p99;
+      }
+    }
+    var kind = o.cmap === "viridis" || o.cmap === "diverging" ? o.cmap : lo < 0 && hi > 0 && Math.min(-lo, hi) >= 0.1 * Math.max(-lo, hi) ? "diverging" : "viridis";
+    if (kind === "diverging") {
+      var m = Math.max(Math.abs(lo), Math.abs(hi));
+      lo = -m;
+      hi = m;
+    }
+    var st = hi > lo ? niceStep(hi - lo, 20) : 0;
+    if (st > 0) {
+      lo = Math.floor(lo / st + 1e-9) * st;
+      hi = Math.ceil(hi / st - 1e-9) * st;
+    }
+    if (isFinite(o.min) && o.min !== null) lo = o.min;
+    if (isFinite(o.max) && o.max !== null) hi = o.max;
+    if (hi < lo) {
+      var t = lo;
+      lo = hi;
+      hi = t;
+    }
+    if (!(hi > lo)) {
+      var d = Math.abs(lo) * 0.1 || 1;
+      lo -= d;
+      hi += d;
+    }
+    return { kind, min: lo, max: hi };
+  }
+  var NEG = [0.1412, 0.4392, 0.8], MID = [0.86, 0.86, 0.86], POS = [0.8118, 0.3529, 0.1216];
+  var VIRIDIS = [[0.2777, 54e-4, 0.3341], [0.1051, 1.4046, 1.3846], [-0.3309, 0.2148, 0.0951], [-4.6342, -5.7991, -19.3324], [6.2283, 14.1799, 56.6906], [4.7764, -13.7451, -65.353], [-5.4355, 4.6459, 26.3124]];
+  function colormap(t, kind) {
+    t = Math.min(1, Math.max(0, t));
+    var out = [0, 0, 0];
+    for (var c = 0; c < 3; c++) {
+      if (kind === "diverging") {
+        var s = 2 * t - 1;
+        out[c] = s < 0 ? MID[c] + (NEG[c] - MID[c]) * -s : MID[c] + (POS[c] - MID[c]) * s;
+        continue;
+      }
+      var v = 0;
+      for (var k = 6; k >= 0; k--) v = VIRIDIS[k][c] + t * v;
+      out[c] = Math.min(1, Math.max(0, v));
+    }
+    return out;
+  }
+  function slice(F, E, box, axis, c, n) {
+    var m = explicit(function(E2) {
+      E2[axis] = c;
+      E2.r = Math.hypot(E2.x, E2.y);
+      E2.theta = Math.atan2(E2.y, E2.x);
+      return isFinite(F(E2)) ? c : NaN;
+    }, E, box, axis, n);
+    values(m, F, E);
+    return m;
+  }
+  function cloud(F, E, box, n) {
+    var pos = [], w = [];
+    for (var k = 0; k < n; k++) for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
+      var x = box.xMin + (box.xMax - box.xMin) * (i + 0.5) / n, y = box.yMin + (box.yMax - box.yMin) * (j + 0.5) / n, z = box.zMin + (box.zMax - box.zMin) * (k + 0.5) / n;
+      E.x = x;
+      E.y = y;
+      E.z = z;
+      E.r = Math.hypot(x, y);
+      E.theta = Math.atan2(y, x);
+      var v = F(E);
+      if (isFinite(v)) {
+        pos.push(x, y, z);
+        w.push(v);
+      }
+    }
+    E.x = 0;
+    E.y = 0;
+    E.z = 0;
+    E.r = 0;
+    E.theta = 0;
+    return { pos: new Float32Array(pos), w: new Float32Array(w), points: true };
   }
   var FOV = 26 * Math.PI / 180, DIST = 7.6;
   function perspective(aspect) {
@@ -9144,12 +9452,20 @@ function graph3d() {
       }
     };
   }
-  var SURFACE_VS = "#version 300 es\nin vec3 aPos; in vec3 aNor; in vec2 aMesh;\nuniform mat4 uMVP, uView; uniform vec3 uCenter, uHalf;\nout vec3 vData; out vec3 vN; out vec3 vEye; out vec2 vMesh;\nvoid main() {\n  vec3 c = (aPos - uCenter) / uHalf;\n  vData = aPos; vMesh = aMesh;\n  vN = mat3(uView) * (aNor * uHalf);\n  vEye = (uView * vec4(c, 1.0)).xyz;\n  gl_Position = uMVP * vec4(aPos, 1.0);\n}";
-  var SURFACE_FS = "#version 300 es\nprecision highp float;\nin vec3 vData; in vec3 vN; in vec3 vEye; in vec2 vMesh;\nuniform vec3 uMin, uMax, uColor, uLineColor; uniform int uMode; uniform vec2 uMeshStep; uniform float uContour, uAlpha;\nout vec4 o;\nvec3 viridis(float t) {\n  t = clamp(t, 0.0, 1.0);\n  vec3 c0 = vec3(0.2777, 0.0054, 0.3341), c1 = vec3(0.1051, 1.4046, 1.3846), c2 = vec3(-0.3309, 0.2148, 0.0951);\n  vec3 c3 = vec3(-4.6342, -5.7991, -19.3324), c4 = vec3(6.2283, 14.1799, 56.6906), c5 = vec3(4.7764, -13.7451, -65.3530), c6 = vec3(-5.4355, 4.6459, 26.3124);\n  return c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6)))));\n}\nfloat gridLine(vec2 p) { vec2 d = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-6)); return min(d.x, d.y); }\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps))) discard;\n  vec3 col = uMode == 1 ? viridis((vData.z - uMin.z) / (uMax.z - uMin.z)) : uColor;\n  if (uMeshStep.x > 0.0) col = mix(col * 0.7, col, smoothstep(0.4, 1.4, gridLine(vMesh / uMeshStep)));\n  if (uContour > 0.0) { float c = vData.z / uContour; float d = abs(fract(c - 0.5) - 0.5) / max(fwidth(c), 1e-6); col = mix(uLineColor, col, smoothstep(0.5, 1.5, d)); }\n  vec3 v = normalize(-vEye), n = normalize(vN);\n  float under = dot(n, v) < 0.0 ? 1.0 : 0.0; if (under > 0.5) n = -n;\n  vec3 L1 = normalize(vec3(-0.4, 0.75, 0.55)), L2 = normalize(vec3(0.7, -0.3, 0.4));\n  float d1 = max(dot(n, L1), 0.0), d2 = max(dot(n, L2), 0.0), sp = pow(max(dot(n, normalize(L1 + v)), 0.0), 40.0);\n  vec3 lit = col * (0.42 + 0.5 * d1 + 0.18 * d2) + vec3(0.12 * sp);\n  if (under > 0.5) lit *= 0.88;\n  o = vec4(lit * uAlpha, uAlpha);\n}";
-  var LINE_VS = "#version 300 es\nin vec3 aPos; in vec3 aOther; in float aSide;\nuniform mat4 uMVP; uniform vec2 uViewport; uniform float uWidth;\nout vec3 vData;\nvoid main() {\n  vec4 a = uMVP * vec4(aPos, 1.0), b = uMVP * vec4(aOther, 1.0);\n  vec2 sa = a.xy / a.w * uViewport, sb = b.xy / b.w * uViewport;\n  vec2 dir = sb - sa; float len = length(dir); dir = len > 1e-6 ? dir / len : vec2(1.0, 0.0);\n  vec2 nrm = vec2(-dir.y, dir.x) * aSide * uWidth;\n  vData = aPos;\n  gl_Position = vec4((sa + nrm) / uViewport * a.w, a.z - 0.0015 * a.w, a.w);\n}";
-  var LINE_FS = "#version 300 es\nprecision highp float;\nin vec3 vData; uniform vec3 uMin, uMax; uniform vec4 uColor; uniform int uClip;\nout vec4 o;\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (uClip == 1 && (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps)))) discard;\n  o = vec4(uColor.rgb * uColor.a, uColor.a);\n}";
+  var f3 = function(c) {
+    return c.map(function(v) {
+      return v.toFixed(4);
+    }).join(", ");
+  };
+  var CMAP_GLSL = "uniform highp int uMode; uniform highp vec2 uWRange;\nconst vec3 NEG = vec3(" + f3(NEG) + "), MID = vec3(" + f3(MID) + "), POS = vec3(" + f3(POS) + ");\nvec3 viridis(float t) {\n  t = clamp(t, 0.0, 1.0);\n  vec3 c0 = vec3(" + f3(VIRIDIS[0]) + "), c1 = vec3(" + f3(VIRIDIS[1]) + "), c2 = vec3(" + f3(VIRIDIS[2]) + ");\n  vec3 c3 = vec3(" + f3(VIRIDIS[3]) + "), c4 = vec3(" + f3(VIRIDIS[4]) + "), c5 = vec3(" + f3(VIRIDIS[5]) + "), c6 = vec3(" + f3(VIRIDIS[6]) + ");\n  return clamp(c0 + t * (c1 + t * (c2 + t * (c3 + t * (c4 + t * (c5 + t * c6))))), 0.0, 1.0);\n}\nvec3 cmap(float w) {\n  float t = clamp((w - uWRange.x) / max(uWRange.y - uWRange.x, 1e-20), 0.0, 1.0);\n  if (uMode == 3) { float s = 2.0 * t - 1.0; return s < 0.0 ? mix(MID, NEG, -s) : mix(MID, POS, s); }\n  return viridis(t);\n}\n";
+  var SURFACE_VS = "#version 300 es\nin vec3 aPos; in vec3 aNor; in vec2 aMesh; in float aW;\nuniform mat4 uMVP, uView; uniform vec3 uCenter, uHalf;\nout vec3 vData; out vec3 vN; out vec3 vEye; out vec2 vMesh; out float vW;\nvoid main() {\n  vec3 c = (aPos - uCenter) / uHalf;\n  vData = aPos; vMesh = aMesh; vW = aW;\n  vN = mat3(uView) * (aNor * uHalf);\n  vEye = (uView * vec4(c, 1.0)).xyz;\n  gl_Position = uMVP * vec4(aPos, 1.0);\n}";
+  var SURFACE_FS = "#version 300 es\nprecision highp float; precision highp int;\nin vec3 vData; in vec3 vN; in vec3 vEye; in vec2 vMesh; in float vW;\nuniform vec3 uMin, uMax, uColor, uLineColor; uniform vec2 uMeshStep; uniform float uContour, uAlpha, uLit; uniform int uContourW;\n" + CMAP_GLSL + "out vec4 o;\nfloat gridLine(vec2 p) { vec2 d = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-6)); return min(d.x, d.y); }\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps))) discard;\n  vec3 col = uMode == 1 ? viridis((vData.z - uMin.z) / (uMax.z - uMin.z)) : uMode >= 2 ? cmap(vW) : uColor;\n  if (uMeshStep.x > 0.0) col = mix(col * 0.7, col, smoothstep(0.4, 1.4, gridLine(vMesh / uMeshStep)));\n  if (uContour > 0.0) { float c = (uContourW == 1 ? vW : vData.z) / uContour; float d = abs(fract(c - 0.5) - 0.5) / max(fwidth(c), 1e-6); col = mix(uLineColor, col, smoothstep(0.5, 1.5, d)); }\n  vec3 v = normalize(-vEye), n = normalize(vN);\n  float under = dot(n, v) < 0.0 ? 1.0 : 0.0; if (under > 0.5) n = -n;\n  vec3 L1 = normalize(vec3(-0.4, 0.75, 0.55)), L2 = normalize(vec3(0.7, -0.3, 0.4));\n  float d1 = max(dot(n, L1), 0.0), d2 = max(dot(n, L2), 0.0), sp = pow(max(dot(n, normalize(L1 + v)), 0.0), 40.0);\n  vec3 lit = col * (0.42 + 0.5 * d1 + 0.18 * d2) + vec3(0.12 * sp);\n  if (under > 0.5) lit *= 0.88;\n  lit = mix(col, lit, uLit);\n  o = vec4(lit * uAlpha, uAlpha);\n}";
+  var LINE_VS = "#version 300 es\nin vec3 aPos; in vec3 aOther; in float aSide; in float aW;\nuniform mat4 uMVP; uniform vec2 uViewport; uniform float uWidth;\nout vec3 vData; out float vW;\nvoid main() {\n  vec4 a = uMVP * vec4(aPos, 1.0), b = uMVP * vec4(aOther, 1.0);\n  vec2 sa = a.xy / a.w * uViewport, sb = b.xy / b.w * uViewport;\n  vec2 dir = sb - sa; float len = length(dir); dir = len > 1e-6 ? dir / len : vec2(1.0, 0.0);\n  vec2 nrm = vec2(-dir.y, dir.x) * aSide * uWidth;\n  vData = aPos; vW = aW;\n  gl_Position = vec4((sa + nrm) / uViewport * a.w, a.z - 0.0015 * a.w, a.w);\n}";
+  var LINE_FS = "#version 300 es\nprecision highp float; precision highp int;\nin vec3 vData; in float vW; uniform vec3 uMin, uMax; uniform vec4 uColor; uniform int uClip;\n" + CMAP_GLSL + "out vec4 o;\nvoid main() {\n  vec3 eps = (uMax - uMin) * 1e-4;\n  if (uClip == 1 && (any(lessThan(vData, uMin - eps)) || any(greaterThan(vData, uMax + eps)))) discard;\n  vec3 c = uMode >= 2 ? cmap(vW) : uColor.rgb;\n  o = vec4(c * uColor.a, uColor.a);\n}";
+  var POINT_VS = "#version 300 es\nin vec3 aPos; in float aW;\nuniform mat4 uMVP; uniform float uSize; uniform int uSizeBy;\nuniform highp int uMode; uniform highp vec2 uWRange;\nout float vW; out float vSize;\nvoid main() {\n  float t = clamp((aW - uWRange.x) / max(uWRange.y - uWRange.x, 1e-20), 0.0, 1.0);\n  float s = uMode == 3 ? abs(2.0 * t - 1.0) : t;\n  vW = aW;\n  vSize = uSize * (uSizeBy == 1 ? 0.3 + 0.7 * s : 1.0);\n  gl_PointSize = vSize;\n  gl_Position = uMVP * vec4(aPos, 1.0);\n}";
+  var POINT_FS = "#version 300 es\nprecision highp float; precision highp int;\nin float vW; in float vSize; uniform float uAlpha;\n" + CMAP_GLSL + "out vec4 o;\nvoid main() {\n  vec2 d = gl_PointCoord * 2.0 - 1.0; float r = length(d);\n  float a = uAlpha * (1.0 - smoothstep(1.0 - 2.0 / max(vSize, 2.0), 1.0, r));\n  if (a <= 0.0) discard;\n  o = vec4(cmap(vW) * (1.0 - 0.3 * r * r) * a, a);\n}";
   function renderer(doc) {
-    var cv = doc.createElement("canvas"), gl = null, progS = null, progL = null, U = {}, failed = false;
+    var cv = doc.createElement("canvas"), gl = null, progS = null, progL = null, progP = null, U = {}, failed = false;
     function compile(vs, fs, attrs) {
       var mk = function(type, src) {
         var s = gl.createShader(type);
@@ -9173,13 +9489,17 @@ function graph3d() {
       try {
         gl = cv.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
         if (!gl) throw new Error("no WebGL 2");
-        progS = compile(SURFACE_VS, SURFACE_FS, ["aPos", "aNor", "aMesh"]);
-        progL = compile(LINE_VS, LINE_FS, ["aPos", "aOther", "aSide"]);
-        ["uMVP", "uView", "uCenter", "uHalf", "uMin", "uMax", "uColor", "uLineColor", "uMode", "uMeshStep", "uContour", "uAlpha"].forEach(function(n) {
+        progS = compile(SURFACE_VS, SURFACE_FS, ["aPos", "aNor", "aMesh", "aW"]);
+        progL = compile(LINE_VS, LINE_FS, ["aPos", "aOther", "aSide", "aW"]);
+        progP = compile(POINT_VS, POINT_FS, ["aPos", "aW"]);
+        ["uMVP", "uView", "uCenter", "uHalf", "uMin", "uMax", "uColor", "uLineColor", "uMode", "uMeshStep", "uContour", "uAlpha", "uLit", "uContourW", "uWRange"].forEach(function(n) {
           U["s" + n] = gl.getUniformLocation(progS, n);
         });
-        ["uMVP", "uViewport", "uWidth", "uMin", "uMax", "uColor", "uClip"].forEach(function(n) {
+        ["uMVP", "uViewport", "uWidth", "uMin", "uMax", "uColor", "uClip", "uMode", "uWRange"].forEach(function(n) {
           U["l" + n] = gl.getUniformLocation(progL, n);
+        });
+        ["uMVP", "uSize", "uSizeBy", "uMode", "uWRange", "uAlpha"].forEach(function(n) {
+          U["p" + n] = gl.getUniformLocation(progP, n);
         });
         return true;
       } catch (e) {
@@ -9188,12 +9508,13 @@ function graph3d() {
         return false;
       }
     }
-    function upload(m) {
+    function upload(m, arrays) {
       if (m.vao && m.gl === gl) return m;
       m.gl = gl;
       m.vao = gl.createVertexArray();
       gl.bindVertexArray(m.vao);
-      m.buffers = [[m.pos, 3], [m.nor, 3], [m.mesh, 2]].map(function(a, i) {
+      m.buffers = arrays.map(function(a, i) {
+        if (!a) return null;
         var b = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, b);
         gl.bufferData(gl.ARRAY_BUFFER, a[0], gl.STATIC_DRAW);
@@ -9201,14 +9522,16 @@ function graph3d() {
         gl.vertexAttribPointer(i, a[1], gl.FLOAT, false, 0, 0);
         return b;
       });
-      m.ib = gl.createBuffer();
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
+      if (m.idx) {
+        m.ib = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
+      }
       gl.bindVertexArray(null);
       return m;
     }
-    function lines(runs) {
-      var pos = [], other = [], side = [], idx = [];
+    function lines(runs, wOf) {
+      var pos = [], other = [], side = [], idx = [], w = wOf ? [] : null;
       runs.forEach(function(run) {
         for (var i = 0; i < run.length - 1; i++) {
           var a = run[i], b = run[i + 1], base = pos.length / 3;
@@ -9216,35 +9539,20 @@ function graph3d() {
           other.push(b[0], b[1], b[2], b[0], b[1], b[2], a[0], a[1], a[2], a[0], a[1], a[2]);
           side.push(1, -1, -1, 1);
           idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          if (w) {
+            var wa = wOf(a), wb = wOf(b);
+            w.push(wa, wa, wb, wb);
+          }
         }
       });
-      return { pos: new Float32Array(pos), nor: new Float32Array(other), mesh: new Float32Array(side), idx: new Uint32Array(idx), line: true };
-    }
-    function uploadLines(m) {
-      if (m.vao && m.gl === gl) return m;
-      m.gl = gl;
-      m.vao = gl.createVertexArray();
-      gl.bindVertexArray(m.vao);
-      m.buffers = [[m.pos, 3], [m.nor, 3], [m.mesh, 1]].map(function(a, i) {
-        var b = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, b);
-        gl.bufferData(gl.ARRAY_BUFFER, a[0], gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(i);
-        gl.vertexAttribPointer(i, a[1], gl.FLOAT, false, 0, 0);
-        return b;
-      });
-      m.ib = gl.createBuffer();
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.idx, gl.STATIC_DRAW);
-      gl.bindVertexArray(null);
-      return m;
+      return { pos: new Float32Array(pos), nor: new Float32Array(other), mesh: new Float32Array(side), idx: new Uint32Array(idx), w: w && new Float32Array(w), line: true };
     }
     function free(m) {
       if (!m || !m.vao || m.gl !== gl || !gl) return;
       m.buffers.forEach(function(b) {
-        gl.deleteBuffer(b);
+        if (b) gl.deleteBuffer(b);
       });
-      gl.deleteBuffer(m.ib);
+      if (m.ib) gl.deleteBuffer(m.ib);
       gl.deleteVertexArray(m.vao);
       m.vao = null;
     }
@@ -9252,7 +9560,7 @@ function graph3d() {
       var n = parseInt(String(c).replace("#", "").slice(0, 6), 16);
       return isFinite(n) ? [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255] : [0.5, 0.5, 0.5];
     }
-    function draw(cam, box, w, h, dpr, surfaces, lineSets) {
+    function draw(cam, box, w, h, dpr, surfaces, lineSets, dots) {
       if (!init()) return null;
       var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
       if (cv.width !== W || cv.height !== H) {
@@ -9263,44 +9571,82 @@ function graph3d() {
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.DEPTH_TEST);
+      gl.depthMask(true);
       gl.disable(gl.CULL_FACE);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.vertexAttrib1f(3, 0);
       var mn = [box.xMin, box.yMin, box.zMin], mx = [box.xMax, box.yMax, box.zMax];
+      var mvp = new Float32Array(cam.mvp);
       gl.useProgram(progS);
-      gl.uniformMatrix4fv(U.suMVP, false, new Float32Array(cam.mvp));
+      gl.uniformMatrix4fv(U.suMVP, false, mvp);
       gl.uniformMatrix4fv(U.suView, false, new Float32Array(cam.view));
       gl.uniform3fv(U.suCenter, cam.center);
       gl.uniform3fv(U.suHalf, cam.half);
       gl.uniform3fv(U.suMin, mn);
       gl.uniform3fv(U.suMax, mx);
-      surfaces.forEach(function(s) {
+      var surface = function(s) {
         if (!s.mesh.idx.length) return;
-        upload(s.mesh);
+        var m = s.mesh;
+        upload(m, [[m.pos, 3], [m.nor, 3], [m.mesh, 2], m.w ? [m.w, 1] : null]);
         gl.uniform3fv(U.suColor, rgb(s.color));
         gl.uniform3fv(U.suLineColor, rgb(s.lineColor || "#000000"));
         gl.uniform1i(U.suMode, s.mode || 0);
+        gl.uniform2fv(U.suWRange, s.wRange || [0, 1]);
+        gl.uniform1f(U.suLit, s.lit == null ? 1 : s.lit);
         gl.uniform2fv(U.suMeshStep, s.meshStep || [0, 0]);
         gl.uniform1f(U.suContour, s.contour || 0);
+        gl.uniform1i(U.suContourW, s.contourW ? 1 : 0);
         gl.uniform1f(U.suAlpha, s.alpha == null ? 1 : s.alpha);
-        gl.bindVertexArray(s.mesh.vao);
-        gl.drawElements(gl.TRIANGLES, s.mesh.idx.length, gl.UNSIGNED_INT, 0);
+        gl.bindVertexArray(m.vao);
+        gl.drawElements(gl.TRIANGLES, m.idx.length, gl.UNSIGNED_INT, 0);
+      };
+      var clear = surfaces.filter(function(s) {
+        return s.alpha < 1;
       });
+      surfaces.forEach(function(s) {
+        if (!(s.alpha < 1)) surface(s);
+      });
+      if (dots && dots.length) {
+        gl.useProgram(progP);
+        gl.uniformMatrix4fv(U.puMVP, false, mvp);
+        dots.forEach(function(d) {
+          var m = d.mesh, count = m.w.length;
+          if (!count) return;
+          upload(m, [[m.pos, 3], [m.w, 1]]);
+          gl.uniform1i(U.puMode, d.mode || 2);
+          gl.uniform2fv(U.puWRange, d.wRange || [0, 1]);
+          gl.uniform1f(U.puSize, (d.size || 8) * dpr);
+          gl.uniform1i(U.puSizeBy, d.sizeBy ? 1 : 0);
+          gl.uniform1f(U.puAlpha, d.alpha == null ? 1 : d.alpha);
+          gl.bindVertexArray(m.vao);
+          gl.drawArrays(gl.POINTS, 0, count);
+        });
+      }
       gl.useProgram(progL);
-      gl.uniformMatrix4fv(U.luMVP, false, new Float32Array(cam.mvp));
+      gl.uniformMatrix4fv(U.luMVP, false, mvp);
       gl.uniform2f(U.luViewport, W / 2, H / 2);
       gl.uniform3fv(U.luMin, mn);
       gl.uniform3fv(U.luMax, mx);
       lineSets.forEach(function(l) {
         if (!l.mesh.idx.length) return;
-        uploadLines(l.mesh);
+        var m = l.mesh;
+        upload(m, [[m.pos, 3], [m.nor, 3], [m.mesh, 1], m.w ? [m.w, 1] : null]);
         var c = rgb(l.color);
         gl.uniform4f(U.luColor, c[0], c[1], c[2], l.alpha == null ? 1 : l.alpha);
+        gl.uniform1i(U.luMode, l.mode || 0);
+        gl.uniform2fv(U.luWRange, l.wRange || [0, 1]);
         gl.uniform1f(U.luWidth, (l.width || 2) * dpr / 2);
         gl.uniform1i(U.luClip, l.clip === false ? 0 : 1);
-        gl.bindVertexArray(l.mesh.vao);
-        gl.drawElements(gl.TRIANGLES, l.mesh.idx.length, gl.UNSIGNED_INT, 0);
+        gl.bindVertexArray(m.vao);
+        gl.drawElements(gl.TRIANGLES, m.idx.length, gl.UNSIGNED_INT, 0);
       });
+      if (clear.length) {
+        gl.useProgram(progS);
+        gl.depthMask(false);
+        clear.forEach(surface);
+        gl.depthMask(true);
+      }
       gl.bindVertexArray(null);
       return cv;
     }
@@ -9312,11 +9658,27 @@ function graph3d() {
     var raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
     return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
   }
-  return { explicit, parametric, implicit, curve, camera, renderer, niceStep };
+  return {
+    explicit,
+    parametric,
+    implicit,
+    curve,
+    sample,
+    values,
+    usedValues,
+    fillMissing,
+    colorScale,
+    colormap,
+    slice,
+    cloud,
+    camera,
+    renderer,
+    niceStep
+  };
 }
 
 // client/src/utils/graphPage.js
-var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin"];
+var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin", "colorBar"];
 var DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 };
 var DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 };
 var DEFAULT_CAMERA = { turn: 35, tilt: 25 };

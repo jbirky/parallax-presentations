@@ -95,3 +95,114 @@ describe('the camera', () => {
     expect(G.niceStep(300, 5)).toBe(50)
   })
 })
+
+describe('a fourth value, as color', () => {
+  it('colors with viridis, or diverging about 0 when the values have both signs', () => {
+    expect(G.colorScale([1, 2, 3, 5], {})).toEqual({ kind: 'viridis', min: 1, max: 5 })
+    expect(G.colorScale([-2, 0, 5], {})).toEqual({ kind: 'diverging', min: -5, max: 5 })
+    // Barely negative is still one-sided
+    expect(G.colorScale([-0.1, 0, 5], {}).kind).toBe('viridis')
+    // Chosen, or a range set
+    expect(G.colorScale([1, 2, 3], { cmap: 'diverging' })).toEqual({ kind: 'diverging', min: -3, max: 3 })
+    expect(G.colorScale([-2, 0, 5], { cmap: 'viridis' })).toEqual({ kind: 'viridis', min: -2, max: 5 })
+    expect(G.colorScale([1, 2, 3], { min: 0, max: 10 })).toEqual({ kind: 'viridis', min: 0, max: 10 })
+    expect(G.colorScale([1, 2, 3], { min: null, max: 2.5 })).toEqual({ kind: 'viridis', min: 1, max: 2.5 })
+    // Undefined values are left out; with none, or one value, a range still
+    expect(G.colorScale([NaN, 4, Infinity, 6], {})).toEqual({ kind: 'viridis', min: 4, max: 6 })
+    expect(G.colorScale([], {})).toEqual({ kind: 'viridis', min: 0, max: 1 })
+    const one = G.colorScale([2, 2], {})
+    expect(one.min).toBeLessThan(2)
+    expect(one.max).toBeGreaterThan(2)
+  })
+
+  it('leaves out a pole’s spike, so it doesn’t take the whole map', () => {
+    const vals = Array.from({ length: 1000 }, (_, i) => i / 1000)
+    vals[500] = 1e6
+    const s = G.colorScale(vals, {})
+    expect(s.max).toBeLessThan(1.01)
+    // A smooth spread keeps its ends
+    expect(G.colorScale(Array.from({ length: 1000 }, (_, i) => i), {})).toMatchObject({ min: 0, max: 1000 })
+    // Rounded outward: a grid's samples miss sin's peak of 3 a little
+    expect(G.colorScale([-2.99, 0.4, 2.98], {})).toEqual({ kind: 'diverging', min: -3, max: 3 })
+    expect(G.colorScale([0.000199, 0.5, 1], {})).toEqual({ kind: 'viridis', min: 0, max: 1 })
+  })
+
+  it('maps colors as the shaders do', () => {
+    const near = (a, b, digits = 2) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], digits))
+    // viridis's ends, as nearly as its polynomial gets them
+    near(G.colormap(0, 'viridis'), [0.267, 0.005, 0.329], 1)
+    near(G.colormap(1, 'viridis'), [0.993, 0.906, 0.144], 1)
+    near(G.colormap(0, 'diverging'), [0.1412, 0.4392, 0.8])
+    near(G.colormap(0.5, 'diverging'), [0.86, 0.86, 0.86])
+    near(G.colormap(1, 'diverging'), [0.8118, 0.3529, 0.1216])
+    near(G.colormap(2, 'viridis'), G.colormap(1, 'viridis'))
+  })
+
+  it('slices the box, where the value is defined, with the value at each point', () => {
+    const F = E => (E.x * E.x + E.y * E.y + E.z * E.z < 64 ? E.x + 2 * E.y + 3 * E.z : NaN)
+    const m = G.slice(F, {}, box, 'y', 2, 40)
+    const pts = used(m)
+    for (const [x, y, z] of pts) {
+      expect(y).toBe(2)
+      expect(x * x + 4 + z * z).toBeLessThan(64 + 0.01)
+    }
+    // Its edge, a circle of radius √60 in the plane y = 2
+    expect(pts.some(([x, , z]) => Math.abs(Math.hypot(x, z) - Math.sqrt(60)) < 1e-3)).toBe(true)
+    for (const k of new Set(m.idx)) expect(m.w[k]).toBeCloseTo(m.pos[3 * k] + 4 + 3 * m.pos[3 * k + 2], 3)
+    // A slice of z, through r
+    const s = G.slice(E => E.r, {}, box, 'z', -3, 10)
+    for (const k of new Set(s.idx)) expect(s.w[k]).toBeCloseTo(Math.hypot(s.pos[3 * k], s.pos[3 * k + 1]), 4)
+  })
+
+  it('keeps a surface through grid points exactly on it', () => {
+    // On an integer grid, x + y + z = 0 is exactly 0 at many corners: the
+    // whole hexagon where it crosses the cube, area 3√3/2 · (10√2)²
+    const m = G.implicit(E => E.x + E.y + E.z, {}, box, 20)
+    let area = 0
+    for (let t = 0; t < m.idx.length; t += 3) {
+      const [a, b, c] = [0, 1, 2].map(q => [0, 1, 2].map(r => m.pos[3 * m.idx[t + q] + r]))
+      const u = a.map((v, i) => b[i] - v), v = a.map((w, i) => c[i] - w)
+      area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2
+    }
+    expect(area).toBeCloseTo(3 * Math.sqrt(3) / 2 * 200, 0)
+  })
+
+  it('finds level surfaces from one sampled grid', () => {
+    const F = E => E.x * E.x + E.y * E.y + E.z * E.z
+    const grid = G.sample(F, {}, box, 30)
+    expect(grid.length).toBe(31 ** 3)
+    for (const level of [9, 49]) {
+      const m = G.implicit(F, {}, box, 30, level, grid)
+      expect(m.idx.length).toBeGreaterThan(300)
+      for (const [x, y, z] of verts(m)) expect(Math.abs(Math.hypot(x, y, z) - Math.sqrt(level))).toBeLessThan(0.15)
+    }
+  })
+
+  it('puts a cloud of dots where the value is defined', () => {
+    const c = G.cloud(E => (E.z > 0 ? E.x : NaN), {}, box, 4)
+    expect(c.w.length).toBe(4 * 4 * 2)
+    expect(c.pos.length).toBe(c.w.length * 3)
+    for (let k = 0; k < c.w.length; k++) {
+      expect(c.pos[3 * k + 2]).toBeGreaterThan(0)
+      expect(c.w[k]).toBe(c.pos[3 * k])
+    }
+    expect([...new Set(c.pos.filter((_, i) => i % 3 === 0))].sort((a, b) => a - b)).toEqual([-7.5, -2.5, 2.5, 7.5])
+  })
+
+  it('colors a parametric surface by u and v, and a curve by t', () => {
+    const m = G.parametric(E => Math.cos(E.u), E => Math.sin(E.u), E => E.v, {}, 0, Math.PI, 0, 1, 8, 4)
+    const w = G.values(m, E => E.u * 10 + E.v, {}, true)
+    expect(w[0]).toBe(0)
+    expect(w[8]).toBeCloseTo(Math.PI * 10, 5)
+    expect(w[9 * 4 + 8]).toBeCloseTo(Math.PI * 10 + 1, 5)
+    expect(G.usedValues(m).length).toBe(9 * 5)
+    // Undefined values are drawn at the scale's middle
+    w[3] = NaN
+    G.fillMissing(m, { min: 0, max: 4 })
+    expect(m.w[3]).toBe(2)
+    const runs = G.curve(E => E.t, E => 0, E => 0, {}, 0, 1, 4)
+    expect(runs[0].map(p => p[3])).toEqual([0, 0.25, 0.5, 0.75, 1])
+    const lines = G.renderer({ createElement: () => ({}) }).lines(runs, p => p[3] * 2)
+    expect([...lines.w]).toEqual([0, 0, 0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1, 1.5, 1.5, 1.5, 1.5, 2, 2])
+  })
+})

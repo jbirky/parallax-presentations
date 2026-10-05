@@ -220,15 +220,31 @@ export function graphRuntime(P, G, G3, config) {
   }
   function env3() { const e = env(); e.z = 0; e.u = 0; e.v = 0; return e }
   const num = (v, d) => (v !== undefined && v !== '' && isFinite(+v) ? +v : d)
+  // A value in space's drawing, unless its options say otherwise (the
+  // editor's VOLUME_DEFAULTS)
+  const VOLUME = { draw: 'slices', levels: 5, opacity: 0.5, density: 'normal', sizeBy: true, contours: false, cmap: 'auto' }
+  const isVolume = it => it.kind === 'field3' || (it.kind === 'function' && it.graph === 'w')
+  const optNum = v => (v === undefined || v === null || v === '' || !isFinite(+v) ? null : +v)
+  const scaleOpts = o => ({ cmap: o.cmap, min: optNum(o.wMin), max: optNum(o.wMax) })
+  const modeOf = sc => (sc.kind === 'diverging' ? 3 : 2)
   // Meshes and lines, worked out again only when the box, sliders, lines or step change
   function geometry3(E, box) {
     const key = JSON.stringify([box, values, C.expressions, step, C.grid, C.axes])
     if (geo3 && key === geo3Key) return geo3
     geo3Key = key
-    if (geo3 && r3) { geo3.surfaces.forEach(s => r3.free(s.mesh)); geo3.lines.forEach(l => r3.free(l.mesh)) }
-    const surfaces = [], lines = [], points = [], R = r3 || G3.renderer(document)
+    if (geo3 && r3) { geo3.surfaces.forEach(s => r3.free(s.mesh)); geo3.lines.forEach(l => r3.free(l.mesh)); geo3.dots.forEach(d => r3.free(d.mesh)) }
+    const surfaces = [], lines = [], points = [], dots = [], bars = [], R = r3 || G3.renderer(document)
     const span = k => box[k + 'Max'] - box[k + 'Min']
     const stepOf = k => G3.niceStep(span(k), 10)
+    // A surface colored by a function: its value at each point, the scale, a color bar
+    const byFunction = (s, it, o, uv) => {
+      if (o.color !== 'function' || !it.colorF) return s
+      G3.values(s.mesh, it.colorF, E, uv)
+      const sc = G3.colorScale(G3.usedValues(s.mesh), scaleOpts(o))
+      G3.fillMissing(s.mesh, sc)
+      bars.push({ title: o.colorBy, scale: sc })
+      return Object.assign(s, { mode: modeOf(sc), wRange: [sc.min, sc.max] })
+    }
     for (const it of analysis.items) {
       if (!visible(it)) continue
       const e = exprOf(it), color = e.color || '#c74440', o = e.surface || {}
@@ -237,17 +253,30 @@ export function graphRuntime(P, G, G3, config) {
         if (it.kind === 'surface' || (it.kind === 'function' && it.graph === 'z')) {
           const axis = it.axis || 'z', A = axis === 'z' ? ['x', 'y'] : axis === 'x' ? ['y', 'z'] : ['x', 'z']
           const mesh = G3.explicit(it.f, E, box, axis, fine ? 140 : 72)
-          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+          surfaces.push(byFunction({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [stepOf(A[0]), stepOf(A[1])], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg }, it, o, false))
         } else if (it.kind === 'psurface') {
           const u0 = num(e.uMin, 0), u1 = num(e.uMax, 2 * Math.PI), v0 = num(e.vMin, 0), v1 = num(e.vMax, Math.PI), n = fine ? 120 : 64
           const mesh = G3.parametric(it.fx, it.fy, it.fz, E, u0, u1, v0, v1, n, n)
-          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+          surfaces.push(byFunction({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: o.mesh === false ? [0, 0] : [(u1 - u0) / 16, (v1 - v0) / 16], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg }, it, o, true))
         } else if (it.kind === 'implicit3') {
           const mesh = G3.implicit(it.F, E, box, fine ? 72 : 44)
-          surfaces.push({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg })
+          surfaces.push(byFunction({ mesh, color, mode: o.color === 'height' ? 1 : 0, meshStep: [0, 0], contour: o.contours ? G3.niceStep(span('z'), 12) : 0, lineColor: theme.fg }, it, o, false))
         } else if (it.kind === 'curve3') {
           const runs = G3.curve(it.fx, it.fy, it.fz, E, num(e.min, 0), num(e.max, 2 * Math.PI), 800)
-          lines.push({ mesh: R.lines(runs), color, width: e.width || 2.5, alpha: 1 })
+          if (o.color === 'function' && it.colorF) {
+            const wOf = p => {
+              E.x = p[0]; E.y = p[1]; E.z = p[2]; E.t = p[3]; E.r = Math.hypot(p[0], p[1]); E.theta = Math.atan2(p[1], p[0])
+              const v = it.colorF(E)
+              return isFinite(v) ? v : NaN
+            }
+            const sc = G3.colorScale(runs.flatMap(run => run.map(wOf)), scaleOpts(o)), mid = (sc.min + sc.max) / 2
+            const mesh = R.lines(runs, p => { const v = wOf(p); return v === v ? v : mid })
+            E.x = 0; E.y = 0; E.z = 0; E.t = 0; E.r = 0; E.theta = 0
+            lines.push({ mesh, color, width: e.width || 2.5, alpha: 1, mode: modeOf(sc), wRange: [sc.min, sc.max] })
+            bars.push({ title: o.colorBy, scale: sc })
+          } else lines.push({ mesh: R.lines(runs), color, width: e.width || 2.5, alpha: 1 })
+        } else if (isVolume(it)) {
+          volume(it, e, E, box, surfaces, dots, bars)
         } else if (it.kind === 'point3') {
           const p = [it.fx(E), it.fy(E), it.fz(E)]
           if (p.every(isFinite)) points.push({ p, e, color })
@@ -273,8 +302,44 @@ export function graphRuntime(P, G, G3, config) {
       const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax)
       lines.push({ mesh: R.lines([[[box.xMin, oy, floor], [box.xMax, oy, floor]], [[ox, box.yMin, floor], [ox, box.yMax, floor]], [[ox, oy, box.zMin], [ox, oy, box.zMax]]]), color: theme.fg, width: 1.6, alpha: 0.75, clip: false })
     }
-    geo3 = { surfaces, lines, points, floor }
+    geo3 = { surfaces, lines, points, dots, bars, floor }
     return geo3
+  }
+  // w = F(x, y, z), shown as color: slices through the box (unlit, so the
+  // colors read true), level surfaces (see-through, at evenly spaced values
+  // within its range), or dots at the middles of a grid of cells
+  function volume(it, e, E, box, surfaces, dots, bars) {
+    const v = { ...VOLUME, ...(e.volume || {}) }, F = it.f, fine = v.detail === 'fine'
+    const bar = { title: it.name || 'w' }
+    if (v.draw === 'levels') {
+      const n = fine ? 60 : 40, grid = G3.sample(F, E, box, n)
+      const sc = G3.colorScale(grid, scaleOpts(v)), count = Math.max(1, Math.min(12, Math.round(+v.levels) || 5))
+      bar.marks = []
+      for (let k = 1; k <= count; k++) {
+        const level = sc.min + (sc.max - sc.min) * k / (count + 1)
+        const mesh = G3.implicit(F, E, box, n, level, grid)
+        mesh.w = new Float32Array(mesh.pos.length / 3).fill(level)
+        surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], alpha: Math.min(1, Math.max(0.1, +v.opacity || 0.5)), meshStep: [0, 0], contour: 0, lineColor: theme.fg })
+        bar.marks.push(level)
+      }
+      bars.push(Object.assign(bar, { scale: sc }))
+    } else if (v.draw === 'points') {
+      const n = v.density === 'sparse' ? 9 : v.density === 'dense' ? 18 : 13
+      const mesh = G3.cloud(F, E, box, n), sc = G3.colorScale(mesh.w, scaleOpts(v))
+      dots.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], size: n === 9 ? 14 : n === 13 ? 10 : 7, sizeBy: v.sizeBy !== false })
+      bars.push(Object.assign(bar, { scale: sc }))
+    } else {
+      const sc = G3.colorScale(G3.sample(F, E, box, 24), scaleOpts(v))
+      for (const k of ['x', 'y', 'z']) {
+        if (v.slices && v.slices[k] === false) continue
+        const c = it.at && it.at[k] ? it.at[k](E) : (box[k + 'Min'] + box[k + 'Max']) / 2
+        if (!(c >= box[k + 'Min'] && c <= box[k + 'Max'])) continue
+        const mesh = G3.slice(F, E, box, k, c, fine ? 120 : 64)
+        G3.fillMissing(mesh, sc)
+        surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], lit: 0, meshStep: [0, 0], contour: v.contours ? G3.niceStep(sc.max - sc.min, 10) : 0, contourW: true, lineColor: theme.fg })
+      }
+      bars.push(Object.assign(bar, { scale: sc }))
+    }
   }
   function draw3d() {
     ctx.clearRect(0, 0, W, H)
@@ -283,7 +348,7 @@ export function graphRuntime(P, G, G3, config) {
     if (!r3) r3 = G3.renderer(document)
     const g = geometry3(E, box)
     const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W, H)
-    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines)
+    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines, g.dots)
     if (!out) {
       haloText('3D graphs need WebGL 2, which this browser has turned off.', W / 2, H / 2, 'center', 'middle', '14px ' + FONT)
       return
@@ -293,6 +358,45 @@ export function graphRuntime(P, G, G3, config) {
     ctx.drawImage(out, 0, 0)
     ctx.restore()
     labels3(camera, box, g)
+    colorBars(g.bars)
+  }
+  // A key for each value shown as color, down the right side: its map, the
+  // ends and middle of its range (0 for a diverging map), marks at the
+  // level surfaces drawn, and its name
+  function colorBars(bars) {
+    if (C.colorBar === false || !bars.length) return
+    const top = 66, h = Math.max(60, Math.min(160, H - top - 80)), bw = 10
+    const label = v => String(parseFloat(v.toPrecision(3))).replace('-', '−')
+    let right = W - 14
+    for (const b of bars.slice(0, 3)) {
+      const sc = b.scale, x = right - bw
+      const yOf = v => top + h - (v - sc.min) / (sc.max - sc.min) * h
+      const grad = ctx.createLinearGradient(0, top + h, 0, top)
+      for (let i = 0; i <= 20; i++) grad.addColorStop(i / 20, 'rgb(' + G3.colormap(i / 20, sc.kind).map(c => Math.round(c * 255)).join(',') + ')')
+      ctx.fillStyle = grad
+      ctx.fillRect(x, top, bw, h)
+      ctx.strokeStyle = theme.border
+      ctx.lineWidth = 1
+      ctx.strokeRect(x + 0.5, top + 0.5, bw - 1, h - 1)
+      if (b.marks) {
+        ctx.beginPath()
+        for (const m of b.marks) { const y = Math.round(yOf(m)) + 0.5; ctx.moveTo(x - 3, y); ctx.lineTo(x + bw + 3, y) }
+        ctx.strokeStyle = theme.fg
+        ctx.stroke()
+      }
+      const mid = sc.kind === 'diverging' && sc.min < 0 && sc.max > 0 ? 0 : (sc.min + sc.max) / 2
+      let widest = 0
+      ctx.font = '11px ' + FONT
+      for (const v of [sc.max, mid, sc.min]) {
+        const t = label(v)
+        widest = Math.max(widest, ctx.measureText(t).width)
+        haloText(t, x - 5, yOf(v), 'right', 'middle', '11px ' + FONT)
+      }
+      const title = String(b.title || '').trim(), name = title.length > 16 ? title.slice(0, 15) + '…' : title
+      haloText(name, right, top - 17, 'right', 'middle', 'italic 14px ' + MATH_FONT)
+      ctx.font = 'italic 14px ' + MATH_FONT
+      right -= Math.max(widest + 5 + bw, ctx.measureText(name).width) + 18
+    }
   }
   // Numbers along the axes, the axes' names, and the points
   function labels3(camera, box, g) {

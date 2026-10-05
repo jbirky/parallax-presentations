@@ -31,9 +31,9 @@ export function createMathParser() {
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E }
   const GREEK = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'lambda', 'sigma', 'omega', 'phi', 'rho', 'mu', 'nu', 'kappa', 'eta']
   // The variables curves are drawn over: never sliders. A 3D graph adds z,
-  // and u and v for surfaces
+  // u and v for surfaces, and w, a value at each point of space
   const RESERVED = ['x', 'y', 't', 'theta', 'r']
-  const RESERVED_3D = ['x', 'y', 'z', 't', 'u', 'v', 'theta', 'r']
+  const RESERVED_3D = ['x', 'y', 'z', 't', 'u', 'v', 'theta', 'r', 'w']
   const NAMES = Object.keys(FUNCS).concat(Object.keys(CONSTANTS), ['theta'], GREEK)
     .sort((a, b) => b.length - a.length)
   const UNICODE = {
@@ -565,12 +565,21 @@ export function createMathParser() {
   // Every expression of a graph, read together: what each one is, its
   // compiled functions, its error, and the names used but never defined
   // (the sliders to offer). Expressions are { id, text }; opts.dims 3 reads
-  // them for a 3D graph.
+  // them for a 3D graph, where a surface's or curve's options may color it
+  // by a function (surface: { color: 'function', colorBy }) and a value in
+  // space's place its slices (volume: { at: { x, y, z } }).
   function analyze(expressions, opts) {
     const dims3 = !!(opts && opts.dims === 3)
     const RES = dims3 ? RESERVED_3D : RESERVED
     const onlyRes = (set, names) => [...set].every(v => !RES.includes(v) || names.includes(v))
     const items = (expressions || []).map(e => ({ id: e.id, text: String(e.text || '') }))
+    // The text of each line's color function and slices, kept aside
+    const extras = new Map()
+    if (dims3) (expressions || []).forEach((e, i) => {
+      const colorBy = e.surface && e.surface.color === 'function' ? String(e.surface.colorBy || '').trim() : ''
+      const at = e.volume && e.volume.at && typeof e.volume.at === 'object' ? e.volume.at : null
+      if (colorBy || at) extras.set(items[i], { colorBy, at })
+    })
     const fns = {}
     for (const item of items) {
       const field = fieldOf(item.text)
@@ -705,6 +714,11 @@ export function createMathParser() {
             item.graph = 'z'
             const def = callable[item.name]
             item.f = env => def.call(env, [env.x, env.y])
+          } else if (dims3 && item.formals.join() === 'x,y,z' && onlyRes(vars, ['x', 'y', 'z', 'r', 'theta'])) {
+            // f(x, y, z) = …, a value at each point of space
+            item.graph = 'w'
+            const def = callable[item.name]
+            item.f = env => def.call(env, [env.x, env.y, env.z])
           }
         } else if (item.kind === 'param') {
           note(freeVars(item.value), item)
@@ -717,6 +731,40 @@ export function createMathParser() {
         if (!e.graphError) throw e
         item.kind = 'error'
         item.error = e.message
+      }
+    }
+
+    // A line's color function and its slices' places, each compiled like a
+    // line; an error in one leaves the line drawn as it would be without it
+    const COLOR_VARS = { surface: ['x', 'y', 'z', 'r', 'theta'], implicit3: ['x', 'y', 'z', 'r', 'theta'], psurface: ['x', 'y', 'z', 'r', 'theta', 'u', 'v'], curve3: ['x', 'y', 'z', 't'] }
+    const said = { theta: 'θ' }
+    const list = names => names.map(n => said[n] || n).join(', ')
+    const extra = (item, text, allowed, what) => {
+      const st = parseStatement(text, userFns)
+      if (st.ops.length) fail(what + ' is one expression, without =')
+      const vars = freeVars(st.parts[0])
+      note(vars, item)
+      if (!onlyRes(vars, allowed)) fail(what + (allowed.length ? ' can use ' + list(allowed) + ' and sliders' : ' is a number, or uses sliders'))
+      return cf(st.parts[0])
+    }
+    for (const [item, { colorBy, at }] of extras) {
+      const kind = item.kind === 'function' && item.graph === 'z' ? 'surface' : item.kind
+      if (colorBy && COLOR_VARS[kind]) {
+        try { item.colorF = extra(item, colorBy, COLOR_VARS[kind], 'The color') } catch (e) {
+          if (!e.graphError) throw e
+          item.colorError = e.message
+        }
+      }
+      if (at && (item.kind === 'field3' || (item.kind === 'function' && item.graph === 'w'))) {
+        item.at = {}
+        for (const k of ['x', 'y', 'z']) {
+          const text = String(at[k] == null ? '' : at[k]).trim()
+          if (!text) continue
+          try { item.at[k] = extra(item, text, [], 'A slice’s place') } catch (e) {
+            if (!e.graphError) throw e
+            item.atError = e.message
+          }
+        }
       }
     }
 
@@ -829,7 +877,7 @@ export function createMathParser() {
           item.fx = cf(nx); item.fy = cf(ny); item.fz = cf(nz)
           return
         }
-        if (vars.has('z')) fail('Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9')
+        if (vars.has('z') || vars.has('w')) fail('Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9, or as a value in space, like w = x y z')
         if (!onlyRes(vars, ['x', 'y', 'r', 'theta'])) fail('A surface z = f(x, y) uses x, y (or r and θ) and sliders')
         item.f = cf(node)
         item.kind = uses(['x', 'y', 'r', 'theta']) ? 'surface' : 'value'
@@ -839,12 +887,20 @@ export function createMathParser() {
       if (!ops.every(op => op === '=')) fail('Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}')
       if (ops.length > 1) fail('Only one = per line')
       const [l, r] = parts
+      // w = F(x, y, z): a value at each point of space, drawn as color
+      if (isVar(l, 'w') || isVar(r, 'w')) {
+        const other = isVar(l, 'w') ? r : l, ov = freeVars(other)
+        if (!onlyRes(ov, ['x', 'y', 'z', 'r', 'theta'])) fail('A value in space, w = …, uses x, y, z (or r and θ) and sliders')
+        Object.assign(item, { kind: 'field3', name: 'w', f: cf(other) })
+        return
+      }
       for (const [side, other] of [[l, r], [r, l]]) {
         const ov = freeVars(other)
         if (isVar(side, 'z') && onlyRes(ov, ['x', 'y', 'r', 'theta'])) { Object.assign(item, { kind: 'surface', axis: 'z', f: cf(other) }); return }
         if (isVar(side, 'x') && onlyRes(ov, ['y', 'z'])) { Object.assign(item, { kind: 'surface', axis: 'x', f: cf(other) }); return }
         if (isVar(side, 'y') && onlyRes(ov, ['x', 'z'])) { Object.assign(item, { kind: 'surface', axis: 'y', f: cf(other) }); return }
       }
+      if (vars.has('w')) fail('w is a value in space: give it a line of its own, like w = x y z')
       if (uses(['t', 'u', 'v'])) fail('An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples')
       if (!uses(['x', 'y', 'z', 'r', 'theta'])) fail('There’s no x, y or z to draw')
       const lf = cf(l), rf = cf(r)
