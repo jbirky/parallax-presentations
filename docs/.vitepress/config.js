@@ -95,7 +95,7 @@ export default defineConfig({
     ],
 
     footer: {
-      message: 'Released under the MIT License. Support: <a href="mailto:support@parallax-presentations.com">support@parallax-presentations.com</a>',
+      message: 'Released under the AGPL-3.0 License. Support: <a href="mailto:support@parallax-presentations.com">support@parallax-presentations.com</a>',
       copyright: 'Copyright © 2024-present Jess Birky'
     },
 
