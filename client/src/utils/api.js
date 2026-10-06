@@ -314,6 +314,8 @@ export const api = {
 
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
+  // One of the landing page's example decks, or null
+  getExample: (slug) => _fetch(`${BASE}/examples/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)),
   startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -4,6 +4,8 @@
 // Guest mode (/try): the editor without an account. The session token lives in
 // sessionStorage, so each tab is its own session and a reload keeps it. The
 // server deletes the session when the tab closes or after it sits idle.
+// /try?example=<slug> starts the session's deck from one of the landing
+// page's examples.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import EditorPage from './EditorPage'
@@ -17,6 +19,17 @@ const ACTIVITY_PING_MS = 5 * 60 * 1000
 function readToken() { try { return sessionStorage.getItem(TOKEN_KEY) } catch { return null } }
 function saveToken(token) { try { sessionStorage.setItem(TOKEN_KEY, token) } catch { /* private mode */ } }
 function clearToken() { try { sessionStorage.removeItem(TOKEN_KEY) } catch { /* private mode */ } }
+
+// A new session's deck: the example it was opened with, else a blank one
+const BLANK = { title: 'Untitled', theme: 'black', transition: 'slide' }
+export async function firstDeck() {
+  const slug = new URLSearchParams(window.location.search).get('example')
+  if (!slug) return BLANK
+  const example = await api.getExample(slug).catch(() => null)
+  if (!example) return BLANK
+  const { id, ...deck } = example
+  return deck
+}
 
 function loadTurnstile() {
   if (window.turnstile) return Promise.resolve(window.turnstile)
@@ -47,8 +60,7 @@ export default function GuestPage({ theme, onThemeChange }) {
   const enter = useCallback(async () => {
     const session = await api.resumeGuestSession()
     if (session.idleHours) setIdleHours(session.idleHours)
-    const id = session.presentationId ||
-      (await api.createPresentation({ title: 'Untitled', theme: 'black', transition: 'slide' })).id
+    const id = session.presentationId || (await api.createPresentation(await firstDeck())).id
     setPresentationId(id)
     setState('editor')
   }, [])

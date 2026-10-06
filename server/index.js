@@ -115,10 +115,11 @@ async function userIdForToken(token) {
 
 app.use(helmetConfig())
 if (!IS_CLOUD) app.use(localOnly())
-// Library files, uploads and a live session's slide feed are public, and the
-// pages that use them are sandboxed (sendDeckPage), so their requests come
-// from origin null: those answer any origin, without credentials
-const PUBLIC_CORS = /^\/(vendor|uploads)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+// Library files, uploads, the example decks' files and a live session's slide
+// feed are public, and the pages that use them are sandboxed (sendDeckPage),
+// so their requests come from origin null: those answer any origin, without
+// credentials
+const PUBLIC_CORS = /^\/(vendor|uploads|examples)\/|^\/api\/live\/[^/]+\/(stream|status)$/
 const publicCors = cors()
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
@@ -239,6 +240,24 @@ const docsPublic = path.join(DOCS_DIR, 'public')
 if (fs.existsSync(docsPublic)) {
   app.use('/parallax-presentations', express.static(docsPublic))
 }
+
+// ---- Example decks (public, before auth) ----
+// The landing page's examples (client/src/examples): each as a page, in a
+// sandbox like a share link, and as a deck for a guest to start from. Built
+// once per process, since they change only with the code. Anything else under
+// /examples (thumbnails, the molecule's structure file) is a static file.
+const exampleHtml = new Map()
+const isExample = slug => deckHtml.EXAMPLE_SLUGS.includes(slug)
+app.get('/examples/:slug', deckPageLimiter, (req, res, next) => {
+  const { slug } = req.params
+  if (!isExample(slug)) return next()
+  if (!exampleHtml.has(slug)) exampleHtml.set(slug, localizeLibraries(generateRevealHTML(deckHtml.exampleDeck(slug), { notes: false })))
+  sendDeckPage(res, exampleHtml.get(slug))
+})
+app.get('/api/examples/:slug', (req, res) => {
+  if (!isExample(req.params.slug)) return res.status(404).json({ error: 'No such example' })
+  res.json(deckHtml.exampleDeck(req.params.slug))
+})
 
 // Plugin assets (public, before auth — sandbox iframes need these)
 const userPluginsDir = path.join(DATA_DIR, 'plugins')

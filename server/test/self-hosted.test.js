@@ -77,6 +77,26 @@ describe('the self-hosted version', () => {
     assert.deepEqual(tab.clickAction, { type: 'visibility', show: [panel.id] })
   })
 
+  it('serves the landing page’s example decks, sandboxed, and as decks to start from', async () => {
+    const page = await fetch(base + '/examples/hero')
+    assert.equal(page.status, 200)
+    const csp = page.headers.get('content-security-policy') || ''
+    assert.match(csp, /^sandbox allow-scripts\b/)
+    assert.doesNotMatch(csp, /allow-same-origin/)
+    assert.match(await page.text(), /Why galaxies spin too fast/)
+    assert.equal((await fetch(base + '/examples/nope')).status, 404)
+
+    const chemistry = await call('GET', '/api/examples/chemistry')
+    assert.equal(chemistry.status, 200)
+    assert.deepEqual(chemistry.body.slides.map(s => s.elements.map(e => e.type)), [['periodic'], ['text', 'molecule', 'text']])
+    assert.equal(chemistry.body.slides[1].elements[1].src, '/examples/caffeine.sdf')
+    for (const slug of ['nope', '__proto__', 'constructor']) assert.equal((await call('GET', `/api/examples/${slug}`)).status, 404, slug)
+
+    // The molecule's file answers the sandboxed page's null origin
+    const file = await fetch(base + '/examples/caffeine.sdf', { headers: { Origin: 'null' } })
+    assert.equal(file.headers.get('access-control-allow-origin'), '*')
+  })
+
   it('presents a deck with states and a morphing shape', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'States' })).body
     const shape = { id: 'dot', type: 'shape', shape: 'circle', x: 0, y: 0, width: 80, height: 80, text: '<b>x</b>', stateSteps: { 2: 'st_star' },
