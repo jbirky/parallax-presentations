@@ -111,6 +111,13 @@ describe('diffPresentations', () => {
     expect(result.slides[0].otherChanges).toContain('Speaker notes changed')
   })
 
+  it('detects outline notes change', () => {
+    const old = makePres([makeSlide('s1', [], { outlineNotes: [{ text: 'plan', level: 0 }] })])
+    const newP = makePres([makeSlide('s1', [], { outlineNotes: [{ text: 'plan', level: 1 }] })])
+    expect(diffPresentations(old, newP).slides[0].otherChanges).toEqual(['Outline notes changed'])
+    expect(diffPresentations(makePres([makeSlide('s1', [])]), makePres([makeSlide('s1', [], { outlineNotes: [] })])).slides[0].status).toBe('unchanged')
+  })
+
   it('matches slides by id regardless of order', () => {
     const old = makePres([makeSlide('s1', [makeEl('e1')]), makeSlide('s2', [makeEl('e2')])])
     const newP = makePres([makeSlide('s2', [makeEl('e2')]), makeSlide('s1', [makeEl('e1')])])

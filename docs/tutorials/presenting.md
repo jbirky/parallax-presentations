@@ -16,7 +16,17 @@ Click the **Present** button (play icon) in the top-right toolbar to open the fu
 | `O` | Overview / slide grid |
 | `D` | Open the pen toolbar to draw on slides |
 
-Drawing on slides, and keeping each session's ink, is covered in **Drawing on Slides**. Buttons and links that respond to clicks and hovers are covered in **Links, Click & Hover Actions**. On a slide taller or wider than the screen, `Space` and `↓` (or `→`, for one that scrolls sideways) scroll it before moving on, as described in **Scrolling Slides**.
+Drawing on slides, and keeping each session's ink, is covered in **Drawing on Slides**. Buttons and links that respond to clicks and hovers are covered in **Links, Click & Hover Actions**. On a slide taller or wider than the screen, scroll with the mouse wheel or trackpad; the keys still change slides, as described in **Scrolling Slides**.
+
+## Practicing a talk
+
+Open the menu beside **Present** and choose **Practice Talk**. The deck opens in a window with a timer at the top right: the time on the slide showing, against the minutes planned for it in the [outline](./outline), and the time on the whole talk, against its length. Below the talk's time, the pace says how far ahead of or behind the plan you are, from the slides you've already shown. Time runs while a slide is showing; **Pause** stops it, for a question or a sip of water.
+
+**Finish** shows the run slide by slide: what was planned, how long it took, the difference, and a bar with the plan marked. **Practice again** starts a new run from the first slide. Closing the window keeps the run too.
+
+Runs are kept with the deck, the last ten of them. To see them again, open the menu beside **Present** and choose **Practice runs…**, or click **Last practice** in the outline, where each slide's line also shows its time in the last run. **Plan from this run** sets each slide's planned minutes to its time in the run, to the half minute.
+
+Practice runs are only yours: they aren't part of shared links, exports, templates or versions.
 
 ## Preview a single slide
 

@@ -53,3 +53,7 @@ Once running, navigate to `http://localhost:3002` in your browser. You'll land o
 
 - [Installation](/guide/installation) — detailed setup for Docker, desktop, and source
 - [Your First Presentation](/tutorials/first-presentation) — a full walkthrough from blank deck to exported file
+
+## Getting help
+
+For questions, problems or anything else, email [support@parallax-presentations.com](mailto:support@parallax-presentations.com).

@@ -19936,22 +19936,9 @@ var SCROLLING_CSS = `
     .reveal .slides section > .slide-scroll-track[data-scroll="x"] { top:auto; bottom:0; left:0; right:auto; width:100%; height:4px; }
     .reveal .slides section .slide-scroll-thumb { position:absolute; left:0; top:0; width:100%; height:0; background:rgba(160,160,160,0.55); border-radius:2px; }
     .reveal .slides section > .slide-scroll-track[data-scroll="x"] > .slide-scroll-thumb { width:0; height:100%; }`;
-var SCROLL_STEP_SOURCE = `
-      var SCROLL_STEP = 0.85;
-      function scrollStep(dir, view, step) {
-        var end = view.start + view.size;
-        if (dir > 0) {
-          if (step && (step.pinned || step.start < end)) return 'reveal';
-          if (view.start < view.max - 1) return Math.min(view.max, view.start + view.size * SCROLL_STEP);
-          return 'reveal';
-        }
-        if (step && (step.pinned || (step.start < end && step.end > view.start))) return 'reveal';
-        if (view.start > 1) return Math.max(0, view.start - view.size * SCROLL_STEP);
-        return step ? 'skip' : 'reveal';
-      }`;
 var SCROLLING_SCRIPT = `
     // ── Scrolling slides ─────────────────────────────────────────────────
-    (function() {${SCROLL_STEP_SOURCE}
+    (function() {
       var reduceMotion = false;
       try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
 
@@ -19963,7 +19950,7 @@ var SCROLLING_SCRIPT = `
       function maxOf(sc) { return sideways(sc) ? sc.scrollWidth - sc.clientWidth : sc.scrollHeight - sc.clientHeight; }
       function canScroll(sc) { return !!sc && maxOf(sc) > 1; }
 
-      // Where the canvas is, or is on its way to while a step's smooth scroll runs
+      // Where the canvas is, or is on its way to while a smooth scroll runs
       function viewOf(sc) {
         var start = sc._to != null && Date.now() - sc._toAt < 800 ? sc._to : posOf(sc);
         return { start: start, size: sizeOf(sc), max: maxOf(sc) };
@@ -19977,18 +19964,6 @@ var SCROLLING_SCRIPT = `
         sc.scrollTo(to);
       }
 
-      // The fragment step a key would show (the lowest index still hidden) or
-      // hide (the highest shown)
-      function fragmentStep(slide, shown) {
-        var frags = slide.querySelectorAll('.fragment'), best = null, els = [];
-        for (var i = 0; i < frags.length; i++) {
-          if (frags[i].classList.contains('visible') !== shown) continue;
-          var index = parseInt(frags[i].getAttribute('data-fragment-index'), 10) || 0;
-          if (best === null || (shown ? index > best : index < best)) { best = index; els = [frags[i]]; }
-          else if (index === best) els.push(frags[i]);
-        }
-        return els;
-      }
       // Where elements are along the canvas, or pinned: true if any is on the screen
       function extentOf(els, sc) {
         var inner = sc.firstElementChild, x = sideways(sc), start = Infinity, end = -Infinity;
@@ -20001,33 +19976,6 @@ var SCROLLING_SCRIPT = `
         }
         return els.length ? { start: start, end: end } : null;
       }
-
-      // Forwards (1), back (-1), or neither (0) for a slide that scrolls
-      // sideways (x) or down
-      function keyDirection(e, x) {
-        if (e.altKey || e.ctrlKey || e.metaKey) return 0;
-        if (e.keyCode === 32) return e.shiftKey ? -1 : 1;
-        if (e.shiftKey) return 0;
-        if ([x ? 39 : 40, x ? 76 : 74, 34, 78].indexOf(e.keyCode) !== -1) return 1;
-        if ([x ? 37 : 38, x ? 72 : 75, 33, 80].indexOf(e.keyCode) !== -1) return -1;
-        return 0;
-      }
-      // Before reveal.js's own handler, which listens on the document too
-      document.addEventListener('keydown', function(e) {
-        var slide = Reveal.getCurrentSlide(), sc = scrollerOf(slide);
-        if (!canScroll(sc)) return;
-        var dir = keyDirection(e, sideways(sc));
-        if (!dir) return;
-        var active = document.activeElement;
-        if (active && (active.isContentEditable || /^(input|textarea|select)$/i.test(active.tagName))) return;
-        if (Reveal.getConfig().keyboard === false || Reveal.isOverview() || Reveal.isPaused()) return;
-        var to = scrollStep(dir, viewOf(sc), extentOf(fragmentStep(slide, dir < 0), sc));
-        if (to === 'reveal') return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (to === 'skip') Reveal.prev({ skipFragments: true });
-        else scrollToPos(sc, to);
-      }, true);
 
       // A fragment that appears off screen is scrolled into view
       Reveal.on('fragmentshown', function(e) {
@@ -20050,7 +19998,7 @@ var SCROLLING_SCRIPT = `
       var scrollers = document.querySelectorAll('.reveal .slides section > .slide-scroller');
       for (var i = 0; i < scrollers.length; i++) (function(sc) {
         sc.addEventListener('scroll', function() { syncTrack(sc); }, { passive: true });
-        // Scrolled by hand, the canvas is no longer on its way to a step's position
+        // Scrolled by hand, the canvas is no longer on its way to a fragment
         var byHand = function() { sc._to = null; };
         sc.addEventListener('wheel', byHand, { passive: true });
         sc.addEventListener('touchstart', byHand, { passive: true });
@@ -20064,17 +20012,20 @@ var SCROLLING_SCRIPT = `
         }, { passive: false });
       })(scrollers[i]);
 
-      var lastIndex = -1;
+      // Leaving a slide keeps its place, for stepping back to it
+      var lastIndex = -1, lastScroller = null;
       function land(e) {
+        if (lastScroller) lastScroller._left = posOf(lastScroller);
         var index = Reveal.getSlides().indexOf(e.currentSlide), sc = scrollerOf(e.currentSlide);
         if (sc) {
           sc._to = null;
-          var atEnd = index === lastIndex - 1;
-          if (sideways(sc)) sc.scrollLeft = atEnd ? sc.scrollWidth : 0;
-          else sc.scrollTop = atEnd ? sc.scrollHeight : 0;
+          var pos = index === lastIndex - 1 ? sc._left || 0 : 0;
+          if (sideways(sc)) sc.scrollLeft = pos;
+          else sc.scrollTop = pos;
           syncTrack(sc);
         }
         lastIndex = index;
+        lastScroller = sc;
       }
       Reveal.on('ready', land);
       Reveal.on('slidechanged', land);
@@ -21757,7 +21708,8 @@ var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>
   (function () {
     function send() {
-      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(Reveal.getCurrentSlide()), total: Reveal.getTotalSlides() }, '*');
+      var cur = Reveal.getCurrentSlide();
+      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(cur), total: Reveal.getTotalSlides(), id: (cur && cur.getAttribute('data-slide-id')) || null }, '*');
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;

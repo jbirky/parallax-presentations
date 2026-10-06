@@ -30,8 +30,8 @@ A complete reference for keyboard shortcuts available in Parallax.
 | Shortcut | Action |
 |---|---|
 | `F` or `Enter` | Enter full-screen presentation mode |
-| `←` / `→` | Previous / next slide; on a [scrolling slide](/tutorials/scrolling-slides) that scrolls sideways, scroll it first |
-| `↑` / `↓` | Navigate vertical slide stacks; on a [scrolling slide](/tutorials/scrolling-slides) that scrolls down, scroll it first |
+| `←` / `→` | Previous / next slide, including on a [scrolling slide](/tutorials/scrolling-slides), which scrolls with the mouse wheel or trackpad |
+| `↑` / `↓` | Navigate vertical slide stacks |
 | `Escape` | Exit presentation mode |
 | `S` | Open speaker notes window |
 | `B` | Pause / blackout screen |

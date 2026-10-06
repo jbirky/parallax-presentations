@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -31,6 +31,9 @@ import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
 import SlidePanel from '../components/SlidePanel'
+import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
+import PracticeRunsModal from '../components/PracticeRunsModal'
+import { practiceInWindow, PRACTICE_MESSAGE, upsertPracticeRun, removePracticeRun, minutesFromRun } from '../utils/practice'
 import SlideCanvas from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
 import FindReplaceBar from '../components/FindReplaceBar'
@@ -315,7 +318,7 @@ const migrateSlide = (slide) => {
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null, theme, onThemeChange }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
-  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
+  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo, stopCapturing } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -323,6 +326,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [loading, setLoading] = useState(true)
   const [selectedElementIds, setSelectedElementIds] = useState([])
   const [editingElementId, setEditingElementId] = useState(null)
+  // The left panel: the slides, or the outline (remembered in this browser)
+  const [leftView, setLeftView] = useState(() => { try { return localStorage.getItem('parallax-left-panel') === 'outline' ? 'outline' : 'slides' } catch (e) { return 'slides' } })
+  const chooseLeftView = useCallback(view => { setLeftView(view); try { localStorage.setItem('parallax-left-panel', view) } catch (e) { /* not remembered */ } }, [])
   // The element state being recorded, { elementId, stateId }: moving,
   // resizing, turning or recoloring the element changes that state
   const [recording, setRecording] = useState(null)
@@ -463,6 +469,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
+  const [showPracticeRuns, setShowPracticeRuns] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
   const mathNodeUpdateRef = useRef(null) // holds the TipTap updateAttributes fn for the active math node
 
@@ -911,6 +918,17 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     const onMessage = e => {
       if (e.origin !== window.location.origin || e.data?.type !== ANNOTATION_MESSAGE || e.data.presentationId !== presentationId) return
       setPresentation(prev => upsertAnnotationSet(prev, e.data.set))
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [presentationId])
+
+  // Practice runs: the practice window sends its run as it goes; it's kept
+  // with the deck (not an undo step) and saved like any other edit
+  useEffect(() => {
+    const onMessage = e => {
+      if (e.origin !== window.location.origin || e.data?.type !== PRACTICE_MESSAGE || e.data.presentationId !== presentationId) return
+      setPresentation(prev => upsertPracticeRun(prev, e.data.run))
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -2253,6 +2271,8 @@ function draw() {
       if (editingElementId) return
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // Typing elsewhere, as in the outline, which has its own undo keys
+      if (document.activeElement?.isContentEditable) return
       const ctrl = e.ctrlKey || e.metaKey
       if (!ctrl) return
       const element = selectedElementId
@@ -3025,6 +3045,30 @@ function draw() {
                     <Monitor size={14} />
                     Presenter Mode
                   </button>
+                  {!isTemplate && (
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowPresentDropdown(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+                      title="Present with a timer on each slide, against the minutes planned in the outline"
+                    >
+                      <Timer size={14} />
+                      Practice Talk
+                    </button>
+                  )}
+                  {!isTemplate && (presentation.practiceRuns || []).length > 0 && (
+                    <button
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      onClick={() => { setShowPresentDropdown(false); setShowPracticeRuns(true) }}
+                      title="The time on each slide each time you practiced"
+                    >
+                      <ListChecks size={14} />
+                      Practice runs…
+                    </button>
+                  )}
                   {!isTemplate && recentAnnotationSets(presentation).length > 0 && (
                     <>
                       <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
@@ -3962,10 +4006,10 @@ function draw() {
                         if (!confirm(`Restore from commit ${commit.sha.slice(0, 7)}? Current changes will be overwritten.`)) return
                         setGitRestoring(commit.sha)
                         try {
-                          // Versions on GitHub have no present-mode ink; the presentation keeps its own
-                          const { annotationSets, ...data } = await api.getGitVersion(presentationId, commit.sha)
+                          // Versions on GitHub have no present-mode ink or practice runs; the presentation keeps its own
+                          const { annotationSets, practiceRuns, ...data } = await api.getGitVersion(presentationId, commit.sha)
                           await api.updatePresentation(presentationId, data)
-                          setPresentation(cur => ({ ...data, slides: (data.slides || []).map(s => s), ...(cur?.annotationSets && { annotationSets: cur.annotationSets }) }))
+                          setPresentation(cur => ({ ...data, slides: (data.slides || []).map(s => s), ...(cur?.annotationSets && { annotationSets: cur.annotationSets }), ...(cur?.practiceRuns && { practiceRuns: cur.practiceRuns }) }))
                           setShowGitHistory(false)
                         } catch (e) { alert('Restore failed: ' + e.message) }
                         setGitRestoring(null)
@@ -4185,7 +4229,29 @@ function draw() {
 
       {/* Editor Body */}
       <div className="editor-body">
+        {leftView === 'outline' ? (
+          <OutlinePanel
+            deck={presentation}
+            setDeck={setPresentation}
+            stopCapturing={stopCapturing}
+            onUndo={doUndo}
+            onRedo={doRedo}
+            currentIndex={currentSlideIndex}
+            onSelectSlide={selectSlide}
+            onLeaveCanvas={() => {
+              if (editingElementIdRef.current) stopEditingElement()
+              setSelectedElementIds(ids => (ids.length ? [] : ids))
+            }}
+            onNotice={showNotice}
+            presence={presenceBySlide}
+            citationLabels={citationIndex.labelByKey}
+            referencesCount={hasReferencesSlide ? referencedEntries.length : 0}
+            viewSwitch={<PanelViewSwitch view="outline" onChange={chooseLeftView} />}
+            onShowRuns={() => setShowPracticeRuns(true)}
+          />
+        ) : (
         <SlidePanel
+          viewSwitch={<PanelViewSwitch view="slides" onChange={chooseLeftView} />}
           slides={presentation.slides}
           globalFont={presentation.globalFont || ''}
           citationLabels={citationIndex.labelByKey}
@@ -4208,6 +4274,7 @@ function draw() {
           referencesSlideIndex={hasReferencesSlide ? referencesSlideIndex : -1}
           referencesCount={referencedEntries.length}
         />
+        )}
 
         <div className="editor-main">
           <Toolbar
@@ -5144,6 +5211,16 @@ function draw() {
           </div>
         </div>
       )}
+      {showPracticeRuns && (
+        <PracticeRunsModal
+          runs={presentation.practiceRuns || []}
+          onPractice={() => { setShowPracticeRuns(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+          onUsePlan={run => { stopCapturing(); setPresentation(prev => minutesFromRun(prev, run)); stopCapturing(); showNotice('Planned minutes set from this run; see them in the outline') }}
+          onDelete={id => setPresentation(prev => removePracticeRun(prev, id))}
+          onClose={() => setShowPracticeRuns(false)}
+        />
+      )}
+
       {showSessions && (
         <AnnotationSessionsModal
           sets={recentAnnotationSets(presentation, Infinity)}

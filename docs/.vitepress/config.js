@@ -42,6 +42,7 @@ export default defineConfig({
           text: 'Getting Started',
           items: [
             { text: 'Your First Presentation', link: '/tutorials/first-presentation' },
+            { text: 'Outlining a Talk', link: '/tutorials/outline' },
             { text: 'Academic Slides', link: '/tutorials/academic-slides' },
           ]
         },
@@ -94,8 +95,8 @@ export default defineConfig({
     ],
 
     footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2024-present Jessica Birky'
+      message: 'Released under the AGPL-3.0 License. Support: <a href="mailto:support@parallax-presentations.com">support@parallax-presentations.com</a>',
+      copyright: 'Copyright © 2024-present Jess Birky'
     },
 
     search: {

@@ -206,7 +206,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {} }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null }) {
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
@@ -309,7 +309,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     return (
       <div className="slide-panel">
         <div className="slide-panel-header">
-          <span>Slides</span>
+          {viewSwitch || <span>Slides</span>}
           <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
             {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
           </span>
@@ -414,7 +414,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
   return (
     <div className="slide-panel" style={{ width: Math.min(columns.length * (THUMB_W + 28) + 20, 480), maxWidth: '45vw', minWidth: 200 }}>
       <div className="slide-panel-header">
-        <span>Slides</span>
+        {viewSwitch || <span>Slides</span>}
         <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
           {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
         </span>

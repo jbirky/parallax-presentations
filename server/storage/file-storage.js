@@ -110,8 +110,8 @@ class FileStorage extends StorageInterface {
   async saveAsTemplate(presentationId, title) {
     const stored = await this.getPresentation(presentationId)
     if (!stored) return null
-    // Without present-mode ink, which is private to this presentation
-    const { annotationSets, ...pres } = stored
+    // Without present-mode ink or practice runs, which are private to this presentation
+    const { annotationSets, practiceRuns, ...pres } = stored
     const now = new Date().toISOString()
     const tmpl = { ...JSON.parse(JSON.stringify(pres)), id: uuidv4(), title: (title || pres.title || 'Untitled') + ' (template)', isTemplate: true, createdAt: now, updatedAt: now }
     const all = await this._readTemplates()
@@ -148,8 +148,8 @@ class FileStorage extends StorageInterface {
   async createSnapshot(presentationId, name) {
     const stored = await this.getPresentation(presentationId)
     if (!stored) return null
-    // A version is the slides; present-mode ink isn't part of it
-    const { annotationSets, ...pres } = stored
+    // A version is the slides; present-mode ink and practice runs aren't part of it
+    const { annotationSets, practiceRuns, ...pres } = stored
     const dir = path.join(this.historyDir, presentationId)
     fs.ensureDirSync(dir)
     const id = uuidv4()
@@ -169,8 +169,8 @@ class FileStorage extends StorageInterface {
     const file = path.join(this.historyDir, presentationId, `${snapshotId}.json`)
     if (!fs.existsSync(file)) return null
     const snap = fs.readJsonSync(file)
-    // The presentation keeps its present-mode ink, which isn't part of a version
-    const { annotationSets, ...restored } = snap.data || {}
+    // The presentation keeps its present-mode ink and practice runs, which aren't part of a version
+    const { annotationSets, practiceRuns, ...restored } = snap.data || {}
     return this.updatePresentation(presentationId, restored)
   }
   async deleteSnapshot(presentationId, snapshotId) {

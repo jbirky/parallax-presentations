@@ -1778,7 +1778,7 @@ export const DECK_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-s
 
 // A value written into a <script> as JavaScript: no "</script>" or "<!--" can
 // come from it
-const scriptValue = value => JSON.stringify(value).replace(/</g, '\\u003c')
+export const scriptValue = value => JSON.stringify(value).replace(/</g, '\\u003c')
 
 // A deck's frame, and the script that fills it; `script` runs after, with
 // `frame` in scope. A srcdoc page's links resolve against the page around it,
@@ -1817,7 +1817,7 @@ export function deckWindowHTML(deckHtml, { title = 'Presentation', script = '' }
 </html>`
 }
 
-function openDeckWindow(deckHtml, options) {
+export function openDeckWindow(deckHtml, options) {
   const blob = new Blob([deckWindowHTML(deckHtml, options)], { type: 'text/html' })
   const url = URL.createObjectURL(blob)
   const win = window.open(url, '_blank')
@@ -1826,12 +1826,13 @@ function openDeckWindow(deckHtml, options) {
 }
 
 // In a deck framed by one of those pages (opts.bridge): tells the page which
-// slide is shown, as its index in Reveal.getSlides(), and goes to the slide it
-// asks for. Only the page around the deck is heard.
+// slide is shown, as its index in Reveal.getSlides() and its slide's id, and
+// goes to the slide it asks for. Only the page around the deck is heard.
 const DECK_BRIDGE_SCRIPT = `  <script>
   (function () {
     function send() {
-      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(Reveal.getCurrentSlide()), total: Reveal.getTotalSlides() }, '*');
+      var cur = Reveal.getCurrentSlide();
+      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(cur), total: Reveal.getTotalSlides(), id: (cur && cur.getAttribute('data-slide-id')) || null }, '*');
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;

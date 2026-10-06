@@ -26,8 +26,8 @@ import * as Y from 'yjs'
 
 // Kept by the server, not part of the document
 export const META_KEYS = ['id', 'createdAt', 'updatedAt', 'expiresAt', 'version']
-// Present-mode ink: saved with the deck, but not an undo step
-export const UNTRACKED_KEYS = ['annotationSets']
+// Present-mode ink and practice runs: saved with the deck, but not undo steps
+export const UNTRACKED_KEYS = ['annotationSets', 'practiceRuns']
 
 // Transaction origins. The editor's edits are undo steps; loading a deck and
 // ink aren't. Any other origin (undo and redo, and later other people) means

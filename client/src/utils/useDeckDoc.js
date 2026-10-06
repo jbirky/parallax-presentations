@@ -27,6 +27,9 @@ export function useDeckDoc() {
     redo: () => store.redo(),
     canUndo: () => store.canUndo(),
     canRedo: () => store.canRedo(),
+    // The next change starts an undo step of its own, rather than running on
+    // from the typing before it
+    stopCapturing: () => store.stopCapturing(),
   }))
   // Closing the document ends its undo history; the next setDeck opens a new one
   useEffect(() => () => store.destroy(), [store])

@@ -1,6 +1,6 @@
 # Tables
 
-1. Click the **Table** button in the toolbar.
+1. Open the **Text** menu in the toolbar and click **Table**, then give the number of rows and columns.
 2. A table element appears with default dimensions. Double-click to edit.
 3. Click any cell to type content.
 4. In the right panel, configure:
