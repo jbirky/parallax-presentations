@@ -721,6 +721,8 @@ sup[data-cite] { font-weight: 700; }
   color: rgba(255,255,255,0.5); font-size: 13px;
 }
 .landing-footer p { margin: 8px 0 0; }
+.landing-footer a { color: rgba(255,255,255,0.75); }
+.landing-footer a:hover { color: #fff; }
 
 @media (max-width: 768px) {
   .landing-hero-title { font-size: 32px !important; }

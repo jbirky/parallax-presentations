@@ -95,8 +95,8 @@ export default defineConfig({
     ],
 
     footer: {
-      message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2024-present Jessica Birky'
+      message: 'Released under the MIT License. Support: <a href="mailto:support@parallax-presentations.com">support@parallax-presentations.com</a>',
+      copyright: 'Copyright © 2024-present Jess Birky'
     },
 
     search: {

@@ -197,7 +197,8 @@ export default function LandingPage({ onSignIn }) {
           <div className="landing-logo" style={{ fontSize: 18 }}>
             <span style={{ color: 'var(--accent)' }}>P</span>arallax<BetaBadge />
           </div>
-          <p>&copy; 2026 Jessica Birky. Licensed under AGPL-3.0.</p>
+          <p>Questions or problems? Email <a href="mailto:support@parallax-presentations.com">support@parallax-presentations.com</a></p>
+          <p>&copy; 2026 Jess Birky. Licensed under AGPL-3.0.</p>
         </footer>
         </>)}
       </div>
