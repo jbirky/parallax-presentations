@@ -1966,8 +1966,8 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
 
     const stored = await storage.getPresentation(req.params.id, req.userId)
     if (!stored) return res.status(404).json({ error: 'Presentation not found' })
-    // Published without its present-mode ink, which is private to the author
-    const { annotationSets, ...presentation } = stored
+    // Published without its present-mode ink and practice runs, which are private to the author
+    const { annotationSets, practiceRuns, ...presentation } = stored
 
     const { creators, description, keywords, license } = req.body
     if (!creators || !creators.length) return res.status(400).json({ error: 'At least one creator is required' })
@@ -2204,8 +2204,8 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
 
     const stored = await storage.getPresentation(req.params.id, req.userId)
     if (!stored) return res.status(404).json({ error: 'Presentation not found' })
-    // Pushed without its present-mode ink, which is private to the author
-    const { annotationSets, ...presentation } = stored
+    // Pushed without its present-mode ink and practice runs, which are private to the author
+    const { annotationSets, practiceRuns, ...presentation } = stored
 
     const { token, owner, repo } = config
     const gh = (endpoint, opts = {}) => {

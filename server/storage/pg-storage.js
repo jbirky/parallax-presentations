@@ -211,8 +211,8 @@ class PgStorage extends StorageInterface {
   async saveAsTemplate(presentationId, title, userId) {
     const stored = await this.getPresentation(presentationId, userId)
     if (!stored) return null
-    // Without present-mode ink, which is private to this presentation
-    const { annotationSets, version, ...pres } = stored
+    // Without present-mode ink or practice runs, which are private to this presentation
+    const { annotationSets, practiceRuns, version, ...pres } = stored
     const tmplData = { ...JSON.parse(JSON.stringify(pres)), title: (title || pres.title || 'Untitled') + ' (template)' }
     delete tmplData.id
     delete tmplData.createdAt
@@ -276,8 +276,8 @@ class PgStorage extends StorageInterface {
   async createSnapshot(presentationId, name, userId) {
     const stored = await this.getPresentation(presentationId, userId)
     if (!stored) return null
-    // A version is the slides; present-mode ink isn't part of it
-    const { annotationSets, version, ...pres } = stored
+    // A version is the slides; present-mode ink and practice runs aren't part of it
+    const { annotationSets, practiceRuns, version, ...pres } = stored
     const id = uuidv4()
     const label = name || new Date().toISOString()
     const now = new Date().toISOString()
@@ -306,8 +306,8 @@ class PgStorage extends StorageInterface {
     const { rows } = await this.query('SELECT data FROM snapshots WHERE id = $1 AND presentation_id = $2', [snapshotId, presentationId])
     if (!rows.length) return null
     const snapData = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data
-    // The presentation keeps its present-mode ink, which isn't part of a version
-    const { annotationSets, ...restored } = snapData
+    // The presentation keeps its present-mode ink and practice runs, which aren't part of a version
+    const { annotationSets, practiceRuns, ...restored } = snapData
     return this.updatePresentation(presentationId, restored, userId)
   }
 

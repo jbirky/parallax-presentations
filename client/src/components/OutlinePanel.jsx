@@ -14,6 +14,7 @@ import { Lock, MessageSquare, BookOpen } from 'lucide-react'
 import * as O from '../utils/outline'
 import { editorOf } from '../utils/presence'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
+import { latestRun, clock } from '../utils/practice'
 
 // The Slides / Outline switch at the top of the left panel
 export function PanelViewSwitch({ view, onChange }) {
@@ -205,7 +206,7 @@ const PLACEHOLDER = { section: 'Section name', slide: 'Untitled slide', point: '
 export default function OutlinePanel({
   deck, setDeck, stopCapturing = () => {}, onUndo, onRedo, currentIndex = 0, onSelectSlide, onSelectElement,
   onLeaveCanvas, onNotice = () => {}, peers = [], presence = null, citationLabels = {}, slideW = 960, slideH = 540,
-  referencesCount = 0, viewSwitch = null,
+  referencesCount = 0, viewSwitch = null, onShowRuns,
 }) {
   const lines = useMemo(() => O.outlineLines(deck, { referencesCount }), [deck, referencesCount])
   const plan = useMemo(() => O.timing(deck), [deck])
@@ -293,6 +294,9 @@ export default function OutlinePanel({
   }, [currentIndex])
 
   const sectionMinutes = useMemo(() => new Map(plan.sections.map(s => [s.slideId, s.minutes])), [plan])
+  // The latest practice run's time on each slide
+  const last = useMemo(() => latestRun(deck), [deck])
+  const practiced = useMemo(() => new Map((last?.slides || []).map(s => [s.id, s])), [last])
   const span = Math.max(plan.total, plan.target, 0.1)
 
   return (
@@ -311,6 +315,12 @@ export default function OutlinePanel({
             {!plan.target || !plan.total ? '' : plan.total > plan.target ? fmt(plan.total - plan.target) + ' over' : fmt(plan.target - plan.total) + ' to spare'}
           </span>
         </div>
+        {last && (
+          <button type="button" className="ol-last-run" onClick={onShowRuns} title="See the practice runs">
+            Last practice <b>{clock(last.total)}</b>
+            {last.target ? <span className={last.total - last.target > 5 ? 'over' : ''}> · {Math.abs(last.total - last.target) < 5 ? 'on time' : last.total > last.target ? clock(last.total - last.target) + ' over' : clock(last.target - last.total) + ' to spare'}</span> : null}
+          </button>
+        )}
         <div className="ol-bar" aria-hidden="true">
           <div className="ol-segs">
             {plan.sections.filter(s => s.minutes > 0).map(s => <span key={s.slideId} style={{ width: (s.minutes / span * 100) + '%' }} title={(s.label || 'No section') + ': ' + fmt(s.minutes) + ' min'} />)}
@@ -360,6 +370,10 @@ export default function OutlinePanel({
               <span className="ol-meta">
                 {peer && <span className="ol-held" title={peer.name + ' is editing this on the slide'} style={{ background: peer.color }} />}
                 {L.kind === 'slide' && <Dots people={presence?.get(L.slideId)} />}
+                {L.kind === 'slide' && practiced.get(L.slideId)?.seconds > 0 && (() => {
+                  const p = practiced.get(L.slideId), m = Number(deck.slides[L.index]?.minutes)
+                  return <span className={'ol-practiced' + (m > 0 && p.seconds > m * 60 + 5 ? ' over' : '')} title="Time on this slide in the last practice run">{clock(p.seconds)}</span>
+                })()}
                 {L.kind === 'slide' && <Minutes value={deck.slides[L.index]?.minutes} n={L.n} onChange={v => apply(d => ({ deck: O.setMinutes(d, L.slideId, v) }))} />}
                 {L.kind === 'section' && sectionMinutes.has(L.slideId) && sectionMinutes.get(L.slideId) > 0 && <span className="ol-total">{fmt(sectionMinutes.get(L.slideId))} min</span>}
               </span>

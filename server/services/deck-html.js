@@ -21757,7 +21757,8 @@ var scriptValue = (value) => JSON.stringify(value).replace(/</g, "\\u003c");
 var DECK_BRIDGE_SCRIPT = `  <script>
   (function () {
     function send() {
-      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(Reveal.getCurrentSlide()), total: Reveal.getTotalSlides() }, '*');
+      var cur = Reveal.getCurrentSlide();
+      window.parent.postMessage({ type: 'parallax-deck', slide: Reveal.getSlides().indexOf(cur), total: Reveal.getTotalSlides(), id: (cur && cur.getAttribute('data-slide-id')) || null }, '*');
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;

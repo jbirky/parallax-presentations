@@ -165,6 +165,42 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .slide-thumb-content h3 { font-size: 7px; }
 .slide-panel-footer { padding: 8px; border-top: 1px solid var(--border); }
 
+/* PRACTICE RUNS (components/PracticeRunsModal.jsx) */
+.practice-modal { width: 760px; max-width: 94vw; max-height: 82vh; display: flex; flex-direction: column; }
+.practice-modal .pr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.practice-modal .pr-head h2 { margin: 0; }
+.practice-modal .pr-lead { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; max-width: 64ch; }
+.practice-modal .pr-empty { text-align: center; padding: 28px 0; color: var(--text-muted); display: grid; justify-items: center; gap: 10px; }
+.practice-modal .pr-empty .btn, .practice-modal .pr-acts .btn { display: inline-flex; align-items: center; gap: 6px; }
+.practice-modal .pr-body { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; min-height: 0; flex: 1; }
+.practice-modal .pr-runs { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; border-right: 1px solid var(--border); padding-right: 10px; }
+.practice-modal .pr-run { all: unset; display: grid; gap: 2px; padding: 7px 9px; border-radius: 6px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.practice-modal .pr-run:hover { background: var(--bg-hover); }
+.practice-modal .pr-run.on { background: var(--bg-active); }
+.practice-modal .pr-run:focus-visible { outline: 2px solid var(--accent); }
+.practice-modal .pr-when { font-size: 11px; color: var(--text-muted); }
+.practice-modal .pr-total { font-size: 12px; color: var(--text-secondary); }
+.practice-modal .pr-total b, .practice-modal .pr-sum b { color: var(--text-primary); font-weight: 600; }
+.practice-modal .pr-detail { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.practice-modal .pr-sum { font-size: 14px; color: var(--text-secondary); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.practice-modal .pr-table-wrap { overflow: auto; min-height: 0; flex: 1; }
+.practice-modal .pr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.practice-modal .pr-table th { text-align: left; font-size: 10.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 6px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-card); }
+.practice-modal .pr-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+.practice-modal .pr-table .num { text-align: right; white-space: nowrap; }
+.practice-modal .pr-table .title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.practice-modal .pr-table .bar { width: 30%; min-width: 90px; }
+.practice-modal .dim { color: var(--text-muted); }
+.practice-modal .over { color: #f59e0b; }
+.practice-modal .under { color: var(--success); }
+.practice-modal .pr-bar { position: relative; height: 8px; border-radius: 3px; background: var(--bg-card); }
+.practice-modal .pr-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent-light); }
+.practice-modal .pr-bar i.o { background: #f59e0b; }
+.practice-modal .pr-bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text-primary); }
+.practice-modal .pr-acts { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.practice-modal .pr-acts .grow { flex: 1; }
+@media (max-width: 640px) { .practice-modal .pr-body { grid-template-columns: minmax(0, 1fr); } .practice-modal .pr-runs { border-right: none; padding-right: 0; flex-direction: row; overflow-x: auto; } }
+
 /* OUTLINE (components/OutlinePanel.jsx): the deck as lines, in place of the slides */
 .slide-panel.outline-panel { width: 340px; }
 .panel-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border); }
@@ -184,6 +220,12 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .ol-segs span:nth-child(even) { background: var(--accent-light); }
 .ol-over { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(135deg, #f59e0b 0 3px, transparent 3px 6px); border-radius: 0 3px 3px 0; }
 .ol-target { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text-primary); border-radius: 1px; }
+.ol-last-run { all: unset; font-size: 11.5px; color: var(--text-muted); cursor: pointer; font-variant-numeric: tabular-nums; }
+.ol-last-run b { color: var(--text-secondary); font-weight: 600; }
+.ol-last-run:hover, .ol-last-run:hover b { color: var(--text-primary); }
+.ol-last-run .over, .ol-practiced.over { color: #f59e0b; }
+.ol-last-run:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+.ol-practiced { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .ol-list { flex: 1; overflow-y: auto; padding: 6px 6px 24px 4px; }
 .ol-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: start; column-gap: 4px; padding: 1px 4px 1px 0; border-radius: 5px; }
 .ol-row.cur { background: color-mix(in srgb, var(--accent) 8%, transparent); }
