@@ -28,29 +28,17 @@ A pinned element is positioned on the screen rather than the canvas, so it sits 
 
 ## Presenting
 
-On a slide that scrolls down:
+You scroll a scrolling slide with the mouse wheel, the trackpad or a finger. The keys don't scroll it: `→`, `Space` and `Page Down` go on to the next slide (or show the next fragment), and `←` and `Page Up` go back, as on any slide, so a clicker always changes slides.
 
-| Key | On a scrolling slide |
-|-----|----------------------|
-| `↓` / `Space` / `Page Down` | Scrolls down most of a screen. Once there's nothing left to scroll, goes on to the next slide |
-| `↑` / `Shift+Space` / `Page Up` | Scrolls back up. Once at the top, goes back to the previous slide |
-| `→` / `←` | Next and previous slide, as on any slide |
-| Mouse wheel, trackpad | Scrolls the slide, including over HTML and p5 embeds, unless the embed uses the wheel itself (a zoomable plot, say) |
-| Touch | Dragging up and down scrolls the slide; swiping sideways changes slides |
+| Input | On a slide that scrolls down | On a slide that scrolls sideways |
+|-------|------------------------------|----------------------------------|
+| Mouse wheel, trackpad | Scrolls the slide, including over HTML and p5 embeds, unless the embed uses the wheel itself (a zoomable plot, say) | Scrolls the slide across: an ordinary up-and-down wheel works too |
+| Touch | Dragging up and down scrolls the slide; swiping sideways changes slides | Swiping sideways scrolls the slide; a swipe that starts at the end goes on to the next slide, and one at the start goes back |
+| Keys | Change slides and show fragments, as on any slide | Change slides and show fragments, as on any slide |
 
-On a slide that scrolls sideways:
+Arriving on a scrolling slide from the one before starts at the beginning. Stepping back to it from the one after finds it scrolled where you left it. A thin track on the right edge (or the bottom edge, for a sideways slide) shows how far along you are.
 
-| Key | On a sideways slide |
-|-----|---------------------|
-| `→` / `Space` / `Page Down` | Scrolls right most of a screen. Once there's nothing left to scroll, goes on to the next slide |
-| `←` / `Shift+Space` / `Page Up` | Scrolls back left. Once at the start, goes back to the previous slide |
-| `↑` / `↓` | Left to the presentation, as on any slide |
-| Mouse wheel, trackpad | Scrolls the slide across: an ordinary up-and-down wheel works too |
-| Touch | Swiping sideways scrolls the slide; a swipe that starts at the end goes on to the next slide, and one at the start goes back |
-
-Arriving on a scrolling slide from the one before starts at the beginning. Stepping back to it from the one after starts at the end, so you can read back without a jump. A thin track on the right edge (or the bottom edge, for a sideways slide) shows how far along you are.
-
-**Fragments** appear as you scroll to them: pressing `↓` (or `→` on a sideways slide) shows the next fragment once it's on screen, and scrolls on when it isn't yet. Going back hides each fragment while it's on screen, then scrolls back. A fragment that appears off screen is scrolled into view.
+**Fragments** appear one at a time with the keys, as on any slide. A fragment that appears off screen is scrolled into view.
 
 **Drawing on the slide** while presenting puts the ink on the canvas, so it scrolls with what you marked. With the pen out, the mouse wheel still scrolls the slide, and once you've drawn with a stylus, a finger dragged the way the slide scrolls scrolls it too.
 

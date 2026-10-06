@@ -67,40 +67,6 @@ describe('canvas geometry', () => {
   })
 })
 
-describe('what a key does on a scrolling slide', () => {
-  const scrollStep = new Function(`${client.SCROLL_STEP_SOURCE}; return scrollStep`)()
-  const view = start => ({ start, size: 540, max: 1080 })
-
-  it('scrolls down, then leaves the next slide to reveal.js', () => {
-    expect(scrollStep(1, view(0), null)).toBeCloseTo(459)
-    expect(scrollStep(1, view(900), null)).toBe(1080)
-    expect(scrollStep(1, view(1080), null)).toBe('reveal')
-  })
-
-  it('scrolls up, then leaves the previous slide to reveal.js', () => {
-    expect(scrollStep(-1, view(1080), null)).toBeCloseTo(621)
-    expect(scrollStep(-1, view(100), null)).toBe(0)
-    expect(scrollStep(-1, view(0), null)).toBe('reveal')
-  })
-
-  it('shows a fragment once it has scrolled into view', () => {
-    expect(scrollStep(1, view(0), { start: 300, end: 360 })).toBe('reveal')
-    expect(scrollStep(1, view(0), { start: 700, end: 760 })).toBeCloseTo(459)
-    expect(scrollStep(1, view(459), { start: 700, end: 760 })).toBe('reveal')
-    // Scrolled past by hand: show it, and fragmentshown scrolls back to it
-    expect(scrollStep(1, view(1080), { start: 100, end: 160 })).toBe('reveal')
-    expect(scrollStep(1, view(1080), { pinned: true })).toBe('reveal')
-  })
-
-  it('hides a fragment on screen before scrolling up past it', () => {
-    expect(scrollStep(-1, view(1080), { start: 1200, end: 1300 })).toBe('reveal')
-    expect(scrollStep(-1, view(1080), { start: 100, end: 160 })).toBeCloseTo(621)
-    expect(scrollStep(-1, view(500), { pinned: true })).toBe('reveal')
-    // At the top with shown fragments further down: go back past them
-    expect(scrollStep(-1, view(0), { start: 1200, end: 1300 })).toBe('skip')
-  })
-})
-
 describe('a scrolling slide when presented', () => {
   const doc = parse(generateRevealHTML(scrollingDeck()))
   const section = doc.querySelector('section[data-slide-id="tall"]')
@@ -224,67 +190,39 @@ describe('the scrolling script', () => {
     new Function('window', 'document', 'Reveal', 'Date', client.SCROLLING_SCRIPT)(win, doc, Reveal, Date)
     doc.addEventListener('keydown', revealKeys)
     for (const fn of handlers.ready || []) fn({ currentSlide: slides[current] })
-    const press = (key, extra = {}) => doc.body.dispatchEvent(new win.KeyboardEvent('keydown', { key, keyCode: { ArrowDown: 40, ArrowUp: 38, ' ': 32, PageDown: 34, ArrowRight: 39 }[key], bubbles: true, ...extra }))
+    const press = (key, extra = {}) => doc.body.dispatchEvent(new win.KeyboardEvent('keydown', { key, keyCode: { ArrowDown: 40, ArrowUp: 38, ' ': 32, PageDown: 34, ArrowRight: 39 }[key], bubbles: true, cancelable: true, ...extra }))
     const show = id => { const el = [...inner.children].find(c => c.textContent === id); el.classList.add('visible'); el.setAttribute('data-fragment-index', el.getAttribute('data-fragment-index') || '0') }
-    return { Reveal, handlers, go, press, revealKeys, scroller, top: () => top, setTop: v => { top = v; scroller._to = null }, show, inner }
+    const fragmentShown = id => { const el = [...inner.children].find(c => c.textContent === id); for (const fn of handlers.fragmentshown || []) fn({ fragment: el, fragments: [el] }) }
+    return { Reveal, handlers, go, press, revealKeys, scroller, top: () => top, setTop: v => { top = v; scroller._to = null }, fragmentShown, inner }
   }
 
-  it('scrolls down a step at a time, then lets reveal.js move on', () => {
+  it('leaves every key to reveal.js, which changes slides', () => {
     const deck = present()
-    deck.press('ArrowDown')
-    expect(deck.top()).toBeCloseTo(459)
-    expect(deck.revealKeys).not.toHaveBeenCalled()
-    deck.press(' ')
-    deck.press('PageDown')
-    expect(deck.top()).toBe(1080)
-    expect(deck.revealKeys).not.toHaveBeenCalled()
-    deck.press('ArrowDown')
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-  })
-
-  it('leaves other keys, and keys with modifiers, to reveal.js', () => {
-    const deck = present()
-    deck.press('ArrowRight')
-    deck.press('ArrowDown', { altKey: true })
-    deck.press('ArrowDown', { ctrlKey: true })
-    expect(deck.revealKeys).toHaveBeenCalledTimes(3)
-    expect(deck.top()).toBe(0)
-  })
-
-  it('goes back up with shift+space and the up arrow', () => {
-    const deck = present()
-    deck.setTop(1080)
+    for (const key of ['ArrowDown', ' ', 'PageDown', 'ArrowUp', 'ArrowRight']) deck.press(key)
     deck.press(' ', { shiftKey: true })
-    expect(deck.top()).toBeCloseTo(621)
-    deck.press('ArrowUp')
-    deck.press('ArrowUp')
+    expect(deck.revealKeys).toHaveBeenCalledTimes(6)
+    expect(deck.revealKeys.mock.calls.every(([e]) => !e.defaultPrevented)).toBe(true)
     expect(deck.top()).toBe(0)
-    expect(deck.revealKeys).not.toHaveBeenCalled()
-    deck.press('ArrowUp')
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
+    expect(deck.scroller.scrollTo).not.toHaveBeenCalled()
   })
 
-  it('shows a fragment when it comes into view', () => {
+  it('scrolls a fragment that appears off screen into view', () => {
     const deck = present({ fragments: [['near', 200, 1], ['far', 900, 2]] })
-    for (const el of deck.inner.querySelectorAll('.fragment')) el.setAttribute('data-fragment-index', el.getAttribute('data-fragment-index') || '0')
-    deck.press('ArrowDown') // "near" is on screen: reveal.js shows it
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-    deck.show('near')
-    deck.press('ArrowDown') // "far" is below the screen: scroll
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-    expect(deck.top()).toBeCloseTo(459)
-    deck.press('ArrowDown') // now it's in view
-    expect(deck.revealKeys).toHaveBeenCalledTimes(2)
+    deck.fragmentShown('near')
+    expect(deck.top()).toBe(0)
+    deck.fragmentShown('far')
+    expect(deck.top()).toBe(444) // its foot, and a margin, at the foot of the screen
   })
 
-  it('arrives at the top going forwards, and at the bottom stepping back', () => {
+  it('arrives at the top going forwards, and where it was left stepping back', () => {
     const deck = present({ startAt: 0 })
     deck.go(1)
     expect(deck.top()).toBe(0)
     deck.setTop(700)
     deck.go(2)
+    deck.setTop(0) // as when the browser forgets a hidden slide's place
     deck.go(1)
-    expect(deck.top()).toBe(1080)
+    expect(deck.top()).toBe(700)
     deck.go(0)
     deck.setTop(500)
     deck.go(1)
@@ -493,7 +431,7 @@ describe('the scrolling script on a sideways slide', () => {
     doc.addEventListener('keydown', revealKeys)
     for (const fn of handlers.ready || []) fn({ currentSlide: slides[current] })
     const codes = { ArrowRight: 39, ArrowLeft: 37, ArrowDown: 40, ArrowUp: 38, ' ': 32, l: 76, h: 72 }
-    const press = (key, extra = {}) => doc.body.dispatchEvent(new win.KeyboardEvent('keydown', { key, keyCode: codes[key], bubbles: true, ...extra }))
+    const press = (key, extra = {}) => doc.body.dispatchEvent(new win.KeyboardEvent('keydown', { key, keyCode: codes[key], bubbles: true, cancelable: true, ...extra }))
     const wheel = (deltaY, deltaX = 0) => {
       const e = new win.WheelEvent('wheel', { deltaY, deltaX, bubbles: true, cancelable: true })
       scroller.dispatchEvent(e)
@@ -508,57 +446,33 @@ describe('the scrolling script on a sideways slide', () => {
       Object.defineProperty(end, 'changedTouches', { value: [touch(500 + dx)] })
       inner.dispatchEvent(end)
     }
-    const show = id => { const el = [...inner.children].find(c => c.textContent === id); el.classList.add('visible') }
-    return { Reveal, go, press, wheel, swipe, revealKeys, scroller, left: () => left, setLeft: v => { left = v; scroller._to = null }, show, inner }
+    const fragmentShown = id => { const el = [...inner.children].find(c => c.textContent === id); for (const fn of handlers.fragmentshown || []) fn({ fragment: el, fragments: [el] }) }
+    return { Reveal, go, press, wheel, swipe, revealKeys, scroller, left: () => left, setLeft: v => { left = v; scroller._to = null }, fragmentShown, inner }
   }
 
-  it('scrolls across with the right arrow, L and space, then lets reveal.js move on', () => {
+  it('leaves every key to reveal.js, which changes slides', () => {
     const deck = present()
-    deck.press('ArrowRight')
-    expect(deck.left()).toBeCloseTo(816)
-    deck.press('l')
-    deck.press(' ')
-    expect(deck.left()).toBe(1920)
-    expect(deck.revealKeys).not.toHaveBeenCalled()
-    deck.press('ArrowRight')
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-  })
-
-  it('goes back with the left arrow and H, and leaves up and down to reveal.js', () => {
-    const deck = present()
-    deck.setLeft(1920)
-    deck.press('ArrowLeft')
-    expect(deck.left()).toBeCloseTo(1104)
-    deck.press('h')
-    deck.press('ArrowLeft')
-    expect(deck.left()).toBe(0)
-    expect(deck.revealKeys).not.toHaveBeenCalled()
-    deck.press('ArrowDown')
-    deck.press('ArrowUp')
-    expect(deck.revealKeys).toHaveBeenCalledTimes(2)
+    for (const key of ['ArrowRight', 'l', ' ', 'ArrowLeft', 'h', 'ArrowDown']) deck.press(key)
+    expect(deck.revealKeys).toHaveBeenCalledTimes(6)
+    expect(deck.revealKeys.mock.calls.every(([e]) => !e.defaultPrevented)).toBe(true)
     expect(deck.left()).toBe(0)
   })
 
-  it('shows a fragment once it has scrolled into view', () => {
-    const deck = present({ fragments: [['near', 300, 1], ['far', 1500, 2]] })
-    for (const el of deck.inner.querySelectorAll('.fragment')) el.setAttribute('data-fragment-index', el.getAttribute('data-fragment-index') || '0')
-    deck.press('ArrowRight') // "near" is on screen: reveal.js shows it
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-    deck.show('near')
-    deck.press('ArrowRight') // "far" is off to the right: scroll
-    expect(deck.revealKeys).toHaveBeenCalledTimes(1)
-    expect(deck.left()).toBeCloseTo(816)
-    deck.press('ArrowRight') // now it's in view
-    expect(deck.revealKeys).toHaveBeenCalledTimes(2)
+  it('scrolls a fragment that appears off screen into view', () => {
+    const deck = present({ fragments: [['far', 1500, 1]] })
+    deck.fragmentShown('far')
+    expect(deck.left()).toBe(864)
   })
 
-  it('arrives at the start going forwards, and at the end stepping back', () => {
+  it('arrives at the start going forwards, and where it was left stepping back', () => {
     const deck = present({ startAt: 0 })
     deck.go(1)
     expect(deck.left()).toBe(0)
+    deck.setLeft(1200)
     deck.go(2)
+    deck.setLeft(0)
     deck.go(1)
-    expect(deck.left()).toBe(1920)
+    expect(deck.left()).toBe(1200)
   })
 
   it('turns an up-and-down wheel into scrolling across, until the end', () => {

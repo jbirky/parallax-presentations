@@ -2788,9 +2788,9 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </>)}
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
               {axis === 'y'
-                ? 'Presenting shows one screen at a time. \u2193 and Space scroll down, showing fragments as they come into view, then go on to the next slide. PDF and PowerPoint export give a page per screen.'
+                ? 'Presenting shows one screen at a time. Scroll down with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
                 : axis === 'x'
-                  ? 'Presenting shows one screen at a time. \u2192 and Space scroll across, showing fragments as they come into view, then go on to the next slide; the mouse wheel and a swipe scroll it too. PDF and PowerPoint export give a page per screen.'
+                  ? 'Presenting shows one screen at a time. Scroll across with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
                   : 'Make the canvas taller or wider than the screen to scroll through this slide while presenting.'}
             </div>
             {offCanvas > 0 && (

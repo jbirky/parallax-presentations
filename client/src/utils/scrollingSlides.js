@@ -108,51 +108,22 @@ export const SCROLLING_CSS = `
     .reveal .slides section .slide-scroll-thumb { position:absolute; left:0; top:0; width:100%; height:0; background:rgba(160,160,160,0.55); border-radius:2px; }
     .reveal .slides section > .slide-scroll-track[data-scroll="x"] > .slide-scroll-thumb { width:0; height:100%; }`
 
-// What a key that moves forwards (dir 1) or back (dir -1) does on a scrolling
-// slide, along the way it scrolls. view is the scroller ({ start, size, max }
-// in canvas px: how far along it is, how much of the canvas it shows, and how
-// far it can go) and step is the fragment step the key would show or hide
-// next: null, { start, end } along the canvas, or { pinned: true } when it is
-// on the screen whatever the scroll. The answer is a scroll position to go to,
-// 'reveal' to leave the key to reveal.js (which shows or hides that fragment
-// step, or changes slide), or 'skip' to go to the previous slide past
-// fragments that are off screen.
-//
-// Going forwards, a fragment appears once the canvas has scrolled to it, and
-// the next slide comes once there is nothing left to scroll or show. Going
-// back undoes that: a fragment on screen hides, then the canvas scrolls back,
-// then the previous slide.
-//
-// Plain ES5 without backticks, as it's written into decks inside the script
-// below, and the tests run this source.
-export const SCROLL_STEP_SOURCE = `
-      var SCROLL_STEP = 0.85;
-      function scrollStep(dir, view, step) {
-        var end = view.start + view.size;
-        if (dir > 0) {
-          if (step && (step.pinned || step.start < end)) return 'reveal';
-          if (view.start < view.max - 1) return Math.min(view.max, view.start + view.size * SCROLL_STEP);
-          return 'reveal';
-        }
-        if (step && (step.pinned || (step.start < end && step.end > view.start))) return 'reveal';
-        if (view.start > 1) return Math.max(0, view.start - view.size * SCROLL_STEP);
-        return step ? 'skip' : 'reveal';
-      }`
-
 // Page script for decks with a scrolling slide, after reveal.js has loaded.
-// On a slide that scrolls down, the keys that move forwards (down, J, space,
-// page down, N) and back (up, K, shift+space, page up, P) scroll the canvas
-// first, as scrollStep decides; on one that scrolls sideways, right and L
-// take the place of down and J, and left and H of up and K. What scrollStep
-// leaves to reveal.js, and every other key, is reveal.js's as usual. The
-// mouse wheel and touch scroll the canvas natively, including over embeds
-// that don't use the wheel themselves, and an up-and-down wheel turns a
-// sideways canvas too. A sideways swipe still changes slides: at once on a
-// slide that scrolls down, and from the end on one that scrolls sideways.
-// Arriving by stepping back from the next slide starts at the end.
+// Only the mouse wheel, the trackpad and touch scroll the canvas. Keys change
+// slides and show fragments as they do on any slide, and a fragment that
+// appears off screen is scrolled into view. The wheel scrolls natively,
+// including over embeds that don't use the wheel themselves, and an
+// up-and-down wheel turns a sideways canvas too. A sideways swipe still
+// changes slides: at once on a slide that scrolls down, and from the end on
+// one that scrolls sideways. Arriving from the slide before starts at the
+// beginning, and stepping back from the one after finds the canvas where it
+// was left.
+//
+// Plain ES5 without backticks, as it's written into decks inside a template
+// literal.
 export const SCROLLING_SCRIPT = `
     // ── Scrolling slides ─────────────────────────────────────────────────
-    (function() {${SCROLL_STEP_SOURCE}
+    (function() {
       var reduceMotion = false;
       try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
 
@@ -164,7 +135,7 @@ export const SCROLLING_SCRIPT = `
       function maxOf(sc) { return sideways(sc) ? sc.scrollWidth - sc.clientWidth : sc.scrollHeight - sc.clientHeight; }
       function canScroll(sc) { return !!sc && maxOf(sc) > 1; }
 
-      // Where the canvas is, or is on its way to while a step's smooth scroll runs
+      // Where the canvas is, or is on its way to while a smooth scroll runs
       function viewOf(sc) {
         var start = sc._to != null && Date.now() - sc._toAt < 800 ? sc._to : posOf(sc);
         return { start: start, size: sizeOf(sc), max: maxOf(sc) };
@@ -178,18 +149,6 @@ export const SCROLLING_SCRIPT = `
         sc.scrollTo(to);
       }
 
-      // The fragment step a key would show (the lowest index still hidden) or
-      // hide (the highest shown)
-      function fragmentStep(slide, shown) {
-        var frags = slide.querySelectorAll('.fragment'), best = null, els = [];
-        for (var i = 0; i < frags.length; i++) {
-          if (frags[i].classList.contains('visible') !== shown) continue;
-          var index = parseInt(frags[i].getAttribute('data-fragment-index'), 10) || 0;
-          if (best === null || (shown ? index > best : index < best)) { best = index; els = [frags[i]]; }
-          else if (index === best) els.push(frags[i]);
-        }
-        return els;
-      }
       // Where elements are along the canvas, or pinned: true if any is on the screen
       function extentOf(els, sc) {
         var inner = sc.firstElementChild, x = sideways(sc), start = Infinity, end = -Infinity;
@@ -202,33 +161,6 @@ export const SCROLLING_SCRIPT = `
         }
         return els.length ? { start: start, end: end } : null;
       }
-
-      // Forwards (1), back (-1), or neither (0) for a slide that scrolls
-      // sideways (x) or down
-      function keyDirection(e, x) {
-        if (e.altKey || e.ctrlKey || e.metaKey) return 0;
-        if (e.keyCode === 32) return e.shiftKey ? -1 : 1;
-        if (e.shiftKey) return 0;
-        if ([x ? 39 : 40, x ? 76 : 74, 34, 78].indexOf(e.keyCode) !== -1) return 1;
-        if ([x ? 37 : 38, x ? 72 : 75, 33, 80].indexOf(e.keyCode) !== -1) return -1;
-        return 0;
-      }
-      // Before reveal.js's own handler, which listens on the document too
-      document.addEventListener('keydown', function(e) {
-        var slide = Reveal.getCurrentSlide(), sc = scrollerOf(slide);
-        if (!canScroll(sc)) return;
-        var dir = keyDirection(e, sideways(sc));
-        if (!dir) return;
-        var active = document.activeElement;
-        if (active && (active.isContentEditable || /^(input|textarea|select)$/i.test(active.tagName))) return;
-        if (Reveal.getConfig().keyboard === false || Reveal.isOverview() || Reveal.isPaused()) return;
-        var to = scrollStep(dir, viewOf(sc), extentOf(fragmentStep(slide, dir < 0), sc));
-        if (to === 'reveal') return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (to === 'skip') Reveal.prev({ skipFragments: true });
-        else scrollToPos(sc, to);
-      }, true);
 
       // A fragment that appears off screen is scrolled into view
       Reveal.on('fragmentshown', function(e) {
@@ -251,7 +183,7 @@ export const SCROLLING_SCRIPT = `
       var scrollers = document.querySelectorAll('.reveal .slides section > .slide-scroller');
       for (var i = 0; i < scrollers.length; i++) (function(sc) {
         sc.addEventListener('scroll', function() { syncTrack(sc); }, { passive: true });
-        // Scrolled by hand, the canvas is no longer on its way to a step's position
+        // Scrolled by hand, the canvas is no longer on its way to a fragment
         var byHand = function() { sc._to = null; };
         sc.addEventListener('wheel', byHand, { passive: true });
         sc.addEventListener('touchstart', byHand, { passive: true });
@@ -265,17 +197,20 @@ export const SCROLLING_SCRIPT = `
         }, { passive: false });
       })(scrollers[i]);
 
-      var lastIndex = -1;
+      // Leaving a slide keeps its place, for stepping back to it
+      var lastIndex = -1, lastScroller = null;
       function land(e) {
+        if (lastScroller) lastScroller._left = posOf(lastScroller);
         var index = Reveal.getSlides().indexOf(e.currentSlide), sc = scrollerOf(e.currentSlide);
         if (sc) {
           sc._to = null;
-          var atEnd = index === lastIndex - 1;
-          if (sideways(sc)) sc.scrollLeft = atEnd ? sc.scrollWidth : 0;
-          else sc.scrollTop = atEnd ? sc.scrollHeight : 0;
+          var pos = index === lastIndex - 1 ? sc._left || 0 : 0;
+          if (sideways(sc)) sc.scrollLeft = pos;
+          else sc.scrollTop = pos;
           syncTrack(sc);
         }
         lastIndex = index;
+        lastScroller = sc;
       }
       Reveal.on('ready', land);
       Reveal.on('slidechanged', land);
