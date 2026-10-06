@@ -9,6 +9,7 @@ import InvitePage from './pages/InvitePage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
 import { chosenTheme, defaultTheme, saveTheme } from './utils/theme'
+import BetaBadge from './components/BetaBadge'
 
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -37,7 +38,7 @@ function SignInPage() {
       <div style={{ textAlign: 'center' }}>
         <h1 style={{ fontSize: 36, fontWeight: 700, color: 'var(--text-primary, #fff)', margin: 0, cursor: 'pointer' }}
             onClick={() => { window.location.href = '/' }}>
-          <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax
+          <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax<BetaBadge />
         </h1>
         <p style={{ color: 'var(--text-muted, #888)', marginTop: 8, fontSize: 15 }}>
           {invited ? 'Sign in to accept the invitation' : 'Sign in to create and manage presentations'}
@@ -90,7 +91,7 @@ function DocsOverlay({ onClose, initialPage }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
       <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15,15,30,0.95)', backdropFilter: 'blur(12px)' }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}><span style={{ color: 'var(--accent)' }}>P</span>arallax Docs</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}><span style={{ color: 'var(--accent)' }}>P</span>arallax<BetaBadge /> Docs</div>
         <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, padding: '6px 14px', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 13 }}>Back to app</button>
       </nav>
       <div style={{ flex: 1, overflow: 'hidden' }}>

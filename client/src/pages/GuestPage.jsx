@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import EditorPage from './EditorPage'
 import { api, setGuestToken } from '../utils/api'
+import BetaBadge from '../components/BetaBadge'
 
 const TOKEN_KEY = 'parallax-guest-token'
 // User input counts as activity; tell the server at most this often
@@ -164,7 +165,7 @@ export default function GuestPage({ theme, onThemeChange }) {
     }}>
       <h1 style={{ fontSize: 36, fontWeight: 700, color: 'var(--text-primary, #fff)', margin: 0, cursor: 'pointer' }}
           onClick={() => { window.location.href = '/' }}>
-        <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax
+        <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax<BetaBadge />
       </h1>
 
       {state === 'loading' && <p style={muted}>Loading…</p>}

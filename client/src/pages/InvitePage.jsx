@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../utils/api'
+import BetaBadge from '../components/BetaBadge'
 
 // /invite/<token>: someone was sent a presentation's invite link. Says whose
 // presentation it is and, once they accept, opens it; they're an editor from
@@ -32,7 +33,7 @@ export default function InvitePage({ token, onOpen }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'var(--bg-primary, #0f0f1a)' }}>
       <div style={{ width: 420, maxWidth: '100%', background: 'var(--bg-card, #1e1e2e)', border: '1px solid var(--border, #2a2a3e)', borderRadius: 12, padding: 28, display: 'flex', flexDirection: 'column', gap: 16, color: 'var(--text-primary, #e0e0e0)' }}>
-        <div style={{ fontSize: 20, fontWeight: 700 }}><span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax</div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}><span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax<BetaBadge /></div>
         {error ? (
           <>
             <p role="alert" style={{ margin: 0, fontSize: 14 }}>{error}</p>

@@ -600,6 +600,13 @@ sup[data-cite] { font-weight: 700; }
   font-size: 22px; font-weight: 700; color: #fff;
   letter-spacing: -0.5px;
 }
+.beta-badge {
+  display: inline-block; margin-left: 0.35em; padding: 0.22em 0.55em; vertical-align: 0.75em;
+  font-size: max(9px, 0.38em); font-weight: 650; line-height: 1; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent-light, #818cf8); border: 1px solid color-mix(in srgb, var(--accent, #6366f1) 55%, transparent);
+  background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent); border-radius: 999px;
+}
+[data-theme="light"] .beta-badge { color: var(--accent, #6366f1); }
 .landing-btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;

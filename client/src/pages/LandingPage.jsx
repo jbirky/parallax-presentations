@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { Pencil, Presentation, Layout, Code2, Download, Server, Check, ArrowRight, BookOpen } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import { api } from '../utils/api'
+import BetaBadge from '../components/BetaBadge'
 
 const FEATURES = [
   { icon: Pencil, title: 'WYSIWYG Editor', desc: 'Edit slides visually with a rich text editor. Drag, drop, and resize — no code required.' },
@@ -68,7 +69,7 @@ export default function LandingPage({ onSignIn }) {
         <div className="landing-nav-inner">
           <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
             <div className="landing-logo" style={{ cursor: 'pointer' }} onClick={() => switchTab('home')}>
-              <span style={{ color: 'var(--accent)' }}>P</span>arallax
+              <span style={{ color: 'var(--accent)' }}>P</span>arallax<BetaBadge />
             </div>
             <div className="landing-nav-tabs">
               <button className={`landing-nav-tab ${tab === 'home' ? 'landing-nav-tab-active' : ''}`} onClick={() => switchTab('home')}>Home</button>
@@ -194,7 +195,7 @@ export default function LandingPage({ onSignIn }) {
         {/* Footer */}
         <footer className="landing-footer">
           <div className="landing-logo" style={{ fontSize: 18 }}>
-            <span style={{ color: 'var(--accent)' }}>P</span>arallax
+            <span style={{ color: 'var(--accent)' }}>P</span>arallax<BetaBadge />
           </div>
           <p>&copy; 2026 Jessica Birky. Licensed under AGPL-3.0.</p>
         </footer>

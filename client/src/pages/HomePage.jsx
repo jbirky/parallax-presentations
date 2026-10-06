@@ -7,6 +7,7 @@ import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
+import BetaBadge from '../components/BetaBadge'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
 const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
@@ -420,7 +421,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     <div className="home-page">
       <div className="home-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h1><span>P</span>arallax</h1>
+          <h1><span>P</span>arallax<BetaBadge /></h1>
           <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
             <ExternalLink size={12} /> Site
           </a>
