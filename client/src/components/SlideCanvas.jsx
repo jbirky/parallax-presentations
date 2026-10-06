@@ -699,7 +699,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         return
       }
       if (selectedElementIds.length > 0) {
-        if ((e.key === 'Delete' || e.key === 'Backspace') && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        // Not while typing elsewhere, as in the outline
+        if ((e.key === 'Delete' || e.key === 'Backspace') && tag !== 'INPUT' && tag !== 'TEXTAREA' && !document.activeElement?.isContentEditable) {
           onDeleteSelectedElements(); e.preventDefault()
         }
         if (e.key === 'Escape') { onToggleSelectElement(null, false); e.preventDefault() }

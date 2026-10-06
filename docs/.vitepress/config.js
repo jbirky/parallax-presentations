@@ -42,6 +42,7 @@ export default defineConfig({
           text: 'Getting Started',
           items: [
             { text: 'Your First Presentation', link: '/tutorials/first-presentation' },
+            { text: 'Outlining a Talk', link: '/tutorials/outline' },
             { text: 'Academic Slides', link: '/tutorials/academic-slides' },
           ]
         },

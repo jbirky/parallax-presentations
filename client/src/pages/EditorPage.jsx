@@ -31,6 +31,7 @@ import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
 import SlidePanel from '../components/SlidePanel'
+import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import SlideCanvas from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
 import FindReplaceBar from '../components/FindReplaceBar'
@@ -315,7 +316,7 @@ const migrateSlide = (slide) => {
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null, theme, onThemeChange }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
-  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo } = useDeckDoc()
+  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo, stopCapturing } = useDeckDoc()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -323,6 +324,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [loading, setLoading] = useState(true)
   const [selectedElementIds, setSelectedElementIds] = useState([])
   const [editingElementId, setEditingElementId] = useState(null)
+  // The left panel: the slides, or the outline (remembered in this browser)
+  const [leftView, setLeftView] = useState(() => { try { return localStorage.getItem('parallax-left-panel') === 'outline' ? 'outline' : 'slides' } catch (e) { return 'slides' } })
+  const chooseLeftView = useCallback(view => { setLeftView(view); try { localStorage.setItem('parallax-left-panel', view) } catch (e) { /* not remembered */ } }, [])
+  // An element to select once the slide it's on is showing
+  const pendingSelectRef = useRef(null)
   // The element state being recorded, { elementId, stateId }: moving,
   // resizing, turning or recoloring the element changes that state
   const [recording, setRecording] = useState(null)
@@ -895,7 +901,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // When currentSlideIndex changes, reset selection and editing
   useEffect(() => {
-    setSelectedElementIds([])
+    setSelectedElementIds(pendingSelectRef.current ? [pendingSelectRef.current] : [])
+    pendingSelectRef.current = null
     setEditingElementId(null)
     editingElementIdRef.current = null
     if (editor) {
@@ -2253,6 +2260,8 @@ function draw() {
       if (editingElementId) return
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // Typing elsewhere, as in the outline, which has its own undo keys
+      if (document.activeElement?.isContentEditable) return
       const ctrl = e.ctrlKey || e.metaKey
       if (!ctrl) return
       const element = selectedElementId
@@ -4185,7 +4194,35 @@ function draw() {
 
       {/* Editor Body */}
       <div className="editor-body">
+        {leftView === 'outline' ? (
+          <OutlinePanel
+            deck={presentation}
+            setDeck={setPresentation}
+            stopCapturing={stopCapturing}
+            onUndo={doUndo}
+            onRedo={doRedo}
+            currentIndex={currentSlideIndex}
+            onSelectSlide={selectSlide}
+            onSelectElement={(index, id) => {
+              if (index === currentSlideIndex) setSelectedElementIds([id])
+              else { pendingSelectRef.current = id; selectSlide(index) }
+            }}
+            onLeaveCanvas={() => {
+              if (editingElementIdRef.current) stopEditingElement()
+              setSelectedElementIds(ids => (ids.length ? [] : ids))
+            }}
+            onNotice={showNotice}
+            peers={peers}
+            presence={presenceBySlide}
+            citationLabels={citationIndex.labelByKey}
+            slideW={slideW}
+            slideH={slideH}
+            referencesCount={hasReferencesSlide ? referencedEntries.length : 0}
+            viewSwitch={<PanelViewSwitch view="outline" onChange={chooseLeftView} />}
+          />
+        ) : (
         <SlidePanel
+          viewSwitch={<PanelViewSwitch view="slides" onChange={chooseLeftView} />}
           slides={presentation.slides}
           globalFont={presentation.globalFont || ''}
           citationLabels={citationIndex.labelByKey}
@@ -4208,6 +4245,7 @@ function draw() {
           referencesSlideIndex={hasReferencesSlide ? referencesSlideIndex : -1}
           referencesCount={referencedEntries.length}
         />
+        )}
 
         <div className="editor-main">
           <Toolbar
