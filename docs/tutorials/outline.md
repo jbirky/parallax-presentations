@@ -1,6 +1,6 @@
 # Outlining a Talk
 
-The outline shows your deck as a list: each section, each slide's title, its points and its speaker notes, one per line. Type in it and the slides change as you type; change a slide and its lines follow. It's the quickest way to plan a talk before you design its slides, or to see the shape of one you've built.
+The outline is a place to plan a talk: a list of your slides, each with notes under it about what it's for and what you'll say. The notes are yours alone and stay in the outline. They never change a slide, and they don't show when you present, not even in the speaker notes. You can type freely without moving anything on the slides.
 
 ## Opening the outline
 
@@ -10,34 +10,26 @@ Clicking a line shows its slide on the canvas.
 
 ## What the lines are
 
-| Line | What it is on the slide |
+| Line | What it is |
 | --- | --- |
 | **§ Section** | The section name in the slide footer, shared by the slides under it |
-| **Numbered line** | The slide's title: the first heading of its topmost text box |
-| **• Point** | A point in the slide's text: a list item or a paragraph, with sub-points under it |
-| **Note** (speech bubble) | A line of the slide's speaker notes |
-| **Dashed line** (lock) | Something else on the slide, like a graph, image or second text box |
+| **Numbered line** | The slide's title, as it is on the slide: the first heading of its topmost text box. Change it on the slide; the outline shows it as it changes |
+| **• Note** | A note of yours about the slide, kept in the outline. Notes can go under notes, two levels deep |
 
-A slide made with **+ Slide** is one text box with a heading and text, and the outline reads the heading as the title and the rest as points. On a slide built another way, the outline takes the topmost box that starts with a heading as the title and the largest box with a list as the points.
-
-Points keep their formatting, links, math and citations. Math shows drawn in the outline and can't be typed into there; double-click the slide's text to change it.
-
-The dashed lines are only listed: click one to select it on the slide, where it's edited. The outline never deletes them.
+A slide with no notes yet has an empty line under its title. Click it and type.
 
 ## Keys
 
 | Key | What it does |
 | --- | --- |
-| **Enter** | A new line of the same kind, splitting the line at the cursor. On a title, a new slide after this one; at the start of a title, a new slide before it. On an empty point, the point moves up a level, then becomes a slide. |
-| **Tab** | A point goes under the point above it. A slide becomes a point on the slide above, its points under it. On a section, the section break goes and its slides join the section above. |
-| **Shift+Tab** | A sub-point moves up a level. A point becomes a slide of its own, taking the points below it. A slide starts a new section. |
-| **Backspace** | At the start of an empty line, removes it. At the start of a point, joins it to the point above. |
+| **Enter** | On a note, a new note after it, splitting the note at the cursor. On an empty sub-note, it moves up a level; on a slide's last note when it's empty, a new blank slide after this one. On a slide's title, a new blank slide after it. |
+| **Tab** | A note goes under the note above it, taking its own notes with it. On a section, the section break goes and its slides join the section above. |
+| **Shift+Tab** | A note moves up a level. On a slide's title, the slide starts a new section. |
+| **Backspace** | At the start of an empty note, removes it. At the start of a note, joins it to the note above. On a blank slide's title or its empty line, removes the slide. |
 | **↑ ↓** | Moves between lines. |
 | **Ctrl+Z** | Undo, as anywhere in the editor. **Ctrl+Shift+Z** redoes. |
 
-A slide with anything the outline can't hold as text, such as a graph, an image or speaker notes, won't turn into a point, since that would lose them. The outline says why at the bottom of the window. Move those things to another slide first, or keep it as a slide.
-
-New slides made in the outline have one text box, along the top of the slide, with the title and points. They take their section, column and background from the slide they follow.
+The slides the outline adds are blank, with no text box or anything else on them, in the section, column and background of the slide before. The outline only removes a slide that's still blank: nothing on it, and no notes or speaker notes. To delete any other slide, use the Slides panel.
 
 ## Planning time
 
@@ -45,4 +37,4 @@ Each slide's line has a box for its minutes, and each section shows its total. A
 
 ## Editing with others
 
-When someone is typing in a slide's text box, its lines in your outline are locked, with a dot in their color, until they finish. Changes from others show in your outline as they're made.
+Notes typed by others show in your outline as they type them. The dots beside a slide's title show who else is on that slide.

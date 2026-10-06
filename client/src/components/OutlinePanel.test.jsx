@@ -9,7 +9,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 const deck0 = () => ({
   title: 'Talk', timerDuration: 12,
   slides: [
-    { id: 'a', notes: 'Say hello', elements: [{ id: 't', type: 'text', x: 0, y: 0, width: 800, height: 400, content: '<h2>Rotation curves</h2><ul><li><p>Flat</p></li></ul>' }, { id: 'g', type: 'shape', x: 0, y: 0, width: 10, height: 10 }] },
+    { id: 'a', notes: 'Say hello', outlineNotes: [{ text: 'Open with the curve', level: 0 }], elements: [{ id: 't', type: 'text', x: 0, y: 0, width: 800, height: 400, content: '<h2>Rotation curves</h2><ul><li><p>Flat</p></li></ul>' }, { id: 'g', type: 'shape', x: 0, y: 0, width: 10, height: 10 }] },
     { id: 'b', section: 'Data', minutes: 2, elements: [{ id: 'u', type: 'text', x: 0, y: 0, width: 800, height: 400, content: '<h2>The sample</h2>' }] },
   ],
 })
@@ -22,9 +22,12 @@ function mount(props = {}) {
   document.body.appendChild(host)
   root = createRoot(host)
   const seen = { deck: null }
+  // Runs an updater at once, as the editor's deck store does (useDeckDoc)
+  let current = deck0()
   function Harness() {
-    const [deck, setDeck] = useState(deck0)
+    const [deck, setState] = useState(current)
     seen.deck = deck
+    const setDeck = update => { current = typeof update === 'function' ? update(current) : update; setState(current) }
     return <OutlinePanel deck={deck} setDeck={setDeck} {...props} />
   }
   act(() => root.render(<Harness />))
@@ -32,55 +35,66 @@ function mount(props = {}) {
 }
 const rows = () => [...host.querySelectorAll('.ol-row')].map(r => r.className.split(' ')[1].slice(2) + ':' + (r.querySelector('.ol-text, .ol-item')?.textContent || ''))
 const line = key => host.querySelector(`.ol-text[data-key="${key}"]`)
+const key = (el, k, extra = {}) => act(() => { el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra })) })
 
 describe('the outline panel', () => {
-  it('shows the deck as lines, with the plan of minutes', () => {
+  it('shows each slide’s title and its outline notes, with the plan of minutes', () => {
     mount()
-    expect(rows()).toEqual(['slide:Rotation curves', 'point:Flat', 'item:Shape', 'note:Say hello', 'section:Data', 'slide:The sample'])
+    expect(rows()).toEqual(['slide:Rotation curves', 'note:Open with the curve', 'section:Data', 'slide:The sample', 'note:'])
+    expect(line('b:o0').dataset.ph).toBe('Add a note')
     expect(host.querySelector('.ol-plan-row').textContent).toMatch(/^2 min planned of.*min10 to spare$/)
   })
 
-  it('writes what’s typed into a line to the deck', () => {
+  it('keeps what’s typed in the outline, leaving the slide as it was', () => {
     const seen = mount()
-    const el = line('a:p0')
-    act(() => { el.innerHTML = 'Flat <strong>out</strong>'; el.dispatchEvent(new Event('input', { bubbles: true })) })
-    expect(seen.deck.slides[0].elements[0].content).toBe('<h2>Rotation curves</h2><ul><li><p>Flat <strong>out</strong></p></li></ul>')
-    const note = line('a:n0')
-    act(() => { note.textContent = 'Say hi'; note.dispatchEvent(new Event('input', { bubbles: true })) })
-    expect(seen.deck.slides[0].notes).toBe('Say hi')
+    const before = seen.deck.slides[1]
+    const el = line('b:o0')
+    act(() => { el.textContent = 'Show the selection cuts'; el.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(seen.deck.slides[1].outlineNotes).toEqual([{ text: 'Show the selection cuts', level: 0 }])
+    expect(seen.deck.slides[1].elements).toBe(before.elements)
   })
 
-  it('folds a slide with nothing else on it into the one above, as one undo step', () => {
-    const onNotice = vi.fn(), stopCapturing = vi.fn()
-    const seen = mount({ onNotice, stopCapturing })
-    act(() => { line('b').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })) })
-    expect(seen.deck.slides.map(s => s.id)).toEqual(['a'])
+  it('shows titles that can’t be typed into', () => {
+    mount()
+    expect(line('a').getAttribute('contenteditable')).toBeNull()
+    expect(line('a').tabIndex).toBe(0)
+    expect(line('a:o0').getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('adds a blank slide with Enter on a title, as one undo step, and takes it away with Backspace', () => {
+    const stopCapturing = vi.fn(), onNotice = vi.fn()
+    const seen = mount({ stopCapturing, onNotice })
+    key(line('a'), 'Enter')
+    expect(seen.deck.slides).toHaveLength(3)
+    const added = seen.deck.slides[1]
+    expect(added.elements).toEqual([])
     expect(stopCapturing).toHaveBeenCalledTimes(2)
-    expect(onNotice).not.toHaveBeenCalled()
-  })
-
-  it('says why the first slide won’t fold into a point', () => {
-    const onNotice = vi.fn()
-    const seen = mount({ onNotice })
-    act(() => { line('a').dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })) })
-    expect(onNotice).toHaveBeenCalledWith(expect.stringMatching(/first slide/))
+    expect(document.activeElement).toBe(line(added.id + ':o0'))
+    key(line(added.id), 'Backspace')
+    expect(seen.deck.slides.map(s => s.id)).toEqual(['a', 'b'])
+    key(line('a'), 'Backspace')
     expect(seen.deck.slides).toHaveLength(2)
+    expect(onNotice).toHaveBeenCalledWith(expect.stringMatching(/has things on it/))
   })
 
-  it('goes to a line’s slide, leaving the canvas, and selects what’s listed', () => {
-    const onSelectSlide = vi.fn(), onLeaveCanvas = vi.fn(), onSelectElement = vi.fn()
-    mount({ onSelectSlide, onLeaveCanvas, onSelectElement, currentIndex: 0 })
-    act(() => { line('b').dispatchEvent(new FocusEvent('focus', { bubbles: false })); line('b').focus() })
+  it('keeps a title’s keys from the editor’s shortcuts', () => {
+    const onUndo = vi.fn(), outside = vi.fn()
+    mount({ onUndo })
+    document.addEventListener('keydown', outside)
+    try {
+      key(line('a'), 'z', { ctrlKey: true })
+      key(line('a'), 'v', { ctrlKey: true })
+    } finally { document.removeEventListener('keydown', outside) }
+    expect(onUndo).toHaveBeenCalledTimes(1)
+    expect(outside).not.toHaveBeenCalled()
+  })
+
+  it('goes to a line’s slide, leaving the canvas', () => {
+    const onSelectSlide = vi.fn(), onLeaveCanvas = vi.fn()
+    mount({ onSelectSlide, onLeaveCanvas, currentIndex: 0 })
+    act(() => { line('b').focus() })
     expect(onLeaveCanvas).toHaveBeenCalled()
     expect(onSelectSlide).toHaveBeenCalledWith(1)
-    act(() => { host.querySelector('.ol-item').click() })
-    expect(onSelectElement).toHaveBeenCalledWith(0, 'g')
-  })
-
-  it('locks a line someone else is editing on the slide', () => {
-    mount({ peers: [{ userId: 'u2', name: 'Ada', color: '#f97316', editing: 't' }] })
-    expect(line('a').getAttribute('contenteditable')).toBe('false')
-    expect(line('b').getAttribute('contenteditable')).toBe('true')
   })
 
   it('switches the left panel', () => {

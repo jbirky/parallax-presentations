@@ -235,18 +235,23 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .ol-row.k-slide.cur .ol-num { background: var(--accent); border-color: var(--accent); color: #fff; }
 .ol-text { outline: none; padding: 2px 4px; min-height: 22px; box-sizing: border-box; line-height: 18px; font-size: 13px; color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 3px; cursor: text; }
 .ol-text:empty::before { content: attr(data-ph); color: var(--text-muted); }
-.ol-text[aria-readonly="true"] { cursor: default; opacity: 0.7; }
 .ol-text .katex { font-size: 1em; }
+.ol-title { cursor: pointer; }
+.ol-title:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
 .ol-row.k-section { margin-top: 10px; }
 .ol-row.k-section .ol-mark { color: var(--accent-light); font-weight: 700; }
 .ol-row.k-section .ol-text { color: var(--accent-light); font-weight: 650; }
 .ol-row.k-slide { margin-top: 4px; }
 .ol-row.k-slide .ol-text { font-weight: 600; }
-.ol-row.k-point, .ol-row.k-note, .ol-row.k-item { margin-left: 18px; }
-.ol-row.k-point.lv1 { margin-left: 36px; }
-.ol-row.k-point.lv2 { margin-left: 54px; }
-.ol-row.k-point.lv1 .ol-text, .ol-row.k-point.lv2 .ol-text { color: var(--text-secondary); }
-.ol-row.k-note .ol-text { font-style: italic; color: var(--text-secondary); }
+.ol-row.k-note { margin-left: 18px; }
+.ol-row.k-note.lv1 { margin-left: 36px; }
+.ol-row.k-note.lv2 { margin-left: 54px; }
+.ol-row.k-note.lv1 .ol-text, .ol-row.k-note.lv2 .ol-text { color: var(--text-secondary); }
+/* A slide's empty line for its first note says so where you're working */
+.ol-row.k-note.blank .ol-mark { opacity: 0; }
+.ol-row.k-note.blank .ol-text:empty::before { opacity: 0; }
+.ol-row.k-note.blank.cur .ol-mark, .ol-row.k-note.blank:hover .ol-mark, .ol-row.k-note.blank:focus-within .ol-mark { opacity: 1; }
+.ol-row.k-note.blank.cur .ol-text:empty::before, .ol-row.k-note.blank:hover .ol-text:empty::before, .ol-row.k-note.blank:focus-within .ol-text:empty::before { opacity: 1; }
 .ol-row.vertical { margin-left: 10px; }
 .ol-meta { display: flex; align-items: center; gap: 4px; height: 22px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .ol-mins { width: 34px; height: 18px; padding: 0 3px; text-align: right; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--text-secondary); font-size: 11px; appearance: textfield; -moz-appearance: textfield; }
@@ -255,7 +260,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .ol-item { display: inline-block; max-width: 100%; box-sizing: border-box; border: 1px dashed var(--border-light); background: transparent; border-radius: 10px; padding: 1px 8px; margin: 1px 0; color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 18px; }
 .ol-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .ol-dots { display: inline-flex; gap: 2px; }
-.ol-dots span, .ol-held { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.ol-dots span { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .ol-help { padding: 6px 12px 8px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); line-height: 1.6; }
 .ol-help a { color: var(--text-secondary); }
 .ol-help a:hover { color: var(--text-primary); }

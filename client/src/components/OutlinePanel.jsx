@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// The outline: the deck as lines in the left panel, in place of the slides.
-// Each line is typed into where it is, and each change goes into the deck at
-// once (utils/outline.js), so the slide follows as it's typed and the outline
-// follows what's typed on the slide. Enter, Tab, Shift+Tab and Backspace
-// change the deck's shape: new points and slides, points under points,
-// points into slides and back.
+// The outline: notes for planning a talk, in the left panel in place of the
+// slides. Under each slide's title (read from the slide) are its outline
+// notes, typed into where they are and kept apart from the slide, which they
+// never change (utils/outline.js). Enter, Tab, Shift+Tab and Backspace make
+// notes, put notes under notes, start sections, and add and remove blank
+// slides.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import katex from 'katex'
-import { Lock, MessageSquare, BookOpen } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 import * as O from '../utils/outline'
-import { editorOf } from '../utils/presence'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { latestRun, clock } from '../utils/practice'
 
@@ -27,7 +26,7 @@ export function PanelViewSwitch({ view, onChange }) {
   )
 }
 
-// ── The cursor in a line, counting math and citations as one character ────
+// ── The cursor in a line of text ──────────────────────────────────────────
 function caretOffset(el) {
   const sel = window.getSelection()
   if (!sel.rangeCount || !el.contains(sel.anchorNode)) return null
@@ -35,45 +34,17 @@ function caretOffset(el) {
   pre.selectNodeContents(el)
   const r = sel.getRangeAt(0)
   pre.setEnd(r.startContainer, r.startOffset)
-  const frag = pre.cloneContents()
-  frag.querySelectorAll('[contenteditable="false"]').forEach(a => a.replaceWith('x'))
-  return frag.textContent.length
+  return pre.toString().length
 }
 function setCaret(el, off) {
   const sel = window.getSelection(), r = document.createRange()
-  let left = off == null ? Infinity : off, placed = false
-  const visit = n => {
-    for (const c of Array.from(n.childNodes)) {
-      if (placed) return
-      if (c.nodeType === 3) {
-        if (left <= c.textContent.length) { r.setStart(c, left); placed = true; return }
-        left -= c.textContent.length
-      } else if (c.nodeType === 1) {
-        if (c.getAttribute('contenteditable') === 'false') {
-          if (left <= 0) { r.setStartBefore(c); placed = true; return }
-          left -= 1
-          if (left === 0) { r.setStartAfter(c); placed = true; return }
-        } else visit(c)
-      }
-    }
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let left = off, placed = false
+  for (let t = walk.nextNode(); t && off != null; t = walk.nextNode()) {
+    if (left <= t.textContent.length) { r.setStart(t, left); placed = true; break }
+    left -= t.textContent.length
   }
-  visit(el)
-  if (!placed) { r.selectNodeContents(el); r.collapse(false) } else r.collapse(true)
-  sel.removeAllRanges()
-  sel.addRange(r)
-}
-// A cursor inside a piece (where typing does nothing; a click or End can
-// put it there) moves out, to just after it
-function leaveAtom(el) {
-  const sel = window.getSelection()
-  if (!el || !sel.rangeCount || !sel.isCollapsed) return
-  const n = sel.anchorNode, host = n && (n.nodeType === 1 ? n : n.parentElement)
-  const atom = host && host.closest('[contenteditable="false"]')
-  if (!atom || !el.contains(atom)) return
-  const r = document.createRange()
-  const next = atom.nextSibling
-  if (next && next.nodeType === 3) r.setStart(next, Math.min(1, next.textContent.length)); else r.setStartAfter(atom)
-  r.collapse(true)
+  if (!placed) { r.selectNodeContents(el); r.collapse(off === 0) } else r.collapse(true)
   sel.removeAllRanges()
   sel.addRange(r)
 }
@@ -83,20 +54,15 @@ function selectAll(el) {
   sel.removeAllRanges()
   sel.addRange(r)
 }
-// A line's content before and after the cursor (a selection goes)
-function splitLine(el, rich) {
+// A line's text before and after the cursor (a selection goes)
+function splitLine(el) {
   const sel = window.getSelection()
-  if (!sel.rangeCount) return [rich ? O.lineHtml(el) : el.textContent, '']
+  if (!sel.rangeCount || !el.contains(sel.anchorNode)) return [el.textContent, '']
   const r = sel.getRangeAt(0)
   const a = document.createRange(), b = document.createRange()
   a.selectNodeContents(el); a.setEnd(r.startContainer, r.startOffset)
   b.selectNodeContents(el); b.setStart(r.endContainer, r.endOffset)
-  const read = range => {
-    const d = document.createElement('div')
-    d.appendChild(range.cloneContents())
-    return rich ? O.normalizeInline(O.lineHtml(d)) : d.textContent
-  }
-  return [read(a), read(b)]
+  return [a.toString(), b.toString()]
 }
 const caretRect = () => {
   const sel = window.getSelection()
@@ -107,25 +73,26 @@ const caretRect = () => {
 }
 const onFirstLine = el => { const r = caretRect(); return !r || r.top - el.getBoundingClientRect().top < 10 }
 const onLastLine = el => { const r = caretRect(); return !r || el.getBoundingClientRect().bottom - r.bottom < 10 }
+// Moves the focus to a line, the cursor where it's asked for
+const go = (el, caret) => { el.focus(); if (el.isContentEditable) setCaret(el, caret); el.scrollIntoView?.({ block: 'nearest' }) }
 
-// A line's content drawn: math by KaTeX, citations by their labels, both as
-// pieces that can't be typed into
-function paint(el, value, rich, labels) {
-  if (!rich) { el.textContent = value || ''; return }
-  el.innerHTML = O.atomize(O.cleanInline(resolveCitationsInHtml(value || '', labels)))
-  el.querySelectorAll('[data-math-latex]').forEach(m => {
-    const tex = m.getAttribute('data-math-latex') || ''
-    try { katex.render(tex, m, { throwOnError: false, displayMode: false }) } catch (e) { m.textContent = '$' + tex + '$' }
-  })
-  // A browser won't put the cursor beside a piece at a line's end without text there
-  el.querySelectorAll('[contenteditable="false"]').forEach(a => {
-    if (!a.nextSibling || a.nextSibling.nodeType !== 3) a.after(document.createTextNode(O.CARET_SLOT))
-    if (!a.previousSibling) a.before(document.createTextNode(O.CARET_SLOT))
+// Puts the cursor in a line the outline asked for, once
+function useFocus(ref, focus, lineKey, editable) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || !focus || focus.key !== lineKey || focus.done) return
+    focus.done = true
+    el.focus({ preventScroll: true })
+    if (editable) {
+      if (focus.caret === 'all') selectAll(el)
+      else setCaret(el, focus.caret === 'start' ? 0 : focus.caret === 'end' || focus.caret == null ? null : focus.caret)
+    }
+    el.scrollIntoView?.({ block: 'nearest' })
   })
 }
 
-// One line's text: drawn from the deck unless the deck has what it shows
-const Text = memo(function Text({ value, rich, labels, locked, placeholder, label, focus, lineKey, onText, onKeyDown, onFocus }) {
+// A note or section name, typed into where it is
+const Text = memo(function Text({ value, placeholder, label, focus, lineKey, onText, onKeyDown, onFocus }) {
   const ref = useRef(null)
   const shown = useRef(null)
   useLayoutEffect(() => {
@@ -133,40 +100,31 @@ const Text = memo(function Text({ value, rich, labels, locked, placeholder, labe
     if (!el || shown.current === value) return
     const focused = document.activeElement === el
     const at = focused ? caretOffset(el) : null
-    paint(el, value, rich, labels)
+    el.textContent = value || ''
     shown.current = value
     if (focused) setCaret(el, at)
-  }, [value, rich, labels])
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el || !focus || focus.key !== lineKey || focus.done) return
-    focus.done = true
-    el.focus({ preventScroll: true })
-    if (focus.caret === 'all') selectAll(el)
-    else setCaret(el, focus.caret === 'start' ? 0 : focus.caret === 'end' || focus.caret == null ? null : focus.caret)
-    el.scrollIntoView?.({ block: 'nearest' })
-  })
+  }, [value])
+  useFocus(ref, focus, lineKey, true)
   return (
     <div
       ref={ref}
       className="ol-text"
-      contentEditable={!locked}
+      contentEditable
       suppressContentEditableWarning
       spellCheck
       role="textbox"
       aria-label={label}
-      aria-readonly={locked || undefined}
       data-ph={placeholder}
       data-key={lineKey}
+      data-nav=""
       onInput={e => {
         const el = e.currentTarget
         if (el.innerHTML === '<br>') el.innerHTML = ''
-        const v = rich ? O.normalizeInline(O.lineHtml(el)) : el.textContent.replace(/\n/g, ' ')
+        const v = el.textContent.replace(/\n/g, ' ')
         shown.current = v
         onText(v)
       }}
-      onKeyDown={e => { leaveAtom(ref.current); onKeyDown(e, ref.current) }}
-      onMouseUp={() => leaveAtom(ref.current)}
+      onKeyDown={e => onKeyDown(e, ref.current)}
       onFocus={onFocus}
       onPaste={e => {
         // Pasted as text, on one line
@@ -175,6 +133,29 @@ const Text = memo(function Text({ value, rich, labels, locked, placeholder, labe
         document.execCommand('insertText', false, t)
       }}
     />
+  )
+})
+
+// A slide's title, as it is on the slide: math drawn by KaTeX, citations by
+// their labels. It can't be typed into, but takes the keys that add and
+// remove slides and start sections, and keeps them from the editor's own
+// shortcuts, which would paste into the slide or undo twice.
+const Title = memo(function Title({ html, labels, label, focus, lineKey, onKeyDown, onFocus }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.innerHTML = O.cleanInline(resolveCitationsInHtml(html || '', labels))
+    el.querySelectorAll('[data-math-latex]').forEach(m => {
+      const tex = m.getAttribute('data-math-latex') || ''
+      try { katex.render(tex, m, { throwOnError: false, displayMode: false }) } catch (e) { m.textContent = '$' + tex + '$' }
+    })
+  }, [html, labels])
+  useFocus(ref, focus, lineKey, false)
+  return (
+    <div ref={ref} className="ol-text ol-title" tabIndex={0} role="heading" aria-level={3} aria-label={label}
+      title="The slide’s title: change it on the slide" data-ph="Untitled slide" data-key={lineKey} data-nav=""
+      onKeyDown={e => { e.stopPropagation(); onKeyDown(e, ref.current) }} onFocus={onFocus} />
   )
 })
 
@@ -201,18 +182,15 @@ function Dots({ people }) {
   )
 }
 
-const PLACEHOLDER = { section: 'Section name', slide: 'Untitled slide', point: 'Point', note: 'Speaker note' }
-
 export default function OutlinePanel({
-  deck, setDeck, stopCapturing = () => {}, onUndo, onRedo, currentIndex = 0, onSelectSlide, onSelectElement,
-  onLeaveCanvas, onNotice = () => {}, peers = [], presence = null, citationLabels = {}, slideW = 960, slideH = 540,
+  deck, setDeck, stopCapturing = () => {}, onUndo, onRedo, currentIndex = 0, onSelectSlide,
+  onLeaveCanvas, onNotice = () => {}, presence = null, citationLabels = {},
   referencesCount = 0, viewSwitch = null, onShowRuns,
 }) {
   const lines = useMemo(() => O.outlineLines(deck, { referencesCount }), [deck, referencesCount])
   const plan = useMemo(() => O.timing(deck), [deck])
   const [focus, setFocus] = useState(null)
   const listRef = useRef(null)
-  const opts = useMemo(() => ({ slideW, slideH }), [slideW, slideH])
 
   // A change to the deck, from the deck as it is now; a change of shape is
   // an undo step of its own, while typing runs together
@@ -231,54 +209,51 @@ export default function OutlinePanel({
   }, [setDeck, stopCapturing, onNotice])
 
   const typed = useCallback((L, v) => {
-    if (L.kind === 'slide') apply(d => ({ deck: O.setTitle(d, L.slideId, v, opts) }))
-    else if (L.kind === 'point') apply(d => ({ deck: O.setPoint(d, L.slideId, L.j, v) }))
-    else if (L.kind === 'note') apply(d => ({ deck: O.setNote(d, L.slideId, L.n, v) }))
+    if (L.kind === 'note') apply(d => ({ deck: O.setNote(d, L.slideId, L.n, v) }))
     else if (L.kind === 'section') apply(d => ({ deck: O.setSectionName(d, L.slideId, v) }))
-  }, [apply, opts])
+  }, [apply])
 
-  // The line before or after one, among those that can be typed into
+  // The line before or after one
   const neighbor = useCallback((key, dir) => {
-    const texts = Array.from(listRef.current?.querySelectorAll('.ol-text[contenteditable="true"]') || [])
+    const texts = Array.from(listRef.current?.querySelectorAll('.ol-text[data-nav]') || [])
     const at = texts.findIndex(t => t.dataset.key === key)
     return texts[at + dir] || null
   }, [])
 
   const onKey = useCallback((e, el, L) => {
     if (e.nativeEvent.isComposing) return
-    const rich = L.kind === 'slide' || L.kind === 'point'
     const mod = e.ctrlKey || e.metaKey
+    const title = L.kind === 'slide'
     if (mod && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? onRedo?.() : onUndo?.(); return }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); onRedo?.(); return }
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (L.kind === 'section') { const n = neighbor(L.key, 1); if (n) { n.focus(); setCaret(n, 0) } return }
-      const [before, after] = splitLine(el, rich)
-      apply(d => O.enter(d, L, before, after, opts), true)
+      if (L.kind === 'section') { const n = neighbor(L.key, 1); if (n) go(n, 0); return }
+      const [before, after] = title ? ['', ''] : splitLine(el)
+      apply(d => O.enter(d, L, before, after), true)
       return
     }
     if (e.key === 'Tab') {
       e.preventDefault()
-      apply(d => (e.shiftKey ? O.outdent : O.indent)(d, L, opts), true)
+      apply(d => (e.shiftKey ? O.outdent : O.indent)(d, L), true)
       return
     }
-    if (e.key === 'Backspace' && window.getSelection().isCollapsed && caretOffset(el) === 0) {
-      const empty = rich ? !O.textOf(O.lineHtml(el)) && !el.querySelector('[contenteditable="false"]') : !el.textContent
-      const prev = neighbor(L.key, -1)
-      const r = O.backspace(deck, L, empty, prev ? prev.dataset.key : null)
-      if (!r) return
+    if (e.key === 'Backspace' && (title || (window.getSelection().isCollapsed && caretOffset(el) === 0))) {
+      const empty = !el.textContent
+      if (title) e.preventDefault()
+      if (!O.backspace(deck, L, empty)) return
       e.preventDefault()
-      apply(d => O.backspace(d, L, empty, prev ? prev.dataset.key : null) || { deck: d }, true)
+      apply(d => O.backspace(d, L, empty, neighbor(L.key, -1)?.dataset.key || null) || { deck: d }, true)
       return
     }
-    if (e.key === 'ArrowUp' && !e.shiftKey && onFirstLine(el)) {
+    if (e.key === 'ArrowUp' && !e.shiftKey && (title || onFirstLine(el))) {
       const n = neighbor(L.key, -1)
-      if (n) { e.preventDefault(); n.focus(); setCaret(n, null); n.scrollIntoView?.({ block: 'nearest' }) }
-    } else if (e.key === 'ArrowDown' && !e.shiftKey && onLastLine(el)) {
+      if (n) { e.preventDefault(); go(n, null) }
+    } else if (e.key === 'ArrowDown' && !e.shiftKey && (title || onLastLine(el))) {
       const n = neighbor(L.key, 1)
-      if (n) { e.preventDefault(); n.focus(); setCaret(n, 0); n.scrollIntoView?.({ block: 'nearest' }) }
+      if (n) { e.preventDefault(); go(n, 0) }
     } else if (e.key === 'Escape') el.blur()
-  }, [apply, deck, neighbor, onRedo, onUndo, opts])
+  }, [apply, deck, neighbor, onRedo, onUndo])
 
   const focused = useCallback(L => {
     onLeaveCanvas?.()
@@ -332,43 +307,39 @@ export default function OutlinePanel({
       <div className="ol-list" ref={listRef} role="list" aria-label="Outline">
         {lines.map(L => {
           const cur = L.index === currentIndex
-          const peer = L.elementId ? editorOf(peers, L.elementId) : null
-          const cls = 'ol-row k-' + L.kind + (L.kind === 'point' ? ' lv' + L.level : '') + (cur ? ' cur' : '') + (L.vertical ? ' vertical' : '')
-          if (L.kind === 'item' || L.kind === 'references') {
+          const cls = 'ol-row k-' + L.kind + (L.kind === 'note' ? ' lv' + L.level + (L.blank ? ' blank' : '') : '') + (cur ? ' cur' : '') + (L.vertical ? ' vertical' : '')
+          if (L.kind === 'references') {
             return (
               <div key={L.key} className={cls} role="listitem">
-                <span className="ol-mark">{L.kind === 'item' ? <Lock size={11} /> : <BookOpen size={12} />}</span>
-                <button type="button" className="ol-item" title={L.kind === 'item' ? 'Made on the slide: select it there to change it' : 'Made from the deck’s citations'}
-                  onClick={() => (L.kind === 'item' ? onSelectElement?.(L.index, L.elementId) : onSelectSlide?.(L.index))}>
-                  {L.kind === 'item' ? L.label : 'References · ' + L.count}
+                <span className="ol-mark"><BookOpen size={12} /></span>
+                <button type="button" className="ol-item" title="Made from the deck’s citations" onClick={() => onSelectSlide?.(L.index)}>
+                  {'References · ' + L.count}
                 </button>
               </div>
             )
           }
-          const rich = L.kind === 'slide' || L.kind === 'point'
+          const onKeyDown = (e, el) => onKey(e, el, L)
+          const onFocus = () => focused(L)
           return (
             <div key={L.key} className={cls} role="listitem">
               <span className="ol-mark">
                 {L.kind === 'slide' ? <span className="ol-num">{L.vertical ? '↓' : ''}{L.n}</span>
                   : L.kind === 'section' ? '§'
-                  : L.kind === 'note' ? <MessageSquare size={11} />
                   : L.level ? '◦' : '•'}
               </span>
-              <Text
-                value={rich ? L.html : L.text}
-                rich={rich}
-                labels={citationLabels}
-                locked={!!peer}
-                placeholder={L.kind === 'section' && !L.text && L.index !== lines[0]?.index ? 'No section · name it' : PLACEHOLDER[L.kind]}
-                label={{ section: 'Section', slide: 'Slide ' + L.n + ' title', point: 'Point', note: 'Speaker note' }[L.kind]}
-                focus={focus}
-                lineKey={L.key}
-                onText={v => typed(L, v)}
-                onKeyDown={(e, el) => onKey(e, el, L)}
-                onFocus={() => focused(L)}
-              />
+              {L.kind === 'slide'
+                ? <Title html={L.html} labels={citationLabels} label={'Slide ' + L.n + ': ' + (O.textOf(L.html) || 'Untitled slide')} focus={focus} lineKey={L.key} onKeyDown={onKeyDown} onFocus={onFocus} />
+                : <Text
+                    value={L.text}
+                    placeholder={L.kind === 'section' ? (!L.text && L.index !== lines[0]?.index ? 'No section · name it' : 'Section name') : L.blank ? 'Add a note' : 'Note'}
+                    label={L.kind === 'section' ? 'Section' : 'Note'}
+                    focus={focus}
+                    lineKey={L.key}
+                    onText={v => typed(L, v)}
+                    onKeyDown={onKeyDown}
+                    onFocus={onFocus}
+                  />}
               <span className="ol-meta">
-                {peer && <span className="ol-held" title={peer.name + ' is editing this on the slide'} style={{ background: peer.color }} />}
                 {L.kind === 'slide' && <Dots people={presence?.get(L.slideId)} />}
                 {L.kind === 'slide' && practiced.get(L.slideId)?.seconds > 0 && (() => {
                   const p = practiced.get(L.slideId), m = Number(deck.slides[L.index]?.minutes)
@@ -382,7 +353,8 @@ export default function OutlinePanel({
         })}
       </div>
       <div className="ol-help">
-        <kbd>Enter</kbd> new line · <kbd>Tab</kbd> <kbd>⇧Tab</kbd> level ·{' '}
+        Notes here stay in the outline: they never change the slides.<br />
+        <kbd>Enter</kbd> new note · <kbd>Tab</kbd> <kbd>⇧Tab</kbd> level ·{' '}
         <a href="/#docs/tutorials/outline" target="_blank" rel="noopener noreferrer">How to use</a>
       </div>
     </div>

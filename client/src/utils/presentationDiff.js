@@ -95,6 +95,9 @@ function diffSlideOtherChanges(oldSlide, newSlide) {
   if ((oldSlide.notes || '') !== (newSlide.notes || '')) {
     changes.push('Speaker notes changed')
   }
+  if (JSON.stringify(oldSlide.outlineNotes || []) !== JSON.stringify(newSlide.outlineNotes || [])) {
+    changes.push('Outline notes changed')
+  }
   if ((oldSlide.transition || '') !== (newSlide.transition || '')) {
     changes.push(`Transition: ${oldSlide.transition || 'default'} → ${newSlide.transition || 'default'}`)
   }

@@ -329,8 +329,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // The left panel: the slides, or the outline (remembered in this browser)
   const [leftView, setLeftView] = useState(() => { try { return localStorage.getItem('parallax-left-panel') === 'outline' ? 'outline' : 'slides' } catch (e) { return 'slides' } })
   const chooseLeftView = useCallback(view => { setLeftView(view); try { localStorage.setItem('parallax-left-panel', view) } catch (e) { /* not remembered */ } }, [])
-  // An element to select once the slide it's on is showing
-  const pendingSelectRef = useRef(null)
   // The element state being recorded, { elementId, stateId }: moving,
   // resizing, turning or recoloring the element changes that state
   const [recording, setRecording] = useState(null)
@@ -904,8 +902,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // When currentSlideIndex changes, reset selection and editing
   useEffect(() => {
-    setSelectedElementIds(pendingSelectRef.current ? [pendingSelectRef.current] : [])
-    pendingSelectRef.current = null
+    setSelectedElementIds([])
     setEditingElementId(null)
     editingElementIdRef.current = null
     if (editor) {
@@ -4241,20 +4238,13 @@ function draw() {
             onRedo={doRedo}
             currentIndex={currentSlideIndex}
             onSelectSlide={selectSlide}
-            onSelectElement={(index, id) => {
-              if (index === currentSlideIndex) setSelectedElementIds([id])
-              else { pendingSelectRef.current = id; selectSlide(index) }
-            }}
             onLeaveCanvas={() => {
               if (editingElementIdRef.current) stopEditingElement()
               setSelectedElementIds(ids => (ids.length ? [] : ids))
             }}
             onNotice={showNotice}
-            peers={peers}
             presence={presenceBySlide}
             citationLabels={citationIndex.labelByKey}
-            slideW={slideW}
-            slideH={slideH}
             referencesCount={hasReferencesSlide ? referencedEntries.length : 0}
             viewSwitch={<PanelViewSwitch view="outline" onChange={chooseLeftView} />}
             onShowRuns={() => setShowPracticeRuns(true)}
