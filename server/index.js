@@ -242,21 +242,57 @@ if (fs.existsSync(docsPublic)) {
 }
 
 // ---- Example decks (public, before auth) ----
-// The landing page's examples (client/src/examples): each as a page, in a
-// sandbox like a share link, and as a deck for a guest to start from. Built
-// once per process, since they change only with the code. Anything else under
-// /examples (thumbnails, the molecule's structure file) is a static file.
+// The landing page's examples (services/landing-examples.js): the list, each
+// deck as a page, in a sandbox like a share link, and as a deck for a guest to
+// start from, and the thumbnails the server drew. A page is built once per
+// version of its deck. Anything else under /examples (built-in thumbnails, the
+// molecule's structure file) is a static file.
+const examples = require('./services/landing-examples')
+const { renderFirstSlide, chromiumPath, ThumbnailError } = require('./services/slide-thumbnail')
+const EXAMPLE_SLUG = /^[a-z0-9-]{1,64}$/
 const exampleHtml = new Map()
-const isExample = slug => deckHtml.EXAMPLE_SLUGS.includes(slug)
-app.get('/examples/:slug', deckPageLimiter, (req, res, next) => {
-  const { slug } = req.params
-  if (!isExample(slug)) return next()
-  if (!exampleHtml.has(slug)) exampleHtml.set(slug, localizeLibraries(generateRevealHTML(deckHtml.exampleDeck(slug), { notes: false })))
-  sendDeckPage(res, exampleHtml.get(slug))
+app.get('/api/examples', async (req, res) => {
+  try {
+    res.json(await examples.landingExamples(storage))
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
-app.get('/api/examples/:slug', (req, res) => {
-  if (!isExample(req.params.slug)) return res.status(404).json({ error: 'No such example' })
-  res.json(deckHtml.exampleDeck(req.params.slug))
+app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
+  try {
+    const { slug } = req.params
+    const found = EXAMPLE_SLUG.test(slug) && await examples.getExampleDeck(storage, slug)
+    if (!found) return next()
+    let page = exampleHtml.get(slug)
+    if (!page || page.version !== found.version) {
+      page = { version: found.version, html: localizeLibraries(generateRevealHTML(found.deck, { notes: false })) }
+      exampleHtml.set(slug, page)
+    }
+    sendDeckPage(res, page.html)
+  } catch (err) {
+    next(err)
+  }
+})
+app.get('/api/examples/:slug', async (req, res) => {
+  try {
+    const found = EXAMPLE_SLUG.test(req.params.slug) && await examples.getExampleDeck(storage, req.params.slug)
+    if (!found) return res.status(404).json({ error: 'No such example' })
+    res.json({ id: `example-${req.params.slug}`, ...found.deck })
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+app.get('/examples/thumbs/:slug.jpg', async (req, res, next) => {
+  try {
+    const jpeg = EXAMPLE_SLUG.test(req.params.slug) && await examples.getThumbnail(storage, req.params.slug)
+    if (!jpeg) return next()
+    res.setHeader('Content-Type', 'image/jpeg')
+    // Its link names the version (?v=), so a changed one has a new link
+    res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300')
+    res.send(jpeg)
+  } catch (err) {
+    next(err)
+  }
 })
 
 // Plugin assets (public, before auth — sandbox iframes need these)
@@ -822,6 +858,84 @@ app.post('/api/presentations', async (req, res) => {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
+
+// ---- The landing page's examples, edited from /admin ----
+// Each not found for anyone who isn't an admin. Adding or updating an
+// example draws its thumbnail from its page on this server; if that can't be
+// done, the example still changes and the response says why (thumbnailError).
+function exampleRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof examples.ExampleError) return res.status(err.status).json({ error: err.message })
+      console.error('Example edit error:', err.message)
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+async function drawExampleThumbnail(req, slug) {
+  try {
+    await examples.setThumbnail(storage, slug, await renderFirstSlide(`http://127.0.0.1:${req.socket.localPort}/examples/${slug}`))
+    return null
+  } catch (err) {
+    if (!(err instanceof ThumbnailError)) console.error('Example thumbnail error:', err.message)
+    return err.message
+  }
+}
+// The admin's own presentation, or a refusal
+async function ownPresentation(req, id) {
+  const presentation = isValidUUID(id) ? await storage.getPresentation(id, req.userId) : null
+  if (!presentation) throw new examples.ExampleError('That presentation isn’t one of yours, or is gone', 404)
+  return presentation
+}
+app.get('/api/admin/examples', exampleRoute(async (req, res) => {
+  res.json({ examples: await examples.listExamples(storage), thumbnails: !!chromiumPath() })
+}))
+// { presentationId, field, title, description, tags }
+app.post('/api/admin/examples', exampleRoute(async (req, res) => {
+  const example = await examples.createExample(storage, await ownPresentation(req, req.body?.presentationId), req.body || {})
+  const thumbnailError = await drawExampleThumbnail(req, example.slug)
+  console.log(`Admin added landing example ${example.slug}`)
+  res.status(201).json({ example: await examples.getRow(storage, example.slug), thumbnailError })
+}))
+// { slugs }: the examples in order
+app.put('/api/admin/examples/order', exampleRoute(async (req, res) => {
+  res.json({ examples: await examples.setOrder(storage, req.body?.slugs) })
+}))
+// { field, title, description, tags, card, hero }, each optional
+app.put('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
+  res.json({ example: await examples.updateExample(storage, req.params.slug, req.body || {}) })
+}))
+// The deck copied again from the presentation it came from
+app.post('/api/admin/examples/:slug/refresh', exampleRoute(async (req, res) => {
+  const { sourcePresentationId } = await examples.getRow(storage, req.params.slug)
+  if (!sourcePresentationId) throw new examples.ExampleError('This example didn’t come from a presentation')
+  await examples.refreshExample(storage, req.params.slug, await ownPresentation(req, sourcePresentationId))
+  const thumbnailError = await drawExampleThumbnail(req, req.params.slug)
+  res.json({ example: await examples.getRow(storage, req.params.slug), thumbnailError })
+}))
+app.post('/api/admin/examples/:slug/thumbnail', exampleRoute(async (req, res) => {
+  await examples.getRow(storage, req.params.slug)
+  const thumbnailError = await drawExampleThumbnail(req, req.params.slug)
+  res.json({ example: await examples.getRow(storage, req.params.slug), thumbnailError })
+}))
+// A presentation of the admin's made from the example's deck, which the
+// example then comes from, to edit it in the editor
+app.post('/api/admin/examples/:slug/copy', exampleRoute(async (req, res) => {
+  const example = await examples.getRow(storage, req.params.slug)
+  const { deck } = await examples.getExampleDeck(storage, req.params.slug)
+  if (!(await checkPresentationQuota(req, res))) return
+  const created = await storage.createPresentation({ ...deck, id: uuidv4(), title: example.title }, req.userId, null)
+  await examples.refreshExample(storage, req.params.slug, created)
+  res.status(201).json({ example: await examples.getRow(storage, req.params.slug), presentation: { id: created.id, title: created.title } })
+}))
+app.delete('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
+  await examples.deleteExample(storage, req.params.slug)
+  console.log(`Admin deleted landing example ${req.params.slug}`)
+  res.json({ ok: true })
+}))
 
 // --- Templates ---
 

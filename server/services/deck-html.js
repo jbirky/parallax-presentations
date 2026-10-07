@@ -4917,7 +4917,9 @@ var require_lib2 = __commonJS({
 // deck-html.js
 var deck_html_exports = {};
 __export(deck_html_exports, {
+  EXAMPLES: () => EXAMPLES,
   EXAMPLE_SLUGS: () => EXAMPLE_SLUGS,
+  HERO_EXAMPLE: () => HERO_EXAMPLE,
   exampleDeck: () => exampleDeck,
   generateRevealHTML: () => generateRevealHTML
 });
@@ -15903,9 +15905,9 @@ function geometryRuntime() {
     }
     return null;
   }
-  var EXAMPLES = { Point: "Point(1, 2)", PointOn: "PointOn(c, 0.5)", Intersect: "Intersect(c, d, 0)", Midpoint: "Midpoint(A, B)", Segment: "Segment(A, B)", Line: "Line(A, B)", Ray: "Ray(A, B)", Circle: "Circle(A, B)", Perpendicular: "Perpendicular(P, f)", Parallel: "Parallel(P, f)", PerpendicularBisector: "PerpendicularBisector(A, B)", AngleBisector: "AngleBisector(A, B, C)", Polygon: "Polygon(A, B, C)", Angle: "Angle(A, B, C)", Distance: "Distance(A, B)" };
+  var EXAMPLES2 = { Point: "Point(1, 2)", PointOn: "PointOn(c, 0.5)", Intersect: "Intersect(c, d, 0)", Midpoint: "Midpoint(A, B)", Segment: "Segment(A, B)", Line: "Line(A, B)", Ray: "Ray(A, B)", Circle: "Circle(A, B)", Perpendicular: "Perpendicular(P, f)", Parallel: "Parallel(P, f)", PerpendicularBisector: "PerpendicularBisector(A, B)", AngleBisector: "AngleBisector(A, B, C)", Polygon: "Polygon(A, B, C)", Angle: "Angle(A, B, C)", Distance: "Distance(A, B)" };
   function example(cmd) {
-    return EXAMPLES[cmd] || cmd + "(…)";
+    return EXAMPLES2[cmd] || cmd + "(…)";
   }
   function serialize(objs) {
     return objs.map(function(o) {
@@ -22447,9 +22449,25 @@ var EXAMPLE_SLUGS = Object.keys(BUILDERS);
 function exampleDeck(slug) {
   return Object.prototype.hasOwnProperty.call(BUILDERS, slug) ? BUILDERS[slug]() : null;
 }
+
+// client/src/examples/catalog.js
+var EXAMPLES = [
+  { slug: "chemistry", field: "Chemistry", title: "Periodic table and caffeine", desc: "A periodic table to explore, and a caffeine molecule from PubChem that you can turn and zoom.", tags: ["Periodic table", "3D molecule"] },
+  { slug: "circuit", field: "Engineering and CS", title: "Circuits, solved", desc: "A voltage divider and a Wheatstone bridge, with readings from the DC solver and current that flows.", tags: ["Circuit"] },
+  { slug: "rotation", field: "Astronomy", title: "Why galaxies spin too fast", desc: "A rotation curve with a dark halo you tune with sliders, then Bayes’ rule explained term by term.", tags: ["Graph with sliders", "Interactive equation"] },
+  { slug: "logic", field: "Engineering and CS", title: "Digital logic", desc: "A half adder you can click, then an SPI byte as a timing diagram.", tags: ["Logic diagram", "Timing diagram"] },
+  { slug: "orbitals", field: "Physics", title: "Orbitals and surfaces", desc: "The spherical harmonic Y₂¹ in WebGL, then a 3D surface that turns on its own.", tags: ["Spherical harmonics", "3D graph"] },
+  { slug: "freebody", field: "Physics", title: "Forces on a block", desc: "A block sliding down a slope and a sled pulled at an angle, each force on its own step.", tags: ["Free-body diagram"] },
+  { slug: "venn", field: "Mathematics", title: "Venn diagrams", desc: "De Morgan’s law shaded in step by step, then a probability problem.", tags: ["Venn diagram"] },
+  { slug: "feynman", field: "Physics", title: "Feynman diagrams", desc: "Gluon fusion to a Higgs and Compton scattering, drawn one propagator at a time.", tags: ["Feynman diagram"] },
+  { slug: "geometry", field: "Mathematics", title: "Euclid I.1", desc: "An equilateral triangle by compass and straightedge, then Thales’ theorem. Drag the points.", tags: ["Geometry construction"] }
+];
+var HERO_EXAMPLE = "hero";
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  EXAMPLES,
   EXAMPLE_SLUGS,
+  HERO_EXAMPLE,
   exampleDeck,
   generateRevealHTML
 });

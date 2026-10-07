@@ -5,7 +5,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 
 const guest = { enabled: true }
-vi.mock('../utils/api', () => ({ api: { getGuestConfig: vi.fn(async () => guest) } }))
+const server = { list: null }
+vi.mock('../utils/api', () => ({ api: { getGuestConfig: vi.fn(async () => guest), getLandingExamples: vi.fn(async () => server.list) } }))
 vi.mock('../components/DocsPage', () => ({ default: () => <div className="docs-stub">Docs</div> }))
 import LandingPage from './LandingPage'
 import { EXAMPLES } from '../examples/catalog'
@@ -70,6 +71,26 @@ describe('the landing page', () => {
       await act(async () => button('Sign in to make your own').click())
       expect(onSignIn).toHaveBeenCalledTimes(2)
     } finally { guest.enabled = true }
+  })
+
+  it('shows the examples as the server lists them, with a placeholder for one without a thumbnail', async () => {
+    server.list = {
+      hero: 'my-talk',
+      examples: [
+        { slug: 'my-talk', field: 'Biology', title: 'Cell division', desc: 'Mitosis, step by step', tags: ['Diagram'], thumbnail: null, background: { type: 'color', color: '#123456' } },
+        { slug: 'venn', field: 'Mathematics', title: 'Venn diagrams', desc: 'De Morgan', tags: [], thumbnail: '/examples/thumbs/venn.jpg' },
+      ],
+    }
+    try {
+      await mount()
+      expect(el.querySelector('.lp-hero iframe').getAttribute('src')).toBe('/examples/my-talk')
+      expect(cards()).toEqual(['Cell division', 'Venn diagrams'])
+      expect([...el.querySelectorAll('.lp-filters button')].map(b => b.firstChild.textContent)).toEqual(['All', 'Mathematics', 'Biology'])
+      const thumb = el.querySelector('.lp-card .lp-thumb')
+      expect(thumb.querySelector('img')).toBeNull()
+      expect(thumb.querySelector('.lp-thumb-title').textContent).toBe('Cell division')
+      expect(thumb.getAttribute('style')).toContain('#123456')
+    } finally { server.list = null }
   })
 
   it('opens the docs in place, and comes back to a section', async () => {

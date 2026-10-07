@@ -2,16 +2,17 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The landing page, for visitors who aren't signed in: what Parallax is, a
-// live deck, the example decks by field (client/src/examples, served at
-// /examples/<slug>), how a talk comes together, the elements by subject, and
-// the plans. The docs open in place of it, at #docs.
+// live deck, the example decks by field (as /admin arranges them, served at
+// /examples/<slug>; the built-in ones in client/src/examples if the list
+// can't be had), how a talk comes together, the elements by subject, and the
+// plans. The docs open in place of it, at #docs.
 
 import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
 import { api } from '../utils/api'
-import { EXAMPLES, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
+import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
 
 const GITHUB = 'https://github.com/jbirky/parallax-presentations'
 const SUPPORT = 'support@parallax-presentations.com'
@@ -32,6 +33,15 @@ const ELEMENTS = [
   { field: 'Engineering and CS', items: [['Circuits', 'readings from a DC solver'], ['Logic gates', 'click an input, watch it propagate'], ['Timing diagrams', 'WaveDrom, stepped through as you talk'], ['Code', 'with syntax highlighting']] },
   { field: 'Every subject', items: [['LaTeX math', 'inline and display'], ['Citations', 'a references slide built from them'], ['Scrolling slides', 'for a derivation too long for one screen'], ['Click and hover actions', 'states that morph from one look to another']] },
 ]
+
+// The built-in examples, as the server lists them
+const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })) }
+// The filters: the usual fields first, then any others the examples have
+const fieldsOf = examples => {
+  const have = new Set(examples.map(e => e.field).filter(Boolean))
+  return [...EXAMPLE_FIELDS.filter(f => have.has(f)), ...[...have].filter(f => !EXAMPLE_FIELDS.includes(f))]
+}
+const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
 
 const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
@@ -117,9 +127,11 @@ export default function LandingPage({ onSignIn }) {
   const [viewing, setViewing] = useState(null)
   const [scrollTo, setScrollTo] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [catalog, setCatalog] = useState(null)
 
   useEffect(() => {
     api.getGuestConfig().then(config => setGuestEnabled(!!config.enabled)).catch(() => {})
+    api.getLandingExamples().then(list => setCatalog(list || BUILT_IN_LIST)).catch(() => setCatalog(BUILT_IN_LIST))
   }, [])
 
   useEffect(() => {
@@ -152,7 +164,8 @@ export default function LandingPage({ onSignIn }) {
     document.getElementById(scrollTo.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
   }, [scrollTo, tab])
 
-  const shown = field === 'All' ? EXAMPLES : EXAMPLES.filter(e => e.field === field)
+  const examples = catalog?.examples || []
+  const shown = field === 'All' ? examples : examples.filter(e => e.field === field)
   const tryIt = guestEnabled
     ? <a className="lp-btn primary" href="/try">Try it, no account needed <ArrowRight size={16} /></a>
     : <button type="button" className="lp-btn primary" onClick={onSignIn}>Get started free <ArrowRight size={16} /></button>
@@ -190,7 +203,9 @@ export default function LandingPage({ onSignIn }) {
             </div>
             <div className="lp-facts"><span>Free to start</span><span>Open source, AGPL-3.0</span><span>Export to HTML, PDF and PowerPoint</span></div>
             <div className="lp-stage">
-              <div className="lp-frame"><SlideFrame src={`/examples/${HERO_EXAMPLE}`} title="A live Parallax deck: a galaxy rotation curve, a Feynman diagram and a geometry construction" /></div>
+              <div className="lp-frame">
+                {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}`} title="A live Parallax deck" /> : <div className="lp-slide" />}
+              </div>
               <div className="lp-hint"><i aria-hidden="true">●</i> Live deck: drag a slider, then click and press →</div>
             </div>
           </header>
@@ -202,18 +217,21 @@ export default function LandingPage({ onSignIn }) {
                 <p>Each one is a real Parallax deck. Open it, step through it with the arrow keys, and drag whatever moves.</p>
               </div>
               <div className="lp-filters" role="group" aria-label="Show examples from">
-                {['All', ...EXAMPLE_FIELDS].map(f => (
+                {['All', ...fieldsOf(examples)].map(f => (
                   <button key={f} type="button" aria-pressed={field === f} onClick={() => setField(f)}>
-                    {f}<span>{f === 'All' ? EXAMPLES.length : EXAMPLES.filter(e => e.field === f).length}</span>
+                    {f}<span>{f === 'All' ? examples.length : examples.filter(e => e.field === f).length}</span>
                   </button>
                 ))}
               </div>
               <div className="lp-grid">
                 {shown.map((e, i) => (
                   <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}, ${e.field}: open the live deck`} onClick={() => setViewing(i)}>
-                    <div className="lp-thumb"><img loading="lazy" alt="" src={`/examples/thumbs/${e.slug}.jpg`} /><span>Open live</span></div>
+                    <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
+                      {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
+                      <span>Open live</span>
+                    </div>
                     <div className="lp-card-body">
-                      <div className="lp-label">{e.field}</div>
+                      {e.field && <div className="lp-label">{e.field}</div>}
                       <h3>{e.title}</h3>
                       <p>{e.desc}</p>
                       <div className="lp-tags">{e.tags.map(t => <span key={t}>{t}</span>)}</div>

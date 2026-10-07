@@ -27,6 +27,14 @@ async function safeJson(r) {
 
 const BASE = '/api'
 
+const jsonBody = (method, data) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+// A response's JSON, or an Error with the server's reason
+const adminJson = fallback => async r => {
+  const b = await safeJson(r)
+  if (!r.ok) throw new Error(b.error || b.message || fallback)
+  return b
+}
+
 // The version of each presentation as this tab last loaded or saved it. A save
 // sends it, and the server refuses a save made from an older version (409)
 // when someone else has saved since. Self-hosted, presentations have none.
@@ -302,6 +310,15 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not delete the plan')
     return b
   }),
+  // The landing page's examples, as /admin edits them
+  getAdminExamples: () => authFetch(`${BASE}/admin/examples`).then(adminJson('Could not load the examples')),
+  addExample: (data) => authFetch(`${BASE}/admin/examples`, jsonBody('POST', data)).then(adminJson('Could not add the example')),
+  saveExample: (slug, data) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}`, jsonBody('PUT', data)).then(adminJson('Could not save the example')),
+  orderExamples: (slugs) => authFetch(`${BASE}/admin/examples/order`, jsonBody('PUT', { slugs })).then(adminJson('Could not reorder the examples')),
+  refreshExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/refresh`, { method: 'POST' }).then(adminJson('Could not update the example')),
+  redrawExampleThumbnail: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/thumbnail`, { method: 'POST' }).then(adminJson('Could not draw the thumbnail')),
+  copyExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/copy`, { method: 'POST' }).then(adminJson('Could not make a copy')),
+  deleteExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}`, { method: 'DELETE' }).then(adminJson('Could not delete the example')),
   setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -314,6 +331,8 @@ export const api = {
 
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
+  // The landing page's examples: { hero, examples }, or null
+  getLandingExamples: () => _fetch(`${BASE}/examples`).then(r => (r.ok ? r.json() : null)),
   // One of the landing page's example decks, or null
   getExample: (slug) => _fetch(`${BASE}/examples/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)),
   startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {

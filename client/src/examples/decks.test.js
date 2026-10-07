@@ -10,14 +10,22 @@ const PUBLIC = path.join(__dirname, '../../public')
 const types = deck => deck.slides.map(s => s.elements.map(e => e.type).filter(t => t !== 'text'))
 
 describe('the example decks', () => {
-  it('has a deck and a thumbnail for every card, in a field the filters offer', () => {
+  it('has a deck and a thumbnail for every card and the hero, in a field the filters offer', () => {
     for (const e of EXAMPLES) {
       expect(EXAMPLE_SLUGS).toContain(e.slug)
       expect(EXAMPLE_FIELDS).toContain(e.field)
       expect(fs.existsSync(path.join(PUBLIC, 'examples/thumbs', e.slug + '.jpg')), e.slug).toBe(true)
     }
     expect(EXAMPLE_SLUGS).toContain(HERO_EXAMPLE)
+    expect(fs.existsSync(path.join(PUBLIC, 'examples/thumbs', HERO_EXAMPLE + '.jpg'))).toBe(true)
     expect(fs.existsSync(path.join(PUBLIC, CAFFEINE_SRC))).toBe(true)
+  })
+
+  it('starts the server’s list (migration 017) as the catalog has it', () => {
+    const sql = fs.readFileSync(path.join(__dirname, '../../../server/migrations/017_landing_examples.sql'), 'utf8')
+    const q = v => "'" + String(v).replace(/'/g, "''") + "'"
+    EXAMPLES.forEach((e, i) => expect(sql, e.slug).toContain(`(${q(e.slug)}, ${q(e.field)}, ${q(e.title)}, ${q(e.desc)}, ${q(JSON.stringify(e.tags))}, TRUE, TRUE, FALSE, ${i + 1})`))
+    expect(sql).toContain(`(${q(HERO_EXAMPLE)}, '', 'Parallax',`)
   })
 
   it('builds each from the elements it names', () => {

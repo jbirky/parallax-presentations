@@ -21,6 +21,7 @@ const path = require('path')
 const root = path.join(__dirname, '..')
 const SOURCE = 'client/src/utils/generateHTML.js'
 const EXAMPLES = 'client/src/examples/decks.js'
+const CATALOG = 'client/src/examples/catalog.js'
 const TARGET = path.join(root, 'server/services/deck-html.js')
 
 const HEADER = `// SPDX-License-Identifier: AGPL-3.0-or-later
@@ -47,7 +48,7 @@ const serverSide = {
 async function bundle() {
   const esbuild = require('esbuild')
   const result = await esbuild.build({
-    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'`, resolveDir: root, sourcefile: 'deck-html.js' },
+    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'`, resolveDir: root, sourcefile: 'deck-html.js' },
     absWorkingDir: root,
     bundle: true,
     format: 'cjs',
