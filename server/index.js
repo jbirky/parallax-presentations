@@ -2165,8 +2165,9 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
       var sessionId = '${req.params.id}';
       var unlocked = new Set([0]);
       var maxUnlocked = 0;
+      // Under the deck's Fullscreen button
       var badge = document.createElement('div');
-      badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(34,197,94,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;transition:background 0.3s;';
+      badge.style.cssText = 'position:fixed;top:56px;right:12px;z-index:99999;background:rgba(34,197,94,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;transition:background 0.3s;';
       badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;display:inline-block"></span> LIVE';
       document.body.appendChild(badge);
 

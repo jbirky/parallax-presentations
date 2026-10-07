@@ -798,8 +798,9 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
     .reveal .slides section .reveal-footer,
     .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
       background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3);
       border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
       backdrop-filter: blur(4px); transition: background 0.15s;
@@ -1865,8 +1866,9 @@ export function presentInWindow(presentation, { annotationSet } = {}) {
 // are watching, here and in the editor (window.__liveViewerCount). Injected
 // as source text.
 export function relayLiveSlides(config, frame) {
+  // Under the deck's Fullscreen button
   const badge = document.createElement('div')
-  badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
+  badge.style.cssText = 'position:fixed;top:56px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
   badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pp-live-pulse 1.5s infinite;display:inline-block"></span> LIVE <span class="pp-live-count" style="opacity:0.8">0 viewers</span>'
   const style = document.createElement('style')
   style.textContent = '@keyframes pp-live-pulse{0%,100%{opacity:1}50%{opacity:0.4}}'

@@ -609,6 +609,10 @@ describe('fullscreen button', () => {
     expect(btn.getAttribute('onclick')).toContain('requestFullscreen')
   })
 
+  it('sits at the top right, clear of the arrows at the bottom right', () => {
+    expect(generateRevealHTML(makePres())).toMatch(/#fs-btn \{\s*position: fixed; top: 16px; right: 16px;/)
+  })
+
   it('has CSS to hide in fullscreen mode', () => {
     const html = generateRevealHTML(makePres())
     expect(html).toContain(':fullscreen #fs-btn')

@@ -22433,8 +22433,9 @@ ${sections}
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
     .reveal .slides section .reveal-footer,
     .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
       background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3);
       border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
       backdrop-filter: blur(4px); transition: background 0.15s;
