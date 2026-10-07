@@ -8,11 +8,14 @@ class DatasetManager {
     this._cache = new Map()
     this._meta = new Map()
     this._listeners = new Map()
+    this._ready = Promise.resolve([])
   }
 
   async loadForPresentation(presentationId) {
     this._presentationId = presentationId
     const datasets = await api.getPresentationDatasets(presentationId)
+    if (this._presentationId !== presentationId) return datasets
+    this._meta.clear()
     for (const ds of datasets) {
       const key = ds.alias || ds.name
       this._meta.set(key, ds)
@@ -20,7 +23,29 @@ class DatasetManager {
     return datasets
   }
 
+  // The deck being edited (null: none): its linked datasets are read, what
+  // was loaded before is forgotten, and every listener is told once they're in
+  setPresentation(presentationId) {
+    if ((presentationId || null) === this._presentationId) return this._ready
+    return this._open(presentationId)
+  }
+
+  // The deck's datasets again, after they changed (new rows, steps or links)
+  reload() {
+    return this._open(this._presentationId)
+  }
+
+  _open(presentationId) {
+    this._cache.clear()
+    this._meta.clear()
+    this._presentationId = presentationId || null
+    this._ready = presentationId ? this.loadForPresentation(presentationId).catch(() => []) : Promise.resolve([])
+    this._ready.then(() => { for (const name of this._listeners.keys()) this._notify(name) })
+    return this._ready
+  }
+
   async load(name) {
+    await this._ready
     if (this._cache.has(name)) return
     const meta = this._meta.get(name)
     if (!meta) throw new Error(`Dataset "${name}" not found. Did you link it to the presentation?`)
@@ -32,6 +57,7 @@ class DatasetManager {
   }
 
   async query(name, opts = {}) {
+    await this._ready
     const meta = this._meta.get(name)
     if (!meta) throw new Error(`Dataset "${name}" not found`)
 

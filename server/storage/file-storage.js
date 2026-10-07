@@ -138,6 +138,11 @@ class FileStorage extends StorageInterface {
     const entry = Object.entries(tokens).find(([, id]) => id === presentationId)
     return { shared: !!entry, token: entry ? entry[0] : null }
   }
+  // One user's files: datasets aren't looked up by owner
+  async getPresentationOwner() {
+    return null
+  }
+
   async getSharedPresentation(token) {
     const tokens = await this._readTokens()
     const pid = tokens[token]

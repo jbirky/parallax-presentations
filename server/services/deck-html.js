@@ -4920,8 +4920,17 @@ __export(deck_html_exports, {
   EXAMPLES: () => EXAMPLES,
   EXAMPLE_SLUGS: () => EXAMPLE_SLUGS,
   HERO_EXAMPLE: () => HERO_EXAMPLE,
+  MAX_ROWS: () => MAX_ROWS,
+  carriedData: () => carriedData,
+  dataGraphs: () => dataGraphs,
+  datasetSummary: () => datasetSummary,
+  embedDatasetNames: () => embedDatasetNames,
   exampleDeck: () => exampleDeck,
-  generateRevealHTML: () => generateRevealHTML
+  findDataset: () => findDataset,
+  generateRevealHTML: () => generateRevealHTML,
+  graphNeeds: () => graphNeeds,
+  graphRowsFrom: () => graphRowsFrom,
+  hasEmbeds: () => hasEmbeds
 });
 module.exports = __toCommonJS(deck_html_exports);
 
@@ -5291,8 +5300,216 @@ function resolveCitationsInHtml(html, labelByKey) {
 // server:plugin-registry
 var plugin_registry_default = { getSandboxHtml: () => null };
 
+// client/src/utils/deckData.js
+var MAX_ROWS = 2e5;
+var EMBED_VALUE_LIMIT = 2e6;
+var DATA_FIELDS = { x: "x", y: "y", x2: "x2", colorBy: "color", sizeBy: "size", label: "label", xErr: "xErr", yErr: "yErr" };
+var isDataLines = (el) => el && el.type === "graph" && Array.isArray(el.expressions) && el.expressions.some((e) => e && e.data && typeof e.data === "object");
+var EMBED_TYPES = (el) => el && (el.type === "html" || el.type === "p5" || typeof el.type === "string" && el.type.startsWith("plugin:"));
+function findDataset(list, name) {
+  return (list || []).find((d) => (d.alias || d.name) === name) || (list || []).find((d) => d.name === name) || null;
+}
+function deckElements(presentation) {
+  const out = [];
+  for (const slide of presentation?.slides || []) for (const el of slide.elements || []) out.push(el);
+  return out;
+}
+function dataGraphs(presentation) {
+  return deckElements(presentation).filter(isDataLines);
+}
+function graphNeeds(elements) {
+  const needs = /* @__PURE__ */ new Map();
+  for (const el of elements) {
+    if (!isDataLines(el)) continue;
+    for (const e of el.expressions) {
+      const spec = e && e.data;
+      if (!spec || !spec.dataset) continue;
+      if (!needs.has(spec.dataset)) needs.set(spec.dataset, /* @__PURE__ */ new Set());
+      for (const field of Object.keys(DATA_FIELDS)) if (spec[field]) needs.get(spec.dataset).add(spec[field]);
+    }
+  }
+  return needs;
+}
+function graphRowsFrom(el, datasets, tableOf) {
+  const rows = {};
+  for (const e of el.expressions || []) {
+    const spec = e && e.data;
+    if (!spec) continue;
+    if (!spec.dataset || !spec.x || !spec.y) {
+      rows[e.id] = { error: "Choose a dataset, and the columns for x and y" };
+      continue;
+    }
+    const ds = datasets ? findDataset(datasets, spec.dataset) : null;
+    if (datasets && !ds) {
+      rows[e.id] = { error: `No dataset “${spec.dataset}” is linked to this deck` };
+      continue;
+    }
+    const known = new Set((ds?.columns || []).map((c) => c.name));
+    const unknown = Object.keys(DATA_FIELDS).map((f) => spec[f]).filter((c) => c && known.size && !known.has(c));
+    if (unknown.length) {
+      rows[e.id] = { error: `“${spec.dataset}” has no column “${unknown[0]}”` };
+      continue;
+    }
+    const t = ds && tableOf(ds);
+    if (!t) {
+      rows[e.id] = { loading: true };
+      continue;
+    }
+    if (t.error) {
+      rows[e.id] = { error: t.error };
+      continue;
+    }
+    const entry = { total: t.total, version: t.version };
+    let missing = false;
+    for (const [field, key] of Object.entries(DATA_FIELDS)) {
+      if (!spec[field]) continue;
+      if (Object.prototype.hasOwnProperty.call(t.columns, spec[field])) entry[key] = t.columns[spec[field]];
+      else missing = true;
+    }
+    rows[e.id] = missing ? { loading: true } : entry;
+  }
+  return rows;
+}
+function embedText(el, pluginSandbox) {
+  if (el.type === "html" || el.type === "p5") return typeof el.content === "string" ? el.content : "";
+  let text = "";
+  try {
+    text = JSON.stringify(el.pluginData || {});
+  } catch {
+  }
+  const page = pluginSandbox ? pluginSandbox(el) : null;
+  return typeof page === "string" ? text + page : text;
+}
+function hasEmbeds(presentation) {
+  return deckElements(presentation).some(EMBED_TYPES);
+}
+function embedDatasetNames(presentation, names, { pluginSandbox } = {}) {
+  const found = /* @__PURE__ */ new Set();
+  if (!names || !names.length) return found;
+  for (const el of deckElements(presentation)) {
+    if (!EMBED_TYPES(el)) continue;
+    const text = embedText(el, pluginSandbox);
+    if (!text) continue;
+    for (const name of names) {
+      if (found.has(name) || !name) continue;
+      const json = JSON.stringify(name);
+      if (text.includes(`"${name}"`) || text.includes(`'${name}'`) || text.includes(`\`${name}\``) || text.includes(json)) found.add(name);
+    }
+  }
+  return found;
+}
+function datasetSummary(ds) {
+  return { name: ds.alias || ds.name, columns: (ds.columns || []).map((c) => ({ name: c.name, type: c.type })), rowCount: ds.rowCount ?? null };
+}
+function carriedData(names, tableOf) {
+  const data = {};
+  let left = EMBED_VALUE_LIMIT;
+  for (const name of names) {
+    const t = tableOf(name);
+    if (!t) continue;
+    if (t.error) {
+      data[name] = { error: t.error };
+      continue;
+    }
+    let count = 0;
+    for (const values of Object.values(t.columns || {})) count += values ? values.length : 0;
+    if (count > left) {
+      data[name] = { error: `“${name}” is too large for a presented deck to carry (${count.toLocaleString("en-US")} values)` };
+      continue;
+    }
+    left -= count;
+    data[name] = { columns: t.columns || {}, totalRows: t.totalRows };
+  }
+  return data;
+}
+function answerDatasets(store, op, name, opts) {
+  var list = store && store.list || [];
+  var data = store && store.data || {};
+  if (op === "list") return { result: list };
+  var meta = null;
+  for (var i = 0; i < list.length; i++) if (list[i].name === name) meta = list[i];
+  if (!meta) return { error: "No dataset “" + name + "” is linked to this deck" };
+  if (op === "schema") return { result: meta.columns };
+  var d = Object.prototype.hasOwnProperty.call(data, name) ? data[name] : null;
+  if (!d) return { error: "The deck doesn’t carry “" + name + "”: name it in quotes in the element’s code" };
+  if (d.error) return { error: d.error };
+  if (op === "load") return { result: null };
+  if (op !== "query") return { error: "Unknown call " + op };
+  opts = opts || {};
+  var cols = Array.isArray(opts.columns) ? opts.columns : Object.keys(d.columns);
+  var offset = Math.max(0, parseInt(opts.offset, 10) || 0);
+  var limit = parseInt(opts.limit, 10) > 0 ? parseInt(opts.limit, 10) : Infinity;
+  var out = {};
+  for (var j = 0; j < cols.length; j++) {
+    var arr = Object.prototype.hasOwnProperty.call(d.columns, cols[j]) ? d.columns[cols[j]] : null;
+    if (arr) out[cols[j]] = arr.slice(offset, offset + limit);
+  }
+  return { result: { columns: out, totalRows: d.totalRows } };
+}
+function datasetsClient(win) {
+  var calls = {};
+  var next = 0;
+  win.addEventListener("message", function(e) {
+    var m = e.data;
+    if (e.source !== win.parent || !m || m.source !== "parallax-datasets-reply" || !calls[m.id]) return;
+    var call = calls[m.id];
+    delete calls[m.id];
+    if (m.error) call.reject(new Error(m.error));
+    else call.resolve(m.result);
+  });
+  function ask(op, name, opts) {
+    return new Promise(function(resolve, reject) {
+      var id = ++next;
+      calls[id] = { resolve, reject };
+      win.parent.postMessage({ source: "parallax-datasets", id, op, name, opts: opts ? JSON.parse(JSON.stringify(opts)) : null }, "*");
+    });
+  }
+  return Object.freeze({
+    list: function() {
+      return ask("list");
+    },
+    schema: function(name) {
+      return ask("schema", String(name));
+    },
+    load: function(name) {
+      return ask("load", String(name));
+    },
+    query: function(name, opts) {
+      return ask("query", String(name), opts);
+    }
+  });
+}
+var DATASETS_CLIENT = `(${datasetsClient.toString()})(window)`;
+var EMBED_DATASETS_SCRIPT = `<script>window.parallax=window.parallax||Object.freeze({datasets:${DATASETS_CLIENT}});</script>`;
+function deckDatasetsScript(store) {
+  const json = JSON.stringify(store || { list: [], data: {} }).replace(/</g, "\\u003c");
+  return `  <script type="application/json" id="pp-datasets">${json}</script>
+  <script>
+  (function () {
+    var answer = ${answerDatasets.toString()};
+    var store = null;
+    function data() {
+      if (!store) { try { store = JSON.parse(document.getElementById('pp-datasets').textContent); } catch (err) { store = { list: [], data: {} }; } }
+      return store;
+    }
+    function ours(win) { for (var i = 0; i < window.frames.length; i++) if (window.frames[i] === win) return true; return false; }
+    window.addEventListener('message', function (e) {
+      var m = e.data;
+      if (!m || m.source !== 'parallax-datasets' || !e.source || !ours(e.source)) return;
+      var a = answer(data(), m.op, m.name, m.opts);
+      e.source.postMessage({ source: 'parallax-datasets-reply', id: m.id, result: a.result, error: a.error }, '*');
+    });
+  })()
+  </script>`;
+}
+var deckDataSource = null;
+function deckDataOf(presentation, opts = {}) {
+  if (opts.deckData !== void 0) return opts.deckData;
+  return deckDataSource ? deckDataSource(presentation) : null;
+}
+
 // client/src/plugins/pluginEmbed.js
-function staticBridge({ data, width, height }) {
+function staticBridge({ data, width, height, datasets }) {
   const json = JSON.stringify(data || {}).replace(/</g, "\\u003c");
   return `<script>
 (function(){
@@ -5313,13 +5530,14 @@ function staticBridge({ data, width, height }) {
     onResize: function() {},
     onCaptureSnapshot: function() {},
     reportError: function(msg) { console.error('[plugin] ' + msg); },
-    fetch: function(url, opts) { return window.fetch(url, opts); }
+    fetch: function(url, opts) { return window.fetch(url, opts); }${datasets ? `,
+    datasets: ${DATASETS_CLIENT}` : ""}
   });
 })();
 </script><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>`;
 }
-function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height }) {
-  const injection = staticBridge({ data, width, height });
+function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height, datasets = false }) {
+  const injection = staticBridge({ data, width, height, datasets });
   if (/<head[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<head[^>]*>/i, (m) => m + injection);
   if (/<html[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<html[^>]*>/i, (m) => m + injection);
   return injection + sandboxHtml;
@@ -21558,10 +21776,10 @@ var EMBED_SCALE_SCRIPT = `
       Reveal.on('resize', sendAll);
     })();
 `;
-function buildHtmlEmbed(userHtml, embedW, embedH) {
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
-  const injection = initScript + resetStyle;
+  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : "");
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, (m) => m + injection);
   if (/<html[^>]*>/i.test(userHtml))
@@ -21704,6 +21922,8 @@ function generateRevealHTML(presentation, opts = {}) {
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || "rgba(255,255,255,0.25)";
   const customFonts = (opts.customFonts || []).filter(Boolean);
   const pluginSandbox = opts.pluginSandbox || ((el) => plugin_registry_default.getSandboxHtml(el.type));
+  const deckData = deckDataOf(presentation, opts);
+  const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation));
   const seenGroups = /* @__PURE__ */ new Set();
   const totalNumberedSlides = (presentation.slides || []).filter((s) => {
     if (s.showPageNumber === false) return false;
@@ -21807,12 +22027,12 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${harmonicsDeckAttrs(el)} style="${style}"></div>`;
       }
       if (el.type === "html") {
-        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
+        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
       if (el.type === "graph") {
-        const srcdoc = graphPageHtml(el).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         const graphId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`;
       }
@@ -21827,7 +22047,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
-        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
+        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
         const srcdoc = p5Doc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22072,7 +22292,7 @@ ${content}
         if (!sandboxHtml) {
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace("plugin:", ""))}</div>`;
         }
-        const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
       return "";
@@ -22267,6 +22487,7 @@ ${sections}
   <style>
 ${sanitizeCustomCSS(presentation.customCSS)}
   </style>` : ""}
+${offersData ? deckDatasetsScript(deckData.datasets) : ""}
 </head>
 <body>
   <div class="reveal">
@@ -22894,6 +23115,15 @@ var HERO_EXAMPLE = "hero";
   EXAMPLES,
   EXAMPLE_SLUGS,
   HERO_EXAMPLE,
+  MAX_ROWS,
+  carriedData,
+  dataGraphs,
+  datasetSummary,
+  embedDatasetNames,
   exampleDeck,
-  generateRevealHTML
+  findDataset,
+  generateRevealHTML,
+  graphNeeds,
+  graphRowsFrom,
+  hasEmbeds
 });

@@ -42,6 +42,7 @@ const { normalizeTransforms } = require('./services/dataset-transforms')
 const { createSandboxLookup } = require('./services/plugin-embed')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
+const { deckDataFor } = require('./services/deck-data')
 const {
   corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
@@ -845,8 +846,23 @@ async function transcodeVideoIfNeeded(filePath) {
 // from the plugins' folders. opts.notes: false leaves speaker notes out, for
 // pages anyone with a link can open; opts.customFonts are the deck's fonts.
 function generateRevealHTML(presentation, opts = {}) {
-  const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
-  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: el => (el.pluginId ? pluginSandbox(el.pluginId) : null) })
+  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: pluginSandboxes() })
+}
+function pluginSandboxes() {
+  const lookup = createSandboxLookup([userPluginsDir, bundledPluginsDir])
+  return el => (el.pluginId ? lookup(el.pluginId) : null)
+}
+
+// The data its slides read from the deck's datasets (services/deck-data.js),
+// as opts.deckData; ownerId is whose datasets they are. A deck whose data
+// can't be listed is still built, its graphs saying so
+async function deckData(presentation, ownerId) {
+  try {
+    return await deckDataFor(storage, presentation, { ownerId, localDir: DATA_DIR, pluginSandbox: pluginSandboxes() })
+  } catch (err) {
+    console.error('Deck data failed:', err.message)
+    return undefined
+  }
 }
 
 function escapeHtml(str) {
@@ -1826,7 +1842,7 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = generateRevealHTML(presentation)
+    const html = generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })
     const filename = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.html`
     res.setHeader('Content-Type', 'text/html')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
@@ -1852,7 +1868,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -1984,7 +2000,8 @@ app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, r
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false })))
+    const ownerId = await storage.getPresentationOwner(presentation.id)
+    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2111,7 +2128,8 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
     const presentation = await storage.getPresentation(session.presentationId, session.userId)
     if (!presentation) return res.status(404).send('Presentation not found')
 
-    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false }))
+    const ownerId = (await storage.getPresentationOwner(presentation.id)) || session.userId
+    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) }))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────
@@ -2502,7 +2520,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
     ).catch(() => ({ rows: [] }))
     const userFonts = userFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    let htmlContent = generateRevealHTML(exportPres, { customFonts: userFonts })
+    let htmlContent = generateRevealHTML(exportPres, { customFonts: userFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // 2b. Inject citation slide with pre-reserved DOI
@@ -2688,7 +2706,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
     ).catch(() => ({ rows: [] }))
     const ghUserFonts = ghFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    const htmlContent = generateRevealHTML(exportPres, { customFonts: ghUserFonts })
+    const htmlContent = generateRevealHTML(exportPres, { customFonts: ghUserFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // Get default branch

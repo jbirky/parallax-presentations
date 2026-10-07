@@ -9,8 +9,9 @@ vi.mock('./api', () => ({
 import { api } from './api'
 import {
   setGraphDataPresentation, refreshGraphData, loadGraphData, graphDataFor, dataExtent, paddedView,
-  deckGraphs, graphDataVersion, subscribeGraphData,
+  deckGraphs, graphDataVersion, subscribeGraphData, loadEmbedData, embedDataFor, embedDataReady,
 } from './graphData'
+import { deckDataOf } from './deckData'
 import { graphConfig } from './graphPage'
 
 const DATASETS = [
@@ -29,7 +30,8 @@ beforeEach(() => {
       ds1: { p: [1, 10, 100, -1], m: [5, 50, 500, 2], method: ['Transit', 'RV', 'Transit', 'RV'], name: ['a', 'b', 'c', 'd'] },
       ds2: { from: [0, 1], to: [1, 2], count: [3, 7] },
     }[id]
-    return { columns: Object.fromEntries(columns.split(',').map(c => [c, all[c] || null])), totalRows: all[Object.keys(all)[0]].length }
+    const names = columns ? columns.split(',') : Object.keys(all)
+    return { columns: Object.fromEntries(names.map(c => [c, all[c] || null])), totalRows: all[Object.keys(all)[0]].length }
   })
   setGraphDataPresentation(`deck-${++deckN}`)
 })
@@ -119,5 +121,37 @@ describe('fitting a view to the data', () => {
     expect(v.xMin).toBeCloseTo(10 ** -0.2)
     expect(v.xMax).toBeCloseTo(10 ** 4.2)
     expect(v.yMin).toBeCloseTo(10 ** -0.5)
+  })
+})
+
+describe('the datasets elements read', () => {
+  const deck = (...elements) => ({ id: 'p', slides: [{ id: 's', elements }] })
+  const html = { id: 'h', type: 'html', content: '<script>parallax.datasets.query("exoplanets")</script>' }
+
+  it('fetches whole, once, the datasets elements name, and graphs plot from them', async () => {
+    const pres = deck(html, graph([line('d', { dataset: 'exoplanets', x: 'p', y: 'm' })]))
+    await loadEmbedData(pres)
+    await loadEmbedData(pres)
+    expect(api.getPresentationDatasetData).toHaveBeenCalledTimes(1)
+    expect(api.getPresentationDatasetData.mock.calls[0]).toEqual([`deck-${deckN}`, 'ds1', { limit: '200000' }])
+    const { list, data } = embedDataFor(pres)
+    expect(list.map(d => d.name)).toEqual(['exoplanets', 'hist'])
+    expect(Object.keys(data)).toEqual(['exoplanets'])
+    expect(data.exoplanets.columns.method).toEqual(['Transit', 'RV', 'Transit', 'RV'])
+    expect(data.exoplanets.totalRows).toBe(4)
+    // The graph needs nothing more
+    await loadGraphData(deckGraphs(pres))
+    expect(api.getPresentationDatasetData).toHaveBeenCalledTimes(1)
+    expect(graphDataFor(pres.slides[0].elements[1]).d).toMatchObject({ x: [1, 10, 100, -1], y: [5, 50, 500, 2] })
+  })
+
+  it('is what a deck made here carries, or says it was still loading', async () => {
+    const pres = deck(html)
+    await refreshGraphData()
+    expect(deckDataOf(pres).datasets.data.exoplanets.error).toMatch(/still loading/)
+    expect((await embedDataReady(pres)).data.exoplanets.totalRows).toBe(4)
+    expect(deckDataOf(pres).datasets.data.exoplanets.columns.p).toEqual([1, 10, 100, -1])
+    // Given data wins: the server's
+    expect(deckDataOf(pres, { deckData: null })).toBe(null)
   })
 })

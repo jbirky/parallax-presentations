@@ -11,6 +11,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { modelViewerHtml } from './modelViewer'
 import { moleculeViewerHtml } from './moleculeViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
+import { deckDataOf, deckDatasetsScript, hasEmbeds, EMBED_DATASETS_SCRIPT } from './deckData'
 import { equationConfigAttr, equationStepMarkers, equationSteps, equationDeckScript, equationPrintScript, hasEquations } from './equationTerms'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman } from './feynmanDiagram'
@@ -52,10 +53,11 @@ const EMBED_SCALE_SCRIPT = `
     })();
 `
 
-function buildHtmlEmbed(userHtml, embedW, embedH) {
+// withDatasets: the page gets parallax.datasets, which the deck answers
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle
+  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : '')
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, m => m + injection)
   if (/<html[^>]*>/i.test(userHtml))
@@ -200,7 +202,10 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // opts.notes: false leaves speaker notes out, for pages anyone with a link can
 // open; opts.customFonts are the fonts the deck may use, as /api/fonts lists
 // them; opts.pluginSandbox(el) gives a plugin element's sandbox page (the
-// editor's plugin registry otherwise)
+// editor's plugin registry otherwise); opts.deckData is the data its slides
+// read ({ graphs: { element id: rows by line id }, datasets: { list, data } },
+// deckData.js), which the server reads for the decks it builds (the editor's
+// store, graphData.js, otherwise)
 // The references slide's heading and list: the entries the deck cites, in the
 // order and with the numbers the citation index gives them
 function referencesHtml(citations, markerColor) {
@@ -262,6 +267,9 @@ export function generateRevealHTML(presentation, opts = {}) {
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
   const customFonts = (opts.customFonts || []).filter(Boolean)
   const pluginSandbox = opts.pluginSandbox || (el => registry.getSandboxHtml(el.type))
+  const deckData = deckDataOf(presentation, opts)
+  // Elements' pages read datasets only in a deck that has some
+  const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation))
   // Compute page numbers: grouped slides share the same number
   const seenGroups = new Set()
   const totalNumberedSlides = (presentation.slides || []).filter(s => {
@@ -395,12 +403,12 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
         }
         if (el.type === 'html') {
-          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
+          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'graph') {
-          const srcdoc = graphPageHtml(el).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
@@ -415,7 +423,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
         }
         if (el.type === 'p5') {
-          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
+          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script>${offersData ? EMBED_DATASETS_SCRIPT : ''}</head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -643,7 +651,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (!sandboxHtml) {
             return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
           }
-          const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
+          const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData })
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -845,6 +853,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
   </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
+${offersData ? deckDatasetsScript(deckData.datasets) : ''}
 </head>
 <body>
   <div class="reveal">

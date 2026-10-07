@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import { DATASETS_CLIENT } from '../utils/deckData'
 
 export default function PluginSandbox({ sandboxUrl, pluginData, width, height, isSelected, onDataUpdate }) {
   const iframeRef = useRef(null)
@@ -80,7 +81,9 @@ export default function PluginSandbox({ sandboxUrl, pluginData, width, height, i
     reportError: function(msg) {
       window.parent.postMessage({ source: 'parallax-sandbox', type: 'error', payload: msg }, '*');
     },
-    fetch: function(url, opts) { return window.fetch(url, opts); }
+    fetch: function(url, opts) { return window.fetch(url, opts); },
+    // Answered by the editor (datasets/embedBridge.js)
+    datasets: ${DATASETS_CLIENT}
   });
 
   window.addEventListener('message', function(e) {

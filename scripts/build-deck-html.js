@@ -3,8 +3,10 @@
 // into CommonJS for the pages the server builds (share links, live sessions,
 // exports, GitHub and Zenodo). One generator makes every presented deck, in
 // the editor's windows and from the server alike. The landing page's example
-// decks (client/src/examples/decks.js) come with it. Run after changing them
-// or anything they import:
+// decks (client/src/examples/decks.js) come with it, and what
+// client/src/utils/deckData.js works out of the data a deck's slides read
+// (for services/deck-data.js). Run after changing them or anything they
+// import:
 //
 //   node scripts/build-deck-html.js
 //
@@ -22,6 +24,7 @@ const root = path.join(__dirname, '..')
 const SOURCE = 'client/src/utils/generateHTML.js'
 const EXAMPLES = 'client/src/examples/decks.js'
 const CATALOG = 'client/src/examples/catalog.js'
+const DECK_DATA = 'client/src/utils/deckData.js'
 const TARGET = path.join(root, 'server/services/deck-html.js')
 
 const HEADER = `// SPDX-License-Identifier: AGPL-3.0-or-later
@@ -48,7 +51,7 @@ const serverSide = {
 async function bundle() {
   const esbuild = require('esbuild')
   const result = await esbuild.build({
-    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'`, resolveDir: root, sourcefile: 'deck-html.js' },
+    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'`, resolveDir: root, sourcefile: 'deck-html.js' },
     absWorkingDir: root,
     bundle: true,
     format: 'cjs',

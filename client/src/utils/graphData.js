@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// The rows graphs' data lines plot, as the editor has them. A graph draws in
-// a frame of its own that can't fetch (it has no origin), so its page has
-// the rows written in: this store fetches, from the deck's linked datasets,
-// the columns its graphs use, and graphPage.js reads them through
-// setGraphDataSource. So the canvas, the graph editor and Present (which
-// builds its page at the click, with no time to fetch) all have them.
+// The rows graphs' data lines plot, and the datasets HTML, p5 and plugin
+// elements read, as the editor has them. A graph draws in a frame of its own
+// that can't fetch (it has no origin), so its page has the rows written in:
+// this store fetches, from the deck's linked datasets, the columns its graphs
+// use, and graphPage.js reads them through setGraphDataSource. So the canvas,
+// the graph editor and Present (which builds its page at the click, with no
+// time to fetch) all have them. The datasets elements name in their code
+// (deckData.js) are fetched whole, for the editor's answers to
+// parallax.datasets (datasets/embedBridge.js) and for the decks it builds.
 
 import { api } from './api'
 import { setGraphDataSource, hasDataLines } from './graphPage'
-
-// The most rows fetched from one dataset
-export const MAX_ROWS = 200000
-// A data line's columns, by option, and their names in a page's rows
-export const DATA_FIELDS = { x: 'x', y: 'y', x2: 'x2', colorBy: 'color', sizeBy: 'size', label: 'label', xErr: 'xErr', yErr: 'yErr' }
+import {
+  MAX_ROWS, graphNeeds, graphRowsFrom, findDataset, embedDatasetNames, datasetSummary, carriedData, setDeckDataSource,
+} from './deckData'
+import registry from '../plugins/PluginRegistry'
 
 let presentationId = null
 let datasets = null         // the deck's linked datasets, once listed
-let tables = new Map()      // dataset id -> { columns: {name: values}, have: Set, total, loading: Set, error, version }
+let tables = new Map()      // dataset id -> { columns: {name: values}, have: Set, total, loading: Set, error, version, whole, wholeLoad }
 let version = 0
 let listing = null
 const listeners = new Set()
@@ -38,7 +40,7 @@ export function graphDataVersion() { return version }
 // A data line's dataset, by the name it plots it under (a link's alias, or
 // the dataset's name)
 export function datasetNamed(name) {
-  return (datasets || []).find(d => (d.alias || d.name) === name) || (datasets || []).find(d => d.name === name) || null
+  return findDataset(datasets, name)
 }
 
 // The deck's linked datasets, or null until they're listed (listGraphDatasets)
@@ -79,21 +81,6 @@ function listDatasets() {
   return listing
 }
 
-// What graphs' data lines need: dataset name -> the columns they plot
-function needsOf(elements) {
-  const needs = new Map()
-  for (const el of elements) {
-    if (!el || el.type && el.type !== 'graph' || !hasDataLines(el)) continue
-    for (const e of el.expressions) {
-      const spec = e && e.data
-      if (!spec || !spec.dataset) continue
-      if (!needs.has(spec.dataset)) needs.set(spec.dataset, new Set())
-      for (const field of Object.keys(DATA_FIELDS)) if (spec[field]) needs.get(spec.dataset).add(spec[field])
-    }
-  }
-  return needs
-}
-
 // Every graph on a deck's slides
 export function deckGraphs(presentation) {
   const out = []
@@ -104,16 +91,15 @@ export function deckGraphs(presentation) {
 // Fetches the columns these graphs plot that aren't here yet: all of a
 // dataset's needed columns in one request
 export async function loadGraphData(elements) {
-  const needs = needsOf(elements)
+  const needs = graphNeeds(elements)
   if (!needs.size || !presentationId) return
   await listDatasets()
   const id = presentationId
   await Promise.all([...needs].map(async ([name, cols]) => {
     const ds = datasetNamed(name)
     if (!ds) return
-    const t = tables.get(ds.id) || { columns: {}, have: new Set(), loading: new Set(), total: null, error: null, version: 0 }
-    tables.set(ds.id, t)
-    const want = [...cols].filter(c => !t.have.has(c) && !t.loading.has(c))
+    const t = tableFor(ds)
+    const want = [...cols].filter(c => !t.whole && !t.have.has(c) && !t.loading.has(c))
     if (!want.length) return
     for (const c of want) t.loading.add(c)
     notify()
@@ -134,6 +120,23 @@ export async function loadGraphData(elements) {
   }))
 }
 
+function tableFor(ds) {
+  let t = tables.get(ds.id)
+  if (!t) {
+    t = { columns: {}, have: new Set(), loading: new Set(), total: null, error: null, version: 0, whole: false }
+    tables.set(ds.id, t)
+  }
+  return t
+}
+
+// What's been read of a dataset, as deckData.js takes it: null while nothing has
+function tableOf(ds) {
+  const t = tables.get(ds.id)
+  if (!t || (!t.have.size && !t.error)) return null
+  if (t.error) return { error: t.error }
+  return { columns: t.columns, total: t.total, version: `${ds.id}:${ds.updatedAt || ''}:${t.version}` }
+}
+
 // A graph's data lines' rows, by line id, as its page takes them (each
 // { x, y, ... , total, version }, or { loading } or { error }); null for a
 // graph with no data lines. The same object while nothing changed
@@ -141,30 +144,71 @@ export function graphDataFor(el) {
   if (!hasDataLines(el)) return null
   const kept = built.get(el)
   if (kept && kept.version === version) return kept.rows
-  const rows = {}
-  for (const e of el.expressions) {
-    const spec = e && e.data
-    if (!spec) continue
-    if (!spec.dataset || !spec.x || !spec.y) { rows[e.id] = { error: 'Choose a dataset, and the columns for x and y' }; continue }
-    const ds = datasets ? datasetNamed(spec.dataset) : null
-    if (datasets && !ds) { rows[e.id] = { error: `No dataset “${spec.dataset}” is linked to this deck` }; continue }
-    const known = new Set((ds?.columns || []).map(c => c.name))
-    const unknown = Object.keys(DATA_FIELDS).map(f => spec[f]).filter(c => c && known.size && !known.has(c))
-    if (unknown.length) { rows[e.id] = { error: `“${spec.dataset}” has no column “${unknown[0]}”` }; continue }
-    const t = ds && tables.get(ds.id)
-    if (!t) { rows[e.id] = { loading: true }; continue }
-    if (t.error) { rows[e.id] = { error: t.error }; continue }
-    const entry = { total: t.total, version: `${ds.id}:${ds.updatedAt || ''}:${t.version}` }
-    let missing = false
-    for (const [field, key] of Object.entries(DATA_FIELDS)) {
-      if (!spec[field]) continue
-      if (t.have.has(spec[field])) entry[key] = t.columns[spec[field]]
-      else missing = true
-    }
-    rows[e.id] = missing ? { loading: true } : entry
-  }
+  const rows = graphRowsFrom(el, datasets, tableOf)
   built.set(el, { version, rows })
   return rows
+}
+
+// The datasets a deck's HTML, p5 and plugin elements name (deckData.js), by
+// the name they use
+function embedNames(presentation) {
+  if (!datasets || !presentation) return new Set()
+  return embedDatasetNames(presentation, datasets.map(d => d.alias || d.name), { pluginSandbox: el => registry.getSandboxHtml(el.type) })
+}
+
+// Fetches, whole (up to MAX_ROWS rows), the datasets a deck's elements name
+// that aren't here yet
+export async function loadEmbedData(presentation) {
+  if (!presentationId || !presentation) return
+  await listDatasets()
+  const id = presentationId
+  await Promise.all([...embedNames(presentation)].map(async name => {
+    const ds = datasetNamed(name)
+    if (!ds) return
+    const t = tableFor(ds)
+    if (t.whole) return
+    // One request at a time, which every caller waits for
+    if (!t.wholeLoad) {
+      t.wholeLoad = api.getPresentationDatasetData(id, ds.id, { limit: String(MAX_ROWS) }).then(res => {
+        if (id !== presentationId || tables.get(ds.id) !== t) return
+        for (const [c, values] of Object.entries(res.columns || {})) { t.columns[c] = values; t.have.add(c) }
+        t.total = res.totalRows
+        t.whole = true
+        t.error = null
+        t.version++
+      }, err => {
+        if (tables.get(ds.id) !== t) return
+        t.error = err.message || 'The data couldn’t be read'
+      }).finally(() => {
+        t.wholeLoad = null
+        notify()
+      })
+    }
+    await t.wholeLoad
+  }))
+}
+
+// What a deck built here carries for its HTML, p5 and plugin elements
+// ({ list, data }, as deckData.js describes), from what's been fetched
+export function embedDataFor(presentation) {
+  const names = embedNames(presentation)
+  return {
+    list: (datasets || []).map(datasetSummary),
+    data: carriedData(names, name => {
+      const ds = datasetNamed(name)
+      const t = ds && tables.get(ds.id)
+      if (t && t.error) return { error: t.error }
+      if (!t || !t.whole) return { error: `“${name}” was still loading when the deck was made` }
+      return { columns: t.columns, totalRows: t.total }
+    }),
+  }
+}
+
+// The same, once the deck's datasets are listed and those its elements name
+// are fetched: what the editor answers parallax.datasets from
+export async function embedDataReady(presentation) {
+  await loadEmbedData(presentation)
+  return embedDataFor(presentation)
 }
 
 // The extent of a graph's data lines' values, for fitting its view:
@@ -213,3 +257,4 @@ export function paddedView(ext, { xLog = false, yLog = false } = {}) {
 }
 
 setGraphDataSource(graphDataFor)
+setDeckDataSource(presentation => ({ datasets: embedDataFor(presentation) }))

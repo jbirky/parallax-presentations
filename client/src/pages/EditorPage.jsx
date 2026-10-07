@@ -47,7 +47,10 @@ import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
-import { setGraphDataPresentation, refreshGraphData, loadGraphData, deckGraphs } from '../utils/graphData'
+import { setGraphDataPresentation, refreshGraphData, loadGraphData, loadEmbedData, deckGraphs } from '../utils/graphData'
+import datasetManager from '../datasets/DatasetManager'
+import { installEmbedDatasets } from '../datasets/embedBridge'
+import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
@@ -935,12 +938,26 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return () => window.removeEventListener('message', onMessage)
   }, [presentationId])
 
-  // Presents with drawing on, into a new annotation set or on with `set`
-  // The rows graphs' data lines plot, fetched for the canvas, the graph
-  // editor and Present, whose page is built at the click (graphData.js)
-  useEffect(() => { setGraphDataPresentation(isTemplate ? null : presentationId) }, [presentationId, isTemplate])
-  useEffect(() => { if (presentation && !isTemplate) loadGraphData(deckGraphs(presentation)) }, [presentation, isTemplate])
+  // The rows graphs' data lines plot, and the datasets HTML, p5 and plugin
+  // elements name, fetched for the canvas, the graph editor and Present,
+  // whose page is built at the click (graphData.js). Those elements'
+  // parallax.datasets is answered from them (embedBridge.js); plugins'
+  // ctx.datasets reads the deck's datasets through datasetManager
+  useEffect(() => {
+    const id = isTemplate ? null : presentationId
+    setGraphDataPresentation(id)
+    datasetManager.setPresentation(id)
+  }, [presentationId, isTemplate])
+  useEffect(() => {
+    if (!presentation || isTemplate) return
+    loadGraphData(deckGraphs(presentation))
+    loadEmbedData(presentation)
+  }, [presentation, isTemplate])
+  const dataPresentation = useRef(presentation)
+  dataPresentation.current = presentation
+  useEffect(() => installEmbedDatasets(() => dataPresentation.current), [])
 
+  // Presents with drawing on, into a new annotation set or on with `set`
   const presentAnnotated = useCallback((set = null) => {
     if (isTemplate) return presentInWindow(presentation)
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
@@ -4221,8 +4238,14 @@ function draw() {
       {showDatasetPanel && (
         <DatasetPanel presentationId={presentationId} onClose={() => {
           setShowDatasetPanel(false)
-          // Its datasets may have new rows, steps or links: graphs fetch again
-          refreshGraphData().then(() => presentation && loadGraphData(deckGraphs(presentation)))
+          // Its datasets may have new rows, steps or links: graphs and
+          // elements fetch again
+          refreshGraphData().then(() => {
+            if (!presentation) return
+            loadGraphData(deckGraphs(presentation))
+            loadEmbedData(presentation)
+          })
+          datasetManager.reload()
         }} />
       )}
 
@@ -4688,7 +4711,7 @@ function draw() {
                 <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>Preview</div>
                 <iframe
                   key={p5EditorState.content}
-                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`)}
+                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script>${EMBED_DATASETS_SCRIPT}</head><body><script>${p5EditorState.content}<\/script></body></html>`)}
                   style={{ flex: 1, border: 'none', display: 'block' }}
                   sandbox="allow-scripts"
                   title="p5.js preview"

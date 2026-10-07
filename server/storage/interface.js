@@ -20,6 +20,7 @@ class StorageInterface {
   async deleteShareToken(presentationId, userId) { throw new Error('Not implemented') }
   async getShareStatus(presentationId, userId) { throw new Error('Not implemented') }
   async getSharedPresentation(token) { throw new Error('Not implemented') }
+  async getPresentationOwner(presentationId) { throw new Error('Not implemented') }
 
   async createSnapshot(presentationId, name, userId) { throw new Error('Not implemented') }
   async listSnapshots(presentationId, userId) { throw new Error('Not implemented') }

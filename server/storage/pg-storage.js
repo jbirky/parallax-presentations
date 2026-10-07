@@ -271,6 +271,13 @@ class PgStorage extends StorageInterface {
     return { ...r.data, id: r.id, createdAt: r.createdAt, updatedAt: r.updatedAt }
   }
 
+  // Whose a presentation is (and so whose its linked datasets are), for pages
+  // built from it without a signed-in owner: share links
+  async getPresentationOwner(presentationId) {
+    const { rows } = await this.query('SELECT user_id FROM presentations WHERE id = $1', [presentationId])
+    return rows.length ? rows[0].user_id : null
+  }
+
   // --- Snapshots ---
 
   async createSnapshot(presentationId, name, userId) {
