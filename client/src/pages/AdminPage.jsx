@@ -182,7 +182,7 @@ function PlanPicker({ user, plans, onChanged }) {
 
 const EMPTY_PLAN = {
   id: '', name: '', storageBytes: GB, maxPresentations: null, expirationDays: null, maxFileBytes: null,
-  stripePriceId: null, priceLabel: null, public: false, sortOrder: 10,
+  stripePriceId: null, priceLabel: null, public: false, sortOrder: 10, liveDatasets: 0, minRefresh: 'daily',
 }
 
 // A plan as form fields: sizes in MB or GB, blanks for no limit
@@ -200,6 +200,8 @@ export function toPlanForm(plan) {
     priceLabel: plan.priceLabel || '',
     public: !!plan.public,
     sortOrder: String(plan.sortOrder ?? 0),
+    liveDatasets: String(plan.liveDatasets ?? 0),
+    minRefresh: plan.minRefresh || 'daily',
   }
 }
 
@@ -217,6 +219,8 @@ export function fromPlanForm(form) {
     priceLabel: form.priceLabel.trim() || null,
     public: form.public,
     sortOrder: form.sortOrder.trim() === '' ? 0 : Number(form.sortOrder),
+    liveDatasets: form.liveDatasets.trim() === '' ? 0 : Number(form.liveDatasets),
+    minRefresh: form.minRefresh,
   }
 }
 
@@ -307,6 +311,14 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
         </Field>
         <Field label="Largest file (MB)" hint="blank: 500">
           <input style={fieldInput} type="number" min="1" max="500" step="any" value={form.maxFileMB} onChange={set('maxFileMB')} />
+        </Field>
+        <Field label="Live datasets" hint="fetched from a URL or TAP query">
+          <input style={fieldInput} type="number" min="0" step="1" value={form.liveDatasets} onChange={set('liveDatasets')} />
+        </Field>
+        <Field label="Fastest refresh">
+          <select className="select-sm" style={fieldInput} value={form.minRefresh} onChange={set('minRefresh')}>
+            <option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option>
+          </select>
         </Field>
         <Field label="Order"><input style={fieldInput} type="number" min="0" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></Field>
         {!builtIn && (
