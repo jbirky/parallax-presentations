@@ -78,13 +78,28 @@ describe('the self-hosted version', () => {
   })
 
   it('serves the landing page’s example decks, sandboxed, and as decks to start from', async () => {
-    const page = await fetch(base + '/examples/hero')
+    const page = await fetch(base + '/examples/hero/deck')
     assert.equal(page.status, 200)
     const csp = page.headers.get('content-security-policy') || ''
     assert.match(csp, /^sandbox allow-scripts\b/)
     assert.doesNotMatch(csp, /allow-same-origin/)
     assert.match(await page.text(), /Why galaxies spin too fast/)
     assert.equal((await fetch(base + '/examples/nope')).status, 404)
+    assert.equal((await fetch(base + '/examples/nope/deck')).status, 404)
+
+    // Each example's own page, around its deck; a self-hosted copy isn't for search engines
+    const venn = await fetch(base + '/examples/venn')
+    assert.equal(venn.status, 200)
+    assert.equal(venn.headers.get('content-security-policy'), null)
+    const html = await venn.text()
+    assert.match(html, /<h1>Venn diagrams<\/h1>/)
+    assert.match(html, /<iframe src="\/examples\/venn\/deck"/)
+    assert.match(html, /<meta property="og:image" content="http:\/\/127\.0\.0\.1:\d+\/examples\/thumbs\/venn\.jpg" \/>/)
+    assert.match(html, /<meta name="robots" content="noindex" \/>/)
+    assert.match(html, /href="\/examples\/chemistry"/)
+    assert.equal((await fetch(base + '/examples/hero')).status, 200)
+    assert.equal(await (await fetch(base + '/robots.txt')).text(), 'User-agent: *\nDisallow: /\n')
+    assert.doesNotMatch(await (await fetch(base + '/sitemap.xml')).text(), /examples/)
 
     const chemistry = await call('GET', '/api/examples/chemistry')
     assert.equal(chemistry.status, 200)

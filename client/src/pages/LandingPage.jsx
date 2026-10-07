@@ -100,7 +100,7 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
           </div>
         </div>
         <div className="lp-viewer-body">
-          <div className="lp-viewer-deck"><SlideFrame key={example.slug} src={`/examples/${example.slug}`} title={`${example.title}, a live Parallax deck`} /></div>
+          <div className="lp-viewer-deck"><SlideFrame key={example.slug} src={`/examples/${example.slug}/deck`} title={`${example.title}, a live Parallax deck`} /></div>
           <div className="lp-viewer-side">
             <p className="lp-viewer-desc">{example.desc}</p>
             <div>
@@ -108,6 +108,7 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
               <div className="lp-tags">{example.tags.map(t => <span key={t}>{t}</span>)}</div>
             </div>
             <p className="lp-keys">Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
+            <a className="lp-quiet" href={`/examples/${example.slug}`}>This example’s own page, to share</a>
             {guestEnabled ? (<>
               <a className="lp-btn primary" href={`/try?example=${example.slug}`} onClick={() => track('example-to-editor', { example: example.slug })}>Open in the editor</a>
               <p className="lp-small">Opens a copy you can change, with no account. It lasts until you close the tab.</p>
@@ -208,7 +209,7 @@ export default function LandingPage({ onSignIn }) {
             <div className="lp-facts"><span>Free to start</span><span>Open source, AGPL-3.0</span><span>Export to HTML, PDF and PowerPoint</span></div>
             <div className="lp-stage">
               <div className="lp-frame">
-                {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}`} title="A live Parallax deck" /> : <div className="lp-slide" />}
+                {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}/deck`} title="A live Parallax deck" /> : <div className="lp-slide" />}
               </div>
               <div className="lp-hint"><i aria-hidden="true">●</i> Live deck: drag a slider, then click and press →</div>
             </div>
@@ -229,7 +230,13 @@ export default function LandingPage({ onSignIn }) {
               </div>
               <div className="lp-grid">
                 {shown.map((e, i) => (
-                  <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}, ${e.field}: open the live deck`} onClick={() => { track('open-example', { example: e.slug, from: 'card' }); setViewing(i) }}>
+                  <a key={e.slug} href={`/examples/${e.slug}`} className="lp-card" aria-label={`${e.title}, ${e.field}: open the live deck`} onClick={ev => {
+                    // A link to the example's page, for new tabs and search engines; a click opens it here
+                    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) return
+                    ev.preventDefault()
+                    track('open-example', { example: e.slug, from: 'card' })
+                    setViewing(i)
+                  }}>
                     <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
                       {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
                       <span>Open live</span>
@@ -240,7 +247,7 @@ export default function LandingPage({ onSignIn }) {
                       <p>{e.desc}</p>
                       <div className="lp-tags">{e.tags.map(t => <span key={t}>{t}</span>)}</div>
                     </div>
-                  </button>
+                  </a>
                 ))}
               </div>
             </div>

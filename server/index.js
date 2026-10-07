@@ -241,12 +241,32 @@ if (fs.existsSync(docsPublic)) {
   app.use('/parallax-presentations', express.static(docsPublic))
 }
 
+// ---- What link previews and search engines see (public, before auth) ----
+// The head tags of each page (services/site-pages.js), robots.txt and
+// sitemap.xml. Search engines index only the hosted site, and not dev
+// (PARALLAX_NOINDEX=1).
+const sitePages = require('./services/site-pages')
+const SEARCH_INDEXING = IS_CLOUD && process.env.PARALLAX_NOINDEX !== '1'
+const siteOrigin = req => PUBLIC_ORIGIN || `${req.protocol}://${req.get('host')}`
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(sitePages.robotsTxt({ origin: siteOrigin(req), index: SEARCH_INDEXING }))
+})
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const { examples: cards } = await examples.landingExamples(storage)
+    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [] }))
+  } catch (err) {
+    res.status(500).type('text/plain').send('Sitemap unavailable')
+  }
+})
+
 // ---- Example decks (public, before auth) ----
-// The landing page's examples (services/landing-examples.js): the list, each
-// deck as a page, in a sandbox like a share link, and as a deck for a guest to
-// start from, and the thumbnails the server drew. A page is built once per
-// version of its deck. Anything else under /examples (built-in thumbnails, the
-// molecule's structure file) is a static file.
+// The landing page's examples (services/landing-examples.js): the list; each
+// example's own page (/examples/<slug>, services/site-pages.js) around its
+// deck, which is served in a sandbox like a share link (/examples/<slug>/deck,
+// built once per version of the deck); each as a deck for a guest to start
+// from; and the thumbnails the server drew. Anything else under /examples
+// (built-in thumbnails, the molecule's structure file) is a static file.
 const examples = require('./services/landing-examples')
 const { renderFirstSlide, chromiumPath, ThumbnailError } = require('./services/slide-thumbnail')
 const EXAMPLE_SLUG = /^[a-z0-9-]{1,64}$/
@@ -258,7 +278,7 @@ app.get('/api/examples', async (req, res) => {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
-app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
+app.get('/examples/:slug/deck', deckPageLimiter, async (req, res, next) => {
   try {
     const { slug } = req.params
     const found = EXAMPLE_SLUG.test(slug) && await examples.getExampleDeck(storage, slug)
@@ -269,6 +289,27 @@ app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
       exampleHtml.set(slug, page)
     }
     sendDeckPage(res, page.html)
+  } catch (err) {
+    next(err)
+  }
+})
+// An example's own page: those shown on the landing page, and its top deck
+app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
+  try {
+    const { slug } = req.params
+    if (!EXAMPLE_SLUG.test(slug)) return next()
+    const { hero, examples: cards } = await examples.landingExamples(storage)
+    let example = cards.find(e => e.slug === slug)
+    if (!example && slug === hero) {
+      const row = (await examples.listExamples(storage)).find(e => e.slug === slug)
+      example = { slug, field: row.field, title: row.title, desc: row.description, tags: row.tags, thumbnail: row.builtin && !row.ownDeck ? `/examples/thumbs/${slug}.jpg` : null }
+    }
+    if (!example) return next()
+    res.type('html').send(sitePages.examplePage({
+      origin: siteOrigin(req), example, others: cards.filter(e => e.slug !== slug),
+      guestEnabled: isGuestModeEnabled(), analytics: analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null,
+      index: SEARCH_INDEXING && example.slug !== hero,
+    }))
   } catch (err) {
     next(err)
   }
@@ -943,7 +984,7 @@ function exampleRoute(handler) {
 }
 async function drawExampleThumbnail(req, slug) {
   try {
-    await examples.setThumbnail(storage, slug, await renderFirstSlide(`http://127.0.0.1:${req.socket.localPort}/examples/${slug}`))
+    await examples.setThumbnail(storage, slug, await renderFirstSlide(`http://127.0.0.1:${req.socket.localPort}/examples/${slug}/deck`))
     return null
   } catch (err) {
     if (!(err instanceof ThumbnailError)) console.error('Example thumbnail error:', err.message)
@@ -2930,10 +2971,14 @@ if (process.env.NODE_ENV === 'production') {
   if (fs.existsSync(clientDist)) {
     // Bundled libraries: each path names its version, so they never change
     app.use('/vendor', express.static(path.join(clientDist, 'vendor'), { immutable: true, maxAge: '1y', fallthrough: false }))
-    app.use(express.static(clientDist))
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(clientDist, 'index.html'))
-    })
+    // The app's page, with the head tags for where it opens
+    const indexTemplate = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8')
+    const sendApp = (req, res) => {
+      res.type('html').send(sitePages.appHtml(indexTemplate, { origin: siteOrigin(req), path: req.path, index: SEARCH_INDEXING }))
+    }
+    app.get(['/', '/index.html'], sendApp)
+    app.use(express.static(clientDist, { index: false }))
+    app.get('*', sendApp)
   }
 }
 

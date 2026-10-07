@@ -31,7 +31,7 @@ const button = text => [...el.querySelectorAll('button')].find(b => b.textConten
 describe('the landing page', () => {
   it('opens with a live deck and a way in without an account', async () => {
     await mount()
-    expect(el.querySelector('.lp-hero iframe').getAttribute('src')).toBe('/examples/hero')
+    expect(el.querySelector('.lp-hero iframe').getAttribute('src')).toBe('/examples/hero/deck')
     expect(el.querySelector('.lp-ctas a').getAttribute('href')).toBe('/try')
     expect(el.querySelector('.lp-fine').textContent).toContain('Jess Birky')
     expect(el.querySelector('.lp-support a').getAttribute('href')).toBe('mailto:support@parallax-presentations.com')
@@ -39,6 +39,7 @@ describe('the landing page', () => {
 
   it('shows the examples by field', async () => {
     await mount()
+    expect([...el.querySelectorAll('a.lp-card')].map(a => a.getAttribute('href'))).toEqual(EXAMPLES.map(e => `/examples/${e.slug}`))
     expect(cards()).toEqual(EXAMPLES.map(e => e.title))
     await act(async () => button('Physics').click())
     expect(cards()).toEqual(EXAMPLES.filter(e => e.field === 'Physics').map(e => e.title))
@@ -51,7 +52,8 @@ describe('the landing page', () => {
     await mount()
     await act(async () => el.querySelectorAll('.lp-card')[1].click())
     const viewer = el.querySelector('.lp-viewer')
-    expect(viewer.querySelector('iframe').getAttribute('src')).toBe(`/examples/${EXAMPLES[1].slug}`)
+    expect(viewer.querySelector('iframe').getAttribute('src')).toBe(`/examples/${EXAMPLES[1].slug}/deck`)
+    expect([...viewer.querySelectorAll('a')].some(a => a.getAttribute('href') === `/examples/${EXAMPLES[1].slug}`)).toBe(true)
     expect(viewer.querySelector('a.lp-btn').getAttribute('href')).toBe(`/try?example=${EXAMPLES[1].slug}`)
     await act(async () => viewer.querySelector('[aria-label="Next example"]').click())
     expect(viewer.querySelector('h3').textContent).toBe(EXAMPLES[2].title)
@@ -85,7 +87,7 @@ describe('the landing page', () => {
     }
     try {
       await mount()
-      expect(el.querySelector('.lp-hero iframe').getAttribute('src')).toBe('/examples/my-talk')
+      expect(el.querySelector('.lp-hero iframe').getAttribute('src')).toBe('/examples/my-talk/deck')
       expect(cards()).toEqual(['Cell division', 'Venn diagrams'])
       expect([...el.querySelectorAll('.lp-filters button')].map(b => b.firstChild.textContent)).toEqual(['All', 'Mathematics', 'Biology'])
       const thumb = el.querySelector('.lp-card .lp-thumb')

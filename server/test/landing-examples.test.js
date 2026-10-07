@@ -80,9 +80,10 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(image.headers.get('content-type'), 'image/jpeg')
     assert.match(image.headers.get('cache-control'), /immutable/)
     assert.equal(Buffer.from(await image.arrayBuffer()).toString('hex'), 'ffd8ffe0')
-    const page = await fetch(`${t.base}/examples/${added.slug}`)
+    const page = await fetch(`${t.base}/examples/${added.slug}/deck`)
     assert.match(page.headers.get('content-security-policy'), /^sandbox allow-scripts\b/)
     assert.match(await page.text(), /Mitosis/)
+    assert.match(await (await fetch(`${t.base}/examples/${added.slug}`)).text(), /<h1>Cell division<\/h1>/)
   })
 
   it('won’t copy someone else’s presentation, or take a card without a title', async () => {
@@ -122,7 +123,7 @@ describe('the landing page’s examples', { skip }, () => {
       slides: [{ id: 's1', notes: '', elements: [{ id: 'e1', type: 'text', x: 60, y: 60, width: 600, height: 100, content: '<h2>Meiosis</h2>' }] }],
     })
     assert.equal(res.status, 200, JSON.stringify(res.body))
-    const page = () => fetch(`${t.base}/examples/${added.slug}`).then(r => r.text())
+    const page = () => fetch(`${t.base}/examples/${added.slug}/deck`).then(r => r.text())
     assert.match(await page(), /Mitosis/)
     assert.equal((await t.call(admin, 'POST', `/api/admin/examples/${added.slug}/refresh`)).status, 200)
     assert.match(await page(), /Meiosis/)
@@ -143,5 +144,6 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal((await t.call(admin, 'DELETE', `/api/admin/examples/${added.slug}`)).status, 200)
     assert.equal((await t.call(null, 'GET', `/api/examples/${added.slug}`)).status, 404)
     assert.equal((await fetch(`${t.base}/examples/${added.slug}`)).status, 404)
+    assert.equal((await fetch(`${t.base}/examples/${added.slug}/deck`)).status, 404)
   })
 })

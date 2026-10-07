@@ -632,7 +632,7 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
   }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 14, padding: '12px 0', borderTop: first ? 'none' : '1px solid var(--border)', opacity: e.card || e.hero ? 1 : 0.65 }}>
-      <a href={`/examples/${e.slug}`} target="_blank" rel="noopener noreferrer" title="Open the live deck" style={{ display: 'block', aspectRatio: '16 / 9', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: background(e.background) }}>
+      <a href={`/examples/${e.slug}/deck`} target="_blank" rel="noopener noreferrer" title="Open the live deck" style={{ display: 'block', aspectRatio: '16 / 9', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: background(e.background) }}>
         {thumb
           ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <span style={{ display: 'grid', placeItems: 'center', height: '100%', padding: 8, fontSize: 11, color: '#fff', textAlign: 'center' }}>{e.title}</span>}

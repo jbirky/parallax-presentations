@@ -642,7 +642,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-filters button[aria-pressed="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
 .lp-filters button[aria-pressed="true"] span { color: rgba(255, 255, 255, 0.75); }
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 22px; margin-top: 26px; }
-.lp-card { display: grid; grid-template-rows: auto 1fr; text-align: left; background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: 12px; overflow: hidden; transition: border-color 0.15s, transform 0.15s; }
+.lp-card { display: grid; grid-template-rows: auto 1fr; text-align: left; text-decoration: none; color: inherit; background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: 12px; overflow: hidden; transition: border-color 0.15s, transform 0.15s; }
 .lp-card:hover { border-color: rgba(143, 146, 250, 0.6); transform: translateY(-2px); }
 .lp-thumb { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #12121f; }
 .lp-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
