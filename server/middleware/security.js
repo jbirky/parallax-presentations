@@ -69,6 +69,18 @@ const uploadLimiter = rateLimit({
   message: { error: 'Too many uploads, please try again later' },
 })
 
+// Fetching a live dataset's source by hand (testing one, or making one):
+// each sends a request to someone else's server
+const sourceFetchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: IS_CLOUD ? 10 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKey,
+  skip: () => !IS_CLOUD,
+  message: { error: 'That’s a lot of fetches in a minute. Try again shortly.' },
+})
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: IS_CLOUD ? 30 : 0,
@@ -237,6 +249,7 @@ module.exports = {
   clientIpKey,
   apiLimiter,
   uploadLimiter,
+  sourceFetchLimiter,
   deckPageLimiter,
   statsLimiter,
   localOnly,

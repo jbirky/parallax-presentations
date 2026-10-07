@@ -41,7 +41,7 @@ const { createSandboxLookup } = require('./services/plugin-embed')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -1248,6 +1248,137 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
   }
 })
 
+// --- Live datasets ---
+// Fetched from a URL or a TAP query, then on a schedule (live-datasets.js).
+// On in self-hosted builds unless PARALLAX_LIVE_DATASETS=off; in the cloud
+// only with PARALLAX_LIVE_DATASETS=on. These come before /api/datasets/:id,
+// which would take "sources" or "live" for an id.
+
+const LIVE_DATASETS = IS_CLOUD ? process.env.PARALLAX_LIVE_DATASETS === 'on' : process.env.PARALLAX_LIVE_DATASETS !== 'off'
+const live = require('./services/live-datasets')
+const { TAP_PRESETS, SourceError, normalizeSource } = require('./services/live-sources')
+
+const liveOn = (req, res, next) => (LIVE_DATASETS ? next() : res.status(404).json({ error: 'Live datasets aren’t turned on for this server' }))
+// The caller's plan, or null where there are no plans
+const planOf = req => (IS_CLOUD ? planFor(req.userPlan) : null)
+
+function sendLiveError(res, err) {
+  if (err.sourceError || err.fetchError) return res.status(422).json({ error: err.message })
+  if (err.code === 'duplicate') return res.status(409).json({ error: err.message })
+  res.status(500).json({ error: safeErrorMessage(err) })
+}
+
+// A refresh asked for by hand, unless one is already running
+async function refreshNow(id) {
+  if (!await storage.leaseDataset(id, 600)) return { outcome: 'busy' }
+  return live.refreshDataset(storage, id, { localDir: DATA_DIR })
+}
+
+// GET /api/datasets/sources — what the editor offers for making live datasets
+app.get('/api/datasets/sources', async (req, res) => {
+  if (!LIVE_DATASETS) return res.json({ enabled: false })
+  try {
+    const plan = planOf(req)
+    res.json({
+      enabled: true,
+      presets: TAP_PRESETS,
+      schedules: live.SCHEDULE_ORDER.filter(s => live.allowedSchedule(s, plan)),
+      allowance: plan ? { used: await storage.countLiveDatasets(req.userId), limit: plan.liveDatasets, plan: plan.name } : null,
+    })
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/datasets/sources/test — fetch a source once, saving nothing:
+// its columns, row count and first 20 rows
+app.post('/api/datasets/sources/test', liveOn, sourceFetchLimiter, async (req, res) => {
+  try {
+    const { sourceKind, source, secret } = req.body || {}
+    res.json(await live.testSource(sourceKind, source, { secret, plan: planOf(req) }))
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// POST /api/datasets/live — make a live dataset: { name, sourceKind, source,
+// schedule, secret }. Its first fetch must work
+app.post('/api/datasets/live', liveOn, sourceFetchLimiter, async (req, res) => {
+  try {
+    const plan = planOf(req)
+    if (plan && await storage.countLiveDatasets(req.userId) >= plan.liveDatasets) {
+      const n = plan.liveDatasets
+      return res.status(403).json({
+        code: 'live_limit',
+        error: n
+          ? `The ${plan.name} plan has ${n} live dataset${n === 1 ? '' : 's'}, and you’re using ${n === 1 ? 'it' : 'all of them'}.`
+          : `The ${plan.name} plan doesn’t include live datasets.`,
+      })
+    }
+    const ds = await live.createLiveDataset(storage, { userId: req.userId, plan, keyPrefix: req.guestKeyPrefix }, req.body || {}, { localDir: DATA_DIR })
+    res.status(201).json(ds)
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// PATCH /api/datasets/:id/source — change a live dataset's source, schedule
+// or header secret ('' removes it). A new source or secret is fetched at once
+app.patch('/api/datasets/:id/source', requireValidId(), liveOn, async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to change' })
+    const body = req.body || {}
+    const changes = {}
+    if (body.source !== undefined) changes.source = normalizeSource(ds.sourceKind, body.source)
+    if (body.schedule !== undefined) {
+      const plan = planOf(req)
+      if (!live.allowedSchedule(body.schedule, plan)) {
+        throw new SourceError(plan ? `The ${plan.name} plan refreshes at most ${plan.minRefresh}` : 'Refresh hourly, daily, weekly or by hand')
+      }
+      changes.schedule = body.schedule
+      changes.nextFetchAt = live.nextFetch(body.schedule)
+    }
+    if (body.secret !== undefined) {
+      if (body.secret) live.parseSecret(body.secret)
+      changes.sourceSecret = body.secret || ''
+    }
+    await storage.updateDatasetSource(ds.id, req.userId, changes)
+    const refresh = changes.source || changes.sourceSecret !== undefined ? await refreshNow(ds.id) : null
+    res.json({ dataset: await storage.getDataset(ds.id, req.userId), refresh })
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// POST /api/datasets/:id/refresh — fetch a live dataset now; a minute apart
+app.post('/api/datasets/:id/refresh', requireValidId(), liveOn, async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to fetch' })
+    const [last] = await storage.listDatasetFetches(ds.id, 1)
+    if (last && Date.now() - new Date(last.startedAt).getTime() < 60 * 1000) {
+      return res.status(429).json({ error: 'This dataset was fetched less than a minute ago. Try again in a moment.' })
+    }
+    const result = await refreshNow(ds.id)
+    if (result.outcome === 'busy') return res.status(409).json({ error: 'This dataset is being fetched right now' })
+    res.json({ ...result, dataset: await storage.getDataset(ds.id, req.userId) })
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// GET /api/datasets/:id/versions — its saved versions, newest first
+app.get('/api/datasets/:id/versions', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const versions = await storage.listDatasetVersions(ds.id)
+    res.json(versions.map(({ storageKey, etag, lastModified, ...v }) => ({ ...v, current: v.id === ds.currentVersionId })))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// GET /api/datasets/:id/fetches — its last 50 fetches
+app.get('/api/datasets/:id/fetches', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    res.json(await storage.listDatasetFetches(ds.id, 50))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
 // GET /api/datasets — list user's datasets
 app.get('/api/datasets', async (req, res) => {
   try {
@@ -1264,22 +1395,41 @@ app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// A data request's query: columns, limit, offset, orderBy and where
+function queryOptions(req) {
+  const opts = {}
+  if (req.query.columns) opts.columns = req.query.columns.split(',')
+  if (req.query.limit) opts.limit = parseInt(req.query.limit)
+  if (req.query.offset) opts.offset = parseInt(req.query.offset)
+  if (req.query.orderBy) opts.orderBy = req.query.orderBy
+  if (req.query.where) {
+    try { opts.where = JSON.parse(req.query.where) } catch {}
+  }
+  return opts
+}
+
+// The table a data request reads, with its columns: the version it names,
+// or the current one ("current", or none). Null for a version that isn't
+// the dataset's
+async function datasetTable(ds, versionId) {
+  if (versionId && versionId !== 'current') {
+    if (!isValidUUID(versionId)) return null
+    const v = await storage.getDatasetVersion(ds.id, versionId)
+    if (!v) return null
+    return { table: await readDatasetFile(v.storageKey, v.format, DATA_DIR), columns: v.columns }
+  }
+  if (!ds.storageKey) return { table: { names: [], columns: Object.create(null), length: 0 }, columns: [] }
+  return { table: await readDatasetFile(ds.storageKey, ds.format, DATA_DIR), columns: ds.columns }
+}
+
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
 app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const table = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
-    const opts = {}
-    if (req.query.columns) opts.columns = req.query.columns.split(',')
-    if (req.query.limit) opts.limit = parseInt(req.query.limit)
-    if (req.query.offset) opts.offset = parseInt(req.query.offset)
-    if (req.query.orderBy) opts.orderBy = req.query.orderBy
-    if (req.query.where) {
-      try { opts.where = JSON.parse(req.query.where) } catch {}
-    }
-    const result = applyQuery(table, ds.columns, opts)
-    res.json(result)
+    const data = await datasetTable(ds, req.query.version)
+    if (!data) return res.status(404).json({ error: 'Version not found' })
+    res.json(applyQuery(data.table, data.columns, queryOptions(req)))
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
@@ -1349,21 +1499,31 @@ app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('p
 app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
-    const linked = await storage.getPresentationDatasets(req.params.pid)
-    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
+    const link = (await storage.getPresentationDatasets(req.params.pid)).find(d => d.id === req.params.did)
+    if (!link) return res.status(404).json({ error: 'Dataset not found' })
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const table = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
-    const opts = {}
-    if (req.query.columns) opts.columns = req.query.columns.split(',')
-    if (req.query.limit) opts.limit = parseInt(req.query.limit)
-    if (req.query.offset) opts.offset = parseInt(req.query.offset)
-    if (req.query.orderBy) opts.orderBy = req.query.orderBy
-    if (req.query.where) {
-      try { opts.where = JSON.parse(req.query.where) } catch {}
+    // The deck's pinned version unless the request names one (or "current")
+    const data = await datasetTable(ds, req.query.version || link.pinnedVersionId)
+    if (!data) return res.status(404).json({ error: 'Version not found' })
+    res.json(applyQuery(data.table, data.columns, queryOptions(req)))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// PUT /api/presentations/:pid/datasets/:did/pin — hold a dataset at one
+// version for this deck ({ versionId }), or follow the current one again
+// ({ versionId: null })
+app.put('/api/presentations/:pid/datasets/:did/pin', requireValidId('pid'), requireValidId('did'), deckAccess('pid'), async (req, res) => {
+  try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
+    const linked = await storage.getPresentationDatasets(req.params.pid)
+    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
+    const versionId = (req.body && req.body.versionId) || null
+    if (versionId && (!isValidUUID(versionId) || !await storage.getDatasetVersion(req.params.did, versionId))) {
+      return res.status(404).json({ error: 'Version not found' })
     }
-    const result = applyQuery(table, ds.columns, opts)
-    res.json(result)
+    await storage.setPinnedVersion(req.params.pid, req.params.did, versionId)
+    res.json({ pinnedVersionId: versionId })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 

@@ -97,7 +97,11 @@ function isPrivateAddress(ip) {
 
 function settings() {
   const hosts = (process.env.PARALLAX_FETCH_HOSTS || '').split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
-  return { allowPrivate: process.env.PARALLAX_FETCH_ALLOW_PRIVATE === '1', allowedHosts: hosts }
+  const gap = Number(process.env.PARALLAX_FETCH_GAP_MS)
+  return {
+    allowPrivate: process.env.PARALLAX_FETCH_ALLOW_PRIVATE === '1', allowedHosts: hosts,
+    ...(Number.isFinite(gap) && gap >= 0 && { politeMs: gap }),
+  }
 }
 
 // Which addresses a request refuses, and whether it may use any port:
