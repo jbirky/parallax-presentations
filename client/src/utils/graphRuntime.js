@@ -78,6 +78,9 @@ export function graphRuntime(P, G, G3, config) {
   function setConfig(next, keepState) {
     C = next
     theme = THEMES[C.theme] || THEMES.light
+    logX = C.xScale === 'log' && C.dims !== 3
+    logY = C.yScale === 'log' && C.dims !== 3
+    dataStyles = new Map()
     analysis = P.analyze(C.expressions || [], { dims: C.dims })
     const kept = values
     values = {}
@@ -85,6 +88,7 @@ export function graphRuntime(P, G, G3, config) {
       if (it.kind === 'param' && it.slider) values[it.name] = keepState && typeof kept[it.name] === 'number' && !C.editor ? kept[it.name] : it.literal
     }
     if (!keepState || C.editor) { view = copyView(C.view); cam = copyCam(C.camera) }
+    if (logX || logY) view = logView(view)
     if (!keepState) clicks = []
     geo3Key = ''
     fieldGeo = null
@@ -100,10 +104,20 @@ export function graphRuntime(P, G, G3, config) {
 
   // The view as drawn: with equal scales, y's range follows the shape
   function shown() {
+    if (logX || logY) return logView(view)
     if (C.equalScale === false || !W || !H) return view
     const half = (view.xMax - view.xMin) * H / W / 2
     const mid = (view.yMin + view.yMax) / 2
     return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half, yMax: mid + half }
+  }
+
+  // A log axis's range, kept positive: what isn't keeps its top (a
+  // thousandth of it at the bottom), or else becomes 0.1 to 100
+  function logView(v) {
+    const fix = (lo, hi) => (lo > 0 && hi > lo ? [lo, hi] : hi > 0 ? [hi / 1000, hi] : [0.1, 100])
+    const [xMin, xMax] = logX ? fix(v.xMin, v.xMax) : [v.xMin, v.xMax]
+    const [yMin, yMax] = logY ? fix(v.yMin, v.yMax) : [v.yMin, v.yMax]
+    return { xMin, xMax, yMin, yMax }
   }
 
   function exprOf(it) { return (C.expressions || []).find(e => e.id === it.id) || {} }
@@ -149,12 +163,22 @@ export function graphRuntime(P, G, G3, config) {
   }
 
   // ── Drawing ──────────────────────────────────────────────────────────────
-  let X0, X1, Y0, Y1
-  const sx = x => (x - X0) / (X1 - X0) * W
-  const sy = y => H - (y - Y0) / (Y1 - Y0) * H
-  const wx = px => X0 + px / W * (X1 - X0)
-  const wy = py => Y0 + (H - py) / H * (Y1 - Y0)
+  // A log axis places a value by its log10 (Tx, Ty), and 0 and less have no
+  // place on it; sx/sy and wx/wy go between values and pixels either way,
+  // so curves, contours and tracing follow the scale
+  let X0, X1, Y0, Y1, TX0, TX1, TY0, TY1
+  let logX = false, logY = false
+  const Tx = v => (logX ? (v > 0 ? Math.log10(v) : -Infinity) : v)
+  const Ty = v => (logY ? (v > 0 ? Math.log10(v) : -Infinity) : v)
+  const sx = x => (Tx(x) - TX0) / (TX1 - TX0) * W
+  const sy = y => H - (Ty(y) - TY0) / (TY1 - TY0) * H
+  const wx = px => { const t = TX0 + px / W * (TX1 - TX0); return logX ? Math.pow(10, t) : t }
+  const wy = py => { const t = TY0 + (H - py) / H * (TY1 - TY0); return logY ? Math.pow(10, t) : t }
   const clampPx = v => (v > 1e5 ? 1e5 : v < -1e5 ? -1e5 : v)
+  function setFrame(v) {
+    X0 = v.xMin; X1 = v.xMax; Y0 = v.yMin; Y1 = v.yMax
+    TX0 = Tx(X0); TX1 = Tx(X1); TY0 = Ty(Y0); TY1 = Ty(Y1)
+  }
 
   function env() {
     const e = P.paramValues(analysis, values)
@@ -165,8 +189,7 @@ export function graphRuntime(P, G, G3, config) {
   function draw() {
     if (!W || !H || !analysis) return
     if (is3d()) { draw3d(); snapshot(); return }
-    const v = shown()
-    X0 = v.xMin; X1 = v.xMax; Y0 = v.yMin; Y1 = v.yMax
+    setFrame(shown())
     ctx.clearRect(0, 0, W, H)
     if (C.background && C.background !== 'transparent') {
       ctx.fillStyle = C.background
@@ -187,6 +210,8 @@ export function graphRuntime(P, G, G3, config) {
     }
     each(['region'], it => drawRegion(it, E))
     fieldsDo(() => drawFieldMarks(fg, E))
+    dataHits = []
+    each(['data'], it => drawData(it))
     each(['explicit', 'function', 'polar', 'parametric', 'implicit'], it => {
       if (it.kind === 'explicit' || (it.kind === 'function' && it.graph)) strokeRuns(explicitRuns(it.f, E, it.axis || 'y'), exprOf(it))
       else if (it.kind === 'polar') strokeRuns(curveRuns(it, E, 'theta'), exprOf(it))
@@ -196,6 +221,7 @@ export function graphRuntime(P, G, G3, config) {
     fieldsDo(() => drawFieldPaths(fg, E))
     axisNumbers(ticks)
     axisLabels()
+    fieldsDo(() => drawDataKeys(items))
     each(['point'], it => drawPoint(it, E))
     fieldsDo(() => drawFieldPoints(fg, E))
     fieldsDo(() => drawMoving(fg))
@@ -454,19 +480,56 @@ export function graphRuntime(P, G, G3, config) {
   }
   function spinning() { return is3d() && C.spin && !C.print && !C.editor && !reduceMotion && !(drag && drag.kind === 'turn') }
 
+  // The lines and numbers along an axis: { majors, minors, label, zero }.
+  // Linear: multiples of a nice step about 90 pixels apart. Log: powers of
+  // ten (every few, when they crowd), with 2 to 9 between when there's room
+  function linearTicks(lo, hi, length, forced) {
+    const t = forced || niceStep((hi - lo) * 90 / length)
+    return {
+      step: t, majors: ticksBetween(lo, hi, t.step), minors: ticksBetween(lo, hi, t.step / t.minor),
+      label: v => tickLabel(v, t.step), zero: v => Math.abs(v) < t.step * 1e-6,
+    }
+  }
+  const SUPERSCRIPT = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' }
+  function logLabel(v) {
+    const k = Math.floor(Math.log10(v) + 1e-9)
+    const m = Math.round(v / Math.pow(10, k))
+    if (k >= -3 && k <= 3) return String(parseFloat(v.toPrecision(6)))
+    const power = '10' + String(k).split('').map(c => SUPERSCRIPT[c]).join('')
+    return m === 1 ? power : m + '×' + power
+  }
+  function logTicks(lo, hi, length) {
+    const a = Math.log10(lo), b = Math.log10(hi)
+    // Under about a decade across, nice linear steps read better
+    if (b - a < 0.6) return linearTicks(lo, hi, length)
+    const perDecade = length / (b - a)
+    const every = perDecade >= 40 ? 1 : Math.ceil(40 / perDecade)
+    const mantissas = perDecade >= 360 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : perDecade >= 180 ? [1, 2, 5] : [1]
+    const between = perDecade >= 60 ? [2, 3, 4, 5, 6, 7, 8, 9].filter(m => !mantissas.includes(m)) : []
+    const majors = [], minors = []
+    for (let k = Math.floor(a); k <= Math.ceil(b) && majors.length + minors.length < 600; k++) {
+      const p = Math.pow(10, k)
+      for (const m of mantissas) {
+        const v = m * p
+        if (v >= lo && v <= hi && (m > 1 || ((k % every) + every) % every === 0)) majors.push(v)
+      }
+      for (const m of between) { const v = m * p; if (v >= lo && v <= hi) minors.push(v) }
+    }
+    return { majors, minors, label: logLabel, zero: () => false }
+  }
+
   function gridAndAxes() {
-    const px = 90 // about this far apart, major lines
-    const tx = niceStep((X1 - X0) * px / W)
-    const ty = C.equalScale === false ? niceStep((Y1 - Y0) * px / H) : tx
+    const xt = logX ? logTicks(X0, X1, W) : linearTicks(X0, X1, W)
+    const yt = logY ? logTicks(Y0, Y1, H)
+      : C.equalScale === false || logX ? linearTicks(Y0, Y1, H) : linearTicks(Y0, Y1, H, xt.step)
     const line = (x0, y0, x1, y1) => { ctx.moveTo(x0, y0); ctx.lineTo(x1, y1) }
     if (C.grid !== false) {
       ctx.lineWidth = 1
-      for (const [t, major] of [[tx.step / tx.minor, false], [tx.step, true]]) {
+      for (const major of [false, true]) {
         ctx.beginPath()
         ctx.strokeStyle = major ? theme.major : theme.minor
-        for (const v of ticksBetween(X0, X1, t)) { const p = Math.round(sx(v)) + 0.5; line(p, 0, p, H) }
-        const u = major ? ty.step : ty.step / ty.minor
-        for (const v of ticksBetween(Y0, Y1, u)) { const p = Math.round(sy(v)) + 0.5; line(0, p, W, p) }
+        for (const v of major ? xt.majors : xt.minors) { const p = Math.round(sx(v)) + 0.5; line(p, 0, p, H) }
+        for (const v of major ? yt.majors : yt.minors) { const p = Math.round(sy(v)) + 0.5; line(0, p, W, p) }
         ctx.stroke()
       }
     }
@@ -474,11 +537,14 @@ export function graphRuntime(P, G, G3, config) {
       ctx.beginPath()
       ctx.strokeStyle = theme.axis
       ctx.lineWidth = 1.25
-      if (X0 <= 0 && X1 >= 0) { const p = Math.round(sx(0)) + 0.5; line(p, 0, p, H) }
-      if (Y0 <= 0 && Y1 >= 0) { const p = Math.round(sy(0)) + 0.5; line(0, p, W, p) }
+      // A log axis has no 0: the other axis runs along the edge
+      if (logX) line(0.5, 0, 0.5, H)
+      else if (X0 <= 0 && X1 >= 0) { const p = Math.round(sx(0)) + 0.5; line(p, 0, p, H) }
+      if (logY) line(0, H - 0.5, W, H - 0.5)
+      else if (Y0 <= 0 && Y1 >= 0) { const p = Math.round(sy(0)) + 0.5; line(0, p, W, p) }
       ctx.stroke()
     }
-    return { tx, ty }
+    return { xt, yt }
   }
 
   function haloText(text, x, y, align, baseline, font, color) {
@@ -493,24 +559,25 @@ export function graphRuntime(P, G, G3, config) {
     ctx.fillText(text, x, y)
   }
 
-  function axisNumbers({ tx, ty }) {
+  function axisNumbers({ xt, yt }) {
     if (C.axisNumbers === false || C.axes === false) return
     const font = '12px ' + FONT
-    // Numbers sit by the axis, or along the edge it's past
+    // Numbers sit by the axis, or along the edge it's past (a log axis's
+    // other axis is always at the edge: its 0 is infinitely far)
     const ay = Math.min(Math.max(sy(0), 2), H - 18)
     const ax = Math.min(Math.max(sx(0), 30), W - 4)
     const originShown = X0 <= 0 && X1 >= 0 && Y0 <= 0 && Y1 >= 0
-    for (const v of ticksBetween(X0, X1, tx.step)) {
-      if (Math.abs(v) < tx.step * 1e-6) continue
+    for (const v of xt.majors) {
+      if (xt.zero(v)) continue
       const p = sx(v)
       if (p < 12 || p > W - 12) continue
-      haloText(tickLabel(v, tx.step), p, ay + 4, 'center', 'top', font)
+      haloText(xt.label(v), p, ay + 4, 'center', 'top', font)
     }
-    for (const v of ticksBetween(Y0, Y1, ty.step)) {
-      if (Math.abs(v) < ty.step * 1e-6) continue
+    for (const v of yt.majors) {
+      if (yt.zero(v)) continue
       const p = sy(v)
       if (p < 10 || p > H - 10) continue
-      haloText(tickLabel(v, ty.step), ax - 5, p, 'right', 'middle', font)
+      haloText(yt.label(v), ax - 5, p, 'right', 'middle', font)
     }
     if (originShown) haloText('0', sx(0) - 5, sy(0) + 4, 'right', 'top', font)
   }
@@ -518,7 +585,8 @@ export function graphRuntime(P, G, G3, config) {
   function axisLabels() {
     const font = 'italic 16px ' + MATH_FONT
     if (C.xLabel) haloText(C.xLabel, W - 8, Math.min(Math.max(sy(0), 20), H - 24) - 6, 'right', 'bottom', font)
-    if (C.yLabel) haloText(C.yLabel, Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, 'left', 'top', font)
+    // On a log x axis the y numbers run down the left edge: the label goes past them
+    if (C.yLabel) haloText(C.yLabel, logX ? 40 : Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, 'left', 'top', font)
   }
 
   function styleFor(e) {
@@ -775,23 +843,316 @@ export function graphRuntime(P, G, G3, config) {
     ctx.arc(px, py, 4.5, 0, Math.PI * 2)
     ctx.fillStyle = color
     ctx.fill()
-    const text = '(' + fmt(x) + ', ' + fmt(y) + ')'
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = theme.halo
+    ctx.stroke()
+    // A data row's readout has a line for each of its values
+    const lines = hover.lines || ['(' + fmt(x) + ', ' + fmt(y) + ')']
     ctx.font = '12px ' + FONT
-    const w = ctx.measureText(text).width + 12
-    const bx = Math.min(Math.max(px + 10, 2), W - w - 2), by = Math.max(py - 30, 2)
+    const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + 12
+    const h = 8 + lines.length * 15
+    const bx = Math.min(Math.max(px + 10, 2), W - w - 2)
+    const by = py - h - 8 >= 2 ? py - h - 8 : Math.min(py + 10, H - h - 2)
     ctx.fillStyle = theme.panel
     ctx.strokeStyle = theme.border
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.rect(bx, by, w, 22)
+    ctx.rect(bx, by, w, h)
     ctx.fill()
     ctx.stroke()
     ctx.fillStyle = theme.panelText
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    ctx.fillText(text, bx + 6, by + 11)
+    lines.forEach((t, k) => {
+      ctx.font = (k === 0 && hover.titled ? '600 ' : '') + '12px ' + FONT
+      ctx.fillText(t, bx + 6, by + 11.5 + k * 15)
+    })
   }
 
+
+  // ── Data ─────────────────────────────────────────────────────────────────
+  // A data line plots a dataset's rows, given in C.data by line id as
+  // columns ({ x, y, x2, color, size, label, xErr, yErr, total }): the
+  // editor fetches them, and a deck has them written in. Its options
+  // (e.data) say how: mark (points, line or bars), size, opacity, and the
+  // columns it colors and sizes by
+  const DATA_COLORS = {
+    light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+    dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+  }
+  const OTHER_COLOR = '#898781'
+  let dataStyles = new Map()
+  let dataHits = [] // what each data line drew where, for hovering
+
+  const isNum = v => typeof v === 'number' && isFinite(v)
+  function extent(values) {
+    let lo = Infinity, hi = -Infinity
+    for (const v of values) { if (isNum(v)) { if (v < lo) lo = v; if (v > hi) hi = v } }
+    return lo <= hi ? [lo, hi] : null
+  }
+  const rgb = c => 'rgb(' + c.map(v => Math.round(v * 255)).join(',') + ')'
+
+  // How a line's rows are colored: one color, categories (the commonest
+  // eight get the palette, the rest one gray), or a scale over numbers
+  function dataStyle(it, e, d) {
+    const spec = e.data || {}
+    const kept = dataStyles.get(it.id)
+    if (kept && kept.d === d && kept.e === e && kept.theme === theme) return kept.style
+    let style
+    const values = Array.isArray(d.color) ? d.color : null
+    if (!values) style = { kind: 'one', color: e.color || DATA_COLORS[C.theme === 'dark' ? 'dark' : 'light'][0] }
+    else if (values.every(v => v == null || isNum(v)) && values.some(isNum)) {
+      const [lo, hi] = extent(values)
+      const span = hi > lo ? hi - lo : 1
+      style = { kind: 'scale', title: spec.colorBy, min: lo, max: hi, colorOf: i => (isNum(values[i]) ? rgb(G3.colormap((values[i] - lo) / span, 'viridis')) : OTHER_COLOR) }
+    } else {
+      const counts = new Map()
+      for (const v of values) { const k = v == null ? '' : String(v); counts.set(k, (counts.get(k) || 0) + 1) }
+      const palette = DATA_COLORS[C.theme === 'dark' ? 'dark' : 'light']
+      const order = [...counts.entries()].filter(([k]) => k !== '').sort((a, b) => b[1] - a[1])
+      const colorOf = new Map()
+      const cats = order.slice(0, palette.length).map(([name, count], k) => { colorOf.set(name, palette[k]); return { name, count, color: palette[k] } })
+      const other = values.length - cats.reduce((n, c) => n + c.count, 0)
+      style = { kind: 'cats', title: spec.colorBy, cats, other, colorOf: i => colorOf.get(values[i] == null ? '' : String(values[i])) || OTHER_COLOR }
+    }
+    dataStyles.set(it.id, { d, e, theme, style })
+    return style
+  }
+
+  // A point's radius: its size, or by a column's value (area for value)
+  function radiusOf(spec, d) {
+    const base = clamp(num(spec.size, 3), 0.5, 20)
+    if (!Array.isArray(d.size)) return () => base
+    const ext = extent(d.size)
+    if (!ext) return () => base
+    const [lo, hi] = ext
+    const span = hi > lo ? hi - lo : 1
+    return i => (isNum(d.size[i]) ? 2 + 8 * Math.sqrt(Math.max(0, (d.size[i] - lo) / span)) : base)
+  }
+
+  function drawData(it) {
+    const e = exprOf(it)
+    const spec = e.data || {}
+    const d = (C.data || {})[it.id]
+    if (!d || !Array.isArray(d.x) || !Array.isArray(d.y)) return
+    const n = Math.min(d.x.length, d.y.length)
+    const mark = spec.mark === 'line' || spec.mark === 'bars' ? spec.mark : 'points'
+    const style = dataStyle(it, e, d)
+    const color = style.kind === 'one' ? () => style.color : style.colorOf
+    const radius = radiusOf(spec, d)
+    const alpha = clamp(num(spec.opacity, mark === 'bars' ? 0.85 : 0.85), 0.05, 1)
+    const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style }
+    const pxOf = i => sx(+d.x[i]), pyOf = i => sy(+d.y[i])
+    const onCanvas = (px, py, m) => px >= -m && px <= W + m && py >= -m && py <= H + m
+
+    // Error bars under the marks
+    if (Array.isArray(d.xErr) || Array.isArray(d.yErr)) {
+      ctx.lineWidth = 1
+      ctx.globalAlpha = alpha * 0.6
+      const byColor = new Map()
+      for (let i = 0; i < n; i++) {
+        const x = +d.x[i], y = +d.y[i]
+        if (!isFinite(x) || !isFinite(y)) continue
+        const c = color(i)
+        if (!byColor.has(c)) byColor.set(c, new Path2D())
+        const path = byColor.get(c)
+        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0
+        const px = sx(x), py = sy(y)
+        if (ex > 0) { const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex)); if (isFinite(py)) { path.moveTo(isFinite(a) ? a : -1e5, py); path.lineTo(b, py) } }
+        if (ey > 0) { const a = clampPx(sy(y - ey)), b = clampPx(sy(y + ey)); if (isFinite(px)) { path.moveTo(px, isFinite(a) ? a : 1e5); path.lineTo(px, b) } }
+      }
+      for (const [c, path] of byColor) { ctx.strokeStyle = c; ctx.stroke(path) }
+      ctx.globalAlpha = 1
+    }
+
+    if (mark === 'bars') {
+      // A bar from x to x2 (or halfway to its neighbors), up from 0 or the
+      // bottom of a log axis
+      const base = logY ? H : clamp(sy(0), 0, H)
+      const order = Array.from({ length: n }, (_, i) => i).filter(i => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b])
+      ctx.globalAlpha = alpha
+      order.forEach((i, k) => {
+        const top = pyOf(i)
+        if (!isFinite(top)) return
+        let left, right
+        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) { left = pxOf(i); right = sx(+d.x2[i]) } else {
+          const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null
+          const here = pxOf(i)
+          const half = Math.min(prev === null ? Infinity : here - prev, next === null ? Infinity : next - here) / 2
+          const w = isFinite(half) ? half : 6
+          left = here - w * 0.9; right = here + w * 0.9
+        }
+        if (!isFinite(left) || !isFinite(right)) return
+        const l = Math.max(Math.min(left, right), -2), r = Math.min(Math.max(left, right), W + 2)
+        if (r - l < 0.5) return
+        ctx.fillStyle = color(i)
+        // A pixel of air between neighboring bars
+        ctx.fillRect(l + 0.5, Math.min(top, base), Math.max(0.5, r - l - 1), Math.abs(base - top))
+        const mid = (l + r) / 2
+        if (onCanvas(mid, top, 0)) { hit.xs[hit.n] = mid; hit.ys[hit.n] = top; hit.rows[hit.n++] = i }
+      })
+      ctx.globalAlpha = 1
+      dataHits.push(hit)
+      return
+    }
+
+    if (mark === 'line') {
+      // In the rows' order: one line, or one for each color's rows
+      const paths = new Map()
+      const last = new Map()
+      for (let i = 0; i < n; i++) {
+        const c = color(i)
+        const px = pxOf(i), py = pyOf(i)
+        if (!paths.has(c)) paths.set(c, new Path2D())
+        if (!isFinite(px) || !isFinite(py)) { last.delete(c); continue }
+        const cx = clampPx(px), cy = clampPx(py)
+        if (last.has(c)) paths.get(c).lineTo(cx, cy); else paths.get(c).moveTo(cx, cy)
+        last.set(c, true)
+        if (onCanvas(px, py, 0)) { hit.xs[hit.n] = px; hit.ys[hit.n] = py; hit.rows[hit.n++] = i }
+      }
+      ctx.lineWidth = clamp(num(e.width, 2), 0.5, 12)
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.setLineDash(e.style === 'dashed' ? [7, 5] : e.style === 'dotted' ? [0.01, 5] : [])
+      ctx.globalAlpha = alpha
+      for (const [c, path] of paths) { ctx.strokeStyle = c; ctx.stroke(path) }
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+      dataHits.push(hit)
+      return
+    }
+
+    // Points, a path for each color; a ring in the background's color keeps
+    // overlapping ones apart
+    const paths = new Map()
+    for (let i = 0; i < n; i++) {
+      const px = pxOf(i), py = pyOf(i)
+      if (!isFinite(px) || !isFinite(py)) continue
+      const r = radius(i)
+      if (!onCanvas(px, py, r)) continue
+      const c = color(i)
+      if (!paths.has(c)) paths.set(c, new Path2D())
+      const path = paths.get(c)
+      path.moveTo(px + r, py)
+      path.arc(px, py, r, 0, Math.PI * 2)
+      hit.xs[hit.n] = px; hit.ys[hit.n] = py; hit.rows[hit.n++] = i
+    }
+    ctx.lineWidth = 1
+    ctx.strokeStyle = theme.halo
+    for (const [c, path] of paths) {
+      ctx.globalAlpha = 1
+      ctx.stroke(path)
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = c
+      ctx.fill(path)
+    }
+    ctx.globalAlpha = 1
+    dataHits.push(hit)
+  }
+
+  // Keys for data lines colored by a column, down the top right; and a
+  // note for a line whose rows aren't here (or are cut short)
+  function drawDataKeys(items) {
+    // Below the reset button when it shows
+    let top = reset.style.display === 'block' ? 44 : 8
+    const notes = [], cut = []
+    for (const it of items) {
+      if (it.kind !== 'data') continue
+      const e = exprOf(it)
+      const spec = e.data || {}
+      const d = (C.data || {})[it.id]
+      if (!d || !Array.isArray(d.x)) {
+        const name = spec.dataset ? '“' + spec.dataset + '”' : 'this dataset'
+        notes.push(d && d.error ? d.error : d && d.loading ? 'Loading ' + name + '…' : 'The data from ' + name + ' isn’t available here')
+        continue
+      }
+      if (isNum(d.total) && d.total > d.x.length) cut.push('Showing ' + d.x.length.toLocaleString() + ' of ' + d.total.toLocaleString() + ' rows of ' + (spec.dataset || 'data'))
+      const style = dataStyle(it, e, d)
+      if (style.kind === 'one') continue
+      top = style.kind === 'cats' ? catKey(style, top) : scaleKey(style, top)
+    }
+    notes.forEach((text, k) => haloText(text, W / 2, H / 2 + (k - (notes.length - 1) / 2) * 20, 'center', 'middle', '14px ' + FONT, theme.text))
+    cut.forEach((text, k) => haloText(text, W - 8, H - 44 - k * 16, 'right', 'bottom', '12px ' + FONT, theme.text))
+  }
+  function keyBox(x, y, w, h) {
+    ctx.fillStyle = theme.panel
+    ctx.strokeStyle = theme.border
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.rect(x, y, w, h)
+    ctx.fill()
+    ctx.stroke()
+  }
+  function catKey(style, top) {
+    const rows = style.cats.map(c => [c.name, c.color]).concat(style.other ? [['Other', OTHER_COLOR]] : [])
+    ctx.font = '12px ' + FONT
+    const title = style.title || ''
+    const w = Math.min(W * 0.45, Math.max(ctx.measureText(title).width, ...rows.map(r => ctx.measureText(r[0]).width + 18)) + 16)
+    const h = 10 + (title ? 16 : 0) + rows.length * 16
+    const x = W - w - 8
+    keyBox(x, top, w, h)
+    let y = top + 6
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    if (title) { ctx.fillStyle = theme.panelText; ctx.font = '600 12px ' + FONT; ctx.fillText(title, x + 8, y, w - 16); y += 16; ctx.font = '12px ' + FONT }
+    for (const [name, c] of rows) {
+      ctx.fillStyle = c
+      ctx.beginPath()
+      ctx.arc(x + 12, y + 7, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = theme.panelText
+      ctx.fillText(name || '(none)', x + 22, y, w - 30)
+      y += 16
+    }
+    return top + h + 8
+  }
+  function scaleKey(style, top) {
+    const w = 150, h = 46
+    const x = W - w - 8
+    keyBox(x, top, w, h)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = theme.panelText
+    ctx.font = '600 12px ' + FONT
+    ctx.fillText(style.title || '', x + 8, top + 6, w - 16)
+    const grad = ctx.createLinearGradient(x + 8, 0, x + w - 8, 0)
+    for (let k = 0; k <= 10; k++) grad.addColorStop(k / 10, rgb(G3.colormap(k / 10, 'viridis')))
+    ctx.fillStyle = grad
+    ctx.fillRect(x + 8, top + 22, w - 16, 8)
+    ctx.font = '11px ' + FONT
+    ctx.fillStyle = theme.panelText
+    ctx.fillText(fmt(style.min), x + 8, top + 32)
+    ctx.textAlign = 'right'
+    ctx.fillText(fmt(style.max), x + w - 8, top + 32)
+    return top + h + 8
+  }
+
+  // The data row nearest the pointer, within a few pixels of its mark
+  function dataNear(px, py) {
+    let best = null
+    for (const hit of dataHits) {
+      for (let k = 0; k < hit.n; k++) {
+        const d2 = (hit.xs[k] - px) * (hit.xs[k] - px) + (hit.ys[k] - py) * (hit.ys[k] - py)
+        if (d2 < 64 && (!best || d2 < best.d2)) best = { d2, hit, k }
+      }
+    }
+    if (!best) return null
+    const { hit, k } = best
+    const row = hit.rows[k]
+    const e = exprOf(hit.it)
+    const spec = e.data || {}
+    const d = (C.data || {})[hit.it.id] || {}
+    const lines = []
+    if (Array.isArray(d.label) && d.label[row] != null) lines.push(String(d.label[row]))
+    lines.push((spec.x || 'x') + ': ' + fmtValue(d.x[row]))
+    if (spec.mark === 'bars' && Array.isArray(d.x2)) lines[lines.length - 1] += ' to ' + fmtValue(d.x2[row])
+    lines.push((spec.y || 'y') + ': ' + fmtValue(d.y[row]))
+    if (Array.isArray(d.color) && spec.colorBy) lines.push(spec.colorBy + ': ' + fmtValue(d.color[row]))
+    if (Array.isArray(d.size) && spec.sizeBy && spec.sizeBy !== spec.colorBy) lines.push(spec.sizeBy + ': ' + fmtValue(d.size[row]))
+    const color = hit.style.kind === 'one' ? hit.style.color : hit.style.colorOf(row)
+    return { px: hit.xs[k], py: hit.ys[k], color, lines, titled: Array.isArray(d.label) && d.label[row] != null }
+  }
+  const fmtValue = v => (v == null ? '—' : isNum(v) ? fmt(v) : String(v))
 
   // ── Fields ───────────────────────────────────────────────────────────────
   // How a field line draws unless its options say otherwise
@@ -1405,6 +1766,7 @@ export function graphRuntime(P, G, G3, config) {
   }
   let viewTimer = 0
   function viewChanged() {
+    hover = null
     styleReset()
     request()
     clearTimeout(viewTimer)
@@ -1413,7 +1775,32 @@ export function graphRuntime(P, G, G3, config) {
 
   // No closer than a millionth of a millionth of where it's looking (floats
   // tell apart about 1e-16 of it), and no farther out than 1e12 across
+  // One axis's range zoomed by `factor` about the point `frac` of the way
+  // along it: in log10 on a log axis. Null past what can be drawn
+  function zoomAxis(lo, hi, frac, factor, log) {
+    const a = log ? Math.log10(lo) : lo, b = log ? Math.log10(hi) : hi
+    const c = a + frac * (b - a)
+    const na = c - (c - a) * factor, nb = c + (b - c) * factor
+    if (!isFinite(na) || !isFinite(nb) || !(nb > na)) return null
+    if (log ? nb - na < 1e-6 || nb - na > 600 || na < -300 || nb > 300 : nb - na > 1e12 || nb - na < 1e-12 * Math.max(1, Math.abs(c))) return null
+    return log ? [Math.pow(10, na), Math.pow(10, nb)] : [na, nb]
+  }
+  // One axis's range moved by `frac` of itself: in log10 on a log axis
+  function panAxis(lo, hi, frac, log) {
+    if (!log) { const d = frac * (hi - lo); return [lo + d, hi + d] }
+    const d = frac * (Math.log10(hi) - Math.log10(lo))
+    return [lo * Math.pow(10, d), hi * Math.pow(10, d)]
+  }
+
   function zoom(factor, px, py) {
+    if (logX || logY) {
+      const v = shown()
+      const ax = zoomAxis(v.xMin, v.xMax, px / W, factor, logX), ay = zoomAxis(v.yMin, v.yMax, (H - py) / H, factor, logY)
+      if (!ax || !ay) return
+      view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] }
+      viewChanged()
+      return
+    }
     const v = shown()
     const cx = v.xMin + px / W * (v.xMax - v.xMin)
     const cy = v.yMin + (H - py) / H * (v.yMax - v.yMin)
@@ -1475,18 +1862,23 @@ export function graphRuntime(P, G, G3, config) {
       return
     }
     if (drag.kind === 'point') {
-      const v = shown()
-      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, v.xMin + px / W * (v.xMax - v.xMin))
-      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, v.yMin + (H - py) / H * (v.yMax - v.yMin))
+      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, wx(px))
+      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, wy(py))
       if (drag.it.dragX) delete playing[drag.it.dragX]
       if (drag.it.dragY) delete playing[drag.it.dragY]
       syncPanel()
       request()
     } else if (drag.kind === 'pan') {
       if (Math.hypot(px - drag.start[0], py - drag.start[1]) > 4) drag.moved = true
-      const dx = (px - drag.start[0]) / W * (drag.shown.xMax - drag.shown.xMin)
-      const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin)
-      view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy }
+      if (logX || logY) {
+        const ax = panAxis(drag.shown.xMin, drag.shown.xMax, -(px - drag.start[0]) / W, logX)
+        const ay = panAxis(drag.shown.yMin, drag.shown.yMax, (py - drag.start[1]) / H, logY)
+        view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] }
+      } else {
+        const dx = (px - drag.start[0]) / W * (drag.shown.xMax - drag.shown.xMin)
+        const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin)
+        view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy }
+      }
       viewChanged()
     } else if (drag.kind === 'pinch' && pointers.size === 2 && !C.lockView) {
       const [a, b] = [...pointers.values()]
@@ -1557,6 +1949,7 @@ export function graphRuntime(P, G, G3, config) {
         best = horiz ? { d, px, py: sy(val), x: u, y: val, color: e.color } : { d, px: sx(val), py, x: val, y: u, color: e.color }
       }
     }
+    if (!best && dataHits.length) best = dataNear(px, py)
     const had = !!hover
     hover = best
     canvas.style.cursor = best ? 'crosshair' : C.lockView ? 'default' : 'grab'

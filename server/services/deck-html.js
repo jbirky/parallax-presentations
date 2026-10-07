@@ -6420,7 +6420,7 @@ function createMathParser() {
     const dims3 = !!(opts && opts.dims === 3);
     const RES = dims3 ? RESERVED_3D : RESERVED;
     const onlyRes = (set, names) => [...set].every((v) => !RES.includes(v) || names.includes(v));
-    const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
+    const items = (expressions || []).map((e) => e && e.data && typeof e.data === "object" ? { id: e.id, text: "", kind: "data" } : { id: e.id, text: String(e.text || "") });
     const extras = /* @__PURE__ */ new Map();
     if (dims3) (expressions || []).forEach((e, i) => {
       const colorBy = e.surface && e.surface.color === "function" ? String(e.surface.colorBy || "").trim() : "";
@@ -6454,7 +6454,7 @@ function createMathParser() {
     }
     const userFns = new Set(Object.keys(fns));
     for (const item of items) {
-      if (item.kind === "error" || item.field) continue;
+      if (item.kind === "error" || item.kind === "data" || item.field) continue;
       if (!item.text.trim()) {
         item.kind = "empty";
         continue;
@@ -6885,6 +6885,9 @@ function graphRuntime(P, G2, G3, config) {
   function setConfig(next, keepState) {
     C2 = next;
     theme = THEMES[C2.theme] || THEMES.light;
+    logX = C2.xScale === "log" && C2.dims !== 3;
+    logY = C2.yScale === "log" && C2.dims !== 3;
+    dataStyles = /* @__PURE__ */ new Map();
     analysis = P.analyze(C2.expressions || [], { dims: C2.dims });
     const kept = values;
     values = {};
@@ -6895,6 +6898,7 @@ function graphRuntime(P, G2, G3, config) {
       view = copyView(C2.view);
       cam = copyCam(C2.camera);
     }
+    if (logX || logY) view = logView(view);
     if (!keepState) clicks = [];
     geo3Key = "";
     fieldGeo = null;
@@ -6908,10 +6912,17 @@ function graphRuntime(P, G2, G3, config) {
     request();
   }
   function shown() {
+    if (logX || logY) return logView(view);
     if (C2.equalScale === false || !W2 || !H2) return view;
     const half2 = (view.xMax - view.xMin) * H2 / W2 / 2;
     const mid = (view.yMin + view.yMax) / 2;
     return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half2, yMax: mid + half2 };
+  }
+  function logView(v) {
+    const fix = (lo, hi) => lo > 0 && hi > lo ? [lo, hi] : hi > 0 ? [hi / 1e3, hi] : [0.1, 100];
+    const [xMin, xMax] = logX ? fix(v.xMin, v.xMax) : [v.xMin, v.xMax];
+    const [yMin, yMax] = logY ? fix(v.yMin, v.yMax) : [v.yMin, v.yMax];
+    return { xMin, xMax, yMin, yMax };
   }
   function exprOf(it) {
     return (C2.expressions || []).find((e) => e.id === it.id) || {};
@@ -6952,12 +6963,31 @@ function graphRuntime(P, G2, G3, config) {
     const base3 = i < 0 ? name : name.slice(0, i);
     return { base: greek[base3] || base3, sub: i < 0 ? "" : name.slice(i + 1) };
   }
-  let X0, X1, Y0, Y1;
-  const sx = (x) => (x - X0) / (X1 - X0) * W2;
-  const sy = (y) => H2 - (y - Y0) / (Y1 - Y0) * H2;
-  const wx = (px) => X0 + px / W2 * (X1 - X0);
-  const wy = (py) => Y0 + (H2 - py) / H2 * (Y1 - Y0);
+  let X0, X1, Y0, Y1, TX0, TX1, TY0, TY1;
+  let logX = false, logY = false;
+  const Tx = (v) => logX ? v > 0 ? Math.log10(v) : -Infinity : v;
+  const Ty = (v) => logY ? v > 0 ? Math.log10(v) : -Infinity : v;
+  const sx = (x) => (Tx(x) - TX0) / (TX1 - TX0) * W2;
+  const sy = (y) => H2 - (Ty(y) - TY0) / (TY1 - TY0) * H2;
+  const wx = (px) => {
+    const t = TX0 + px / W2 * (TX1 - TX0);
+    return logX ? Math.pow(10, t) : t;
+  };
+  const wy = (py) => {
+    const t = TY0 + (H2 - py) / H2 * (TY1 - TY0);
+    return logY ? Math.pow(10, t) : t;
+  };
   const clampPx = (v) => v > 1e5 ? 1e5 : v < -1e5 ? -1e5 : v;
+  function setFrame(v) {
+    X0 = v.xMin;
+    X1 = v.xMax;
+    Y0 = v.yMin;
+    Y1 = v.yMax;
+    TX0 = Tx(X0);
+    TX1 = Tx(X1);
+    TY0 = Ty(Y0);
+    TY1 = Ty(Y1);
+  }
   function env() {
     const e = P.paramValues(analysis, values);
     e.x = 0;
@@ -6973,11 +7003,7 @@ function graphRuntime(P, G2, G3, config) {
       snapshot();
       return;
     }
-    const v = shown();
-    X0 = v.xMin;
-    X1 = v.xMax;
-    Y0 = v.yMin;
-    Y1 = v.yMax;
+    setFrame(shown());
     ctx.clearRect(0, 0, W2, H2);
     if (C2.background && C2.background !== "transparent") {
       ctx.fillStyle = C2.background;
@@ -7009,6 +7035,8 @@ function graphRuntime(P, G2, G3, config) {
     };
     each2(["region"], (it) => drawRegion(it, E));
     fieldsDo(() => drawFieldMarks(fg, E));
+    dataHits = [];
+    each2(["data"], (it) => drawData(it));
     each2(["explicit", "function", "polar", "parametric", "implicit"], (it) => {
       if (it.kind === "explicit" || it.kind === "function" && it.graph) strokeRuns(explicitRuns(it.f, E, it.axis || "y"), exprOf(it));
       else if (it.kind === "polar") strokeRuns(curveRuns(it, E, "theta"), exprOf(it));
@@ -7018,6 +7046,7 @@ function graphRuntime(P, G2, G3, config) {
     fieldsDo(() => drawFieldPaths(fg, E));
     axisNumbers(ticks);
     axisLabels();
+    fieldsDo(() => drawDataKeys(items));
     each2(["point"], (it) => drawPoint(it, E));
     fieldsDo(() => drawFieldPoints(fg, E));
     fieldsDo(() => drawMoving(fg));
@@ -7298,25 +7327,62 @@ function graphRuntime(P, G2, G3, config) {
   function spinning() {
     return is3d() && C2.spin && !C2.print && !C2.editor && !reduceMotion && !(drag && drag.kind === "turn");
   }
+  function linearTicks(lo, hi, length, forced) {
+    const t = forced || niceStep((hi - lo) * 90 / length);
+    return {
+      step: t,
+      majors: ticksBetween(lo, hi, t.step),
+      minors: ticksBetween(lo, hi, t.step / t.minor),
+      label: (v) => tickLabel(v, t.step),
+      zero: (v) => Math.abs(v) < t.step * 1e-6
+    };
+  }
+  const SUPERSCRIPT = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+  function logLabel(v) {
+    const k = Math.floor(Math.log10(v) + 1e-9);
+    const m = Math.round(v / Math.pow(10, k));
+    if (k >= -3 && k <= 3) return String(parseFloat(v.toPrecision(6)));
+    const power = "10" + String(k).split("").map((c) => SUPERSCRIPT[c]).join("");
+    return m === 1 ? power : m + "×" + power;
+  }
+  function logTicks(lo, hi, length) {
+    const a = Math.log10(lo), b = Math.log10(hi);
+    if (b - a < 0.6) return linearTicks(lo, hi, length);
+    const perDecade = length / (b - a);
+    const every = perDecade >= 40 ? 1 : Math.ceil(40 / perDecade);
+    const mantissas = perDecade >= 360 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : perDecade >= 180 ? [1, 2, 5] : [1];
+    const between = perDecade >= 60 ? [2, 3, 4, 5, 6, 7, 8, 9].filter((m) => !mantissas.includes(m)) : [];
+    const majors = [], minors = [];
+    for (let k = Math.floor(a); k <= Math.ceil(b) && majors.length + minors.length < 600; k++) {
+      const p = Math.pow(10, k);
+      for (const m of mantissas) {
+        const v = m * p;
+        if (v >= lo && v <= hi && (m > 1 || (k % every + every) % every === 0)) majors.push(v);
+      }
+      for (const m of between) {
+        const v = m * p;
+        if (v >= lo && v <= hi) minors.push(v);
+      }
+    }
+    return { majors, minors, label: logLabel, zero: () => false };
+  }
   function gridAndAxes() {
-    const px = 90;
-    const tx = niceStep((X1 - X0) * px / W2);
-    const ty = C2.equalScale === false ? niceStep((Y1 - Y0) * px / H2) : tx;
+    const xt = logX ? logTicks(X0, X1, W2) : linearTicks(X0, X1, W2);
+    const yt = logY ? logTicks(Y0, Y1, H2) : C2.equalScale === false || logX ? linearTicks(Y0, Y1, H2) : linearTicks(Y0, Y1, H2, xt.step);
     const line = (x0, y0, x1, y1) => {
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
     };
     if (C2.grid !== false) {
       ctx.lineWidth = 1;
-      for (const [t, major] of [[tx.step / tx.minor, false], [tx.step, true]]) {
+      for (const major of [false, true]) {
         ctx.beginPath();
         ctx.strokeStyle = major ? theme.major : theme.minor;
-        for (const v of ticksBetween(X0, X1, t)) {
+        for (const v of major ? xt.majors : xt.minors) {
           const p = Math.round(sx(v)) + 0.5;
           line(p, 0, p, H2);
         }
-        const u = major ? ty.step : ty.step / ty.minor;
-        for (const v of ticksBetween(Y0, Y1, u)) {
+        for (const v of major ? yt.majors : yt.minors) {
           const p = Math.round(sy(v)) + 0.5;
           line(0, p, W2, p);
         }
@@ -7327,17 +7393,19 @@ function graphRuntime(P, G2, G3, config) {
       ctx.beginPath();
       ctx.strokeStyle = theme.axis;
       ctx.lineWidth = 1.25;
-      if (X0 <= 0 && X1 >= 0) {
+      if (logX) line(0.5, 0, 0.5, H2);
+      else if (X0 <= 0 && X1 >= 0) {
         const p = Math.round(sx(0)) + 0.5;
         line(p, 0, p, H2);
       }
-      if (Y0 <= 0 && Y1 >= 0) {
+      if (logY) line(0, H2 - 0.5, W2, H2 - 0.5);
+      else if (Y0 <= 0 && Y1 >= 0) {
         const p = Math.round(sy(0)) + 0.5;
         line(0, p, W2, p);
       }
       ctx.stroke();
     }
-    return { tx, ty };
+    return { xt, yt };
   }
   function haloText(text, x, y, align, baseline, font, color2) {
     ctx.font = font;
@@ -7350,30 +7418,30 @@ function graphRuntime(P, G2, G3, config) {
     ctx.fillStyle = color2 || theme.text;
     ctx.fillText(text, x, y);
   }
-  function axisNumbers({ tx, ty }) {
+  function axisNumbers({ xt, yt }) {
     if (C2.axisNumbers === false || C2.axes === false) return;
     const font = "12px " + FONT;
     const ay = Math.min(Math.max(sy(0), 2), H2 - 18);
     const ax = Math.min(Math.max(sx(0), 30), W2 - 4);
     const originShown = X0 <= 0 && X1 >= 0 && Y0 <= 0 && Y1 >= 0;
-    for (const v of ticksBetween(X0, X1, tx.step)) {
-      if (Math.abs(v) < tx.step * 1e-6) continue;
+    for (const v of xt.majors) {
+      if (xt.zero(v)) continue;
       const p = sx(v);
       if (p < 12 || p > W2 - 12) continue;
-      haloText(tickLabel(v, tx.step), p, ay + 4, "center", "top", font);
+      haloText(xt.label(v), p, ay + 4, "center", "top", font);
     }
-    for (const v of ticksBetween(Y0, Y1, ty.step)) {
-      if (Math.abs(v) < ty.step * 1e-6) continue;
+    for (const v of yt.majors) {
+      if (yt.zero(v)) continue;
       const p = sy(v);
       if (p < 10 || p > H2 - 10) continue;
-      haloText(tickLabel(v, ty.step), ax - 5, p, "right", "middle", font);
+      haloText(yt.label(v), ax - 5, p, "right", "middle", font);
     }
     if (originShown) haloText("0", sx(0) - 5, sy(0) + 4, "right", "top", font);
   }
   function axisLabels() {
     const font = "italic 16px " + MATH_FONT2;
     if (C2.xLabel) haloText(C2.xLabel, W2 - 8, Math.min(Math.max(sy(0), 20), H2 - 24) - 6, "right", "bottom", font);
-    if (C2.yLabel) haloText(C2.yLabel, Math.min(Math.max(sx(0), 8), W2 - 40) + 8, 8, "left", "top", font);
+    if (C2.yLabel) haloText(C2.yLabel, logX ? 40 : Math.min(Math.max(sx(0), 8), W2 - 40) + 8, 8, "left", "top", font);
   }
   function styleFor(e) {
     ctx.strokeStyle = e.color || "#c74440";
@@ -7686,22 +7754,336 @@ function graphRuntime(P, G2, G3, config) {
     ctx.arc(px, py, 4.5, 0, Math.PI * 2);
     ctx.fillStyle = color2;
     ctx.fill();
-    const text = "(" + fmt(x) + ", " + fmt(y) + ")";
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = theme.halo;
+    ctx.stroke();
+    const lines = hover.lines || ["(" + fmt(x) + ", " + fmt(y) + ")"];
     ctx.font = "12px " + FONT;
-    const w = ctx.measureText(text).width + 12;
-    const bx = Math.min(Math.max(px + 10, 2), W2 - w - 2), by = Math.max(py - 30, 2);
+    const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 12;
+    const h = 8 + lines.length * 15;
+    const bx = Math.min(Math.max(px + 10, 2), W2 - w - 2);
+    const by = py - h - 8 >= 2 ? py - h - 8 : Math.min(py + 10, H2 - h - 2);
     ctx.fillStyle = theme.panel;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.rect(bx, by, w, 22);
+    ctx.rect(bx, by, w, h);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = theme.panelText;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, bx + 6, by + 11);
+    lines.forEach((t, k) => {
+      ctx.font = (k === 0 && hover.titled ? "600 " : "") + "12px " + FONT;
+      ctx.fillText(t, bx + 6, by + 11.5 + k * 15);
+    });
   }
+  const DATA_COLORS = {
+    light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+    dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"]
+  };
+  const OTHER_COLOR = "#898781";
+  let dataStyles = /* @__PURE__ */ new Map();
+  let dataHits = [];
+  const isNum = (v) => typeof v === "number" && isFinite(v);
+  function extent(values2) {
+    let lo = Infinity, hi = -Infinity;
+    for (const v of values2) {
+      if (isNum(v)) {
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+    }
+    return lo <= hi ? [lo, hi] : null;
+  }
+  const rgb = (c) => "rgb(" + c.map((v) => Math.round(v * 255)).join(",") + ")";
+  function dataStyle(it, e, d) {
+    const spec = e.data || {};
+    const kept = dataStyles.get(it.id);
+    if (kept && kept.d === d && kept.e === e && kept.theme === theme) return kept.style;
+    let style;
+    const values2 = Array.isArray(d.color) ? d.color : null;
+    if (!values2) style = { kind: "one", color: e.color || DATA_COLORS[C2.theme === "dark" ? "dark" : "light"][0] };
+    else if (values2.every((v) => v == null || isNum(v)) && values2.some(isNum)) {
+      const [lo, hi] = extent(values2);
+      const span = hi > lo ? hi - lo : 1;
+      style = { kind: "scale", title: spec.colorBy, min: lo, max: hi, colorOf: (i) => isNum(values2[i]) ? rgb(G3.colormap((values2[i] - lo) / span, "viridis")) : OTHER_COLOR };
+    } else {
+      const counts = /* @__PURE__ */ new Map();
+      for (const v of values2) {
+        const k = v == null ? "" : String(v);
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+      const palette = DATA_COLORS[C2.theme === "dark" ? "dark" : "light"];
+      const order = [...counts.entries()].filter(([k]) => k !== "").sort((a, b) => b[1] - a[1]);
+      const colorOf = /* @__PURE__ */ new Map();
+      const cats = order.slice(0, palette.length).map(([name, count], k) => {
+        colorOf.set(name, palette[k]);
+        return { name, count, color: palette[k] };
+      });
+      const other = values2.length - cats.reduce((n, c) => n + c.count, 0);
+      style = { kind: "cats", title: spec.colorBy, cats, other, colorOf: (i) => colorOf.get(values2[i] == null ? "" : String(values2[i])) || OTHER_COLOR };
+    }
+    dataStyles.set(it.id, { d, e, theme, style });
+    return style;
+  }
+  function radiusOf(spec, d) {
+    const base3 = clamp4(num9(spec.size, 3), 0.5, 20);
+    if (!Array.isArray(d.size)) return () => base3;
+    const ext = extent(d.size);
+    if (!ext) return () => base3;
+    const [lo, hi] = ext;
+    const span = hi > lo ? hi - lo : 1;
+    return (i) => isNum(d.size[i]) ? 2 + 8 * Math.sqrt(Math.max(0, (d.size[i] - lo) / span)) : base3;
+  }
+  function drawData(it) {
+    const e = exprOf(it);
+    const spec = e.data || {};
+    const d = (C2.data || {})[it.id];
+    if (!d || !Array.isArray(d.x) || !Array.isArray(d.y)) return;
+    const n = Math.min(d.x.length, d.y.length);
+    const mark = spec.mark === "line" || spec.mark === "bars" ? spec.mark : "points";
+    const style = dataStyle(it, e, d);
+    const color2 = style.kind === "one" ? () => style.color : style.colorOf;
+    const radius = radiusOf(spec, d);
+    const alpha2 = clamp4(num9(spec.opacity, mark === "bars" ? 0.85 : 0.85), 0.05, 1);
+    const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style };
+    const pxOf = (i) => sx(+d.x[i]), pyOf = (i) => sy(+d.y[i]);
+    const onCanvas = (px, py, m) => px >= -m && px <= W2 + m && py >= -m && py <= H2 + m;
+    if (Array.isArray(d.xErr) || Array.isArray(d.yErr)) {
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = alpha2 * 0.6;
+      const byColor = /* @__PURE__ */ new Map();
+      for (let i = 0; i < n; i++) {
+        const x = +d.x[i], y = +d.y[i];
+        if (!isFinite(x) || !isFinite(y)) continue;
+        const c = color2(i);
+        if (!byColor.has(c)) byColor.set(c, new Path2D());
+        const path = byColor.get(c);
+        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0;
+        const px = sx(x), py = sy(y);
+        if (ex > 0) {
+          const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex));
+          if (isFinite(py)) {
+            path.moveTo(isFinite(a) ? a : -1e5, py);
+            path.lineTo(b, py);
+          }
+        }
+        if (ey > 0) {
+          const a = clampPx(sy(y - ey)), b = clampPx(sy(y + ey));
+          if (isFinite(px)) {
+            path.moveTo(px, isFinite(a) ? a : 1e5);
+            path.lineTo(px, b);
+          }
+        }
+      }
+      for (const [c, path] of byColor) {
+        ctx.strokeStyle = c;
+        ctx.stroke(path);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (mark === "bars") {
+      const base3 = logY ? H2 : clamp4(sy(0), 0, H2);
+      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b]);
+      ctx.globalAlpha = alpha2;
+      order.forEach((i, k) => {
+        const top = pyOf(i);
+        if (!isFinite(top)) return;
+        let left, right;
+        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) {
+          left = pxOf(i);
+          right = sx(+d.x2[i]);
+        } else {
+          const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null;
+          const here = pxOf(i);
+          const half2 = Math.min(prev === null ? Infinity : here - prev, next === null ? Infinity : next - here) / 2;
+          const w = isFinite(half2) ? half2 : 6;
+          left = here - w * 0.9;
+          right = here + w * 0.9;
+        }
+        if (!isFinite(left) || !isFinite(right)) return;
+        const l = Math.max(Math.min(left, right), -2), r = Math.min(Math.max(left, right), W2 + 2);
+        if (r - l < 0.5) return;
+        ctx.fillStyle = color2(i);
+        ctx.fillRect(l + 0.5, Math.min(top, base3), Math.max(0.5, r - l - 1), Math.abs(base3 - top));
+        const mid = (l + r) / 2;
+        if (onCanvas(mid, top, 0)) {
+          hit.xs[hit.n] = mid;
+          hit.ys[hit.n] = top;
+          hit.rows[hit.n++] = i;
+        }
+      });
+      ctx.globalAlpha = 1;
+      dataHits.push(hit);
+      return;
+    }
+    if (mark === "line") {
+      const paths2 = /* @__PURE__ */ new Map();
+      const last2 = /* @__PURE__ */ new Map();
+      for (let i = 0; i < n; i++) {
+        const c = color2(i);
+        const px = pxOf(i), py = pyOf(i);
+        if (!paths2.has(c)) paths2.set(c, new Path2D());
+        if (!isFinite(px) || !isFinite(py)) {
+          last2.delete(c);
+          continue;
+        }
+        const cx = clampPx(px), cy = clampPx(py);
+        if (last2.has(c)) paths2.get(c).lineTo(cx, cy);
+        else paths2.get(c).moveTo(cx, cy);
+        last2.set(c, true);
+        if (onCanvas(px, py, 0)) {
+          hit.xs[hit.n] = px;
+          hit.ys[hit.n] = py;
+          hit.rows[hit.n++] = i;
+        }
+      }
+      ctx.lineWidth = clamp4(num9(e.width, 2), 0.5, 12);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.setLineDash(e.style === "dashed" ? [7, 5] : e.style === "dotted" ? [0.01, 5] : []);
+      ctx.globalAlpha = alpha2;
+      for (const [c, path] of paths2) {
+        ctx.strokeStyle = c;
+        ctx.stroke(path);
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      dataHits.push(hit);
+      return;
+    }
+    const paths = /* @__PURE__ */ new Map();
+    for (let i = 0; i < n; i++) {
+      const px = pxOf(i), py = pyOf(i);
+      if (!isFinite(px) || !isFinite(py)) continue;
+      const r = radius(i);
+      if (!onCanvas(px, py, r)) continue;
+      const c = color2(i);
+      if (!paths.has(c)) paths.set(c, new Path2D());
+      const path = paths.get(c);
+      path.moveTo(px + r, py);
+      path.arc(px, py, r, 0, Math.PI * 2);
+      hit.xs[hit.n] = px;
+      hit.ys[hit.n] = py;
+      hit.rows[hit.n++] = i;
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = theme.halo;
+    for (const [c, path] of paths) {
+      ctx.globalAlpha = 1;
+      ctx.stroke(path);
+      ctx.globalAlpha = alpha2;
+      ctx.fillStyle = c;
+      ctx.fill(path);
+    }
+    ctx.globalAlpha = 1;
+    dataHits.push(hit);
+  }
+  function drawDataKeys(items) {
+    let top = reset.style.display === "block" ? 44 : 8;
+    const notes = [], cut = [];
+    for (const it of items) {
+      if (it.kind !== "data") continue;
+      const e = exprOf(it);
+      const spec = e.data || {};
+      const d = (C2.data || {})[it.id];
+      if (!d || !Array.isArray(d.x)) {
+        const name = spec.dataset ? "“" + spec.dataset + "”" : "this dataset";
+        notes.push(d && d.error ? d.error : d && d.loading ? "Loading " + name + "…" : "The data from " + name + " isn’t available here");
+        continue;
+      }
+      if (isNum(d.total) && d.total > d.x.length) cut.push("Showing " + d.x.length.toLocaleString() + " of " + d.total.toLocaleString() + " rows of " + (spec.dataset || "data"));
+      const style = dataStyle(it, e, d);
+      if (style.kind === "one") continue;
+      top = style.kind === "cats" ? catKey(style, top) : scaleKey(style, top);
+    }
+    notes.forEach((text, k) => haloText(text, W2 / 2, H2 / 2 + (k - (notes.length - 1) / 2) * 20, "center", "middle", "14px " + FONT, theme.text));
+    cut.forEach((text, k) => haloText(text, W2 - 8, H2 - 44 - k * 16, "right", "bottom", "12px " + FONT, theme.text));
+  }
+  function keyBox(x, y, w, h) {
+    ctx.fillStyle = theme.panel;
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.fill();
+    ctx.stroke();
+  }
+  function catKey(style, top) {
+    const rows2 = style.cats.map((c) => [c.name, c.color]).concat(style.other ? [["Other", OTHER_COLOR]] : []);
+    ctx.font = "12px " + FONT;
+    const title = style.title || "";
+    const w = Math.min(W2 * 0.45, Math.max(ctx.measureText(title).width, ...rows2.map((r) => ctx.measureText(r[0]).width + 18)) + 16);
+    const h = 10 + (title ? 16 : 0) + rows2.length * 16;
+    const x = W2 - w - 8;
+    keyBox(x, top, w, h);
+    let y = top + 6;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    if (title) {
+      ctx.fillStyle = theme.panelText;
+      ctx.font = "600 12px " + FONT;
+      ctx.fillText(title, x + 8, y, w - 16);
+      y += 16;
+      ctx.font = "12px " + FONT;
+    }
+    for (const [name, c] of rows2) {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(x + 12, y + 7, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.panelText;
+      ctx.fillText(name || "(none)", x + 22, y, w - 30);
+      y += 16;
+    }
+    return top + h + 8;
+  }
+  function scaleKey(style, top) {
+    const w = 150, h = 46;
+    const x = W2 - w - 8;
+    keyBox(x, top, w, h);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = theme.panelText;
+    ctx.font = "600 12px " + FONT;
+    ctx.fillText(style.title || "", x + 8, top + 6, w - 16);
+    const grad = ctx.createLinearGradient(x + 8, 0, x + w - 8, 0);
+    for (let k = 0; k <= 10; k++) grad.addColorStop(k / 10, rgb(G3.colormap(k / 10, "viridis")));
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + 8, top + 22, w - 16, 8);
+    ctx.font = "11px " + FONT;
+    ctx.fillStyle = theme.panelText;
+    ctx.fillText(fmt(style.min), x + 8, top + 32);
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(style.max), x + w - 8, top + 32);
+    return top + h + 8;
+  }
+  function dataNear(px, py) {
+    let best = null;
+    for (const hit2 of dataHits) {
+      for (let k2 = 0; k2 < hit2.n; k2++) {
+        const d2 = (hit2.xs[k2] - px) * (hit2.xs[k2] - px) + (hit2.ys[k2] - py) * (hit2.ys[k2] - py);
+        if (d2 < 64 && (!best || d2 < best.d2)) best = { d2, hit: hit2, k: k2 };
+      }
+    }
+    if (!best) return null;
+    const { hit, k } = best;
+    const row = hit.rows[k];
+    const e = exprOf(hit.it);
+    const spec = e.data || {};
+    const d = (C2.data || {})[hit.it.id] || {};
+    const lines = [];
+    if (Array.isArray(d.label) && d.label[row] != null) lines.push(String(d.label[row]));
+    lines.push((spec.x || "x") + ": " + fmtValue2(d.x[row]));
+    if (spec.mark === "bars" && Array.isArray(d.x2)) lines[lines.length - 1] += " to " + fmtValue2(d.x2[row]);
+    lines.push((spec.y || "y") + ": " + fmtValue2(d.y[row]));
+    if (Array.isArray(d.color) && spec.colorBy) lines.push(spec.colorBy + ": " + fmtValue2(d.color[row]));
+    if (Array.isArray(d.size) && spec.sizeBy && spec.sizeBy !== spec.colorBy) lines.push(spec.sizeBy + ": " + fmtValue2(d.size[row]));
+    const color2 = hit.style.kind === "one" ? hit.style.color : hit.style.colorOf(row);
+    return { px: hit.xs[k], py: hit.ys[k], color: color2, lines, titled: Array.isArray(d.label) && d.label[row] != null };
+  }
+  const fmtValue2 = (v) => v == null ? "—" : isNum(v) ? fmt(v) : String(v);
   const FIELD_DEFAULTS = {
     vector: { draw: "arrows", density: "normal", length: "scaled", colorBy: "magnitude", shade: "none", equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
     system: { draw: "streamlines", density: "normal", length: "scaled", colorBy: "line", shade: "none", equilibria: true, separatrices: true, nullclines: false, traceDet: false, clicks: true },
@@ -8411,12 +8793,37 @@ function graphRuntime(P, G2, G3, config) {
   }
   let viewTimer = 0;
   function viewChanged() {
+    hover = null;
     styleReset();
     request();
     clearTimeout(viewTimer);
     viewTimer = setTimeout(() => postEditor(is3d() ? { type: "view", view: copyView(view), camera: { turn: Math.round(cam.turn * 10) / 10, tilt: Math.round(cam.tilt * 10) / 10 } } : { type: "view", view: copyView(view) }), 200);
   }
+  function zoomAxis(lo, hi, frac, factor, log) {
+    const a = log ? Math.log10(lo) : lo, b = log ? Math.log10(hi) : hi;
+    const c = a + frac * (b - a);
+    const na = c - (c - a) * factor, nb = c + (b - c) * factor;
+    if (!isFinite(na) || !isFinite(nb) || !(nb > na)) return null;
+    if (log ? nb - na < 1e-6 || nb - na > 600 || na < -300 || nb > 300 : nb - na > 1e12 || nb - na < 1e-12 * Math.max(1, Math.abs(c))) return null;
+    return log ? [Math.pow(10, na), Math.pow(10, nb)] : [na, nb];
+  }
+  function panAxis(lo, hi, frac, log) {
+    if (!log) {
+      const d2 = frac * (hi - lo);
+      return [lo + d2, hi + d2];
+    }
+    const d = frac * (Math.log10(hi) - Math.log10(lo));
+    return [lo * Math.pow(10, d), hi * Math.pow(10, d)];
+  }
   function zoom(factor, px, py) {
+    if (logX || logY) {
+      const v2 = shown();
+      const ax = zoomAxis(v2.xMin, v2.xMax, px / W2, factor, logX), ay = zoomAxis(v2.yMin, v2.yMax, (H2 - py) / H2, factor, logY);
+      if (!ax || !ay) return;
+      view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] };
+      viewChanged();
+      return;
+    }
     const v = shown();
     const cx = v.xMin + px / W2 * (v.xMax - v.xMin);
     const cy = v.yMin + (H2 - py) / H2 * (v.yMax - v.yMin);
@@ -8496,18 +8903,23 @@ function graphRuntime(P, G2, G3, config) {
       return;
     }
     if (drag.kind === "point") {
-      const v = shown();
-      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, v.xMin + px / W2 * (v.xMax - v.xMin));
-      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, v.yMin + (H2 - py) / H2 * (v.yMax - v.yMin));
+      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, wx(px));
+      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, wy(py));
       if (drag.it.dragX) delete playing[drag.it.dragX];
       if (drag.it.dragY) delete playing[drag.it.dragY];
       syncPanel();
       request();
     } else if (drag.kind === "pan") {
       if (Math.hypot(px - drag.start[0], py - drag.start[1]) > 4) drag.moved = true;
-      const dx = (px - drag.start[0]) / W2 * (drag.shown.xMax - drag.shown.xMin);
-      const dy = (py - drag.start[1]) / H2 * (drag.shown.yMax - drag.shown.yMin);
-      view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
+      if (logX || logY) {
+        const ax = panAxis(drag.shown.xMin, drag.shown.xMax, -(px - drag.start[0]) / W2, logX);
+        const ay = panAxis(drag.shown.yMin, drag.shown.yMax, (py - drag.start[1]) / H2, logY);
+        view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] };
+      } else {
+        const dx = (px - drag.start[0]) / W2 * (drag.shown.xMax - drag.shown.xMin);
+        const dy = (py - drag.start[1]) / H2 * (drag.shown.yMax - drag.shown.yMin);
+        view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
+      }
       viewChanged();
     } else if (drag.kind === "pinch" && pointers.size === 2 && !C2.lockView) {
       const [a, b] = [...pointers.values()];
@@ -8597,6 +9009,7 @@ function graphRuntime(P, G2, G3, config) {
         best = horiz ? { d, px, py: sy(val), x: u, y: val, color: e.color } : { d, px: sx(val), py, x: val, y: u, color: e.color };
       }
     }
+    if (!best && dataHits.length) best = dataNear(px, py);
     const had = !!hover;
     hover = best;
     canvas.style.cursor = best ? "crosshair" : C2.lockView ? "default" : "grab";
@@ -9686,7 +10099,7 @@ var GRAPH_COLORS = {
   light: ["#c74440", "#2d70b3", "#388c46", "#6042a6", "#fa7e19", "#000000"],
   dark: ["#ff6b64", "#5aa9ff", "#4cc36a", "#b18cff", "#ffa447", "#ffffff"]
 };
-var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin", "colorBar"];
+var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin", "colorBar", "xScale", "yScale"];
 var DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 };
 var DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 };
 var DEFAULT_CAMERA = { turn: 35, tilt: 25 };
@@ -9730,28 +10143,41 @@ function defaultGraph3d(dark) {
     spin: false
   };
 }
-function validView(v, dims3) {
+function logRange(lo, hi) {
+  if (lo > 0 && hi > lo) return [lo, hi];
+  if (hi > 0) return [hi / 1e3, hi];
+  return [0.1, 100];
+}
+function validView(v, dims3, { xLog = false, yLog = false } = {}) {
   const base3 = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW;
   const n = (k) => v && isFinite(+v[k]) ? +v[k] : base3[k];
   let { xMin, xMax, yMin, yMax } = { xMin: n("xMin"), xMax: n("xMax"), yMin: n("yMin"), yMax: n("yMax") };
   if (!(xMax > xMin)) ({ xMin, xMax } = base3);
   if (!(yMax > yMin)) ({ yMin, yMax } = base3);
+  if (xLog && !dims3) [xMin, xMax] = logRange(xMin, xMax);
+  if (yLog && !dims3) [yMin, yMax] = logRange(yMin, yMax);
   if (!dims3) return { xMin, xMax, yMin, yMax };
   let { zMin, zMax } = { zMin: n("zMin"), zMax: n("zMax") };
   if (!(zMax > zMin)) ({ zMin, zMax } = base3);
   return { xMin, xMax, yMin, yMax, zMin, zMax };
 }
-function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false } = {}) {
+function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data } = {}) {
   const config = {};
   for (const key of GRAPH_FIELDS) if (el[key] !== void 0) config[key] = el[key];
   config.expressions = Array.isArray(el.expressions) ? el.expressions : [];
-  config.view = validView(el.view, el.dims === 3);
+  config.view = validView(el.view, el.dims === 3, { xLog: el.xScale === "log", yLog: el.yScale === "log" });
+  const rows = data !== void 0 ? data : dataSource && hasDataLines(el) ? dataSource(el) : null;
+  if (rows) config.data = rows;
   if (el.dims === 3) {
     const c = el.camera || {};
     config.camera = { turn: isFinite(+c.turn) ? +c.turn : DEFAULT_CAMERA.turn, tilt: isFinite(+c.tilt) ? Math.max(-89, Math.min(89, +c.tilt)) : DEFAULT_CAMERA.tilt };
   }
   return { ...config, snapshotKey, print, editor, showAll: showAll || print || editor };
 }
+function hasDataLines(el) {
+  return Array.isArray(el.expressions) && el.expressions.some((e) => e && e.data && typeof e.data === "object");
+}
+var dataSource = null;
 var pageCode = null;
 function graphPageHtml(el, opts = {}) {
   const config = graphConfig(el, opts);

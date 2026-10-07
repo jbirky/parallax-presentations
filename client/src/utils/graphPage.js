@@ -17,8 +17,9 @@ export const GRAPH_COLORS = {
 }
 
 // What a graph element keeps, besides its place on the slide. dims 3 makes
-// it a 3D graph, with a camera (turn, tilt) and maybe a spin when presented
-export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'zLabel', 'theme', 'background', 'showSliders', 'lockView', 'dims', 'camera', 'spin', 'colorBar']
+// it a 3D graph, with a camera (turn, tilt) and maybe a spin when presented.
+// xScale and yScale are 'linear' (or missing) or 'log', for a 2D graph
+export const GRAPH_FIELDS = ['expressions', 'view', 'equalScale', 'grid', 'axes', 'axisNumbers', 'xLabel', 'yLabel', 'zLabel', 'theme', 'background', 'showSliders', 'lockView', 'dims', 'camera', 'spin', 'colorBar', 'xScale', 'yScale']
 
 export const DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 }
 export const DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 }
@@ -68,12 +69,22 @@ export function defaultGraph3d(dark) {
   }
 }
 
-function validView(v, dims3) {
+// A log axis's range is positive: what isn't keeps its top (a thousandth
+// of it at the bottom), or else becomes 0.1 to 100
+function logRange(lo, hi) {
+  if (lo > 0 && hi > lo) return [lo, hi]
+  if (hi > 0) return [hi / 1000, hi]
+  return [0.1, 100]
+}
+
+function validView(v, dims3, { xLog = false, yLog = false } = {}) {
   const base = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW
   const n = k => (v && isFinite(+v[k]) ? +v[k] : base[k])
   let { xMin, xMax, yMin, yMax } = { xMin: n('xMin'), xMax: n('xMax'), yMin: n('yMin'), yMax: n('yMax') }
   if (!(xMax > xMin)) ({ xMin, xMax } = base)
   if (!(yMax > yMin)) ({ yMin, yMax } = base)
+  if (xLog && !dims3) [xMin, xMax] = logRange(xMin, xMax)
+  if (yLog && !dims3) [yMin, yMax] = logRange(yMin, yMax)
   if (!dims3) return { xMin, xMax, yMin, yMax }
   let { zMin, zMax } = { zMin: n('zMin'), zMax: n('zMax') }
   if (!(zMax > zMin)) ({ zMin, zMax } = base)
@@ -82,11 +93,15 @@ function validView(v, dims3) {
 
 // The graph as its page reads it. `showAll` draws expressions that appear
 // at a step (the editor, thumbnails and the PDF show the finished graph).
-export function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false } = {}) {
+export function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data } = {}) {
   const config = {}
   for (const key of GRAPH_FIELDS) if (el[key] !== undefined) config[key] = el[key]
   config.expressions = Array.isArray(el.expressions) ? el.expressions : []
-  config.view = validView(el.view, el.dims === 3)
+  config.view = validView(el.view, el.dims === 3, { xLog: el.xScale === 'log', yLog: el.yScale === 'log' })
+  // The rows its data lines plot, by line id: written in, since a graph's
+  // frame can't fetch them (see setGraphDataSource)
+  const rows = data !== undefined ? data : dataSource && hasDataLines(el) ? dataSource(el) : null
+  if (rows) config.data = rows
   if (el.dims === 3) {
     const c = el.camera || {}
     config.camera = { turn: isFinite(+c.turn) ? +c.turn : DEFAULT_CAMERA.turn, tilt: isFinite(+c.tilt) ? Math.max(-89, Math.min(89, +c.tilt)) : DEFAULT_CAMERA.tilt }
@@ -94,9 +109,25 @@ export function graphConfig(el, { snapshotKey = null, print = false, editor = fa
   return { ...config, snapshotKey, print, editor, showAll: showAll || print || editor }
 }
 
-// For the editor's snapshot key: a thumbnail isn't reused after a change
+// For the editor's snapshot key: a thumbnail isn't reused after a change,
+// nor once its data lines' rows have come (or changed)
 export function graphSnapshotContent(el) {
-  return JSON.stringify(GRAPH_FIELDS.map(k => el[k]))
+  const rows = dataSource && hasDataLines(el) ? dataSource(el) : null
+  const marks = rows ? Object.keys(rows).sort().map(id => [id, rows[id] && rows[id].version]) : null
+  return JSON.stringify(GRAPH_FIELDS.map(k => el[k]).concat(marks ? [marks] : []))
+}
+
+// Whether a graph plots any dataset's rows
+export function hasDataLines(el) {
+  return Array.isArray(el.expressions) && el.expressions.some(e => e && e.data && typeof e.data === 'object')
+}
+
+// Where graphs' data lines get their rows when a page is built without them:
+// the editor registers its store (graphData.js), which has fetched them; on
+// the server nothing is registered, and decks are given their rows instead
+let dataSource = null
+export function setGraphDataSource(fn) {
+  dataSource = typeof fn === 'function' ? fn : null
 }
 
 
