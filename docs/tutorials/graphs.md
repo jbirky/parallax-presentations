@@ -180,7 +180,7 @@ Under each data line, the graph says how many rows it has, or why it has none. I
 
 For an exoplanet plot, use the dataset from [Live Datasets](./live-datasets.md): `pl_orbper` across, `pl_bmasse` up, both scales **Log**, colored by `discoverymethod` and labeled by `pl_name`. Then add a curve such as `y = 0.5 x^(2/3)` over the points.
 
-Graphs show their data in the editor, in Present, and in exported HTML files and PDFs. Share links, live sessions, and decks published to GitHub or Zenodo don't carry the rows yet.
+Graphs show their data everywhere the deck goes: the editor, Present, share links, live sessions, exported HTML files and PDFs, and decks published to GitHub or Zenodo. The deck carries the columns its graphs plot, so it works offline and never waits on a source (see [Live Datasets](./live-datasets.md#data-in-presented-decks)).
 
 ## Styling
 

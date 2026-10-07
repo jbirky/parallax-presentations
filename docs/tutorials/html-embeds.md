@@ -35,3 +35,4 @@ The embedded HTML is completely self-contained. It works in present mode, export
 - HTML embeds receive `EMBED_WIDTH` and `EMBED_HEIGHT` as JavaScript globals — use them to size your canvas responsively.
 - Press the **Preview Slide** button in the right panel to test your embed in present mode without navigating through the full deck.
 - Embeds support mouse interaction in present mode — hover effects, click handlers, and scroll all work inside the iframe.
+- HTML embeds and p5 sketches can read the deck's datasets with `parallax.datasets.query("name")`, in the editor and when presented. See [Live Datasets](./live-datasets.md#datasets-in-html-p5-and-plugin-elements).

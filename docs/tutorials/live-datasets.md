@@ -2,7 +2,7 @@
 
 A live dataset comes from a web address or a TAP query instead of a file you upload. Parallax fetches it when you make it and again on the schedule you choose, so a deck that uses it keeps up with the data. Each time the data changes, Parallax keeps the new version; the last five, and any a deck holds on to, stay.
 
-Datasets reach slides through a graph's data lines (see [Graphs](./graphs.md#plotting-data)) and through plugins, with `ctx.datasets.query("name")`. Open them from the **Data** button at the top of the editor.
+Datasets reach slides through a graph's data lines (see [Graphs](./graphs.md#plotting-data)), through HTML, p5 and plugin elements, with `parallax.datasets` (see [below](#datasets-in-html-p5-and-plugin-elements)), and through plugins' own code, with `ctx.datasets.query("name")`. Open them from the **Data** button at the top of the editor.
 
 ## Making one
 
@@ -63,6 +63,38 @@ Expressions use the Graph tool's functions and constants: `sqrt`, `exp`, `ln` (n
 Unlike in a graph, a name is a whole column name, so write `*` between two names: `a * b`. A number right before a name still multiplies it, as in `2pi`. Put a column whose name has spaces or symbols in backticks: `` `mass (kg)` * 1000 ``. A missing value stays missing: `pl_bmasse * 2` is empty where `pl_bmasse` is.
 
 If a refresh drops a column a step uses, reading the dataset says which step and why, and the last good version stays in place.
+
+## Data in presented decks
+
+A presented deck carries the data its slides read: share links, live sessions, Present, exported HTML files, and decks published to GitHub or Zenodo. It works offline and never waits on a source.
+
+| Where | Which data |
+| --- | --- |
+| Share links and live sessions | The version the deck pins, or the newest, when someone opens the page |
+| Exported HTML files, GitHub and Zenodo | The data as it was when you exported or published |
+| PDF | Graphs drawn with the data the editor has |
+
+A graph carries only the columns it plots, up to 200,000 rows of a dataset. Everyone who opens a share link downloads the data in it, so trim large datasets with **Steps** (keep the columns and rows the slide needs, or bin them) before sharing.
+
+## Datasets in HTML, p5 and plugin elements
+
+HTML embeds, p5 sketches and plugins read a deck's datasets with `parallax.datasets`. Every call returns a promise:
+
+```js
+parallax.datasets.query("exoplanets", { columns: ["pl_orbper", "pl_bmasse"], limit: 1000 })
+  .then(({ columns, totalRows }) => {
+    // columns.pl_orbper and columns.pl_bmasse are arrays, one value per row
+  })
+```
+
+| Call | What it gives |
+| --- | --- |
+| `list()` | The deck's datasets: each one's `name`, `columns` and `rowCount` |
+| `schema(name)` | A dataset's columns |
+| `query(name, { columns, limit, offset })` | `{ columns, totalRows }`: the columns asked for (all of them by default), from row `offset` on |
+| `load(name)` | Resolves once the dataset can be read |
+
+A dataset is called by the name the deck links it under. Write that name in quotes in the element's code, as above, or in a plugin's settings: a presented deck carries only the datasets its elements name that way, whole, up to 200,000 rows each and 2 million values in all. Calls answer the same in the editor as in a presented deck, so what works on the canvas works in a talk. A dataset that isn't linked, or isn't named in quotes, is refused with a message saying so.
 
 ## Plans
 
