@@ -31,6 +31,8 @@ ALTER TABLE datasets ADD COLUMN IF NOT EXISTS last_error TEXT;
 ALTER TABLE datasets ADD COLUMN IF NOT EXISTS failures INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE datasets ADD COLUMN IF NOT EXISTS current_version_id UUID REFERENCES dataset_versions(id) ON DELETE SET NULL;
 ALTER TABLE datasets ADD COLUMN IF NOT EXISTS transforms JSONB NOT NULL DEFAULT '[]';
+-- The columns the transforms give, as the editor and plugins see them
+ALTER TABLE datasets ADD COLUMN IF NOT EXISTS output_columns JSONB;
 
 ALTER TABLE datasets DROP CONSTRAINT IF EXISTS datasets_source_kind_check;
 ALTER TABLE datasets ADD CONSTRAINT datasets_source_kind_check CHECK (source_kind IN ('upload', 'url', 'tap'));

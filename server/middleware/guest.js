@@ -34,6 +34,8 @@ const GUEST_ROUTES = [
   ['GET POST', /^\/api\/datasets$/],
   ['GET PATCH DELETE', /^\/api\/datasets\/[^/]+$/],
   ['GET', /^\/api\/datasets\/[^/]+\/data$/],
+  ['PUT', /^\/api\/datasets\/[^/]+\/transforms$/],
+  ['POST', /^\/api\/datasets\/[^/]+\/transforms\/preview$/],
   ['GET POST', /^\/api\/presentations\/[^/]+\/datasets$/],
   ['DELETE', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+$/],
   ['GET', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+\/data$/],

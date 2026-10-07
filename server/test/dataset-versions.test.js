@@ -56,6 +56,52 @@ describe('dataset versions', { skip }, () => {
     assert.equal(await storageUsedBytes({ query: (...a) => t.pool.query(...a) }, await t.userId(owner)), Number(all[0].n))
   })
 
+  it('runs a dataset’s transforms on every read, raw data on asking', async () => {
+    const ds = (await uploadDataset(owner, 'worlds', 'name,mass,host\r\nb,146,Peg\r\nc,0.69,Trap\r\nd,2000,HR')).body
+    const steps = [{ op: 'filter', expr: 'mass > 1' }, { op: 'compute', name: 'mass_mj', expr: 'mass / 317.83' }, { op: 'select', columns: ['name', 'mass_mj'] }]
+
+    const previewed = await t.call(owner, 'POST', `/api/datasets/${ds.id}/transforms/preview`, { transforms: steps })
+    assert.equal(previewed.status, 200, JSON.stringify(previewed.body))
+    assert.equal(previewed.body.preview.rowCount, 2)
+    assert.deepEqual((await t.call(owner, 'GET', `/api/datasets/${ds.id}`)).body.transforms, [], 'a preview saves nothing')
+
+    const saved = await t.call(owner, 'PUT', `/api/datasets/${ds.id}/transforms`, { transforms: steps })
+    assert.equal(saved.status, 200)
+    assert.deepEqual(saved.body.dataset.columns.map(c => c.name), ['name', 'mass_mj'])
+    assert.deepEqual(saved.body.dataset.sourceColumns.map(c => c.name), ['name', 'mass', 'host'])
+    const data = await t.call(owner, 'GET', `/api/datasets/${ds.id}/data`)
+    assert.deepEqual(data.body.columns.name, ['b', 'd'])
+    assert.equal(data.body.totalRows, 2)
+    assert.equal((await t.call(owner, 'GET', `/api/datasets/${ds.id}/data?raw=1`)).body.totalRows, 3)
+
+    const bad = await t.call(owner, 'PUT', `/api/datasets/${ds.id}/transforms`, { transforms: [{ op: 'compute', name: 'x', expr: 'masss * 2' }] })
+    assert.equal(bad.status, 422)
+    assert.match(bad.body.error, /Step 1 \(compute\): There’s no column "masss"/)
+
+    // An upload without a column the transforms use: reads say why they fail
+    await uploadDataset(owner, 'worlds', 'name,radius\r\nb,1.2')
+    const broken = await t.call(owner, 'GET', `/api/datasets/${ds.id}/data`)
+    assert.equal(broken.status, 422)
+    assert.equal(broken.body.code, 'transform')
+    assert.match(broken.body.error, /no column "mass"/)
+  })
+
+  it('joins another of the owner’s datasets, following its changes', async () => {
+    const planets = (await uploadDataset(owner, 'jplanets', 'name,host\r\nb,Peg\r\nc,Trap')).body
+    await uploadDataset(owner, 'jhosts', 'star,dist\r\nPeg,15.5')
+    const steps = [{ op: 'join', dataset: 'jhosts', leftOn: 'host', rightOn: 'star' }]
+    assert.equal((await t.call(owner, 'PUT', `/api/datasets/${planets.id}/transforms`, { transforms: steps })).status, 200)
+    const dist = async () => (await t.call(owner, 'GET', `/api/datasets/${planets.id}/data`)).body.columns.dist
+    assert.deepEqual(await dist(), [15.5, null])
+    await uploadDataset(owner, 'jhosts', 'star,dist\r\nPeg,15.5\r\nTrap,12.4')
+    assert.deepEqual(await dist(), [15.5, 12.4])
+    // Not another account's dataset of that name
+    const stranger = t.user('stranger')
+    await t.call(stranger, 'GET', '/api/me')
+    const theirs = (await uploadDataset(stranger, 'mine', 'host\r\nPeg')).body
+    assert.equal((await t.call(stranger, 'PUT', `/api/datasets/${theirs.id}/transforms`, { transforms: steps })).status, 422)
+  })
+
   it('deletes every version’s row with the dataset', async () => {
     const ds = (await uploadDataset(owner, 'gone', 'a\r\n1')).body
     assert.equal((await t.call(owner, 'DELETE', `/api/datasets/${ds.id}`)).status, 200)

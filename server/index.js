@@ -36,7 +36,9 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
-const { ingestDataset, saveUpload, datasetName, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
+const { normalizeTransforms } = require('./services/dataset-transforms')
 const { createSandboxLookup } = require('./services/plugin-embed')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
@@ -1241,7 +1243,12 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
       deleteDatasetFile(result.storageKey, DATA_DIR).catch(() => {})
       return res.status(409).json({ error: `"${result.name}" is a live dataset. Upload this file under another name.` })
     }
-    res.status(201).json(await saveUpload(storage, result, req.userId, { previous, localDir: DATA_DIR }))
+    let ds = await saveUpload(storage, result, req.userId, { previous, localDir: DATA_DIR })
+    if (ds.transforms.length) {
+      await refreshOutputColumns(storage, ds, { ownerId: req.userId, localDir: DATA_DIR })
+      ds = await storage.getDataset(ds.id, req.userId)
+    }
+    res.status(201).json(ds)
   } catch (err) {
     if (req.file && req.file.path) fs.removeSync(req.file.path)
     res.status(400).json({ error: err.message })
@@ -1408,29 +1415,43 @@ function queryOptions(req) {
   return opts
 }
 
-// The table a data request reads, with its columns: the version it names,
-// or the current one ("current", or none). Null for a version that isn't
-// the dataset's
-async function datasetTable(ds, versionId) {
-  if (versionId && versionId !== 'current') {
-    if (!isValidUUID(versionId)) return null
-    const v = await storage.getDatasetVersion(ds.id, versionId)
-    if (!v) return null
-    return { table: await readDatasetFile(v.storageKey, v.format, DATA_DIR), columns: v.columns }
-  }
-  if (!ds.storageKey) return { table: { names: [], columns: Object.create(null), length: 0 }, columns: [] }
-  return { table: await readDatasetFile(ds.storageKey, ds.format, DATA_DIR), columns: ds.columns }
+// A read whose transforms no longer run (a column they name went away)
+// says which step and why
+function sendDataError(res, err) {
+  if (err.transformError || err.exprError) return res.status(422).json({ error: err.message, code: 'transform' })
+  res.status(500).json({ error: safeErrorMessage(err) })
 }
+
+// PUT /api/datasets/:id/transforms — save a dataset's transforms ({ transforms:
+// [steps] }), checked by running them; answers with the dataset and a preview
+// POST /api/datasets/:id/transforms/preview — run steps without saving them
+async function runTransformsFor(req, res, save) {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const steps = normalizeTransforms((req.body || {}).transforms)
+    const { table } = await readView(storage, ds, { steps, ownerId: req.userId, localDir: DATA_DIR })
+    const shown = preview(table)
+    if (!save) return res.json({ preview: shown })
+    const saved = await storage.setDatasetTransforms(ds.id, req.userId, steps, steps.length ? shown.columns : null)
+    res.json({ dataset: saved, preview: shown })
+  } catch (err) {
+    if (err.transformError || err.exprError) return res.status(422).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+}
+app.put('/api/datasets/:id/transforms', requireValidId(), (req, res) => runTransformsFor(req, res, true))
+app.post('/api/datasets/:id/transforms/preview', requireValidId(), (req, res) => runTransformsFor(req, res, false))
 
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
 app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const data = await datasetTable(ds, req.query.version)
+    const data = await readView(storage, ds, { versionId: req.query.version, ownerId: req.userId, raw: req.query.raw === '1', localDir: DATA_DIR })
     if (!data) return res.status(404).json({ error: 'Version not found' })
     res.json(applyQuery(data.table, data.columns, queryOptions(req)))
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  } catch (err) { sendDataError(res, err) }
 })
 
 // PATCH /api/datasets/:id — rename a dataset
@@ -1504,10 +1525,12 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     // The deck's pinned version unless the request names one (or "current")
-    const data = await datasetTable(ds, req.query.version || link.pinnedVersionId)
+    const data = await readView(storage, ds, {
+      versionId: req.query.version || link.pinnedVersionId, ownerId: req.deck.ownerId, raw: req.query.raw === '1', localDir: DATA_DIR,
+    })
     if (!data) return res.status(404).json({ error: 'Version not found' })
     res.json(applyQuery(data.table, data.columns, queryOptions(req)))
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  } catch (err) { sendDataError(res, err) }
 })
 
 // PUT /api/presentations/:pid/datasets/:did/pin — hold a dataset at one

@@ -246,5 +246,5 @@ function applyQuery(table, columns, opts = {}) {
 
 module.exports = {
   parseRows, rowsToTable, tableToRows, inferColumns, tableBytes, sortTableBy,
-  encodeTable, decodeTable, packTable, unpackTable, processBody, likeMatch, applyQuery,
+  encodeTable, decodeTable, packTable, unpackTable, processBody, likeMatch, passes, applyQuery,
 }

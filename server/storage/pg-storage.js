@@ -578,9 +578,17 @@ class PgStorage extends StorageInterface {
     return this.getDataset(id, userId)
   }
 
-  async setDatasetTransforms(id, userId, transforms) {
-    await this.query('UPDATE datasets SET transforms = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3', [JSON.stringify(transforms), id, userId])
+  async setDatasetTransforms(id, userId, transforms, outputColumns) {
+    await this.query(
+      'UPDATE datasets SET transforms = $1, output_columns = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4',
+      [JSON.stringify(transforms), outputColumns ? JSON.stringify(outputColumns) : null, id, userId]
+    )
     return this.getDataset(id, userId)
+  }
+
+  // The transforms' columns after a refresh changed the data under them
+  async setOutputColumns(id, outputColumns) {
+    await this.query('UPDATE datasets SET output_columns = $1 WHERE id = $2', [outputColumns ? JSON.stringify(outputColumns) : null, id])
   }
 
   async countLiveDatasets(userId) {
@@ -746,11 +754,15 @@ class PgStorage extends StorageInterface {
 // but through getDatasetForFetch
 const DATASET_FIELDS = `d.id, d.name, d.filename, d.format, d.storage_key, d.columns, d.row_count, d.byte_size,
   d.created_at, d.updated_at, d.source_kind, d.source, d.source_secret IS NOT NULL AS has_secret, d.schedule,
-  d.next_fetch_at, d.last_fetched_at, d.last_error, d.failures, d.current_version_id, d.transforms`
+  d.next_fetch_at, d.last_fetched_at, d.last_error, d.failures, d.current_version_id, d.transforms, d.output_columns`
 
+// columns are what a read gives: the transforms' output when it has
+// transforms, else the source's (sourceColumns, either way)
 function datasetFrom(r, { withKey = false } = {}) {
+  const transformed = (r.transforms || []).length > 0 && Array.isArray(r.output_columns)
   const ds = {
-    id: r.id, name: r.name, filename: r.filename, format: r.format, columns: r.columns,
+    id: r.id, name: r.name, filename: r.filename, format: r.format,
+    columns: transformed ? r.output_columns : r.columns, sourceColumns: r.columns,
     rowCount: r.row_count, byteSize: r.byte_size == null ? null : Number(r.byte_size), createdAt: r.created_at, updatedAt: r.updated_at,
     sourceKind: r.source_kind, source: r.source, hasSecret: !!r.has_secret, schedule: r.schedule,
     nextFetchAt: r.next_fetch_at, lastFetchedAt: r.last_fetched_at, lastError: r.last_error, failures: r.failures,

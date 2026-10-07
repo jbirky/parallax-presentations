@@ -59,7 +59,8 @@ class StorageInterface {
   async createLiveDataset(data, userId) { throw new Error('Not implemented') }
   async getDatasetForFetch(id) { throw new Error('Not implemented') }
   async updateDatasetSource(id, userId, changes) { throw new Error('Not implemented') }
-  async setDatasetTransforms(id, userId, transforms) { throw new Error('Not implemented') }
+  async setDatasetTransforms(id, userId, transforms, outputColumns) { throw new Error('Not implemented') }
+  async setOutputColumns(id, outputColumns) { throw new Error('Not implemented') }
   async countLiveDatasets(userId) { throw new Error('Not implemented') }
   async createDatasetVersion(datasetId, version) { throw new Error('Not implemented') }
   async setCurrentVersion(datasetId, version) { throw new Error('Not implemented') }

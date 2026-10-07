@@ -319,11 +319,14 @@ class FileStorage extends StorageInterface {
 
   // A dataset entry as callers see it: no versions, fetch log or secret
   _publicDataset(ds, { withKey = true } = {}) {
-    const { versions, fetches, sourceSecret, fetchLeaseUntil, storageKey, ...rest } = ds
+    const { versions, fetches, sourceSecret, fetchLeaseUntil, storageKey, outputColumns, ...rest } = ds
     const out = {
       sourceKind: 'upload', source: null, schedule: 'manual', nextFetchAt: null, lastFetchedAt: null,
       lastError: null, failures: 0, currentVersionId: null, transforms: [], ...rest, hasSecret: !!sourceSecret,
     }
+    // What a read gives: the transforms' columns when it has transforms
+    out.sourceColumns = ds.columns
+    if (out.transforms.length && Array.isArray(outputColumns)) out.columns = outputColumns
     if (withKey) out.storageKey = storageKey
     return out
   }
@@ -409,9 +412,17 @@ class FileStorage extends StorageInterface {
     return ds ? this._publicDataset(ds) : null
   }
 
-  async setDatasetTransforms(id, userId, transforms) {
-    const ds = this._changeDataset(id, d => { d.transforms = transforms; d.updatedAt = new Date().toISOString() })
+  async setDatasetTransforms(id, userId, transforms, outputColumns) {
+    const ds = this._changeDataset(id, d => {
+      d.transforms = transforms
+      d.outputColumns = outputColumns || null
+      d.updatedAt = new Date().toISOString()
+    })
     return ds ? this._publicDataset(ds) : null
+  }
+
+  async setOutputColumns(id, outputColumns) {
+    this._changeDataset(id, d => { d.outputColumns = outputColumns || null })
   }
 
   async countLiveDatasets() {

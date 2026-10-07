@@ -188,6 +188,9 @@ async function refreshDataset(storage, id, { localDir, fetchOptions } = {}) {
       await saveVersion(storage, ds, packed, { userId: ds.userId, localDir })
       await pruneVersions(storage, ds, localDir)
       outcome = 'changed'
+      // The transforms' columns, if the new data changed them
+      const { refreshOutputColumns } = require('./dataset-views')
+      await refreshOutputColumns(storage, await storage.getDatasetForFetch(id), { ownerId: ds.userId, localDir })
     }
     await storage.recordFetch(id, { startedAt, durationMs: Date.now() - startedAt, outcome, httpStatus: packed.httpStatus, bytes: packed.bytes })
     await storage.recordFetchState(id, { fetched: true, lastError: null, failures: 0, nextFetchAt: nextFetch(ds.schedule) })
