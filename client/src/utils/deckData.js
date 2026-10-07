@@ -120,9 +120,12 @@ export function embedDatasetNames(presentation, names, { pluginSandbox } = {}) {
   return found
 }
 
-// A dataset as parallax.datasets.list() describes it
+// A dataset as parallax.datasets.list() describes it. asOf is when its data
+// was last fetched or uploaded (ds.asOf when given, as for a version a deck
+// pins), or null
 export function datasetSummary(ds) {
-  return { name: ds.alias || ds.name, columns: (ds.columns || []).map(c => ({ name: c.name, type: c.type })), rowCount: ds.rowCount ?? null }
+  const asOf = ds.asOf !== undefined ? ds.asOf : ds.pinnedVersionId ? null : ds.lastFetchedAt || ds.updatedAt || null
+  return { name: ds.alias || ds.name, columns: (ds.columns || []).map(c => ({ name: c.name, type: c.type })), rowCount: ds.rowCount ?? null, asOf }
 }
 
 // The data a deck carries for its HTML, p5 and plugin elements, within

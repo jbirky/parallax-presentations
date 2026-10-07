@@ -271,6 +271,7 @@ app.get('/sitemap.xml', async (req, res) => {
 // from; and the thumbnails the server drew. Anything else under /examples
 // (built-in thumbnails, the molecule's structure file) is a static file.
 const examples = require('./services/landing-examples')
+const exampleData = require('./services/example-datasets')
 const { renderFirstSlide, chromiumPath, ThumbnailError } = require('./services/slide-thumbnail')
 const EXAMPLE_SLUG = /^[a-z0-9-]{1,64}$/
 const exampleHtml = new Map()
@@ -286,9 +287,13 @@ app.get('/examples/:slug/deck', deckPageLimiter, async (req, res, next) => {
     const { slug } = req.params
     const found = EXAMPLE_SLUG.test(slug) && await examples.getExampleDeck(storage, slug)
     if (!found) return next()
+    // Built again when the deck changes, or the data it plots
+    // (services/example-datasets.js)
+    const version = `${found.version}|${await exampleData.exampleDataVersion(found.deck, { localDir: DATA_DIR })}`
     let page = exampleHtml.get(slug)
-    if (!page || page.version !== found.version) {
-      page = { version: found.version, html: localizeLibraries(generateRevealHTML(found.deck, { notes: false })) }
+    if (!page || page.version !== version) {
+      const deckData = await exampleData.exampleDeckData(found.deck, { localDir: DATA_DIR, pluginSandbox: pluginSandboxes() })
+      page = { version, html: localizeLibraries(generateRevealHTML(found.deck, { notes: false, deckData })) }
       exampleHtml.set(slug, page)
     }
     sendDeckPage(res, page.html)
@@ -1564,6 +1569,29 @@ app.put('/api/presentations/:pid/datasets/:did/pin', requireValidId('pid'), requ
     await storage.setPinnedVersion(req.params.pid, req.params.did, versionId)
     res.json({ pinnedVersionId: versionId })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/examples/:slug/datasets — copies of the datasets an example deck
+// plots, as the caller's own, linked to the presentation they made from it
+// ({ presentationId }): a guest who opens the example in the editor sees
+// its data there too
+app.post('/api/examples/:slug/datasets', uploadLimiter, async (req, res) => {
+  try {
+    const presentationId = req.body && req.body.presentationId
+    if (!EXAMPLE_SLUG.test(req.params.slug) || !isValidUUID(presentationId)) return res.status(400).json({ error: 'Give an example and a presentation' })
+    const found = await examples.getExampleDeck(storage, req.params.slug)
+    if (!found) return res.status(404).json({ error: 'Example not found' })
+    if (!await storage.getPresentation(presentationId, req.userId)) return res.status(404).json({ error: 'Presentation not found' })
+    const plan = planOf(req)
+    const linked = await exampleData.copyExampleDatasets(storage, found.deck, {
+      userId: req.userId, keyPrefix: req.guestKeyPrefix, presentationId, localDir: DATA_DIR,
+      checkRoom: bytes => live.checkRoom(storage, req.userId, plan, bytes),
+    })
+    res.json({ datasets: linked.map(ds => ({ id: ds.id, name: ds.name })) })
+  } catch (err) {
+    if (err.sourceError) return res.status(413).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // --- Custom Fonts ---

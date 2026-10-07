@@ -5,6 +5,8 @@ import path from 'path'
 import { exampleDeck, EXAMPLE_SLUGS, CAFFEINE_SRC } from './decks'
 import { EXAMPLES, EXAMPLE_FIELDS, HERO_EXAMPLE } from './catalog'
 import { generateRevealHTML } from '../utils/generateHTML'
+import { graphNeeds, dataGraphs, embedDatasetNames } from '../utils/deckData'
+import { EXAMPLE_DATASETS, EXAMPLE_SOURCES } from './datasets'
 
 const PUBLIC = path.join(__dirname, '../../public')
 const types = deck => deck.slides.map(s => s.elements.map(e => e.type).filter(t => t !== 'text'))
@@ -21,8 +23,8 @@ describe('the example decks', () => {
     expect(fs.existsSync(path.join(PUBLIC, CAFFEINE_SRC))).toBe(true)
   })
 
-  it('starts the server’s list (migration 017) as the catalog has it', () => {
-    const sql = fs.readFileSync(path.join(__dirname, '../../../server/migrations/017_landing_examples.sql'), 'utf8')
+  it('starts the server’s list (migrations 017 and 019) as the catalog has it', () => {
+    const sql = ['017_landing_examples.sql', '019_exoplanets_example.sql'].map(f => fs.readFileSync(path.join(__dirname, '../../../server/migrations', f), 'utf8')).join('\n')
     const q = v => "'" + String(v).replace(/'/g, "''") + "'"
     EXAMPLES.forEach((e, i) => expect(sql, e.slug).toContain(`(${q(e.slug)}, ${q(e.field)}, ${q(e.title)}, ${q(e.desc)}, ${q(JSON.stringify(e.tags))}, TRUE, TRUE, FALSE, ${i + 1})`))
     expect(sql).toContain(`(${q(HERO_EXAMPLE)}, '', 'Parallax',`)
@@ -34,6 +36,16 @@ describe('the example decks', () => {
     expect(types(exampleDeck('logic'))).toEqual([['logic'], ['timing']])
     expect(types(exampleDeck('rotation'))).toEqual([['graph'], ['equation']])
     expect(types(exampleDeck('orbitals'))).toEqual([['harmonics'], ['graph']])
+    expect(types(exampleDeck('exoplanets'))).toEqual([['graph', 'html'], ['graph', 'html'], ['html', 'html']])
+  })
+
+  it('plots only datasets the server provides for examples', () => {
+    const deck = exampleDeck('exoplanets')
+    const names = new Set([...graphNeeds(dataGraphs(deck)).keys(), ...embedDatasetNames(deck, Object.keys(EXAMPLE_DATASETS))])
+    expect([...names].sort()).toEqual(['discoveries', 'exoplanets', 'newest'])
+    for (const name of names) expect(EXAMPLE_SOURCES[EXAMPLE_DATASETS[name].source], name).toBeTruthy()
+    // The footer reads the list, so the deck carries only the small "newest" whole
+    expect(embedDatasetNames(deck, Object.keys(EXAMPLE_DATASETS))).toEqual(new Set(['newest']))
   })
 
   it('gives every element and slide an id of its own, and fits them on the slide', () => {

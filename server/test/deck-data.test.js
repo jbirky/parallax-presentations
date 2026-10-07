@@ -1,7 +1,8 @@
 // The decks the server builds carry the data their slides read: a graph's
 // data lines' columns, and the datasets HTML, p5 and plugin elements name,
-// from the version a deck holds or the current one. In the self-hosted
-// version, so it needs no database. .env isn't read.
+// from the version a deck holds or the current one; the exoplanet example
+// carries the archive's copy the repository keeps (tests never fetch). In
+// the self-hosted version, so it needs no database. .env isn't read.
 
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
@@ -76,7 +77,6 @@ describe('the data in the decks the server builds', () => {
     }]
     assert.equal((await call('PUT', `/api/presentations/${id}`, { slides })).status, 200)
   })
-  after(() => server?.close())
 
   it('writes a graph’s plotted columns into its page, and the datasets elements name into the deck', async () => {
     const page = await call('GET', `/api/presentations/${id}/present`)
@@ -120,5 +120,44 @@ describe('the data in the decks the server builds', () => {
     assert.ok(page.text.includes('No dataset “planets” is linked to this deck'))
     assert.equal(carried(page.text), null)
     assert.ok(!page.text.includes('Object.freeze({datasets:'))
+  })
+})
+
+describe('the exoplanet example’s data', () => {
+  // On the server the suite above started: node runs a file's suites in turn
+  after(() => server?.close())
+
+  it('writes the archive’s saved copy into the example deck, shaped by each dataset’s steps', async () => {
+    const page = await call('GET', '/examples/exoplanets/deck')
+    assert.equal(page.status, 200)
+    // Every planet on the period–mass graph, and a bar for each year
+    assert.ok(page.text.includes('&quot;planets&quot;:{&quot;total&quot;:5994,'))
+    assert.ok(page.text.includes('&quot;per-year&quot;:{&quot;total&quot;:34,'))
+    const data = carried(page.text)
+    assert.deepEqual(data.list.map(d => [d.name, d.rowCount]).sort(), [['discoveries', 34], ['exoplanets', 5994], ['newest', 8]])
+    assert.ok(data.list.every(d => d.asOf === '2026-10-07T00:00:00.000Z'))
+    // Only the table's dataset goes in whole: the footer names none
+    assert.deepEqual(Object.keys(data.data), ['newest'])
+    assert.deepEqual(Object.keys(data.data.newest.columns), ['pl_name', 'discoverymethod', 'pl_orbper', 'pl_bmasse', 'disc_pubdate'])
+    assert.equal(data.data.newest.columns.disc_pubdate[0], '2026-09')
+  })
+
+  it('gives a deck made from it copies of its datasets, steps and all', async () => {
+    const { id: _, ...deck } = (await call('GET', '/api/examples/exoplanets')).body
+    const pid = (await call('POST', '/api/presentations', deck)).body.id
+    const res = await call('POST', '/api/examples/exoplanets/datasets', { presentationId: pid })
+    assert.equal(res.status, 200, res.text)
+    assert.deepEqual(res.body.datasets.map(d => d.name).sort(), ['discoveries', 'exoplanets', 'newest'])
+    const linked = (await call('GET', `/api/presentations/${pid}/datasets`)).body
+    const discoveries = linked.find(d => d.name === 'discoveries')
+    assert.equal(discoveries.transforms.length, 2)
+    assert.deepEqual(discoveries.columns.map(c => c.name), ['disc_year', 'planets'])
+    const page = await call('GET', `/api/presentations/${pid}/present`)
+    assert.ok(page.text.includes('&quot;planets&quot;:{&quot;total&quot;:5994,'))
+    assert.equal(carried(page.text).data.newest.columns.pl_name.length, 8)
+    // Again: what's there is linked, not copied over
+    const again = await call('POST', '/api/examples/exoplanets/datasets', { presentationId: pid })
+    assert.deepEqual(again.body.datasets.map(d => d.id).sort(), res.body.datasets.map(d => d.id).sort())
+    assert.equal((await call('POST', '/api/examples/exoplanets/datasets', { presentationId: '00000000-0000-4000-8000-000000000000' })).status, 404)
   })
 })

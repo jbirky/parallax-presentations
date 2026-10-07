@@ -61,7 +61,13 @@ export default function GuestPage({ theme, onThemeChange }) {
   const enter = useCallback(async () => {
     const session = await api.resumeGuestSession()
     if (session.idleHours) setIdleHours(session.idleHours)
-    const id = session.presentationId || (await api.createPresentation(await firstDeck())).id
+    let id = session.presentationId
+    if (!id) {
+      id = (await api.createPresentation(await firstDeck())).id
+      // An example that plots data brings copies of its datasets
+      const slug = new URLSearchParams(window.location.search).get('example')
+      if (slug) await api.copyExampleDatasets(slug, id).catch(() => {})
+    }
     setPresentationId(id)
     setState('editor')
   }, [])

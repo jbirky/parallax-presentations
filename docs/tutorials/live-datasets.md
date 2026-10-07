@@ -89,7 +89,7 @@ parallax.datasets.query("exoplanets", { columns: ["pl_orbper", "pl_bmasse"], lim
 
 | Call | What it gives |
 | --- | --- |
-| `list()` | The deck's datasets: each one's `name`, `columns` and `rowCount` |
+| `list()` | The deck's datasets: each one's `name`, `columns`, `rowCount`, and `asOf`, when its data was last fetched or uploaded |
 | `schema(name)` | A dataset's columns |
 | `query(name, { columns, limit, offset })` | `{ columns, totalRows }`: the columns asked for (all of them by default), from row `offset` on |
 | `load(name)` | Resolves once the dataset can be read |

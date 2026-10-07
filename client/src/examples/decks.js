@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The example decks (catalog.js), built from each element's own templates and
-// defaults, so they show what the editor makes today. The server serves them
+// defaults, so they show what the editor makes today. The exoplanet deck
+// plots the example datasets (datasets.js). The server serves them
 // at /examples/<slug> and /api/examples/<slug> through
 // server/services/deck-html.js (scripts/build-deck-html.js), and a guest who
 // opens one in the editor starts from it (GuestPage).
@@ -75,6 +76,58 @@ function rotationCurve(view) {
   }
 }
 
+// The Solar System's planets: orbital period (days) and mass (Earth masses),
+// labeled where a label has room
+const SOLAR_SYSTEM = [
+  ['mercury', 87.97, 0.0553, 'Mercury'], ['venus', 224.7, 0.815], ['earth', 365.25, 1, 'Earth'], ['mars', 687, 0.107],
+  ['jupiter', 4332.6, 317.8, 'Jupiter'], ['saturn', 10759, 95.2, 'Saturn'], ['uranus', 30687, 14.5], ['neptune', 60190, 17.1, 'Neptune'],
+]
+
+// Under an exoplanet slide: when its data was fetched, and how many planets,
+// from the deck's datasets (parallax.datasets, which names no dataset here,
+// so the deck carries none whole for it)
+const DATA_FOOTER = `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: #6f6d68"></div>
+<script>
+parallax.datasets.list().then(function (all) {
+  var d = all.reduce(function (a, b) { return (b.rowCount || 0) > (a.rowCount || 0) ? b : a })
+  var when = d.asOf ? new Date(d.asOf).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'today'
+  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' planets · NASA Exoplanet Archive'
+})
+</script>`
+
+// The latest planets, as a table read from the deck's "newest" dataset
+const NEWEST_TABLE = `<style>
+  body { font: 15px/1.4 -apple-system, 'Segoe UI', sans-serif; color: #1a1a1a; }
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6f6d68; padding: 6px 16px 8px 0; border-bottom: 1.5px solid #c3c2b7; }
+  td { padding: 6px 16px 6px 0; border-bottom: 1px solid #e7e6e0; font-variant-numeric: tabular-nums; }
+  .num { text-align: right; }
+  td:first-child { font-weight: 600; }
+</style>
+<table>
+  <thead><tr><th>Planet</th><th>Found by</th><th class="num">Period (days)</th><th class="num">Mass (Earth = 1)</th><th>Published</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function cell(text, cls) {
+  var td = document.createElement('td')
+  td.textContent = text
+  if (cls) td.className = cls
+  return td
+}
+function num(v) { return v == null ? '' : Number(v).toLocaleString('en-US', { maximumSignificantDigits: 3 }) }
+function month(v) { var p = String(v || '').split('-'); return p.length > 1 ? MONTHS[+p[1] - 1] + ' ' + p[0] : String(v || '') }
+parallax.datasets.query("newest").then(function (d) {
+  var c = d.columns, body = document.getElementById('rows')
+  for (var i = 0; i < c.pl_name.length; i++) {
+    var tr = document.createElement('tr')
+    tr.append(cell(c.pl_name[i]), cell(c.discoverymethod[i]), cell(num(c.pl_orbper[i]), 'num'), cell(num(c.pl_bmasse[i]), 'num'), cell(month(c.disc_pubdate[i])))
+    body.append(tr)
+  }
+})
+</script>`
+
 const BUILDERS = {
   hero() {
     const b = builder('hero')
@@ -143,6 +196,50 @@ const BUILDERS = {
     return b.deck('Feynman diagrams', true, [
       b.slide(true, [b.heading('Gluon fusion to a Higgs'), b.placed(...feynman('ggf', true)), b.caption('Press → to draw each propagator in turn')]),
       b.slide(true, [b.heading('Compton scattering'), b.placed(...feynman('compton', true))]),
+    ])
+  },
+  exoplanets() {
+    const b = builder('exoplanets')
+    const c = GRAPH_COLORS.light
+    const footer = () => ({ id: b.id(), type: 'html', x: 60, y: 500, width: 840, height: 28, zIndex: 3, content: DATA_FOOTER })
+    const graph = fields => ({ id: b.id(), x: 60, y: 96, width: 840, height: 360, zIndex: 2, type: 'graph', ...defaultGraph(false), equalScale: false, ...fields })
+    const caption = html => ({ ...b.caption(html, false), y: 464, height: 32 })
+    return b.deck('Exoplanets', false, [
+      b.slide(false, [
+        b.heading('Exoplanets by orbital period and mass'),
+        graph({
+          expressions: [
+            { id: 'planets', text: '', color: c[1], data: { dataset: 'exoplanets', x: 'pl_orbper', y: 'pl_bmasse', mark: 'points', colorBy: 'Discovered by', label: 'pl_name', size: 2.2, opacity: 0.75 } },
+            ...SOLAR_SYSTEM.map(([id, period, mass, label]) => ({ id, text: `(${period}, ${mass})`, color: '#1a1a1a', step: 1, ...(label ? { label } : {}) })),
+            // m sin i for a 1 m/s wobble of a Sun-like star: 11.2 Earth masses at one year
+            { id: 'rv', text: 'y = 11.2 (x/365.25)^(1/3)', color: c[3], style: 'dashed', step: 2 },
+          ],
+          // Room on the right for the key
+          view: { xMin: 0.1, xMax: 1e7, yMin: 0.01, yMax: 3e4 },
+          xScale: 'log',
+          yScale: 'log',
+          xLabel: 'orbital period (days)',
+          yLabel: 'mass (Earth = 1)',
+        }),
+        caption('Press → for the Solar System, then the mass that moves a Sun-like star by 1 m/s'),
+        footer(),
+      ]),
+      b.slide(false, [
+        b.heading('Planets found each year'),
+        graph({
+          expressions: [{ id: 'per-year', text: '', color: c[1], data: { dataset: 'discoveries', x: 'disc_year', y: 'planets', mark: 'bars' } }],
+          view: { xMin: 1989, xMax: 2028, yMin: 0, yMax: 1650 },
+          yLabel: 'planets with a mass',
+        }),
+        caption('Counted by a step on the same dataset, so the bars follow every refresh'),
+        footer(),
+      ]),
+      b.slide(false, [
+        b.heading('The newest planets in the archive'),
+        { id: b.id(), type: 'html', x: 60, y: 110, width: 840, height: 340, zIndex: 2, content: NEWEST_TABLE },
+        caption('The latest published discoveries, read by an HTML element with parallax.datasets'),
+        footer(),
+      ]),
     ])
   },
   geometry() {

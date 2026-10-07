@@ -361,6 +361,12 @@ export const api = {
   getLandingExamples: () => _fetch(`${BASE}/examples`).then(r => (r.ok ? r.json() : null)),
   // One of the landing page's example decks, or null
   getExample: (slug) => _fetch(`${BASE}/examples/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)),
+  // Copies of the datasets an example deck plots, linked to presentation pid
+  copyExampleDatasets: (slug, pid) => authFetch(`${BASE}/examples/${encodeURIComponent(slug)}/datasets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ presentationId: pid }),
+  }).then(safeJson),
   startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

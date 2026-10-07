@@ -251,5 +251,5 @@ function startRefreshLoop(storage, { localDir, intervalMs = 60 * 1000, concurren
 module.exports = {
   SCHEDULES, SCHEDULE_ORDER, KEEP_VERSIONS, MAX_FAILURES,
   allowedSchedule, nextFetch, retryAt, parseSecret, fetchLimit, planOf,
-  testSource, createLiveDataset, refreshDataset, pruneVersions, startRefreshLoop,
+  testSource, createLiveDataset, refreshDataset, pruneVersions, startRefreshLoop, fetchAndPack, checkRoom,
 }
