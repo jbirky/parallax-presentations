@@ -209,8 +209,44 @@ async function refreshDataset(storage, id, { localDir, fetchOptions } = {}) {
   }
 }
 
+// Fetches the datasets that are due, every minute: each under a lease (see
+// claimDueDatasets), two at a time, until none are due. Once an hour it
+// also deletes fetch-log rows over 30 days old. A first pass soon after the
+// server starts catches up on what fell due while it was down (the desktop
+// app, closed). Returns { tick, stop }.
+function startRefreshLoop(storage, { localDir, intervalMs = 60 * 1000, concurrency = 2, leaseSeconds = 600, firstAfterMs = 5000, fetchOptions } = {}) {
+  let busy = false
+  let stopped = false
+  let prunedAt = 0
+  async function tick() {
+    if (busy || stopped) return
+    busy = true
+    try {
+      if (Date.now() - prunedAt > HOUR) {
+        prunedAt = Date.now()
+        await storage.pruneDatasetFetches(30)
+      }
+      while (!stopped) {
+        const ids = await storage.claimDueDatasets(concurrency, leaseSeconds)
+        if (!ids.length) break
+        await Promise.all(ids.map(id => refreshDataset(storage, id, { localDir, fetchOptions })
+          .catch(err => console.error('Live dataset refresh failed:', err.message))))
+      }
+    } catch (err) {
+      console.error('Live dataset refresh loop:', err.message)
+    } finally {
+      busy = false
+    }
+  }
+  const timer = setInterval(tick, intervalMs)
+  const first = setTimeout(tick, firstAfterMs)
+  timer.unref?.()
+  first.unref?.()
+  return { tick, stop() { stopped = true; clearInterval(timer); clearTimeout(first) } }
+}
+
 module.exports = {
   SCHEDULES, SCHEDULE_ORDER, KEEP_VERSIONS, MAX_FAILURES,
   allowedSchedule, nextFetch, retryAt, parseSecret, fetchLimit, planOf,
-  testSource, createLiveDataset, refreshDataset, pruneVersions,
+  testSource, createLiveDataset, refreshDataset, pruneVersions, startRefreshLoop,
 }

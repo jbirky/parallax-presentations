@@ -3156,6 +3156,9 @@ async function startServer(port) {
   if (IS_CLOUD) {
     try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
   }
+  // Live datasets due a fetch, every minute; only a running server fetches,
+  // not one a test starts
+  if (LIVE_DATASETS) live.startRefreshLoop(storage, { localDir: DATA_DIR })
   return new Promise((resolve) => {
     const host = listenHost()
     const server = app.listen(p, host, () => {
