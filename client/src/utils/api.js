@@ -310,6 +310,8 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not delete the plan')
     return b
   }),
+  // The landing page's statistics for the last `days` days
+  getLandingStats: (days) => authFetch(`${BASE}/admin/stats?days=${days}`).then(adminJson('Could not load the statistics')),
   // The landing page's examples, as /admin edits them
   getAdminExamples: () => authFetch(`${BASE}/admin/examples`).then(adminJson('Could not load the examples')),
   addExample: (data) => authFetch(`${BASE}/admin/examples`, jsonBody('POST', data)).then(adminJson('Could not add the example')),

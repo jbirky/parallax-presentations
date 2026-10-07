@@ -909,6 +909,22 @@ app.post('/api/presentations', async (req, res) => {
   }
 })
 
+// GET /api/admin/stats?days=7|30|90 — the landing page's visitors and what
+// they did, from Umami, with the accounts made in the period. Not found for
+// anyone who isn't an admin; { configured: false } where Umami isn't set up.
+const umamiStats = require('./services/umami-stats')
+app.get('/api/admin/stats', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    const titles = Object.fromEntries((await examples.listExamples(storage)).map(e => [e.slug, e.title]))
+    res.json(await umamiStats.landingStats(storage, Number(req.query.days) || 30, { titles }))
+  } catch (err) {
+    if (err instanceof umamiStats.StatsError) return res.status(err.status).json({ error: err.message })
+    console.error('Landing statistics error:', err.message)
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+
 // ---- The landing page's examples, edited from /admin ----
 // Each not found for anyone who isn't an admin. Adding or updating an
 // example draws its thumbnail from its page on this server; if that can't be

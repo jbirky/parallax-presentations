@@ -428,6 +428,126 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
   )
 }
 
+// ---- The landing page's statistics ----
+
+const PERIODS = [7, 30, 90]
+const percent = (part, whole) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—')
+// The change from the period before, as "+12% on the previous 30 days"
+function change(now, before, days) {
+  if (!before) return now ? `New since the previous ${days} days` : `None in the previous ${days} days either`
+  const p = Math.round(((now - before) / before) * 100)
+  return `${p > 0 ? '+' : ''}${p}% on the previous ${days} days`
+}
+const countryName = code => {
+  try { return new Intl.DisplayNames(undefined, { type: 'region' }).of(code) || code } catch { return code }
+}
+const formatShortDay = day => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+// One step of the funnel: a bar as long as its share of the visitors
+function FunnelStep({ label, count, of, note }) {
+  const share = of > 0 && count != null ? Math.min(1, count / of) : 0
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '2px 10px', alignItems: 'baseline' }}>
+      <div style={{ fontSize: 13 }}>{label}{note && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> · {note}</span>}</div>
+      <div style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{count == null ? '—' : count.toLocaleString()} <span style={{ color: 'var(--text-muted)' }}>{count == null ? '' : percent(count, of)}</span></div>
+      <div style={{ gridColumn: '1 / -1', height: 6, borderRadius: 3, background: 'var(--bg-hover)' }}>
+        <div style={{ width: `${share * 100}%`, height: '100%', borderRadius: 3, background: 'var(--accent)' }} />
+      </div>
+    </div>
+  )
+}
+
+function TopList({ title, rows, name = x => x }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>{title}</h3>
+      {rows.length ? <SimpleTable columns={['', 'Count']} rows={rows.map(r => [name(r.name), r.count.toLocaleString()])} />
+        : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>None yet</p>}
+    </div>
+  )
+}
+
+// The landing page's visitors and what they did there, as Umami counts them,
+// with the accounts made in the same days
+export function LandingStatsPanel() {
+  const [days, setDays] = useState(30)
+  const [data, setData] = useState(undefined)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    let current = true
+    setError(null)
+    api.getLandingStats(days).then(d => { if (current) setData(d) }).catch(err => { if (current) setError(err.message) })
+    return () => { current = false }
+  }, [days])
+
+  const header = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div>
+        <h2 style={styles.h2}>Landing page</h2>
+        <p style={styles.sub}>Visitors and what they did, counted by Umami without cookies; new accounts from this app.</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {data?.configured && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{data.activeNow} visitor{data.activeNow === 1 ? '' : 's'} now</span>}
+        <div role="group" aria-label="Period" style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+          {PERIODS.map(d => (
+            <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}
+              style={{ padding: '3px 9px', fontSize: 12, borderRadius: 4, background: days === d ? 'var(--bg-active)' : 'transparent', color: days === d ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {d} days
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  if (error) return <section style={styles.panel}>{header}<p style={{ fontSize: 13, margin: 0 }}>Couldn’t load the statistics: {error}</p></section>
+  if (data === undefined) return <section style={styles.panel}>{header}<p style={{ ...styles.muted, fontSize: 13, margin: 0 }}>Loading…</p></section>
+  if (!data.configured) {
+    return (
+      <section style={styles.panel}>{header}
+        <p style={{ fontSize: 13, margin: 0 }}>Analytics isn’t set up on this server. It needs UMAMI_URL, UMAMI_WEBSITE_ID, UMAMI_STATS_USER and UMAMI_STATS_PASSWORD.</p>
+      </section>
+    )
+  }
+
+  const { totals, previous, events } = data
+  const clicks = (events.try || 0) + (events['sign-in'] || 0)
+  const daily = data.daily.map(d => ({ key: d.day, label: formatShortDay(d.day), tooltipLabel: formatShortDay(d.day), value: d.visits }))
+  return (
+    <section style={styles.panel} aria-labelledby="admin-landing-stats">
+      {header}
+      <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 14, margin: '0 -16px 14px' }}>
+        <Stat first label="Visitors" value={totals.visitors.toLocaleString()} note={change(totals.visitors, previous.visitors, days)} />
+        <Stat label="Visits" value={totals.visits.toLocaleString()} note={`${totals.pageviews.toLocaleString()} page views`} />
+        <Stat label="Left without doing anything" value={percent(totals.bounces, totals.visits)} note="Visits with one page view and no clicks counted" />
+        <Stat label="Average visit" value={totals.visits ? formatDuration((totals.totalSeconds / totals.visits) * 1000) : '—'} />
+      </div>
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
+        <div style={{ minWidth: 0 }}>
+          <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>Visits per day</h3>
+          <ColumnChart data={daily} integer ariaLabel={`Visits to the landing page per day, last ${days} days`} />
+        </div>
+        <div style={{ display: 'grid', gap: 10, alignContent: 'start', minWidth: 0 }}>
+          <h3 style={{ ...styles.h2, fontSize: 13 }}>From visit to account</h3>
+          <FunnelStep label="Visitors" count={totals.visitors} of={totals.visitors} />
+          <FunnelStep label="Clicked Try it or Sign in" count={clicks} of={totals.visitors} note="clicks" />
+          <FunnelStep label="Started a guest session" count={events['guest-start'] || 0} of={totals.visitors} />
+          <FunnelStep label="Made an account" count={data.accounts?.signups ?? null} of={totals.visitors} note="from anywhere" />
+        </div>
+      </div>
+      <h3 style={{ ...styles.h2, fontSize: 13, margin: '18px 0 6px' }}>Examples</h3>
+      {data.examples.length
+        ? <SimpleTable columns={['Example', 'Opened', 'Open in the editor', 'Guest sessions']} rows={data.examples.map(e => [e.title, e.opened, e.toEditor, e.guestStarts].map(v => (typeof v === 'number' ? v.toLocaleString() : v)))} />
+        : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>No example opened yet</p>}
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', marginTop: 18 }}>
+        <TopList title="Came from" rows={data.referrers} />
+        <TopList title="Countries" rows={data.countries} name={countryName} />
+        <TopList title="Devices" rows={data.devices} name={d => d.charAt(0).toUpperCase() + d.slice(1)} />
+      </div>
+    </section>
+  )
+}
+
 // ---- The landing page's examples ----
 
 const slugify = str => str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
@@ -752,6 +872,7 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
         <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />
       )}
 
+      {showExamples && <LandingStatsPanel />}
       {showExamples && <ExamplesPanel />}
 
       <section style={styles.panel}>
