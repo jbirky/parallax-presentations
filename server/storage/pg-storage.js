@@ -486,6 +486,8 @@ class PgStorage extends StorageInterface {
   }
 
   // --- Datasets ---
+  // A dataset row mirrors its current version (storage_key, format, columns,
+  // row_count, byte_size), so reading the current data needs no join
 
   async createDataset(data, userId) {
     const id = uuidv4()
@@ -498,37 +500,55 @@ class PgStorage extends StorageInterface {
          columns = EXCLUDED.columns, row_count = EXCLUDED.row_count, byte_size = EXCLUDED.byte_size, updated_at = EXCLUDED.updated_at`,
       [id, userId, data.name, data.filename, data.format, data.storageKey, JSON.stringify(data.columns), data.rowCount, data.byteSize, now]
     )
-    const { rows } = await this.query('SELECT * FROM datasets WHERE user_id = $1 AND name = $2', [userId, data.name])
-    const r = rows[0]
-    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE user_id = $1 AND name = $2`, [userId, data.name])
+    return datasetFrom(rows[0], { withKey: true })
+  }
+
+  // A live dataset, made once its first fetch worked; a name already taken
+  // throws with code 'duplicate'
+  async createLiveDataset(data, userId) {
+    try {
+      const { rows } = await this.query(
+        `INSERT INTO datasets AS d (user_id, name, filename, format, storage_key, columns, row_count, byte_size,
+                               source_kind, source, source_secret, schedule, next_fetch_at, last_fetched_at)
+         VALUES ($1, $2, $3, 'columns', '', '[]', 0, 0, $4, $5, $6, $7, $8, NOW())
+         RETURNING ${DATASET_FIELDS}`,
+        [userId, data.name, data.filename, data.sourceKind, JSON.stringify(data.source), data.sourceSecret ? encrypt(data.sourceSecret) : null,
+          data.schedule, data.nextFetchAt]
+      )
+      return datasetFrom(rows[0], { withKey: true })
+    } catch (err) {
+      if (err.code === '23505') throw Object.assign(new Error(`You already have a dataset named "${data.name}"`), { code: 'duplicate' })
+      throw err
+    }
   }
 
   async listDatasets(userId) {
-    const { rows } = await this.query(
-      'SELECT id, name, filename, format, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE user_id = $1 ORDER BY updated_at DESC',
-      [userId]
-    )
-    return rows.map(r => ({ id: r.id, name: r.name, filename: r.filename, format: r.format, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }))
+    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE user_id = $1 ORDER BY updated_at DESC`, [userId])
+    return rows.map(r => datasetFrom(r))
   }
 
   async getDataset(id, userId) {
-    const { rows } = await this.query(
-      'SELECT id, name, filename, format, storage_key, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE id = $1 AND user_id = $2',
-      [id, userId]
-    )
-    if (!rows.length) return null
-    const r = rows[0]
-    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE id = $1 AND user_id = $2`, [id, userId])
+    return rows.length ? datasetFrom(rows[0], { withKey: true }) : null
   }
 
   async getDatasetByName(name, userId) {
+    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE name = $1 AND user_id = $2`, [name, userId])
+    return rows.length ? datasetFrom(rows[0], { withKey: true }) : null
+  }
+
+  // A dataset as the refresh loop needs it: its owner and plan, and its
+  // header secret decrypted
+  async getDatasetForFetch(id) {
     const { rows } = await this.query(
-      'SELECT id, name, filename, format, storage_key, columns, row_count, byte_size, created_at, updated_at FROM datasets WHERE name = $1 AND user_id = $2',
-      [name, userId]
+      `SELECT ${DATASET_FIELDS}, d.user_id, d.source_secret, u.plan
+         FROM datasets d JOIN users u ON u.id = d.user_id WHERE d.id = $1`,
+      [id]
     )
     if (!rows.length) return null
     const r = rows[0]
-    return { id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at }
+    return { ...datasetFrom(r, { withKey: true }), userId: r.user_id, plan: r.plan, secret: r.source_secret ? decrypt(r.source_secret) : '' }
   }
 
   async updateDataset(id, data, userId) {
@@ -543,11 +563,160 @@ class PgStorage extends StorageInterface {
     return this.getDataset(id, userId)
   }
 
+  // Changes where a live dataset comes from or how often it refreshes.
+  // sourceSecret: undefined keeps it, '' removes it
+  async updateDatasetSource(id, userId, { source, sourceSecret, schedule, nextFetchAt }) {
+    const sets = ['updated_at = NOW()', 'failures = 0']
+    const params = []
+    let i = 1
+    if (source !== undefined) { sets.push(`source = $${i++}`); params.push(JSON.stringify(source)) }
+    if (sourceSecret !== undefined) { sets.push(`source_secret = $${i++}`); params.push(sourceSecret ? encrypt(sourceSecret) : null) }
+    if (schedule !== undefined) { sets.push(`schedule = $${i++}`); params.push(schedule) }
+    if (nextFetchAt !== undefined) { sets.push(`next_fetch_at = $${i++}`); params.push(nextFetchAt) }
+    params.push(id, userId)
+    await this.query(`UPDATE datasets SET ${sets.join(', ')} WHERE id = $${i++} AND user_id = $${i} AND source_kind <> 'upload'`, params)
+    return this.getDataset(id, userId)
+  }
+
+  async setDatasetTransforms(id, userId, transforms) {
+    await this.query('UPDATE datasets SET transforms = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3', [JSON.stringify(transforms), id, userId])
+    return this.getDataset(id, userId)
+  }
+
+  async countLiveDatasets(userId) {
+    const { rows } = await this.query(`SELECT COUNT(*)::int AS n FROM datasets WHERE user_id = $1 AND source_kind <> 'upload'`, [userId])
+    return rows[0].n
+  }
+
+  // Deletes a dataset, its versions and its fetch log; returns it with every
+  // version's storage key, for deleting their files
   async deleteDataset(id, userId) {
     const ds = await this.getDataset(id, userId)
     if (!ds) return null
+    const { rows } = await this.query('SELECT storage_key FROM dataset_versions WHERE dataset_id = $1', [id])
     await this.query('DELETE FROM datasets WHERE id = $1 AND user_id = $2', [id, userId])
-    return ds
+    const keys = new Set(rows.map(r => r.storage_key))
+    if (ds.storageKey) keys.add(ds.storageKey)
+    return { ...ds, storageKeys: [...keys].filter(Boolean) }
+  }
+
+  // --- Dataset versions ---
+
+  async createDatasetVersion(datasetId, v) {
+    const { rows } = await this.query(
+      `INSERT INTO dataset_versions (dataset_id, storage_key, format, content_hash, columns, row_count, byte_size, etag, last_modified)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [datasetId, v.storageKey, v.format, v.contentHash || null, JSON.stringify(v.columns || []), v.rowCount, v.byteSize || 0, v.etag || null, v.lastModified || null]
+    )
+    return versionFrom(rows[0])
+  }
+
+  // Makes a version the one the dataset reads, copying its file and shape
+  async setCurrentVersion(datasetId, version) {
+    await this.query(
+      `UPDATE datasets SET current_version_id = $1, storage_key = $2, format = $3, columns = $4, row_count = $5, byte_size = $6, updated_at = NOW()
+       WHERE id = $7`,
+      [version.id, version.storageKey, version.format, JSON.stringify(version.columns), version.rowCount, version.byteSize, datasetId]
+    )
+  }
+
+  // Newest first, each with the decks that pin it
+  async listDatasetVersions(datasetId) {
+    const { rows } = await this.query(
+      `SELECT v.*, COALESCE(array_agg(pd.presentation_id) FILTER (WHERE pd.presentation_id IS NOT NULL), '{}') AS pinned_by
+         FROM dataset_versions v LEFT JOIN presentation_datasets pd ON pd.pinned_version_id = v.id
+        WHERE v.dataset_id = $1 GROUP BY v.id ORDER BY v.created_at DESC, v.id`,
+      [datasetId]
+    )
+    return rows.map(r => ({ ...versionFrom(r), pinnedBy: r.pinned_by }))
+  }
+
+  async getDatasetVersion(datasetId, versionId) {
+    const { rows } = await this.query('SELECT * FROM dataset_versions WHERE id = $1 AND dataset_id = $2', [versionId, datasetId])
+    return rows.length ? versionFrom(rows[0]) : null
+  }
+
+  // Returns the storage keys of the versions deleted
+  async deleteDatasetVersions(datasetId, versionIds) {
+    if (!versionIds.length) return []
+    const { rows } = await this.query(
+      'DELETE FROM dataset_versions WHERE dataset_id = $1 AND id = ANY($2) RETURNING storage_key',
+      [datasetId, versionIds]
+    )
+    return rows.map(r => r.storage_key)
+  }
+
+  async setPinnedVersion(presentationId, datasetId, versionId) {
+    await this.query(
+      'UPDATE presentation_datasets SET pinned_version_id = $1 WHERE presentation_id = $2 AND dataset_id = $3',
+      [versionId || null, presentationId, datasetId]
+    )
+  }
+
+  // --- Refreshing live datasets ---
+
+  // Takes a lease on up to `limit` datasets due a fetch, so no other server
+  // fetches them: only live, scheduled datasets some deck uses
+  async claimDueDatasets(limit, leaseSeconds) {
+    const { rows } = await this.query(
+      `UPDATE datasets SET fetch_lease_until = NOW() + make_interval(secs => $2)
+        WHERE id IN (
+          SELECT d.id FROM datasets d
+           WHERE d.source_kind <> 'upload' AND d.schedule <> 'manual'
+             AND d.next_fetch_at <= NOW()
+             AND (d.fetch_lease_until IS NULL OR d.fetch_lease_until < NOW())
+             AND EXISTS (SELECT 1 FROM presentation_datasets pd WHERE pd.dataset_id = d.id)
+           ORDER BY d.next_fetch_at LIMIT $1
+           FOR UPDATE SKIP LOCKED)
+        RETURNING id`,
+      [limit, leaseSeconds]
+    )
+    return rows.map(r => r.id)
+  }
+
+  // A fetch's lease for a refresh started outside the loop (Refresh now):
+  // false when one is already running
+  async leaseDataset(id, leaseSeconds) {
+    const { rowCount } = await this.query(
+      `UPDATE datasets SET fetch_lease_until = NOW() + make_interval(secs => $2)
+        WHERE id = $1 AND (fetch_lease_until IS NULL OR fetch_lease_until < NOW())`,
+      [id, leaseSeconds]
+    )
+    return rowCount > 0
+  }
+
+  // Records how a fetch went, sets the next one, and gives up the lease
+  async recordFetchState(id, { fetched, lastError, failures, nextFetchAt }) {
+    await this.query(
+      `UPDATE datasets SET last_error = $2, failures = $3, next_fetch_at = $4, fetch_lease_until = NULL,
+              last_fetched_at = CASE WHEN $5 THEN NOW() ELSE last_fetched_at END
+        WHERE id = $1`,
+      [id, lastError || null, failures, nextFetchAt, !!fetched]
+    )
+  }
+
+  async recordFetch(datasetId, f) {
+    await this.query(
+      `INSERT INTO dataset_fetches (dataset_id, started_at, duration_ms, outcome, http_status, bytes, error)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [datasetId, f.startedAt, f.durationMs, f.outcome, f.httpStatus || null, f.bytes ?? null, f.error || null]
+    )
+  }
+
+  async listDatasetFetches(datasetId, limit = 50) {
+    const { rows } = await this.query(
+      'SELECT * FROM dataset_fetches WHERE dataset_id = $1 ORDER BY started_at DESC, id DESC LIMIT $2',
+      [datasetId, limit]
+    )
+    return rows.map(r => ({
+      startedAt: r.started_at, durationMs: r.duration_ms, outcome: r.outcome,
+      httpStatus: r.http_status, bytes: r.bytes == null ? null : Number(r.bytes), error: r.error,
+    }))
+  }
+
+  async pruneDatasetFetches(days) {
+    const { rowCount } = await this.query('DELETE FROM dataset_fetches WHERE started_at < NOW() - make_interval(days => $1)', [days])
+    return rowCount
   }
 
   async linkDatasetToPresentation(presentationId, datasetId, alias) {
@@ -564,12 +733,38 @@ class PgStorage extends StorageInterface {
 
   async getPresentationDatasets(presentationId) {
     const { rows } = await this.query(
-      `SELECT d.id, d.name, d.filename, d.format, d.storage_key, d.columns, d.row_count, d.byte_size, d.created_at, d.updated_at, pd.alias
+      `SELECT ${DATASET_FIELDS}, pd.alias, pd.pinned_version_id
        FROM datasets d INNER JOIN presentation_datasets pd ON pd.dataset_id = d.id
        WHERE pd.presentation_id = $1 ORDER BY d.name`,
       [presentationId]
     )
-    return rows.map(r => ({ id: r.id, name: r.name, filename: r.filename, format: r.format, storageKey: r.storage_key, columns: r.columns, rowCount: r.row_count, byteSize: r.byte_size, createdAt: r.created_at, updatedAt: r.updated_at, alias: r.alias }))
+    return rows.map(r => ({ ...datasetFrom(r, { withKey: true }), alias: r.alias, pinnedVersionId: r.pinned_version_id }))
+  }
+}
+
+// The dataset fields every query reads; the secret itself never leaves here
+// but through getDatasetForFetch
+const DATASET_FIELDS = `d.id, d.name, d.filename, d.format, d.storage_key, d.columns, d.row_count, d.byte_size,
+  d.created_at, d.updated_at, d.source_kind, d.source, d.source_secret IS NOT NULL AS has_secret, d.schedule,
+  d.next_fetch_at, d.last_fetched_at, d.last_error, d.failures, d.current_version_id, d.transforms`
+
+function datasetFrom(r, { withKey = false } = {}) {
+  const ds = {
+    id: r.id, name: r.name, filename: r.filename, format: r.format, columns: r.columns,
+    rowCount: r.row_count, byteSize: r.byte_size == null ? null : Number(r.byte_size), createdAt: r.created_at, updatedAt: r.updated_at,
+    sourceKind: r.source_kind, source: r.source, hasSecret: !!r.has_secret, schedule: r.schedule,
+    nextFetchAt: r.next_fetch_at, lastFetchedAt: r.last_fetched_at, lastError: r.last_error, failures: r.failures,
+    currentVersionId: r.current_version_id, transforms: r.transforms || [],
+  }
+  if (withKey) ds.storageKey = r.storage_key
+  return ds
+}
+
+function versionFrom(r) {
+  return {
+    id: r.id, datasetId: r.dataset_id, storageKey: r.storage_key, format: r.format, contentHash: r.content_hash,
+    columns: r.columns, rowCount: r.row_count, byteSize: Number(r.byte_size), etag: r.etag, lastModified: r.last_modified,
+    createdAt: r.created_at,
   }
 }
 

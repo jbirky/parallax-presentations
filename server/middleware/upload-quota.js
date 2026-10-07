@@ -19,12 +19,13 @@ function formatSize(bytes) {
 }
 
 // Bytes a user stores: each file once (a duplicated presentation shares its
-// files with the original) plus datasets
+// files with the original) plus every kept version of their datasets
 async function storageUsedBytes(storage, userId) {
   const { rows } = await storage.query(
     `SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM (
                SELECT DISTINCT ON (storage_key) size_bytes FROM uploads WHERE user_id = $1) files)
-          + (SELECT COALESCE(SUM(byte_size), 0) FROM datasets WHERE user_id = $1) AS used`,
+          + (SELECT COALESCE(SUM(v.byte_size), 0) FROM dataset_versions v
+               JOIN datasets d ON d.id = v.dataset_id WHERE d.user_id = $1) AS used`,
     [userId]
   )
   return Number(rows[0].used)

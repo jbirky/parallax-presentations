@@ -314,51 +314,254 @@ class FileStorage extends StorageInterface {
     return file
   }
 
+  _readDatasets() { return fs.readJsonSync(this._datasetsFile()) }
+  _writeDatasets(all) { fs.writeJsonSync(this._datasetsFile(), all, { spaces: 2 }) }
+
+  // A dataset entry as callers see it: no versions, fetch log or secret
+  _publicDataset(ds, { withKey = true } = {}) {
+    const { versions, fetches, sourceSecret, fetchLeaseUntil, storageKey, ...rest } = ds
+    const out = {
+      sourceKind: 'upload', source: null, schedule: 'manual', nextFetchAt: null, lastFetchedAt: null,
+      lastError: null, failures: 0, currentVersionId: null, transforms: [], ...rest, hasSecret: !!sourceSecret,
+    }
+    if (withKey) out.storageKey = storageKey
+    return out
+  }
+
   async createDataset(data) {
-    const all = fs.readJsonSync(this._datasetsFile())
+    const all = this._readDatasets()
     const existing = all.findIndex(d => d.name === data.name)
     const now = new Date().toISOString()
     const ds = { id: uuidv4(), ...data, createdAt: now, updatedAt: now }
     if (existing >= 0) {
-      ds.id = all[existing].id
-      ds.createdAt = all[existing].createdAt
-      all[existing] = ds
-    } else {
-      all.push(ds)
+      all[existing] = { ...all[existing], ...data, updatedAt: now }
+      this._writeDatasets(all)
+      return this._publicDataset(all[existing])
     }
-    fs.writeJsonSync(this._datasetsFile(), all, { spaces: 2 })
-    return ds
+    all.push(ds)
+    this._writeDatasets(all)
+    return this._publicDataset(ds)
+  }
+
+  async createLiveDataset(data) {
+    const all = this._readDatasets()
+    if (all.some(d => d.name === data.name)) throw Object.assign(new Error(`You already have a dataset named "${data.name}"`), { code: 'duplicate' })
+    const now = new Date().toISOString()
+    const ds = {
+      id: uuidv4(), name: data.name, filename: data.filename, format: 'columns', storageKey: '', columns: [], rowCount: 0, byteSize: 0,
+      sourceKind: data.sourceKind, source: data.source, sourceSecret: data.sourceSecret ? encrypt(data.sourceSecret) : null,
+      schedule: data.schedule, nextFetchAt: data.nextFetchAt, lastFetchedAt: now, lastError: null, failures: 0,
+      currentVersionId: null, transforms: [], versions: [], fetches: [], createdAt: now, updatedAt: now,
+    }
+    all.push(ds)
+    this._writeDatasets(all)
+    return this._publicDataset(ds)
   }
 
   async listDatasets() {
-    return fs.readJsonSync(this._datasetsFile()).map(({ storageKey, ...rest }) => rest)
+    return this._readDatasets().map(d => this._publicDataset(d, { withKey: false }))
   }
 
   async getDataset(id) {
-    return fs.readJsonSync(this._datasetsFile()).find(d => d.id === id) || null
+    const ds = this._readDatasets().find(d => d.id === id)
+    return ds ? this._publicDataset(ds) : null
   }
 
   async getDatasetByName(name) {
-    return fs.readJsonSync(this._datasetsFile()).find(d => d.name === name) || null
+    const ds = this._readDatasets().find(d => d.name === name)
+    return ds ? this._publicDataset(ds) : null
+  }
+
+  async getDatasetForFetch(id) {
+    const ds = this._readDatasets().find(d => d.id === id)
+    if (!ds) return null
+    return { ...this._publicDataset(ds), userId: null, plan: null, secret: ds.sourceSecret ? decrypt(ds.sourceSecret) : '' }
+  }
+
+  // Changes one dataset entry in place; returns it, or null
+  _changeDataset(id, change) {
+    const all = this._readDatasets()
+    const ds = all.find(d => d.id === id)
+    if (!ds) return null
+    change(ds)
+    this._writeDatasets(all)
+    return ds
   }
 
   async updateDataset(id, data) {
-    const all = fs.readJsonSync(this._datasetsFile())
-    const i = all.findIndex(d => d.id === id)
-    if (i === -1) return null
-    if (data.name) all[i].name = data.name
-    all[i].updatedAt = new Date().toISOString()
-    fs.writeJsonSync(this._datasetsFile(), all, { spaces: 2 })
-    return all[i]
+    const ds = this._changeDataset(id, d => {
+      if (data.name) d.name = data.name
+      d.updatedAt = new Date().toISOString()
+    })
+    return ds ? this._publicDataset(ds) : null
+  }
+
+  async updateDatasetSource(id, userId, { source, sourceSecret, schedule, nextFetchAt }) {
+    const ds = this._changeDataset(id, d => {
+      if (!d.sourceKind || d.sourceKind === 'upload') return
+      if (source !== undefined) d.source = source
+      if (sourceSecret !== undefined) d.sourceSecret = sourceSecret ? encrypt(sourceSecret) : null
+      if (schedule !== undefined) d.schedule = schedule
+      if (nextFetchAt !== undefined) d.nextFetchAt = nextFetchAt
+      d.failures = 0
+      d.updatedAt = new Date().toISOString()
+    })
+    return ds ? this._publicDataset(ds) : null
+  }
+
+  async setDatasetTransforms(id, userId, transforms) {
+    const ds = this._changeDataset(id, d => { d.transforms = transforms; d.updatedAt = new Date().toISOString() })
+    return ds ? this._publicDataset(ds) : null
+  }
+
+  async countLiveDatasets() {
+    return this._readDatasets().filter(d => d.sourceKind && d.sourceKind !== 'upload').length
   }
 
   async deleteDataset(id) {
-    const all = fs.readJsonSync(this._datasetsFile())
+    const all = this._readDatasets()
     const i = all.findIndex(d => d.id === id)
     if (i === -1) return null
     const [ds] = all.splice(i, 1)
-    fs.writeJsonSync(this._datasetsFile(), all, { spaces: 2 })
-    return ds
+    this._writeDatasets(all)
+    const links = fs.readJsonSync(this._presDatasetLinksFile())
+    for (const pid of Object.keys(links)) links[pid] = links[pid].filter(l => l.datasetId !== id)
+    fs.writeJsonSync(this._presDatasetLinksFile(), links, { spaces: 2 })
+    const keys = new Set((ds.versions || []).map(v => v.storageKey))
+    if (ds.storageKey) keys.add(ds.storageKey)
+    return { ...this._publicDataset(ds), storageKeys: [...keys].filter(Boolean) }
+  }
+
+  // --- Dataset versions ---
+
+  async createDatasetVersion(datasetId, v) {
+    const version = {
+      id: uuidv4(), datasetId, storageKey: v.storageKey, format: v.format, contentHash: v.contentHash || null,
+      columns: v.columns || [], rowCount: v.rowCount, byteSize: v.byteSize || 0, etag: v.etag || null,
+      lastModified: v.lastModified || null, createdAt: new Date().toISOString(),
+    }
+    this._changeDataset(datasetId, d => { d.versions = [version, ...(d.versions || [])] })
+    return version
+  }
+
+  async setCurrentVersion(datasetId, version) {
+    this._changeDataset(datasetId, d => {
+      Object.assign(d, {
+        currentVersionId: version.id, storageKey: version.storageKey, format: version.format, columns: version.columns,
+        rowCount: version.rowCount, byteSize: version.byteSize, updatedAt: new Date().toISOString(),
+      })
+    })
+  }
+
+  async listDatasetVersions(datasetId) {
+    const ds = this._readDatasets().find(d => d.id === datasetId)
+    if (!ds) return []
+    const links = fs.readJsonSync(this._presDatasetLinksFile())
+    return (ds.versions || []).map(v => ({
+      ...v,
+      pinnedBy: Object.keys(links).filter(pid => links[pid].some(l => l.datasetId === datasetId && l.pinnedVersionId === v.id)),
+    }))
+  }
+
+  async getDatasetVersion(datasetId, versionId) {
+    const ds = this._readDatasets().find(d => d.id === datasetId)
+    return (ds?.versions || []).find(v => v.id === versionId) || null
+  }
+
+  async deleteDatasetVersions(datasetId, versionIds) {
+    const gone = []
+    this._changeDataset(datasetId, d => {
+      d.versions = (d.versions || []).filter(v => {
+        if (!versionIds.includes(v.id)) return true
+        gone.push(v.storageKey)
+        return false
+      })
+    })
+    const links = fs.readJsonSync(this._presDatasetLinksFile())
+    for (const pid of Object.keys(links)) {
+      for (const l of links[pid]) if (l.datasetId === datasetId && versionIds.includes(l.pinnedVersionId)) l.pinnedVersionId = null
+    }
+    fs.writeJsonSync(this._presDatasetLinksFile(), links, { spaces: 2 })
+    return gone
+  }
+
+  async setPinnedVersion(presentationId, datasetId, versionId) {
+    const links = fs.readJsonSync(this._presDatasetLinksFile())
+    const link = (links[presentationId] || []).find(l => l.datasetId === datasetId)
+    if (!link) return
+    link.pinnedVersionId = versionId || null
+    fs.writeJsonSync(this._presDatasetLinksFile(), links, { spaces: 2 })
+  }
+
+  // --- Refreshing live datasets ---
+  // One server reads these files, so a lease only keeps the loop from
+  // starting a dataset's fetch twice
+
+  async claimDueDatasets(limit, leaseSeconds) {
+    const now = Date.now()
+    const links = fs.readJsonSync(this._presDatasetLinksFile())
+    const linked = new Set(Object.values(links).flat().map(l => l.datasetId))
+    const claimed = []
+    const all = this._readDatasets()
+    const due = all
+      .filter(d => d.sourceKind && d.sourceKind !== 'upload' && d.schedule !== 'manual' && linked.has(d.id)
+        && d.nextFetchAt && Date.parse(d.nextFetchAt) <= now && !(d.fetchLeaseUntil && Date.parse(d.fetchLeaseUntil) > now))
+      .sort((a, b) => Date.parse(a.nextFetchAt) - Date.parse(b.nextFetchAt))
+      .slice(0, limit)
+    for (const d of due) {
+      d.fetchLeaseUntil = new Date(now + leaseSeconds * 1000).toISOString()
+      claimed.push(d.id)
+    }
+    if (claimed.length) this._writeDatasets(all)
+    return claimed
+  }
+
+  async leaseDataset(id, leaseSeconds) {
+    let leased = false
+    this._changeDataset(id, d => {
+      if (d.fetchLeaseUntil && Date.parse(d.fetchLeaseUntil) > Date.now()) return
+      d.fetchLeaseUntil = new Date(Date.now() + leaseSeconds * 1000).toISOString()
+      leased = true
+    })
+    return leased
+  }
+
+  async recordFetchState(id, { fetched, lastError, failures, nextFetchAt }) {
+    this._changeDataset(id, d => {
+      d.lastError = lastError || null
+      d.failures = failures
+      d.nextFetchAt = nextFetchAt
+      d.fetchLeaseUntil = null
+      if (fetched) d.lastFetchedAt = new Date().toISOString()
+    })
+  }
+
+  async recordFetch(datasetId, f) {
+    this._changeDataset(datasetId, d => {
+      const entry = {
+        startedAt: f.startedAt, durationMs: f.durationMs, outcome: f.outcome,
+        httpStatus: f.httpStatus || null, bytes: f.bytes ?? null, error: f.error || null,
+      }
+      d.fetches = [entry, ...(d.fetches || [])].slice(0, 50)
+    })
+  }
+
+  async listDatasetFetches(datasetId, limit = 50) {
+    const ds = this._readDatasets().find(d => d.id === datasetId)
+    return (ds?.fetches || []).slice(0, limit)
+  }
+
+  async pruneDatasetFetches(days) {
+    const cutoff = Date.now() - days * 86400000
+    let pruned = 0
+    const all = this._readDatasets()
+    for (const d of all) {
+      const kept = (d.fetches || []).filter(f => Date.parse(f.startedAt) >= cutoff)
+      pruned += (d.fetches || []).length - kept.length
+      d.fetches = kept
+    }
+    if (pruned) this._writeDatasets(all)
+    return pruned
   }
 
   async linkDatasetToPresentation(presentationId, datasetId, alias) {
@@ -368,7 +571,7 @@ class FileStorage extends StorageInterface {
     if (existing >= 0) {
       links[presentationId][existing].alias = alias || null
     } else {
-      links[presentationId].push({ datasetId, alias: alias || null })
+      links[presentationId].push({ datasetId, alias: alias || null, pinnedVersionId: null })
     }
     fs.writeJsonSync(this._presDatasetLinksFile(), links, { spaces: 2 })
   }
@@ -383,12 +586,11 @@ class FileStorage extends StorageInterface {
   async getPresentationDatasets(presentationId) {
     const links = fs.readJsonSync(this._presDatasetLinksFile())
     const presLinks = links[presentationId] || []
-    const all = fs.readJsonSync(this._datasetsFile())
+    const all = this._readDatasets()
     return presLinks.map(l => {
       const ds = all.find(d => d.id === l.datasetId)
       if (!ds) return null
-      const { storageKey, ...rest } = ds
-      return { ...rest, alias: l.alias }
+      return { ...this._publicDataset(ds), alias: l.alias, pinnedVersionId: l.pinnedVersionId || null }
     }).filter(Boolean)
   }
 }

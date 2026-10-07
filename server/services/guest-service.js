@@ -102,7 +102,8 @@ async function deleteGuestSession(storage, session) {
   if (isR2Enabled()) {
     const { rows } = await storage.query(
       `SELECT storage_key FROM uploads WHERE user_id = $1
-       UNION SELECT storage_key FROM datasets WHERE user_id = $1`,
+       UNION SELECT storage_key FROM datasets WHERE user_id = $1
+       UNION SELECT v.storage_key FROM dataset_versions v JOIN datasets d ON d.id = v.dataset_id WHERE d.user_id = $1`,
       [session.user_id]
     )
     const keys = rows.map(r => r.storage_key).filter(k => !k.startsWith('local:'))

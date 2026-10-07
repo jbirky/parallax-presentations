@@ -36,7 +36,7 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
-const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { ingestDataset, saveUpload, datasetName, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { createSandboxLookup } = require('./services/plugin-embed')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
@@ -1231,18 +1231,17 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
   try {
     const name = req.body.name || undefined
     const result = await ingestDataset(req.file.path, req.file.originalname, {
-      userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
+      userId: req.userId, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
-    if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
-    // Uploading under a name already used replaces that dataset: its file
-    // goes, or it would stay in storage, counted by no one
-    const same = (await storage.listDatasets(req.userId)).find(d => d.name === result.name)
-    const replaced = same && await storage.getDataset(same.id, req.userId)
-    const ds = await storage.createDataset(result, req.userId)
-    if (replaced?.storageKey && replaced.storageKey !== ds.storageKey) {
-      deleteDatasetFile(replaced.storageKey, DATA_DIR).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    if (name) result.name = datasetName(name)
+    // Uploading under a name already used replaces that dataset, unless it's
+    // a live one: its source would fetch over the upload
+    const previous = await storage.getDatasetByName(result.name, req.userId)
+    if (previous && previous.sourceKind !== 'upload') {
+      deleteDatasetFile(result.storageKey, DATA_DIR).catch(() => {})
+      return res.status(409).json({ error: `"${result.name}" is a live dataset. Upload this file under another name.` })
     }
-    res.status(201).json(ds)
+    res.status(201).json(await saveUpload(storage, result, req.userId, { previous, localDir: DATA_DIR }))
   } catch (err) {
     if (req.file && req.file.path) fs.removeSync(req.file.path)
     res.status(400).json({ error: err.message })
@@ -1298,8 +1297,10 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.deleteDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    try { await deleteDatasetFile(ds.storageKey, DATA_DIR) } catch (e) {
-      console.error('Dataset file cleanup failed:', e.message)
+    for (const key of ds.storageKeys) {
+      try { await deleteDatasetFile(key, DATA_DIR) } catch (e) {
+        console.error('Dataset file cleanup failed:', e.message)
+      }
     }
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }

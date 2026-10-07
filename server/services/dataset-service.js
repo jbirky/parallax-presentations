@@ -3,12 +3,11 @@
 
 const path = require('path')
 const fs = require('fs-extra')
+const { Worker } = require('worker_threads')
 const { v4: uuidv4 } = require('uuid')
-const { uploadToR2, streamFromR2, deleteFromR2 } = require('./r2')
+const { putBufferToR2, streamFromR2, deleteFromR2 } = require('./r2')
 const { isR2Enabled } = require('./r2')
-const {
-  parseRows, rowsToTable, inferColumns, tableBytes, unpackTable, likeMatch, applyQuery,
-} = require('./dataset-table')
+const { parseRows, rowsToTable, tableBytes, unpackTable, likeMatch, applyQuery } = require('./dataset-table')
 
 const ALLOWED_FORMATS = new Set(['csv', 'json', 'tsv'])
 
@@ -20,42 +19,88 @@ function detectFormat(filename) {
   return null
 }
 
-async function ingestDataset(filePath, originalFilename, { userId, storage, localDir, keyPrefix }) {
+// Parses a body and packs it as a columns copy in a worker thread (see
+// processBody in dataset-table.js). The worker's memory is capped, so a body
+// too big to read fails on its own instead of taking the server down
+const WORKER = path.join(__dirname, 'dataset-worker.js')
+
+function runInWorker(body, format, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER, { workerData: { body, format, opts }, resourceLimits: { maxOldGenerationSizeMb: 1536 } })
+    let settled = false
+    const settle = (fn, value) => { if (!settled) { settled = true; fn(value) } }
+    worker.once('message', msg => {
+      if (msg.ok) settle(resolve, { ...msg, gz: Buffer.from(msg.gz.buffer, msg.gz.byteOffset, msg.gz.byteLength) })
+      else settle(reject, new Error(msg.error))
+      worker.terminate()
+    })
+    worker.once('error', err => settle(reject, err.code === 'ERR_WORKER_OUT_OF_MEMORY' ? new Error('The data is too large to read') : err))
+    worker.once('exit', () => settle(reject, new Error('Reading the data stopped before it finished')))
+  })
+}
+
+// Stores a packed table: on R2 under its owner's datasets, or in the data
+// folder when self-hosted
+async function storeColumns(gz, { name, keyPrefix, localDir }) {
+  if (isR2Enabled()) {
+    const storageKey = `${keyPrefix}/datasets/${name}/${uuidv4()}.json.gz`
+    await putBufferToR2(storageKey, gz, 'application/gzip')
+    return storageKey
+  }
+  const localName = `${uuidv4()}.json.gz`
+  await fs.ensureDir(path.join(localDir, 'datasets'))
+  await fs.writeFile(path.join(localDir, 'datasets', localName), gz)
+  return `local:${localName}`
+}
+
+function datasetName(text) {
+  return String(text).replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+}
+
+async function ingestDataset(filePath, originalFilename, { userId, localDir, keyPrefix }) {
   const format = detectFormat(originalFilename)
   if (!format || !ALLOWED_FORMATS.has(format)) {
     throw new Error(`Unsupported file format. Accepted: ${[...ALLOWED_FORMATS].join(', ')}`)
   }
-
-  const table = rowsToTable(await parseRows(await fs.readFile(filePath), format))
-  const columns = inferColumns(table)
-  const stat = fs.statSync(filePath)
-  const baseName = path.basename(originalFilename, path.extname(originalFilename))
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .toLowerCase()
-
-  let storageKey
-  if (isR2Enabled()) {
-    storageKey = `${keyPrefix || userId}/datasets/${baseName}/${uuidv4()}${path.extname(originalFilename)}`
-    await uploadToR2(filePath, storageKey, 'application/octet-stream')
-  } else {
-    const dsDir = path.join(localDir, 'datasets')
-    fs.ensureDirSync(dsDir)
-    const localName = `${uuidv4()}${path.extname(originalFilename)}`
-    storageKey = `local:${localName}`
-    fs.copySync(filePath, path.join(dsDir, localName))
+  try {
+    const name = datasetName(path.basename(originalFilename, path.extname(originalFilename)))
+    const packed = await runInWorker(await fs.readFile(filePath), format)
+    const storageKey = await storeColumns(packed.gz, { name, keyPrefix: keyPrefix || userId, localDir })
+    return {
+      name,
+      filename: originalFilename,
+      format: 'columns',
+      storageKey,
+      columns: packed.columns,
+      rowCount: packed.rowCount,
+      byteSize: packed.gz.length,
+      contentHash: packed.hash,
+    }
+  } finally {
+    fs.removeSync(filePath)
   }
+}
 
-  fs.removeSync(filePath)
-
-  return {
-    name: baseName,
-    filename: originalFilename,
-    format,
-    storageKey,
-    columns,
-    rowCount: table.length,
-    byteSize: stat.size,
+// Saves an upload as its dataset's only version, deleting the files an
+// earlier upload under that name left. `previous` is that dataset, if any
+async function saveUpload(storage, result, userId, { previous, localDir }) {
+  const ds = await storage.createDataset(result, userId)
+  const old = await storage.listDatasetVersions(ds.id)
+  const version = await storage.createDatasetVersion(ds.id, {
+    storageKey: result.storageKey, format: result.format, contentHash: result.contentHash,
+    columns: result.columns, rowCount: result.rowCount, byteSize: result.byteSize,
+  })
+  await storage.setCurrentVersion(ds.id, version)
+  const keys = await storage.deleteDatasetVersions(ds.id, old.map(v => v.id))
+  // A dataset uploaded before versions, on a server with no migration to
+  // give it one (self-hosted), had only its own key
+  if (previous?.storageKey) keys.push(previous.storageKey)
+  for (const key of new Set(keys)) {
+    if (key && key !== result.storageKey) {
+      deleteDatasetFile(key, localDir).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    }
   }
+  return storage.getDataset(ds.id, userId)
 }
 
 // Tables by storage key, since a chart asks for its data again and again,
@@ -123,4 +168,7 @@ async function deleteDatasetFile(storageKey, localDir) {
   }
 }
 
-module.exports = { ingestDataset, readDatasetFile, applyQuery, likeMatch, deleteDatasetFile, detectFormat, ALLOWED_FORMATS }
+module.exports = {
+  ingestDataset, saveUpload, runInWorker, storeColumns, datasetName, readDatasetFile, applyQuery, likeMatch,
+  deleteDatasetFile, detectFormat, ALLOWED_FORMATS,
+}
