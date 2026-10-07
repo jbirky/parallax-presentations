@@ -5324,7 +5324,7 @@ function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height }) {
 }
 
 // client/src/utils/generateHTML.js
-var import_libraries3 = require("./libraries");
+var import_libraries4 = require("./libraries");
 
 // client/src/utils/modelViewer.js
 var import_libraries = require("./libraries");
@@ -21106,6 +21106,13 @@ var CLICK_ACTION_SCRIPT = `
       Reveal.on('fragmenthidden', function() { stepStates(Reveal.getCurrentSlide()); });
     })();`;
 
+// client/src/utils/latinModern.js
+var import_libraries3 = require("./libraries");
+var FACES = [["normal", 400, "cmunrm"], ["normal", 700, "cmunbx"], ["italic", 400, "cmunti"], ["italic", 700, "cmunbi"]];
+function latinModernFaces(url = import_libraries3.libUrl) {
+  return FACES.map(([style, weight, file]) => `@font-face { font-family: 'Latin Modern Roman'; font-style: ${style}; font-weight: ${weight}; src: url('${url("latex.js", `dist/fonts/Serif/${file}.woff`)}') format('woff'); }`).join("\n");
+}
+
 // client/src/utils/generateHTML.js
 var EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});";
 var EMBED_SCALE_SCRIPT = `
@@ -21392,7 +21399,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
-        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries3.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
+        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
         const srcdoc = p5Doc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -21403,7 +21410,7 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "markdown") {
         const md = (el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries3.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
         const escaped = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -21515,7 +21522,7 @@ function generateRevealHTML(presentation, opts = {}) {
 \\begin{document}
 ${content}
 \\end{document}`;
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries3.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries3.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -21731,22 +21738,20 @@ ${sections}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(presentation.title || "Presentation")}</title>
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", "dist/reset.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", "dist/reveal.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("katex", "dist/katex.min.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reset.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/cmu.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
   <style>${customFontFaces(customFonts)}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunrm.woff")}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunbx.woff")}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunti.woff")}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, "\n    ")}
   </style>
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
@@ -21846,11 +21851,11 @@ ${slidesHtml}
   <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${sanitizeAttr(presentation.overviewLayout || "linear")}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "dist/reveal.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("katex", "dist/katex.min.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || "slide")};

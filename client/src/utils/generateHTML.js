@@ -28,6 +28,7 @@ import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
+import { latinModernFaces } from './latinModern'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -759,9 +760,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
   <style>${customFontFaces(customFonts)}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, '\n    ')}
   </style>
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
@@ -1686,9 +1685,7 @@ function generatePrintHTML(presentation) {
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <style>
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, '\n    ')}
     @page { size: ${slideW}px ${slideH}px; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     html, body { width: ${slideW}px; background: #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
