@@ -2,7 +2,7 @@
 
 A live dataset comes from a web address or a TAP query instead of a file you upload. Parallax fetches it when you make it and again on the schedule you choose, so a deck that uses it keeps up with the data. Each time the data changes, Parallax keeps the new version; the last five, and any a deck holds on to, stay.
 
-Datasets reach slides through plugins, with `ctx.datasets.query("name")`. Open them from the **Data** button at the top of the editor.
+Datasets reach slides through a graph's data lines (see [Graphs](./graphs.md#plotting-data)) and through plugins, with `ctx.datasets.query("name")`. Open them from the **Data** button at the top of the editor.
 
 ## Making one
 

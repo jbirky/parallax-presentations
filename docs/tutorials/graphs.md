@@ -163,6 +163,25 @@ While presenting, drag to turn it, scroll or pinch to zoom, and double-click to 
 
 3D graphs are drawn with WebGL 2, which current browsers have. In a PDF they're drawn at the starting view, still.
 
+## Plotting data
+
+A graph can plot a dataset's rows beside its curves. Link the dataset to the deck first (**Data** at the top of the editor; see [Live Datasets](./live-datasets.md)), then click **+ Data** under the expression list. The new line plots the dataset's first two number columns; choose the dataset, and the columns for **x** and **y**, in its row. In a new graph it takes the example's place, and the view fits the rows once they arrive.
+
+| Choice | What it does |
+| --- | --- |
+| **Points**, **Line** or **Bars** | How each row is drawn. A line joins the rows in their order. Bars stand on 0, from x to **Bars end at** (a histogram step's `_to` column) or halfway to their neighbors. |
+| **Color by** | A column of categories gets a color each (the eight commonest; the rest are gray), with a key; a column of numbers gets a color scale. |
+| **Size by** | Bigger values, bigger points, by area. |
+| **Label** | The column shown, with the row's values, when you point at it. |
+| **x errors**, **y errors** | Error bars, ± the column's value. |
+| **Point size**, **Opacity**, **Appears** | As for any line. |
+
+Under each data line, the graph says how many rows it has, or why it has none. It plots up to 200,000 rows of a dataset. The rows are the deck's: a version the deck pins, with the dataset's steps applied. A dataset's **Steps** are the place to filter rows or bin them for a histogram.
+
+For an exoplanet plot, use the dataset from [Live Datasets](./live-datasets.md): `pl_orbper` across, `pl_bmasse` up, both scales **Log**, colored by `discoverymethod` and labeled by `pl_name`. Then add a curve such as `y = 0.5 x^(2/3)` over the points.
+
+Graphs show their data in the editor, in Present, and in exported HTML files and PDFs. Share links, live sessions, and decks published to GitHub or Zenodo don't carry the rows yet.
+
 ## Styling
 
 - **Color**: click the dot beside a line.
@@ -173,14 +192,16 @@ While presenting, drag to turn it, scroll or pinch to zoom, and double-click to 
 
 ## The view
 
-Set the range of **x** under the preview, or drag the preview to move around and scroll to zoom. What the preview shows is what the slide starts with. With **Equal scales**, one unit is the same length on both axes and the height follows the width. **Reset** goes back to −10 ≤ x ≤ 10.
+Set the range of **x** under the preview, or drag the preview to move around and scroll to zoom. What the preview shows is what the slide starts with. With **Equal scales**, one unit is the same length on both axes and the height follows the width. **Reset** goes back to −10 ≤ x ≤ 10. **Fit to data** shows every row of the graph's data lines.
+
+Under **Scales**, each axis can be **Linear** or **Log**. A log axis spaces powers of ten evenly, so it shows only positive values, and its numbers fall on 1, 10, 100 and so on (with 2 to 9 between as you zoom in). Curves follow the scale: `y = x^2` is a straight line on two log axes.
 
 You can also turn the grid, axes, numbers and sliders on or off, and label the axes.
 
 ## Presenting
 
 - Drag to move around, scroll or pinch to zoom, and double-click to zoom in.
-- Hover over a curve to read its value.
+- Hover over a curve to read its value, or over a data point to read its row.
 - The ⟲ button goes back to the starting view.
 
 Turn on **Lock panning and zooming** to keep the view fixed. Sliders and draggable points still work.
