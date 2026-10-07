@@ -11,6 +11,7 @@ class DatasetManager {
   }
 
   async loadForPresentation(presentationId) {
+    this._presentationId = presentationId
     const datasets = await api.getPresentationDatasets(presentationId)
     for (const ds of datasets) {
       const key = ds.alias || ds.name
@@ -23,7 +24,7 @@ class DatasetManager {
     if (this._cache.has(name)) return
     const meta = this._meta.get(name)
     if (!meta) throw new Error(`Dataset "${name}" not found. Did you link it to the presentation?`)
-    const data = await api.getDatasetData(meta.id)
+    const data = await this._read(meta)
     const columnIndex = {}
     const colNames = Object.keys(data.columns)
     colNames.forEach((c, i) => { columnIndex[c] = i })
@@ -44,7 +45,15 @@ class DatasetManager {
     if (opts.offset) params.offset = opts.offset
     if (opts.orderBy) params.orderBy = typeof opts.orderBy === 'string' ? opts.orderBy : opts.orderBy.column
     if (opts.where) params.where = JSON.stringify(opts.where)
-    return api.getDatasetData(meta.id, params)
+    return this._read(meta, params)
+  }
+
+  // Through the deck when there is one: its pinned version, its transforms,
+  // and the owner's data for an editor who isn't the owner
+  _read(meta, params = {}) {
+    return this._presentationId
+      ? api.getPresentationDatasetData(this._presentationId, meta.id, params)
+      : api.getDatasetData(meta.id, params)
   }
 
   _queryLocal(name, opts) {
@@ -92,6 +101,7 @@ class DatasetManager {
   }
 
   clear() {
+    this._presentationId = null
     this._cache.clear()
     this._meta.clear()
     this._listeners.clear()

@@ -46,6 +46,14 @@ function noteVersion(id, deck) {
 
 // Rejects with the server's reason; a refused save's error has code
 // 'conflict' and the version that's saved now
+// A dataset route's answer: its own error message, whatever the status (a
+// 409 there is a name in use or a fetch already running, not a save conflict)
+async function datasetChecked(r, fallback) {
+  const b = await safeJson(r)
+  if (!r.ok) throw Object.assign(new Error(b.error || b.message || fallback), { status: r.status, code: b.code })
+  return b
+}
+
 async function checked(r, fallback) {
   const b = await safeJson(r)
   if (r.status === 409) throw Object.assign(new Error(b.message || 'Someone else saved this presentation'), { code: 'conflict', version: b.version })
@@ -247,6 +255,22 @@ export const api = {
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
+  getPresentationDatasetData: (pid, datasetId, params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}/data${qs ? '?' + qs : ''}`).then(r => datasetChecked(r, 'Couldn’t read the dataset'))
+  },
+  pinDatasetVersion: (pid, datasetId, versionId) => authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}/pin`, jsonBody('PUT', { versionId })).then(r => datasetChecked(r, 'Couldn’t pin the version')),
+  // Live datasets: fetched from a URL or a TAP query, and refreshed on a schedule
+  getDatasetSources: () => authFetch(`${BASE}/datasets/sources`).then(r => datasetChecked(r, 'Failed')),
+  testDatasetSource: (body) => authFetch(`${BASE}/datasets/sources/test`, jsonBody('POST', body)).then(r => datasetChecked(r, 'The source couldn’t be read')),
+  createLiveDataset: (body) => authFetch(`${BASE}/datasets/live`, jsonBody('POST', body)).then(r => datasetChecked(r, 'The dataset couldn’t be made')),
+  updateDatasetSource: (id, body) => authFetch(`${BASE}/datasets/${id}/source`, jsonBody('PATCH', body)).then(r => datasetChecked(r, 'The source couldn’t be changed')),
+  refreshDataset: (id) => authFetch(`${BASE}/datasets/${id}/refresh`, { method: 'POST' }).then(r => datasetChecked(r, 'The dataset couldn’t be refreshed')),
+  getDatasetVersions: (id) => authFetch(`${BASE}/datasets/${id}/versions`).then(r => datasetChecked(r, 'Failed')),
+  getDatasetFetches: (id) => authFetch(`${BASE}/datasets/${id}/fetches`).then(r => datasetChecked(r, 'Failed')),
+  // Transforms: the steps that shape a dataset for slides
+  saveDatasetTransforms: (id, transforms) => authFetch(`${BASE}/datasets/${id}/transforms`, jsonBody('PUT', { transforms })).then(r => datasetChecked(r, 'The transforms couldn’t be saved')),
+  previewDatasetTransforms: (id, transforms) => authFetch(`${BASE}/datasets/${id}/transforms/preview`, jsonBody('POST', { transforms })).then(r => datasetChecked(r, 'The transforms couldn’t run')),
   linkDataset: (pid, datasetId, alias) => authFetch(`${BASE}/presentations/${pid}/datasets`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

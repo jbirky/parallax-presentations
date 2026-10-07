@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Trash2, Link, Unlink, ChevronDown, ChevronRight, Database, Table2, X, Check, Search, ArrowUpDown } from 'lucide-react'
+import { Upload, Trash2, Link, Unlink, ChevronDown, ChevronRight, Database, Table2, X, Check, Search, RefreshCw, Globe, Telescope, Plus } from 'lucide-react'
 import { api } from '../utils/api'
+import { LiveSourceForm, SourceTab, VersionsTab, TransformsTab, RowsTable, scheduleLabel, relativeTime } from './LiveDatasets'
 
 const TYPE_COLORS = {
   integer: '#60a5fa',
@@ -53,63 +54,52 @@ function SchemaTable({ columns }) {
   )
 }
 
-function DataPreview({ datasetId }) {
+// The first rows a deck's slides get: through the deck when the dataset is
+// linked to it, so a pinned version shows as the slides see it
+function DataPreview({ ds, presentationId, linked, pinnedVersionId }) {
   const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let live = true
     setLoading(true)
-    api.getDatasetData(datasetId, { limit: '20' })
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [datasetId])
+    setError(null)
+    const read = presentationId && linked
+      ? api.getPresentationDatasetData(presentationId, ds.id, { limit: '20' })
+      : api.getDatasetData(ds.id, { limit: '20' })
+    Promise.resolve(read)
+      .then(d => { if (live) { if (d?.error) setError(d.error); else setData(d) } })
+      .catch(err => live && setError(err.message))
+      .finally(() => live && setLoading(false))
+    return () => { live = false }
+  }, [ds.id, ds.updatedAt, presentationId, linked, pinnedVersionId])
 
   if (loading) return <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>Loading preview...</div>
+  if (error) return <div style={{ padding: '8px 12px', borderRadius: 6, fontSize: 12, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>{error}</div>
   if (!data || !data.columns) return <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>No data</div>
-
-  const colNames = Object.keys(data.columns)
-  const rowCount = data.columns[colNames[0]]?.length || 0
-
-  return (
-    <div style={{ overflowX: 'auto', marginTop: 8 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid var(--border)' }}>
-            {colNames.map(c => (
-              <th key={c} style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: rowCount }, (_, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid var(--border-light, rgba(255,255,255,0.05))' }}>
-              {colNames.map(c => (
-                <td key={c} style={{ padding: '3px 8px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 10, whiteSpace: 'nowrap', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {data.columns[c][i] != null ? String(data.columns[c][i]) : ''}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.totalRows > 20 && (
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 8px', textAlign: 'right' }}>
-          Showing 20 of {data.totalRows.toLocaleString()} rows
-        </div>
-      )}
-    </div>
-  )
+  return <RowsTable columns={data.columns} total={data.totalRows} />
 }
+
+const tabButton = active => ({
+  padding: '4px 10px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer',
+  background: active ? 'var(--accent)' : 'var(--bg-card)', color: active ? '#fff' : 'var(--text-secondary)',
+})
 
 export default function DatasetPanel({ presentationId, onClose }) {
   const [datasets, setDatasets] = useState([])
   const [linkedIds, setLinkedIds] = useState(new Set())
+  const [pins, setPins] = useState({})
+  const [sources, setSources] = useState({ enabled: false })
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
+  const [adding, setAdding] = useState(null)  // 'url' | 'tap' while the form is open
+  const [addMenu, setAddMenu] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
-  const [previewId, setPreviewId] = useState(null)
+  const [tab, setTab] = useState('columns')
+  const [refreshing, setRefreshing] = useState(null)
+  const [notes, setNotes] = useState({})  // dataset id -> what its last refresh did
   const [searchQuery, setSearchQuery] = useState('')
   const [renaming, setRenaming] = useState(null)
   const [renameValue, setRenameValue] = useState('')
@@ -124,14 +114,22 @@ export default function DatasetPanel({ presentationId, onClose }) {
         presentationId ? api.getPresentationDatasets(presentationId) : Promise.resolve([]),
       ])
       setDatasets(Array.isArray(all) ? all : [])
-      setLinkedIds(new Set((linked || []).map(d => d.id)))
+      const links = Array.isArray(linked) ? linked : []
+      setLinkedIds(new Set(links.map(d => d.id)))
+      setPins(Object.fromEntries(links.filter(d => d.pinnedVersionId).map(d => [d.id, d.pinnedVersionId])))
     } catch {
       setDatasets([])
     }
     setLoading(false)
   }
 
-  useEffect(() => { refresh() }, [presentationId])
+  async function loadSources() {
+    try { setSources(await api.getDatasetSources()) } catch { setSources({ enabled: false }) }
+  }
+
+  useEffect(() => { refresh(); loadSources() }, [presentationId])
+
+  const replace = ds => setDatasets(list => list.map(d => (d.id === ds.id ? { ...d, ...ds } : d)))
 
   async function handleUpload(e) {
     const file = e.target.files?.[0]
@@ -161,14 +159,15 @@ export default function DatasetPanel({ presentationId, onClose }) {
     if (!presentationId) return
     await api.unlinkDataset(presentationId, datasetId)
     setLinkedIds(prev => { const s = new Set(prev); s.delete(datasetId); return s })
+    setPins(prev => { const p = { ...prev }; delete p[datasetId]; return p })
   }
 
   async function handleDelete(datasetId) {
     await api.deleteDataset(datasetId)
     setDeleteConfirm(null)
     if (expandedId === datasetId) setExpandedId(null)
-    if (previewId === datasetId) setPreviewId(null)
     await refresh()
+    loadSources()
   }
 
   async function handleRename(datasetId) {
@@ -178,14 +177,35 @@ export default function DatasetPanel({ presentationId, onClose }) {
     await refresh()
   }
 
+  async function handleRefresh(ds) {
+    setRefreshing(ds.id)
+    setNotes(n => ({ ...n, [ds.id]: null }))
+    try {
+      const result = await api.refreshDataset(ds.id)
+      replace(result.dataset)
+      setNotes(n => ({ ...n, [ds.id]: result.outcome === 'changed' ? 'New data: saved as a new version.' : result.outcome === 'unchanged' ? 'No change since the last fetch.' : null }))
+    } catch (err) {
+      setNotes(n => ({ ...n, [ds.id]: err.message }))
+      await refresh()
+    }
+    setRefreshing(null)
+  }
+
+  function openForm(kind) {
+    setAddMenu(false)
+    setUploadError(null)
+    setAdding(kind)
+  }
+
   const filtered = datasets.filter(d =>
     !searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()) || d.filename.toLowerCase().includes(searchQuery.toLowerCase())
   )
+  const menuItem = { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer', textAlign: 'left' }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: 'var(--bg-primary, #0f0f1a)', border: '1px solid var(--border)', borderRadius: 12, width: 800, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+      <div style={{ background: 'var(--bg-primary, #0f0f1a)', border: '1px solid var(--border)', borderRadius: 12, width: 860, maxWidth: 'calc(100vw - 32px)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -196,24 +216,49 @@ export default function DatasetPanel({ presentationId, onClose }) {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                placeholder="Search datasets..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '5px 8px 5px 28px', borderRadius: 6, fontSize: 12, width: 180 }}
-              />
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, opacity: uploading ? 0.6 : 1 }}
-            >
-              <Upload size={13} />
-              {uploading ? 'Uploading...' : 'Upload'}
-            </button>
+            {!adding && (
+              <div style={{ position: 'relative' }}>
+                <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search datasets..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '5px 8px 5px 28px', borderRadius: 6, fontSize: 12, width: 180 }}
+                />
+              </div>
+            )}
+            {sources.enabled ? (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setAddMenu(o => !o)}
+                  disabled={uploading}
+                  aria-haspopup="menu"
+                  aria-expanded={addMenu}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, opacity: uploading ? 0.6 : 1 }}
+                >
+                  <Plus size={13} />
+                  {uploading ? 'Uploading...' : 'Add'}
+                  <ChevronDown size={12} />
+                </button>
+                {addMenu && (
+                  <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 2, background: 'var(--bg-card, #1a1a2e)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, width: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                    <button role="menuitem" style={menuItem} onClick={() => { setAddMenu(false); fileInputRef.current?.click() }}><Upload size={13} /> Upload a file</button>
+                    <button role="menuitem" style={menuItem} onClick={() => openForm('url')}><Globe size={13} /> From a URL</button>
+                    <button role="menuitem" style={menuItem} onClick={() => openForm('tap')}><Telescope size={13} /> From a TAP query</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 500, opacity: uploading ? 0.6 : 1 }}
+              >
+                <Upload size={13} />
+                {uploading ? 'Uploading...' : 'Upload'}
+              </button>
+            )}
             <input ref={fileInputRef} type="file" accept=".csv,.tsv,.json,.tab" onChange={handleUpload} style={{ display: 'none' }} />
             <button onClick={onClose}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
@@ -229,9 +274,17 @@ export default function DatasetPanel({ presentationId, onClose }) {
           </div>
         )}
 
-        {/* Dataset list */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-          {loading ? (
+        {/* A new live dataset, or the list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: adding ? 0 : '8px 12px' }}>
+          {adding ? (
+            <LiveSourceForm
+              kind={adding}
+              sources={sources}
+              presentationId={presentationId}
+              onCancel={() => setAdding(null)}
+              onDone={async ds => { setAdding(null); await refresh(); loadSources(); setExpandedId(ds.id); setTab('data') }}
+            />
+          ) : loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading...</div>
           ) : filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40 }}>
@@ -241,7 +294,7 @@ export default function DatasetPanel({ presentationId, onClose }) {
               </div>
               {!searchQuery && (
                 <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>
-                  Upload a CSV, TSV, or JSON file to get started
+                  {sources.enabled ? 'Upload a CSV, TSV, or JSON file, or fetch one from a URL or a TAP query' : 'Upload a CSV, TSV, or JSON file to get started'}
                 </div>
               )}
             </div>
@@ -250,17 +303,22 @@ export default function DatasetPanel({ presentationId, onClose }) {
               {filtered.map(ds => {
                 const isExpanded = expandedId === ds.id
                 const isLinked = linkedIds.has(ds.id)
-                const isPreviewing = previewId === ds.id
+                const isLive = ds.sourceKind && ds.sourceKind !== 'upload'
+                const note = notes[ds.id]
+                const tabs = [['columns', 'Columns'], ['data', 'Data'], ['steps', `Steps${ds.transforms?.length ? ` (${ds.transforms.length})` : ''}`],
+                  ...(isLive ? [['source', 'Source']] : []), ['versions', 'Versions']]
 
                 return (
                   <div key={ds.id} style={{ background: 'var(--bg-hover)', borderRadius: 8, border: `1px solid ${isLinked ? 'var(--accent)' : 'var(--border)'}`, overflow: 'hidden', transition: 'border-color 0.15s' }}>
                     {/* Row header */}
                     <div
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', cursor: 'pointer' }}
-                      onClick={() => setExpandedId(isExpanded ? null : ds.id)}
+                      onClick={() => { setExpandedId(isExpanded ? null : ds.id); setTab('columns') }}
                     >
                       {isExpanded ? <ChevronDown size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} /> : <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
-                      <Table2 size={14} style={{ color: isLinked ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }} />
+                      {isLive
+                        ? (ds.sourceKind === 'tap' ? <Telescope size={14} style={{ color: isLinked ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }} /> : <Globe size={14} style={{ color: isLinked ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }} />)
+                        : <Table2 size={14} style={{ color: isLinked ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }} />}
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {renaming === ds.id ? (
@@ -276,21 +334,48 @@ export default function DatasetPanel({ presentationId, onClose }) {
                             <button onClick={() => setRenaming(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={14} /></button>
                           </div>
                         ) : (
-                          <div
-                            style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                            onDoubleClick={e => { e.stopPropagation(); setRenaming(ds.id); setRenameValue(ds.name) }}
-                            title="Double-click to rename"
-                          >
-                            {ds.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <div
+                              style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              onDoubleClick={e => { e.stopPropagation(); setRenaming(ds.id); setRenameValue(ds.name) }}
+                              title="Double-click to rename"
+                            >
+                              {ds.name}
+                            </div>
+                            {isLive && (
+                              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(34,197,94,0.12)', color: '#22c55e', whiteSpace: 'nowrap' }}>
+                                Live · {scheduleLabel(ds.schedule).toLowerCase()}
+                              </span>
+                            )}
+                            {pins[ds.id] && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(99,102,241,0.15)', color: 'var(--accent)', whiteSpace: 'nowrap' }}>Pinned</span>}
                           </div>
                         )}
                         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {ds.filename} &middot; {ds.rowCount?.toLocaleString()} rows &middot; {ds.columns?.length} cols &middot; {formatBytes(ds.byteSize)}
+                          {ds.filename} &middot; {ds.rowCount?.toLocaleString()} rows &middot; {(ds.sourceColumns || ds.columns)?.length} cols &middot; {formatBytes(ds.byteSize)}
+                          {ds.transforms?.length > 0 && <> &middot; {ds.transforms.length} step{ds.transforms.length === 1 ? '' : 's'}</>}
+                          {isLive && ds.lastFetchedAt && <> &middot; fetched {relativeTime(ds.lastFetchedAt)}</>}
                         </div>
+                        {isLive && ds.lastError && (
+                          <div style={{ fontSize: 11, color: '#ef4444', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ds.lastError}>
+                            Last fetch failed: {ds.lastError}
+                          </div>
+                        )}
+                        {note && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>{note}</div>}
                       </div>
 
                       {/* Actions */}
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                        {isLive && (
+                          <button
+                            onClick={() => handleRefresh(ds)}
+                            disabled={refreshing === ds.id}
+                            title="Fetch it now"
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}
+                          >
+                            <RefreshCw size={11} style={refreshing === ds.id ? { animation: 'spin 1s linear infinite' } : undefined} />
+                            {refreshing === ds.id ? 'Fetching' : 'Refresh'}
+                          </button>
+                        )}
                         {presentationId && (
                           <button
                             onClick={() => isLinked ? handleUnlink(ds.id) : handleLink(ds.id)}
@@ -317,30 +402,28 @@ export default function DatasetPanel({ presentationId, onClose }) {
                       </div>
                     </div>
 
-                    {/* Expanded: schema + preview */}
                     {isExpanded && (
                       <div style={{ borderTop: '1px solid var(--border)', padding: '8px 12px' }}>
-                        {/* Tabs */}
-                        <div style={{ display: 'flex', gap: 2, marginBottom: 4 }}>
-                          <button
-                            onClick={() => setPreviewId(isPreviewing ? null : ds.id)}
-                            style={{ padding: '4px 10px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer', background: isPreviewing ? 'var(--accent)' : 'var(--bg-card)', color: isPreviewing ? '#fff' : 'var(--text-secondary)' }}
-                          >
-                            <ArrowUpDown size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                            Data Preview
-                          </button>
+                        <div role="tablist" style={{ display: 'flex', gap: 2, marginBottom: 8 }}>
+                          {tabs.map(([key, text]) => (
+                            <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} style={tabButton(tab === key)}>{text}</button>
+                          ))}
                         </div>
 
-                        {/* Schema */}
-                        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 4 }}>Schema</div>
-                        <SchemaTable columns={ds.columns} />
-
-                        {/* Data preview */}
-                        {isPreviewing && (
-                          <div style={{ marginTop: 12 }}>
-                            <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 4 }}>Data Preview</div>
-                            <DataPreview datasetId={ds.id} />
-                          </div>
+                        {tab === 'columns' && <SchemaTable columns={ds.columns} />}
+                        {tab === 'data' && <DataPreview ds={ds} presentationId={presentationId} linked={isLinked} pinnedVersionId={pins[ds.id]} />}
+                        {tab === 'steps' && (
+                          <TransformsTab ds={ds} datasets={datasets.map(d => d.name)} onSaved={replace} />
+                        )}
+                        {tab === 'source' && isLive && <SourceTab ds={ds} sources={sources.enabled ? sources : null} onChanged={replace} />}
+                        {tab === 'versions' && (
+                          <VersionsTab
+                            ds={ds}
+                            presentationId={presentationId}
+                            linked={isLinked}
+                            pinnedVersionId={pins[ds.id]}
+                            onPinned={versionId => setPins(p => ({ ...p, [ds.id]: versionId || undefined }))}
+                          />
                         )}
 
                         {/* Usage hint */}
@@ -361,7 +444,7 @@ export default function DatasetPanel({ presentationId, onClose }) {
         {/* Footer */}
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
           <span>Linked datasets are available to plugins via ctx.datasets.query()</span>
-          <span>Accepts CSV, TSV, JSON</span>
+          <span>{sources.enabled ? 'CSV, TSV, JSON, a URL or a TAP query' : 'Accepts CSV, TSV, JSON'}</span>
         </div>
       </div>
     </div>
