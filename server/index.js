@@ -1270,7 +1270,7 @@ app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
+    const table = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
     const opts = {}
     if (req.query.columns) opts.columns = req.query.columns.split(',')
     if (req.query.limit) opts.limit = parseInt(req.query.limit)
@@ -1279,7 +1279,7 @@ app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
     if (req.query.where) {
       try { opts.where = JSON.parse(req.query.where) } catch {}
     }
-    const result = applyQuery(rows, ds.columns, opts)
+    const result = applyQuery(table, ds.columns, opts)
     res.json(result)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
@@ -1352,7 +1352,7 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
+    const table = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
     const opts = {}
     if (req.query.columns) opts.columns = req.query.columns.split(',')
     if (req.query.limit) opts.limit = parseInt(req.query.limit)
@@ -1361,7 +1361,7 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     if (req.query.where) {
       try { opts.where = JSON.parse(req.query.where) } catch {}
     }
-    const result = applyQuery(rows, ds.columns, opts)
+    const result = applyQuery(table, ds.columns, opts)
     res.json(result)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })

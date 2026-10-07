@@ -4,6 +4,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const { likeMatch, applyQuery } = require('../services/dataset-service')
+const { rowsToTable, tableToRows } = require('../services/dataset-table')
 const { uploadContentType, setUploadHeaders } = require('../utils/upload-headers')
 
 describe('a dataset query’s LIKE', () => {
@@ -34,7 +35,7 @@ describe('a dataset query’s LIKE', () => {
 
   it('filters rows by it', () => {
     const rows = [{ name: 'Mars' }, { name: 'Venus' }, { name: 'Mercury' }]
-    const { columns, totalRows } = applyQuery(rows, [{ name: 'name' }], { where: { name: { like: 'm%' } } })
+    const { columns, totalRows } = applyQuery(rowsToTable(rows), [{ name: 'name' }], { where: { name: { like: 'm%' } } })
     assert.deepEqual(columns.name, ['Mars', 'Mercury'])
     assert.equal(totalRows, 2)
   })
@@ -104,19 +105,19 @@ describe('reading a dataset', () => {
     const { parse } = require('csv-parse/sync')
     // Rows of "é" (two bytes) so that some straddle the 256 KB chunks
     const text = 'city,name,value\n' + Array.from({ length: 30000 }, (_, i) => `Montréal,é${'é'.repeat(i % 7)},${i}`).join('\n')
-    const rows = await readDatasetFile(stored(text), 'csv', dir)
-    assert.deepEqual(rows, parse(text, { columns: true, skip_empty_lines: true, cast: true, relax_column_count: true }))
+    const table = await readDatasetFile(stored(text), 'csv', dir)
+    assert.deepEqual(tableToRows(table), parse(text, { columns: true, skip_empty_lines: true, cast: true, relax_column_count: true }))
     const tsv = await readDatasetFile(stored('a\tb\n1\tx\n', 'tsv'), 'tsv', dir)
-    assert.deepEqual(tsv, [{ a: 1, b: 'x' }])
+    assert.deepEqual(tableToRows(tsv), [{ a: 1, b: 'x' }])
   })
 
   it('leaves the server free while it parses', async () => {
     const text = 'a,b,c\n' + '1,two,3.5\n'.repeat(600000)  // 6 MB
     let ticks = 0
     const timer = setInterval(() => ticks++, 5)
-    const rows = await readDatasetFile(stored(text), 'csv', dir)
+    const table = await readDatasetFile(stored(text), 'csv', dir)
     clearInterval(timer)
-    assert.equal(rows.length, 600000)
+    assert.equal(table.length, 600000)
     assert.ok(ticks >= 3, `timers ran ${ticks} times while it parsed`)
   })
 
@@ -135,12 +136,21 @@ describe('reading a dataset', () => {
     const late = 'a,b\n' + '1,2\n'.repeat(100000) + '5" screen,3\n'  // past the first chunk
     await assert.rejects(readDatasetFile(stored(late), 'csv', dir), /quote/i)
     // and the next read still works
-    assert.deepEqual(await readDatasetFile(stored('a\n1\n'), 'csv', dir), [{ a: 1 }])
+    assert.deepEqual(tableToRows(await readDatasetFile(stored('a\n1\n'), 'csv', dir)), [{ a: 1 }])
   })
 
   it('doesn’t let a column named __proto__ be a row’s prototype', async () => {
-    const [row] = await readDatasetFile(stored('__proto__,b\nx,1\n'), 'csv', dir)
+    const table = await readDatasetFile(stored('__proto__,b\nx,1\n'), 'csv', dir)
+    assert.deepEqual(table.names, ['_proto_', 'b'])
+    const [row] = tableToRows(table)
     assert.equal(Object.getPrototypeOf(row), Object.prototype)
     assert.deepEqual(row, { _proto_: 'x', b: 1 })
+    // nor one in JSON, nor a query that names one
+    const json = rowsToTable(JSON.parse('[{"__proto__": 1, "a": 2}]'))
+    assert.deepEqual(json.names, ['_proto_', 'a'])
+    assert.equal(json.columns._proto_[0], 1)
+    const { columns } = applyQuery(json, null, { columns: ['__proto__', 'constructor', 'a'] })
+    assert.equal(Object.getPrototypeOf(columns), Object.prototype)
+    assert.deepEqual(columns, { constructor: [null], a: [2] })
   })
 })
