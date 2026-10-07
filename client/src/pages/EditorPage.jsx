@@ -47,6 +47,7 @@ import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
+import { setGraphDataPresentation, refreshGraphData, loadGraphData, deckGraphs } from '../utils/graphData'
 import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
@@ -935,6 +936,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [presentationId])
 
   // Presents with drawing on, into a new annotation set or on with `set`
+  // The rows graphs' data lines plot, fetched for the canvas, the graph
+  // editor and Present, whose page is built at the click (graphData.js)
+  useEffect(() => { setGraphDataPresentation(isTemplate ? null : presentationId) }, [presentationId, isTemplate])
+  useEffect(() => { if (presentation && !isTemplate) loadGraphData(deckGraphs(presentation)) }, [presentation, isTemplate])
+
   const presentAnnotated = useCallback((set = null) => {
     if (isTemplate) return presentInWindow(presentation)
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
@@ -4213,7 +4219,11 @@ function draw() {
       )}
 
       {showDatasetPanel && (
-        <DatasetPanel presentationId={presentationId} onClose={() => setShowDatasetPanel(false)} />
+        <DatasetPanel presentationId={presentationId} onClose={() => {
+          setShowDatasetPanel(false)
+          // Its datasets may have new rows, steps or links: graphs fetch again
+          refreshGraphData().then(() => presentation && loadGraphData(deckGraphs(presentation)))
+        }} />
       )}
 
       {dynSysEditorState && (

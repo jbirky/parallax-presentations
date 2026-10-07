@@ -6,10 +6,11 @@
 // own page (graphPage.js), sent each change; panning it or moving a slider
 // there changes the graph that's saved.
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import { Eye, EyeOff, X, Plus, SlidersHorizontal, Play } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect, useCallback, useSyncExternalStore } from 'react'
+import { Eye, EyeOff, X, Plus, SlidersHorizontal, Play, Database } from 'lucide-react'
 import { createMathParser } from '../utils/graphParser'
 import { graphPageHtml, graphConfig, GRAPH_COLORS, DEFAULT_VIEW, DEFAULT_VIEW_3D, DEFAULT_CAMERA, defaultGraph, defaultGraph3d, newExpressionId } from '../utils/graphPage'
+import { subscribeGraphData, graphDataVersion, linkedDatasets, listGraphDatasets, datasetNamed, loadGraphData, graphDataFor, dataExtent, paddedView } from '../utils/graphData'
 
 const EXAMPLES = [
   ['Function', 'y = x^2 - 2'],
@@ -137,6 +138,109 @@ function ColorScaleRow({ opts, set, constant }) {
   )
 }
 
+const NUMERIC = new Set(['integer', 'float'])
+const MARKS = [['points', 'Points'], ['line', 'Line'], ['bars', 'Bars']]
+
+// A select of a dataset's columns; numeric ones only for a position
+function ColumnSelect({ ds, value, onChange, numeric, none, title, width }) {
+  const columns = (ds?.columns || []).filter(c => !numeric || NUMERIC.has(c.type))
+  const known = columns.some(c => c.name === value)
+  return (
+    <select value={value || ''} onChange={e => onChange(e.target.value || undefined)} title={title}
+      style={{ ...inputStyle, width: width || undefined, flex: width ? undefined : 1, minWidth: 0 }}>
+      <option value="">{none || 'Choose…'}</option>
+      {value && !known && <option value={value}>{value}</option>}
+      {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+    </select>
+  )
+}
+
+// A data line: the dataset whose rows it plots, and how. Under it, how many
+// rows it has, or why it has none
+function DataLine({ ex, index, datasets, rows, palette, open, onUpdate, onToggleOptions, onRemove }) {
+  const spec = ex.data || {}
+  const ds = datasetNamed(spec.dataset)
+  const set = patch => onUpdate({ data: { ...spec, ...patch } })
+  const color = ex.color || palette[0]
+  const row = (label, control) => (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <span style={{ ...smallLabel, width: 64 }}>{label}</span>
+      {control}
+    </div>
+  )
+  const status = !rows ? '' : rows.error ? rows.error : rows.loading ? 'Loading the rows…'
+    : Array.isArray(rows.x) ? (rows.total > rows.x.length ? `${rows.x.length.toLocaleString()} of ${rows.total.toLocaleString()} rows` : `${rows.x.length.toLocaleString()} rows`) : ''
+  return (
+    <div style={{ borderBottom: '1px solid var(--border, #333)', padding: '8px 10px 8px 0', display: 'flex', gap: 6 }}>
+      <div style={{ width: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: 2, color: 'var(--text-muted)', fontSize: 10 }}>
+        <span>{index + 1}</span>
+        {spec.colorBy
+          ? <span title={`Colored by ${spec.colorBy}`} style={{ width: 18, height: 18, borderRadius: '50%', background: 'conic-gradient(#2a78d6, #eb6834, #1baf7a, #eda100, #2a78d6)', opacity: ex.hidden ? 0.3 : 1 }} />
+          : (
+            <label title="Color" style={{ width: 18, height: 18, borderRadius: '50%', background: ex.hidden ? 'transparent' : color, border: `2px solid ${color}`, cursor: 'pointer', position: 'relative' }}>
+              <input type="color" value={color} onChange={e => onUpdate({ color: e.target.value })}
+                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+            </label>
+          )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <Database size={13} style={{ color: 'var(--text-muted)', flex: 'none' }} />
+          <select value={spec.dataset || ''} onChange={e => set({ dataset: e.target.value })} aria-label="Dataset" style={{ ...inputStyle, flex: 1, minWidth: 0 }}>
+            {!spec.dataset && <option value="">Choose a dataset…</option>}
+            {spec.dataset && !ds && <option value={spec.dataset}>{spec.dataset}</option>}
+            {(datasets || []).map(d => <option key={d.id} value={d.alias || d.name}>{d.alias || d.name}</option>)}
+          </select>
+          <select value={spec.mark || 'points'} onChange={e => set({ mark: e.target.value })} aria-label="Drawn as" style={{ ...inputStyle, width: 74 }}>
+            {MARKS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+          <button title={ex.hidden ? 'Show' : 'Hide'} onClick={() => onUpdate({ hidden: !ex.hidden })} style={iconButton}>{ex.hidden ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+          <button title="Options" onClick={onToggleOptions} style={{ ...iconButton, color: open ? 'var(--accent)' : iconButton.color }}><SlidersHorizontal size={14} /></button>
+          <button title="Delete" onClick={onRemove} style={iconButton}><X size={14} /></button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', ...smallLabel }}>
+          <i style={{ fontFamily: 'serif', fontSize: 13 }}>x</i>
+          <ColumnSelect ds={ds} value={spec.x} numeric onChange={v => set({ x: v })} title="Across" />
+          <i style={{ fontFamily: 'serif', fontSize: 13 }}>y</i>
+          <ColumnSelect ds={ds} value={spec.y} numeric onChange={v => set({ y: v })} title="Up" />
+        </div>
+        {status && <div style={{ fontSize: 11, color: rows?.error ? '#e5484d' : 'var(--text-muted, #888)' }}>{status}</div>}
+        {open && (
+          <div style={{ padding: 8, borderRadius: 6, background: 'var(--bg-hover, #252530)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {row('Color by', <ColumnSelect ds={ds} value={spec.colorBy} none="One color" onChange={v => set({ colorBy: v })} title="Categories get colors; numbers a scale" />)}
+            {(spec.mark || 'points') === 'points' && row('Size by', <ColumnSelect ds={ds} value={spec.sizeBy} numeric none="One size" onChange={v => set({ sizeBy: v })} title="Bigger values, bigger points (by area)" />)}
+            {row('Label', <ColumnSelect ds={ds} value={spec.label} none="None" onChange={v => set({ label: v })} title="Shown when pointing at a row" />)}
+            {spec.mark === 'bars' && row('Bars end at', <ColumnSelect ds={ds} value={spec.x2} numeric none="Halfway to the next" onChange={v => set({ x2: v })} title="A histogram's bin ends: the bin step's _to column" />)}
+            {row('x errors', <ColumnSelect ds={ds} value={spec.xErr} numeric none="None" onChange={v => set({ xErr: v })} title="± this much across" />)}
+            {row('y errors', <ColumnSelect ds={ds} value={spec.yErr} numeric none="None" onChange={v => set({ yErr: v })} title="± this much up and down" />)}
+            {(spec.mark || 'points') === 'points' && row('Point size', (
+              <select value={spec.size || 3} onChange={e => set({ size: +e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                {[[1.5, 'Tiny'], [2, 'Small'], [3, 'Normal'], [4.5, 'Large'], [6, 'Huge']].map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </select>
+            ))}
+            {spec.mark === 'line' && row('Line', (
+              <select value={ex.style || 'solid'} onChange={e => onUpdate({ style: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+              </select>
+            ))}
+            {row('Opacity', (
+              <select value={spec.opacity || 0.85} onChange={e => set({ opacity: +e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                {[[1, 'Solid'], [0.85, 'Normal'], [0.6, 'See-through'], [0.35, 'Faint']].map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </select>
+            ))}
+            {row('Appears', (
+              <select value={ex.step || 0} onChange={e => onUpdate({ step: +e.target.value || undefined })} style={{ ...inputStyle, flex: 1 }}>
+                <option value={0}>With the slide</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>At step {n}</option>)}
+              </select>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave, onClose }) {
   const P = useMemo(() => createMathParser(), [])
   const constant = useConstant(P)
@@ -155,6 +259,24 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   // Whether any line shows a value as color, which a color bar keys
   const colorDims = graph.dims === 3 && analysis.items.some(it => isVolumeItem(it) || !!it.colorF)
   const palette = GRAPH_COLORS[graph.theme === 'dark' ? 'dark' : 'light']
+
+  // Data lines' rows come from the editor's store (graphData.js)
+  const dataVersion = useSyncExternalStore(subscribeGraphData, graphDataVersion)
+  const datasets = linkedDatasets()
+  const dataRows = useMemo(() => graphDataFor(graph) || {}, [graph, dataVersion]) // eslint-disable-line react-hooks/exhaustive-deps
+  const hasData = expressions.some(e => e.data)
+  // The deck's datasets, for + Data
+  useEffect(() => { listGraphDatasets() }, [])
+  useEffect(() => { if (hasData) loadGraphData([graph]) }, [graph, hasData]) // eslint-disable-line react-hooks/exhaustive-deps
+  // A new data line, or new columns for one, fits the view once its rows are here
+  const [fitPending, setFitPending] = useState(false)
+  useEffect(() => {
+    if (!fitPending) return
+    const ext = dataExtent(graph)
+    const waiting = expressions.some(e => e.data && dataRows[e.id]?.loading)
+    if (ext && !waiting) { setFitPending(false); setGraph(g => ({ ...g, view: paddedView(ext, { xLog: g.xScale === 'log', yLog: g.yScale === 'log' }) })) }
+    else if (!waiting && !ext) setFitPending(false)
+  }, [fitPending, dataRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = patch => setGraph(g => ({ ...g, ...patch }))
   // 2D ↔ 3D: the default graph trades for the other's default; anything
@@ -190,6 +312,45 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
     const prev = expressions[i - 1] || expressions[i + 1]
     if (prev) setFocusId(prev.id)
   }
+  // A data line for the first linked dataset, plotting its first two
+  // numeric columns
+  const addDataLine = () => {
+    const ds = (datasets || [])[0]
+    const nums = (ds?.columns || []).filter(c => NUMERIC.has(c.type)).map(c => c.name)
+    const data = { dataset: ds ? ds.alias || ds.name : '', x: nums[0], y: nums[1] || nums[0], mark: 'points' }
+    // A new graph's example (y = a sin(bx) and its sliders) makes way for the data
+    const texts = list => (list || []).map(e => e.text).join('\n')
+    const untouched = texts(expressions) === texts(defaultGraph(graph.theme === 'dark').expressions)
+    let id
+    if (untouched) {
+      id = newExpressionId()
+      setExpressions(() => [{ id, text: '', color: palette[0], data }])
+    } else {
+      id = addExpression(expressions[expressions.length - 1]?.id, '', { data })
+    }
+    setOpenOptions(id)
+    setGraph(g => ({ ...g, equalScale: false }))
+    setFitPending(true)
+  }
+  const fitToData = () => {
+    const ext = dataExtent(graph)
+    if (ext) update({ view: paddedView(ext, { xLog: graph.xScale === 'log', yLog: graph.yScale === 'log' }) })
+  }
+  // A log axis needs a positive range: the data's, or the top's thousandth
+  const setScale = (axis, value) => setGraph(g => {
+    const next = { ...g, [axis + 'Scale']: value === 'log' ? 'log' : undefined }
+    if (value === 'log') next.equalScale = false
+    const ext = dataExtent(next)
+    if (ext) next.view = paddedView(ext, { xLog: next.xScale === 'log', yLog: next.yScale === 'log' })
+    else if (value === 'log') {
+      const lo = axis + 'Min', hi = axis + 'Max'
+      const v = { ...g.view }
+      if (!(v[lo] > 0 && v[hi] > v[lo])) { v[hi] = v[hi] > 0 ? v[hi] : 100; v[lo] = v[hi] / 1000 }
+      next.view = v
+    }
+    return next
+  })
+
   const addSliders = (afterId, names) => {
     let after = afterId
     setExpressions(list => {
@@ -216,7 +377,7 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   const sendConfig = useCallback(() => {
     const win = frameRef.current?.contentWindow
     if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true }) }, '*')
-  }, [graph])
+  }, [graph, dataVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const onPreviewLoad = () => {
     sendConfig()
     frameRef.current?.contentWindow?.postMessage({ source: 'parallax-graph-editor', type: 'scale', scale: fitScale }, '*')
@@ -259,13 +420,15 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   }, [fitScale])
 
   const view = graph.view
-  const equal = graph.equalScale !== false
+  const logAxes = graph.xScale === 'log' || graph.yScale === 'log'
+  const equal = graph.equalScale !== false && !logAxes
   const shownY = equal
     ? (() => { const half = (view.xMax - view.xMin) / aspect / 2, mid = (view.yMin + view.yMax) / 2; return { yMin: mid - half, yMax: mid + half } })()
     : { yMin: view.yMin, yMax: view.yMax }
   const setView = patch => {
     const next = { ...view, ...patch }
-    if (next.xMax > next.xMin && next.yMax > next.yMin) update({ view: next })
+    if (next.xMax > next.xMin && next.yMax > next.yMin
+      && !(graph.xScale === 'log' && next.xMin <= 0) && !(graph.yScale === 'log' && next.yMin <= 0)) update({ view: next })
   }
   const setView3 = patch => {
     const next = { ...DEFAULT_VIEW_3D, ...view, ...patch }
@@ -313,6 +476,18 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
           <div style={{ width: 380, borderRight: '1px solid var(--border, #333)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {expressions.map((ex, index) => {
+                if (ex.data) {
+                  return (
+                    <DataLine key={ex.id} ex={ex} index={index} datasets={datasets} rows={dataRows[ex.id]} palette={palette}
+                      open={openOptions === ex.id}
+                      onUpdate={patch => {
+                        if (patch.data && (patch.data.x !== ex.data.x || patch.data.y !== ex.data.y || patch.data.dataset !== ex.data.dataset)) setFitPending(true)
+                        updateExpr(ex.id, patch)
+                      }}
+                      onToggleOptions={() => setOpenOptions(o => (o === ex.id ? null : ex.id))}
+                      onRemove={() => removeExpression(ex.id)} />
+                  )
+                }
                 const it = byId[ex.id] || {}
                 const isSlider = it.kind === 'param' && it.slider
                 const isField = FIELD_KINDS.includes(it.kind)
@@ -678,6 +853,13 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
               <button className="btn btn-secondary" onClick={() => addExpression(expressions[expressions.length - 1]?.id)} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={13} /> Expression
               </button>
+              {!dims3 && (
+                <button className="btn btn-secondary" onClick={addDataLine} disabled={!datasets?.length}
+                  title={datasets?.length ? 'Plot a dataset’s rows' : 'Link a dataset to this deck (Data, at the top) to plot it'}
+                  style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, opacity: datasets?.length ? 1 : 0.5 }}>
+                  <Plus size={13} /> Data
+                </button>
+              )}
               <select value="" onChange={e => {
                 const ex = (dims3 ? EXAMPLES_3D : EXAMPLES).find(([label]) => label === e.target.value)
                 if (ex) addExpression(expressions[expressions.length - 1]?.id, ex[1], ex[2] || {})
@@ -735,16 +917,33 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                     <NumberField value={view.yMax} constant={constant} width={58} title="Top edge" onCommit={v => v !== undefined && setView({ yMax: v })} />
                   </>
                 )}
-                <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 6 }} onClick={() => update({ view: { ...DEFAULT_VIEW } })}>Reset</button>
+                <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 6 }}
+                  onClick={() => update({ view: logAxes ? paddedView({ xMin: 1, xMax: 1000, yMin: 1, yMax: 1000 }, { xLog: graph.xScale === 'log', yLog: graph.yScale === 'log' }) : { ...DEFAULT_VIEW } })}>Reset</button>
+                {hasData && <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={fitToData} title="Show all the data lines’ rows">Fit to data</button>}
                 <span style={{ ...smallLabel, marginLeft: 4 }}>Drag the preview to move, scroll to zoom.</span>
               </div>
+              )}
+              {!dims3 && <span style={smallLabel}>Scales</span>}
+              {!dims3 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {['x', 'y'].map(axis => (
+                    <label key={axis} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', marginRight: 8 }}>
+                      <i style={{ fontFamily: 'serif' }}>{axis}</i>
+                      <select value={graph[axis + 'Scale'] === 'log' ? 'log' : 'linear'} onChange={e => setScale(axis, e.target.value)} style={inputStyle} aria-label={`${axis} scale`}>
+                        <option value="linear">Linear</option>
+                        <option value="log">Log</option>
+                      </select>
+                    </label>
+                  ))}
+                  {logAxes && <span style={smallLabel}>A log axis shows only positive values.</span>}
+                </div>
               )}
               <span style={smallLabel}>Show</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
                 {check('grid', 'Grid')}
                 {check('axes', 'Axes')}
                 {check('axisNumbers', 'Numbers')}
-                {!dims3 && check('equalScale', 'Equal scales')}
+                {!dims3 && !logAxes && check('equalScale', 'Equal scales')}
                 {check('showSliders', 'Sliders on the slide')}
                 {check('lockView', dims3 ? 'Lock turning and zooming' : 'Lock panning and zooming', false)}
                 {dims3 && check('spin', 'Spin while presenting', false)}

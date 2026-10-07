@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
@@ -57,6 +57,7 @@ import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
+import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
@@ -1413,6 +1414,26 @@ function CitationCaption({ element, fontSize, fontFamily }) {
   )
 }
 
+// A graph's page, with its data lines' rows once the editor has them (they
+// come later than the graph: graphData.js), and built again only then or
+// when the graph changes
+function GraphFrame({ element, scale }) {
+  const dataVersion = useSyncExternalStore(subscribeGraphData, graphDataVersion)
+  const srcDoc = useMemo(
+    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true }),
+    [element, dataVersion], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  return (
+    <ScaledFrame
+      scale={scale}
+      srcDoc={srcDoc}
+      style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
+      sandbox="allow-scripts"
+      title="Graph"
+    />
+  )
+}
+
 export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
@@ -1613,14 +1634,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         {element.type === 'graph' && (
           // Edited in its own window (double-click), so the canvas never takes
           // its clicks: dragging moves it
-          <ScaledFrame
-            key={element.id}
-            scale={canvasScale}
-            srcDoc={graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true })}
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
-            sandbox="allow-scripts"
-            title="Graph"
-          />
+          <GraphFrame key={element.id} element={element} scale={canvasScale} />
         )}
         {element.type === 'model' && (
           <ScaledFrame
