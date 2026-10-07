@@ -54,6 +54,7 @@ export default defineConfig({
             { text: 'Shapes & Drawing', link: '/tutorials/shapes-drawing' },
             { text: 'Code, LaTeX & Markdown', link: '/tutorials/code-math' },
             { text: 'Tables', link: '/tutorials/tables' },
+            { text: 'Live Datasets', link: '/tutorials/live-datasets' },
             { text: 'Graphs', link: '/tutorials/graphs' },
             { text: 'HTML Embeds & p5.js', link: '/tutorials/html-embeds' },
             { text: 'Kinetic Text', link: '/tutorials/kinetic-text' },
