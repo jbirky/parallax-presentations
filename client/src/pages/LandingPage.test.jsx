@@ -8,6 +8,8 @@ const guest = { enabled: true }
 const server = { list: null }
 vi.mock('../utils/api', () => ({ api: { getGuestConfig: vi.fn(async () => guest), getLandingExamples: vi.fn(async () => server.list) } }))
 vi.mock('../components/DocsPage', () => ({ default: () => <div className="docs-stub">Docs</div> }))
+vi.mock('../utils/analytics', () => ({ startAnalytics: vi.fn(), track: vi.fn() }))
+import { startAnalytics, track } from '../utils/analytics'
 import LandingPage from './LandingPage'
 import { EXAMPLES } from '../examples/catalog'
 
@@ -91,6 +93,22 @@ describe('the landing page', () => {
       expect(thumb.querySelector('.lp-thumb-title').textContent).toBe('Cell division')
       expect(thumb.getAttribute('style')).toContain('#123456')
     } finally { server.list = null }
+  })
+
+  it('counts what visitors open and click', async () => {
+    track.mockClear()
+    await mount()
+    expect(startAnalytics).toHaveBeenCalled()
+    await act(async () => el.querySelector('.lp-ctas a').click())
+    expect(track).toHaveBeenLastCalledWith('try', { from: 'hero' })
+    await act(async () => button('Chemistry').click())
+    expect(track).toHaveBeenLastCalledWith('filter', { field: 'Chemistry' })
+    await act(async () => el.querySelector('.lp-card').click())
+    expect(track).toHaveBeenLastCalledWith('open-example', { example: 'chemistry', from: 'card' })
+    await act(async () => el.querySelector('.lp-viewer a.lp-btn').click())
+    expect(track).toHaveBeenLastCalledWith('example-to-editor', { example: 'chemistry' })
+    await act(async () => el.querySelector('[aria-label="Next example"]').click())
+    expect(track).toHaveBeenLastCalledWith('open-example', { example: 'chemistry', from: 'viewer' })
   })
 
   it('opens the docs in place, and comes back to a section', async () => {

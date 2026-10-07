@@ -81,6 +81,15 @@ const authLimiter = rateLimit({
 
 // Pages built from a deck (share links, live sessions): outside /api, each
 // builds the whole deck. Per address, with room for a class behind one NAT
+// Analytics events from the landing page, passed on to Umami (/stats/api/send)
+const statsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+})
+
 const deckPageLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: IS_CLOUD ? 600 : 0,
@@ -229,6 +238,7 @@ module.exports = {
   apiLimiter,
   uploadLimiter,
   deckPageLimiter,
+  statsLimiter,
   localOnly,
   listenHost,
   authLimiter,

@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import EditorPage from './EditorPage'
 import { api, setGuestToken } from '../utils/api'
+import { startAnalytics, track } from '../utils/analytics'
 import BetaBadge from '../components/BetaBadge'
 
 const TOKEN_KEY = 'parallax-guest-token'
@@ -66,6 +67,8 @@ export default function GuestPage({ theme, onThemeChange }) {
   }, [])
 
   const showStart = useCallback(async () => {
+    // Counts guest sessions started, as the landing page counts its visits
+    startAnalytics()
     setError(null)
     setVerification(null)
     const config = await api.getGuestConfig().catch(() => ({ enabled: false }))
@@ -126,6 +129,7 @@ export default function GuestPage({ theme, onThemeChange }) {
       const { token } = await api.startGuestSession(verification)
       saveToken(token)
       setGuestToken(token)
+      track('guest-start', { example: new URLSearchParams(window.location.search).get('example') || 'none' })
       await enter()
     } catch (err) {
       setError(err.message)

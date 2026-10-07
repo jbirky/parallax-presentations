@@ -5,13 +5,15 @@
 // live deck, the example decks by field (as /admin arranges them, served at
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how a talk comes together, the elements by subject, and the
-// plans. The docs open in place of it, at #docs.
+// plans. The docs open in place of it, at #docs. What visitors open and click
+// is counted (utils/analytics.js) where the server has analytics set up.
 
 import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
 import { api } from '../utils/api'
+import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
 
 const GITHUB = 'https://github.com/jbirky/parallax-presentations'
@@ -107,10 +109,10 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
             </div>
             <p className="lp-keys">Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
             {guestEnabled ? (<>
-              <a className="lp-btn primary" href={`/try?example=${example.slug}`}>Open in the editor</a>
+              <a className="lp-btn primary" href={`/try?example=${example.slug}`} onClick={() => track('example-to-editor', { example: example.slug })}>Open in the editor</a>
               <p className="lp-small">Opens a copy you can change, with no account. It lasts until you close the tab.</p>
             </>) : (
-              <button type="button" className="lp-btn primary" onClick={onSignIn}>Sign in to make your own</button>
+              <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'example' }); onSignIn() }}>Sign in to make your own</button>
             )}
           </div>
         </div>
@@ -130,6 +132,7 @@ export default function LandingPage({ onSignIn }) {
   const [catalog, setCatalog] = useState(null)
 
   useEffect(() => {
+    startAnalytics()
     api.getGuestConfig().then(config => setGuestEnabled(!!config.enabled)).catch(() => {})
     api.getLandingExamples().then(list => setCatalog(list || BUILT_IN_LIST)).catch(() => setCatalog(BUILT_IN_LIST))
   }, [])
@@ -167,10 +170,11 @@ export default function LandingPage({ onSignIn }) {
   const examples = catalog?.examples || []
   const shown = field === 'All' ? examples : examples.filter(e => e.field === field)
   const tryIt = guestEnabled
-    ? <a className="lp-btn primary" href="/try">Try it, no account needed <ArrowRight size={16} /></a>
-    : <button type="button" className="lp-btn primary" onClick={onSignIn}>Get started free <ArrowRight size={16} /></button>
+    ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from: 'hero' })}>Try it, no account needed <ArrowRight size={16} /></a>
+    : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'hero' }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
 
   const copySupport = async () => {
+    track('support', { how: 'copy' })
     try { await navigator.clipboard.writeText(SUPPORT); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* the address is shown to select */ }
   }
 
@@ -182,9 +186,9 @@ export default function LandingPage({ onSignIn }) {
           <div className="lp-links">
             <button type="button" onClick={() => goTo('examples')}>Examples</button>
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
-            <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => switchTab('docs')}>Docs</button>
-            <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer">GitHub</a>
-            <button type="button" className="lp-signin" onClick={onSignIn}>Sign in</button>
+            <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
+            <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'nav' })}>GitHub</a>
+            <button type="button" className="lp-signin" onClick={() => { track('sign-in', { from: 'nav' }); onSignIn() }}>Sign in</button>
           </div>
         </div>
       </nav>
@@ -199,7 +203,7 @@ export default function LandingPage({ onSignIn }) {
             <p className="lp-sub">Parallax is a slide editor that runs in your browser. Put live graphs, physics and circuit diagrams, equations and 3D molecules on a slide, and move them while you present.</p>
             <div className="lp-ctas">
               {tryIt}
-              <button type="button" className="lp-btn ghost" onClick={() => goTo('examples')}>See the examples</button>
+              <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
             </div>
             <div className="lp-facts"><span>Free to start</span><span>Open source, AGPL-3.0</span><span>Export to HTML, PDF and PowerPoint</span></div>
             <div className="lp-stage">
@@ -218,14 +222,14 @@ export default function LandingPage({ onSignIn }) {
               </div>
               <div className="lp-filters" role="group" aria-label="Show examples from">
                 {['All', ...fieldsOf(examples)].map(f => (
-                  <button key={f} type="button" aria-pressed={field === f} onClick={() => setField(f)}>
+                  <button key={f} type="button" aria-pressed={field === f} onClick={() => { track('filter', { field: f }); setField(f) }}>
                     {f}<span>{f === 'All' ? examples.length : examples.filter(e => e.field === f).length}</span>
                   </button>
                 ))}
               </div>
               <div className="lp-grid">
                 {shown.map((e, i) => (
-                  <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}, ${e.field}: open the live deck`} onClick={() => setViewing(i)}>
+                  <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}, ${e.field}: open the live deck`} onClick={() => { track('open-example', { example: e.slug, from: 'card' }); setViewing(i) }}>
                     <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
                       {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
                       <span>Open live</span>
@@ -283,15 +287,15 @@ export default function LandingPage({ onSignIn }) {
                   <div className="lp-price">Free <small>to start</small></div>
                   <ul>{HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
                   <div className="lp-plan-row">
-                    <button type="button" className="lp-btn primary" onClick={onSignIn}>Start free</button>
-                    {guestEnabled && <a className="lp-quiet" href="/try">or try it without an account</a>}
+                    <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'plans' }); onSignIn() }}>Start free</button>
+                    {guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
                   </div>
                 </div>
                 <div className="lp-plan">
                   <div className="lp-label">Self-hosted</div>
                   <div className="lp-price">Free <small>and unlimited</small></div>
                   <ul>{SELF_HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
-                  <div className="lp-plan-row"><a className="lp-btn ghost" href="#docs/guide/installation">Self-hosting guide</a></div>
+                  <div className="lp-plan-row"><a className="lp-btn ghost" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a></div>
                 </div>
               </div>
             </div>
@@ -307,14 +311,14 @@ export default function LandingPage({ onSignIn }) {
                 <div><h4>Product</h4><ul>
                   <li><button type="button" onClick={() => goTo('examples')}>Examples</button></li>
                   <li><button type="button" onClick={() => goTo('workflow')}>How it works</button></li>
-                  <li><button type="button" onClick={() => switchTab('docs')}>Docs</button></li>
+                  <li><button type="button" onClick={() => { track('docs', { from: 'footer' }); switchTab('docs') }}>Docs</button></li>
                 </ul></div>
                 <div><h4>Project</h4><ul>
-                  <li><a href={GITHUB} target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                  <li><a href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'footer' })}>GitHub</a></li>
                   <li><a href={`${GITHUB}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">License, AGPL-3.0</a></li>
                 </ul></div>
                 <div><h4>Support</h4>
-                  <div className="lp-support"><a href={`mailto:${SUPPORT}`}>{SUPPORT}</a><button type="button" onClick={copySupport}>{copied ? 'Copied' : 'Copy'}</button></div>
+                  <div className="lp-support"><a href={`mailto:${SUPPORT}`} onClick={() => track('support', { how: 'email' })}>{SUPPORT}</a><button type="button" onClick={copySupport}>{copied ? 'Copied' : 'Copy'}</button></div>
                 </div>
               </div>
               <div className="lp-fine">© 2026 Jess Birky. Licensed under AGPL-3.0.</div>
@@ -324,7 +328,11 @@ export default function LandingPage({ onSignIn }) {
       </div>
 
       <ExampleViewer examples={shown} at={viewing} onClose={() => setViewing(null)}
-        onMove={d => setViewing(v => (v + d + shown.length) % shown.length)} guestEnabled={guestEnabled} onSignIn={onSignIn} />
+        onMove={d => {
+          const next = (viewing + d + shown.length) % shown.length
+          track('open-example', { example: shown[next].slug, from: 'viewer' })
+          setViewing(next)
+        }} guestEnabled={guestEnabled} onSignIn={onSignIn} />
     </div>
   )
 }

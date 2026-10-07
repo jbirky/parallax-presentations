@@ -41,7 +41,7 @@ const { createSandboxLookup } = require('./services/plugin-embed')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -292,6 +292,56 @@ app.get('/examples/thumbs/:slug.jpg', async (req, res, next) => {
     res.send(jpeg)
   } catch (err) {
     next(err)
+  }
+})
+
+// ---- Analytics (public, before auth) ----
+// Umami counts visits to the landing page and what's done there, when
+// UMAMI_URL (Umami as this server reaches it) and UMAMI_WEBSITE_ID are set.
+// The page loads Umami's script from /stats/script.js and sends its events to
+// /stats/api/send on this site, and the server passes both on, so Umami's own
+// pages stay private. Umami sets no cookies, and the script sends nothing for
+// a browser that asks not to be tracked.
+const UMAMI_URL = (process.env.UMAMI_URL || '').replace(/\/+$/, '')
+const UMAMI_WEBSITE_ID = /^[0-9a-f-]{36}$/i.test(process.env.UMAMI_WEBSITE_ID || '') ? process.env.UMAMI_WEBSITE_ID : null
+const analyticsOn = !!(UMAMI_URL && UMAMI_WEBSITE_ID)
+let umamiScript = null
+app.get('/api/analytics', (req, res) => {
+  res.json(analyticsOn ? { websiteId: UMAMI_WEBSITE_ID, script: '/stats/script.js' } : {})
+})
+app.get('/stats/script.js', async (req, res) => {
+  if (!analyticsOn) return res.status(404).end()
+  try {
+    if (!umamiScript || Date.now() - umamiScript.at > 60 * 60 * 1000) {
+      const r = await fetch(`${UMAMI_URL}/script.js`)
+      if (!r.ok) throw new Error(`Umami answered ${r.status}`)
+      umamiScript = { body: await r.text(), at: Date.now() }
+    }
+    res.type('application/javascript').set('Cache-Control', 'public, max-age=3600').send(umamiScript.body)
+  } catch (err) {
+    console.error('Analytics script error:', err.message)
+    res.status(502).end()
+  }
+})
+app.post('/stats/api/send', statsLimiter, async (req, res) => {
+  if (!analyticsOn) return res.status(404).end()
+  // Only events for this site's own website
+  if (req.body?.payload?.website !== UMAMI_WEBSITE_ID) return res.status(400).json({ error: 'Unknown website' })
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': req.get('User-Agent') || '',
+      // Umami reads the visitor's address from this, as Cloudflare sends it
+      'CF-Connecting-IP': req.get('CF-Connecting-IP') || req.ip,
+    }
+    for (const name of ['x-umami-website-id', 'x-umami-hostname', 'x-umami-cache']) {
+      if (req.get(name)) headers[name] = req.get(name)
+    }
+    const r = await fetch(`${UMAMI_URL}/api/send`, { method: 'POST', headers, body: JSON.stringify(req.body) })
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(await r.text())
+  } catch (err) {
+    console.error('Analytics send error:', err.message)
+    res.status(502).end()
   }
 })
 
