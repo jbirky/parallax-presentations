@@ -31,7 +31,7 @@
     "dompurify": "^3.4.16",
     "highlight.js": "^11.11.1",
     "json5": "2.2.3",
-    "katex": "^0.16.40",
+    "katex": "^0.19.0",
     "lucide-react": "^0.441.0",
     "pptxgenjs": "^4.0.1",
     "react": "^18.3.1",
