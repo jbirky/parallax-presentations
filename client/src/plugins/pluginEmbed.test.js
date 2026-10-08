@@ -1,6 +1,4 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
 import { Window } from 'happy-dom'
 
 if (!globalThis.window) globalThis.window = {}
@@ -10,8 +8,15 @@ import registry from './PluginRegistry'
 import { buildStaticPluginSrcdoc } from './pluginEmbed'
 import { generateRevealHTML } from '../utils/generateHTML'
 
-const counterSandbox = readFileSync(
-  fileURLToPath(new URL('../../../plugins/animated-counter/dist/sandbox.html', import.meta.url)), 'utf8')
+// A plugin's sandbox page: it shows its data's label, and again when the data changes
+const counterSandbox = `<!DOCTYPE html><html><head><title>Counter</title></head><body><div id="lbl"></div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  function show(data) { document.getElementById('lbl').textContent = data.label || '' }
+  show(window.parallax.data)
+  window.parallax.onDataChanged(show)
+})
+</script></body></html>`
 
 const manifest = {
   id: 'test.counter',

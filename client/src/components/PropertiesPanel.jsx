@@ -2187,26 +2187,6 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
             </div>
           )}
 
-          {/* Dynamical System options */}
-          {selectedElement.type === 'plugin:dynamical-system' && (() => {
-            const pd = selectedElement.pluginData || {}
-            return (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Dynamical System</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, fontFamily: "'SF Mono','Fira Code',monospace" }}>
-                dx/dt = {pd.dxdt || '?'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontFamily: "'SF Mono','Fira Code',monospace" }}>
-                dy/dt = {pd.dydt || '?'}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
-                {(pd.trajectories || []).length} trajectories &middot; View: {pd.viewMode === '3d' ? '3D Attractor' : pd.viewMode === 'timeseries' ? 'Time Series' : 'Phase Portrait'}
-              </div>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open editor</p>
-            </div>
-            )
-          })()}
-
           {/* Interactions when presented: what a click or hover on it does, and being shown or hidden by one */}
           {onUpdateWithGroup && (() => {
             const el = selectedElement

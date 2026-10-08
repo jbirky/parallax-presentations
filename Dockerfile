@@ -36,7 +36,7 @@ COPY server/package.json ./server/
 # Install only server (production) dependencies
 RUN npm ci --workspace=server --omit=dev
 
-# Copy server source, docs, bundled plugins, and the compiled client
+# Copy server source, docs, and the compiled client
 COPY server/ ./server/
 # Builds from a git URL skip .dockerignore, so drop the sample data it would exclude
 RUN rm -rf server/data/* server/uploads/*
@@ -45,7 +45,6 @@ RUN rm -rf server/data/* server/uploads/*
 RUN mkdir -p server/data server/uploads && chown node:node server/data server/uploads
 COPY docker-entrypoint.sh /usr/local/bin/parallax-entrypoint
 COPY docs/ ./docs/
-COPY plugins/ ./plugins/
 COPY --from=builder /app/client/dist ./client/dist
 
 # Persist uploaded images and presentation data via a named volume

@@ -11,7 +11,7 @@ const assert = require('node:assert/strict')
 const pluginImport = require('../services/plugin-import')
 const { withPluginCsp, pluginCsp } = require('../services/plugin-embed')
 const { fakeGitHub, pluginFiles } = require('./fake-github')
-const { DB, startCloudServer } = require('./helpers')
+const { DB, startCloudServer, addFolderPlugin } = require('./helpers')
 
 const { fetchVersion, lookupRepo, checkManifest, compareVersions } = pluginImport
 
@@ -119,6 +119,7 @@ describe('community plugins', { skip }, () => {
 
   before(async () => {
     t = await startCloudServer()
+    addFolderPlugin(process.env.SLIDES_DATA_DIR)
     admin = t.user('admin')
     author = t.user('author')
     someone = t.user('someone')
@@ -177,7 +178,7 @@ describe('community plugins', { skip }, () => {
     assert.equal((await t.call(null, 'GET', `/api/plugins/${owner}--lorenz`)).status, 404)
   })
 
-  it('refuses another repo’s id or element type, and a bundled plugin’s type', async () => {
+  it('refuses another repo’s id or element type, and a plugin folder’s type', async () => {
     const steal = tag => t.call(author, 'POST', '/api/plugin-repos/import', { url: `${owner}/thief`, tag })
     const sameId = await steal('v1.0.0')
     assert.equal(sameId.status, 409)
@@ -185,9 +186,9 @@ describe('community plugins', { skip }, () => {
     const sameType = await steal('v2.0.0')
     assert.equal(sameType.status, 409)
     assert.match(sameType.body.error, new RegExp(`“${type}” belongs to ${id.replace(/\./g, '\\.')}`))
-    const bundledType = await steal('v3.0.0')
-    assert.equal(bundledType.status, 409)
-    assert.match(bundledType.body.error, /“counter” belongs to com\.parallax\.animated-counter/)
+    const folderType = await steal('v3.0.0')
+    assert.equal(folderType.status, 409)
+    assert.match(folderType.body.error, /“counter” belongs to org\.example\.counter/)
   })
 
   it('is reviewed by admins only', async () => {
@@ -218,20 +219,20 @@ describe('community plugins', { skip }, () => {
     assert.deepEqual(installed.map(p => [p.pluginId, p.version]), [[id, '1.0.0']])
     const { rows: [{ downloads }] } = await t.pool.query('SELECT downloads FROM plugins WHERE manifest_id = $1', [id])
     assert.equal(downloads, 1)
-    assert.equal((await t.call(someone, 'POST', '/api/plugins/animated-counter/install')).status, 404)
+    assert.equal((await t.call(someone, 'POST', '/api/plugins/local-counter/install')).status, 404)
   })
 
   it('draws each element at its version in deck pages, with the CSP, until it’s revoked', async () => {
     const deck = await t.createDeck(someone, `Chaos ${t.run}`, {
       slides: [{ id: 's1', elements: [
         { id: 'e1', type: `plugin:${type}`, pluginId: id, pluginVersion: '1.0.0', x: 0, y: 0, width: 400, height: 300, pluginData: { sigma: 10 } },
-        { id: 'e2', type: 'plugin:counter', pluginId: 'com.parallax.animated-counter', x: 0, y: 300, width: 200, height: 100, pluginData: {} },
+        { id: 'e2', type: 'plugin:counter', pluginId: 'org.example.counter', x: 0, y: 300, width: 200, height: 100, pluginData: {} },
       ] }],
     })
     let html = await presented(someone, deck)
     assert.ok(html.includes('id=&quot;lorenz-1.0.0&quot;'))
     assert.ok(html.includes('http-equiv=&quot;Content-Security-Policy&quot;'))
-    assert.ok(html.includes('id=&quot;val&quot;'), 'the bundled plugin is drawn from its folder')
+    assert.ok(html.includes('id=&quot;val&quot;'), 'the folder plugin is drawn from its folder')
 
     // A newer approved version is listed; the deck keeps its own
     const v11 = await t.call(author, 'POST', '/api/plugin-repos/import', { url: repoUrl, tag: 'v1.1.0' })

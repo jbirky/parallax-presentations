@@ -3,7 +3,7 @@
 
 // Community plugins from GitHub: a public repo's version tags, and one tag's
 // plugin, checked against the rules a community plugin follows. The repo
-// has the bundled plugins' layout: parallax-plugin.json at its root and the
+// has a plugin folder's layout: parallax-plugin.json at its root and the
 // built files in dist/. Everything is read at the tag's commit, and each
 // file is checked against the commit's own hash of it, so a tag moved
 // midway can't swap the files. Nothing from the repo runs on the server.
@@ -26,7 +26,7 @@ const OWNER_RE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/i
 const REPO_RE = /^[A-Za-z0-9._-]{1,100}$/
 const ID_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
 const TYPE_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
-// Bundled plugins' ids
+// Kept for plugins that come with Parallax
 const RESERVED_ID_RE = /^com\.parallax\./
 // What a plugin's dist/ files are, by extension; anything else is bytes
 const CONTENT_TYPES = {

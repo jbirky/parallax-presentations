@@ -87,7 +87,6 @@ import EditorsModal from '../components/EditorsModal'
 import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
-import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
 import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
 import { workFinder } from '../utils/bibDuplicates'
@@ -462,7 +461,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showDiffViewer, setShowDiffViewer] = useState(false)
   const [showFontManager, setShowFontManager] = useState(false)
   const [showDatasetPanel, setShowDatasetPanel] = useState(false)
-  const [dynSysEditorState, setDynSysEditorState] = useState(null)
   const [customFonts, setCustomFonts] = useState([])
   const [fontGoogleName, setFontGoogleName] = useState('')
   const [fontUploading, setFontUploading] = useState(false)
@@ -752,7 +750,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -4264,17 +4262,6 @@ function draw() {
         }} />
       )}
 
-      {dynSysEditorState && (
-        <DynSysEditor
-          initialData={dynSysEditorState.data}
-          onApply={(newData) => {
-            updateElement(dynSysEditorState.elementId, { pluginData: newData })
-            setDynSysEditorState(null)
-          }}
-          onCancel={() => setDynSysEditorState(null)}
-        />
-      )}
-
       {/* Editor Body */}
       <div className="editor-body">
         {leftView === 'outline' ? (
@@ -4594,10 +4581,6 @@ function draw() {
               onOpenVennEditor={openVennEditor}
               onOpenTimingEditor={openTimingEditor}
               onOpenGeometryEditor={openGeometryEditor}
-              onOpenDynSysEditor={(elementId) => {
-                const el = currentSlide?.elements?.find(e => e.id === elementId)
-                if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
-              }}
               onAddImage={async (file, dropX, dropY) => {
                 try {
                   const result = await api.uploadFile(file)

@@ -110,4 +110,15 @@ async function until(check, what, ms = 5000) {
   }
 }
 
-module.exports = { DB, DB_UNVERIFIED, startCloudServer, until }
+// A plugin in the server's own plugin folder (DATA_DIR/plugins), the way a
+// self-hosted server is given one: its manifest, and a page showing #val
+function addFolderPlugin(dataDir, { slug = 'local-counter', id = 'org.example.counter', type = 'counter' } = {}) {
+  const dir = path.join(dataDir, 'plugins', slug)
+  fs.mkdirSync(path.join(dir, 'dist'), { recursive: true })
+  fs.writeFileSync(path.join(dir, 'parallax-plugin.json'), JSON.stringify({
+    id, name: 'Counter', version: '1.0.0', sandbox: './sandbox.html', contributes: { elementTypes: [{ type, label: 'Counter' }] },
+  }))
+  fs.writeFileSync(path.join(dir, 'dist', 'sandbox.html'), '<!DOCTYPE html><html><head></head><body><div id="val">0</div></body></html>')
+}
+
+module.exports = { DB, DB_UNVERIFIED, startCloudServer, until, addFolderPlugin }
