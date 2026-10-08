@@ -3,10 +3,11 @@
 
 const path = require('path')
 const fs = require('fs-extra')
-const { parse: csvParser } = require('csv-parse')
+const { Worker } = require('worker_threads')
 const { v4: uuidv4 } = require('uuid')
-const { uploadToR2, streamFromR2, deleteFromR2 } = require('./r2')
+const { putBufferToR2, streamFromR2, deleteFromR2 } = require('./r2')
 const { isR2Enabled } = require('./r2')
+const { parseRows, rowsToTable, tableBytes, unpackTable, likeMatch, applyQuery } = require('./dataset-table')
 
 const ALLOWED_FORMATS = new Set(['csv', 'json', 'tsv'])
 
@@ -18,117 +19,105 @@ function detectFormat(filename) {
   return null
 }
 
-// A dataset file's rows. A CSV or TSV is parsed a chunk at a time, with the
-// server free in between: parsed in one go, a large file held up every other
-// request (and live editing) for seconds, on every read
-const CSV_CHUNK = 256 * 1024
+// Parses a body and packs it as a columns copy in a worker thread (see
+// processBody in dataset-table.js). The worker's memory is capped, so a body
+// too big to read fails on its own instead of taking the server down
+const WORKER = path.join(__dirname, 'dataset-worker.js')
 
-async function parseRows(buffer, format) {
-  if (format === 'csv' || format === 'tsv') {
-    const parser = csvParser({
-      // A column named __proto__ would be each row's prototype
-      columns: header => header.map(name => (name === '__proto__' ? '_proto_' : name)),
-      skip_empty_lines: true, delimiter: format === 'tsv' ? '\t' : ',', cast: true, relax_column_count: true,
+function runInWorker(body, format, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER, { workerData: { body, format, opts }, resourceLimits: { maxOldGenerationSizeMb: 1536 } })
+    let settled = false
+    const settle = (fn, value) => { if (!settled) { settled = true; fn(value) } }
+    worker.once('message', msg => {
+      if (msg.ok) settle(resolve, { ...msg, gz: Buffer.from(msg.gz.buffer, msg.gz.byteOffset, msg.gz.byteLength) })
+      else settle(reject, new Error(msg.error))
+      worker.terminate()
     })
-    const rows = []
-    parser.on('readable', () => { let row; while ((row = parser.read()) !== null) rows.push(row) })
-    const done = new Promise((resolve, reject) => { parser.on('end', resolve); parser.on('error', reject) })
-    // A bad line rejects `done` while this is between chunks, before it's
-    // awaited: unheard, that rejection would end the process
-    done.catch(() => {})
-    for (let i = 0; i < buffer.length && !parser.destroyed; i += CSV_CHUNK) {
-      parser.write(buffer.subarray(i, i + CSV_CHUNK))
-      await new Promise(resolve => setImmediate(resolve))
-    }
-    if (!parser.destroyed) parser.end()
-    await done
-    return rows
-  }
-  if (format === 'json') {
-    const parsed = JSON.parse(buffer.toString('utf8'))
-    if (Array.isArray(parsed)) return parsed
-    if (parsed.data && Array.isArray(parsed.data)) return parsed.data
-    throw new Error('JSON must be an array of objects or have a "data" array property')
-  }
-  throw new Error(`Unsupported format: ${format}`)
-}
-
-function inferType(values) {
-  const sample = values.slice(0, 100)
-  if (sample.length === 0) return 'string'
-  if (sample.every(v => typeof v === 'boolean' || v === 'true' || v === 'false')) return 'boolean'
-  if (sample.every(v => typeof v === 'number' && Number.isInteger(v))) return 'integer'
-  if (sample.every(v => typeof v === 'number' || (typeof v === 'string' && v !== '' && !isNaN(Number(v))))) return 'float'
-  if (sample.every(v => typeof v === 'string' && v.length > 6 && !isNaN(Date.parse(v)))) return 'date'
-  return 'string'
-}
-
-function inferColumns(rows) {
-  if (!rows.length) return []
-  const colNames = Object.keys(rows[0])
-  return colNames.map(name => {
-    const values = rows.map(r => r[name]).filter(v => v != null && v !== '')
-    return {
-      name,
-      type: inferType(values),
-      nullable: values.length < rows.length,
-      sample: values.slice(0, 3),
-    }
+    worker.once('error', err => settle(reject, err.code === 'ERR_WORKER_OUT_OF_MEMORY' ? new Error('The data is too large to read') : err))
+    worker.once('exit', () => settle(reject, new Error('Reading the data stopped before it finished')))
   })
 }
 
-async function ingestDataset(filePath, originalFilename, { userId, storage, localDir, keyPrefix }) {
+// Stores a packed table: on R2 under its owner's datasets, or in the data
+// folder when self-hosted
+async function storeColumns(gz, { name, keyPrefix, localDir }) {
+  if (isR2Enabled()) {
+    const storageKey = `${keyPrefix}/datasets/${name}/${uuidv4()}.json.gz`
+    await putBufferToR2(storageKey, gz, 'application/gzip')
+    return storageKey
+  }
+  const localName = `${uuidv4()}.json.gz`
+  await fs.ensureDir(path.join(localDir, 'datasets'))
+  await fs.writeFile(path.join(localDir, 'datasets', localName), gz)
+  return `local:${localName}`
+}
+
+function datasetName(text) {
+  return String(text).replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+}
+
+async function ingestDataset(filePath, originalFilename, { userId, localDir, keyPrefix }) {
   const format = detectFormat(originalFilename)
   if (!format || !ALLOWED_FORMATS.has(format)) {
     throw new Error(`Unsupported file format. Accepted: ${[...ALLOWED_FORMATS].join(', ')}`)
   }
-
-  const rows = await parseRows(await fs.readFile(filePath), format)
-  const columns = inferColumns(rows)
-  const stat = fs.statSync(filePath)
-  const baseName = path.basename(originalFilename, path.extname(originalFilename))
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .toLowerCase()
-
-  let storageKey
-  if (isR2Enabled()) {
-    storageKey = `${keyPrefix || userId}/datasets/${baseName}/${uuidv4()}${path.extname(originalFilename)}`
-    await uploadToR2(filePath, storageKey, 'application/octet-stream')
-  } else {
-    const dsDir = path.join(localDir, 'datasets')
-    fs.ensureDirSync(dsDir)
-    const localName = `${uuidv4()}${path.extname(originalFilename)}`
-    storageKey = `local:${localName}`
-    fs.copySync(filePath, path.join(dsDir, localName))
-  }
-
-  fs.removeSync(filePath)
-
-  return {
-    name: baseName,
-    filename: originalFilename,
-    format,
-    storageKey,
-    columns,
-    rowCount: rows.length,
-    byteSize: stat.size,
+  try {
+    const name = datasetName(path.basename(originalFilename, path.extname(originalFilename)))
+    const packed = await runInWorker(await fs.readFile(filePath), format)
+    const storageKey = await storeColumns(packed.gz, { name, keyPrefix: keyPrefix || userId, localDir })
+    return {
+      name,
+      filename: originalFilename,
+      format: 'columns',
+      storageKey,
+      columns: packed.columns,
+      rowCount: packed.rowCount,
+      byteSize: packed.gz.length,
+      contentHash: packed.hash,
+    }
+  } finally {
+    fs.removeSync(filePath)
   }
 }
 
-// Parsed rows by storage key, since a chart asks for its data again and
-// again, and a file never changes under its key (an upload gets a new one).
-// Up to 48 MB of files, the least recently read going first; rows take
-// several times their file's size, so a file over 16 MB is parsed each time.
-// Callers mustn't change the rows (applyQuery doesn't).
-const CACHE_BYTES = 48 * 1024 * 1024
-const CACHE_FILE_BYTES = 16 * 1024 * 1024
+// Saves an upload as its dataset's only version, deleting the files an
+// earlier upload under that name left. `previous` is that dataset, if any
+async function saveUpload(storage, result, userId, { previous, localDir }) {
+  const ds = await storage.createDataset(result, userId)
+  const old = await storage.listDatasetVersions(ds.id)
+  const version = await storage.createDatasetVersion(ds.id, {
+    storageKey: result.storageKey, format: result.format, contentHash: result.contentHash,
+    columns: result.columns, rowCount: result.rowCount, byteSize: result.byteSize,
+  })
+  await storage.setCurrentVersion(ds.id, version)
+  const keys = await storage.deleteDatasetVersions(ds.id, old.map(v => v.id))
+  // A dataset uploaded before versions, on a server with no migration to
+  // give it one (self-hosted), had only its own key
+  if (previous?.storageKey) keys.push(previous.storageKey)
+  for (const key of new Set(keys)) {
+    if (key && key !== result.storageKey) {
+      deleteDatasetFile(key, localDir).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    }
+  }
+  return storage.getDataset(ds.id, userId)
+}
+
+// Tables by storage key, since a chart asks for its data again and again,
+// and a file never changes under its key (an upload gets a new one). Up to
+// 128 MB of tables in memory, the least recently read going first; a table
+// over 48 MB is read each time. Callers mustn't change a table (applyQuery
+// doesn't).
+const CACHE_BYTES = 128 * 1024 * 1024
+const CACHE_TABLE_BYTES = 48 * 1024 * 1024
 const cached = new Map()
 const parsing = new Map()
 let cachedBytes = 0
 
-function remember(key, rows, bytes) {
-  if (bytes > CACHE_FILE_BYTES) return
-  cached.set(key, { rows, bytes })
+function remember(key, table) {
+  const bytes = tableBytes(table)
+  if (bytes > CACHE_TABLE_BYTES) return
+  cached.set(key, { table, bytes })
   cachedBytes += bytes
   for (const [oldest, entry] of cached) {
     if (cachedBytes <= CACHE_BYTES) break
@@ -137,93 +126,35 @@ function remember(key, rows, bytes) {
   }
 }
 
+async function readStored(storageKey, localDir) {
+  if (storageKey.startsWith('local:')) {
+    return fs.readFile(path.join(localDir, 'datasets', storageKey.replace('local:', '')))
+  }
+  const { body } = await streamFromR2(storageKey)
+  const chunks = []
+  for await (const chunk of body) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
+
+// A stored dataset as a table: a columns copy as it was saved, or an
+// uploaded CSV, TSV or JSON file parsed
 async function readDatasetFile(storageKey, format, localDir) {
   const hit = cached.get(storageKey)
   if (hit) {
     cached.delete(storageKey)
     cached.set(storageKey, hit)
-    return hit.rows
+    return hit.table
   }
-  // Two reads at once parse it once
+  // Two reads at once read it once
   if (parsing.has(storageKey)) return parsing.get(storageKey)
   const read = (async () => {
-    let buffer
-    if (storageKey.startsWith('local:')) {
-      buffer = await fs.readFile(path.join(localDir, 'datasets', storageKey.replace('local:', '')))
-    } else {
-      const { body } = await streamFromR2(storageKey)
-      const chunks = []
-      for await (const chunk of body) chunks.push(chunk)
-      buffer = Buffer.concat(chunks)
-    }
-    const rows = await parseRows(buffer, format)
-    remember(storageKey, rows, buffer.length)
-    return rows
+    const buffer = await readStored(storageKey, localDir)
+    const table = format === 'columns' ? await unpackTable(buffer) : rowsToTable(await parseRows(buffer, format))
+    remember(storageKey, table)
+    return table
   })()
   parsing.set(storageKey, read)
   try { return await read } finally { parsing.delete(storageKey) }
-}
-
-// SQL's LIKE, ignoring case: % matches any run of characters, _ any one, and
-// the rest only themselves. Walks the value once, going back to the last % on
-// a mismatch, so it takes at most value × pattern steps; a regex built from
-// the pattern (%%%%…!) could take longer than the server can wait.
-function likeMatch(value, pattern) {
-  const s = String(value).toLowerCase()
-  const p = String(pattern).toLowerCase()
-  let i = 0, j = 0, star = -1, from = 0
-  while (i < s.length) {
-    if (j < p.length && p[j] !== '%' && (p[j] === '_' || p[j] === s[i])) { i++; j++ }
-    else if (j < p.length && p[j] === '%') { star = j++; from = i }
-    else if (star !== -1) { j = star + 1; i = ++from }
-    else return false
-  }
-  while (p[j] === '%') j++
-  return j === p.length
-}
-
-function applyQuery(rows, columns, opts = {}) {
-  let filtered = rows
-
-  if (opts.where) {
-    filtered = filtered.filter(row => {
-      for (const [col, conditions] of Object.entries(opts.where)) {
-        const val = row[col]
-        if (conditions.eq != null && val !== conditions.eq) return false
-        if (conditions.neq != null && val === conditions.neq) return false
-        if (conditions.gt != null && !(val > conditions.gt)) return false
-        if (conditions.gte != null && !(val >= conditions.gte)) return false
-        if (conditions.lt != null && !(val < conditions.lt)) return false
-        if (conditions.lte != null && !(val <= conditions.lte)) return false
-        if (conditions.in && !conditions.in.includes(val)) return false
-        if (conditions.like && !likeMatch(val, conditions.like)) return false
-      }
-      return true
-    })
-  }
-
-  if (opts.orderBy) {
-    const col = typeof opts.orderBy === 'string' ? opts.orderBy : opts.orderBy.column
-    const dir = (typeof opts.orderBy === 'object' && opts.orderBy.direction === 'desc') ? -1 : 1
-    filtered = [...filtered].sort((a, b) => {
-      if (a[col] < b[col]) return -dir
-      if (a[col] > b[col]) return dir
-      return 0
-    })
-  }
-
-  const totalRows = filtered.length
-
-  if (opts.offset) filtered = filtered.slice(opts.offset)
-  if (opts.limit) filtered = filtered.slice(0, opts.limit)
-
-  const selectedCols = opts.columns || columns.map(c => c.name)
-  const result = {}
-  for (const col of selectedCols) {
-    result[col] = filtered.map(r => r[col] ?? null)
-  }
-
-  return { columns: result, totalRows }
 }
 
 async function deleteDatasetFile(storageKey, localDir) {
@@ -237,4 +168,7 @@ async function deleteDatasetFile(storageKey, localDir) {
   }
 }
 
-module.exports = { ingestDataset, readDatasetFile, applyQuery, likeMatch, deleteDatasetFile, detectFormat, ALLOWED_FORMATS }
+module.exports = {
+  ingestDataset, saveUpload, runInWorker, storeColumns, datasetName, readDatasetFile, applyQuery, likeMatch,
+  deleteDatasetFile, detectFormat, ALLOWED_FORMATS,
+}

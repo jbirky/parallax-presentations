@@ -36,12 +36,18 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
-const { ingestDataset, readDatasetFile, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
-const { createSandboxLookup } = require('./services/plugin-embed')
+const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
+const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
+const { normalizeTransforms } = require('./services/dataset-transforms')
+const { createSandboxLookup, folderPluginTypes } = require('./services/plugin-embed')
+const communityPlugins = require('./services/community-plugins')
+const pluginImport = require('./services/plugin-import')
+const pluginTagCheck = require('./services/plugin-tag-check')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
+const { deckDataFor } = require('./services/deck-data')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, authLimiter, deckPageLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -115,10 +121,11 @@ async function userIdForToken(token) {
 
 app.use(helmetConfig())
 if (!IS_CLOUD) app.use(localOnly())
-// Library files, uploads and a live session's slide feed are public, and the
-// pages that use them are sandboxed (sendDeckPage), so their requests come
-// from origin null: those answer any origin, without credentials
-const PUBLIC_CORS = /^\/(vendor|uploads)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+// Library files, uploads, the example decks' files and a live session's slide
+// feed are public, and the pages that use them are sandboxed (sendDeckPage),
+// so their requests come from origin null: those answer any origin, without
+// credentials
+const PUBLIC_CORS = /^\/(vendor|uploads|examples)\/|^\/api\/live\/[^/]+\/(stream|status)$/
 const publicCors = cors()
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
@@ -207,6 +214,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Molecules', link: 'tutorials/molecules' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Periodic Table', link: 'tutorials/periodic-table' },
+      { text: 'Plugins', link: 'tutorials/plugins' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
@@ -220,6 +228,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Venn Diagrams', link: 'tutorials/venn-diagrams' },
       { text: 'Version Diff', link: 'features/version-diff' },
       { text: 'Video & Audio', link: 'tutorials/media' },
+      { text: 'Writing Plugins', link: 'tutorials/writing-plugins' },
       // Hidden while publishing to Zenodo is turned off (ZENODO_ENABLED)
       // { text: 'Zenodo Integration', link: 'features/zenodo' },
     ],
@@ -240,11 +249,213 @@ if (fs.existsSync(docsPublic)) {
   app.use('/parallax-presentations', express.static(docsPublic))
 }
 
-// Plugin assets (public, before auth — sandbox iframes need these)
+// ---- What link previews and search engines see (public, before auth) ----
+// The head tags of each page (services/site-pages.js), robots.txt and
+// sitemap.xml. Search engines index only the hosted site, and not dev
+// (PARALLAX_NOINDEX=1).
+const sitePages = require('./services/site-pages')
+const SEARCH_INDEXING = IS_CLOUD && process.env.PARALLAX_NOINDEX !== '1'
+const siteOrigin = req => PUBLIC_ORIGIN || `${req.protocol}://${req.get('host')}`
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(sitePages.robotsTxt({ origin: siteOrigin(req), index: SEARCH_INDEXING }))
+})
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const { examples: cards } = await examples.landingExamples(storage)
+    const plugins = SEARCH_INDEXING ? (await communityPlugins.galleryPlugins(storage)).map(p => p.slug) : []
+    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [], plugins }))
+  } catch (err) {
+    res.status(500).type('text/plain').send('Sitemap unavailable')
+  }
+})
+
+// ---- Example decks (public, before auth) ----
+// The landing page's examples (services/landing-examples.js): the list; each
+// example's own page (/examples/<slug>, services/site-pages.js) around its
+// deck, which is served in a sandbox like a share link (/examples/<slug>/deck,
+// built once per version of the deck); each as a deck for a guest to start
+// from; and the thumbnails the server drew. Anything else under /examples
+// (built-in thumbnails, the molecule's structure file) is a static file.
+const examples = require('./services/landing-examples')
+const exampleData = require('./services/example-datasets')
+const { renderFirstSlide, chromiumPath, ThumbnailError } = require('./services/slide-thumbnail')
+const EXAMPLE_SLUG = /^[a-z0-9-]{1,64}$/
+const exampleHtml = new Map()
+app.get('/api/examples', async (req, res) => {
+  try {
+    res.json(await examples.landingExamples(storage))
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+app.get('/examples/:slug/deck', deckPageLimiter, async (req, res, next) => {
+  try {
+    const { slug } = req.params
+    const found = EXAMPLE_SLUG.test(slug) && await examples.getExampleDeck(storage, slug)
+    if (!found) return next()
+    // Built again when the deck changes, or the data it plots
+    // (services/example-datasets.js)
+    const version = `${found.version}|${await exampleData.exampleDataVersion(found.deck, { localDir: DATA_DIR })}`
+    let page = exampleHtml.get(slug)
+    if (!page || page.version !== version) {
+      const deckData = await exampleData.exampleDeckData(found.deck, { localDir: DATA_DIR, pluginSandbox: await pluginSandboxes(found.deck) })
+      page = { version, html: localizeLibraries(await generateRevealHTML(found.deck, { notes: false, deckData })) }
+      exampleHtml.set(slug, page)
+    }
+    sendDeckPage(res, page.html)
+  } catch (err) {
+    next(err)
+  }
+})
+// An example's own page: those shown on the landing page, and its top deck
+app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
+  try {
+    const { slug } = req.params
+    if (!EXAMPLE_SLUG.test(slug)) return next()
+    const { hero, examples: cards } = await examples.landingExamples(storage)
+    let example = cards.find(e => e.slug === slug)
+    if (!example && slug === hero) {
+      const row = (await examples.listExamples(storage)).find(e => e.slug === slug)
+      example = { slug, field: row.field, title: row.title, desc: row.description, tags: row.tags, thumbnail: row.builtin && !row.ownDeck ? `/examples/thumbs/${slug}.jpg` : null }
+    }
+    if (!example) return next()
+    res.type('html').send(sitePages.examplePage({
+      origin: siteOrigin(req), example, others: cards.filter(e => e.slug !== slug),
+      guestEnabled: isGuestModeEnabled(), analytics: analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null,
+      index: SEARCH_INDEXING && example.slug !== hero,
+    }))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---- The plugin gallery (public, before auth) ----
+// /plugins, every listed community plugin, and each one's own page
+// (services/plugin-pages.js); and a plugin's live preview: its sandbox page
+// with the data a new element starts with, given the way decks give it,
+// and served in a sandbox like a deck. Cloud only. /plugins/<slug>/install
+// is the app's (client/src/pages/PluginInstallPage.jsx).
+const pluginPages = require('./services/plugin-pages')
+const GALLERY_SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
+const pageAnalytics = () => (analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null)
+app.get('/plugins', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD) return next()
+  try {
+    const plugins = await communityPlugins.galleryPlugins(storage)
+    res.type('html').send(pluginPages.galleryPage({ origin: siteOrigin(req), plugins, analytics: pageAnalytics(), index: SEARCH_INDEXING }))
+  } catch (err) {
+    next(err)
+  }
+})
+app.get('/plugins/:slug', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD || !GALLERY_SLUG.test(req.params.slug)) return next()
+  try {
+    const plugin = await communityPlugins.galleryPlugin(storage, req.params.slug)
+    if (!plugin) return next()
+    res.type('html').send(await pluginPages.pluginPage({ origin: siteOrigin(req), plugin, analytics: pageAnalytics(), index: SEARCH_INDEXING }))
+  } catch (err) {
+    next(err)
+  }
+})
+app.get('/plugins/:slug/preview', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD || !GALLERY_SLUG.test(req.params.slug)) return next()
+  try {
+    const plugin = await communityPlugins.galleryPlugin(storage, req.params.slug)
+    const file = plugin && await communityPlugins.versionFile(storage, plugin.pluginId, plugin.version)
+    if (!file?.content || file.status !== 'approved') return next()
+    const type = plugin.manifest?.contributes?.elementTypes?.[0] || {}
+    const size = type.defaultSize || { width: 640, height: 420 }
+    res.setHeader('X-Robots-Tag', 'noindex')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    sendDeckPage(res, deckHtml.buildStaticPluginSrcdoc(communityPlugins.sandboxPage(file), { data: type.defaultData || {}, width: size.width, height: size.height }))
+  } catch (err) {
+    next(err)
+  }
+})
+
+app.get('/api/examples/:slug', async (req, res) => {
+  try {
+    const found = EXAMPLE_SLUG.test(req.params.slug) && await examples.getExampleDeck(storage, req.params.slug)
+    if (!found) return res.status(404).json({ error: 'No such example' })
+    res.json({ id: `example-${req.params.slug}`, ...found.deck })
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+app.get('/examples/thumbs/:slug.jpg', async (req, res, next) => {
+  try {
+    const jpeg = EXAMPLE_SLUG.test(req.params.slug) && await examples.getThumbnail(storage, req.params.slug)
+    if (!jpeg) return next()
+    res.setHeader('Content-Type', 'image/jpeg')
+    // Its link names the version (?v=), so a changed one has a new link
+    res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300')
+    res.send(jpeg)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ---- Analytics (public, before auth) ----
+// Umami counts visits to the landing page and what's done there, when
+// UMAMI_URL (Umami as this server reaches it) and UMAMI_WEBSITE_ID are set.
+// The page loads Umami's script from /stats/script.js and sends its events to
+// /stats/api/send on this site, and the server passes both on, so Umami's own
+// pages stay private. Umami sets no cookies, and the script sends nothing for
+// a browser that asks not to be tracked.
+const UMAMI_URL = (process.env.UMAMI_URL || '').replace(/\/+$/, '')
+const UMAMI_WEBSITE_ID = /^[0-9a-f-]{36}$/i.test(process.env.UMAMI_WEBSITE_ID || '') ? process.env.UMAMI_WEBSITE_ID : null
+const analyticsOn = !!(UMAMI_URL && UMAMI_WEBSITE_ID)
+let umamiScript = null
+app.get('/api/analytics', (req, res) => {
+  res.json(analyticsOn ? { websiteId: UMAMI_WEBSITE_ID, script: '/stats/script.js' } : {})
+})
+app.get('/stats/script.js', async (req, res) => {
+  if (!analyticsOn) return res.status(404).end()
+  try {
+    if (!umamiScript || Date.now() - umamiScript.at > 60 * 60 * 1000) {
+      const r = await fetch(`${UMAMI_URL}/script.js`)
+      if (!r.ok) throw new Error(`Umami answered ${r.status}`)
+      umamiScript = { body: await r.text(), at: Date.now() }
+    }
+    res.type('application/javascript').set('Cache-Control', 'public, max-age=3600').send(umamiScript.body)
+  } catch (err) {
+    console.error('Analytics script error:', err.message)
+    res.status(502).end()
+  }
+})
+app.post('/stats/api/send', statsLimiter, async (req, res) => {
+  if (!analyticsOn) return res.status(404).end()
+  // Only events for this site's own website
+  if (req.body?.payload?.website !== UMAMI_WEBSITE_ID) return res.status(400).json({ error: 'Unknown website' })
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'User-Agent': req.get('User-Agent') || '',
+      // Umami reads the visitor's address from this, as Cloudflare sends it
+      'CF-Connecting-IP': req.get('CF-Connecting-IP') || req.ip,
+    }
+    for (const name of ['x-umami-website-id', 'x-umami-hostname', 'x-umami-cache']) {
+      if (req.get(name)) headers[name] = req.get(name)
+    }
+    const r = await fetch(`${UMAMI_URL}/api/send`, { method: 'POST', headers, body: JSON.stringify(req.body) })
+    res.status(r.status).type(r.headers.get('content-type') || 'application/json').send(await r.text())
+  } catch (err) {
+    console.error('Analytics send error:', err.message)
+    res.status(502).end()
+  }
+})
+
+// Plugin assets (public, before auth — sandbox iframes need these). Sent
+// with the sandbox header, so a plugin's page opened at its own address runs
+// with an origin of its own, null, never as this site; a plugin's main
+// script, which the editor imports, isn't a page and isn't affected.
 const userPluginsDir = path.join(DATA_DIR, 'plugins')
 const bundledPluginsDir = path.join(__dirname, '..', 'plugins')
+const PLUGIN_FILE_SANDBOX = 'sandbox allow-scripts'
 fs.ensureDirSync(userPluginsDir)
 app.use('/api/plugins/:slug/assets', requireValidSlug(), (req, res, next) => {
+  res.setHeader('Content-Security-Policy', PLUGIN_FILE_SANDBOX)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   const slug = req.params.slug
   const userDir = path.join(userPluginsDir, slug, 'dist')
   const bundledDir = path.join(bundledPluginsDir, slug, 'dist')
@@ -265,9 +476,15 @@ app.get('/api/plugins', async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// A community plugin with no approved version isn't listed yet
+const listedPlugin = async slug => {
+  const plugin = await storage.getPlugin(slug)
+  return plugin && (!plugin.community || plugin.published) ? plugin : null
+}
+
 app.get('/api/plugins/:slug', async (req, res) => {
   try {
-    const plugin = await storage.getPlugin(req.params.slug)
+    const plugin = await listedPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -275,7 +492,7 @@ app.get('/api/plugins/:slug', async (req, res) => {
 
 app.get('/api/plugins/:slug/manifest', async (req, res) => {
   try {
-    const plugin = await storage.getPlugin(req.params.slug)
+    const plugin = await listedPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin.manifest)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -410,6 +627,32 @@ if (IS_CLOUD) {
     })
   })
 }
+
+// A community plugin version's sandbox page, with its CSP, and its other
+// files, as the editor and the plugin pages load them: anyone's once it's
+// approved, signed in or not, and before that its importer's and admins'.
+// Sent with the sandbox header, like the plugin folders' assets.
+const PLUGIN_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+const PLUGIN_ID_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+async function sendPluginVersionFile(req, res, filePath) {
+  const { pluginId, version } = req.params
+  if (!PLUGIN_ID_RE.test(pluginId) || !PLUGIN_VERSION_RE.test(version) || !IS_CLOUD) return res.status(404).json({ error: 'Not found' })
+  if (!(await communityPlugins.hasTables(storage))) return res.status(404).json({ error: 'Not found' })
+  const file = await communityPlugins.versionFile(storage, pluginId, version, filePath)
+  if (!file?.content || !communityPlugins.canSee(file, { userId: req.userId, admin: isAdmin(req) })) return res.status(404).json({ error: 'Not found' })
+  res.setHeader('Content-Security-Policy', PLUGIN_FILE_SANDBOX)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  // Its status can change (revoked), so it's checked each time
+  res.setHeader('Cache-Control', 'private, no-cache')
+  if (filePath === null) res.type('html').send(communityPlugins.sandboxPage(file))
+  else res.type(file.contentType).send(file.content)
+}
+app.get('/api/plugin-versions/:pluginId/:version/sandbox', async (req, res) => {
+  try { await sendPluginVersionFile(req, res, null) } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+app.get('/api/plugin-files/:pluginId/:version/*', async (req, res) => {
+  try { await sendPluginVersionFile(req, res, req.params[0]) } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
 
 // Protect all /api routes in cloud mode, but for the slide feed of a live
 // session, which its audience follows without signing in
@@ -694,11 +937,41 @@ async function transcodeVideoIfNeeded(filePath) {
 // A deck's page (share links, live sessions, exports, GitHub and Zenodo), from
 // the generator the editor's windows use (services/deck-html.js, built from
 // the client's utils/generateHTML.js). Plugin elements get their sandbox page
-// from the plugins' folders. opts.notes: false leaves speaker notes out, for
+// from pluginSandboxes. opts.notes: false leaves speaker notes out, for
 // pages anyone with a link can open; opts.customFonts are the deck's fonts.
-function generateRevealHTML(presentation, opts = {}) {
-  const pluginSandbox = createSandboxLookup([userPluginsDir, bundledPluginsDir])
-  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: el => (el.pluginId ? pluginSandbox(el.pluginId) : null) })
+async function generateRevealHTML(presentation, opts = {}) {
+  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: await pluginSandboxes(presentation) })
+}
+// A deck's plugin elements' sandbox pages: a community plugin's from the
+// database, at the version its element records (services/community-plugins.js),
+// and the rest from the plugins' folders
+async function pluginSandboxes(presentation) {
+  const lookup = createSandboxLookup([userPluginsDir, bundledPluginsDir])
+  let community = new Map()
+  if (IS_CLOUD) {
+    try {
+      community = await communityPlugins.sandboxesFor(storage, presentation)
+    } catch (err) {
+      console.error('Community plugin pages failed:', err.message)
+    }
+  }
+  return el => {
+    if (!el.pluginId) return null
+    const page = el.pluginVersion ? community.get(communityPlugins.versionKey(el.pluginId, el.pluginVersion)) : undefined
+    return page !== undefined ? page : lookup(el.pluginId)
+  }
+}
+
+// The data its slides read from the deck's datasets (services/deck-data.js),
+// as opts.deckData; ownerId is whose datasets they are. A deck whose data
+// can't be listed is still built, its graphs saying so
+async function deckData(presentation, ownerId) {
+  try {
+    return await deckDataFor(storage, presentation, { ownerId, localDir: DATA_DIR, pluginSandbox: await pluginSandboxes(presentation) })
+  } catch (err) {
+    console.error('Deck data failed:', err.message)
+    return undefined
+  }
 }
 
 function escapeHtml(str) {
@@ -803,6 +1076,100 @@ app.post('/api/presentations', async (req, res) => {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
+
+// GET /api/admin/stats?days=7|30|90 — the landing page's visitors and what
+// they did, from Umami, with the accounts made in the period. Not found for
+// anyone who isn't an admin; { configured: false } where Umami isn't set up.
+const umamiStats = require('./services/umami-stats')
+app.get('/api/admin/stats', async (req, res) => {
+  if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+  try {
+    const titles = Object.fromEntries((await examples.listExamples(storage)).map(e => [e.slug, e.title]))
+    res.json(await umamiStats.landingStats(storage, Number(req.query.days) || 30, { titles }))
+  } catch (err) {
+    if (err instanceof umamiStats.StatsError) return res.status(err.status).json({ error: err.message })
+    console.error('Landing statistics error:', err.message)
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+
+// ---- The landing page's examples, edited from /admin ----
+// Each not found for anyone who isn't an admin. Adding or updating an
+// example draws its thumbnail from its page on this server; if that can't be
+// done, the example still changes and the response says why (thumbnailError).
+function exampleRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof examples.ExampleError) return res.status(err.status).json({ error: err.message })
+      console.error('Example edit error:', err.message)
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+async function drawExampleThumbnail(req, slug) {
+  try {
+    await examples.setThumbnail(storage, slug, await renderFirstSlide(`http://127.0.0.1:${req.socket.localPort}/examples/${slug}/deck`))
+    return null
+  } catch (err) {
+    if (!(err instanceof ThumbnailError)) console.error('Example thumbnail error:', err.message)
+    return err.message
+  }
+}
+// The admin's own presentation, or a refusal
+async function ownPresentation(req, id) {
+  const presentation = isValidUUID(id) ? await storage.getPresentation(id, req.userId) : null
+  if (!presentation) throw new examples.ExampleError('That presentation isn’t one of yours, or is gone', 404)
+  return presentation
+}
+app.get('/api/admin/examples', exampleRoute(async (req, res) => {
+  res.json({ examples: await examples.listExamples(storage), thumbnails: !!chromiumPath() })
+}))
+// { presentationId, field, title, description, tags }
+app.post('/api/admin/examples', exampleRoute(async (req, res) => {
+  const example = await examples.createExample(storage, await ownPresentation(req, req.body?.presentationId), req.body || {})
+  const thumbnailError = await drawExampleThumbnail(req, example.slug)
+  console.log(`Admin added landing example ${example.slug}`)
+  res.status(201).json({ example: await examples.getRow(storage, example.slug), thumbnailError })
+}))
+// { slugs }: the examples in order
+app.put('/api/admin/examples/order', exampleRoute(async (req, res) => {
+  res.json({ examples: await examples.setOrder(storage, req.body?.slugs) })
+}))
+// { field, title, description, tags, card, hero }, each optional
+app.put('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
+  res.json({ example: await examples.updateExample(storage, req.params.slug, req.body || {}) })
+}))
+// The deck copied again from the presentation it came from
+app.post('/api/admin/examples/:slug/refresh', exampleRoute(async (req, res) => {
+  const { sourcePresentationId } = await examples.getRow(storage, req.params.slug)
+  if (!sourcePresentationId) throw new examples.ExampleError('This example didn’t come from a presentation')
+  await examples.refreshExample(storage, req.params.slug, await ownPresentation(req, sourcePresentationId))
+  const thumbnailError = await drawExampleThumbnail(req, req.params.slug)
+  res.json({ example: await examples.getRow(storage, req.params.slug), thumbnailError })
+}))
+app.post('/api/admin/examples/:slug/thumbnail', exampleRoute(async (req, res) => {
+  await examples.getRow(storage, req.params.slug)
+  const thumbnailError = await drawExampleThumbnail(req, req.params.slug)
+  res.json({ example: await examples.getRow(storage, req.params.slug), thumbnailError })
+}))
+// A presentation of the admin's made from the example's deck, which the
+// example then comes from, to edit it in the editor
+app.post('/api/admin/examples/:slug/copy', exampleRoute(async (req, res) => {
+  const example = await examples.getRow(storage, req.params.slug)
+  const { deck } = await examples.getExampleDeck(storage, req.params.slug)
+  if (!(await checkPresentationQuota(req, res))) return
+  const created = await storage.createPresentation({ ...deck, id: uuidv4(), title: example.title }, req.userId, null)
+  await examples.refreshExample(storage, req.params.slug, created)
+  res.status(201).json({ example: await examples.getRow(storage, req.params.slug), presentation: { id: created.id, title: created.title } })
+}))
+app.delete('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
+  await examples.deleteExample(storage, req.params.slug)
+  console.log(`Admin deleted landing example ${req.params.slug}`)
+  res.json({ ok: true })
+}))
 
 // --- Templates ---
 
@@ -991,22 +1358,157 @@ app.post('/api/datasets', uploadLimiter, storageQuota, upload.single('file'), as
   try {
     const name = req.body.name || undefined
     const result = await ingestDataset(req.file.path, req.file.originalname, {
-      userId: req.userId, storage, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
+      userId: req.userId, localDir: DATA_DIR, keyPrefix: req.guestKeyPrefix,
     })
-    if (name) result.name = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
-    // Uploading under a name already used replaces that dataset: its file
-    // goes, or it would stay in storage, counted by no one
-    const same = (await storage.listDatasets(req.userId)).find(d => d.name === result.name)
-    const replaced = same && await storage.getDataset(same.id, req.userId)
-    const ds = await storage.createDataset(result, req.userId)
-    if (replaced?.storageKey && replaced.storageKey !== ds.storageKey) {
-      deleteDatasetFile(replaced.storageKey, DATA_DIR).catch(e => console.error('Replaced dataset file not deleted:', e.message))
+    if (name) result.name = datasetName(name)
+    // Uploading under a name already used replaces that dataset, unless it's
+    // a live one: its source would fetch over the upload
+    const previous = await storage.getDatasetByName(result.name, req.userId)
+    if (previous && previous.sourceKind !== 'upload') {
+      deleteDatasetFile(result.storageKey, DATA_DIR).catch(() => {})
+      return res.status(409).json({ error: `"${result.name}" is a live dataset. Upload this file under another name.` })
+    }
+    let ds = await saveUpload(storage, result, req.userId, { previous, localDir: DATA_DIR })
+    if (ds.transforms.length) {
+      await refreshOutputColumns(storage, ds, { ownerId: req.userId, localDir: DATA_DIR })
+      ds = await storage.getDataset(ds.id, req.userId)
     }
     res.status(201).json(ds)
   } catch (err) {
     if (req.file && req.file.path) fs.removeSync(req.file.path)
     res.status(400).json({ error: err.message })
   }
+})
+
+// --- Live datasets ---
+// Fetched from a URL or a TAP query, then on a schedule (live-datasets.js).
+// On in self-hosted builds unless PARALLAX_LIVE_DATASETS=off; in the cloud
+// only with PARALLAX_LIVE_DATASETS=on. These come before /api/datasets/:id,
+// which would take "sources" or "live" for an id.
+
+const LIVE_DATASETS = IS_CLOUD ? process.env.PARALLAX_LIVE_DATASETS === 'on' : process.env.PARALLAX_LIVE_DATASETS !== 'off'
+const live = require('./services/live-datasets')
+const { TAP_PRESETS, SourceError, normalizeSource } = require('./services/live-sources')
+
+const liveOn = (req, res, next) => (LIVE_DATASETS ? next() : res.status(404).json({ error: 'Live datasets aren’t turned on for this server' }))
+// The caller's plan, or null where there are no plans
+const planOf = req => (IS_CLOUD ? planFor(req.userPlan) : null)
+
+function sendLiveError(res, err) {
+  if (err.sourceError || err.fetchError) return res.status(422).json({ error: err.message })
+  if (err.code === 'duplicate') return res.status(409).json({ error: err.message })
+  res.status(500).json({ error: safeErrorMessage(err) })
+}
+
+// A refresh asked for by hand, unless one is already running
+async function refreshNow(id) {
+  if (!await storage.leaseDataset(id, 600)) return { outcome: 'busy' }
+  return live.refreshDataset(storage, id, { localDir: DATA_DIR })
+}
+
+// GET /api/datasets/sources — what the editor offers for making live datasets
+app.get('/api/datasets/sources', async (req, res) => {
+  if (!LIVE_DATASETS) return res.json({ enabled: false })
+  try {
+    const plan = planOf(req)
+    res.json({
+      enabled: true,
+      presets: TAP_PRESETS,
+      schedules: live.SCHEDULE_ORDER.filter(s => live.allowedSchedule(s, plan)),
+      allowance: plan ? { used: await storage.countLiveDatasets(req.userId), limit: plan.liveDatasets, plan: plan.name } : null,
+    })
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/datasets/sources/test — fetch a source once, saving nothing:
+// its columns, row count and first 20 rows
+app.post('/api/datasets/sources/test', liveOn, sourceFetchLimiter, async (req, res) => {
+  try {
+    const { sourceKind, source, secret } = req.body || {}
+    res.json(await live.testSource(sourceKind, source, { secret, plan: planOf(req) }))
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// POST /api/datasets/live — make a live dataset: { name, sourceKind, source,
+// schedule, secret }. Its first fetch must work
+app.post('/api/datasets/live', liveOn, sourceFetchLimiter, async (req, res) => {
+  try {
+    const plan = planOf(req)
+    if (plan && await storage.countLiveDatasets(req.userId) >= plan.liveDatasets) {
+      const n = plan.liveDatasets
+      return res.status(403).json({
+        code: 'live_limit',
+        error: n
+          ? `The ${plan.name} plan has ${n} live dataset${n === 1 ? '' : 's'}, and you’re using ${n === 1 ? 'it' : 'all of them'}.`
+          : `The ${plan.name} plan doesn’t include live datasets.`,
+      })
+    }
+    const ds = await live.createLiveDataset(storage, { userId: req.userId, plan, keyPrefix: req.guestKeyPrefix }, req.body || {}, { localDir: DATA_DIR })
+    res.status(201).json(ds)
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// PATCH /api/datasets/:id/source — change a live dataset's source, schedule
+// or header secret ('' removes it). A new source or secret is fetched at once
+app.patch('/api/datasets/:id/source', requireValidId(), liveOn, async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to change' })
+    const body = req.body || {}
+    const changes = {}
+    if (body.source !== undefined) changes.source = normalizeSource(ds.sourceKind, body.source)
+    if (body.schedule !== undefined) {
+      const plan = planOf(req)
+      if (!live.allowedSchedule(body.schedule, plan)) {
+        throw new SourceError(plan ? `The ${plan.name} plan refreshes at most ${plan.minRefresh}` : 'Refresh hourly, daily, weekly or by hand')
+      }
+      changes.schedule = body.schedule
+      changes.nextFetchAt = live.nextFetch(body.schedule)
+    }
+    if (body.secret !== undefined) {
+      if (body.secret) live.parseSecret(body.secret)
+      changes.sourceSecret = body.secret || ''
+    }
+    await storage.updateDatasetSource(ds.id, req.userId, changes)
+    const refresh = changes.source || changes.sourceSecret !== undefined ? await refreshNow(ds.id) : null
+    res.json({ dataset: await storage.getDataset(ds.id, req.userId), refresh })
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// POST /api/datasets/:id/refresh — fetch a live dataset now; a minute apart
+app.post('/api/datasets/:id/refresh', requireValidId(), liveOn, async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to fetch' })
+    const [last] = await storage.listDatasetFetches(ds.id, 1)
+    if (last && Date.now() - new Date(last.startedAt).getTime() < 60 * 1000) {
+      return res.status(429).json({ error: 'This dataset was fetched less than a minute ago. Try again in a moment.' })
+    }
+    const result = await refreshNow(ds.id)
+    if (result.outcome === 'busy') return res.status(409).json({ error: 'This dataset is being fetched right now' })
+    res.json({ ...result, dataset: await storage.getDataset(ds.id, req.userId) })
+  } catch (err) { sendLiveError(res, err) }
+})
+
+// GET /api/datasets/:id/versions — its saved versions, newest first
+app.get('/api/datasets/:id/versions', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const versions = await storage.listDatasetVersions(ds.id)
+    res.json(versions.map(({ storageKey, etag, lastModified, ...v }) => ({ ...v, current: v.id === ds.currentVersionId })))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// GET /api/datasets/:id/fetches — its last 50 fetches
+app.get('/api/datasets/:id/fetches', requireValidId(), async (req, res) => {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    res.json(await storage.listDatasetFetches(ds.id, 50))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // GET /api/datasets — list user's datasets
@@ -1025,23 +1527,56 @@ app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// A data request's query: columns, limit, offset, orderBy and where
+function queryOptions(req) {
+  const opts = {}
+  if (req.query.columns) opts.columns = req.query.columns.split(',')
+  if (req.query.limit) opts.limit = parseInt(req.query.limit)
+  if (req.query.offset) opts.offset = parseInt(req.query.offset)
+  if (req.query.orderBy) opts.orderBy = req.query.orderBy
+  if (req.query.where) {
+    try { opts.where = JSON.parse(req.query.where) } catch {}
+  }
+  return opts
+}
+
+// A read whose transforms no longer run (a column they name went away)
+// says which step and why
+function sendDataError(res, err) {
+  if (err.transformError || err.exprError) return res.status(422).json({ error: err.message, code: 'transform' })
+  res.status(500).json({ error: safeErrorMessage(err) })
+}
+
+// PUT /api/datasets/:id/transforms — save a dataset's transforms ({ transforms:
+// [steps] }), checked by running them; answers with the dataset and a preview
+// POST /api/datasets/:id/transforms/preview — run steps without saving them
+async function runTransformsFor(req, res, save) {
+  try {
+    const ds = await storage.getDataset(req.params.id, req.userId)
+    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const steps = normalizeTransforms((req.body || {}).transforms)
+    const { table } = await readView(storage, ds, { steps, ownerId: req.userId, localDir: DATA_DIR })
+    const shown = preview(table)
+    if (!save) return res.json({ preview: shown })
+    const saved = await storage.setDatasetTransforms(ds.id, req.userId, steps, steps.length ? shown.columns : null)
+    res.json({ dataset: saved, preview: shown })
+  } catch (err) {
+    if (err.transformError || err.exprError) return res.status(422).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+}
+app.put('/api/datasets/:id/transforms', requireValidId(), (req, res) => runTransformsFor(req, res, true))
+app.post('/api/datasets/:id/transforms/preview', requireValidId(), (req, res) => runTransformsFor(req, res, false))
+
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
 app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.getDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
-    const opts = {}
-    if (req.query.columns) opts.columns = req.query.columns.split(',')
-    if (req.query.limit) opts.limit = parseInt(req.query.limit)
-    if (req.query.offset) opts.offset = parseInt(req.query.offset)
-    if (req.query.orderBy) opts.orderBy = req.query.orderBy
-    if (req.query.where) {
-      try { opts.where = JSON.parse(req.query.where) } catch {}
-    }
-    const result = applyQuery(rows, ds.columns, opts)
-    res.json(result)
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+    const data = await readView(storage, ds, { versionId: req.query.version, ownerId: req.userId, raw: req.query.raw === '1', localDir: DATA_DIR })
+    if (!data) return res.status(404).json({ error: 'Version not found' })
+    res.json(applyQuery(data.table, data.columns, queryOptions(req)))
+  } catch (err) { sendDataError(res, err) }
 })
 
 // PATCH /api/datasets/:id — rename a dataset
@@ -1058,8 +1593,10 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
   try {
     const ds = await storage.deleteDataset(req.params.id, req.userId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    try { await deleteDatasetFile(ds.storageKey, DATA_DIR) } catch (e) {
-      console.error('Dataset file cleanup failed:', e.message)
+    for (const key of ds.storageKeys) {
+      try { await deleteDatasetFile(key, DATA_DIR) } catch (e) {
+        console.error('Dataset file cleanup failed:', e.message)
+      }
     }
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -1108,22 +1645,57 @@ app.get('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('p
 app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
   try {
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
-    const linked = await storage.getPresentationDatasets(req.params.pid)
-    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
+    const link = (await storage.getPresentationDatasets(req.params.pid)).find(d => d.id === req.params.did)
+    if (!link) return res.status(404).json({ error: 'Dataset not found' })
     const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const rows = await readDatasetFile(ds.storageKey, ds.format, DATA_DIR)
-    const opts = {}
-    if (req.query.columns) opts.columns = req.query.columns.split(',')
-    if (req.query.limit) opts.limit = parseInt(req.query.limit)
-    if (req.query.offset) opts.offset = parseInt(req.query.offset)
-    if (req.query.orderBy) opts.orderBy = req.query.orderBy
-    if (req.query.where) {
-      try { opts.where = JSON.parse(req.query.where) } catch {}
+    // The deck's pinned version unless the request names one (or "current")
+    const data = await readView(storage, ds, {
+      versionId: req.query.version || link.pinnedVersionId, ownerId: req.deck.ownerId, raw: req.query.raw === '1', localDir: DATA_DIR,
+    })
+    if (!data) return res.status(404).json({ error: 'Version not found' })
+    res.json(applyQuery(data.table, data.columns, queryOptions(req)))
+  } catch (err) { sendDataError(res, err) }
+})
+
+// PUT /api/presentations/:pid/datasets/:did/pin — hold a dataset at one
+// version for this deck ({ versionId }), or follow the current one again
+// ({ versionId: null })
+app.put('/api/presentations/:pid/datasets/:did/pin', requireValidId('pid'), requireValidId('did'), deckAccess('pid'), async (req, res) => {
+  try {
+    if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
+    const linked = await storage.getPresentationDatasets(req.params.pid)
+    if (!linked.some(d => d.id === req.params.did)) return res.status(404).json({ error: 'Dataset not found' })
+    const versionId = (req.body && req.body.versionId) || null
+    if (versionId && (!isValidUUID(versionId) || !await storage.getDatasetVersion(req.params.did, versionId))) {
+      return res.status(404).json({ error: 'Version not found' })
     }
-    const result = applyQuery(rows, ds.columns, opts)
-    res.json(result)
+    await storage.setPinnedVersion(req.params.pid, req.params.did, versionId)
+    res.json({ pinnedVersionId: versionId })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/examples/:slug/datasets — copies of the datasets an example deck
+// plots, as the caller's own, linked to the presentation they made from it
+// ({ presentationId }): a guest who opens the example in the editor sees
+// its data there too
+app.post('/api/examples/:slug/datasets', uploadLimiter, async (req, res) => {
+  try {
+    const presentationId = req.body && req.body.presentationId
+    if (!EXAMPLE_SLUG.test(req.params.slug) || !isValidUUID(presentationId)) return res.status(400).json({ error: 'Give an example and a presentation' })
+    const found = await examples.getExampleDeck(storage, req.params.slug)
+    if (!found) return res.status(404).json({ error: 'Example not found' })
+    if (!await storage.getPresentation(presentationId, req.userId)) return res.status(404).json({ error: 'Presentation not found' })
+    const plan = planOf(req)
+    const linked = await exampleData.copyExampleDatasets(storage, found.deck, {
+      userId: req.userId, keyPrefix: req.guestKeyPrefix, presentationId, localDir: DATA_DIR,
+      checkRoom: bytes => live.checkRoom(storage, req.userId, plan, bytes),
+    })
+    res.json({ datasets: linked.map(ds => ({ id: ds.id, name: ds.name })) })
+  } catch (err) {
+    if (err.sourceError) return res.status(413).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // --- Custom Fonts ---
@@ -1402,7 +1974,7 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = generateRevealHTML(presentation)
+    const html = await generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })
     const filename = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.html`
     res.setHeader('Content-Type', 'text/html')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
@@ -1428,7 +2000,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation)))
+    sendDeckPage(res, localizeLibraries(await generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -1560,7 +2132,8 @@ app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, r
     const presentation = await storage.getSharedPresentation(req.params.token)
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false })))
+    const ownerId = await storage.getPresentationOwner(presentation.id)
+    sendDeckPage(res, localizeLibraries(await generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -1687,7 +2260,8 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
     const presentation = await storage.getPresentation(session.presentationId, session.userId)
     if (!presentation) return res.status(404).send('Presentation not found')
 
-    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false }))
+    const ownerId = (await storage.getPresentationOwner(presentation.id)) || session.userId
+    const baseHtml = localizeLibraries(await generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) }))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────
@@ -1695,8 +2269,9 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
       var sessionId = '${req.params.id}';
       var unlocked = new Set([0]);
       var maxUnlocked = 0;
+      // Under the deck's Fullscreen button
       var badge = document.createElement('div');
-      badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(34,197,94,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;transition:background 0.3s;';
+      badge.style.cssText = 'position:fixed;top:56px;right:12px;z-index:99999;background:rgba(34,197,94,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;backdrop-filter:blur(4px);pointer-events:none;transition:background 0.3s;';
       badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;display:inline-block"></span> LIVE';
       document.body.appendChild(badge);
 
@@ -2078,7 +2653,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
     ).catch(() => ({ rows: [] }))
     const userFonts = userFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    let htmlContent = generateRevealHTML(exportPres, { customFonts: userFonts })
+    let htmlContent = await generateRevealHTML(exportPres, { customFonts: userFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // 2b. Inject citation slide with pre-reserved DOI
@@ -2264,7 +2839,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
     ).catch(() => ({ rows: [] }))
     const ghUserFonts = ghFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    const htmlContent = generateRevealHTML(exportPres, { customFonts: ghUserFonts })
+    const htmlContent = await generateRevealHTML(exportPres, { customFonts: ghUserFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // Get default branch
@@ -2667,10 +3242,11 @@ app.post('/api/presentations/fork', async (req, res) => {
 // ---- Plugin API (authenticated routes) ----
 
 if (IS_CLOUD) {
+  // Only listed community plugins are installed; the others load for everyone
   app.post('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
     try {
       const plugin = await storage.getPlugin(req.params.slug)
-      if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
+      if (!plugin || !plugin.community || !plugin.published) return res.status(404).json({ error: 'Plugin not found' })
       await storage.installPlugin(plugin.id, req.userId)
       res.json({ ok: true })
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -2691,7 +3267,99 @@ if (IS_CLOUD) {
       res.json(plugins)
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
+
+  // ---- Community plugins: imported from a GitHub repo's tag
+  // (services/plugin-import.js), stored and reviewed
+  // (services/community-plugins.js) ----
+
+  const importRefused = (res, err) => (err.importError
+    ? res.status(err.status).json({ error: err.message, ...(err.problems && { problems: err.problems }) })
+    : res.status(500).json({ error: safeErrorMessage(err) }))
+  const communityReady = async res => {
+    if (await communityPlugins.hasTables(storage)) return true
+    res.status(503).json({ error: 'Community plugins need migration 021 on this server’s database' })
+    return false
+  }
+
+  // A repo's details and its version tags, each with its status here if
+  // it's been imported
+  app.post('/api/plugin-repos/lookup', requireUser, pluginImportLimiter, async (req, res) => {
+    try {
+      if (!(await communityReady(res))) return
+      const repo = await pluginImport.lookupRepo(req.body?.url)
+      const imported = await communityPlugins.importedVersions(storage, repo.owner, repo.repo)
+      res.json({ ...repo, tags: repo.tags.slice(0, 30).map(t => ({ name: t.name, version: t.version, status: imported[t.version] || null })) })
+    } catch (err) { importRefused(res, err) }
+  })
+
+  // Imports a repo's tag as a version waiting for review
+  app.post('/api/plugin-repos/import', requireUser, pluginImportLimiter, async (req, res) => {
+    try {
+      if (!(await communityReady(res))) return
+      const { url, tag } = req.body || {}
+      if (typeof tag !== 'string' || !tag) return res.status(400).json({ error: 'Choose a version tag to import' })
+      const fetched = await pluginImport.fetchVersion(url, tag)
+      const reservedTypes = folderPluginTypes([bundledPluginsDir, userPluginsDir])
+      res.status(201).json(await communityPlugins.saveVersion(storage, fetched, { submittedBy: req.userId, reservedTypes }))
+    } catch (err) { importRefused(res, err) }
+  })
+
+  app.get('/api/me/plugin-submissions', requireUser, async (req, res) => {
+    try {
+      if (!(await communityPlugins.hasTables(storage))) return res.json([])
+      res.json(await communityPlugins.submissions(storage, req.userId))
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  // Admins: the versions to review, and their decisions
+  const REVIEW_STATUSES = ['pending', 'approved', 'rejected', 'revoked', 'all']
+  app.get('/api/admin/plugin-versions', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      const status = REVIEW_STATUSES.includes(req.query.status) ? req.query.status : 'pending'
+      res.json(await communityPlugins.versionsForReview(storage, { status: status === 'all' ? null : status }))
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  const REVIEW_PAST = { approve: 'approved', reject: 'rejected', revoke: 'revoked' }
+  app.post('/api/admin/plugin-versions/:id/:action', requireValidId(), async (req, res) => {
+    const { id, action } = req.params
+    if (!isAdmin(req) || !REVIEW_PAST[action]) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      const before = await communityPlugins.getVersion(storage, id)
+      if (!before) return res.status(404).json({ error: 'Version not found' })
+      const after = await communityPlugins.reviewVersion(storage, id, action, { note: req.body?.note, reviewerId: req.userId })
+      if (!after) return res.status(409).json({ error: `A version that’s ${before.status} can’t be ${REVIEW_PAST[action]}` })
+      res.json(after)
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  // Each night at 03:30, server time, the listed plugins' repos are checked
+  // for new version tags, imported for review (services/plugin-tag-check.js).
+  // Only on a production server, so tests and local runs leave GitHub alone.
+  const NIGHTLY_PLUGIN_CHECK = process.env.NODE_ENV === 'production' && process.env.PLUGIN_TAG_CHECK !== 'off'
+  const checkPluginTags = () => pluginTagCheck.checkPluginTags(storage, { reservedTypes: folderPluginTypes([bundledPluginsDir, userPluginsDir]) })
+  if (NIGHTLY_PLUGIN_CHECK) pluginTagCheck.scheduleNightly(checkPluginTags)
+
+  // Admins: how many versions wait for review and what the last check
+  // found, and that check, now
+  app.get('/api/admin/plugin-versions/summary', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      res.json({ pending: await communityPlugins.pendingCount(storage), lastCheck: pluginTagCheck.lastCheck(), checking: pluginTagCheck.checkRunning(), nightly: NIGHTLY_PLUGIN_CHECK })
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+  app.post('/api/admin/plugin-versions/check', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      res.json(await checkPluginTags())
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
 }
+
 
 app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
@@ -2731,10 +3399,14 @@ if (process.env.NODE_ENV === 'production') {
   if (fs.existsSync(clientDist)) {
     // Bundled libraries: each path names its version, so they never change
     app.use('/vendor', express.static(path.join(clientDist, 'vendor'), { immutable: true, maxAge: '1y', fallthrough: false }))
-    app.use(express.static(clientDist))
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(clientDist, 'index.html'))
-    })
+    // The app's page, with the head tags for where it opens
+    const indexTemplate = fs.readFileSync(path.join(clientDist, 'index.html'), 'utf8')
+    const sendApp = (req, res) => {
+      res.type('html').send(sitePages.appHtml(indexTemplate, { origin: siteOrigin(req), path: req.path, index: SEARCH_INDEXING }))
+    }
+    app.get(['/', '/index.html'], sendApp)
+    app.use(express.static(clientDist, { index: false }))
+    app.get('*', sendApp)
   }
 }
 
@@ -2751,6 +3423,9 @@ async function startServer(port) {
   if (IS_CLOUD) {
     try { await loadPlans(storage) } catch (err) { console.error('Could not load plans:', err.message) }
   }
+  // Live datasets due a fetch, every minute; only a running server fetches,
+  // not one a test starts
+  if (LIVE_DATASETS) live.startRefreshLoop(storage, { localDir: DATA_DIR })
   return new Promise((resolve) => {
     const host = listenHost()
     const server = app.listen(p, host, () => {

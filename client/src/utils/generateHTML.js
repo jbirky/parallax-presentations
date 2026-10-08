@@ -11,6 +11,7 @@ import { libUrl, localizeLibraries } from './libraries'
 import { modelViewerHtml } from './modelViewer'
 import { moleculeViewerHtml } from './moleculeViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
+import { deckDataOf, deckDatasetsScript, hasEmbeds, EMBED_DATASETS_SCRIPT } from './deckData'
 import { equationConfigAttr, equationStepMarkers, equationSteps, equationDeckScript, equationPrintScript, hasEquations } from './equationTerms'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman } from './feynmanDiagram'
@@ -28,6 +29,7 @@ import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
+import { latinModernFaces } from './latinModern'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -51,10 +53,11 @@ const EMBED_SCALE_SCRIPT = `
     })();
 `
 
-function buildHtmlEmbed(userHtml, embedW, embedH) {
+// withDatasets: the page gets parallax.datasets, which the deck answers
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle
+  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : '')
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, m => m + injection)
   if (/<html[^>]*>/i.test(userHtml))
@@ -199,7 +202,10 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // opts.notes: false leaves speaker notes out, for pages anyone with a link can
 // open; opts.customFonts are the fonts the deck may use, as /api/fonts lists
 // them; opts.pluginSandbox(el) gives a plugin element's sandbox page (the
-// editor's plugin registry otherwise)
+// editor's plugin registry otherwise); opts.deckData is the data its slides
+// read ({ graphs: { element id: rows by line id }, datasets: { list, data } },
+// deckData.js), which the server reads for the decks it builds (the editor's
+// store, graphData.js, otherwise)
 // The references slide's heading and list: the entries the deck cites, in the
 // order and with the numbers the citation index gives them
 function referencesHtml(citations, markerColor) {
@@ -260,7 +266,10 @@ export function generateRevealHTML(presentation, opts = {}) {
   const sequenceSections = presentation.sequenceSections || []
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
   const customFonts = (opts.customFonts || []).filter(Boolean)
-  const pluginSandbox = opts.pluginSandbox || (el => registry.getSandboxHtml(el.type))
+  const pluginSandbox = opts.pluginSandbox || (el => registry.sandboxFor(el))
+  const deckData = deckDataOf(presentation, opts)
+  // Elements' pages read datasets only in a deck that has some
+  const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation))
   // Compute page numbers: grouped slides share the same number
   const seenGroups = new Set()
   const totalNumberedSlides = (presentation.slides || []).filter(s => {
@@ -394,12 +403,12 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
         }
         if (el.type === 'html') {
-          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height)
+          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'graph') {
-          const srcdoc = graphPageHtml(el).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
@@ -414,7 +423,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
         }
         if (el.type === 'p5') {
-          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script></head><body><script>${el.content || ''}<\/script></body></html>`
+          const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script>${offersData ? EMBED_DATASETS_SCRIPT : ''}</head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -642,7 +651,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (!sandboxHtml) {
             return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
           }
-          const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height })
+          const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData })
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
@@ -759,9 +768,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
   <style>${customFontFaces(customFonts)}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, '\n    ')}
   </style>
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
@@ -791,8 +798,9 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
     .reveal .slides section .reveal-footer,
     .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
       background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3);
       border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
       backdrop-filter: blur(4px); transition: background 0.15s;
@@ -846,6 +854,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
   </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
+${offersData ? deckDatasetsScript(deckData.datasets) : ''}
 </head>
 <body>
   <div class="reveal">
@@ -1686,9 +1695,7 @@ function generatePrintHTML(presentation) {
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <style>
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunrm.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunbx.woff')}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${libUrl('latex.js', 'dist/fonts/Serif/cmunti.woff')}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, '\n    ')}
     @page { size: ${slideW}px ${slideH}px; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     html, body { width: ${slideW}px; background: #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -1859,8 +1866,9 @@ export function presentInWindow(presentation, { annotationSet } = {}) {
 // are watching, here and in the editor (window.__liveViewerCount). Injected
 // as source text.
 export function relayLiveSlides(config, frame) {
+  // Under the deck's Fullscreen button
   const badge = document.createElement('div')
-  badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
+  badge.style.cssText = 'position:fixed;top:56px;right:12px;z-index:99999;background:rgba(239,68,68,0.9);color:white;padding:6px 12px;border-radius:20px;font-family:-apple-system,sans-serif;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;pointer-events:none;'
   badge.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:white;animation:pp-live-pulse 1.5s infinite;display:inline-block"></span> LIVE <span class="pp-live-count" style="opacity:0.8">0 viewers</span>'
   const style = document.createElement('style')
   style.textContent = '@keyframes pp-live-pulse{0%,100%{opacity:1}50%{opacity:0.4}}'

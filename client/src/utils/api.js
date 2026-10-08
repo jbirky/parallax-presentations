@@ -27,6 +27,21 @@ async function safeJson(r) {
 
 const BASE = '/api'
 
+const jsonBody = (method, data) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+// A response's JSON, or an Error with the server's reason
+const adminJson = fallback => async r => {
+  const b = await safeJson(r)
+  if (!r.ok) throw new Error(b.error || b.message || fallback)
+  return b
+}
+
+// Like adminJson, keeping the rules an imported plugin breaks as `problems`
+const pluginImportJson = fallback => async r => {
+  const b = await safeJson(r)
+  if (!r.ok) throw Object.assign(new Error(b.error || fallback), { problems: b.problems || [] })
+  return b
+}
+
 // The version of each presentation as this tab last loaded or saved it. A save
 // sends it, and the server refuses a save made from an older version (409)
 // when someone else has saved since. Self-hosted, presentations have none.
@@ -38,6 +53,14 @@ function noteVersion(id, deck) {
 
 // Rejects with the server's reason; a refused save's error has code
 // 'conflict' and the version that's saved now
+// A dataset route's answer: its own error message, whatever the status (a
+// 409 there is a name in use or a fetch already running, not a save conflict)
+async function datasetChecked(r, fallback) {
+  const b = await safeJson(r)
+  if (!r.ok) throw Object.assign(new Error(b.error || b.message || fallback), { status: r.status, code: b.code })
+  return b
+}
+
 async function checked(r, fallback) {
   const b = await safeJson(r)
   if (r.status === 409) throw Object.assign(new Error(b.message || 'Someone else saved this presentation'), { code: 'conflict', version: b.version })
@@ -239,6 +262,22 @@ export const api = {
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
+  getPresentationDatasetData: (pid, datasetId, params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}/data${qs ? '?' + qs : ''}`).then(r => datasetChecked(r, 'Couldn’t read the dataset'))
+  },
+  pinDatasetVersion: (pid, datasetId, versionId) => authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}/pin`, jsonBody('PUT', { versionId })).then(r => datasetChecked(r, 'Couldn’t pin the version')),
+  // Live datasets: fetched from a URL or a TAP query, and refreshed on a schedule
+  getDatasetSources: () => authFetch(`${BASE}/datasets/sources`).then(r => datasetChecked(r, 'Failed')),
+  testDatasetSource: (body) => authFetch(`${BASE}/datasets/sources/test`, jsonBody('POST', body)).then(r => datasetChecked(r, 'The source couldn’t be read')),
+  createLiveDataset: (body) => authFetch(`${BASE}/datasets/live`, jsonBody('POST', body)).then(r => datasetChecked(r, 'The dataset couldn’t be made')),
+  updateDatasetSource: (id, body) => authFetch(`${BASE}/datasets/${id}/source`, jsonBody('PATCH', body)).then(r => datasetChecked(r, 'The source couldn’t be changed')),
+  refreshDataset: (id) => authFetch(`${BASE}/datasets/${id}/refresh`, { method: 'POST' }).then(r => datasetChecked(r, 'The dataset couldn’t be refreshed')),
+  getDatasetVersions: (id) => authFetch(`${BASE}/datasets/${id}/versions`).then(r => datasetChecked(r, 'Failed')),
+  getDatasetFetches: (id) => authFetch(`${BASE}/datasets/${id}/fetches`).then(r => datasetChecked(r, 'Failed')),
+  // Transforms: the steps that shape a dataset for slides
+  saveDatasetTransforms: (id, transforms) => authFetch(`${BASE}/datasets/${id}/transforms`, jsonBody('PUT', { transforms })).then(r => datasetChecked(r, 'The transforms couldn’t be saved')),
+  previewDatasetTransforms: (id, transforms) => authFetch(`${BASE}/datasets/${id}/transforms/preview`, jsonBody('POST', { transforms })).then(r => datasetChecked(r, 'The transforms couldn’t run')),
   linkDataset: (pid, datasetId, alias) => authFetch(`${BASE}/presentations/${pid}/datasets`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -302,6 +341,25 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not delete the plan')
     return b
   }),
+  // The landing page's statistics for the last `days` days
+  getLandingStats: (days) => authFetch(`${BASE}/admin/stats?days=${days}`).then(adminJson('Could not load the statistics')),
+  // The landing page's examples, as /admin edits them
+  getAdminExamples: () => authFetch(`${BASE}/admin/examples`).then(adminJson('Could not load the examples')),
+  addExample: (data) => authFetch(`${BASE}/admin/examples`, jsonBody('POST', data)).then(adminJson('Could not add the example')),
+  saveExample: (slug, data) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}`, jsonBody('PUT', data)).then(adminJson('Could not save the example')),
+  orderExamples: (slugs) => authFetch(`${BASE}/admin/examples/order`, jsonBody('PUT', { slugs })).then(adminJson('Could not reorder the examples')),
+  refreshExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/refresh`, { method: 'POST' }).then(adminJson('Could not update the example')),
+  redrawExampleThumbnail: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/thumbnail`, { method: 'POST' }).then(adminJson('Could not draw the thumbnail')),
+  copyExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/copy`, { method: 'POST' }).then(adminJson('Could not make a copy')),
+  deleteExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}`, { method: 'DELETE' }).then(adminJson('Could not delete the example')),
+  // Community plugins: versions waiting for review (status: pending,
+  // approved, rejected, revoked or all), and an admin's decision on one
+  getPluginReviewQueue: (status = 'pending') => authFetch(`${BASE}/admin/plugin-versions?status=${encodeURIComponent(status)}`).then(adminJson('Could not load the plugin versions')),
+  reviewPluginVersion: (id, action, note = '') => authFetch(`${BASE}/admin/plugin-versions/${id}/${action}`, jsonBody('POST', { note })).then(adminJson(`Could not ${action} the version`)),
+  // { pending, lastCheck, checking, nightly }: how many wait, and what the
+  // last check for new version tags found; and that check, run now
+  getPluginReviewSummary: () => authFetch(`${BASE}/admin/plugin-versions/summary`).then(adminJson('Could not load the summary')),
+  checkPluginTags: () => authFetch(`${BASE}/admin/plugin-versions/check`, { method: 'POST' }).then(adminJson('Could not check for new versions')),
   setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -312,8 +370,34 @@ export const api = {
     return b
   }),
 
+  // Community plugins (server/services/community-plugins.js): the listed
+  // plugins, the ones you installed, importing a tag of a GitHub repo, and
+  // what you've imported. An import that breaks the rules rejects with an
+  // Error whose `problems` lists each rule.
+  getPluginCatalog: () => _fetch(`${BASE}/plugins`).then(adminJson('Could not load the plugins')),
+  getPlugin: (slug) => _fetch(`${BASE}/plugins/${encodeURIComponent(slug)}`).then(adminJson('That plugin isn’t listed')),
+  getInstalledPlugins: () => authFetch(`${BASE}/me/plugins`).then(adminJson('Could not load your plugins')),
+  installPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }).then(adminJson('Could not install the plugin')),
+  uninstallPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'DELETE' }).then(adminJson('Could not uninstall the plugin')),
+  lookupPluginRepo: (url) => authFetch(`${BASE}/plugin-repos/lookup`, jsonBody('POST', { url })).then(pluginImportJson('Could not read that repo')),
+  importPluginVersion: (url, tag) => authFetch(`${BASE}/plugin-repos/import`, jsonBody('POST', { url, tag })).then(pluginImportJson('Could not import that version')),
+  getPluginSubmissions: () => authFetch(`${BASE}/me/plugin-submissions`).then(adminJson('Could not load your plugins')),
+  // A version's sandbox page as its importer or an admin may see it before
+  // it's approved, or null
+  getPluginVersionSandbox: (pluginId, version) => authFetch(`${BASE}/plugin-versions/${encodeURIComponent(pluginId)}/${encodeURIComponent(version)}/sandbox`).then(r => (r.ok ? r.text() : null)),
+
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
+  // The landing page's examples: { hero, examples }, or null
+  getLandingExamples: () => _fetch(`${BASE}/examples`).then(r => (r.ok ? r.json() : null)),
+  // One of the landing page's example decks, or null
+  getExample: (slug) => _fetch(`${BASE}/examples/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)),
+  // Copies of the datasets an example deck plots, linked to presentation pid
+  copyExampleDatasets: (slug, pid) => authFetch(`${BASE}/examples/${encodeURIComponent(slug)}/datasets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ presentationId: pid }),
+  }).then(safeJson),
   startGuestSession: (turnstileToken) => _fetch(`${BASE}/guest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

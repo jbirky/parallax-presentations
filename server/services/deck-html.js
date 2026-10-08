@@ -4917,7 +4917,24 @@ var require_lib2 = __commonJS({
 // deck-html.js
 var deck_html_exports = {};
 __export(deck_html_exports, {
-  generateRevealHTML: () => generateRevealHTML
+  EXAMPLES: () => EXAMPLES,
+  EXAMPLE_DATASETS: () => EXAMPLE_DATASETS,
+  EXAMPLE_SLUGS: () => EXAMPLE_SLUGS,
+  EXAMPLE_SOURCES: () => EXAMPLE_SOURCES,
+  HERO_EXAMPLE: () => HERO_EXAMPLE,
+  MAX_ROWS: () => MAX_ROWS,
+  buildStaticPluginSrcdoc: () => buildStaticPluginSrcdoc,
+  carriedData: () => carriedData,
+  dataGraphs: () => dataGraphs,
+  datasetSummary: () => datasetSummary,
+  embedDatasetNames: () => embedDatasetNames,
+  exampleDatasetNames: () => exampleDatasetNames,
+  exampleDeck: () => exampleDeck,
+  findDataset: () => findDataset,
+  generateRevealHTML: () => generateRevealHTML,
+  graphNeeds: () => graphNeeds,
+  graphRowsFrom: () => graphRowsFrom,
+  hasEmbeds: () => hasEmbeds
 });
 module.exports = __toCommonJS(deck_html_exports);
 
@@ -5285,10 +5302,219 @@ function resolveCitationsInHtml(html, labelByKey) {
 }
 
 // server:plugin-registry
-var plugin_registry_default = { getSandboxHtml: () => null };
+var plugin_registry_default = { getSandboxHtml: () => null, sandboxFor: () => null };
+
+// client/src/utils/deckData.js
+var MAX_ROWS = 2e5;
+var EMBED_VALUE_LIMIT = 2e6;
+var DATA_FIELDS = { x: "x", y: "y", x2: "x2", colorBy: "color", sizeBy: "size", label: "label", xErr: "xErr", yErr: "yErr" };
+var isDataLines = (el) => el && el.type === "graph" && Array.isArray(el.expressions) && el.expressions.some((e) => e && e.data && typeof e.data === "object");
+var EMBED_TYPES = (el) => el && (el.type === "html" || el.type === "p5" || typeof el.type === "string" && el.type.startsWith("plugin:"));
+function findDataset(list, name) {
+  return (list || []).find((d) => (d.alias || d.name) === name) || (list || []).find((d) => d.name === name) || null;
+}
+function deckElements(presentation) {
+  const out = [];
+  for (const slide of presentation?.slides || []) for (const el of slide.elements || []) out.push(el);
+  return out;
+}
+function dataGraphs(presentation) {
+  return deckElements(presentation).filter(isDataLines);
+}
+function graphNeeds(elements) {
+  const needs = /* @__PURE__ */ new Map();
+  for (const el of elements) {
+    if (!isDataLines(el)) continue;
+    for (const e of el.expressions) {
+      const spec = e && e.data;
+      if (!spec || !spec.dataset) continue;
+      if (!needs.has(spec.dataset)) needs.set(spec.dataset, /* @__PURE__ */ new Set());
+      for (const field of Object.keys(DATA_FIELDS)) if (spec[field]) needs.get(spec.dataset).add(spec[field]);
+    }
+  }
+  return needs;
+}
+function graphRowsFrom(el, datasets, tableOf) {
+  const rows = {};
+  for (const e of el.expressions || []) {
+    const spec = e && e.data;
+    if (!spec) continue;
+    if (!spec.dataset || !spec.x || !spec.y) {
+      rows[e.id] = { error: "Choose a dataset, and the columns for x and y" };
+      continue;
+    }
+    const ds = datasets ? findDataset(datasets, spec.dataset) : null;
+    if (datasets && !ds) {
+      rows[e.id] = { error: `No dataset “${spec.dataset}” is linked to this deck` };
+      continue;
+    }
+    const known = new Set((ds?.columns || []).map((c) => c.name));
+    const unknown = Object.keys(DATA_FIELDS).map((f) => spec[f]).filter((c) => c && known.size && !known.has(c));
+    if (unknown.length) {
+      rows[e.id] = { error: `“${spec.dataset}” has no column “${unknown[0]}”` };
+      continue;
+    }
+    const t = ds && tableOf(ds);
+    if (!t) {
+      rows[e.id] = { loading: true };
+      continue;
+    }
+    if (t.error) {
+      rows[e.id] = { error: t.error };
+      continue;
+    }
+    const entry = { total: t.total, version: t.version };
+    let missing = false;
+    for (const [field, key] of Object.entries(DATA_FIELDS)) {
+      if (!spec[field]) continue;
+      if (Object.prototype.hasOwnProperty.call(t.columns, spec[field])) entry[key] = t.columns[spec[field]];
+      else missing = true;
+    }
+    rows[e.id] = missing ? { loading: true } : entry;
+  }
+  return rows;
+}
+function embedText(el, pluginSandbox) {
+  if (el.type === "html" || el.type === "p5") return typeof el.content === "string" ? el.content : "";
+  let text = "";
+  try {
+    text = JSON.stringify(el.pluginData || {});
+  } catch {
+  }
+  const page = pluginSandbox ? pluginSandbox(el) : null;
+  return typeof page === "string" ? text + page : text;
+}
+function hasEmbeds(presentation) {
+  return deckElements(presentation).some(EMBED_TYPES);
+}
+function embedDatasetNames(presentation, names, { pluginSandbox } = {}) {
+  const found = /* @__PURE__ */ new Set();
+  if (!names || !names.length) return found;
+  for (const el of deckElements(presentation)) {
+    if (!EMBED_TYPES(el)) continue;
+    const text = embedText(el, pluginSandbox);
+    if (!text) continue;
+    for (const name of names) {
+      if (found.has(name) || !name) continue;
+      const json = JSON.stringify(name);
+      if (text.includes(`"${name}"`) || text.includes(`'${name}'`) || text.includes(`\`${name}\``) || text.includes(json)) found.add(name);
+    }
+  }
+  return found;
+}
+function datasetSummary(ds) {
+  const asOf = ds.asOf !== void 0 ? ds.asOf : ds.pinnedVersionId ? null : ds.lastFetchedAt || ds.updatedAt || null;
+  return { name: ds.alias || ds.name, columns: (ds.columns || []).map((c) => ({ name: c.name, type: c.type })), rowCount: ds.rowCount ?? null, asOf };
+}
+function carriedData(names, tableOf) {
+  const data = {};
+  let left = EMBED_VALUE_LIMIT;
+  for (const name of names) {
+    const t = tableOf(name);
+    if (!t) continue;
+    if (t.error) {
+      data[name] = { error: t.error };
+      continue;
+    }
+    let count = 0;
+    for (const values of Object.values(t.columns || {})) count += values ? values.length : 0;
+    if (count > left) {
+      data[name] = { error: `“${name}” is too large for a presented deck to carry (${count.toLocaleString("en-US")} values)` };
+      continue;
+    }
+    left -= count;
+    data[name] = { columns: t.columns || {}, totalRows: t.totalRows };
+  }
+  return data;
+}
+function answerDatasets(store, op, name, opts) {
+  var list = store && store.list || [];
+  var data = store && store.data || {};
+  if (op === "list") return { result: list };
+  var meta = null;
+  for (var i = 0; i < list.length; i++) if (list[i].name === name) meta = list[i];
+  if (!meta) return { error: "No dataset “" + name + "” is linked to this deck" };
+  if (op === "schema") return { result: meta.columns };
+  var d = Object.prototype.hasOwnProperty.call(data, name) ? data[name] : null;
+  if (!d) return { error: "The deck doesn’t carry “" + name + "”: name it in quotes in the element’s code" };
+  if (d.error) return { error: d.error };
+  if (op === "load") return { result: null };
+  if (op !== "query") return { error: "Unknown call " + op };
+  opts = opts || {};
+  var cols = Array.isArray(opts.columns) ? opts.columns : Object.keys(d.columns);
+  var offset = Math.max(0, parseInt(opts.offset, 10) || 0);
+  var limit = parseInt(opts.limit, 10) > 0 ? parseInt(opts.limit, 10) : Infinity;
+  var out = {};
+  for (var j = 0; j < cols.length; j++) {
+    var arr = Object.prototype.hasOwnProperty.call(d.columns, cols[j]) ? d.columns[cols[j]] : null;
+    if (arr) out[cols[j]] = arr.slice(offset, offset + limit);
+  }
+  return { result: { columns: out, totalRows: d.totalRows } };
+}
+function datasetsClient(win) {
+  var calls = {};
+  var next = 0;
+  win.addEventListener("message", function(e) {
+    var m = e.data;
+    if (e.source !== win.parent || !m || m.source !== "parallax-datasets-reply" || !calls[m.id]) return;
+    var call = calls[m.id];
+    delete calls[m.id];
+    if (m.error) call.reject(new Error(m.error));
+    else call.resolve(m.result);
+  });
+  function ask(op, name, opts) {
+    return new Promise(function(resolve, reject) {
+      var id = ++next;
+      calls[id] = { resolve, reject };
+      win.parent.postMessage({ source: "parallax-datasets", id, op, name, opts: opts ? JSON.parse(JSON.stringify(opts)) : null }, "*");
+    });
+  }
+  return Object.freeze({
+    list: function() {
+      return ask("list");
+    },
+    schema: function(name) {
+      return ask("schema", String(name));
+    },
+    load: function(name) {
+      return ask("load", String(name));
+    },
+    query: function(name, opts) {
+      return ask("query", String(name), opts);
+    }
+  });
+}
+var DATASETS_CLIENT = `(${datasetsClient.toString()})(window)`;
+var EMBED_DATASETS_SCRIPT = `<script>window.parallax=window.parallax||Object.freeze({datasets:${DATASETS_CLIENT}});</script>`;
+function deckDatasetsScript(store) {
+  const json = JSON.stringify(store || { list: [], data: {} }).replace(/</g, "\\u003c");
+  return `  <script type="application/json" id="pp-datasets">${json}</script>
+  <script>
+  (function () {
+    var answer = ${answerDatasets.toString()};
+    var store = null;
+    function data() {
+      if (!store) { try { store = JSON.parse(document.getElementById('pp-datasets').textContent); } catch (err) { store = { list: [], data: {} }; } }
+      return store;
+    }
+    function ours(win) { for (var i = 0; i < window.frames.length; i++) if (window.frames[i] === win) return true; return false; }
+    window.addEventListener('message', function (e) {
+      var m = e.data;
+      if (!m || m.source !== 'parallax-datasets' || !e.source || !ours(e.source)) return;
+      var a = answer(data(), m.op, m.name, m.opts);
+      e.source.postMessage({ source: 'parallax-datasets-reply', id: m.id, result: a.result, error: a.error }, '*');
+    });
+  })()
+  </script>`;
+}
+var deckDataSource = null;
+function deckDataOf(presentation, opts = {}) {
+  if (opts.deckData !== void 0) return opts.deckData;
+  return deckDataSource ? deckDataSource(presentation) : null;
+}
 
 // client/src/plugins/pluginEmbed.js
-function staticBridge({ data, width, height }) {
+function staticBridge({ data, width, height, datasets }) {
   const json = JSON.stringify(data || {}).replace(/</g, "\\u003c");
   return `<script>
 (function(){
@@ -5309,20 +5535,21 @@ function staticBridge({ data, width, height }) {
     onResize: function() {},
     onCaptureSnapshot: function() {},
     reportError: function(msg) { console.error('[plugin] ' + msg); },
-    fetch: function(url, opts) { return window.fetch(url, opts); }
+    fetch: function(url, opts) { return window.fetch(url, opts); }${datasets ? `,
+    datasets: ${DATASETS_CLIENT}` : ""}
   });
 })();
 </script><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>`;
 }
-function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height }) {
-  const injection = staticBridge({ data, width, height });
+function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height, datasets = false }) {
+  const injection = staticBridge({ data, width, height, datasets });
   if (/<head[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<head[^>]*>/i, (m) => m + injection);
   if (/<html[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<html[^>]*>/i, (m) => m + injection);
   return injection + sandboxHtml;
 }
 
 // client/src/utils/generateHTML.js
-var import_libraries3 = require("./libraries");
+var import_libraries4 = require("./libraries");
 
 // client/src/utils/modelViewer.js
 var import_libraries = require("./libraries");
@@ -5948,12 +6175,12 @@ function createMathParser() {
       return power();
     }
     function power() {
-      const base = primary();
+      const base3 = primary();
       if (isOp("^")) {
         pos++;
-        return { k: "bin", op: "^", a: base, b: exponent() };
+        return { k: "bin", op: "^", a: base3, b: exponent() };
       }
-      return base;
+      return base3;
     }
     function exponent() {
       if (isOp("{")) {
@@ -6416,7 +6643,7 @@ function createMathParser() {
     const dims3 = !!(opts && opts.dims === 3);
     const RES = dims3 ? RESERVED_3D : RESERVED;
     const onlyRes = (set, names) => [...set].every((v) => !RES.includes(v) || names.includes(v));
-    const items = (expressions || []).map((e) => ({ id: e.id, text: String(e.text || "") }));
+    const items = (expressions || []).map((e) => e && e.data && typeof e.data === "object" ? { id: e.id, text: "", kind: "data" } : { id: e.id, text: String(e.text || "") });
     const extras = /* @__PURE__ */ new Map();
     if (dims3) (expressions || []).forEach((e, i) => {
       const colorBy = e.surface && e.surface.color === "function" ? String(e.surface.colorBy || "").trim() : "";
@@ -6450,7 +6677,7 @@ function createMathParser() {
     }
     const userFns = new Set(Object.keys(fns));
     for (const item of items) {
-      if (item.kind === "error" || item.field) continue;
+      if (item.kind === "error" || item.kind === "data" || item.field) continue;
       if (!item.text.trim()) {
         item.kind = "empty";
         continue;
@@ -6850,7 +7077,7 @@ function graphRuntime(P, G2, G3, config) {
   canvas.style.cssText = "position:absolute;left:0;top:0;display:block;touch-action:none;";
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d");
-  let W = 0, H = 0;
+  let W2 = 0, H2 = 0;
   let theme = THEMES.light;
   let analysis = null;
   let values = {};
@@ -6881,6 +7108,9 @@ function graphRuntime(P, G2, G3, config) {
   function setConfig(next, keepState) {
     C2 = next;
     theme = THEMES[C2.theme] || THEMES.light;
+    logX = C2.xScale === "log" && C2.dims !== 3;
+    logY = C2.yScale === "log" && C2.dims !== 3;
+    dataStyles = /* @__PURE__ */ new Map();
     analysis = P.analyze(C2.expressions || [], { dims: C2.dims });
     const kept = values;
     values = {};
@@ -6891,6 +7121,7 @@ function graphRuntime(P, G2, G3, config) {
       view = copyView(C2.view);
       cam = copyCam(C2.camera);
     }
+    if (logX || logY) view = logView(view);
     if (!keepState) clicks = [];
     geo3Key = "";
     fieldGeo = null;
@@ -6904,10 +7135,17 @@ function graphRuntime(P, G2, G3, config) {
     request();
   }
   function shown() {
-    if (C2.equalScale === false || !W || !H) return view;
-    const half2 = (view.xMax - view.xMin) * H / W / 2;
+    if (logX || logY) return logView(view);
+    if (C2.equalScale === false || !W2 || !H2) return view;
+    const half2 = (view.xMax - view.xMin) * H2 / W2 / 2;
     const mid = (view.yMin + view.yMax) / 2;
     return { xMin: view.xMin, xMax: view.xMax, yMin: mid - half2, yMax: mid + half2 };
+  }
+  function logView(v) {
+    const fix = (lo, hi) => lo > 0 && hi > lo ? [lo, hi] : hi > 0 ? [hi / 1e3, hi] : [0.1, 100];
+    const [xMin, xMax] = logX ? fix(v.xMin, v.xMax) : [v.xMin, v.xMax];
+    const [yMin, yMax] = logY ? fix(v.yMin, v.yMax) : [v.yMin, v.yMax];
+    return { xMin, xMax, yMin, yMax };
   }
   function exprOf(it) {
     return (C2.expressions || []).find((e) => e.id === it.id) || {};
@@ -6945,15 +7183,34 @@ function graphRuntime(P, G2, G3, config) {
   function prettyName(name) {
     const greek = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", lambda: "λ", sigma: "σ", omega: "ω", phi: "φ", rho: "ρ", theta: "θ" };
     const i = name.indexOf("_");
-    const base = i < 0 ? name : name.slice(0, i);
-    return { base: greek[base] || base, sub: i < 0 ? "" : name.slice(i + 1) };
+    const base3 = i < 0 ? name : name.slice(0, i);
+    return { base: greek[base3] || base3, sub: i < 0 ? "" : name.slice(i + 1) };
   }
-  let X0, X1, Y0, Y1;
-  const sx = (x) => (x - X0) / (X1 - X0) * W;
-  const sy = (y) => H - (y - Y0) / (Y1 - Y0) * H;
-  const wx = (px) => X0 + px / W * (X1 - X0);
-  const wy = (py) => Y0 + (H - py) / H * (Y1 - Y0);
+  let X0, X1, Y0, Y1, TX0, TX1, TY0, TY1;
+  let logX = false, logY = false;
+  const Tx = (v) => logX ? v > 0 ? Math.log10(v) : -Infinity : v;
+  const Ty = (v) => logY ? v > 0 ? Math.log10(v) : -Infinity : v;
+  const sx = (x) => (Tx(x) - TX0) / (TX1 - TX0) * W2;
+  const sy = (y) => H2 - (Ty(y) - TY0) / (TY1 - TY0) * H2;
+  const wx = (px) => {
+    const t = TX0 + px / W2 * (TX1 - TX0);
+    return logX ? Math.pow(10, t) : t;
+  };
+  const wy = (py) => {
+    const t = TY0 + (H2 - py) / H2 * (TY1 - TY0);
+    return logY ? Math.pow(10, t) : t;
+  };
   const clampPx = (v) => v > 1e5 ? 1e5 : v < -1e5 ? -1e5 : v;
+  function setFrame(v) {
+    X0 = v.xMin;
+    X1 = v.xMax;
+    Y0 = v.yMin;
+    Y1 = v.yMax;
+    TX0 = Tx(X0);
+    TX1 = Tx(X1);
+    TY0 = Ty(Y0);
+    TY1 = Ty(Y1);
+  }
   function env() {
     const e = P.paramValues(analysis, values);
     e.x = 0;
@@ -6963,21 +7220,17 @@ function graphRuntime(P, G2, G3, config) {
     return e;
   }
   function draw() {
-    if (!W || !H || !analysis) return;
+    if (!W2 || !H2 || !analysis) return;
     if (is3d()) {
       draw3d();
       snapshot();
       return;
     }
-    const v = shown();
-    X0 = v.xMin;
-    X1 = v.xMax;
-    Y0 = v.yMin;
-    Y1 = v.yMax;
-    ctx.clearRect(0, 0, W, H);
+    setFrame(shown());
+    ctx.clearRect(0, 0, W2, H2);
     if (C2.background && C2.background !== "transparent") {
       ctx.fillStyle = C2.background;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, W2, H2);
     }
     const E = env();
     const ticks = gridAndAxes();
@@ -7005,6 +7258,8 @@ function graphRuntime(P, G2, G3, config) {
     };
     each2(["region"], (it) => drawRegion(it, E));
     fieldsDo(() => drawFieldMarks(fg, E));
+    dataHits = [];
+    each2(["data"], (it) => drawData(it));
     each2(["explicit", "function", "polar", "parametric", "implicit"], (it) => {
       if (it.kind === "explicit" || it.kind === "function" && it.graph) strokeRuns(explicitRuns(it.f, E, it.axis || "y"), exprOf(it));
       else if (it.kind === "polar") strokeRuns(curveRuns(it, E, "theta"), exprOf(it));
@@ -7014,6 +7269,7 @@ function graphRuntime(P, G2, G3, config) {
     fieldsDo(() => drawFieldPaths(fg, E));
     axisNumbers(ticks);
     axisLabels();
+    fieldsDo(() => drawDataKeys(items));
     each2(["point"], (it) => drawPoint(it, E));
     fieldsDo(() => drawFieldPoints(fg, E));
     fieldsDo(() => drawMoving(fg));
@@ -7143,32 +7399,32 @@ function graphRuntime(P, G2, G3, config) {
     return geo3;
   }
   function volume(it, e, E, box, surfaces, dots, bars) {
-    const v = { ...VOLUME, ...e.volume || {} }, F = it.f, fine = v.detail === "fine";
+    const v = { ...VOLUME, ...e.volume || {} }, F2 = it.f, fine = v.detail === "fine";
     const bar = { title: it.name || "w" };
     if (v.draw === "levels") {
-      const n = fine ? 60 : 40, grid = G3.sample(F, E, box, n);
+      const n = fine ? 60 : 40, grid = G3.sample(F2, E, box, n);
       const sc = G3.colorScale(grid, scaleOpts(v)), count = Math.max(1, Math.min(12, Math.round(+v.levels) || 5));
       bar.marks = [];
       for (let k = 1; k <= count; k++) {
-        const level = sc.min + (sc.max - sc.min) * k / (count + 1);
-        const mesh = G3.implicit(F, E, box, n, level, grid);
-        mesh.w = new Float32Array(mesh.pos.length / 3).fill(level);
+        const level2 = sc.min + (sc.max - sc.min) * k / (count + 1);
+        const mesh = G3.implicit(F2, E, box, n, level2, grid);
+        mesh.w = new Float32Array(mesh.pos.length / 3).fill(level2);
         surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], alpha: Math.min(1, Math.max(0.1, +v.opacity || 0.5)), meshStep: [0, 0], contour: 0, lineColor: theme.fg });
-        bar.marks.push(level);
+        bar.marks.push(level2);
       }
       bars.push(Object.assign(bar, { scale: sc }));
     } else if (v.draw === "points") {
       const n = v.density === "sparse" ? 9 : v.density === "dense" ? 18 : 13;
-      const mesh = G3.cloud(F, E, box, n), sc = G3.colorScale(mesh.w, scaleOpts(v));
+      const mesh = G3.cloud(F2, E, box, n), sc = G3.colorScale(mesh.w, scaleOpts(v));
       dots.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], size: n === 9 ? 14 : n === 13 ? 10 : 7, sizeBy: v.sizeBy !== false });
       bars.push(Object.assign(bar, { scale: sc }));
     } else {
-      const sc = G3.colorScale(G3.sample(F, E, box, 24), scaleOpts(v));
+      const sc = G3.colorScale(G3.sample(F2, E, box, 24), scaleOpts(v));
       for (const k of ["x", "y", "z"]) {
         if (v.slices && v.slices[k] === false) continue;
         const c = it.at && it.at[k] ? it.at[k](E) : (box[k + "Min"] + box[k + "Max"]) / 2;
         if (!(c >= box[k + "Min"] && c <= box[k + "Max"])) continue;
-        const mesh = G3.slice(F, E, box, k, c, fine ? 120 : 64);
+        const mesh = G3.slice(F2, E, box, k, c, fine ? 120 : 64);
         G3.fillMissing(mesh, sc);
         surfaces.push({ mesh, mode: modeOf(sc), wRange: [sc.min, sc.max], lit: 0, meshStep: [0, 0], contour: v.contours ? G3.niceStep(sc.max - sc.min, 10) : 0, contourW: true, lineColor: theme.fg });
       }
@@ -7176,18 +7432,18 @@ function graphRuntime(P, G2, G3, config) {
     }
   }
   function draw3d() {
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W2, H2);
     if (C2.background && C2.background !== "transparent") {
       ctx.fillStyle = C2.background;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, W2, H2);
     }
     const box = box3(), E = env3();
     if (!r3) r3 = G3.renderer(document);
     const g = geometry3(E, box);
-    const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W, H);
-    const out = r3.draw(camera, box, W, H, density(), g.surfaces, g.lines, g.dots);
+    const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W2, H2);
+    const out = r3.draw(camera, box, W2, H2, density(), g.surfaces, g.lines, g.dots);
     if (!out) {
-      haloText("3D graphs need WebGL 2, which this browser has turned off.", W / 2, H / 2, "center", "middle", "14px " + FONT);
+      haloText("3D graphs need WebGL 2, which this browser has turned off.", W2 / 2, H2 / 2, "center", "middle", "14px " + FONT);
       return;
     }
     ctx.save();
@@ -7199,9 +7455,9 @@ function graphRuntime(P, G2, G3, config) {
   }
   function colorBars(bars) {
     if (C2.colorBar === false || !bars.length) return;
-    const top = 66, h = Math.max(60, Math.min(160, H - top - 80)), bw = 10;
+    const top = 66, h = Math.max(60, Math.min(160, H2 - top - 80)), bw = 10;
     const label = (v) => String(parseFloat(v.toPrecision(3))).replace("-", "−");
-    let right = W - 14;
+    let right = W2 - 14;
     for (const b of bars.slice(0, 3)) {
       const sc = b.scale, x = right - bw;
       const yOf = (v) => top + h - (v - sc.min) / (sc.max - sc.min) * h;
@@ -7294,27 +7550,64 @@ function graphRuntime(P, G2, G3, config) {
   function spinning() {
     return is3d() && C2.spin && !C2.print && !C2.editor && !reduceMotion && !(drag && drag.kind === "turn");
   }
+  function linearTicks(lo, hi, length, forced) {
+    const t = forced || niceStep((hi - lo) * 90 / length);
+    return {
+      step: t,
+      majors: ticksBetween(lo, hi, t.step),
+      minors: ticksBetween(lo, hi, t.step / t.minor),
+      label: (v) => tickLabel(v, t.step),
+      zero: (v) => Math.abs(v) < t.step * 1e-6
+    };
+  }
+  const SUPERSCRIPT = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+  function logLabel(v) {
+    const k = Math.floor(Math.log10(v) + 1e-9);
+    const m = Math.round(v / Math.pow(10, k));
+    if (k >= -3 && k <= 3) return String(parseFloat(v.toPrecision(6)));
+    const power = "10" + String(k).split("").map((c) => SUPERSCRIPT[c]).join("");
+    return m === 1 ? power : m + "×" + power;
+  }
+  function logTicks(lo, hi, length) {
+    const a = Math.log10(lo), b = Math.log10(hi);
+    if (b - a < 0.6) return linearTicks(lo, hi, length);
+    const perDecade = length / (b - a);
+    const every = perDecade >= 40 ? 1 : Math.ceil(40 / perDecade);
+    const mantissas = perDecade >= 360 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : perDecade >= 180 ? [1, 2, 5] : [1];
+    const between = perDecade >= 60 ? [2, 3, 4, 5, 6, 7, 8, 9].filter((m) => !mantissas.includes(m)) : [];
+    const majors = [], minors = [];
+    for (let k = Math.floor(a); k <= Math.ceil(b) && majors.length + minors.length < 600; k++) {
+      const p = Math.pow(10, k);
+      for (const m of mantissas) {
+        const v = m * p;
+        if (v >= lo && v <= hi && (m > 1 || (k % every + every) % every === 0)) majors.push(v);
+      }
+      for (const m of between) {
+        const v = m * p;
+        if (v >= lo && v <= hi) minors.push(v);
+      }
+    }
+    return { majors, minors, label: logLabel, zero: () => false };
+  }
   function gridAndAxes() {
-    const px = 90;
-    const tx = niceStep((X1 - X0) * px / W);
-    const ty = C2.equalScale === false ? niceStep((Y1 - Y0) * px / H) : tx;
+    const xt = logX ? logTicks(X0, X1, W2) : linearTicks(X0, X1, W2);
+    const yt = logY ? logTicks(Y0, Y1, H2) : C2.equalScale === false || logX ? linearTicks(Y0, Y1, H2) : linearTicks(Y0, Y1, H2, xt.step);
     const line = (x0, y0, x1, y1) => {
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
     };
     if (C2.grid !== false) {
       ctx.lineWidth = 1;
-      for (const [t, major] of [[tx.step / tx.minor, false], [tx.step, true]]) {
+      for (const major of [false, true]) {
         ctx.beginPath();
         ctx.strokeStyle = major ? theme.major : theme.minor;
-        for (const v of ticksBetween(X0, X1, t)) {
+        for (const v of major ? xt.majors : xt.minors) {
           const p = Math.round(sx(v)) + 0.5;
-          line(p, 0, p, H);
+          line(p, 0, p, H2);
         }
-        const u = major ? ty.step : ty.step / ty.minor;
-        for (const v of ticksBetween(Y0, Y1, u)) {
+        for (const v of major ? yt.majors : yt.minors) {
           const p = Math.round(sy(v)) + 0.5;
-          line(0, p, W, p);
+          line(0, p, W2, p);
         }
         ctx.stroke();
       }
@@ -7323,17 +7616,19 @@ function graphRuntime(P, G2, G3, config) {
       ctx.beginPath();
       ctx.strokeStyle = theme.axis;
       ctx.lineWidth = 1.25;
-      if (X0 <= 0 && X1 >= 0) {
+      if (logX) line(0.5, 0, 0.5, H2);
+      else if (X0 <= 0 && X1 >= 0) {
         const p = Math.round(sx(0)) + 0.5;
-        line(p, 0, p, H);
+        line(p, 0, p, H2);
       }
-      if (Y0 <= 0 && Y1 >= 0) {
+      if (logY) line(0, H2 - 0.5, W2, H2 - 0.5);
+      else if (Y0 <= 0 && Y1 >= 0) {
         const p = Math.round(sy(0)) + 0.5;
-        line(0, p, W, p);
+        line(0, p, W2, p);
       }
       ctx.stroke();
     }
-    return { tx, ty };
+    return { xt, yt };
   }
   function haloText(text, x, y, align, baseline, font, color2) {
     ctx.font = font;
@@ -7346,30 +7641,30 @@ function graphRuntime(P, G2, G3, config) {
     ctx.fillStyle = color2 || theme.text;
     ctx.fillText(text, x, y);
   }
-  function axisNumbers({ tx, ty }) {
+  function axisNumbers({ xt, yt }) {
     if (C2.axisNumbers === false || C2.axes === false) return;
     const font = "12px " + FONT;
-    const ay = Math.min(Math.max(sy(0), 2), H - 18);
-    const ax = Math.min(Math.max(sx(0), 30), W - 4);
+    const ay = Math.min(Math.max(sy(0), 2), H2 - 18);
+    const ax = Math.min(Math.max(sx(0), 30), W2 - 4);
     const originShown = X0 <= 0 && X1 >= 0 && Y0 <= 0 && Y1 >= 0;
-    for (const v of ticksBetween(X0, X1, tx.step)) {
-      if (Math.abs(v) < tx.step * 1e-6) continue;
+    for (const v of xt.majors) {
+      if (xt.zero(v)) continue;
       const p = sx(v);
-      if (p < 12 || p > W - 12) continue;
-      haloText(tickLabel(v, tx.step), p, ay + 4, "center", "top", font);
+      if (p < 12 || p > W2 - 12) continue;
+      haloText(xt.label(v), p, ay + 4, "center", "top", font);
     }
-    for (const v of ticksBetween(Y0, Y1, ty.step)) {
-      if (Math.abs(v) < ty.step * 1e-6) continue;
+    for (const v of yt.majors) {
+      if (yt.zero(v)) continue;
       const p = sy(v);
-      if (p < 10 || p > H - 10) continue;
-      haloText(tickLabel(v, ty.step), ax - 5, p, "right", "middle", font);
+      if (p < 10 || p > H2 - 10) continue;
+      haloText(yt.label(v), ax - 5, p, "right", "middle", font);
     }
     if (originShown) haloText("0", sx(0) - 5, sy(0) + 4, "right", "top", font);
   }
   function axisLabels() {
     const font = "italic 16px " + MATH_FONT2;
-    if (C2.xLabel) haloText(C2.xLabel, W - 8, Math.min(Math.max(sy(0), 20), H - 24) - 6, "right", "bottom", font);
-    if (C2.yLabel) haloText(C2.yLabel, Math.min(Math.max(sx(0), 8), W - 40) + 8, 8, "left", "top", font);
+    if (C2.xLabel) haloText(C2.xLabel, W2 - 8, Math.min(Math.max(sy(0), 20), H2 - 24) - 6, "right", "bottom", font);
+    if (C2.yLabel) haloText(C2.yLabel, logX ? 40 : Math.min(Math.max(sx(0), 8), W2 - 40) + 8, 8, "left", "top", font);
   }
   function styleFor(e) {
     ctx.strokeStyle = e.color || "#c74440";
@@ -7393,7 +7688,7 @@ function graphRuntime(P, G2, G3, config) {
   function explicitRuns(f, E, axis) {
     const horiz = axis === "y";
     const k = Math.min(2, density());
-    const n = Math.ceil((horiz ? W : H) * k);
+    const n = Math.ceil((horiz ? W2 : H2) * k);
     const toWorld = horiz ? (px) => wx(px / k) : (px) => wy(px / k);
     const toPx = horiz ? sy : sx;
     const key = horiz ? "x" : "y";
@@ -7474,7 +7769,7 @@ function graphRuntime(P, G2, G3, config) {
         continue;
       }
       const p = [clampPx(sx(x)), clampPx(sy(y))];
-      if (prev && Math.abs(p[0] - prev[0]) + Math.abs(p[1] - prev[1]) > W + H) {
+      if (prev && Math.abs(p[0] - prev[0]) + Math.abs(p[1] - prev[1]) > W2 + H2) {
         runs.push(run);
         run = [];
       }
@@ -7484,15 +7779,15 @@ function graphRuntime(P, G2, G3, config) {
     if (run.length) runs.push(run);
     return runs;
   }
-  function contour(F, E, cellPx) {
+  function contour(F2, E, cellPx) {
     const cell = cellPx || clamp4(6 / density(), 2, 4);
-    const nx = Math.ceil(W / cell) + 1, ny = Math.ceil(H / cell) + 1;
+    const nx = Math.ceil(W2 / cell) + 1, ny = Math.ceil(H2 / cell) + 1;
     const vals = new Float64Array(nx * ny);
     for (let j = 0; j < ny; j++) {
       E.y = wy(j * cell);
       for (let i = 0; i < nx; i++) {
         E.x = wx(i * cell);
-        vals[j * nx + i] = F(E);
+        vals[j * nx + i] = F2(E);
       }
     }
     const points = /* @__PURE__ */ new Map();
@@ -7503,7 +7798,7 @@ function graphRuntime(P, G2, G3, config) {
       const px = (i0 + (i1 - i0) * t) * cell, py = (j0 + (j1 - j0) * t) * cell;
       E.x = wx(px);
       E.y = wy(py);
-      const fp = F(E);
+      const fp = F2(E);
       const p = Math.abs(fp) < 0.5 * (Math.abs(a) + Math.abs(b)) ? [px, py] : null;
       points.set(key, p);
       return p;
@@ -7562,7 +7857,7 @@ function graphRuntime(P, G2, G3, config) {
           case 10: {
             E.x = wx((i + 0.5) * cell);
             E.y = wy((j + 0.5) * cell);
-            const centerPositive = F(E) > 0;
+            const centerPositive = F2(E) > 0;
             if (idx === 5 === centerPositive) {
               seg(T, R);
               seg(B, L);
@@ -7609,7 +7904,7 @@ function graphRuntime(P, G2, G3, config) {
     if (it.axis) {
       const runs = explicitRuns(it.f, E, it.axis);
       const horiz = it.axis === "y";
-      const edge = horiz ? it.side === "below" ? H + 2 : -2 : it.side === "below" ? -2 : W + 2;
+      const edge = horiz ? it.side === "below" ? H2 + 2 : -2 : it.side === "below" ? -2 : W2 + 2;
       fillStyle(e);
       ctx.beginPath();
       for (const run of runs) {
@@ -7634,12 +7929,12 @@ function graphRuntime(P, G2, G3, config) {
     const cell = clamp4(4.5 / density(), 1.5, 3);
     fillStyle(e);
     ctx.beginPath();
-    for (let py = 0; py < H; py += cell) {
+    for (let py = 0; py < H2; py += cell) {
       E.y = wy(py + cell / 2);
       let start = -1;
-      for (let px = 0; px <= W; px += cell) {
+      for (let px = 0; px <= W2; px += cell) {
         E.x = wx(px + cell / 2);
-        const inside = px < W && it.comps.every((c) => c.test(E));
+        const inside = px < W2 && it.comps.every((c) => c.test(E));
         if (inside && start < 0) start = px;
         if (!inside && start >= 0) {
           ctx.rect(start, py, px - start, cell);
@@ -7682,22 +7977,336 @@ function graphRuntime(P, G2, G3, config) {
     ctx.arc(px, py, 4.5, 0, Math.PI * 2);
     ctx.fillStyle = color2;
     ctx.fill();
-    const text = "(" + fmt(x) + ", " + fmt(y) + ")";
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = theme.halo;
+    ctx.stroke();
+    const lines = hover.lines || ["(" + fmt(x) + ", " + fmt(y) + ")"];
     ctx.font = "12px " + FONT;
-    const w = ctx.measureText(text).width + 12;
-    const bx = Math.min(Math.max(px + 10, 2), W - w - 2), by = Math.max(py - 30, 2);
+    const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 12;
+    const h = 8 + lines.length * 15;
+    const bx = Math.min(Math.max(px + 10, 2), W2 - w - 2);
+    const by = py - h - 8 >= 2 ? py - h - 8 : Math.min(py + 10, H2 - h - 2);
     ctx.fillStyle = theme.panel;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.rect(bx, by, w, 22);
+    ctx.rect(bx, by, w, h);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = theme.panelText;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, bx + 6, by + 11);
+    lines.forEach((t, k) => {
+      ctx.font = (k === 0 && hover.titled ? "600 " : "") + "12px " + FONT;
+      ctx.fillText(t, bx + 6, by + 11.5 + k * 15);
+    });
   }
+  const DATA_COLORS = {
+    light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+    dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"]
+  };
+  const OTHER_COLOR = "#898781";
+  let dataStyles = /* @__PURE__ */ new Map();
+  let dataHits = [];
+  const isNum = (v) => typeof v === "number" && isFinite(v);
+  function extent(values2) {
+    let lo = Infinity, hi = -Infinity;
+    for (const v of values2) {
+      if (isNum(v)) {
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+    }
+    return lo <= hi ? [lo, hi] : null;
+  }
+  const rgb = (c) => "rgb(" + c.map((v) => Math.round(v * 255)).join(",") + ")";
+  function dataStyle(it, e, d) {
+    const spec = e.data || {};
+    const kept = dataStyles.get(it.id);
+    if (kept && kept.d === d && kept.e === e && kept.theme === theme) return kept.style;
+    let style;
+    const values2 = Array.isArray(d.color) ? d.color : null;
+    if (!values2) style = { kind: "one", color: e.color || DATA_COLORS[C2.theme === "dark" ? "dark" : "light"][0] };
+    else if (values2.every((v) => v == null || isNum(v)) && values2.some(isNum)) {
+      const [lo, hi] = extent(values2);
+      const span = hi > lo ? hi - lo : 1;
+      style = { kind: "scale", title: spec.colorBy, min: lo, max: hi, colorOf: (i) => isNum(values2[i]) ? rgb(G3.colormap((values2[i] - lo) / span, "viridis")) : OTHER_COLOR };
+    } else {
+      const counts = /* @__PURE__ */ new Map();
+      for (const v of values2) {
+        const k = v == null ? "" : String(v);
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+      const palette = DATA_COLORS[C2.theme === "dark" ? "dark" : "light"];
+      const order = [...counts.entries()].filter(([k]) => k !== "").sort((a, b) => b[1] - a[1]);
+      const colorOf = /* @__PURE__ */ new Map();
+      const cats = order.slice(0, palette.length).map(([name, count], k) => {
+        colorOf.set(name, palette[k]);
+        return { name, count, color: palette[k] };
+      });
+      const other = values2.length - cats.reduce((n, c) => n + c.count, 0);
+      style = { kind: "cats", title: spec.colorBy, cats, other, colorOf: (i) => colorOf.get(values2[i] == null ? "" : String(values2[i])) || OTHER_COLOR };
+    }
+    dataStyles.set(it.id, { d, e, theme, style });
+    return style;
+  }
+  function radiusOf(spec, d) {
+    const base3 = clamp4(num9(spec.size, 3), 0.5, 20);
+    if (!Array.isArray(d.size)) return () => base3;
+    const ext = extent(d.size);
+    if (!ext) return () => base3;
+    const [lo, hi] = ext;
+    const span = hi > lo ? hi - lo : 1;
+    return (i) => isNum(d.size[i]) ? 2 + 8 * Math.sqrt(Math.max(0, (d.size[i] - lo) / span)) : base3;
+  }
+  function drawData(it) {
+    const e = exprOf(it);
+    const spec = e.data || {};
+    const d = (C2.data || {})[it.id];
+    if (!d || !Array.isArray(d.x) || !Array.isArray(d.y)) return;
+    const n = Math.min(d.x.length, d.y.length);
+    const mark = spec.mark === "line" || spec.mark === "bars" ? spec.mark : "points";
+    const style = dataStyle(it, e, d);
+    const color2 = style.kind === "one" ? () => style.color : style.colorOf;
+    const radius = radiusOf(spec, d);
+    const alpha2 = clamp4(num9(spec.opacity, mark === "bars" ? 0.85 : 0.85), 0.05, 1);
+    const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style };
+    const pxOf = (i) => sx(+d.x[i]), pyOf = (i) => sy(+d.y[i]);
+    const onCanvas = (px, py, m) => px >= -m && px <= W2 + m && py >= -m && py <= H2 + m;
+    if (Array.isArray(d.xErr) || Array.isArray(d.yErr)) {
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = alpha2 * 0.6;
+      const byColor = /* @__PURE__ */ new Map();
+      for (let i = 0; i < n; i++) {
+        const x = +d.x[i], y = +d.y[i];
+        if (!isFinite(x) || !isFinite(y)) continue;
+        const c = color2(i);
+        if (!byColor.has(c)) byColor.set(c, new Path2D());
+        const path = byColor.get(c);
+        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0;
+        const px = sx(x), py = sy(y);
+        if (ex > 0) {
+          const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex));
+          if (isFinite(py)) {
+            path.moveTo(isFinite(a) ? a : -1e5, py);
+            path.lineTo(b, py);
+          }
+        }
+        if (ey > 0) {
+          const a = clampPx(sy(y - ey)), b = clampPx(sy(y + ey));
+          if (isFinite(px)) {
+            path.moveTo(px, isFinite(a) ? a : 1e5);
+            path.lineTo(px, b);
+          }
+        }
+      }
+      for (const [c, path] of byColor) {
+        ctx.strokeStyle = c;
+        ctx.stroke(path);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (mark === "bars") {
+      const base3 = logY ? H2 : clamp4(sy(0), 0, H2);
+      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b]);
+      ctx.globalAlpha = alpha2;
+      order.forEach((i, k) => {
+        const top = pyOf(i);
+        if (!isFinite(top)) return;
+        let left, right;
+        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) {
+          left = pxOf(i);
+          right = sx(+d.x2[i]);
+        } else {
+          const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null;
+          const here = pxOf(i);
+          const half2 = Math.min(prev === null ? Infinity : here - prev, next === null ? Infinity : next - here) / 2;
+          const w = isFinite(half2) ? half2 : 6;
+          left = here - w * 0.9;
+          right = here + w * 0.9;
+        }
+        if (!isFinite(left) || !isFinite(right)) return;
+        const l = Math.max(Math.min(left, right), -2), r = Math.min(Math.max(left, right), W2 + 2);
+        if (r - l < 0.5) return;
+        ctx.fillStyle = color2(i);
+        ctx.fillRect(l + 0.5, Math.min(top, base3), Math.max(0.5, r - l - 1), Math.abs(base3 - top));
+        const mid = (l + r) / 2;
+        if (onCanvas(mid, top, 0)) {
+          hit.xs[hit.n] = mid;
+          hit.ys[hit.n] = top;
+          hit.rows[hit.n++] = i;
+        }
+      });
+      ctx.globalAlpha = 1;
+      dataHits.push(hit);
+      return;
+    }
+    if (mark === "line") {
+      const paths2 = /* @__PURE__ */ new Map();
+      const last2 = /* @__PURE__ */ new Map();
+      for (let i = 0; i < n; i++) {
+        const c = color2(i);
+        const px = pxOf(i), py = pyOf(i);
+        if (!paths2.has(c)) paths2.set(c, new Path2D());
+        if (!isFinite(px) || !isFinite(py)) {
+          last2.delete(c);
+          continue;
+        }
+        const cx = clampPx(px), cy = clampPx(py);
+        if (last2.has(c)) paths2.get(c).lineTo(cx, cy);
+        else paths2.get(c).moveTo(cx, cy);
+        last2.set(c, true);
+        if (onCanvas(px, py, 0)) {
+          hit.xs[hit.n] = px;
+          hit.ys[hit.n] = py;
+          hit.rows[hit.n++] = i;
+        }
+      }
+      ctx.lineWidth = clamp4(num9(e.width, 2), 0.5, 12);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.setLineDash(e.style === "dashed" ? [7, 5] : e.style === "dotted" ? [0.01, 5] : []);
+      ctx.globalAlpha = alpha2;
+      for (const [c, path] of paths2) {
+        ctx.strokeStyle = c;
+        ctx.stroke(path);
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      dataHits.push(hit);
+      return;
+    }
+    const paths = /* @__PURE__ */ new Map();
+    for (let i = 0; i < n; i++) {
+      const px = pxOf(i), py = pyOf(i);
+      if (!isFinite(px) || !isFinite(py)) continue;
+      const r = radius(i);
+      if (!onCanvas(px, py, r)) continue;
+      const c = color2(i);
+      if (!paths.has(c)) paths.set(c, new Path2D());
+      const path = paths.get(c);
+      path.moveTo(px + r, py);
+      path.arc(px, py, r, 0, Math.PI * 2);
+      hit.xs[hit.n] = px;
+      hit.ys[hit.n] = py;
+      hit.rows[hit.n++] = i;
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = theme.halo;
+    for (const [c, path] of paths) {
+      ctx.globalAlpha = 1;
+      ctx.stroke(path);
+      ctx.globalAlpha = alpha2;
+      ctx.fillStyle = c;
+      ctx.fill(path);
+    }
+    ctx.globalAlpha = 1;
+    dataHits.push(hit);
+  }
+  function drawDataKeys(items) {
+    let top = reset.style.display === "block" ? 44 : 8;
+    const notes = [], cut = [];
+    for (const it of items) {
+      if (it.kind !== "data") continue;
+      const e = exprOf(it);
+      const spec = e.data || {};
+      const d = (C2.data || {})[it.id];
+      if (!d || !Array.isArray(d.x)) {
+        const name = spec.dataset ? "“" + spec.dataset + "”" : "this dataset";
+        notes.push(d && d.error ? d.error : d && d.loading ? "Loading " + name + "…" : "The data from " + name + " isn’t available here");
+        continue;
+      }
+      if (isNum(d.total) && d.total > d.x.length) cut.push("Showing " + d.x.length.toLocaleString() + " of " + d.total.toLocaleString() + " rows of " + (spec.dataset || "data"));
+      const style = dataStyle(it, e, d);
+      if (style.kind === "one") continue;
+      top = style.kind === "cats" ? catKey(style, top) : scaleKey(style, top);
+    }
+    notes.forEach((text, k) => haloText(text, W2 / 2, H2 / 2 + (k - (notes.length - 1) / 2) * 20, "center", "middle", "14px " + FONT, theme.text));
+    cut.forEach((text, k) => haloText(text, W2 - 8, H2 - 44 - k * 16, "right", "bottom", "12px " + FONT, theme.text));
+  }
+  function keyBox(x, y, w, h) {
+    ctx.fillStyle = theme.panel;
+    ctx.strokeStyle = theme.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.fill();
+    ctx.stroke();
+  }
+  function catKey(style, top) {
+    const rows2 = style.cats.map((c) => [c.name, c.color]).concat(style.other ? [["Other", OTHER_COLOR]] : []);
+    ctx.font = "12px " + FONT;
+    const title = style.title || "";
+    const w = Math.min(W2 * 0.45, Math.max(ctx.measureText(title).width, ...rows2.map((r) => ctx.measureText(r[0]).width + 18)) + 16);
+    const h = 10 + (title ? 16 : 0) + rows2.length * 16;
+    const x = W2 - w - 8;
+    keyBox(x, top, w, h);
+    let y = top + 6;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    if (title) {
+      ctx.fillStyle = theme.panelText;
+      ctx.font = "600 12px " + FONT;
+      ctx.fillText(title, x + 8, y, w - 16);
+      y += 16;
+      ctx.font = "12px " + FONT;
+    }
+    for (const [name, c] of rows2) {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(x + 12, y + 7, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = theme.panelText;
+      ctx.fillText(name || "(none)", x + 22, y, w - 30);
+      y += 16;
+    }
+    return top + h + 8;
+  }
+  function scaleKey(style, top) {
+    const w = 150, h = 46;
+    const x = W2 - w - 8;
+    keyBox(x, top, w, h);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = theme.panelText;
+    ctx.font = "600 12px " + FONT;
+    ctx.fillText(style.title || "", x + 8, top + 6, w - 16);
+    const grad = ctx.createLinearGradient(x + 8, 0, x + w - 8, 0);
+    for (let k = 0; k <= 10; k++) grad.addColorStop(k / 10, rgb(G3.colormap(k / 10, "viridis")));
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + 8, top + 22, w - 16, 8);
+    ctx.font = "11px " + FONT;
+    ctx.fillStyle = theme.panelText;
+    ctx.fillText(fmt(style.min), x + 8, top + 32);
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(style.max), x + w - 8, top + 32);
+    return top + h + 8;
+  }
+  function dataNear(px, py) {
+    let best = null;
+    for (const hit2 of dataHits) {
+      for (let k2 = 0; k2 < hit2.n; k2++) {
+        const d2 = (hit2.xs[k2] - px) * (hit2.xs[k2] - px) + (hit2.ys[k2] - py) * (hit2.ys[k2] - py);
+        if (d2 < 64 && (!best || d2 < best.d2)) best = { d2, hit: hit2, k: k2 };
+      }
+    }
+    if (!best) return null;
+    const { hit, k } = best;
+    const row = hit.rows[k];
+    const e = exprOf(hit.it);
+    const spec = e.data || {};
+    const d = (C2.data || {})[hit.it.id] || {};
+    const lines = [];
+    if (Array.isArray(d.label) && d.label[row] != null) lines.push(String(d.label[row]));
+    lines.push((spec.x || "x") + ": " + fmtValue2(d.x[row]));
+    if (spec.mark === "bars" && Array.isArray(d.x2)) lines[lines.length - 1] += " to " + fmtValue2(d.x2[row]);
+    lines.push((spec.y || "y") + ": " + fmtValue2(d.y[row]));
+    if (Array.isArray(d.color) && spec.colorBy) lines.push(spec.colorBy + ": " + fmtValue2(d.color[row]));
+    if (Array.isArray(d.size) && spec.sizeBy && spec.sizeBy !== spec.colorBy) lines.push(spec.sizeBy + ": " + fmtValue2(d.size[row]));
+    const color2 = hit.style.kind === "one" ? hit.style.color : hit.style.colorOf(row);
+    return { px: hit.xs[k], py: hit.ys[k], color: color2, lines, titled: Array.isArray(d.label) && d.label[row] != null };
+  }
+  const fmtValue2 = (v) => v == null ? "—" : isNum(v) ? fmt(v) : String(v);
   const FIELD_DEFAULTS = {
     vector: { draw: "arrows", density: "normal", length: "scaled", colorBy: "magnitude", shade: "none", equilibria: false, separatrices: false, nullclines: false, traceDet: false, clicks: true },
     system: { draw: "streamlines", density: "normal", length: "scaled", colorBy: "line", shade: "none", equilibria: true, separatrices: true, nullclines: false, traceDet: false, clicks: true },
@@ -7726,36 +8335,36 @@ function graphRuntime(P, G2, G3, config) {
       return null;
     }
     const box = { xMin: X0, xMax: X1, yMin: Y0, yMax: Y1 };
-    const key = JSON.stringify([box, W, H, step, values, C2.expressions, clicks]);
+    const key = JSON.stringify([box, W2, H2, step, values, C2.expressions, clicks]);
     if (fieldGeo && key === fieldKey) return fieldGeo;
     fieldKey = key;
-    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0);
+    const out = [0, 0], kx = W2 / (X1 - X0), ky = H2 / (Y1 - Y0);
     const fields = fieldItems.map((it) => {
       const e = exprOf(it), o = fieldOptions(e, it.kind);
-      const F = it.kind === "slope" ? (env2, x, y, r) => {
+      const F2 = it.kind === "slope" ? (env2, x, y, r) => {
         r[0] = 1;
         r[1] = it.f(env2, x, y);
       } : it.F;
-      const f = { it, e, o, F, color: e.color || "#c74440" };
+      const f = { it, e, o, F: F2, color: e.color || "#c74440" };
       const mags = [];
       for (let i = 0; i < 24; i++) for (let j = 0; j < 16; j++) {
-        F(E, wx((i + 0.5) * W / 24), wy((j + 0.5) * H / 16), out);
+        F2(E, wx((i + 0.5) * W2 / 24), wy((j + 0.5) * H2 / 16), out);
         const m = Math.hypot(out[0], out[1]);
         if (isFinite(m)) mags.push(m);
       }
       mags.sort((a, b) => a - b);
       f.mRef = mags.length && (mags[Math.floor(mags.length * 0.85)] || mags[mags.length - 1]) || 1;
       f.V = (px, py, r) => {
-        F(E, wx(px), wy(py), out);
+        F2(E, wx(px), wy(py), out);
         r[0] = out[0] * kx;
         r[1] = -out[1] * ky;
       };
-      if (o.draw === "streamlines") f.lines = G2.streamlines(f.V, W, H, STREAM_PX[o.density] || 24, { budget: 3e5 });
+      if (o.draw === "streamlines") f.lines = G2.streamlines(f.V, W2, H2, STREAM_PX[o.density] || 24, { budget: 3e5 });
       if (it.kind !== "slope" && (overlayShown(e, o, "equilibria") || overlayShown(e, o, "separatrices") || overlayShown(e, o, "traceDet"))) {
-        f.eq = G2.equilibria(F, E, box);
-        if (overlayShown(e, o, "separatrices")) f.seps = [].concat(...f.eq.map((q) => G2.separatrices(F, E, q, box)));
+        f.eq = G2.equilibria(F2, E, box);
+        if (overlayShown(e, o, "separatrices")) f.seps = [].concat(...f.eq.map((q) => G2.separatrices(F2, E, q, box)));
       }
-      if (it.kind === "vector" && o.shade !== "none") f.shade = shadeGrid(F, E, o.shade);
+      if (it.kind === "vector" && o.shade !== "none") f.shade = shadeGrid(F2, E, o.shade);
       return f;
     });
     const fieldOf = (id) => fields.find((f) => f.it.id === id);
@@ -7784,21 +8393,21 @@ function graphRuntime(P, G2, G3, config) {
     fieldGeo = { fields, paths, clicked };
     return fieldGeo;
   }
-  function shadeGrid(F, E, what) {
-    const cell = 8, nx = Math.ceil(W / cell), ny = Math.ceil(H / cell), vals = new Float64Array(nx * ny), a = [0, 0], b = [0, 0], all = [];
+  function shadeGrid(F2, E, what) {
+    const cell = 8, nx = Math.ceil(W2 / cell), ny = Math.ceil(H2 / cell), vals = new Float64Array(nx * ny), a = [0, 0], b = [0, 0], all = [];
     const hx = (X1 - X0) * 1e-4, hy = (Y1 - Y0) * 1e-4;
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const x = wx((i + 0.5) * cell), y = wy((j + 0.5) * cell);
       let v;
       if (what === "magnitude") {
-        F(E, x, y, a);
+        F2(E, x, y, a);
         v = Math.hypot(a[0], a[1]);
       } else {
-        F(E, x + hx, y, a);
-        F(E, x - hx, y, b);
+        F2(E, x + hx, y, a);
+        F2(E, x - hx, y, b);
         const dPdx = (a[0] - b[0]) / (2 * hx), dQdx = (a[1] - b[1]) / (2 * hx);
-        F(E, x, y + hy, a);
-        F(E, x, y - hy, b);
+        F2(E, x, y + hy, a);
+        F2(E, x, y - hy, b);
         const dPdy = (a[0] - b[0]) / (2 * hy), dQdy = (a[1] - b[1]) / (2 * hy);
         v = what === "divergence" ? dPdx + dQdy : dQdx - dPdy;
       }
@@ -7852,7 +8461,7 @@ function graphRuntime(P, G2, G3, config) {
   }
   function drawFieldMarks(g, E) {
     if (!g) return;
-    const out = [0, 0], kx = W / (X1 - X0), ky = H / (Y1 - Y0);
+    const out = [0, 0], kx = W2 / (X1 - X0), ky = H2 / (Y1 - Y0);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     for (const f of g.fields) {
@@ -7861,7 +8470,7 @@ function graphRuntime(P, G2, G3, config) {
       ctx.fillStyle = f.color;
       if (o.draw === "arrows") {
         ctx.lineWidth = 1.7;
-        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+        for (let py = s / 2; py < H2; py += s) for (let px = s / 2; px < W2; px += s) {
           f.F(E, wx(px), wy(py), out);
           const vx = out[0] * kx, vy = -out[1] * ky, m = Math.hypot(out[0], out[1]), pm = Math.hypot(vx, vy);
           if (!(pm > 0) || !isFinite(pm)) continue;
@@ -7878,7 +8487,7 @@ function graphRuntime(P, G2, G3, config) {
         ctx.lineWidth = 1.6;
         ctx.globalAlpha = 0.8;
         ctx.beginPath();
-        for (let py = s / 2; py < H; py += s) for (let px = s / 2; px < W; px += s) {
+        for (let py = s / 2; py < H2; py += s) for (let px = s / 2; px < W2; px += s) {
           const m = f.it.f(E, wx(px), wy(py));
           if (!isFinite(m)) continue;
           const vx = kx, vy = -m * ky, pm = Math.hypot(vx, vy), L = s * 0.62;
@@ -7936,7 +8545,7 @@ function graphRuntime(P, G2, G3, config) {
     let acc = 0, next = 60;
     for (let k = 1; k < pts.length; k++) {
       const x0 = sx(pts[k - 1][0]), y0 = sy(pts[k - 1][1]), x1 = sx(pts[k][0]), y1 = sy(pts[k][1]), d = Math.hypot(x1 - x0, y1 - y0);
-      if (x1 < 0 || x1 > W || y1 < 0 || y1 > H) continue;
+      if (x1 < 0 || x1 > W2 || y1 < 0 || y1 > H2) continue;
       acc += d;
       if (acc >= next && d > 0) {
         const s = forward ? 1 : -1;
@@ -8006,7 +8615,7 @@ function graphRuntime(P, G2, G3, config) {
   }
   function marker(q) {
     const x = sx(q.x), y = sy(q.y), r = 6.5;
-    if (x < -r || x > W + r || y < -r || y > H + r) return;
+    if (x < -r || x > W2 + r || y < -r || y > H2 + r) return;
     ctx.lineWidth = 2.2;
     ctx.strokeStyle = theme.fg;
     ctx.fillStyle = C2.background && C2.background !== "transparent" ? C2.background : theme.halo;
@@ -8067,7 +8676,7 @@ function graphRuntime(P, G2, G3, config) {
     return y + 46;
   }
   function traceDet(f) {
-    const w = 190, h = 140, x0 = W - w - 10, y0 = 42;
+    const w = 190, h = 140, x0 = W2 - w - 10, y0 = 42;
     ctx.fillStyle = theme.panel;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
@@ -8144,7 +8753,7 @@ function graphRuntime(P, G2, G3, config) {
     ];
     ctx.font = "12.5px " + FONT;
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12;
-    const bx = x + 14 + w > W ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H - h - 4, y - h / 2));
+    const bx = x + 14 + w > W2 ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H2 - h - 4, y - h / 2));
     ctx.fillStyle = theme.panel;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
@@ -8181,7 +8790,7 @@ function graphRuntime(P, G2, G3, config) {
     if (flows.length) {
       const dt = lastStep ? Math.min(0.05, (now - lastStep) / 1e3) : 0;
       lastStep = now;
-      const TW = Math.round(W * d), TH = Math.round(H * d);
+      const TW = Math.round(W2 * d), TH = Math.round(H2 * d);
       if (trailCanvas.width !== TW || trailCanvas.height !== TH) {
         trailCanvas.width = TW;
         trailCanvas.height = TH;
@@ -8190,13 +8799,13 @@ function graphRuntime(P, G2, G3, config) {
       trail.setTransform(d, 0, 0, d, 0, 0);
       trail.globalCompositeOperation = "destination-out";
       trail.fillStyle = "rgba(0,0,0,0.075)";
-      trail.fillRect(0, 0, W, H);
+      trail.fillRect(0, 0, W2, H2);
       trail.globalCompositeOperation = "source-over";
-      const want = Math.round(W * H / 700 / flows.length), v = [0, 0], scale = Math.min(W / (X1 - X0), H / (Y1 - Y0));
+      const want = Math.round(W2 * H2 / 700 / flows.length), v = [0, 0], scale = Math.min(W2 / (X1 - X0), H2 / (Y1 - Y0));
       for (const f of flows) {
         let mine = particles.filter((q) => q.f === f.it.id);
         while (mine.length < want) {
-          const q = { x: Math.random() * W, y: Math.random() * H, age: Math.random() * 4, f: f.it.id };
+          const q = { x: Math.random() * W2, y: Math.random() * H2, age: Math.random() * 4, f: f.it.id };
           particles.push(q);
           mine.push(q);
         }
@@ -8210,9 +8819,9 @@ function graphRuntime(P, G2, G3, config) {
           const m = Math.hypot(v[0], v[1]), speed = 70 * Math.min(2.5, m / (f.mRef * scale || 1));
           const nx = q.x + (m ? v[0] / m * speed * dt : 0), ny = q.y + (m ? v[1] / m * speed * dt : 0);
           q.age += dt;
-          if (!isFinite(nx) || !isFinite(ny) || nx < 0 || ny < 0 || nx > W || ny > H || q.age > 5 || !m) {
-            q.x = Math.random() * W;
-            q.y = Math.random() * H;
+          if (!isFinite(nx) || !isFinite(ny) || nx < 0 || ny < 0 || nx > W2 || ny > H2 || q.age > 5 || !m) {
+            q.x = Math.random() * W2;
+            q.y = Math.random() * H2;
             q.age = 0;
             continue;
           }
@@ -8316,11 +8925,11 @@ function graphRuntime(P, G2, G3, config) {
       });
       const label = document.createElement("span");
       const nm = prettyName(it.name);
-      const base = document.createElement("i");
-      base.textContent = nm.base;
-      base.style.fontFamily = MATH_FONT2;
-      base.style.fontSize = "15px";
-      label.appendChild(base);
+      const base3 = document.createElement("i");
+      base3.textContent = nm.base;
+      base3.style.fontFamily = MATH_FONT2;
+      base3.style.fontSize = "15px";
+      label.appendChild(base3);
       if (nm.sub) {
         const sub2 = document.createElement("sub");
         sub2.textContent = nm.sub;
@@ -8407,15 +9016,40 @@ function graphRuntime(P, G2, G3, config) {
   }
   let viewTimer = 0;
   function viewChanged() {
+    hover = null;
     styleReset();
     request();
     clearTimeout(viewTimer);
     viewTimer = setTimeout(() => postEditor(is3d() ? { type: "view", view: copyView(view), camera: { turn: Math.round(cam.turn * 10) / 10, tilt: Math.round(cam.tilt * 10) / 10 } } : { type: "view", view: copyView(view) }), 200);
   }
+  function zoomAxis(lo, hi, frac, factor, log) {
+    const a = log ? Math.log10(lo) : lo, b = log ? Math.log10(hi) : hi;
+    const c = a + frac * (b - a);
+    const na = c - (c - a) * factor, nb = c + (b - c) * factor;
+    if (!isFinite(na) || !isFinite(nb) || !(nb > na)) return null;
+    if (log ? nb - na < 1e-6 || nb - na > 600 || na < -300 || nb > 300 : nb - na > 1e12 || nb - na < 1e-12 * Math.max(1, Math.abs(c))) return null;
+    return log ? [Math.pow(10, na), Math.pow(10, nb)] : [na, nb];
+  }
+  function panAxis(lo, hi, frac, log) {
+    if (!log) {
+      const d2 = frac * (hi - lo);
+      return [lo + d2, hi + d2];
+    }
+    const d = frac * (Math.log10(hi) - Math.log10(lo));
+    return [lo * Math.pow(10, d), hi * Math.pow(10, d)];
+  }
   function zoom(factor, px, py) {
+    if (logX || logY) {
+      const v2 = shown();
+      const ax = zoomAxis(v2.xMin, v2.xMax, px / W2, factor, logX), ay = zoomAxis(v2.yMin, v2.yMax, (H2 - py) / H2, factor, logY);
+      if (!ax || !ay) return;
+      view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] };
+      viewChanged();
+      return;
+    }
     const v = shown();
-    const cx = v.xMin + px / W * (v.xMax - v.xMin);
-    const cy = v.yMin + (H - py) / H * (v.yMax - v.yMin);
+    const cx = v.xMin + px / W2 * (v.xMax - v.xMin);
+    const cy = v.yMin + (H2 - py) / H2 * (v.yMax - v.yMin);
     const span = Math.min(view.xMax - view.xMin, view.yMax - view.yMin);
     const least = 1e-12 * Math.max(1, Math.abs(cx), Math.abs(cy));
     factor = Math.min(Math.max(factor, least / span), 1e12 / Math.max(view.xMax - view.xMin, view.yMax - view.yMin));
@@ -8492,18 +9126,23 @@ function graphRuntime(P, G2, G3, config) {
       return;
     }
     if (drag.kind === "point") {
-      const v = shown();
-      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, v.xMin + px / W * (v.xMax - v.xMin));
-      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, v.yMin + (H - py) / H * (v.yMax - v.yMin));
+      if (drag.it.dragX) values[drag.it.dragX] = snap(drag.it.dragX, wx(px));
+      if (drag.it.dragY) values[drag.it.dragY] = snap(drag.it.dragY, wy(py));
       if (drag.it.dragX) delete playing[drag.it.dragX];
       if (drag.it.dragY) delete playing[drag.it.dragY];
       syncPanel();
       request();
     } else if (drag.kind === "pan") {
       if (Math.hypot(px - drag.start[0], py - drag.start[1]) > 4) drag.moved = true;
-      const dx = (px - drag.start[0]) / W * (drag.shown.xMax - drag.shown.xMin);
-      const dy = (py - drag.start[1]) / H * (drag.shown.yMax - drag.shown.yMin);
-      view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
+      if (logX || logY) {
+        const ax = panAxis(drag.shown.xMin, drag.shown.xMax, -(px - drag.start[0]) / W2, logX);
+        const ay = panAxis(drag.shown.yMin, drag.shown.yMax, (py - drag.start[1]) / H2, logY);
+        view = { xMin: ax[0], xMax: ax[1], yMin: ay[0], yMax: ay[1] };
+      } else {
+        const dx = (px - drag.start[0]) / W2 * (drag.shown.xMax - drag.shown.xMin);
+        const dy = (py - drag.start[1]) / H2 * (drag.shown.yMax - drag.shown.yMin);
+        view = { xMin: drag.view.xMin - dx, xMax: drag.view.xMax - dx, yMin: drag.view.yMin + dy, yMax: drag.view.yMax + dy };
+      }
       viewChanged();
     } else if (drag.kind === "pinch" && pointers.size === 2 && !C2.lockView) {
       const [a, b] = [...pointers.values()];
@@ -8593,6 +9232,7 @@ function graphRuntime(P, G2, G3, config) {
         best = horiz ? { d, px, py: sy(val), x: u, y: val, color: e.color } : { d, px: sx(val), py, x: val, y: u, color: e.color };
       }
     }
+    if (!best && dataHits.length) best = dataNear(px, py);
     const had = !!hover;
     hover = best;
     canvas.style.cursor = best ? "crosshair" : C2.lockView ? "default" : "grab";
@@ -8601,8 +9241,8 @@ function graphRuntime(P, G2, G3, config) {
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     if (!w || !h) return;
-    W = w;
-    H = h;
+    W2 = w;
+    H2 = h;
     const d = density();
     canvas.width = Math.round(w * d);
     canvas.height = Math.round(h * d);
@@ -8715,13 +9355,13 @@ function graphFields() {
     }
     return steps >= maxSteps ? "steps" : "end";
   }
-  function trajectory(F, env, x0, y0, dir, box, opts) {
+  function trajectory(F2, env, x0, y0, dir, box, opts) {
     opts = opts || {};
     var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), out = [0, 0];
     var mx = (box.xMax - box.xMin) * 0.5, my = (box.yMax - box.yMin) * 0.5;
     var pts = [[x0, y0, 0]], closed = false, left = false, len2 = 0, eps = span * 4e-3, fastest = 0;
     var f = function(t, s, o) {
-      F(env, s[0], s[1], out);
+      F2(env, s[0], s[1], out);
       o[0] = dir * out[0];
       o[1] = dir * out[1];
     };
@@ -8781,13 +9421,13 @@ function graphFields() {
     });
     return out;
   }
-  function jacobian(F, env, x, y, h) {
+  function jacobian(F2, env, x, y, h) {
     var a = [0, 0], b = [0, 0];
-    F(env, x + h, y, a);
-    F(env, x - h, y, b);
+    F2(env, x + h, y, a);
+    F2(env, x - h, y, b);
     var j11 = (a[0] - b[0]) / (2 * h), j21 = (a[1] - b[1]) / (2 * h);
-    F(env, x, y + h, a);
-    F(env, x, y - h, b);
+    F2(env, x, y + h, a);
+    F2(env, x, y - h, b);
     return [[j11, (a[0] - b[0]) / (2 * h)], [j21, (a[1] - b[1]) / (2 * h)]];
   }
   function classify(J) {
@@ -8813,14 +9453,14 @@ function graphFields() {
     } else eig = [[tr / 2, Math.sqrt(-disc) / 2], [tr / 2, -Math.sqrt(-disc) / 2]];
     return { kind, trace: tr, det, eig, vecs };
   }
-  function equilibria(F, env, box, opts) {
+  function equilibria(F2, env, box, opts) {
     opts = opts || {};
     var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), h = span * 1e-6;
     var nx = opts.nx || 14, ny = opts.ny || 10, found = [], out = [0, 0];
     var mx = (box.xMax - box.xMin) * 0.04, my = (box.yMax - box.yMin) * 0.04;
     var scale = 0, samples = 0;
     for (var i = 0; i <= nx; i++) for (var j = 0; j <= ny; j++) {
-      F(env, box.xMin + (box.xMax - box.xMin) * i / nx, box.yMin + (box.yMax - box.yMin) * j / ny, out);
+      F2(env, box.xMin + (box.xMax - box.xMin) * i / nx, box.yMin + (box.yMax - box.yMin) * j / ny, out);
       var m = Math.hypot(out[0], out[1]);
       if (isFinite(m)) {
         scale += m;
@@ -8831,9 +9471,9 @@ function graphFields() {
     for (i = 0; i < nx; i++) for (j = 0; j < ny; j++) {
       var x = box.xMin + (box.xMax - box.xMin) * (i + 0.5) / nx, y = box.yMin + (box.yMax - box.yMin) * (j + 0.5) / ny;
       for (var it = 0; it < 40; it++) {
-        F(env, x, y, out);
+        F2(env, x, y, out);
         if (!isFinite(out[0]) || !isFinite(out[1])) break;
-        var J = jacobian(F, env, x, y, h), det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+        var J = jacobian(F2, env, x, y, h), det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
         if (!det || !isFinite(det)) break;
         var dx = (J[1][1] * out[0] - J[0][1] * out[1]) / det, dy = (-J[1][0] * out[0] + J[0][0] * out[1]) / det;
         var stepLen = Math.hypot(dx, dy), lim = span * 0.25;
@@ -8845,7 +9485,7 @@ function graphFields() {
         y -= dy;
         if (stepLen < span * 1e-13) break;
       }
-      F(env, x, y, out);
+      F2(env, x, y, out);
       if (!(Math.hypot(out[0], out[1]) <= scale * 1e-9 + 1e-14)) continue;
       if (x < box.xMin - mx || x > box.xMax + mx || y < box.yMin - my || y > box.yMax + my) continue;
       if (found.some(function(p) {
@@ -8854,7 +9494,7 @@ function graphFields() {
       found.push({ x, y });
     }
     found.forEach(function(p) {
-      var c = classify(jacobian(F, env, p.x, p.y, h));
+      var c = classify(jacobian(F2, env, p.x, p.y, h));
       for (var k in c) p[k] = c[k];
     });
     found.sort(function(a, b) {
@@ -8862,30 +9502,30 @@ function graphFields() {
     });
     return found;
   }
-  function separatrices(F, env, eq, box) {
+  function separatrices(F2, env, eq, box) {
     if (eq.kind !== "saddle" || !eq.vecs) return [];
     var span = Math.max(box.xMax - box.xMin, box.yMax - box.yMin), e = span * 1e-4, out = [];
     eq.vecs.forEach(function(v, i) {
       var unstable = eq.eig[i][0] > 0;
       [1, -1].forEach(function(sgn) {
-        var tr = trajectory(F, env, eq.x + sgn * e * v[0], eq.y + sgn * e * v[1], unstable ? 1 : -1, box, { tMax: 200 });
+        var tr = trajectory(F2, env, eq.x + sgn * e * v[0], eq.y + sgn * e * v[1], unstable ? 1 : -1, box, { tMax: 200 });
         tr.unstable = unstable;
         out.push(tr);
       });
     });
     return out;
   }
-  function streamlines(V, W, H, dsep, opts) {
+  function streamlines(V, W2, H2, dsep, opts) {
     opts = opts || {};
     var dtest = dsep * (opts.test || 0.5), step = Math.max(0.6, dsep / 16), cell = dsep;
-    var cols = Math.ceil(W / cell) + 1, rows = Math.ceil(H / cell) + 1, grid = new Array(cols * rows);
-    var lines = [], v = [0, 0], maxLen = opts.maxLen || 4 * (W + H), budget = opts.budget || 4e5;
+    var cols = Math.ceil(W2 / cell) + 1, rows = Math.ceil(H2 / cell) + 1, grid = new Array(cols * rows);
+    var lines = [], v = [0, 0], maxLen = opts.maxLen || 4 * (W2 + H2), budget = opts.budget || 4e5;
     function cellOf(x, y) {
       var c = Math.floor(x / cell), r = Math.floor(y / cell);
       return c < 0 || r < 0 || c >= cols || r >= rows ? -1 : r * cols + c;
     }
     function free(x, y, d, own, sAt) {
-      if (x < 0 || y < 0 || x > W || y > H) return false;
+      if (x < 0 || y < 0 || x > W2 || y > H2) return false;
       var c0 = Math.floor(x / cell), r0 = Math.floor(y / cell), d2 = d * d;
       for (var r = r0 - 1; r <= r0 + 1; r++) for (var c = c0 - 1; c <= c0 + 1; c++) {
         if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
@@ -8960,7 +9600,7 @@ function graphFields() {
       }
       return true;
     }
-    tryLine(W / 2 + 0.37, H / 2 + 0.41);
+    tryLine(W2 / 2 + 0.37, H2 / 2 + 0.41);
     var tried = {};
     for (var pass = 0; pass < 4 && budget > 0; pass++) {
       while (queue.length && budget > 0) {
@@ -8968,7 +9608,7 @@ function graphFields() {
         tryLine(sd[0], sd[1]);
       }
       var more = false;
-      for (var gy = dsep / 2; gy < H && budget > 0; gy += dsep) for (var gx = dsep / 2; gx < W; gx += dsep) {
+      for (var gy = dsep / 2; gy < H2 && budget > 0; gy += dsep) for (var gx = dsep / 2; gx < W2; gx += dsep) {
         var key = gx + "," + gy;
         if (tried[key] || !free(gx, gy, dsep, null, 0)) continue;
         tried[key] = true;
@@ -9109,14 +9749,14 @@ function graph3d() {
           if (q2[3] === void 0) more.push(q2);
         });
       });
-      var base = NU * NV, P2 = new Float32Array(pos.length + more.length * 3), M2 = new Float32Array(mesh.length + more.length * 2);
+      var base3 = NU * NV, P2 = new Float32Array(pos.length + more.length * 3), M2 = new Float32Array(mesh.length + more.length * 2);
       P2.set(pos);
       M2.set(mesh);
       var k = 0;
       extra.forEach(function(poly) {
         var ids = poly.map(function(q2) {
           if (q2[3] !== void 0) return q2[3];
-          var id = base + k++;
+          var id = base3 + k++;
           P2[3 * id] = q2[0];
           P2[3 * id + 1] = q2[1];
           P2[3 * id + 2] = q2[2];
@@ -9147,7 +9787,7 @@ function graph3d() {
   }
   var TETS = [[0, 1, 3, 7], [0, 3, 2, 7], [0, 2, 6, 7], [0, 6, 4, 7], [0, 4, 5, 7], [0, 5, 1, 7]];
   var EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
-  function sample(F, E, box, n) {
+  function sample(F2, E, box, n) {
     var N = n + 1, vals = new Float64Array(N * N * N);
     var dx = (box.xMax - box.xMin) / n, dy = (box.yMax - box.yMin) / n, dz = (box.zMax - box.zMin) / n;
     for (var k = 0, p = 0; k < N; k++) for (var j = 0; j < N; j++) for (var i = 0; i < N; i++, p++) {
@@ -9156,7 +9796,7 @@ function graph3d() {
       E.z = box.zMin + dz * k;
       E.r = Math.hypot(E.x, E.y);
       E.theta = Math.atan2(E.y, E.x);
-      var v = F(E);
+      var v = F2(E);
       vals[p] = isFinite(v) ? v : NaN;
     }
     E.x = 0;
@@ -9166,11 +9806,11 @@ function graph3d() {
     E.theta = 0;
     return vals;
   }
-  function implicit(F, E, box, n, level, grid2) {
-    level = level || 0;
-    var N = n + 1, src = grid2 || sample(F, E, box, n);
-    var vals = level ? src.map(function(v) {
-      return v - level;
+  function implicit(F2, E, box, n, level2, grid2) {
+    level2 = level2 || 0;
+    var N = n + 1, src = grid2 || sample(F2, E, box, n);
+    var vals = level2 ? src.map(function(v) {
+      return v - level2;
     }) : src;
     var dx = (box.xMax - box.xMin) / n, dy = (box.yMax - box.yMin) / n, dz = (box.zMax - box.zMin) / n;
     var at = function(i2, j2, k2) {
@@ -9219,7 +9859,7 @@ function graph3d() {
         E.z = box.zMin + dz * (k + ((qa >> 2 & 1) + ((qb >> 2 & 1) - (qa >> 2 & 1)) * f));
         E.r = Math.hypot(E.x, E.y);
         E.theta = Math.atan2(E.y, E.x);
-        var mid = F(E) - level;
+        var mid = F2(E) - level2;
         if (!(Math.abs(mid) <= Math.min(Math.abs(wa), Math.abs(wb)) + 1e-9 * Math.max(Math.abs(wa), Math.abs(wb)))) pole = true;
       }
       if (pole) continue;
@@ -9277,7 +9917,7 @@ function graph3d() {
     if (run.length) runs.push(run);
     return runs;
   }
-  function values(m, F, E, uv) {
+  function values(m, F2, E, uv) {
     var n = m.pos.length / 3, w = new Float32Array(n);
     for (var p = 0; p < n; p++) {
       var x = m.pos[3 * p], y = m.pos[3 * p + 1], z = m.pos[3 * p + 2];
@@ -9290,7 +9930,7 @@ function graph3d() {
         E.u = m.mesh[2 * p];
         E.v = m.mesh[2 * p + 1];
       }
-      var v = F(E);
+      var v = F2(E);
       w[p] = isFinite(v) ? v : NaN;
     }
     E.x = 0;
@@ -9378,17 +10018,17 @@ function graph3d() {
     }
     return out;
   }
-  function slice(F, E, box, axis, c, n) {
+  function slice(F2, E, box, axis, c, n) {
     var m = explicit(function(E2) {
       E2[axis] = c;
       E2.r = Math.hypot(E2.x, E2.y);
       E2.theta = Math.atan2(E2.y, E2.x);
-      return isFinite(F(E2)) ? c : NaN;
+      return isFinite(F2(E2)) ? c : NaN;
     }, E, box, axis, n);
-    values(m, F, E);
+    values(m, F2, E);
     return m;
   }
-  function cloud(F, E, box, n) {
+  function cloud(F2, E, box, n) {
     var pos = [], w = [];
     for (var k = 0; k < n; k++) for (var j = 0; j < n; j++) for (var i = 0; i < n; i++) {
       var x = box.xMin + (box.xMax - box.xMin) * (i + 0.5) / n, y = box.yMin + (box.yMax - box.yMin) * (j + 0.5) / n, z = box.zMin + (box.zMax - box.zMin) * (k + 0.5) / n;
@@ -9397,7 +10037,7 @@ function graph3d() {
       E.z = z;
       E.r = Math.hypot(x, y);
       E.theta = Math.atan2(y, x);
-      var v = F(E);
+      var v = F2(E);
       if (isFinite(v)) {
         pos.push(x, y, z);
         w.push(v);
@@ -9447,8 +10087,8 @@ function graph3d() {
       project: function(p) {
         var x = p[0], y = p[1], z = p[2];
         var X = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12], Y = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
-        var Z = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14], W = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
-        return [(X / W * 0.5 + 0.5) * w, (0.5 - Y / W * 0.5) * h, Z / W];
+        var Z = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14], W2 = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+        return [(X / W2 * 0.5 + 0.5) * w, (0.5 - Y / W2 * 0.5) * h, Z / W2];
       }
     };
   }
@@ -9534,11 +10174,11 @@ function graph3d() {
       var pos = [], other = [], side = [], idx = [], w = wOf ? [] : null;
       runs.forEach(function(run) {
         for (var i = 0; i < run.length - 1; i++) {
-          var a = run[i], b = run[i + 1], base = pos.length / 3;
+          var a = run[i], b = run[i + 1], base3 = pos.length / 3;
           pos.push(a[0], a[1], a[2], a[0], a[1], a[2], b[0], b[1], b[2], b[0], b[1], b[2]);
           other.push(b[0], b[1], b[2], b[0], b[1], b[2], a[0], a[1], a[2], a[0], a[1], a[2]);
           side.push(1, -1, -1, 1);
-          idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          idx.push(base3, base3 + 1, base3 + 2, base3, base3 + 2, base3 + 3);
           if (w) {
             var wa = wOf(a), wb = wOf(b);
             w.push(wa, wa, wb, wb);
@@ -9562,12 +10202,12 @@ function graph3d() {
     }
     function draw(cam, box, w, h, dpr, surfaces, lineSets, dots) {
       if (!init()) return null;
-      var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
-      if (cv.width !== W || cv.height !== H) {
-        cv.width = W;
-        cv.height = H;
+      var W2 = Math.max(1, Math.round(w * dpr)), H2 = Math.max(1, Math.round(h * dpr));
+      if (cv.width !== W2 || cv.height !== H2) {
+        cv.width = W2;
+        cv.height = H2;
       }
-      gl.viewport(0, 0, W, H);
+      gl.viewport(0, 0, W2, H2);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.DEPTH_TEST);
@@ -9625,7 +10265,7 @@ function graph3d() {
       }
       gl.useProgram(progL);
       gl.uniformMatrix4fv(U.luMVP, false, mvp);
-      gl.uniform2f(U.luViewport, W / 2, H / 2);
+      gl.uniform2f(U.luViewport, W2 / 2, H2 / 2);
       gl.uniform3fv(U.luMin, mn);
       gl.uniform3fv(U.luMax, mx);
       lineSets.forEach(function(l) {
@@ -9678,32 +10318,89 @@ function graph3d() {
 }
 
 // client/src/utils/graphPage.js
-var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin", "colorBar"];
+var GRAPH_COLORS = {
+  light: ["#c74440", "#2d70b3", "#388c46", "#6042a6", "#fa7e19", "#000000"],
+  dark: ["#ff6b64", "#5aa9ff", "#4cc36a", "#b18cff", "#ffa447", "#ffffff"]
+};
+var GRAPH_FIELDS = ["expressions", "view", "equalScale", "grid", "axes", "axisNumbers", "xLabel", "yLabel", "zLabel", "theme", "background", "showSliders", "lockView", "dims", "camera", "spin", "colorBar", "xScale", "yScale"];
 var DEFAULT_VIEW = { xMin: -10, xMax: 10, yMin: -7, yMax: 7 };
 var DEFAULT_VIEW_3D = { xMin: -10, xMax: 10, yMin: -10, yMax: 10, zMin: -10, zMax: 10 };
 var DEFAULT_CAMERA = { turn: 35, tilt: 25 };
-function validView(v, dims3) {
-  const base = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW;
-  const n = (k) => v && isFinite(+v[k]) ? +v[k] : base[k];
+function newExpressionId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+function defaultGraph(dark) {
+  const colors = GRAPH_COLORS[dark ? "dark" : "light"];
+  return {
+    expressions: [
+      { id: newExpressionId(), text: "y = a sin(bx)", color: colors[0] },
+      { id: newExpressionId(), text: "a = 2", slider: { min: -5, max: 5, step: 0.1 } },
+      { id: newExpressionId(), text: "b = 1", slider: { min: 0, max: 4, step: 0.05 } }
+    ],
+    view: { ...DEFAULT_VIEW },
+    equalScale: true,
+    grid: true,
+    axes: true,
+    axisNumbers: true,
+    xLabel: "",
+    yLabel: "",
+    theme: dark ? "dark" : "light",
+    background: "transparent",
+    showSliders: true,
+    lockView: false
+  };
+}
+function defaultGraph3d(dark) {
+  const colors = GRAPH_COLORS[dark ? "dark" : "light"];
+  return {
+    ...defaultGraph(dark),
+    dims: 3,
+    expressions: [
+      { id: newExpressionId(), text: "z = a sin(bx) cos(by)", color: colors[1] },
+      { id: newExpressionId(), text: "a = 4", slider: { min: -10, max: 10, step: 0.1 } },
+      { id: newExpressionId(), text: "b = 0.5", slider: { min: 0, max: 2, step: 0.05 } }
+    ],
+    view: { ...DEFAULT_VIEW_3D },
+    camera: { ...DEFAULT_CAMERA },
+    zLabel: "",
+    spin: false
+  };
+}
+function logRange(lo, hi) {
+  if (lo > 0 && hi > lo) return [lo, hi];
+  if (hi > 0) return [hi / 1e3, hi];
+  return [0.1, 100];
+}
+function validView(v, dims3, { xLog = false, yLog = false } = {}) {
+  const base3 = dims3 ? DEFAULT_VIEW_3D : DEFAULT_VIEW;
+  const n = (k) => v && isFinite(+v[k]) ? +v[k] : base3[k];
   let { xMin, xMax, yMin, yMax } = { xMin: n("xMin"), xMax: n("xMax"), yMin: n("yMin"), yMax: n("yMax") };
-  if (!(xMax > xMin)) ({ xMin, xMax } = base);
-  if (!(yMax > yMin)) ({ yMin, yMax } = base);
+  if (!(xMax > xMin)) ({ xMin, xMax } = base3);
+  if (!(yMax > yMin)) ({ yMin, yMax } = base3);
+  if (xLog && !dims3) [xMin, xMax] = logRange(xMin, xMax);
+  if (yLog && !dims3) [yMin, yMax] = logRange(yMin, yMax);
   if (!dims3) return { xMin, xMax, yMin, yMax };
   let { zMin, zMax } = { zMin: n("zMin"), zMax: n("zMax") };
-  if (!(zMax > zMin)) ({ zMin, zMax } = base);
+  if (!(zMax > zMin)) ({ zMin, zMax } = base3);
   return { xMin, xMax, yMin, yMax, zMin, zMax };
 }
-function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false } = {}) {
+function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data } = {}) {
   const config = {};
   for (const key of GRAPH_FIELDS) if (el[key] !== void 0) config[key] = el[key];
   config.expressions = Array.isArray(el.expressions) ? el.expressions : [];
-  config.view = validView(el.view, el.dims === 3);
+  config.view = validView(el.view, el.dims === 3, { xLog: el.xScale === "log", yLog: el.yScale === "log" });
+  const rows = data !== void 0 ? data : dataSource && hasDataLines(el) ? dataSource(el) : null;
+  if (rows) config.data = rows;
   if (el.dims === 3) {
     const c = el.camera || {};
     config.camera = { turn: isFinite(+c.turn) ? +c.turn : DEFAULT_CAMERA.turn, tilt: isFinite(+c.tilt) ? Math.max(-89, Math.min(89, +c.tilt)) : DEFAULT_CAMERA.tilt };
   }
   return { ...config, snapshotKey, print, editor, showAll: showAll || print || editor };
 }
+function hasDataLines(el) {
+  return Array.isArray(el.expressions) && el.expressions.some((e) => e && e.data && typeof e.data === "object");
+}
+var dataSource = null;
 var pageCode = null;
 function graphPageHtml(el, opts = {}) {
   const config = graphConfig(el, opts);
@@ -10184,9 +10881,31 @@ var EQUATION_COLORS = {
 };
 var LABEL_STYLES = ["callout", "brace", "sentence"];
 var INTERACTIONS = ["steps", "hover", "both"];
+var EQUATION_SIZE = { w: 760, h: 340 };
 var MAX_TERMS = 40;
 var TERM_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 var COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+function defaultEquation(dark) {
+  const c = EQUATION_COLORS[dark ? "dark" : "light"];
+  return {
+    latex: "\\term{t1}{p(\\theta \\mid D)} = \\frac{\\term{t2}{p(D \\mid \\theta)}\\,\\term{t3}{p(\\theta)}}{\\term{t4}{p(D)}}",
+    terms: [
+      { id: "t1", label: "Posterior", note: "What you believe about θ after seeing the data", color: c[3] },
+      { id: "t2", label: "Likelihood", note: "How probable the data are for a given θ", color: c[0] },
+      { id: "t3", label: "Prior", note: "What you believed about θ beforehand", color: c[4] },
+      { id: "t4", label: "Evidence", note: "How probable the data are overall", color: c[1] }
+    ],
+    labelStyle: "callout",
+    sentence: "[What you believe after the data](t1) is [how well θ explains the data](t2) times [what you believed before](t3), divided by [how probable the data are overall](t4).",
+    interaction: "steps",
+    stepStart: 1,
+    showAll: true,
+    keepTinted: false,
+    fontSize: 44,
+    labelSize: 18,
+    textColor: dark ? "#ffffff" : "#1a1a1a"
+  };
+}
 var ARGS = {
   frac: "mm",
   dfrac: "mm",
@@ -10406,10 +11125,10 @@ function parseLatex(src) {
       const g = group();
       return { list: g.inner, end: g.end };
     }
-    const a = base();
+    const a = base3();
     return a ? { list: mkList([a], a.start, a.end, false), end: a.end } : null;
   }
-  function base() {
+  function base3() {
     const tok = toks[p];
     if (tok.t === "{") {
       const g = group();
@@ -10425,7 +11144,7 @@ function parseLatex(src) {
       p++;
       return null;
     }
-    const b = tok.t === "^" || tok.t === "_" ? null : base();
+    const b = tok.t === "^" || tok.t === "_" ? null : base3();
     if (b && !b.wrap) return b;
     const scripts = [];
     let end = b ? b.end : tok.start, any = false;
@@ -11175,16 +11894,16 @@ function drawDiagram(m, o = {}) {
     });
     return d;
   };
-  const stroke = (d, ink, extra = "", w = lw) => `<path d="${d}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
-  const label = (tex, X, Y, size, ink) => {
+  const stroke = (d, ink2, extra = "", w = lw) => `<path d="${d}" fill="none" stroke="${esc2(ink2)}" stroke-width="${n12(w)}" stroke-linecap="round" stroke-linejoin="round"${extra}/>`;
+  const label = (tex, X, Y, size, ink2) => {
     const b = texBox(tex, size);
     grow(X, Y, b.w / 2, b.h / 2);
     if (o.labels === "deck" || typeof o.labels === "function") {
       const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
       const inner = o.labels === "deck" ? `<span data-math-latex="${esc2(tex)}" style="font-family:${esc2(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
-      return `<foreignObject x="${n12(X - w / 2)}" y="${n12(Y - h / 2)}" width="${n12(w)}" height="${n12(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n12(size / 1.21)}px;color:${esc2(ink)}">${inner}</div></foreignObject>`;
+      return `<foreignObject x="${n12(X - w / 2)}" y="${n12(Y - h / 2)}" width="${n12(w)}" height="${n12(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n12(size / 1.21)}px;color:${esc2(ink2)}">${inner}</div></foreignObject>`;
     }
-    return texSvg(tex, X, Y, size, ink);
+    return texSvg(tex, X, Y, size, ink2);
   };
   const visible = (s) => !stepped || s <= o.step;
   const wrap = (s, lines, labels, revealPts, isVertex, id) => {
@@ -11210,24 +11929,24 @@ function drawDiagram(m, o = {}) {
     const s = e.step || 0;
     if (!visible(s)) continue;
     const t = FEYNMAN_TYPES[e.particle] || FEYNMAN_TYPES.plain;
-    const ink = e.color || o.ink || "#ffffff";
+    const ink2 = e.color || o.ink || "#ffffff";
     const loop = e.from === e.to;
     const trim = (id) => (KIND_R[shownKind(V[id], deg)] || 0) / g0.len;
     const t0 = loop ? 0 : Math.min(0.45, trim(e.from)), t1 = loop ? 1 : 1 - Math.min(0.45, trim(e.to));
     const g = t0 > 0 || t1 < 1 ? part(g0, t0, t1) : g0;
     let lines = "";
     if (o.editor && o.sel && o.sel.kind === "e" && o.sel.id === e.id) lines += `<path d="${P(basePoints(g0))}" fill="none" stroke="${esc2(o.accent)}" stroke-opacity=".32" stroke-width="${n12(14 * k)}" stroke-linecap="round"/>`;
-    if (t.deco === "wave") lines += stroke(P(wavePoints(g)), ink);
-    else if (t.deco === "wave2") lines += stroke(P(wavePoints(g, DBL)), ink) + stroke(P(wavePoints(g, -DBL)), ink);
-    else if (t.deco === "coil") lines += stroke(P(coilPoints(g)), ink);
-    else if (t.deco === "double") lines += stroke(P(basePoints(g, DBL)), ink, "", lw * 0.8) + stroke(P(basePoints(g, -DBL)), ink, "", lw * 0.8);
-    else if (t.dash === "dot") lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="0.1 ${n12(6 * k)}"`, lw * 1.45);
-    else if (t.dash) lines += stroke(P(basePoints(g)), ink, ` stroke-dasharray="${t.dash.split(" ").map((x) => n12(x * k)).join(" ")}"`);
-    else lines += stroke(P(basePoints(g)), ink);
+    if (t.deco === "wave") lines += stroke(P(wavePoints(g)), ink2);
+    else if (t.deco === "wave2") lines += stroke(P(wavePoints(g, DBL)), ink2) + stroke(P(wavePoints(g, -DBL)), ink2);
+    else if (t.deco === "coil") lines += stroke(P(coilPoints(g)), ink2);
+    else if (t.deco === "double") lines += stroke(P(basePoints(g, DBL)), ink2, "", lw * 0.8) + stroke(P(basePoints(g, -DBL)), ink2, "", lw * 0.8);
+    else if (t.dash === "dot") lines += stroke(P(basePoints(g)), ink2, ` stroke-dasharray="0.1 ${n12(6 * k)}"`, lw * 1.45);
+    else if (t.dash) lines += stroke(P(basePoints(g)), ink2, ` stroke-dasharray="${t.dash.split(" ").map((x) => n12(x * k)).join(" ")}"`);
+    else lines += stroke(P(basePoints(g)), ink2);
     if (t.arrow) {
       const [x, y, tx, ty] = g.at(0.5), X = x * u, Y = -y * u;
       const dx = tx * t.arrow, dy = -ty * t.arrow, nx = -dy, ny = dx, aL = 7.5 * k, aW = 5.4 * k;
-      lines += `<path d="M${n12(X + dx * aL)} ${n12(Y + dy * aL)}L${n12(X - dx * aL * 0.75 + nx * aW)} ${n12(Y - dy * aL * 0.75 + ny * aW)}L${n12(X - dx * aL * 0.75 - nx * aW)} ${n12(Y - dy * aL * 0.75 - ny * aW)}Z" fill="${esc2(ink)}"/>`;
+      lines += `<path d="M${n12(X + dx * aL)} ${n12(Y + dy * aL)}L${n12(X - dx * aL * 0.75 + nx * aW)} ${n12(Y - dy * aL * 0.75 + ny * aW)}L${n12(X - dx * aL * 0.75 - nx * aW)} ${n12(Y - dy * aL * 0.75 - ny * aW)}Z" fill="${esc2(ink2)}"/>`;
     }
     let labels = "";
     const amp = decoAmp(t), ms = e.momentumSide || -1, ls = e.labelSide || 1;
@@ -11241,18 +11960,18 @@ function drawDiagram(m, o = {}) {
       const a = pts[pts.length - 2], b = pts[pts.length - 1];
       const hx = (b[0] - a[0]) * u, hy = -(b[1] - a[1]) * u, hl = Math.hypot(hx, hy) || 1, ux = hx / hl, uy = hy / hl;
       const BX = b[0] * u, BY = -b[1] * u, hs = 6 * k;
-      labels += stroke(P(pts), ink, "", 1.4 * k);
-      labels += `<path d="M${n12(BX - ux * hs - uy * hs * 0.6)} ${n12(BY - uy * hs + ux * hs * 0.6)}L${n12(BX)} ${n12(BY)}L${n12(BX - ux * hs + uy * hs * 0.6)} ${n12(BY - uy * hs - ux * hs * 0.6)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.4 * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      labels += stroke(P(pts), ink2, "", 1.4 * k);
+      labels += `<path d="M${n12(BX - ux * hs - uy * hs * 0.6)} ${n12(BY - uy * hs + ux * hs * 0.6)}L${n12(BX)} ${n12(BY)}L${n12(BX - ux * hs + uy * hs * 0.6)} ${n12(BY - uy * hs - ux * hs * 0.6)}" fill="none" stroke="${esc2(ink2)}" stroke-width="${n12(1.4 * k)}" stroke-linecap="round" stroke-linejoin="round"/>`;
       const [x, y, tx, ty] = g.at(0.5), nX = -ty * ms, nY = tx * ms;
       const bx = texBox(e.momentum, fs * 0.85), ext = (Math.abs(nX) * bx.w / 2 + Math.abs(nY) * bx.h / 2) / u;
       const L = off + 0.1 + ext;
-      labels += label(e.momentum, (x + nX * L) * u, -(y + nY * L) * u, fs * 0.85, ink);
+      labels += label(e.momentum, (x + nX * L) * u, -(y + nY * L) * u, fs * 0.85, ink2);
     }
     if (e.label) {
       const [x, y, tx, ty] = g.at(0.5), nX = -ty * ls, nY = tx * ls;
       const bx = texBox(e.label, fs), ext = (Math.abs(nX) * bx.w / 2 + Math.abs(nY) * bx.h / 2) / u;
       const L = amp + 0.13 + ext + (e.momentum && ms === ls ? 0.5 : 0);
-      labels += label(e.label, (x + nX * L) * u, -(y + nY * L) * u, fs, ink);
+      labels += label(e.label, (x + nX * L) * u, -(y + nY * L) * u, fs, ink2);
     }
     if (o.editor) labels += `<path class="pxfx-hit" data-e="${esc2(e.id)}" d="${P(basePoints(g0), false)}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="${n12(16 * k)}" pointer-events="stroke"/>`;
     out += wrap(s, lines, labels, basePoints(g0), false, e.id);
@@ -11261,25 +11980,25 @@ function drawDiagram(m, o = {}) {
   for (const v of m.vertices) {
     const s = vertexStep(m, v);
     if (!visible(s)) continue;
-    const kind = shownKind(v, deg), ink = v.color || o.ink || "#ffffff", X = v.x * u, Y = -v.y * u;
+    const kind = shownKind(v, deg), ink2 = v.color || o.ink || "#ffffff", X = v.x * u, Y = -v.y * u;
     let mark = "";
     if (kind === "dot") {
-      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(4.3 * k)}" fill="${esc2(ink)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(4.3 * k)}" fill="${esc2(ink2)}"/>`;
       grow(X, Y, 4.3 * k);
     } else if (kind === "empty") {
       const r = KIND_R.empty * u;
-      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.8 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink2)}" stroke-width="${n12(1.8 * k)}"/>`;
       grow(X, Y, r);
     } else if (kind === "square") {
-      mark += `<rect x="${n12(X - 4.6 * k)}" y="${n12(Y - 4.6 * k)}" width="${n12(9.2 * k)}" height="${n12(9.2 * k)}" fill="${esc2(ink)}"/>`;
+      mark += `<rect x="${n12(X - 4.6 * k)}" y="${n12(Y - 4.6 * k)}" width="${n12(9.2 * k)}" height="${n12(9.2 * k)}" fill="${esc2(ink2)}"/>`;
       grow(X, Y, 4.6 * k);
     } else if (kind === "crossed") {
       const r = KIND_R.crossed * u, c = r * 0.7;
-      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink)}" stroke-width="${n12(1.8 * k)}"/><path d="M${n12(X - c)} ${n12(Y - c)}L${n12(X + c)} ${n12(Y + c)}M${n12(X - c)} ${n12(Y + c)}L${n12(X + c)} ${n12(Y - c)}" stroke="${esc2(ink)}" stroke-width="${n12(1.6 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="none" stroke="${esc2(ink2)}" stroke-width="${n12(1.8 * k)}"/><path d="M${n12(X - c)} ${n12(Y - c)}L${n12(X + c)} ${n12(Y + c)}M${n12(X - c)} ${n12(Y + c)}L${n12(X + c)} ${n12(Y - c)}" stroke="${esc2(ink2)}" stroke-width="${n12(1.6 * k)}"/>`;
       grow(X, Y, r);
     } else if (kind === "blob") {
       const r = KIND_R.blob * u;
-      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="${esc2(ink)}" fill-opacity=".22" stroke="${esc2(ink)}" stroke-width="${n12(2 * k)}"/>`;
+      mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(r)}" fill="${esc2(ink2)}" fill-opacity=".22" stroke="${esc2(ink2)}" stroke-width="${n12(2 * k)}"/>`;
       grow(X, Y, r);
     } else if (o.editor) mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="3" fill="none" stroke="${esc2(o.mark)}" stroke-width="1.2"/>`;
     let labels = "";
@@ -11287,7 +12006,7 @@ function drawDiagram(m, o = {}) {
       const d = labelDirection(m, V, v);
       const bx = texBox(v.label, fs), ext = (Math.abs(d[0]) * bx.w / 2 + Math.abs(d[1]) * bx.h / 2) / u;
       const L = (KIND_R[kind] || (kind === "none" ? 0 : 0.07)) + 0.12 + ext;
-      labels += label(v.label, (v.x + d[0] * L) * u, -(v.y + d[1] * L) * u, fs, ink);
+      labels += label(v.label, (v.x + d[0] * L) * u, -(v.y + d[1] * L) * u, fs, ink2);
     }
     if (o.editor) {
       if (warn.has(v.id)) mark += `<circle cx="${n12(X)}" cy="${n12(Y)}" r="${n12(13 * k)}" fill="none" stroke="${esc2(o.warnColor)}" stroke-width="2" stroke-dasharray="4 3"><title>Fermion arrows don’t flow through this vertex</title></circle>`;
@@ -11724,8 +12443,8 @@ var esc3 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace
 var n13 = (v) => String(Math.round(v * 10) / 10);
 var n2 = (v) => String(Math.round(v * 100) / 100);
 var clamp2 = (v, a, b) => Math.min(b, Math.max(a, v));
-function flowColorFor(ink) {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink || "");
+function flowColorFor(ink2) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink2 || "");
   const light = !m || 0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16) > 140;
   return light ? "#ffbf47" : "#c26a00";
 }
@@ -11760,9 +12479,9 @@ function maxStep2(m) {
   for (const v of m.vertices) if (v.step != null) s = Math.max(s, v.step);
   return s;
 }
-function partShape(part2, len2, u, k, lw, ink, style) {
-  const L = (x1, y1, x2, y2, w = lw) => `<path d="M${n13(x1)} ${n13(y1)}L${n13(x2)} ${n13(y2)}" stroke="${esc3(ink)}" stroke-width="${n13(w)}" stroke-linecap="round" fill="none"/>`;
-  const circ = (cx, r) => `<circle cx="${n13(cx)}" cy="0" r="${n13(r)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+function partShape(part2, len2, u, k, lw, ink2, style) {
+  const L = (x1, y1, x2, y2, w = lw) => `<path d="M${n13(x1)} ${n13(y1)}L${n13(x2)} ${n13(y2)}" stroke="${esc3(ink2)}" stroke-width="${n13(w)}" stroke-linecap="round" fill="none"/>`;
+  const circ = (cx, r) => `<circle cx="${n13(cx)}" cy="0" r="${n13(r)}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}"/>`;
   const b = part2 === "wire" ? 0 : Math.max(Math.min(BODY * u, len2 - 0.3 * u), Math.min(len2 * 0.7, 0.5 * u));
   const a = (len2 - b) / 2, c = len2 / 2;
   const leads = () => L(0, 0, a, 0) + L(a + b, 0, len2, 0);
@@ -11771,12 +12490,12 @@ function partShape(part2, len2, u, k, lw, ink, style) {
     out.body = L(0, 0, len2, 0);
     out.ext = [0.04 * u, 0.04 * u];
   } else if (part2 === "resistor") {
-    if (style === "iec") out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.14 * u)}" width="${n13(b)}" height="${n13(0.28 * u)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+    if (style === "iec") out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.14 * u)}" width="${n13(b)}" height="${n13(0.28 * u)}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}"/>`;
     else {
       const h = 0.16 * u;
       let d = `M${n13(a)} 0`;
       for (let i = 0; i < 6; i++) d += `L${n13(a + (2 * i + 1) * b / 12)} ${n13(i % 2 ? h : -h)}`;
-      out.body = leads() + `<path d="${d}L${n13(a + b)} 0" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>`;
+      out.body = leads() + `<path d="${d}L${n13(a + b)} 0" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>`;
     }
     out.ext = [0.17 * u, 0.17 * u];
   } else if (part2 === "capacitor") {
@@ -11785,13 +12504,13 @@ function partShape(part2, len2, u, k, lw, ink, style) {
     out.ext = [p, p];
   } else if (part2 === "inductor") {
     if (style === "iec") {
-      out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.11 * u)}" width="${n13(b)}" height="${n13(0.22 * u)}" fill="${esc3(ink)}"/>`;
+      out.body = leads() + `<rect x="${n13(a)}" y="${n13(-0.11 * u)}" width="${n13(b)}" height="${n13(0.22 * u)}" fill="${esc3(ink2)}"/>`;
       out.ext = [0.12 * u, 0.12 * u];
     } else {
       const r = b / 8;
       let d = `M${n13(a)} 0`;
       for (let i = 0; i < 4; i++) d += `A${n13(r)} ${n13(r)} 0 0 1 ${n13(a + (i + 1) * 2 * r)} 0`;
-      out.body = leads() + `<path d="${d}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw)}"/>`;
+      out.body = leads() + `<path d="${d}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}"/>`;
       out.ext = [r + 0.02 * u, 0.04 * u];
     }
   } else if (part2 === "battery") {
@@ -11815,30 +12534,30 @@ function partShape(part2, len2, u, k, lw, ink, style) {
         const t = i / 20;
         d += `${i ? "L" : "M"}${n13(c - 0.17 * u + t * 0.34 * u)} ${n13(-0.1 * u * Math.sin(2 * Math.PI * t))}`;
       }
-      out.body += `<path d="${d}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.85)}"/>`;
+      out.body += `<path d="${d}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw * 0.85)}"/>`;
     } else if (part2 === "isource") {
       if (style === "iec") out.body += L(c, -r, c, r);
-      else out.body += L(c - 0.17 * u, 0, c + 0.08 * u, 0) + `<path d="M${n13(c + 0.19 * u)} 0L${n13(c + 0.05 * u)} ${n13(-0.08 * u)}L${n13(c + 0.05 * u)} ${n13(0.08 * u)}Z" fill="${esc3(ink)}"/>`;
+      else out.body += L(c - 0.17 * u, 0, c + 0.08 * u, 0) + `<path d="M${n13(c + 0.19 * u)} 0L${n13(c + 0.05 * u)} ${n13(-0.08 * u)}L${n13(c + 0.05 * u)} ${n13(0.08 * u)}Z" fill="${esc3(ink2)}"/>`;
     } else if (part2 === "lamp") {
       const q = 0.21 * u;
       out.body += L(c - q, -q, c + q, q, lw * 0.9) + L(c - q, q, c + q, -q, lw * 0.9);
     } else out.glyphs.push([c, 0, CIRCUIT_PARTS[part2].meter, 0.3 * u, 600]);
   } else if (part2 === "switch") {
     const tr = 0.06 * u, x0 = a, x1 = a + b, ang = 28 * Math.PI / 180;
-    const ring = (x) => `<circle cx="${n13(x)}" cy="0" r="${n13(tr)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.8)}"/>`;
+    const ring = (x) => `<circle cx="${n13(x)}" cy="0" r="${n13(tr)}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw * 0.8)}"/>`;
     out.body = L(0, 0, x0 - tr, 0) + L(x1 + tr, 0, len2, 0) + ring(x0) + ring(x1);
     out.blade = (closed) => closed ? L(x0, 0, x1, 0) : L(x0, 0, x0 + b * Math.cos(ang), -b * Math.sin(ang));
     out.ext = [b * Math.sin(ang) + 0.04 * u, 0.08 * u];
   } else if (part2 === "diode") {
     const t = 0.2 * u, h = 0.22 * u;
-    out.body = L(0, 0, c - t, 0) + L(c + t, 0, len2, 0) + `<path d="M${n13(c - t)} ${n13(-h)}L${n13(c - t)} ${n13(h)}L${n13(c + t)} 0Z" fill="${style === "iec" ? "none" : esc3(ink)}" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>` + L(c + t, -h, c + t, h);
+    out.body = L(0, 0, c - t, 0) + L(c + t, 0, len2, 0) + `<path d="M${n13(c - t)} ${n13(-h)}L${n13(c - t)} ${n13(h)}L${n13(c + t)} 0Z" fill="${style === "iec" ? "none" : esc3(ink2)}" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}" stroke-linejoin="round"/>` + L(c + t, -h, c + t, h);
     out.ext = [h, h];
   }
   return out;
 }
 function drawCircuit(m, o = {}) {
   const u = o.U || CIRCUIT_UNIT, k = u / 48, lw = (o.lw || LW) * k, fs = LABEL2 * u;
-  const ink = o.ink || "#ffffff", flowColor = o.flowColor || flowColorFor(ink), V = vertexMap2(m);
+  const ink2 = o.ink || "#ffffff", flowColor = o.flowColor || flowColorFor(ink2), V = vertexMap2(m);
   const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
   const step = deck != null ? null : o.step ?? null;
   const state = step == null ? Infinity : step;
@@ -11856,11 +12575,11 @@ function drawCircuit(m, o = {}) {
     if (o.labels === "deck" || typeof o.labels === "function") {
       const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
       const inner = o.labels === "deck" ? `<span data-math-latex="${esc3(tex)}" style="font-family:${esc3(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
-      return `<foreignObject x="${n13(X - w / 2)}" y="${n13(Y - h / 2)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n13(size / 1.21)}px;color:${esc3(ink)}">${inner}</div></foreignObject>`;
+      return `<foreignObject x="${n13(X - w / 2)}" y="${n13(Y - h / 2)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n13(size / 1.21)}px;color:${esc3(ink2)}">${inner}</div></foreignObject>`;
     }
-    return texSvg(tex, X, Y, size, ink);
+    return texSvg(tex, X, Y, size, ink2);
   };
-  const plain2 = (t, X, Y, size, color2 = ink, weight = 400) => {
+  const plain2 = (t, X, Y, size, color2 = ink2, weight = 400) => {
     grow(X, Y, Math.max(String(t).length * size * 0.5, size * 0.4) / 2, size * 0.55);
     return `<text x="${n13(X)}" y="${n13(Y + size * 0.34)}" text-anchor="middle" font-family="${esc3(MATH_FONT)}" font-size="${n13(size)}" font-weight="${weight}" fill="${esc3(color2)}">${esc3(t)}</text>`;
   };
@@ -11893,7 +12612,7 @@ function drawCircuit(m, o = {}) {
     const X1 = A.x * u, Y1 = -A.y * u, X2 = B.x * u, Y2 = -B.y * u, dx = X2 - X1, dy = Y2 - Y1, len2 = Math.hypot(dx, dy) || 1;
     const ux = dx / len2, uy = dy / len2, ang = Math.atan2(dy, dx) * 180 / Math.PI;
     const G2 = (sx, sy) => [X1 + ux * sx - uy * sy, Y1 + uy * sx + ux * sy];
-    const sh = partShape(e.part, len2, u, k, lw, ink, o.style);
+    const sh = partShape(e.part, len2, u, k, lw, ink2, o.style);
     let body = sh.body;
     if (sh.blade) {
       if (deck != null && e.flipAt != null) body += `<g data-fx-in="0-${e.flipAt - 1}">${sh.blade(!!e.closed)}</g><g data-fx-in="${e.flipAt}-">${sh.blade(!e.closed)}</g>`;
@@ -11908,7 +12627,7 @@ function drawCircuit(m, o = {}) {
     lines += `<g transform="translate(${n13(X1)} ${n13(Y1)}) rotate(${n13(ang)})">${body}</g>`;
     for (const [gxs, gys, t, size, weight] of sh.glyphs) {
       const [gx, gy] = G2(gxs, gys);
-      lines += plain2(t, gx, gy, size, ink, weight || 400);
+      lines += plain2(t, gx, gy, size, ink2, weight || 400);
     }
     let labels = "";
     const side = e.flip ? 1 : -1;
@@ -11934,7 +12653,7 @@ function drawCircuit(m, o = {}) {
     if (e.current) {
       const sx = e.part === "wire" ? len2 * 0.62 : len2 - sh.a / 2, hs = 0.12 * u;
       const [tx, ty] = G2(sx + hs * 0.6, 0), [b1x, b1y] = G2(sx - hs * 0.6, -hs * 0.65), [b2x, b2y] = G2(sx - hs * 0.6, hs * 0.65);
-      labels += `<path d="M${n13(tx)} ${n13(ty)}L${n13(b1x)} ${n13(b1y)}L${n13(b2x)} ${n13(b2y)}Z" fill="${esc3(ink)}"/>`;
+      labels += `<path d="M${n13(tx)} ${n13(ty)}L${n13(b1x)} ${n13(b1y)}L${n13(b2x)} ${n13(b2y)}Z" fill="${esc3(ink2)}"/>`;
       const [x, y] = place(sx, side, 0.16 * u, texBox(e.current, fs * 0.85));
       labels += label(e.current, x, y, fs * 0.85);
     }
@@ -11958,15 +12677,15 @@ function drawCircuit(m, o = {}) {
     let mark = "", labels = "";
     if (v.ground) {
       const g = 0.3 * u;
-      mark += `<g transform="translate(${n13(X)} ${n13(Y)}) rotate(${GROUND_DIRS[v.ground] ?? 0})" stroke="${esc3(ink)}" stroke-width="${n13(lw)}" stroke-linecap="round" fill="none"><path d="M0 0V${n13(g)}M${n13(-0.27 * u)} ${n13(g)}H${n13(0.27 * u)}M${n13(-0.17 * u)} ${n13(g + 0.09 * u)}H${n13(0.17 * u)}M${n13(-0.07 * u)} ${n13(g + 0.18 * u)}H${n13(0.07 * u)}"/></g>`;
+      mark += `<g transform="translate(${n13(X)} ${n13(Y)}) rotate(${GROUND_DIRS[v.ground] ?? 0})" stroke="${esc3(ink2)}" stroke-width="${n13(lw)}" stroke-linecap="round" fill="none"><path d="M0 0V${n13(g)}M${n13(-0.27 * u)} ${n13(g)}H${n13(0.27 * u)}M${n13(-0.17 * u)} ${n13(g + 0.09 * u)}H${n13(0.17 * u)}M${n13(-0.07 * u)} ${n13(g + 0.18 * u)}H${n13(0.07 * u)}"/></g>`;
       const d = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[v.ground];
       grow(X + d[0] * 0.48 * u, Y + d[1] * 0.48 * u, 0.27 * u);
     }
     if (kind === "dot") {
-      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(3.4 * k)}" fill="${esc3(ink)}"/>`;
+      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(3.4 * k)}" fill="${esc3(ink2)}"/>`;
       grow(X, Y, 3.4 * k);
     } else if (kind === "terminal") {
-      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(4.2 * k)}" fill="none" stroke="${esc3(ink)}" stroke-width="${n13(lw * 0.9)}"/>`;
+      mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="${n13(4.2 * k)}" fill="none" stroke="${esc3(ink2)}" stroke-width="${n13(lw * 0.9)}"/>`;
       grow(X, Y, 4.2 * k);
     } else if (o.editor && conn[v.id] <= 2) mark += `<circle cx="${n13(X)}" cy="${n13(Y)}" r="2.6" fill="none" stroke="${esc3(o.mark)}" stroke-width="1.1"/>`;
     if (v.label) {
@@ -12039,8 +12758,8 @@ function drawCircuit(m, o = {}) {
     const cs = CAPTION2 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
     const one = (n, cls) => {
       const text = m.captions[n];
-      if (o.labels === "text") return `<text${cls} x="${n13(cx)}" y="${n13(y + cs)}" text-anchor="middle" font-size="${n13(cs)}" fill="${esc3(ink)}">${esc3(text)}</text>`;
-      return `<foreignObject${cls} x="${n13(cx - w / 2)}" y="${n13(y)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n13(cs)}px;line-height:1.3;color:${esc3(ink)}">${esc3(text)}</div></foreignObject>`;
+      if (o.labels === "text") return `<text${cls} x="${n13(cx)}" y="${n13(y + cs)}" text-anchor="middle" font-size="${n13(cs)}" fill="${esc3(ink2)}">${esc3(text)}</text>`;
+      return `<foreignObject${cls} x="${n13(cx - w / 2)}" y="${n13(y)}" width="${n13(w)}" height="${n13(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n13(cs)}px;line-height:1.3;color:${esc3(ink2)}">${esc3(text)}</div></foreignObject>`;
     };
     if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
     else {
@@ -12477,16 +13196,16 @@ function rowOf(tt, state) {
   return tt.rows.findIndex((r) => tt.ins.every((p, i) => state.at[`${p.id}.out`] === r[i]));
 }
 function logicDepths(m) {
-  const find = netsOf(m), level = {};
-  for (const p of m.parts) for (const x of pinsOf(p)) if (x.io === "out" && !LOGIC_PARTS[p.kind].gate) level[find(`${p.id}.${x.name}`)] = 0;
+  const find = netsOf(m), level2 = {};
+  for (const p of m.parts) for (const x of pinsOf(p)) if (x.io === "out" && !LOGIC_PARTS[p.kind].gate) level2[find(`${p.id}.${x.name}`)] = 0;
   const gates = m.parts.filter((p) => LOGIC_PARTS[p.kind].gate);
   for (let i = 0; i < gates.length + 2; i++) {
     for (const g of gates) {
-      const ins = pinsOf(g).filter((x) => x.io === "in").map((x) => level[find(`${g.id}.${x.name}`)] ?? 0);
-      level[find(`${g.id}.out`)] = Math.min(12, 1 + Math.max(0, ...ins));
+      const ins = pinsOf(g).filter((x) => x.io === "in").map((x) => level2[find(`${g.id}.${x.name}`)] ?? 0);
+      level2[find(`${g.id}.out`)] = Math.min(12, 1 + Math.max(0, ...ins));
     }
   }
-  return (id) => level[find(id)] ?? 0;
+  return (id) => level2[find(id)] ?? 0;
 }
 
 // client/src/utils/logicDiagram.js
@@ -12495,8 +13214,8 @@ var LW2 = 2;
 var CAPTION3 = 0.3;
 var esc4 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 var n14 = (v) => String(Math.round(v * 10) / 10);
-function signalColors(ink) {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink || "");
+function signalColors(ink2) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(ink2 || "");
   const light = !m || 0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16) > 140;
   return light ? { hi: "#4ade80", lo: "#5d6a85", unk: "#f5a524" } : { hi: "#16a34a", lo: "#a7b0c2", unk: "#d97706" };
 }
@@ -12533,10 +13252,10 @@ function gateGeometry(p, u) {
   const h = (K.multi ? Math.max(0.47, (n - 1) * 0.25 + 0.22) : 0.36) * u;
   return { K, ins, n, h };
 }
-function partBase(p, u, ink, style, label) {
+function partBase(p, u, ink2, style, label) {
   const K = LOGIC_PARTS[p.kind], X = p.x * u, Y = -p.y * u, lw = LW2;
-  const stroke = `fill="none" stroke="${esc4(ink)}" stroke-width="${n14(lw)}" stroke-linejoin="round"`;
-  const text = (t, x, y, fs) => `<text x="${n14(x)}" y="${n14(y + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink)}">${esc4(t)}</text>`;
+  const stroke = `fill="none" stroke="${esc4(ink2)}" stroke-width="${n14(lw)}" stroke-linejoin="round"`;
+  const text = (t, x, y, fs) => `<text x="${n14(x)}" y="${n14(y + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink2)}">${esc4(t)}</text>`;
   let out = "";
   if (K.gate) {
     const { h } = gateGeometry(p, u), xb = X - 0.5 * u, xf = X + 0.5 * u;
@@ -12572,7 +13291,7 @@ function partBase(p, u, ink, style, label) {
   } else if (p.kind === "dff") {
     const x0 = X - 0.6 * u, fs = 0.26 * u;
     out += `<rect x="${n14(x0)}" y="${n14(Y - 0.9 * u)}" width="${n14(1.2 * u)}" height="${n14(1.8 * u)}" ${stroke}/>`;
-    out += text("D", x0 + 0.18 * u, Y - 0.5 * u, fs) + texSvg("Q", X + 0.42 * u, Y - 0.5 * u, fs, ink) + texSvg("\\overline{Q}", X + 0.42 * u, Y + 0.5 * u, fs, ink);
+    out += text("D", x0 + 0.18 * u, Y - 0.5 * u, fs) + texSvg("Q", X + 0.42 * u, Y - 0.5 * u, fs, ink2) + texSvg("\\overline{Q}", X + 0.42 * u, Y + 0.5 * u, fs, ink2);
     out += `<path d="M${n14(x0)} ${n14(Y + 0.38 * u)}L${n14(x0 + 0.16 * u)} ${n14(Y + 0.5 * u)}L${n14(x0)} ${n14(Y + 0.62 * u)}" ${stroke}/>`;
     if (p.label) out += label(p.label, X, Y - 1.14 * u, 0.28 * u);
   }
@@ -12586,7 +13305,7 @@ function backAt(p, u, style, pyPx) {
   const { h } = gateGeometry(p, u), t = (pyPx - (Y - h)) / (2 * h);
   return X - 0.5 * u - (K.gate === "xor" ? 0.14 * u : 0) + 2 * t * (1 - t) * 0.22 * u;
 }
-function partSignals(p, u, ink, style, at, color2) {
+function partSignals(p, u, ink2, style, at, color2) {
   const K = LOGIC_PARTS[p.kind], X = p.x * u, Y = -p.y * u;
   const line = (x1, y1, x2, y2, c) => `<path d="M${n14(x1)} ${n14(y1)}L${n14(x2)} ${n14(y2)}" stroke="${esc4(c)}" stroke-width="${n14(LW2)}" stroke-linecap="round" fill="none"/>`;
   const sig = (name) => color2(at ? at[`${p.id}.${name}`] : void 0);
@@ -12603,7 +13322,7 @@ function partSignals(p, u, ink, style, at, color2) {
     out += line(X + 0.32 * u, Y, X + 0.75 * u, Y, color2(v));
     if (p.kind === "clock") {
       const a = 0.18 * u, b = 0.12 * u;
-      out += `<path d="M${n14(X - a)} ${n14(Y + b)}H${n14(X - a / 2)}V${n14(Y - b)}H${n14(X + a / 2)}V${n14(Y + b)}H${n14(X + a)}" fill="none" stroke="${esc4(v == null ? ink : color2(v))}" stroke-width="${n14(LW2 * 0.9)}" stroke-linejoin="round"/>`;
+      out += `<path d="M${n14(X - a)} ${n14(Y + b)}H${n14(X - a / 2)}V${n14(Y - b)}H${n14(X + a / 2)}V${n14(Y + b)}H${n14(X + a)}" fill="none" stroke="${esc4(v == null ? ink2 : color2(v))}" stroke-width="${n14(LW2 * 0.9)}" stroke-linejoin="round"/>`;
     } else if (v != null) out += `<text x="${n14(X)}" y="${n14(Y + 0.32 * u * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(0.32 * u)}" font-weight="700" fill="${esc4(color2(v))}">${v}</text>`;
   } else if (p.kind === "output") {
     const v = at ? at[`${p.id}.in`] : void 0;
@@ -12619,8 +13338,8 @@ function partSignals(p, u, ink, style, at, color2) {
   return out;
 }
 function drawLogic(m, o = {}) {
-  const u = o.U || LOGIC_UNIT, ink = o.ink || "#ffffff", pal = signalColors(ink);
-  const color2 = o.values ? (v) => v === 1 ? pal.hi : v === 0 ? pal.lo : v === null ? pal.unk : ink : () => ink;
+  const u = o.U || LOGIC_UNIT, ink2 = o.ink || "#ffffff", pal = signalColors(ink2);
+  const color2 = o.values ? (v) => v === 1 ? pal.hi : v === 0 ? pal.lo : v === null ? pal.unk : ink2 : () => ink2;
   const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
   const step = deck != null ? null : o.step ?? null;
   const max = maxStep3(m);
@@ -12637,9 +13356,9 @@ function drawLogic(m, o = {}) {
     if (o.labels === "deck" || typeof o.labels === "function") {
       const w = b.w * 2 + size * 2, h = b.h * 1.6 + size;
       const inner = o.labels === "deck" ? `<span data-math-latex="${esc4(tex)}" style="font-family:${esc4(MATH_FONT)}">${texLiteHtml(tex)}</span>` : o.labels(tex);
-      return `<foreignObject x="${n14(X - w / 2)}" y="${n14(Y - h / 2)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n14(size / 1.21)}px;color:${esc4(ink)}">${inner}</div></foreignObject>`;
+      return `<foreignObject x="${n14(X - w / 2)}" y="${n14(Y - h / 2)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n14(size / 1.21)}px;color:${esc4(ink2)}">${inner}</div></foreignObject>`;
     }
-    return texSvg(tex, X, Y, size, ink);
+    return texSvg(tex, X, Y, size, ink2);
   };
   for (const p of m.parts) {
     const b = logicBounds({ parts: [p], nodes: [] });
@@ -12675,7 +13394,7 @@ function drawLogic(m, o = {}) {
       const f = fan[id] || 0;
       if (e.node && f >= 3 || !e.node && f >= 2) out += `<circle cx="${n14(e.x * u)}" cy="${n14(-e.y * u)}" r="3.6" fill="${esc4(color2(state.at[id]))}"/>`;
     }
-    for (const p of model.parts) if (shown(p)) out += partSignals(p, u, ink, o.style, state.at, color2);
+    for (const p of model.parts) if (shown(p)) out += partSignals(p, u, ink2, o.style, state.at, color2);
     if (tt && tt.rows) {
       const row = rowOf(tt, state);
       if (row >= 0) out += tableRow(row);
@@ -12689,9 +13408,9 @@ function drawLogic(m, o = {}) {
     [...tt.ins, ...tt.outs].forEach((p, c) => {
       tableBase += label(p.label || p.id, x0 + (c + 0.5) * cw, top + rh * 0.5, fs);
     });
-    tableBase += `<path d="M${n14(x0 - 0.08 * u)} ${n14(top + rh)}H${n14(x0 + cols * cw + 0.08 * u)}M${n14(x0 + tt.ins.length * cw)} ${n14(top + 0.06 * u)}V${n14(top + rh * (tt.rows.length + 1))}" stroke="${esc4(ink)}" stroke-width="1.2" opacity=".6"/>`;
+    tableBase += `<path d="M${n14(x0 - 0.08 * u)} ${n14(top + rh)}H${n14(x0 + cols * cw + 0.08 * u)}M${n14(x0 + tt.ins.length * cw)} ${n14(top + 0.06 * u)}V${n14(top + rh * (tt.rows.length + 1))}" stroke="${esc4(ink2)}" stroke-width="1.2" opacity=".6"/>`;
     tt.rows.forEach((r, ri) => r.forEach((v, c) => {
-      tableBase += `<text x="${n14(x0 + (c + 0.5) * cw)}" y="${n14(top + rh * (ri + 1.5) + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink)}">${v == null ? "?" : v}</text>`;
+      tableBase += `<text x="${n14(x0 + (c + 0.5) * cw)}" y="${n14(top + rh * (ri + 1.5) + fs * 0.34)}" text-anchor="middle" font-family="${esc4(MATH_FONT)}" font-size="${n14(fs)}" fill="${esc4(ink2)}">${v == null ? "?" : v}</text>`;
     }));
     grow(x0 + cols * cw / 2, top + rh * (tt.rows.length + 1) / 2, cols * cw / 2 + 0.1 * u, rh * (tt.rows.length + 1) / 2);
     tableRow = (row) => `<rect x="${n14(x0 - 0.08 * u)}" y="${n14(top + rh * (row + 1))}" width="${n14(cols * cw + 0.16 * u)}" height="${n14(rh)}" rx="4" fill="${esc4(o.accent || pal.hi)}" fill-opacity=".26"/>`;
@@ -12703,7 +13422,7 @@ function drawLogic(m, o = {}) {
   let bases = "";
   for (const p of m.parts) {
     if (step != null && (p.step || 0) > step) continue;
-    let g = partBase(p, u, ink, o.style, label);
+    let g = partBase(p, u, ink2, o.style, label);
     if (o.editor) {
       const sel = o.sel && o.sel.kind === "p" && o.sel.id === p.id;
       const hw = (p.kind === "dff" ? 1 : 0.62) * u, hh = (p.kind === "dff" ? 0.95 : Math.max(0.45, ((p.inputs || 2) - 1) * 0.25 + 0.3)) * u;
@@ -12745,8 +13464,8 @@ function drawLogic(m, o = {}) {
     const cs = CAPTION3 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
     const one = (n, cls) => {
       const text = m.captions[n];
-      if (o.labels === "text") return `<text${cls} x="${n14(cx)}" y="${n14(y + cs)}" text-anchor="middle" font-size="${n14(cs)}" fill="${esc4(ink)}">${esc4(text)}</text>`;
-      return `<foreignObject${cls} x="${n14(cx - w / 2)}" y="${n14(y)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n14(cs)}px;line-height:1.3;color:${esc4(ink)}">${esc4(text)}</div></foreignObject>`;
+      if (o.labels === "text") return `<text${cls} x="${n14(cx)}" y="${n14(y + cs)}" text-anchor="middle" font-size="${n14(cs)}" fill="${esc4(ink2)}">${esc4(text)}</text>`;
+      return `<foreignObject${cls} x="${n14(cx - w / 2)}" y="${n14(y)}" width="${n14(w)}" height="${n14(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n14(cs)}px;line-height:1.3;color:${esc4(ink2)}">${esc4(text)}</div></foreignObject>`;
     };
     if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
     else {
@@ -13228,7 +13947,7 @@ function bodyLabelAt(m, sol) {
   return mul(uvec(best), m.body.shape === "dot" ? 0.42 : 0.36);
 }
 function drawFreebody(m, o = {}) {
-  const u = o.U || FREEBODY_UNIT, ink = o.ink || m.color;
+  const u = o.U || FREEBODY_UNIT, ink2 = o.ink || m.color;
   const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
   const step = deck != null ? null : o.step ?? null;
   const sol = o.sol || solveFreebody(m);
@@ -13262,12 +13981,12 @@ function drawFreebody(m, o = {}) {
     const v = sub(h, t), L = len(v);
     if (L < 1e-6) return { shaft: "", head: "" };
     const e = mul(v, 1 / L), k = w / 2.6, hl = Math.min(0.3 * k, L * 0.6), hw2 = 0.115 * k + 0.02;
-    const base = sub(h, mul(e, hl * 0.82)), p = [-e[1], e[0]], back2 = sub(h, mul(e, hl));
+    const base3 = sub(h, mul(e, hl * 0.82)), p = [-e[1], e[0]], back2 = sub(h, mul(e, hl));
     const a = add(back2, mul(p, hw2)), c = sub(back2, mul(p, hw2));
     ext(h, 0.15);
     ext(t);
     return {
-      shaft: `<path${deck != null && !dash ? ' class="pxfx-reveal" pathLength="1"' : ""} d="M${X(t)} ${Y(t)}L${X(base)} ${Y(base)}" stroke="${esc5(color2)}" stroke-width="${n15(w * u / 46)}" stroke-linecap="round" fill="none"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`,
+      shaft: `<path${deck != null && !dash ? ' class="pxfx-reveal" pathLength="1"' : ""} d="M${X(t)} ${Y(t)}L${X(base3)} ${Y(base3)}" stroke="${esc5(color2)}" stroke-width="${n15(w * u / 46)}" stroke-linecap="round" fill="none"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`,
       head: `<path d="M${X(h)} ${Y(h)}L${X(a)} ${Y(a)}L${X(c)} ${Y(c)}Z" fill="${esc5(color2)}"/>`
     };
   }
@@ -13279,7 +13998,7 @@ function drawFreebody(m, o = {}) {
       p += `M${X(q)} ${Y(q)}L${X(r)} ${Y(r)}`;
       ext(r);
     }
-    return `<path d="${p}" stroke="${esc5(ink)}" stroke-opacity=".5" stroke-width="1.2" fill="none"/>`;
+    return `<path d="${p}" stroke="${esc5(ink2)}" stroke-opacity=".5" stroke-width="1.2" fill="none"/>`;
   }
   const lw = (w) => n15(w * u / 46);
   let back = "", mid = "", front = "", top = "";
@@ -13287,7 +14006,7 @@ function drawFreebody(m, o = {}) {
   if (sg && m.surface.show) {
     if (sg.k === "incline") {
       const { low, high, B } = sg;
-      back += `<path d="M${X(low)} ${Y(low)}L${X(B)} ${Y(B)}L${X(high)} ${Y(high)}Z" fill="${esc5(ink)}" fill-opacity=".07" stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
+      back += `<path d="M${X(low)} ${Y(low)}L${X(B)} ${Y(B)}L${X(high)} ${Y(high)}Z" fill="${esc5(ink2)}" fill-opacity=".07" stroke="${esc5(ink2)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
       back += hatch(low, B, [0, -1]);
       ext(low);
       ext(high);
@@ -13295,11 +14014,11 @@ function drawFreebody(m, o = {}) {
       const { a0, d } = inclineArc(sg);
       if (Math.abs(d) > 1) {
         const r = 0.85, p0 = add(low, mul(uvec(a0), r)), p1 = add(low, mul(uvec(a0 + d), r));
-        back += `<path d="M${X(p0)} ${Y(p0)}A${n15(r * u)} ${n15(r * u)} 0 0 ${d > 0 ? 0 : 1} ${X(p1)} ${Y(p1)}" stroke="${esc5(ink)}" stroke-width="${lw(1.4)}" fill="none"/>`;
-        back += label(m.surface.angleLabel || "\\theta", add(low, mul(uvec(a0 + d / 2), r)), uvec(a0 + d / 2), fs * 0.9, ink);
+        back += `<path d="M${X(p0)} ${Y(p0)}A${n15(r * u)} ${n15(r * u)} 0 0 ${d > 0 ? 0 : 1} ${X(p1)} ${Y(p1)}" stroke="${esc5(ink2)}" stroke-width="${lw(1.4)}" fill="none"/>`;
+        back += label(m.surface.angleLabel || "\\theta", add(low, mul(uvec(a0 + d / 2), r)), uvec(a0 + d / 2), fs * 0.9, ink2);
       }
     } else {
-      back += line(sg.line[0], sg.line[1], `stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linecap="round"`);
+      back += line(sg.line[0], sg.line[1], `stroke="${esc5(ink2)}" stroke-width="${lw(2)}" stroke-linecap="round"`);
       back += hatch(sg.line[0], sg.line[1], mul(sg.n, -1));
       ext(sg.line[0]);
       ext(sg.line[1]);
@@ -13309,9 +14028,9 @@ function drawFreebody(m, o = {}) {
     const [ex2, ey2] = axesFrame(m), r = 2.3;
     for (const [e, nm] of [[ex2, "x"], [ey2, "y"]]) {
       const a = mul(e, -r), b = mul(e, r), p = [-e[1], e[0]], hb = sub(b, mul(e, 0.2));
-      mid += line(a, sub(b, mul(e, 0.12)), `stroke="${esc5(ink)}" stroke-opacity=".45" stroke-width="${lw(1.2)}"`);
-      mid += `<path d="M${X(b)} ${Y(b)}L${X(add(hb, mul(p, 0.07)))} ${Y(add(hb, mul(p, 0.07)))}L${X(sub(hb, mul(p, 0.07)))} ${Y(sub(hb, mul(p, 0.07)))}Z" fill="${esc5(ink)}" fill-opacity=".45"/>`;
-      mid += `<g opacity=".6">${label(nm, b, e, fs * 0.8, ink)}</g>`;
+      mid += line(a, sub(b, mul(e, 0.12)), `stroke="${esc5(ink2)}" stroke-opacity=".45" stroke-width="${lw(1.2)}"`);
+      mid += `<path d="M${X(b)} ${Y(b)}L${X(add(hb, mul(p, 0.07)))} ${Y(add(hb, mul(p, 0.07)))}L${X(sub(hb, mul(p, 0.07)))} ${Y(sub(hb, mul(p, 0.07)))}Z" fill="${esc5(ink2)}" fill-opacity=".45"/>`;
+      mid += `<g opacity=".6">${label(nm, b, e, fs * 0.8, ink2)}</g>`;
       ext(a);
       ext(b);
     }
@@ -13321,7 +14040,7 @@ function drawFreebody(m, o = {}) {
     const { u: d, start, end } = ropeGeom(m, f, sol), p = [-d[1], d[0]];
     ext(end, 0.45);
     if (!shown(f.step)) continue;
-    mid += part2(f.step, line(start, end, `stroke="${esc5(ink)}" stroke-opacity=".55" stroke-width="${lw(1.6)}"`) + line(add(end, mul(p, 0.38)), sub(end, mul(p, 0.38)), `stroke="${esc5(ink)}" stroke-width="${lw(2.2)}" stroke-linecap="round"`) + hatch(sub(end, mul(p, 0.38)), add(end, mul(p, 0.38)), d));
+    mid += part2(f.step, line(start, end, `stroke="${esc5(ink2)}" stroke-opacity=".55" stroke-width="${lw(1.6)}"`) + line(add(end, mul(p, 0.38)), sub(end, mul(p, 0.38)), `stroke="${esc5(ink2)}" stroke-width="${lw(2.2)}" stroke-linecap="round"`) + hatch(sub(end, mul(p, 0.38)), add(end, mul(p, 0.38)), d));
   }
   const [hw, hh] = half(m);
   const bodyHit = o.editor ? ' data-body="1"' : "";
@@ -13329,24 +14048,24 @@ function drawFreebody(m, o = {}) {
     const r = bodyRot(m) * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
     const pts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => [x * cs - y * sn, x * sn + y * cs]);
     pts.forEach((p) => ext(p));
-    mid += `<path${bodyHit} d="M${pts.map((p) => `${X(p)} ${Y(p)}`).join("L")}Z" fill="${esc5(ink)}" fill-opacity=".1" stroke="${esc5(ink)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
+    mid += `<path${bodyHit} d="M${pts.map((p) => `${X(p)} ${Y(p)}`).join("L")}Z" fill="${esc5(ink2)}" fill-opacity=".1" stroke="${esc5(ink2)}" stroke-width="${lw(2)}" stroke-linejoin="round"/>`;
   } else if (m.body.shape === "ball") {
     ext([0, 0], hw);
-    mid += `<circle${bodyHit} cx="0" cy="0" r="${n15(hw * u)}" fill="${esc5(ink)}" fill-opacity=".1" stroke="${esc5(ink)}" stroke-width="${lw(2)}"/>`;
+    mid += `<circle${bodyHit} cx="0" cy="0" r="${n15(hw * u)}" fill="${esc5(ink2)}" fill-opacity=".1" stroke="${esc5(ink2)}" stroke-width="${lw(2)}"/>`;
   }
   if (m.body.shape === "dot" || m.model === "particle") {
     const dot0 = m.body.shape === "dot";
-    mid += `<circle cx="0" cy="0" r="${n15((dot0 ? 0.11 : 0.06) * u)}" fill="${esc5(ink)}"/>`;
+    mid += `<circle cx="0" cy="0" r="${n15((dot0 ? 0.11 : 0.06) * u)}" fill="${esc5(ink2)}"/>`;
     if (dot0 && o.editor) mid += `<circle data-body="1" cx="0" cy="0" r="${n15(0.45 * u)}" fill="#000" fill-opacity="0"/>`;
     ext([0, 0], 0.2);
   }
   if (m.body.label) {
     const at = bodyLabelAt(m, sol);
-    mid += `<g opacity=".85">${label(m.body.label, at, [0, 0], fs * 0.85, ink)}</g>`;
+    mid += `<g opacity=".85">${label(m.body.label, at, [0, 0], fs * 0.85, ink2)}</g>`;
   }
   const [ex, ey] = axesFrame(m);
   for (const f of m.forces) {
-    const g = forceGeom(m, f, sol), color2 = f.color || ink;
+    const g = forceGeom(m, f, sol), color2 = f.color || ink2;
     if (!shown(f.step)) {
       ext(g.head, 0.6);
       ext(g.tail);
@@ -13390,9 +14109,9 @@ function drawFreebody(m, o = {}) {
     ext(ng.tail);
     ext(ng.head, 0.15);
     const nl = netLabel(m, sol);
-    const lb = label(nl, add(ng.mid, mul(ng.side, 0.05)), ng.side, fs, ink);
+    const lb = label(nl, add(ng.mid, mul(ng.side, 0.05)), ng.side, fs, ink2);
     if (shown(m.net.step)) {
-      const a = arrow(ng.tail, ng.head, ink, 2.2, `${n15(7 * u / 46)} ${n15(5 * u / 46)}`);
+      const a = arrow(ng.tail, ng.head, ink2, 2.2, `${n15(7 * u / 46)} ${n15(5 * u / 46)}`);
       const inner = a.shaft + a.head + lb;
       front += part2(m.net.step, deck != null && m.net.step > 0 ? `<g class="pxfx-fade">${inner}</g>` : inner);
     }
@@ -13405,8 +14124,8 @@ function drawFreebody(m, o = {}) {
     const cs = CAPTION4 * u, w = Math.max(box.x1 - box.x0, 6 * u), cx = (box.x0 + box.x1) / 2, y = box.y1 + cs * 0.6, h = cs * 2.8;
     const one = (n, cls) => {
       const text = m.captions[n];
-      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n15(cx)}" y="${n15(y + cs)}" text-anchor="middle" font-size="${n15(cs)}" fill="${esc5(ink)}">${esc5(text)}</text>`;
-      return `<foreignObject${cls} x="${n15(cx - w / 2)}" y="${n15(y)}" width="${n15(w)}" height="${n15(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n15(cs)}px;line-height:1.3;color:${esc5(ink)}">${esc5(text)}</div></foreignObject>`;
+      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n15(cx)}" y="${n15(y + cs)}" text-anchor="middle" font-size="${n15(cs)}" fill="${esc5(ink2)}">${esc5(text)}</text>`;
+      return `<foreignObject${cls} x="${n15(cx - w / 2)}" y="${n15(y)}" width="${n15(w)}" height="${n15(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n15(cs)}px;line-height:1.3;color:${esc5(ink2)}">${esc5(text)}</div></foreignObject>`;
     };
     if (deck != null) caps = capSteps.map((n) => one(n, ` class="pxfx-cap" data-fx-cap="${n}"`)).join("");
     else {
@@ -13451,6 +14170,106 @@ function freebodyStepMarkers(slide) {
 function hasFreebody(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "freebody"));
 }
+var F = (id, kind, o) => ({
+  id,
+  kind,
+  label: FORCE_KINDS[kind].label,
+  magMode: "given",
+  mag: "",
+  mu: "0.3",
+  dir: { from: "level", deg: 0 },
+  push: false,
+  comps: false,
+  compLabels: ["", ""],
+  angle: "none",
+  angleLabel: "\\theta",
+  rope: false,
+  color: null,
+  step: 0,
+  ...o
+});
+var level = (deg) => ({ from: "level", deg });
+var along = (deg) => ({ from: "surface", deg });
+var base = (extra) => ({
+  body: { shape: "box", w: 1.6, h: 1, label: "m", mass: "5" },
+  surface: { kind: "floor", angle: 30, angleLabel: "\\theta", show: true },
+  model: "particle",
+  axes: "level",
+  motion: "rest",
+  forceScale: 15,
+  values: false,
+  net: { show: true, step: 0, label: "F_{\\text{net}}" },
+  forces: [],
+  captions: {},
+  ...extra
+});
+var FREEBODY_TEMPLATES = [
+  { key: "incline", name: "Block at rest on an incline", build: () => base({
+    surface: { kind: "incline", angle: 30, angleLabel: "\\theta", show: true },
+    axes: "surface",
+    forces: [
+      F("f1", "weight", { label: "mg", magMode: "mass", dir: level(-90), comps: true, compLabels: ["mg\\sin\\theta", "mg\\cos\\theta"], angle: "normal", step: 1 }),
+      F("f2", "normal", { label: "F_N", magMode: "solve", dir: along(90), step: 2 }),
+      F("f3", "friction", { label: "f_s", magMode: "solve", dir: along(0), step: 3 })
+    ],
+    captions: { 1: "Gravity pulls it straight down: mg sin θ along the slope, mg cos θ into it.", 2: "The slope pushes back, perpendicular to its surface.", 3: "Static friction holds it: every component balances." }
+  }) },
+  { key: "slide", name: "Block sliding down, with friction", build: () => base({
+    body: { shape: "box", w: 1.6, h: 1, label: "m", mass: "4" },
+    surface: { kind: "incline", angle: 35, angleLabel: "\\theta", show: true },
+    axes: "surface",
+    motion: "slide",
+    forceScale: 12,
+    values: true,
+    net: { show: true, step: 4, label: "F_{\\text{net}}" },
+    forces: [
+      F("f1", "weight", { label: "mg", magMode: "mass", dir: level(-90), step: 1 }),
+      F("f2", "normal", { label: "F_N", magMode: "solve", dir: along(90), step: 2 }),
+      F("f3", "friction", { label: "f_k", magMode: "mu", mu: "0.25", dir: along(0), step: 3 })
+    ],
+    captions: { 1: "Its weight.", 2: "The normal force balances the part of the weight into the slope.", 3: "Kinetic friction, μk times the normal force, acts up the slope.", 4: "What’s left accelerates it down the slope." }
+  }) },
+  { key: "sled", name: "Sled pulled at an angle", build: () => base({
+    body: { shape: "box", w: 1.8, h: 0.8, label: "m", mass: "20" },
+    forceScale: 50,
+    motion: "slide",
+    values: true,
+    net: { show: true, step: 4, label: "F_{\\text{net}}" },
+    forces: [
+      F("f1", "weight", { label: "mg", magMode: "mass", dir: level(-90), step: 1 }),
+      F("f2", "tension", { label: "T", mag: "80", dir: level(30), rope: true, comps: true, compLabels: ["T\\cos\\theta", "T\\sin\\theta"], angle: "level", angleLabel: "30^\\circ", color: "#3b82f6", step: 2 }),
+      F("f3", "normal", { label: "F_N", magMode: "solve", dir: along(90), step: 3 }),
+      F("f4", "friction", { label: "f_k", magMode: "mu", mu: "0.15", dir: along(180), step: 3 })
+    ],
+    captions: { 1: "A 20 kg sled on snow, with μk = 0.15.", 2: "An 80 N pull at 30°: part forward, part lifting.", 3: "The lift lowers the normal force, and friction with it.", 4: "The net force speeds it up." }
+  }) },
+  { key: "sign", name: "Sign hanging from two ropes", build: () => base({
+    surface: { kind: "none", angle: 0, angleLabel: "\\theta", show: true },
+    body: { shape: "box", w: 1.8, h: 0.9, label: "m", mass: "10" },
+    forceScale: 25,
+    values: true,
+    forces: [
+      F("f1", "weight", { label: "mg", magMode: "mass", dir: level(-90), step: 1 }),
+      F("f2", "tension", { label: "T_1", magMode: "solve", dir: level(135), rope: true, angle: "level", angleLabel: "45^\\circ", step: 2 }),
+      F("f3", "tension", { label: "T_2", magMode: "solve", dir: level(60), rope: true, angle: "level", angleLabel: "60^\\circ", step: 2 })
+    ],
+    captions: { 1: "A 10 kg sign: its weight pulls straight down.", 2: "The tensions are whatever balances it, and the steeper rope takes more." }
+  }) },
+  { key: "fall", name: "Ball falling with air resistance", build: () => base({
+    surface: { kind: "none", angle: 0, angleLabel: "\\theta", show: true },
+    body: { shape: "ball", w: 1, h: 1, label: "", mass: "0.5" },
+    forceScale: 2.5,
+    motion: "free",
+    values: true,
+    net: { show: true, step: 3, label: "F_{\\text{net}}" },
+    forces: [
+      F("f1", "weight", { label: "mg", magMode: "mass", dir: level(-90), step: 1 }),
+      F("f2", "drag", { label: "F_D", mag: "3", dir: level(90), step: 2 })
+    ],
+    captions: { 1: "Gravity: 4.9 N down.", 2: "Air resistance, 3 N, opposes the fall.", 3: "The net force is less than its weight, so it falls with less than g." }
+  }) },
+  { key: "blank", name: "Blank: a block on a floor", build: () => base({ forces: [] }) }
+];
 
 // client/src/utils/vennExpr.js
 var OVERLINE = String.fromCharCode(773);
@@ -14154,10 +14973,10 @@ function shapeFns(s) {
     dist(px, py) {
       const dx = px - s.x, dy = py - s.y, u = dx * c + dy * sn, v = -dx * sn + dy * c;
       if (Math.abs(s.rx - s.ry) < 1e-9) return Math.abs(Math.hypot(u, v) - s.rx);
-      const r = Math.hypot(u / s.rx, v / s.ry), F = r * r - 1;
+      const r = Math.hypot(u / s.rx, v / s.ry), F2 = r * r - 1;
       const g = 2 * Math.hypot(u / (s.rx * s.rx), v / (s.ry * s.ry));
       const radial = r > 1e-9 ? Math.abs(1 - 1 / r) * Math.hypot(u, v) : Math.min(s.rx, s.ry);
-      return g > 1e-9 ? Math.min(Math.abs(F) / g, radial) : radial;
+      return g > 1e-9 ? Math.min(Math.abs(F2) / g, radial) : radial;
     },
     // Where a ray from the centre in direction d crosses the outline
     ray(d) {
@@ -14327,8 +15146,8 @@ function placeLabels(shapes, sizes) {
         if (j === i) continue;
         const inside = within(i, j);
         for (const q of corners) {
-          const F = fns[j].F(q[0], q[1]), dd = fns[j].dist(q[0], q[1]);
-          clear = Math.min(clear, F < 0 && !inside ? -dd : dd);
+          const F2 = fns[j].F(q[0], q[1]), dd = fns[j].dist(q[0], q[1]);
+          clear = Math.min(clear, F2 < 0 && !inside ? -dd : dd);
         }
       }
       let score = Math.min(clear, 0.45) * 4 + 0.8 * (d[0] * out[0] + d[1] * out[1]) + 0.25 * d[1] - 0.05 * d[0];
@@ -14564,6 +15383,7 @@ function vennModel(el) {
 }
 var ctxOf = (m) => ({ ids: m.sets.map((s) => s.id), universe: m.universe.label });
 var styleOf = (m, out) => ({ out, comp: m.notation.complement, ids: m.sets.map((s) => s.id), universe: m.universe.label });
+var inputSyntax = (m) => /\\/.test(m.expr) || !m.expr.trim() ? "tex" : "text";
 var labelSize = (tex, fs) => {
   const b = texBox(tex, fs * VENN_UNIT);
   return { w: b.w / VENN_UNIT, h: fs * 1.15 };
@@ -14683,14 +15503,14 @@ function regionPath(a, mask, off, u) {
   return d;
 }
 function vennFrame(m, a) {
-  const box = a.g.box, W = box.x1 - box.x0;
+  const box = a.g.box, W2 = box.x1 - box.x0;
   const panels = a.rel ? 2 : 1;
-  const offs = panels === 2 ? [0, W + GAP] : [0];
+  const offs = panels === 2 ? [0, W2 + GAP] : [0];
   const verdict = a.rel && m.verdict.show ? 0.85 : 0;
-  return { box, W, panels, offs, x0: box.x0 - 0.12, x1: box.x1 + offs[panels - 1] + 0.12, y0: box.y0 - 0.12 - verdict, y1: box.y1 + 0.12 };
+  return { box, W: W2, panels, offs, x0: box.x0 - 0.12, x1: box.x1 + offs[panels - 1] + 0.12, y0: box.y0 - 0.12 - verdict, y1: box.y1 + 0.12 };
 }
 function drawVenn(m, o = {}) {
-  const u = VENN_UNIT, ink = o.ink || m.color;
+  const u = VENN_UNIT, ink2 = o.ink || m.color;
   const deck = o.deck != null ? String(o.deck).replace(/[^A-Za-z0-9_-]/g, "") : null;
   const a = o.a || analyzeVenn(m);
   const g = a.g, n = a.n, fr = vennFrame(m, a), box = g.box;
@@ -14734,7 +15554,7 @@ function drawVenn(m, o = {}) {
   for (let p = 0; p < fr.panels; p++) {
     const off = fr.offs[p];
     const X = (x) => (x + off) * u, Y = (y) => -y * u;
-    if (m.universe.show) svg += `<rect x="${n16(X(box.x0))}" y="${n16(Y(box.y1))}" width="${n16((box.x1 - box.x0) * u)}" height="${n16((box.y1 - box.y0) * u)}" fill="none" stroke="${esc6(ink)}" stroke-width="2"/>`;
+    if (m.universe.show) svg += `<rect x="${n16(X(box.x0))}" y="${n16(Y(box.y1))}" width="${n16((box.x1 - box.x0) * u)}" height="${n16((box.y1 - box.y0) * u)}" fill="none" stroke="${esc6(ink2)}" stroke-width="2"/>`;
     const items = [];
     if (a.masks[p] != null) items.push({ mask: a.masks[p], style: m.result.style, color: m.result.color || SHADE_COLOR, at: m.result.steps[p], until: null });
     for (const l of a.layers) {
@@ -14750,14 +15570,14 @@ function drawVenn(m, o = {}) {
       svg += `<path d="${regionPath(a, 1 << o.hover.r, off, u)}" fill-rule="evenodd" fill="${esc6(o.accent)}" fill-opacity="0.16" stroke="${esc6(o.accent)}" stroke-width="2.5" stroke-dasharray="7 5"/>`;
     }
     g.shapes.forEach((s, i) => {
-      const color2 = m.outlines === "sets" ? m.sets[i].color : ink;
+      const color2 = m.outlines === "sets" ? m.sets[i].color : ink2;
       const cx = n16(X(s.x)), cy = n16(Y(s.y)), rot = Math.abs(s.rot) > 1e-9 ? ` transform="rotate(${n16(-s.rot)} ${cx} ${cy})"` : "";
       svg += `<ellipse cx="${cx}" cy="${cy}" rx="${n16(s.rx * u)}" ry="${n16(s.ry * u)}"${rot} fill="none" stroke="${esc6(color2)}" stroke-width="2.4"/>`;
       if (o.sel === i) svg += `<ellipse cx="${cx}" cy="${cy}" rx="${n16(s.rx * u + 6)}" ry="${n16(s.ry * u + 6)}"${rot} fill="none" stroke="${esc6(o.accent)}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
       const l = g.labels[i];
       svg += label(m.sets[i].label, X(l.x), Y(l.y), LABEL_FS * u, color2);
     });
-    if (g.ulab) svg += label(m.universe.label, X(g.ulab.x), Y(g.ulab.y), UNIVERSE_FS * u, ink);
+    if (g.ulab) svg += label(m.universe.label, X(g.ulab.x), Y(g.ulab.y), UNIVERSE_FS * u, ink2);
     const vals = m.regions.values, named = m.regions.label !== "none";
     if (named || vals !== "none") {
       for (let r = 0; r < 1 << n; r++) {
@@ -14775,17 +15595,17 @@ function drawVenn(m, o = {}) {
         const top = cy - (vh * u + (named ? nameFs * 1.2 : 0)) / 2;
         if (named) {
           const ny = top + nameFs * 0.6;
-          svg += `<g opacity="0.7">${m.regions.label === "roman" ? text(regionNumber(r, n), cx, ny, nameFs, ink, ' letter-spacing="0.5"') : label(format(regionAst(r, n), styleOf(m, "tex")), cx, ny, nameFs, ink)}</g>`;
+          svg += `<g opacity="0.7">${m.regions.label === "roman" ? text(regionNumber(r, n), cx, ny, nameFs, ink2, ' letter-spacing="0.5"') : label(format(regionAst(r, n), styleOf(m, "tex")), cx, ny, nameFs, ink2)}</g>`;
         }
         const vy = top + (named ? nameFs * 1.2 : 0);
         const at = valueStep(m, n, r);
-        if (value && shown(at, null)) svg += part2(at, null, text(value, cx, vy + 0.21 * u, 0.42 * u, ink, a.num.value[r] == null ? ' opacity="0.55"' : ""));
-        if (rows.length && shown(at, null)) svg += part2(at, null, rows.map((row, k) => label(row, cx, vy + (k + 0.5) * 0.36 * u, 0.32 * u, ink)).join(""));
+        if (value && shown(at, null)) svg += part2(at, null, text(value, cx, vy + 0.21 * u, 0.42 * u, ink2, a.num.value[r] == null ? ' opacity="0.55"' : ""));
+        if (rows.length && shown(at, null)) svg += part2(at, null, rows.map((row, k) => label(row, cx, vy + (k + 0.5) * 0.36 * u, 0.32 * u, ink2)).join(""));
       }
     }
   }
   if (a.rel) {
-    svg += label(REL_TEX[a.rel], (box.x1 + GAP / 2) * u, -((box.y0 + box.y1) / 2) * u, 0.95 * u, ink);
+    svg += label(REL_TEX[a.rel], (box.x1 + GAP / 2) * u, -((box.y0 + box.y1) / 2) * u, 0.95 * u, ink2);
     if (m.verdict.show && a.verdict && shown(m.verdict.step, null)) {
       const v = a.verdict;
       svg += part2(m.verdict.step, null, text(`${v.holds ? "✓" : "✗"} ${v.short}`, (fr.x0 + fr.x1) / 2 * u, -(box.y0 - 0.48) * u, 0.4 * u, v.holds ? OK : BAD));
@@ -14797,8 +15617,8 @@ function drawVenn(m, o = {}) {
     const cs = CAPTION5 * u, w = Math.max(pbox.x1 - pbox.x0, 6 * u), cx = (pbox.x0 + pbox.x1) / 2, y = pbox.y1 + cs * 0.6, h = cs * 2.8;
     const one = (k, cls) => {
       const t = m.captions[k];
-      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n16(cx)}" y="${n16(y + cs)}" text-anchor="middle" font-family="${esc6(MATH_FONT)}" font-size="${n16(cs)}" fill="${esc6(ink)}">${esc6(captionText(t))}</text>`;
-      return `<foreignObject${cls} x="${n16(cx - w / 2)}" y="${n16(y)}" width="${n16(w)}" height="${n16(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n16(cs)}px;line-height:1.3;color:${esc6(ink)}">${captionHtml(t, o.labels)}</div></foreignObject>`;
+      if (o.labels === "text" || !o.labels) return `<text${cls} x="${n16(cx)}" y="${n16(y + cs)}" text-anchor="middle" font-family="${esc6(MATH_FONT)}" font-size="${n16(cs)}" fill="${esc6(ink2)}">${esc6(captionText(t))}</text>`;
+      return `<foreignObject${cls} x="${n16(cx - w / 2)}" y="${n16(y)}" width="${n16(w)}" height="${n16(h)}" pointer-events="none"><div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;font-size:${n16(cs)}px;line-height:1.3;color:${esc6(ink2)}">${captionHtml(t, o.labels)}</div></foreignObject>`;
     };
     if (deck != null) svg += capSteps.map((k) => one(k, ` class="pxfx-cap" data-fx-cap="${k}"`)).join("");
     else {
@@ -14863,6 +15683,149 @@ function vennStepMarkers(slide) {
 function hasVenn(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "venn"));
 }
+var isLiteral = (nd) => nd.t === "set" || nd.t === "U" || nd.t === "empty" || nd.t === "not" && nd.a.t === "set";
+function opCaption(m, nd) {
+  const t = (x) => "$" + format(x, styleOf(m, "tex")) + "$";
+  switch (nd.t) {
+    case "or":
+      return `${t(nd)} is everything in ${t(nd.a)} or ${t(nd.b)}, or both.`;
+    case "and":
+      return `${t(nd)} is where the two overlap.`;
+    case "diff":
+      return `${t(nd)} is what's in ${t(nd.a)} but not in ${t(nd.b)}.`;
+    case "xor":
+      return `${t(nd)} is what's in exactly one of them.`;
+    case "not":
+      return `${t(nd)} is everything outside ${t(nd.a)}.`;
+  }
+  return t(nd);
+}
+function buildUp(m, detail = "every") {
+  const a = analyzeVenn(m);
+  if (a.err) return false;
+  const out = inputSyntax(m);
+  const fmt = (nd) => format(nd, styleOf(m, out));
+  const capT = (nd) => "$" + format(nd, styleOf(m, "tex")) + "$";
+  const layers = [], captions = {}, ends = [];
+  let step = 0, k = 0;
+  const HATCH = ["hatch-ne", "hatch-nw"], SPARE = [SET_COLORS[0], SET_COLORS[1]];
+  const colorOf = (nd, j) => nd.t === "set" ? m.sets[nd.i].color : nd.t === "not" && nd.a.t === "set" ? m.sets[nd.a.i].color : SPARE[j];
+  const newId = () => {
+    const used = new Set(m.layers.map((l) => l.id).concat(layers.map((l) => l.id)));
+    while (used.has("l" + ++k)) ;
+    return "l" + k;
+  };
+  a.sides.forEach((root, p) => {
+    const side = a.rel ? p ? "On the right, " : "On the left, " : "";
+    if (detail === "sides" || isLiteral(root)) {
+      step++;
+      ends[p] = step;
+      captions[step] = side ? `${side}${capT(root)}.` : `Shade ${capT(root)}.`;
+      return;
+    }
+    const visit = (nd, isRoot) => {
+      if (isLiteral(nd)) return null;
+      const kids = nd.t === "not" ? [nd.a] : [nd.a, nd.b];
+      const solids = kids.map((c) => visit(c, false));
+      step++;
+      if (nd.t === "not" && solids[0]) solids[0].until = step - 1;
+      else {
+        kids.forEach((c, j) => {
+          if (solids[j]) solids[j].until = step - 1;
+          layers.push({ id: newId(), expr: fmt(c), style: nd.t === "not" ? "hatch-ne" : HATCH[j], color: colorOf(c, j), step, until: step, panel: p });
+        });
+        const first = side && !layers.some((l) => l.panel === p && l.step < step);
+        const say = nd.t === "not" ? `start from ${capT(kids[0])}.` : `shade ${capT(kids[0])} one way and ${capT(kids[1])} the other.`;
+        captions[step] = first ? side + say : say[0].toUpperCase() + say.slice(1);
+        step++;
+      }
+      captions[step] = opCaption(m, nd);
+      if (isRoot) {
+        ends[p] = step;
+        return null;
+      }
+      const solid = { id: newId(), expr: fmt(nd), style: "fill", color: null, step, until: null, panel: p };
+      layers.push(solid);
+      return solid;
+    };
+    visit(root, true);
+  });
+  m.layers = layers;
+  m.result.steps = [ends[0] || 0, ends[1] || 0];
+  m.captions = captions;
+  m.builtFrom = m.expr;
+  if (a.rel) {
+    step++;
+    m.verdict.step = step;
+    m.verdict.show = true;
+    captions[step] = analyzeVenn(m).verdict?.text || "";
+  }
+  return true;
+}
+var base2 = (n, extra = {}, layout) => {
+  const p = VENN_LAYOUTS[n].find((l) => l.id === layout) || VENN_LAYOUTS[n][0];
+  const ids = ["A", "B", "C", "D"].slice(0, n);
+  return { sets: ids.map((id, i) => ({ id, label: id, color: SET_COLORS[i] })), layout: p.id, shapes: p.shapes.map((s) => ({ ...s })), ...extra };
+};
+var built = (el, detail) => {
+  const m = vennModel(el);
+  buildUp(m, detail);
+  return m;
+};
+var VENN_TEMPLATES = [
+  { key: "distributive", name: "A ∩ (B ∪ C), built up", build: () => built(base2(3, { expr: "A \\cap (B \\cup C)" }), "every") },
+  { key: "demorgan", name: "De Morgan’s law", build: () => built(base2(2, { expr: "(A \\cup B)' = A' \\cap B'" }), "every") },
+  {
+    key: "languages",
+    name: "Survey: two languages",
+    build: () => base2(2, {
+      sets: [{ id: "F", label: "\\text{French}", color: SET_COLORS[0] }, { id: "S", label: "\\text{Spanish}", color: SET_COLORS[1] }],
+      expr: "(F \\cup S)'",
+      result: { style: "fill", steps: [4, 0] },
+      regions: { label: "none", values: "counts", reveal: "inside-out", step: 1 },
+      facts: ["|U| = 40", "|F| = 22", "|S| = 18", "|F \\cap S| = 7"],
+      captions: { 1: "Start in the middle: $7$ take both.", 2: "So $22 - 7 = 15$ take only French, and $18 - 7 = 11$ only Spanish.", 3: "That leaves $40 - 33 = 7$ outside both.", 4: "$|(F \\cup S)'| = 7$ students take neither." }
+    })
+  },
+  {
+    key: "subjects",
+    name: "Survey: three subjects",
+    build: () => base2(3, {
+      sets: [{ id: "M", label: "\\text{Maths}", color: SET_COLORS[0] }, { id: "P", label: "\\text{Physics}", color: SET_COLORS[1] }, { id: "C", label: "\\text{Chemistry}", color: SET_COLORS[2] }],
+      expr: "M \\setminus (P \\cup C)",
+      result: { style: "fill", steps: [5, 0] },
+      regions: { label: "none", values: "counts", reveal: "inside-out", step: 1 },
+      facts: ["|U| = 100", "|M| = 45", "|P| = 38", "|C| = 30", "|M \\cap P| = 18", "|M \\cap C| = 12", "|P \\cap C| = 10", "|M \\cap P \\cap C| = 5"],
+      captions: { 1: "$5$ students take all three.", 2: "Take $5$ off each pair: $13$, $7$ and $5$ take exactly two.", 3: "Then the single subjects.", 4: "$22$ take none of them.", 5: "So $20$ take only maths." }
+    })
+  },
+  {
+    key: "members",
+    name: "Members: multiples of 2 and 3",
+    build: () => base2(2, {
+      expr: "A \\setminus B",
+      result: { style: "fill", steps: [1, 0] },
+      members: { U: "1..12", A: "2, 4, 6, 8, 10, 12", B: "3, 6, 9, 12" },
+      regions: { label: "none", values: "elements", reveal: "together", step: 0 },
+      captions: { 1: "$A \\setminus B = \\{2, 4, 8, 10\\}$: even, but not a multiple of 3." }
+    })
+  },
+  {
+    key: "probability",
+    name: "Probability: rain and lateness",
+    build: () => base2(2, {
+      sets: [{ id: "R", label: "\\text{Rain}", color: SET_COLORS[0] }, { id: "L", label: "\\text{Late}", color: SET_COLORS[1] }],
+      universe: { show: true, label: "\\Omega" },
+      expr: "R \\cup L",
+      regions: { label: "none", values: "probability", reveal: "together", step: 0 },
+      facts: ["P(R) = 0.3", "P(L) = 0.25", "P(L | R) = 0.5"],
+      captions: { 0: "$P(R \\cup L) = 0.4$: the chance of rain, of lateness, or both." }
+    })
+  },
+  { key: "odd", name: "Four sets: the odd regions", build: () => base2(4, { expr: "A \\triangle B \\triangle C \\triangle D" }) },
+  { key: "euler", name: "A inside B: an Euler diagram", build: () => built(base2(2, { expr: "A \\cap B = A" }, "inside"), "sides") },
+  { key: "blank", name: "Blank: three sets", build: () => base2(3, { expr: "" }) }
+];
 
 // client/src/utils/timingDiagram.js
 var import_wavedrom_render_any = __toESM(require_render_any(), 1);
@@ -15125,6 +16088,12 @@ function timingModel(el) {
   };
 }
 var CAPTION_H = 30;
+function timingBox(el) {
+  const d = drawTiming(el);
+  if (d.error) return { w: 480, h: 120 };
+  const m = timingModel(el);
+  return { w: d.w, h: d.h + (m.steps.some((s) => s.caption) ? CAPTION_H : 0) };
+}
 var idOf = (el) => "tm" + String(el?.id || "x").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
 function timingSvg(el, opts = {}) {
   const m = timingModel(el), prefix = idOf(el) + (opts.deck ? "" : opts.step != null ? "s" + opts.step : "c");
@@ -15135,8 +16104,8 @@ function timingSvg(el, opts = {}) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet"${opts.standalone ? ` width="${w}" height="${h}"` : ""} style="width:100%;height:100%;display:block;overflow:visible"><rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="8" fill="none" stroke="${dark ? "#f5a524" : "#b45309"}" stroke-dasharray="6 4"/><text x="${w / 2}" y="${h / 2 - 6}" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="600" fill="${dark ? "#f5a524" : "#b45309"}">Timing diagram</text><text x="${w / 2}" y="${h / 2 + 16}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="${dark ? "#e8ecf3" : "#333"}">${esc7(d.error.length > 70 ? d.error.slice(0, 69) + "…" : d.error)}</text></svg>`;
   }
   const hasCaps = m.steps.some((s) => s.caption);
-  const W = d.w, H = d.h + (hasCaps ? CAPTION_H : 0);
-  const ink = dark ? DARK.ink : "#222222", accent = dark ? "#ff8a65" : "#d9480f";
+  const W2 = d.w, H2 = d.h + (hasCaps ? CAPTION_H : 0);
+  const ink2 = dark ? DARK.ink : "#222222", accent = dark ? "#ff8a65" : "#d9480f";
   let defs = d.defs.map(toXml).join("");
   let body = d.body;
   const steps = d.kind === "signal" && m.steps.length ? m.steps : null;
@@ -15160,12 +16129,12 @@ function timingSvg(el, opts = {}) {
   if (hasCaps && d.kind === "signal") {
     const caps = m.steps.map((s, i) => [i + 1, s.caption]).filter(([, c]) => c);
     const shown = opts.deck ? caps : at != null ? caps.filter(([k]) => k <= at).slice(-1) : [];
-    over += shown.map(([k, c]) => `<text class="pxfx-cap"${opts.deck ? ` data-fx-cap="${k}"` : ""} x="${n17(W / 2)}" y="${n17(d.h + CAPTION_H - 10)}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="${ink}">${esc7(c)}</text>`).join("");
+    over += shown.map(([k, c]) => `<text class="pxfx-cap"${opts.deck ? ` data-fx-cap="${k}"` : ""} x="${n17(W2 / 2)}" y="${n17(d.h + CAPTION_H - 10)}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="${ink2}">${esc7(c)}</text>`).join("");
   }
   const inner = body.map(toXml).join("");
   const rootFill = d.kind !== "signal" && dark ? ` fill="${DARK.ink}"` : "";
-  const size = opts.standalone ? ` width="${n17(W)}" height="${n17(H)}"` : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n17(W)} ${n17(H)}" preserveAspectRatio="xMidYMid meet"${size}${rootFill} style="width:100%;height:100%;display:block;overflow:visible">` + (defs ? `<defs>${defs}</defs>` : "") + inner + over + "</svg>";
+  const size = opts.standalone ? ` width="${n17(W2)}" height="${n17(H2)}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n17(W2)} ${n17(H2)}" preserveAspectRatio="xMidYMid meet"${size}${rootFill} style="width:100%;height:100%;display:block;overflow:visible">` + (defs ? `<defs>${defs}</defs>` : "") + inner + over + "</svg>";
 }
 function clipLanes(nodes, clipId) {
   const walk = (n) => {
@@ -15193,6 +16162,99 @@ function timingStepMarkers(slide) {
 function hasTiming(presentation) {
   return (presentation?.slides || []).some((s) => (s.elements || []).some((el) => el.type === "timing"));
 }
+var TIMING_TEMPLATES = [
+  {
+    key: "clock-data",
+    name: "Clock, data and a handshake",
+    source: `{ signal: [
+  { name: 'clk',  wave: 'p.......' },
+  { name: 'data', wave: 'x.345x..', data: ['head', 'body', 'tail'] },
+  { name: 'req',  wave: '0.1..0..', node: '..a..b' },
+  { name: 'ack',  wave: '0..1..0.', node: '...c..d' },
+],
+  edge: ['a~>c', 'b~>d'],
+  head: { text: 'Request and acknowledge', tick: 0 },
+}`
+  },
+  {
+    key: "spi",
+    name: "SPI byte, mode 0",
+    source: `{ signal: [
+  { name: 'CS',   wave: '10........1' },
+  { name: 'SCLK', wave: '0.p.......l', period: 1 },
+  { name: 'MOSI', wave: 'x.========x', data: ['b7', 'b6', 'b5', 'b4', 'b3', 'b2', 'b1', 'b0'] },
+  { name: 'MISO', wave: 'z.========z', data: ['b7', 'b6', 'b5', 'b4', 'b3', 'b2', 'b1', 'b0'] },
+],
+  head: { text: 'SPI, mode 0: sampled on the rising edge', tick: 0 },
+}`
+  },
+  {
+    key: "i2c",
+    name: "I²C start, address and ACK",
+    source: `{ signal: [
+  { name: 'SCL', wave: '1.n........h.' },
+  { name: 'SDA', wave: '10=========01', data: ['A6', 'A5', 'A4', 'A3', 'A2', 'A1', 'A0', 'R/W', 'ACK'] },
+],
+  head: { text: 'I²C: start, a 7-bit address, read or write, acknowledge, stop', tick: 0 },
+}`
+  },
+  {
+    key: "uart",
+    name: "UART frame",
+    source: `{ signal: [
+  { name: 'TX',  wave: '1.0========1.', data: ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7'] },
+  { name: 'bit', wave: 'x.3444444445x', data: ['start', '0', '1', '2', '3', '4', '5', '6', '7', 'stop'] },
+],
+  head: { text: 'UART, 8N1: a start bit, eight data bits least significant first, a stop bit' },
+}`
+  },
+  {
+    key: "axi",
+    name: "Valid and ready handshake",
+    source: `{ signal: [
+  { name: 'ACLK',   wave: 'p.........' },
+  ['Write address',
+    { name: 'AWVALID', wave: '0.1...0...', node: '..a...' },
+    { name: 'AWREADY', wave: '0...10....', node: '....b' },
+    { name: 'AWADDR',  wave: 'x.3...x...', data: ['0x40'] },
+  ],
+  {},
+  ['Write data',
+    { name: 'WVALID', wave: '0...1.0...' },
+    { name: 'WREADY', wave: '0.....10..', node: '......c' },
+    { name: 'WDATA',  wave: 'x...4..x..', data: ['0xBEEF'] },
+  ],
+],
+  edge: ['a~>b address taken', 'b~>c'],
+  head: { text: 'A transfer happens on the cycle VALID and READY are both high', tick: 0 },
+}`
+  },
+  {
+    key: "pipeline",
+    name: "Five-stage pipeline",
+    source: `{ signal: [
+  { name: 'clk', wave: 'p......' },
+  { name: 'add', wave: '34567xx', data: ['IF', 'ID', 'EX', 'MEM', 'WB'] },
+  { name: 'sub', wave: 'x34567x', data: ['IF', 'ID', 'EX', 'MEM', 'WB'] },
+  { name: 'lw',  wave: 'xx34567', data: ['IF', 'ID', 'EX', 'MEM', 'WB'] },
+],
+  head: { text: 'One instruction enters the pipeline each cycle', tick: 1 },
+}`
+  },
+  {
+    key: "register",
+    name: "Register fields (RISC-V I-type)",
+    source: `{ reg: [
+  { bits: 7,  name: 'opcode',    attr: 'OP-IMM' },
+  { bits: 5,  name: 'rd',        attr: 'dest' },
+  { bits: 3,  name: 'funct3',    attr: ['ADDI', 'SLTI', 'ANDI'] },
+  { bits: 5,  name: 'rs1',       attr: 'src' },
+  { bits: 12, name: 'imm[11:0]', attr: 'I-immediate' },
+],
+  config: { hspace: 880, bits: 32, lanes: 1 },
+}`
+  }
+];
 
 // client/src/utils/geometryEngine.js
 function geometryRuntime() {
@@ -15492,9 +16554,9 @@ function geometryRuntime() {
     }
     return null;
   }
-  var EXAMPLES = { Point: "Point(1, 2)", PointOn: "PointOn(c, 0.5)", Intersect: "Intersect(c, d, 0)", Midpoint: "Midpoint(A, B)", Segment: "Segment(A, B)", Line: "Line(A, B)", Ray: "Ray(A, B)", Circle: "Circle(A, B)", Perpendicular: "Perpendicular(P, f)", Parallel: "Parallel(P, f)", PerpendicularBisector: "PerpendicularBisector(A, B)", AngleBisector: "AngleBisector(A, B, C)", Polygon: "Polygon(A, B, C)", Angle: "Angle(A, B, C)", Distance: "Distance(A, B)" };
+  var EXAMPLES2 = { Point: "Point(1, 2)", PointOn: "PointOn(c, 0.5)", Intersect: "Intersect(c, d, 0)", Midpoint: "Midpoint(A, B)", Segment: "Segment(A, B)", Line: "Line(A, B)", Ray: "Ray(A, B)", Circle: "Circle(A, B)", Perpendicular: "Perpendicular(P, f)", Parallel: "Parallel(P, f)", PerpendicularBisector: "PerpendicularBisector(A, B)", AngleBisector: "AngleBisector(A, B, C)", Polygon: "Polygon(A, B, C)", Angle: "Angle(A, B, C)", Distance: "Distance(A, B)" };
   function example(cmd) {
-    return EXAMPLES[cmd] || cmd + "(…)";
+    return EXAMPLES2[cmd] || cmd + "(…)";
   }
   function serialize(objs) {
     return objs.map(function(o) {
@@ -15549,15 +16611,15 @@ function geometryRuntime() {
     light: { ink: "#1b2230", soft: "#7a8396", grid: "#e1e5ec", axis: "#8790a2", blue: "#1f62c4", red: "#cc2f24", yellow: "#e3a400", green: "#2a8a57", purple: "#7a42c8", accent: "#cc2f24", halo: "#ffffff", fillOp: 0.26 }
   };
   function frame(o) {
-    var W = o.W || 960, H = o.H || 540, v = o.view || { x: 0, y: 0, w: 16 }, k = W / (v.w > 0 ? v.w : 16);
-    return { W, H, k, cx: W / 2 - v.x * k, cy: H / 2 + v.y * k };
+    var W2 = o.W || 960, H2 = o.H || 540, v = o.view || { x: 0, y: 0, w: 16 }, k = W2 / (v.w > 0 ? v.w : 16);
+    return { W: W2, H: H2, k, cx: W2 / 2 - v.x * k, cy: H2 / 2 + v.y * k };
   }
-  function toScreen(F, p) {
-    return P(F.cx + p.x * F.k, F.cy - p.y * F.k);
+  function toScreen(F2, p) {
+    return P(F2.cx + p.x * F2.k, F2.cy - p.y * F2.k);
   }
   function toWorld(o, sx, sy) {
-    var F = frame(o);
-    return P((sx - F.cx) / F.k, (F.cy - sy) / F.k);
+    var F2 = frame(o);
+    return P((sx - F2.cx) / F2.k, (F2.cy - sy) / F2.k);
   }
   function colorOf(ob, th, fallback) {
     var c = ob.opts && ob.opts.color;
@@ -15589,11 +16651,11 @@ function geometryRuntime() {
     return raw <= p ? p : raw <= 2 * p ? 2 * p : raw <= 5 * p ? 5 * p : 10 * p;
   }
   function render(objs, vals, o) {
-    var th = THEMES[o.dark ? "dark" : "light"], F = frame(o), W = F.W, H = F.H;
+    var th = THEMES[o.dark ? "dark" : "light"], F2 = frame(o), W2 = F2.W, H2 = F2.H;
     var S = function(p) {
-      return toScreen(F, p);
+      return toScreen(F2, p);
     };
-    var R = { x0: -40, y0: -40, x1: W + 40, y1: H + 40 };
+    var R = { x0: -40, y0: -40, x1: W2 + 40, y1: H2 + 40 };
     var label = o.label || function(tex, x, y, size, color2) {
       return '<text x="' + n18(x) + '" y="' + n18(y + size * 0.34) + '" text-anchor="middle" font-family="' + SERIF + '" font-size="' + size + '" font-style="italic" fill="' + color2 + '">' + esc9(tex) + "</text>";
     };
@@ -15602,7 +16664,7 @@ function geometryRuntime() {
       return name === o.hover || (o.sel || []).indexOf(name) >= 0;
     };
     var halo = ' paint-order="stroke" stroke="' + th.halo + '" stroke-width="3.5" stroke-linejoin="round"';
-    if (o.grid || o.axes) L.back = backdrop(F, th, o);
+    if (o.grid || o.axes) L.back = backdrop(F2, th, o);
     var obs = [];
     objs.slice(0, upto).forEach(function(ob) {
       var v = vals[ob.name];
@@ -15610,7 +16672,7 @@ function geometryRuntime() {
       if (isLine(v)) {
         var sg = clipLine(S(v.p), S(v.q), v.kind, R);
         if (sg) obs.push({ a: sg[0], b: sg[1], pad: 1 });
-      } else if (isCircle(v)) obs.push({ c: S(v.c), r: v.r * F.k, pad: 1 });
+      } else if (isCircle(v)) obs.push({ c: S(v.c), r: v.r * F2.k, pad: 1 });
       else if (v.pts) {
         var ps = v.pts.map(S);
         ps.forEach(function(p, k) {
@@ -15649,7 +16711,7 @@ function geometryRuntime() {
         L.line += "<path" + tag + ' d="' + d + '" fill="none" stroke="' + (cons ? th.soft : colorOf(ob, th, th.ink)) + '" stroke-width="' + w + '"' + dash + ' stroke-linecap="round"/>';
         L.label += fl(nameLabel(mul2(add2(seg[0], seg[1]), 0.5), 12, -12));
       } else if (isCircle(v)) {
-        var c = S(v.c), r = v.r * F.k, s0 = v.start || 0;
+        var c = S(v.c), r = v.r * F2.k, s0 = v.start || 0;
         if (r > 2e4) return;
         var x1 = c.x + r * Math.cos(s0), y1 = c.y - r * Math.sin(s0), x2 = c.x - r * Math.cos(s0), y2 = c.y + r * Math.sin(s0);
         var dc = "M" + n18(x1) + " " + n18(y1) + "A" + n18(r) + " " + n18(r) + " 0 1 0 " + n18(x2) + " " + n18(y2) + "A" + n18(r) + " " + n18(r) + " 0 1 0 " + n18(x1) + " " + n18(y1);
@@ -15677,21 +16739,21 @@ function geometryRuntime() {
         }
       }
     });
-    var cap = o.caption ? '<text x="' + n18(W / 2) + '" y="' + n18(H - 14) + '" text-anchor="middle" font-family="' + SANS + '" font-size="18" fill="' + th.ink + '"' + halo + ">" + esc9(o.caption) + "</text>" : "";
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n18(W) + " " + n18(H) + '" preserveAspectRatio="xMidYMid meet"' + (o.standalone ? ' width="' + n18(W) + '" height="' + n18(H) + '"' : "") + ' style="display:block;width:100%;height:100%;overflow:hidden">' + L.back + "<g>" + L.fill + "</g><g>" + L.line + "</g><g>" + L.mark + "</g><g>" + L.point + '</g><g style="pointer-events:none">' + L.label + "</g>" + cap + "</svg>";
+    var cap = o.caption ? '<text x="' + n18(W2 / 2) + '" y="' + n18(H2 - 14) + '" text-anchor="middle" font-family="' + SANS + '" font-size="18" fill="' + th.ink + '"' + halo + ">" + esc9(o.caption) + "</text>" : "";
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n18(W2) + " " + n18(H2) + '" preserveAspectRatio="xMidYMid meet"' + (o.standalone ? ' width="' + n18(W2) + '" height="' + n18(H2) + '"' : "") + ' style="display:block;width:100%;height:100%;overflow:hidden">' + L.back + "<g>" + L.fill + "</g><g>" + L.line + "</g><g>" + L.mark + "</g><g>" + L.point + '</g><g style="pointer-events:none">' + L.label + "</g>" + cap + "</svg>";
   }
-  function backdrop(F, th, o) {
-    var s = gridStep(F.k), out = "", x0 = -F.cx / F.k, x1 = (F.W - F.cx) / F.k, y0 = (F.cy - F.H) / F.k, y1 = F.cy / F.k;
+  function backdrop(F2, th, o) {
+    var s = gridStep(F2.k), out = "", x0 = -F2.cx / F2.k, x1 = (F2.W - F2.cx) / F2.k, y0 = (F2.cy - F2.H) / F2.k, y1 = F2.cy / F2.k;
     if (o.grid) {
       var d = "";
-      for (var x = Math.ceil(x0 / s) * s; x <= x1; x += s) d += "M" + n18(F.cx + x * F.k) + " 0V" + n18(F.H);
-      for (var y = Math.ceil(y0 / s) * s; y <= y1; y += s) d += "M0 " + n18(F.cy - y * F.k) + "H" + n18(F.W);
+      for (var x = Math.ceil(x0 / s) * s; x <= x1; x += s) d += "M" + n18(F2.cx + x * F2.k) + " 0V" + n18(F2.H);
+      for (var y = Math.ceil(y0 / s) * s; y <= y1; y += s) d += "M0 " + n18(F2.cy - y * F2.k) + "H" + n18(F2.W);
       out += '<path d="' + d + '" stroke="' + th.grid + '" stroke-width="1" fill="none"/>';
     }
     if (o.axes) {
-      var ax = '<path d="M0 ' + n18(F.cy) + "H" + n18(F.W) + "M" + n18(F.cx) + " 0V" + n18(F.H) + '" stroke="' + th.axis + '" stroke-width="1.4" fill="none"/>', lab = "";
-      for (var tx = Math.ceil(x0 / s) * s; tx <= x1; tx += s) if (Math.abs(tx) > s / 2) lab += '<text x="' + n18(F.cx + tx * F.k) + '" y="' + n18(Math.min(F.H - 4, Math.max(14, F.cy + 15))) + '" text-anchor="middle">' + n23(tx) + "</text>";
-      for (var ty = Math.ceil(y0 / s) * s; ty <= y1; ty += s) if (Math.abs(ty) > s / 2) lab += '<text x="' + n18(Math.min(F.W - 4, Math.max(16, F.cx - 6))) + '" y="' + n18(F.cy - ty * F.k + 4) + '" text-anchor="end">' + n23(ty) + "</text>";
+      var ax = '<path d="M0 ' + n18(F2.cy) + "H" + n18(F2.W) + "M" + n18(F2.cx) + " 0V" + n18(F2.H) + '" stroke="' + th.axis + '" stroke-width="1.4" fill="none"/>', lab = "";
+      for (var tx = Math.ceil(x0 / s) * s; tx <= x1; tx += s) if (Math.abs(tx) > s / 2) lab += '<text x="' + n18(F2.cx + tx * F2.k) + '" y="' + n18(Math.min(F2.H - 4, Math.max(14, F2.cy + 15))) + '" text-anchor="middle">' + n23(tx) + "</text>";
+      for (var ty = Math.ceil(y0 / s) * s; ty <= y1; ty += s) if (Math.abs(ty) > s / 2) lab += '<text x="' + n18(Math.min(F2.W - 4, Math.max(16, F2.cx - 6))) + '" y="' + n18(F2.cy - ty * F2.k + 4) + '" text-anchor="end">' + n23(ty) + "</text>";
       out += ax + '<g font-family="' + SANS + '" font-size="11" fill="' + th.axis + '">' + lab + "</g>";
     }
     return out;
@@ -15744,20 +16806,20 @@ function geometryRuntime() {
     return out + '<text x="' + n18(t.x) + '" y="' + n18(t.y + 5) + '" text-anchor="middle" font-family="' + SANS + '" font-size="15" font-weight="600" fill="' + col + '"' + halo + ">" + esc9(text) + "</text>";
   }
   function hit(objs, vals, o, sx, sy, upto) {
-    var F = frame(o), m = P(sx, sy), out = [];
+    var F2 = frame(o), m = P(sx, sy), out = [];
     objs.slice(0, upto == null ? objs.length : upto).forEach(function(ob) {
       var v = vals[ob.name];
       if (!v || ob.opts.hidden) return;
       var d = Infinity;
-      if (isPoint(v)) d = dist(toScreen(F, v), m) - 4;
+      if (isPoint(v)) d = dist(toScreen(F2, v), m) - 4;
       else if (isLine(v)) {
-        var a = toScreen(F, v.p), b = toScreen(F, v.q), ab = sub2(b, a), t = dot2(sub2(m, a), ab) / dot2(ab, ab);
+        var a = toScreen(F2, v.p), b = toScreen(F2, v.q), ab = sub2(b, a), t = dot2(sub2(m, a), ab) / dot2(ab, ab);
         if (v.kind === "segment") t = Math.max(0, Math.min(1, t));
         else if (v.kind === "ray") t = Math.max(0, t);
         d = dist(add2(a, mul2(ab, t)), m);
-      } else if (isCircle(v)) d = Math.abs(dist(toScreen(F, v.c), m) - v.r * F.k);
+      } else if (isCircle(v)) d = Math.abs(dist(toScreen(F2, v.c), m) - v.r * F2.k);
       else if (v.pts) d = inside(v.pts.map(function(p) {
-        return toScreen(F, p);
+        return toScreen(F2, p);
       }), m) ? 8 : Infinity;
       if (d < 9) out.push({ name: ob.name, d, point: isPoint(v), curve: isLine(v) || isCircle(v), free: ob.cmd === "Point" || ob.cmd === "PointOn" });
     });
@@ -15790,7 +16852,7 @@ function geometryRuntime() {
     opts = opts || {};
     var saved = parse2(cfg.script).objs, objs = clone2(saved), vals = compute(objs), step = 0, drag = null, anim = null;
     var plan = cfg.plan || { to: [objs.length], captions: [] };
-    var base = { W: cfg.W, H: cfg.H, view: cfg.view, dark: cfg.dark, axes: cfg.axes, grid: cfg.grid, label: opts.label };
+    var base3 = { W: cfg.W, H: cfg.H, view: cfg.view, dark: cfg.dark, axes: cfg.axes, grid: cfg.grid, label: opts.label };
     var draggable = objs.some(function(o) {
       return o.cmd === "Point" || o.cmd === "PointOn";
     });
@@ -15804,7 +16866,7 @@ function geometryRuntime() {
     }
     function draw() {
       var o = {}, k;
-      for (k in base) o[k] = base[k];
+      for (k in base3) o[k] = base3[k];
       o.upto = upto();
       o.anim = anim;
       o.tidy = plan.tidyAt != null && step >= plan.tidyAt;
@@ -15824,7 +16886,7 @@ function geometryRuntime() {
     function onDown(ev) {
       var p = point(ev);
       if (!p) return;
-      var h = hit(objs, vals, base, p.x, p.y, upto()).filter(function(x) {
+      var h = hit(objs, vals, base3, p.x, p.y, upto()).filter(function(x) {
         return x.free;
       })[0];
       if (!h) return;
@@ -15841,7 +16903,7 @@ function geometryRuntime() {
       var p = point(ev);
       if (!p) return;
       if (!drag) {
-        var h = hit(objs, vals, base, p.x, p.y, upto()).filter(function(x) {
+        var h = hit(objs, vals, base3, p.x, p.y, upto()).filter(function(x) {
           return x.free;
         })[0];
         root.style.cursor = h ? "grab" : "";
@@ -15851,7 +16913,7 @@ function geometryRuntime() {
       var ob = objs.filter(function(o) {
         return o.name === drag.name;
       })[0];
-      if (ob && dragTo(ob, vals, toWorld(base, p.x, p.y), cfg.grid ? gridStep(frame(base).k) : 0)) {
+      if (ob && dragTo(ob, vals, toWorld(base3, p.x, p.y), cfg.grid ? gridStep(frame(base3).k) : 0)) {
         vals = compute(objs);
         draw();
       }
@@ -15969,6 +17031,13 @@ function geometryPlan(m, objs) {
   }
   return { to, captions, tidyAt, rest };
 }
+function stepsPerLine(objs, start) {
+  const lead = objs.findIndex((o) => o.cmd !== "Point");
+  const from = start == null ? lead < 0 ? objs.length : lead : start;
+  const out = [];
+  for (let t = from + 1; t <= objs.length; t++) out.push({ to: t, caption: "" });
+  return out;
+}
 function labelBox(tex, x, y, size, color2, inner) {
   const w = Math.max(28, tex.length * size * 0.9), h = size * 2;
   return `<foreignObject x="${n22(x - w / 2)}" y="${n22(y - h / 2)}" width="${n22(w)}" height="${n22(h)}" pointer-events="none" style="overflow:visible"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;line-height:1;font-size:${n22(size / 1.21)}px;color:${esc8(color2)}">${inner}</div></foreignObject>`;
@@ -16001,8 +17070,26 @@ function geometrySvg(el, opts = {}) {
   });
 }
 function placeholder(m, msg, opts) {
-  const dark = m.theme === "dark", W = m.W, H = m.H, c = dark ? "#f5a524" : "#b45309";
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"${opts.standalone ? ` width="${W}" height="${H}"` : ""} style="display:block;width:100%;height:100%"><rect x="2" y="2" width="${W - 4}" height="${H - 4}" rx="10" fill="none" stroke="${c}" stroke-dasharray="7 5"/><text x="${W / 2}" y="${H / 2 - 8}" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="600" fill="${c}">Geometry</text><text x="${W / 2}" y="${H / 2 + 18}" text-anchor="middle" font-family="sans-serif" font-size="13" fill="${dark ? "#e7ebf3" : "#333"}">${esc8(msg.length > 80 ? msg.slice(0, 79) + "…" : msg)}</text></svg>`;
+  const dark = m.theme === "dark", W2 = m.W, H2 = m.H, c = dark ? "#f5a524" : "#b45309";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W2} ${H2}"${opts.standalone ? ` width="${W2}" height="${H2}"` : ""} style="display:block;width:100%;height:100%"><rect x="2" y="2" width="${W2 - 4}" height="${H2 - 4}" rx="10" fill="none" stroke="${c}" stroke-dasharray="7 5"/><text x="${W2 / 2}" y="${H2 / 2 - 8}" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="600" fill="${c}">Geometry</text><text x="${W2 / 2}" y="${H2 / 2 + 18}" text-anchor="middle" font-family="sans-serif" font-size="13" fill="${dark ? "#e7ebf3" : "#333"}">${esc8(msg.length > 80 ? msg.slice(0, 79) + "…" : msg)}</text></svg>`;
+}
+function fitView(objs, vals, W2 = GEOMETRY_SIZE.w, H2 = GEOMETRY_SIZE.h) {
+  const xs = [], ys = [];
+  objs.forEach((o) => {
+    const v = vals[o.name];
+    if (!v || o.opts.hidden) return;
+    if (GEO.isPoint(v)) {
+      xs.push(v.x);
+      ys.push(v.y);
+    } else if (GEO.isCircle(v)) {
+      xs.push(v.c.x - v.r, v.c.x + v.r);
+      ys.push(v.c.y - v.r, v.c.y + v.r);
+    }
+  });
+  if (!xs.length) return { x: 0, y: 0, w: 12 };
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const w = Math.max((x1 - x0) * 1.22, (y1 - y0) * 1.3 * W2 / H2, 2);
+  return { x: Math.round((x0 + x1) / 2 * 100) / 100, y: Math.round(((y0 + y1) / 2 - w * H2 / W2 * 0.02) * 100) / 100, w: Math.round(w * 100) / 100 };
 }
 function geometrySteps(el) {
   if (el?.type !== "geometry") return [];
@@ -16090,6 +17177,112 @@ function geometryDeckScript() {
     })();
 `;
   return deckScript2;
+}
+var GEOMETRY_TEMPLATES = [
+  { key: "euclid", name: "Euclid I.1: an equilateral triangle", script: `A = Point(-2, -1.5)
+B = Point(2, -1.5)
+s = Segment(A, B)
+c = Circle(A, B) {construction}
+d = Circle(B, A) {construction}
+C = Intersect(c, d, 0)
+t = Polygon(A, B, C)
+α = Angle(B, A, C)` },
+  { key: "bisector", name: "Perpendicular bisector, by compass", script: `A = Point(-3, -1)
+B = Point(2.5, 0.5)
+s = Segment(A, B)
+c = Circle(A, B) {construction}
+d = Circle(B, A) {construction}
+P = Intersect(c, d, 0)
+Q = Intersect(c, d, 1)
+m = Line(P, Q) {color=red}
+M = Intersect(m, s, 0)
+α = Angle(B, M, P)` },
+  { key: "circum", name: "Circumcircle", script: `A = Point(-3, -2)
+B = Point(3.2, -1.6)
+C = Point(-0.6, 2.6)
+t = Polygon(A, B, C)
+f = PerpendicularBisector(A, B) {construction}
+g = PerpendicularBisector(B, C) {construction}
+h = PerpendicularBisector(C, A) {construction}
+O = Intersect(f, g, 0)
+k = Circle(O, A)` },
+  { key: "incircle", name: "Incircle", script: `A = Point(-3.4, -2)
+B = Point(3.4, -2)
+C = Point(0.6, 2.8)
+t = Polygon(A, B, C)
+f = AngleBisector(B, A, C) {construction}
+g = AngleBisector(A, B, C) {construction}
+I = Intersect(f, g, 0)
+a = Line(A, B) {hidden}
+p = Perpendicular(I, a) {construction}
+H = Intersect(p, a, 0)
+k = Circle(I, H)
+ρ = Angle(I, H, B)` },
+  { key: "euler", name: "Euler line", script: `A = Point(-3.6, -2)
+B = Point(3.4, -2)
+C = Point(-1.2, 2.8)
+t = Polygon(A, B, C)
+M_a = Midpoint(B, C) {construction}
+M_b = Midpoint(C, A) {construction}
+ma = Segment(A, M_a) {construction}
+mb = Segment(B, M_b) {construction}
+G = Intersect(ma, mb, 0) {color=green}
+ha = Perpendicular(A, B, C) {construction}
+hb = Perpendicular(B, C, A) {construction}
+H = Intersect(ha, hb, 0) {color=red}
+f = PerpendicularBisector(A, B) {construction}
+g = PerpendicularBisector(B, C) {construction}
+O = Intersect(f, g, 0) {color=blue}
+e = Line(O, H) {color=red}` },
+  { key: "thales", name: "Thales’ theorem", script: `A = Point(-3, -0.5)
+B = Point(3, -0.5)
+O = Midpoint(A, B)
+c = Circle(O, B)
+d = Segment(A, B)
+C = PointOn(c, 2.1)
+t = Polygon(A, B, C)
+γ = Angle(A, C, B)` },
+  { key: "inscribed", name: "Inscribed angle theorem", script: `O = Point(0, 0)
+R = Point(3, 0) {hidden}
+c = Circle(O, R)
+A = PointOn(c, 3.6)
+B = PointOn(c, 5.9)
+C = PointOn(c, 1.7)
+s1 = Segment(C, A)
+s2 = Segment(C, B)
+s3 = Segment(O, A) {color=blue}
+s4 = Segment(O, B) {color=blue}
+γ = Angle(A, C, B)
+θ = Angle(A, O, B) {color=blue}` },
+  { key: "tangents", name: "Tangents from a point", script: `O = Point(-1.5, 0)
+R = Point(0.6, 0) {hidden}
+c = Circle(O, R)
+P = Point(3.5, 1)
+M = Midpoint(O, P) {construction}
+d = Circle(M, P) {construction}
+T = Intersect(c, d, 0)
+U = Intersect(c, d, 1)
+f = Line(P, T) {color=red}
+g = Line(P, U) {color=red}
+r = Segment(O, T)
+β = Angle(O, T, P)` },
+  { key: "blank", name: "Blank", script: "" }
+];
+function geometryFromTemplate(key, { dark = true, W: W2 = GEOMETRY_SIZE.w, H: H2 = GEOMETRY_SIZE.h } = {}) {
+  const t = GEOMETRY_TEMPLATES.find((x) => x.key === key) || GEOMETRY_TEMPLATES[0];
+  const p = GEO.parse(t.script), vals = GEO.compute(p.objs);
+  return {
+    script: t.script,
+    view: t.key === "blank" ? { x: 0, y: 0, w: 12 } : fitView(p.objs, vals, W2, H2),
+    theme: dark ? "dark" : "light",
+    axes: false,
+    grid: false,
+    steps: stepsPerLine(p.objs, null),
+    start: null,
+    tidy: false,
+    captions: true,
+    stepStart: 1
+  };
 }
 
 // client/src/utils/periodicData.js
@@ -16317,8 +17510,8 @@ function periodicRuntime(ROWS) {
     }
     if (z <= 36) return { r: 4, c: z - 18 };
     if (z <= 54) return { r: 5, c: z - 36 };
-    var base = z <= 86 ? 55 : 87, r = z <= 86 ? 6 : 7, fr = z <= 86 ? 9 : 10;
-    i = z - base;
+    var base3 = z <= 86 ? 55 : 87, r = z <= 86 ? 6 : 7, fr = z <= 86 ? 9 : 10;
+    i = z - base3;
     if (i < 2) return { r, c: i + 1 };
     var fi = i - 2;
     if (fi <= 14) {
@@ -16582,18 +17775,18 @@ function periodicRuntime(ROWS) {
     if (s.card === "gap" && wide) card = { x: X(3), y: Y(1), w: CARD_WIDE.w, h: CARD_WIDE.h, mode: "wide" };
     else if (s.card !== "none") card = maxPeriod <= 3 && !withF ? { x: right + 16, y: Y(1), w: CARD_WIDE.w, h: CARD_WIDE.h, mode: "wide" } : { x: right + 16, y: Y(1), w: CARD_TALL.w, h: CARD_TALL.h, mode: "tall" };
     L.card = card;
-    var W = card ? Math.max(right, card.x + card.w) : right;
-    var H = card ? Math.max(bottom, card.y + card.h) : bottom;
+    var W2 = card ? Math.max(right, card.x + card.w) : right;
+    var H2 = card ? Math.max(bottom, card.y + card.h) : bottom;
     L.legend = null;
     if (s.legend) {
       var lw = right - ox - lab;
       var rows = Math.max(legendRows("category", lw), legendRows("block", lw), legendRows("state", lw), legendRows("en", lw));
-      L.legend = { x: ox + lab, y: H + 14, w: lw, h: rows * ROW_H };
-      H = L.legend.y + L.legend.h;
+      L.legend = { x: ox + lab, y: H2 + 14, w: lw, h: rows * ROW_H };
+      H2 = L.legend.y + L.legend.h;
     }
-    L.W = W;
-    L.H = H;
-    L.vb = { x: -6, y: -6, w: W + 12, h: H + 12 };
+    L.W = W2;
+    L.H = H2;
+    L.vb = { x: -6, y: -6, w: W2 + 12, h: H2 + 12 };
     return L;
   }
   function fit(w, max, fs, min) {
@@ -16708,11 +17901,11 @@ function periodicRuntime(ROWS) {
     var e = EL[z], lk = look(z, v, s, th), prop = PROPS[v.colorBy];
     var h = '<rect width="' + C2.w + '" height="' + C2.h + '" rx="8" fill="' + th.surface + '" stroke="' + th.line + '"/>';
     h += '<rect x="8" y="8" width="108" height="104" rx="7" fill="' + (lk.fillOp === 0 ? th.code : lk.fill) + '" stroke="' + th.fg + '" stroke-opacity="' + th.edge + '"/>';
-    var ink = lk.fillOp === 0 ? th.fg : lk.ink;
-    h += text(15, 21, z, ' font-family="' + MONO + '" font-size="11" fill="' + ink + '"');
-    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n18(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink + '" opacity="0.72"');
-    h += text(62, 72, e.sym, ' text-anchor="middle" font-size="44" font-weight="700" fill="' + ink + '"');
-    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n18(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink + '"');
+    var ink2 = lk.fillOp === 0 ? th.fg : lk.ink;
+    h += text(15, 21, z, ' font-family="' + MONO + '" font-size="11" fill="' + ink2 + '"');
+    h += text(109, 21, e.mass, ' text-anchor="end" font-family="' + MONO + '" font-size="' + n18(fit(textW(e.mass, 9.5, 0.6), 64, 9.5)) + '" fill="' + ink2 + '" opacity="0.72"');
+    h += text(62, 72, e.sym, ' text-anchor="middle" font-size="44" font-weight="700" fill="' + ink2 + '"');
+    h += text(62, 98, e.name, ' text-anchor="middle" font-size="' + n18(fit(textW(e.name, 13), 100, 13, 8)) + '" font-weight="600" fill="' + ink2 + '"');
     var cat = hsl(CAT_HUE[e.cat], th.strongS, th.strongL);
     h += '<rect x="8" y="121" width="8" height="8" rx="2" fill="' + cat + '"/>';
     h += text(20, 129, e.cat, ' font-size="' + n18(fit(textW(e.cat, 10.5), 96, 10.5, 7)) + '" font-weight="600" fill="' + th.fg + '"');
@@ -16986,10 +18179,10 @@ function periodicRuntime(ROWS) {
     var cells = cloudCells(s, A.w, A.h), k = 2 * s.l + 1, sz = k >= 5 ? 1.1 : 1.3;
     var paths = {};
     cells.forEach(function(c) {
-      var base = c.occ ? 1 : 0.16;
+      var base3 = c.occ ? 1 : 0.16;
       projectCell(s, c, 0.6, STILL[s.l], function(px, py, depth, sign) {
-        var bucket = Math.min(3, Math.floor((depth + 1) * 2)), key = (sign > 0 ? "p" : "n") + bucket + (base < 1 ? "e" : "");
-        var d = paths[key] || (paths[key] = { d: [], sign, op: base * (0.42 - 0.22 * (bucket / 2 - 0.75)) });
+        var bucket = Math.min(3, Math.floor((depth + 1) * 2)), key = (sign > 0 ? "p" : "n") + bucket + (base3 < 1 ? "e" : "");
+        var d = paths[key] || (paths[key] = { d: [], sign, op: base3 * (0.42 - 0.22 * (bucket / 2 - 0.75)) });
         d.d.push("M" + n18(A.x + px - sz / 2) + " " + n18(A.y + py - sz / 2) + "h" + sz + "v" + sz + "h-" + sz + "z");
       });
     });
@@ -17169,20 +18362,20 @@ function periodicRuntime(ROWS) {
         var vb = L.vb, cw = root.clientWidth, chh = root.clientHeight, kk = Math.min(cw / vb.w, chh / vb.h);
         var ox = (cw - vb.w * kk) / 2, oy = (chh - vb.h * kk) / 2;
         var zoom = root.getBoundingClientRect().width / cw, dpr = (win.devicePixelRatio || 1) * (zoom || 1);
-        var W = Math.round(A.w * kk * dpr), H = Math.round(A.h * kk * dpr);
+        var W2 = Math.round(A.w * kk * dpr), H2 = Math.round(A.h * kk * dpr);
         cv.style.left = ox + (A.x - vb.x) * kk + "px";
         cv.style.top = oy + (A.y - vb.y) * kk + "px";
         cv.style.width = A.w * kk + "px";
         cv.style.height = A.h * kk + "px";
-        if (cv.width !== W) cv.width = W;
-        if (cv.height !== H) cv.height = H;
-        ctx.setTransform(W / A.w, 0, 0, H / A.h, 0, 0);
+        if (cv.width !== W2) cv.width = W2;
+        if (cv.height !== H2) cv.height = H2;
+        ctx.setTransform(W2 / A.w, 0, 0, H2 / A.h, 0, 0);
         ctx.clearRect(0, 0, A.w, A.h);
         var a = 0.6 + (reduce ? 0 : ((now || t0) - t0) / 1e3 * 0.35);
         cells.forEach(function(c) {
-          var base = c.occ ? 1 : 0.16;
+          var base3 = c.occ ? 1 : 0.16;
           projectCell(sub2, c, a, 0, function(px, py, depth, sign) {
-            ctx.globalAlpha = base * (0.42 - 0.22 * depth);
+            ctx.globalAlpha = base3 * (0.42 - 0.22 * depth);
             ctx.fillStyle = sign > 0 ? th.pos : th.neg;
             ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
           });
@@ -17279,9 +18472,9 @@ function periodicRuntime(ROWS) {
       var cur = tileAt(L, z), best = null, bestScore = Infinity;
       L.tiles.forEach(function(t) {
         var dr = (t.y - cur.y) / 64, dc = (t.x - cur.x) / 64;
-        var along = d[0] ? dr * d[0] : dc * d[1], across = d[0] ? Math.abs(dc) : Math.abs(dr);
-        if (along <= 0.01) return;
-        var score = along + across * 3;
+        var along2 = d[0] ? dr * d[0] : dc * d[1], across = d[0] ? Math.abs(dc) : Math.abs(dr);
+        if (along2 <= 0.01) return;
+        var score = along2 + across * 3;
         if (score < bestScore) {
           bestScore = score;
           best = t.z;
@@ -17394,6 +18587,30 @@ function periodicRuntime(ROWS) {
   };
 }
 var PT = periodicRuntime(PERIODIC_ROWS);
+function periodicBox(el) {
+  const L = PT.layout(PT.normalize(el));
+  return { w: L.vb.w, h: L.vb.h };
+}
+function defaultPeriodic(dark = true) {
+  return {
+    colorBy: "category",
+    orbitalView: "boxes",
+    showCore: false,
+    group3: "gap",
+    show: "all",
+    restingElement: 26,
+    card: "gap",
+    tileLabel: "auto",
+    labels: true,
+    legend: true,
+    source: true,
+    theme: dark ? "dark" : "light",
+    highlight: "",
+    arrow: "",
+    stepStart: 1,
+    steps: []
+  };
+}
 function periodicSteps(el) {
   if (el?.type !== "periodic") return [];
   const s = PT.normalize(el);
@@ -18134,11 +19351,11 @@ function harmonicsCore() {
     }
     return new Uint32Array(out);
   }
-  function values(F, part2, isReal) {
-    var n = F.re.length, re = new Float32Array(n), im = new Float32Array(n), amax = 0;
+  function values(F2, part2, isReal) {
+    var n = F2.re.length, re = new Float32Array(n), im = new Float32Array(n), amax = 0;
     var complexShown = !isReal && part2 === "auto";
     for (var k = 0; k < n; k++) {
-      var a = F.re[k], b = F.im[k], v, w = 0;
+      var a = F2.re[k], b = F2.im[k], v, w = 0;
       if (part2 === "re" || part2 === "auto" && isReal) v = a;
       else if (part2 === "im") v = b;
       else if (part2 === "abs") v = Math.hypot(a, b);
@@ -18355,10 +19572,10 @@ function harmonicsRuntime(SH2) {
     }
     function render(ctx, w, h, dpr, passes) {
       if (!init()) return false;
-      var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
-      if (cv.width < W || cv.height < H) {
-        cv.width = Math.max(cv.width, W);
-        cv.height = Math.max(cv.height, H);
+      var W2 = Math.max(1, Math.round(w * dpr)), H2 = Math.max(1, Math.round(h * dpr));
+      if (cv.width < W2 || cv.height < H2) {
+        cv.width = Math.max(cv.width, W2);
+        cv.height = Math.max(cv.height, H2);
       }
       gl.viewport(0, 0, cv.width, cv.height);
       gl.clearColor(0, 0, 0, 0);
@@ -18368,7 +19585,7 @@ function harmonicsRuntime(SH2) {
       gl.useProgram(prog);
       passes.forEach(function(P) {
         var vx = Math.round(P.vp[0] * dpr), vw = Math.round(P.vp[2] * dpr), vh = Math.round(P.vp[3] * dpr);
-        var vy = H - Math.round(P.vp[1] * dpr) - vh;
+        var vy = H2 - Math.round(P.vp[1] * dpr) - vh;
         gl.enable(gl.SCISSOR_TEST);
         gl.scissor(vx, vy, vw, vh);
         gl.viewport(vx, vy, vw, vh);
@@ -18397,8 +19614,8 @@ function harmonicsRuntime(SH2) {
       gl.bindVertexArray(null);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      ctx.drawImage(cv, 0, cv.height - H, W, H, 0, 0, W, H);
+      ctx.clearRect(0, 0, W2, H2);
+      ctx.drawImage(cv, 0, cv.height - H2, W2, H2, 0, 0, W2, H2);
       ctx.restore();
       return true;
     }
@@ -18487,29 +19704,29 @@ function harmonicsRuntime(SH2) {
   function int7(v, lo, hi, dflt) {
     return Math.round(num9(v, lo, hi, dflt));
   }
-  function clean(o, base) {
+  function clean(o, base3) {
     var s = {};
-    s.source = pick2(o.source, SOURCES, base.source);
-    s.l = int7(o.l, 0, 60, base.l);
-    s.m = int7(o.m, -s.l, s.l, Math.max(-s.l, Math.min(s.l, base.m)));
-    s.form = pick2(o.form, FORMS, base.form);
-    s.expr = typeof o.expr === "string" ? o.expr.slice(0, 2e3) : base.expr;
-    var c = o.cap || {}, bc = base.cap;
+    s.source = pick2(o.source, SOURCES, base3.source);
+    s.l = int7(o.l, 0, 60, base3.l);
+    s.m = int7(o.m, -s.l, s.l, Math.max(-s.l, Math.min(s.l, base3.m)));
+    s.form = pick2(o.form, FORMS, base3.form);
+    s.expr = typeof o.expr === "string" ? o.expr.slice(0, 2e3) : base3.expr;
+    var c = o.cap || {}, bc = base3.cap;
     s.cap = { theta: num9(c.theta, 0, 180, bc.theta), phi: num9(c.phi, -180, 360, bc.phi), radius: num9(c.radius, 1, 179, bc.radius), lmax: int7(c.lmax, 0, 60, bc.lmax) };
-    var k = o.sky || {}, bk = base.sky;
+    var k = o.sky || {}, bk = base3.sky;
     s.sky = { seed: int7(k.seed, 1, 1e9, bk.seed), slope: num9(k.slope, 0, 6, bk.slope), lmax: int7(k.lmax, 2, 60, bk.lmax) };
-    s.part = pick2(o.part, PARTS, base.part);
-    s.view = pick2(o.view, VIEWS, base.view);
-    s.tableMax = int7(o.tableMax, 0, 5, base.tableMax);
-    s.tableCell = pick2(o.tableCell, ["lobes", "sphere"], base.tableCell);
-    s.projection = pick2(o.projection, ["mollweide", "plate"], base.projection);
-    s.eastLeft = o.eastLeft === void 0 ? base.eastLeft : !!o.eastLeft;
-    s.amplitude = num9(o.amplitude, 0.05, 0.6, base.amplitude);
-    s.motion = pick2(o.motion, MOTIONS, base.motion);
-    s.turn = num9(o.turn, -720, 720, base.turn);
-    s.tilt = num9(o.tilt, -89, 89, base.tilt);
-    s.nodes = o.nodes === void 0 ? base.nodes : !!o.nodes;
-    s.axes = o.axes === void 0 ? base.axes : !!o.axes;
+    s.part = pick2(o.part, PARTS, base3.part);
+    s.view = pick2(o.view, VIEWS, base3.view);
+    s.tableMax = int7(o.tableMax, 0, 5, base3.tableMax);
+    s.tableCell = pick2(o.tableCell, ["lobes", "sphere"], base3.tableCell);
+    s.projection = pick2(o.projection, ["mollweide", "plate"], base3.projection);
+    s.eastLeft = o.eastLeft === void 0 ? base3.eastLeft : !!o.eastLeft;
+    s.amplitude = num9(o.amplitude, 0.05, 0.6, base3.amplitude);
+    s.motion = pick2(o.motion, MOTIONS, base3.motion);
+    s.turn = num9(o.turn, -720, 720, base3.turn);
+    s.tilt = num9(o.tilt, -89, 89, base3.tilt);
+    s.nodes = o.nodes === void 0 ? base3.nodes : !!o.nodes;
+    s.axes = o.axes === void 0 ? base3.axes : !!o.axes;
     return s;
   }
   function normalize(el) {
@@ -18571,9 +19788,9 @@ function harmonicsRuntime(SH2) {
     return M;
   }
   function picture(s) {
-    var F = SH2.functionOf(s);
-    if (F.error) return { s, error: F.error, pos: F.pos };
-    var pic = { s, F, view: s.view };
+    var F2 = SH2.functionOf(s);
+    if (F2.error) return { s, error: F2.error, pos: F2.pos };
+    var pic = { s, F: F2, view: s.view };
     if (s.view === "table") {
       pic.cells = [];
       for (var l = 0; l <= s.tableMax; l++) for (var m = -l; m <= l; m++) {
@@ -18583,9 +19800,9 @@ function harmonicsRuntime(SH2) {
       }
       return pic;
     }
-    var Gk = gridFor(s.view === "map" ? "map" : "3d", F.C.L);
+    var Gk = gridFor(s.view === "map" ? "map" : "3d", F2.C.L);
     pic.G = Gk;
-    pic.field = SH2.synth(F.C, Gk.th, Gk.ph);
+    pic.field = SH2.synth(F2.C, Gk.th, Gk.ph);
     if (s.view === "map") {
       var n = Gk.nt * Gk.np, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), flip2 = s.eastLeft ? -1 : 1;
       for (var i = 0; i < Gk.nt; i++) for (var j = 0; j < Gk.np; j++) {
@@ -18608,8 +19825,8 @@ function harmonicsRuntime(SH2) {
     }
     return { re, im };
   }
-  function frameData(s, F, field, wt, view) {
-    var V = SH2.values(rotate(field, wt), s.part, F.real);
+  function frameData(s, F2, field, wt, view) {
+    var V = SH2.values(rotate(field, wt), s.part, F2.real);
     var r = SH2.radii(V, view, s.amplitude);
     var n = V.re.length, val = new Float32Array(2 * n), inv = 1 / V.amax;
     for (var k = 0; k < n; k++) {
@@ -18632,7 +19849,7 @@ function harmonicsRuntime(SH2) {
       var u = Math.abs(d[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
       var v = [d[1] * u[2] - d[2] * u[1], d[2] * u[0] - d[0] * u[2], d[0] * u[1] - d[1] * u[0]];
       u = [v[1] * d[2] - v[2] * d[1], v[2] * d[0] - v[0] * d[2], v[0] * d[1] - v[1] * d[0]];
-      var base = P.length / 3;
+      var base3 = P.length / 3;
       for (var i = 0; i <= seg; i++) {
         var a = 2 * PI * i / seg, ca = Math.cos(a), sa = Math.sin(a);
         var nx = u[0] * ca + v[0] * sa, ny = u[1] * ca + v[1] * sa, nz = u[2] * ca + v[2] * sa;
@@ -18646,7 +19863,7 @@ function harmonicsRuntime(SH2) {
         N.push(nx * 0.9 + d[0] * 0.4, ny * 0.9 + d[1] * 0.4, nz * 0.9 + d[2] * 0.4);
       }
       for (i = 0; i < seg; i++) {
-        var a0 = base + 4 * i, a1 = base + 4 * (i + 1);
+        var a0 = base3 + 4 * i, a1 = base3 + 4 * (i + 1);
         I.push(a0, a1, a0 + 1, a1, a1 + 1, a0 + 1, a0 + 2, a1 + 2, a0 + 3, a1 + 2, a1 + 3, a0 + 3);
       }
     }
@@ -18677,15 +19894,15 @@ function harmonicsRuntime(SH2) {
   function draw(canvas, pic, o) {
     o = o || {};
     var w = o.w, h = o.h, dpr = o.dpr || 1;
-    var W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
-    if (canvas.width !== W || canvas.height !== H) {
-      canvas.width = W;
-      canvas.height = H;
+    var W2 = Math.max(1, Math.round(w * dpr)), H2 = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== W2 || canvas.height !== H2) {
+      canvas.width = W2;
+      canvas.height = H2;
     }
     var ctx = canvas.getContext("2d");
     if (!ctx) return false;
     if (!pic || pic.error) {
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W2, H2);
       return true;
     }
     var s = pic.s, th = THEMES[s.theme] || THEMES.dark, t = o.t || 0;
@@ -18702,9 +19919,9 @@ function harmonicsRuntime(SH2) {
     };
     if (!from) return one(ctx, pic);
     if (sameKind(from, pic)) return one(ctx, pic, from, u);
-    var a = scratch(0, W, H), b = scratch(1, W, H);
+    var a = scratch(0, W2, H2), b = scratch(1, W2, H2);
     if (!one(a.getContext("2d"), from) || !one(b.getContext("2d"), pic)) return false;
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W2, H2);
     ctx.globalAlpha = 1 - u;
     ctx.drawImage(a, 0, 0);
     ctx.globalAlpha = u;
@@ -18720,10 +19937,10 @@ function harmonicsRuntime(SH2) {
     return a.view !== "table" && b.view !== "table" && a.view === "map" === (b.view === "map") && a.G.key === b.G.key && (a.view !== "map" || a.s.projection === b.s.projection && a.s.eastLeft === b.s.eastLeft);
   }
   var scratches = [];
-  function scratch(i, W, H) {
+  function scratch(i, W2, H2) {
     var c = scratches[i] || (scratches[i] = document.createElement("canvas"));
-    c.width = W;
-    c.height = H;
+    c.width = W2;
+    c.height = H2;
     return c;
   }
   function drawSingle(ctx, pic, w, h, dpr, th, turn, tilt, wt, from, u) {
@@ -18943,22 +20160,22 @@ function harmonicsRuntime(SH2) {
     return t.replace(/\^\{?2\}?/g, "²").replace(/\^\{?3\}?/g, "³").replace(/-/g, "−").replace(/[{}]/g, "");
   }
   function drawName(ctx, x, y, form, l, m, size, color2) {
-    var base, sub2, sup = "";
+    var base3, sub2, sup = "";
     var orb = form === "real" ? SH2.orbitalTex(l, m) : null;
     if (orb) {
-      base = orb[0];
+      base3 = orb[0];
       sub2 = uni(orb.slice(2));
     } else if (form === "real") {
-      base = "Y";
+      base3 = "Y";
       sub2 = l + "," + String(m).replace("-", "−");
     } else {
-      base = "Y";
+      base3 = "Y";
       sub2 = String(l);
       sup = String(m).replace("-", "−");
     }
     var big = "italic " + size.toFixed(1) + "px " + SERIF, small = (orb ? "italic " : "") + (size * 0.68).toFixed(1) + "px " + SERIF;
     ctx.font = big;
-    var bw = ctx.measureText(base).width;
+    var bw = ctx.measureText(base3).width;
     ctx.font = small;
     var sw = Math.max(ctx.measureText(sub2).width, ctx.measureText(sup).width);
     var x0 = x - (bw + sw + 1) / 2;
@@ -18966,7 +20183,7 @@ function harmonicsRuntime(SH2) {
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.font = big;
-    ctx.fillText(base, x0, y + size * 0.3);
+    ctx.fillText(base3, x0, y + size * 0.3);
     ctx.font = small;
     ctx.fillText(sub2, x0 + bw + 1, y + size * 0.52);
     if (sup) ctx.fillText(sup, x0 + bw + 1, y - size * 0.12);
@@ -18974,9 +20191,9 @@ function harmonicsRuntime(SH2) {
   function labelTex(s) {
     if (s.label === "none") return "";
     if (s.view === "table") return s.form === "real" ? "Y_{\\ell,m}" : "Y_\\ell^m";
-    var F = SH2.functionOf(s);
-    if (F.error) return "";
-    var f = F.tex, wrap = s.source === "sum" && F.terms.length > 1 ? "(" + f + ")" : f;
+    var F2 = SH2.functionOf(s);
+    if (F2.error) return "";
+    var f = F2.tex, wrap = s.source === "sum" && F2.terms.length > 1 ? "(" + f + ")" : f;
     var sp = s.source === "single" ? "\\," : "";
     var name = s.part === "re" ? "\\operatorname{Re}" + sp + wrap : s.part === "im" ? "\\operatorname{Im}" + sp + wrap : s.part === "abs" ? "|" + f + "|" : s.part === "abs2" ? "|" + f + "|^2" : f;
     if (s.label === "formula" && s.source === "single" && s.part === "auto") name += " = " + SH2.closedForm(s.l, s.m, s.form, { cs: s.cs, norm: s.norm }).tex;
@@ -19234,6 +20451,15 @@ function harmonicsRuntime(SH2) {
   };
 }
 var HV = harmonicsRuntime(SH);
+var HARMONICS_FIELDS = ["source", "l", "m", "form", "expr", "cap", "sky", "part", "view", "tableMax", "tableCell", "projection", "eastLeft", "amplitude", "motion", "speed", "turn", "tilt", "nodes", "axes", "key", "label", "cs", "norm", "theme", "stepStart", "steps"];
+function defaultHarmonics(dark = true) {
+  const s = HV.normalize({ theme: dark ? "dark" : "light" });
+  const out = {};
+  HARMONICS_FIELDS.forEach((k) => {
+    out[k] = s[k];
+  });
+  return out;
+}
 var each = (arr, f) => arr.map(f);
 var HARMONICS_TEMPLATES = [
   { id: "phase", name: "Y₂¹, colored by phase", el: { source: "single", l: 2, m: 1, form: "complex", part: "auto", view: "lobes", turn: 52, tilt: 20, axes: true } },
@@ -19459,7 +20685,7 @@ function text3dShadowFilter(el) {
 // client/src/utils/annotationOverlay.js
 function installAnnotations(config) {
   const NS = "http://www.w3.org/2000/svg";
-  const W = config.slideW, H = config.slideH;
+  const W2 = config.slideW, H2 = config.slideH;
   const set = config.set;
   set.slides = set.slides || {};
   set.boards = set.boards || [];
@@ -19488,8 +20714,8 @@ function installAnnotations(config) {
   };
   const scrollerOf = (section) => section && section.querySelector(":scope > .slide-scroller");
   const surfaceOf = (section) => scrollerOf(section)?.querySelector(":scope > .slide-scroll-inner") || section;
-  const widthOf = (section) => Number(section.getAttribute("data-scroll-width")) || W;
-  const heightOf = (section) => Number(section.getAttribute("data-scroll-height")) || H;
+  const widthOf = (section) => Number(section.getAttribute("data-scroll-width")) || W2;
+  const heightOf = (section) => Number(section.getAttribute("data-scroll-height")) || H2;
   const sideways = (scroller) => scroller.getAttribute("data-scroll") === "x";
   function layerOf(section) {
     const surface = surfaceOf(section);
@@ -19599,7 +20825,7 @@ function installAnnotations(config) {
     const s = document.createElement("section");
     s.setAttribute("data-board-id", board.id);
     s.className = "pp-board";
-    s.style.cssText = `padding:0;width:${W}px;height:${H}px`;
+    s.style.cssText = `padding:0;width:${W2}px;height:${H2}px`;
     return s;
   }
   function findPage(key) {
@@ -20220,16 +21446,16 @@ function statesCss(slides) {
       const states = elementStates(el);
       if (!states.length) continue;
       const values = states.map(stateValues);
-      const base = `[data-el="${el.id}"]`;
+      const base3 = `[data-el="${el.id}"]`;
       const where = (sel) => `.reveal .slides :where(${sel})`;
       const turns = values.some((v) => v.flipX || v.flipY || v.scale != null);
       const transform = (v) => `perspective(1000px) rotateX(${v.flipY || 0}deg) rotateY(${v.flipX || 0}deg) scale(${v.scale ?? 1})`;
       const own = [turns && `transform:${transform({})}`, el.backfaceHidden === true && "backface-visibility:hidden"].filter(Boolean);
-      if (own.length) rules.push(`${where(base)} { ${own.join("; ")}; }`);
+      if (own.length) rules.push(`${where(base3)} { ${own.join("; ")}; }`);
       const line = el.shape === "line" || el.shape === "line-arrow";
       states.forEach((st, i) => {
         const v = values[i];
-        const on = [`${base}[data-st="${st.id}"]:not([data-hover-st])`, `${base}[data-hover-st="${st.id}"]`];
+        const on = [`${base3}[data-st="${st.id}"]:not([data-hover-st])`, `${base3}[data-hover-st="${st.id}"]`];
         const decl = [`--st-dur:${v.duration}ms`, `--st-ease:${v.easing}`];
         for (const [key, prop] of [["x", "left"], ["y", "top"], ["width", "width"], ["height", "height"]]) {
           if (v[key] != null) decl.push(`${prop}:${v[key]}px !important`);
@@ -20531,6 +21757,13 @@ var CLICK_ACTION_SCRIPT = `
       Reveal.on('fragmenthidden', function() { stepStates(Reveal.getCurrentSlide()); });
     })();`;
 
+// client/src/utils/latinModern.js
+var import_libraries3 = require("./libraries");
+var FACES = [["normal", 400, "cmunrm"], ["normal", 700, "cmunbx"], ["italic", 400, "cmunti"], ["italic", 700, "cmunbi"]];
+function latinModernFaces(url = import_libraries3.libUrl) {
+  return FACES.map(([style, weight, file]) => `@font-face { font-family: 'Latin Modern Roman'; font-style: ${style}; font-weight: ${weight}; src: url('${url("latex.js", `dist/fonts/Serif/${file}.woff`)}') format('woff'); }`).join("\n");
+}
+
 // client/src/utils/generateHTML.js
 var EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});";
 var EMBED_SCALE_SCRIPT = `
@@ -20548,10 +21781,10 @@ var EMBED_SCALE_SCRIPT = `
       Reveal.on('resize', sendAll);
     })();
 `;
-function buildHtmlEmbed(userHtml, embedW, embedH) {
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
-  const injection = initScript + resetStyle;
+  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : "");
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, (m) => m + injection);
   if (/<html[^>]*>/i.test(userHtml))
@@ -20693,7 +21926,9 @@ function generateRevealHTML(presentation, opts = {}) {
   const sequenceSections = presentation.sequenceSections || [];
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || "rgba(255,255,255,0.25)";
   const customFonts = (opts.customFonts || []).filter(Boolean);
-  const pluginSandbox = opts.pluginSandbox || ((el) => plugin_registry_default.getSandboxHtml(el.type));
+  const pluginSandbox = opts.pluginSandbox || ((el) => plugin_registry_default.sandboxFor(el));
+  const deckData = deckDataOf(presentation, opts);
+  const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation));
   const seenGroups = /* @__PURE__ */ new Set();
   const totalNumberedSlides = (presentation.slides || []).filter((s) => {
     if (s.showPageNumber === false) return false;
@@ -20797,12 +22032,12 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2}${harmonicsDeckAttrs(el)} style="${style}"></div>`;
       }
       if (el.type === "html") {
-        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height);
+        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
       if (el.type === "graph") {
-        const srcdoc = graphPageHtml(el).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         const graphId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`;
       }
@@ -20817,7 +22052,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
-        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries3.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script></head><body><script>${el.content || ""}</script></body></html>`;
+        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
         const srcdoc = p5Doc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -20828,7 +22063,7 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "markdown") {
         const md = (el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries3.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
         const escaped = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -20940,7 +22175,7 @@ function generateRevealHTML(presentation, opts = {}) {
 \\begin{document}
 ${content}
 \\end{document}`;
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries3.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries3.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -21062,7 +22297,7 @@ ${content}
         if (!sandboxHtml) {
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace("plugin:", ""))}</div>`;
         }
-        const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
       return "";
@@ -21156,22 +22391,20 @@ ${sections}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(presentation.title || "Presentation")}</title>
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", "dist/reset.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", "dist/reveal.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("katex", "dist/katex.min.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reset.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/cmu.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
   <style>${customFontFaces(customFonts)}
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 400; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunrm.woff")}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: 700; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunbx.woff")}') format('woff'); }
-    @font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: 400; src: url('${(0, import_libraries3.libUrl)("latex.js", "dist/fonts/Serif/cmunti.woff")}') format('woff'); }
+    ${latinModernFaces().replace(/\n/g, "\n    ")}
   </style>
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; }
@@ -21201,8 +22434,9 @@ ${sections}
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
     .reveal .slides section .reveal-footer,
     .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
-      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
       background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3);
       border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
       backdrop-filter: blur(4px); transition: background 0.15s;
@@ -21259,6 +22493,7 @@ ${sections}
   <style>
 ${sanitizeCustomCSS(presentation.customCSS)}
   </style>` : ""}
+${offersData ? deckDatasetsScript(deckData.datasets) : ""}
 </head>
 <body>
   <div class="reveal">
@@ -21271,11 +22506,11 @@ ${slidesHtml}
   <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${sanitizeAttr(presentation.overviewLayout || "linear")}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "dist/reveal.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("katex", "dist/katex.min.js")}"></script>
-  <script src="${(0, import_libraries3.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.js")}"></script>
+  <script src="${(0, import_libraries4.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || "slide")};
@@ -21720,7 +22955,429 @@ var DECK_BRIDGE_SCRIPT = `  <script>
     Reveal.on('slidechanged', send);
   })()
   </script>`;
+
+// client/src/examples/datasets.js
+var EXAMPLE_SOURCES = {
+  exoplanets: {
+    kind: "tap",
+    source: {
+      service: "https://exoplanetarchive.ipac.caltech.edu/TAP",
+      // pscomppars has one row per planet; ps has one per planet per paper
+      query: "select pl_name, pl_orbper, pl_bmasse, pl_bmassprov, discoverymethod, disc_year, disc_pubdate from pscomppars where pl_orbper is not null and pl_bmasse is not null",
+      keyColumn: "pl_name"
+    },
+    credit: "NASA Exoplanet Archive, Planetary Systems Composite Parameters",
+    link: "https://exoplanetarchive.ipac.caltech.edu/",
+    // server/examples/exoplanets.csv.gz: the archive's answer on this day
+    snapshot: "2026-10-07"
+  },
+  gaia: {
+    kind: "tap",
+    source: {
+      service: "https://gea.esac.esa.int/tap-server/tap",
+      // Every star within 50 parsecs (parallax over 20 mas) whose parallax is
+      // good to 10% and whose color is clean: a well-behaved astrometric
+      // solution (RUWE), bright enough in BP and RP, and the BP + RP flux
+      // excess cut of Gaia's DR2 HR diagram paper (Babusiaux et al. 2018).
+      // Three decimals are finer than a plot can show; the order keeps an
+      // unchanged answer the same
+      query: "select round(parallax, 3) as parallax, round(phot_g_mean_mag, 3) as phot_g_mean_mag, round(bp_rp, 3) as bp_rp from gaiadr3.gaia_source where parallax > 20 and parallax_over_error > 10 and ruwe < 1.4 and phot_bp_mean_flux_over_error > 20 and phot_rp_mean_flux_over_error > 20 and phot_bp_rp_excess_factor > 1.0 + 0.015 * bp_rp * bp_rp and phot_bp_rp_excess_factor < 1.3 + 0.06 * bp_rp * bp_rp order by source_id"
+    },
+    credit: "ESA/Gaia/DPAC, Gaia Data Release 3",
+    link: "https://gea.esac.esa.int/archive/",
+    snapshot: "2026-10-07"
+  }
+};
+var EXAMPLE_DATASETS = {
+  // The graph's key is titled by the column it colors by
+  exoplanets: { source: "exoplanets", transforms: [{ op: "rename", from: "discoverymethod", to: "Discovered by" }] },
+  // Planets found each year
+  discoveries: {
+    source: "exoplanets",
+    transforms: [
+      { op: "group", by: ["disc_year"], aggregates: [{ fn: "count", name: "planets" }] },
+      { op: "sort", column: "disc_year" }
+    ]
+  },
+  // The latest published
+  newest: {
+    source: "exoplanets",
+    transforms: [
+      { op: "sort", column: "disc_pubdate", direction: "desc" },
+      { op: "limit", count: 8 },
+      { op: "select", columns: ["pl_name", "discoverymethod", "pl_orbper", "pl_bmasse", "disc_pubdate"] }
+    ]
+  },
+  // Each nearby star's brightness in Gaia's G band against the Sun's: its
+  // absolute magnitude from the parallax (in mas), and the Sun's, 4.67
+  nearby_stars: {
+    source: "gaia",
+    transforms: [
+      { op: "compute", name: "M_G", expr: "phot_g_mean_mag + 5 * log(parallax) - 10" },
+      { op: "compute", name: "luminosity", expr: "10^(0.4 * (4.67 - M_G))" },
+      // To three figures, all a plot needs, so the deck carries a third as much
+      { op: "compute", name: "luminosity", expr: "round(luminosity * 10^(2 - floor(log(luminosity)))) / 10^(2 - floor(log(luminosity)))" }
+    ]
+  },
+  // The stars in each shell a parsec thick, by its middle
+  star_counts: {
+    source: "gaia",
+    transforms: [
+      { op: "compute", name: "distance", expr: "1000 / parallax" },
+      // A parallax rounded down to 20 mas would make a shell of its own
+      { op: "filter", expr: "distance < 50" },
+      { op: "compute", name: "shell", expr: "floor(distance) + 0.5" },
+      { op: "group", by: ["shell"], aggregates: [{ fn: "count", name: "stars" }] },
+      { op: "sort", column: "shell" }
+    ]
+  }
+};
+function exampleDatasetNames(names) {
+  return [...names].filter((name) => Object.prototype.hasOwnProperty.call(EXAMPLE_DATASETS, name));
+}
+
+// client/src/examples/decks.js
+var CAFFEINE_SRC = "/examples/caffeine.sdf";
+var W = 960;
+var H = 540;
+var GRAPH_BOX = { w: 560, h: 400 };
+var ink = (dark) => dark ? "#ffffff" : "#1a1a1a";
+function builder(slug) {
+  let n = 0;
+  const id = () => slug + "-" + ++n;
+  const heading = (html) => ({ id: id(), type: "text", x: 60, y: 28, width: 840, height: 72, zIndex: 3, content: '<h2 style="margin: 0; font-size: 40px; line-height: 1.25">' + html + "</h2>" });
+  const caption = (html, dark = true) => ({ id: id(), type: "text", x: 60, y: 476, width: 840, height: 40, zIndex: 3, content: '<p style="text-align: center; margin: 0; font-size: 18px; line-height: 1.4; opacity: 0.72' + (dark ? "" : "; color: #2a2a35") + '">' + html + "</p>" });
+  const placed = (fields, box, area = { x: 60, y: 100, w: 840, h: 366 }) => {
+    const s = Math.min(area.w / box.w, area.h / box.h);
+    const w = Math.round(box.w * s), h = Math.round(box.h * s);
+    return { id: id(), x: Math.round(area.x + (area.w - w) / 2), y: Math.round(area.y + (area.h - h) / 2), width: w, height: h, zIndex: 2, ...fields };
+  };
+  const slide = (dark, elements) => ({ id: id(), notes: "", background: { type: "color", color: dark ? "#1e1e2e" : "#fbfaf7" }, elements });
+  const deck = (title, dark, slides) => ({ id: "example-" + slug, title, theme: dark ? "black" : "white", transition: "slide", slideWidth: W, slideHeight: H, slides });
+  return { id, heading, caption, placed, slide, deck };
+}
+var fromTemplate = (list, key, dark, extra = {}) => ({ ...list.find((t) => t.key === key).build(), color: ink(dark), stepStart: 1, ...extra });
+var feynman = (key, dark) => {
+  const d = fromTemplate(FEYNMAN_TEMPLATES, key, dark, { dimPast: true });
+  return [{ type: "feynman", ...d }, feynmanBox(d)];
+};
+var circuit = (key, dark) => {
+  const d = fromTemplate(CIRCUIT_TEMPLATES, key, dark, { symbols: "us", flow: true, readings: true });
+  return [{ type: "circuit", ...d }, circuitBox(d)];
+};
+var logic = (key, dark) => {
+  const d = fromTemplate(LOGIC_TEMPLATES, key, dark, { symbols: "us", values: true });
+  return [{ type: "logic", ...d }, logicBox(d)];
+};
+var freebody = (key, dark) => {
+  const d = fromTemplate(FREEBODY_TEMPLATES, key, dark);
+  return [{ type: "freebody", ...d }, freebodyBox(d)];
+};
+var venn = (key, dark) => {
+  const d = { ...vennModel(VENN_TEMPLATES.find((t) => t.key === key).build()), color: ink(dark), stepStart: 1 };
+  return [{ type: "venn", ...d }, vennBox(d)];
+};
+var timing = (key, dark) => {
+  const d = { source: TIMING_TEMPLATES.find((t) => t.key === key).source, theme: dark ? "dark" : "light", steps: [], revealFrom: 0, cursor: true, stepStart: 1 };
+  return [{ type: "timing", ...d }, timingBox(d)];
+};
+var geometry = (key, dark) => [{ type: "geometry", ...geometryFromTemplate(key, { dark }) }, GEOMETRY_SIZE];
+function rotationCurve(view) {
+  const c = GRAPH_COLORS.dark;
+  return {
+    type: "graph",
+    ...defaultGraph(true),
+    expressions: [
+      { id: "disk", text: "y = sqrt(M/x)", color: c[1], style: "dashed" },
+      { id: "halo", text: "y = sqrt(M/x + h^2 (1 - (c/x) atan(x/c)))", color: c[0] },
+      { id: "mass", text: "M = 6", slider: { min: 0, max: 20, step: 0.1 } },
+      { id: "speed", text: "h = 1.6", slider: { min: 0, max: 3, step: 0.05 } },
+      { id: "core", text: "c = 2", slider: { min: 0.2, max: 8, step: 0.1 } }
+    ],
+    view,
+    equalScale: false,
+    xLabel: "radius (kpc)",
+    yLabel: "v (100 km/s)"
+  };
+}
+var SOLAR_SYSTEM = [
+  ["mercury", 87.97, 0.0553, "Mercury"],
+  ["venus", 224.7, 0.815],
+  ["earth", 365.25, 1, "Earth"],
+  ["mars", 687, 0.107],
+  ["jupiter", 4332.6, 317.8, "Jupiter"],
+  ["saturn", 10759, 95.2, "Saturn"],
+  ["uranus", 30687, 14.5],
+  ["neptune", 60190, 17.1, "Neptune"]
+];
+var dataFooter = (things, credit, color2) => `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: ${color2}"></div>
+<script>
+parallax.datasets.list().then(function (all) {
+  var d = all.reduce(function (a, b) { return (b.rowCount || 0) > (a.rowCount || 0) ? b : a })
+  var when = d.asOf ? new Date(d.asOf).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'today'
+  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' ${things} · ${credit}'
+})
+</script>`;
+var DATA_FOOTER = dataFooter("planets", "NASA Exoplanet Archive", "#6f6d68");
+var HR_VIEW = { xMin: -0.6, xMax: 5.6, yMin: 5e-6, yMax: 200 };
+var HR_BOX = { x: 60, y: 96, w: 840, h: 360 };
+function hrAt(x, y) {
+  const v = HR_VIEW, top = Math.log10(v.yMax), span = top - Math.log10(v.yMin);
+  return {
+    x: HR_BOX.x + (x - v.xMin) / (v.xMax - v.xMin) * HR_BOX.w,
+    y: HR_BOX.y + (top - Math.log10(y)) / span * HR_BOX.h
+  };
+}
+var NEWEST_TABLE = `<style>
+  body { font: 15px/1.4 -apple-system, 'Segoe UI', sans-serif; color: #1a1a1a; }
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6f6d68; padding: 6px 16px 8px 0; border-bottom: 1.5px solid #c3c2b7; }
+  td { padding: 6px 16px 6px 0; border-bottom: 1px solid #e7e6e0; font-variant-numeric: tabular-nums; }
+  .num { text-align: right; }
+  td:first-child { font-weight: 600; }
+</style>
+<table>
+  <thead><tr><th>Planet</th><th>Found by</th><th class="num">Period (days)</th><th class="num">Mass (Earth = 1)</th><th>Published</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+function cell(text, cls) {
+  var td = document.createElement('td')
+  td.textContent = text
+  if (cls) td.className = cls
+  return td
+}
+function num(v) { return v == null ? '' : Number(v).toLocaleString('en-US', { maximumSignificantDigits: 3 }) }
+function month(v) { var p = String(v || '').split('-'); return p.length > 1 ? MONTHS[+p[1] - 1] + ' ' + p[0] : String(v || '') }
+parallax.datasets.query("newest").then(function (d) {
+  var c = d.columns, body = document.getElementById('rows')
+  for (var i = 0; i < c.pl_name.length; i++) {
+    var tr = document.createElement('tr')
+    tr.append(cell(c.pl_name[i]), cell(c.discoverymethod[i]), cell(num(c.pl_orbper[i]), 'num'), cell(num(c.pl_bmasse[i]), 'num'), cell(month(c.disc_pubdate[i])))
+    body.append(tr)
+  }
+})
+</script>`;
+var BUILDERS = {
+  hero() {
+    const b = builder("hero");
+    return b.deck("Parallax", true, [
+      b.slide(true, [b.heading("Why galaxies spin too fast"), { id: b.id(), x: 60, y: 100, width: 840, height: 370, zIndex: 2, ...rotationCurve({ xMin: 0, xMax: 24, yMin: 0, yMax: 3.6 }) }, b.caption("Dashed: the stars alone. Solid: with a dark halo. Drag a slider.")]),
+      b.slide(true, [b.heading("Gluon fusion to a Higgs"), b.placed(...feynman("ggf", true)), b.caption("Press → to draw each propagator in turn")]),
+      b.slide(true, [b.heading("Euclid I.1: an equilateral triangle"), b.placed(...geometry("euclid", true)), b.caption("The construction draws itself; drag A or B")])
+    ]);
+  },
+  chemistry() {
+    const b = builder("chemistry");
+    const table = defaultPeriodic(true);
+    return b.deck("Chemistry", true, [
+      b.slide(true, [b.placed({ type: "periodic", ...table }, periodicBox(table), { x: 24, y: 20, w: 912, h: 500 })]),
+      b.slide(true, [
+        b.heading("Caffeine, C<sub>8</sub>H<sub>10</sub>N<sub>4</sub>O<sub>2</sub>"),
+        b.placed({ type: "molecule", ...MOLECULE_DEFAULTS, spin: true, src: CAFFEINE_SRC, format: "sdf", name: "Caffeine", source: { db: "pubchem", id: "2519" }, view: null }, { w: 420, h: 360 }),
+        b.caption("Drag to turn it, scroll to zoom")
+      ])
+    ]);
+  },
+  circuit() {
+    const b = builder("circuit");
+    return b.deck("Circuits, solved", true, [
+      b.slide(true, [b.heading("A voltage divider"), b.placed(...circuit("divider", true)), b.caption("Currents and voltages come from a DC solver, and the current flows")]),
+      b.slide(true, [b.heading("A Wheatstone bridge"), b.placed(...circuit("bridge", true))])
+    ]);
+  },
+  rotation() {
+    const b = builder("rotation");
+    return b.deck("Rotation curves", true, [
+      b.slide(true, [b.heading("Why galaxies spin too fast"), b.placed(rotationCurve({ xMin: 0, xMax: 20, yMin: 0, yMax: 4 }), GRAPH_BOX, { x: 60, y: 100, w: 840, h: 370 }), b.caption("Dashed: the stars alone. Solid: with a dark halo. Drag the sliders.")]),
+      b.slide(true, [b.heading("Fitting the halo: Bayes’ rule, term by term"), b.placed({ type: "equation", ...defaultEquation(true) }, EQUATION_SIZE), b.caption("Click a term to see what it means")])
+    ]);
+  },
+  logic() {
+    const b = builder("logic");
+    return b.deck("Digital logic", true, [
+      b.slide(true, [b.heading("A half adder, gate by gate"), b.placed(...logic("half", true)), b.caption("Click an input to flip it; the outputs follow")]),
+      b.slide(true, [b.heading("An SPI byte, mode 0"), b.placed(...timing("spi", true))])
+    ]);
+  },
+  orbitals() {
+    const b = builder("orbitals");
+    return b.deck("Orbitals and surfaces", true, [
+      b.slide(true, [b.heading("Spherical harmonics"), b.placed({ type: "harmonics", ...defaultHarmonics(true) }, { w: 576, h: 389 }), b.caption("Change l and m while you present")]),
+      b.slide(true, [b.heading("A surface you can turn"), b.placed({ type: "graph", ...defaultGraph3d(true), spin: true }, GRAPH_BOX)])
+    ]);
+  },
+  freebody() {
+    const b = builder("freebody");
+    return b.deck("Forces on a block", true, [
+      b.slide(true, [b.heading("A block sliding down, with friction"), b.placed(...freebody("slide", true)), b.caption("Each force arrives on its own step; ΣF = ma is solved for you")]),
+      b.slide(true, [b.heading("A sled pulled at an angle"), b.placed(...freebody("sled", true))])
+    ]);
+  },
+  venn() {
+    const b = builder("venn");
+    return b.deck("Venn diagrams", false, [
+      b.slide(false, [b.heading("De Morgan’s law"), b.placed(...venn("demorgan", false)), b.caption("Each side shades in, step by step", false)]),
+      b.slide(false, [b.heading("Probability: rain and lateness"), b.placed(...venn("probability", false))])
+    ]);
+  },
+  feynman() {
+    const b = builder("feynman");
+    return b.deck("Feynman diagrams", true, [
+      b.slide(true, [b.heading("Gluon fusion to a Higgs"), b.placed(...feynman("ggf", true)), b.caption("Press → to draw each propagator in turn")]),
+      b.slide(true, [b.heading("Compton scattering"), b.placed(...feynman("compton", true))])
+    ]);
+  },
+  exoplanets() {
+    const b = builder("exoplanets");
+    const c = GRAPH_COLORS.light;
+    const footer = () => ({ id: b.id(), type: "html", x: 60, y: 500, width: 840, height: 28, zIndex: 3, content: DATA_FOOTER });
+    const graph = (fields) => ({ id: b.id(), x: 60, y: 96, width: 840, height: 360, zIndex: 2, type: "graph", ...defaultGraph(false), equalScale: false, ...fields });
+    const caption = (html) => ({ ...b.caption(html, false), y: 464, height: 32 });
+    return b.deck("Exoplanets", false, [
+      b.slide(false, [
+        b.heading("Exoplanets by orbital period and mass"),
+        graph({
+          expressions: [
+            { id: "planets", text: "", color: c[1], data: { dataset: "exoplanets", x: "pl_orbper", y: "pl_bmasse", mark: "points", colorBy: "Discovered by", label: "pl_name", size: 2.2, opacity: 0.75 } },
+            ...SOLAR_SYSTEM.map(([id, period, mass, label]) => ({ id, text: `(${period}, ${mass})`, color: "#1a1a1a", step: 1, ...label ? { label } : {} })),
+            // m sin i for a 1 m/s wobble of a Sun-like star: 11.2 Earth masses at one year
+            { id: "rv", text: "y = 11.2 (x/365.25)^(1/3)", color: c[3], style: "dashed", step: 2 }
+          ],
+          // Room on the right for the key
+          view: { xMin: 0.1, xMax: 1e7, yMin: 0.01, yMax: 3e4 },
+          xScale: "log",
+          yScale: "log",
+          xLabel: "orbital period (days)",
+          yLabel: "mass (Earth = 1)"
+        }),
+        caption("Press → for the Solar System, then the mass that moves a Sun-like star by 1 m/s"),
+        footer()
+      ]),
+      b.slide(false, [
+        b.heading("Planets found each year"),
+        graph({
+          expressions: [{ id: "per-year", text: "", color: c[1], data: { dataset: "discoveries", x: "disc_year", y: "planets", mark: "bars" } }],
+          view: { xMin: 1989, xMax: 2028, yMin: 0, yMax: 1650 },
+          yLabel: "planets with a mass"
+        }),
+        caption("Counted by a step on the same dataset, so the bars follow every refresh"),
+        footer()
+      ]),
+      b.slide(false, [
+        b.heading("The newest planets in the archive"),
+        { id: b.id(), type: "html", x: 60, y: 110, width: 840, height: 340, zIndex: 2, content: NEWEST_TABLE },
+        caption("The latest published discoveries, read by an HTML element with parallax.datasets"),
+        footer()
+      ])
+    ]);
+  },
+  gaia() {
+    const b = builder("gaia");
+    const c = GRAPH_COLORS.dark;
+    const footer = () => ({ id: b.id(), type: "html", x: 60, y: 500, width: 840, height: 28, zIndex: 3, content: dataFooter("stars within 50 parsecs", "ESA/Gaia/DPAC, Gaia DR3", "rgba(255, 255, 255, 0.5)") });
+    const graph = (fields) => ({ id: b.id(), x: HR_BOX.x, y: HR_BOX.y, width: HR_BOX.w, height: HR_BOX.h, zIndex: 2, type: "graph", ...defaultGraph(true), equalScale: false, ...fields });
+    const caption = (html) => ({ ...b.caption(html), y: 464, height: 32 });
+    const name = (text, x, y) => {
+      const at = hrAt(x, y);
+      return {
+        id: b.id(),
+        type: "text",
+        x: Math.round(at.x),
+        y: Math.round(at.y - 18),
+        width: 180,
+        height: 36,
+        zIndex: 3,
+        fragment: true,
+        fragmentIndex: 1,
+        content: '<p style="margin: 0; font-size: 17px; line-height: 36px; font-style: italic; color: #f5d68f">' + text + "</p>"
+      };
+    };
+    return b.deck("The solar neighborhood", true, [
+      b.slide(true, [
+        b.heading("The Sun’s neighbors, measured by Gaia"),
+        graph({
+          expressions: [
+            { id: "stars", text: "", color: "#ffe9c4", data: { dataset: "nearby_stars", x: "bp_rp", y: "luminosity", mark: "points", size: 1.3, opacity: 0.8 } },
+            // The Sun's BP − RP (Casagrande & VandenBerg 2018)
+            { id: "sun", text: "(0.82, 1)", color: "#ffc531", step: 2, label: "Sun" }
+          ],
+          view: { ...HR_VIEW },
+          yScale: "log",
+          xLabel: "color, BP − RP (blue to red)",
+          yLabel: "G-band luminosity (Sun = 1)"
+        }),
+        name("Main sequence", 2.75, 0.06),
+        name("White dwarfs", 1.7, 13e-5),
+        name("Red giants", 1.35, 8),
+        caption("Press → to name the sequences, then to find the Sun"),
+        footer()
+      ]),
+      b.slide(true, [
+        b.heading("Stars fill space evenly"),
+        graph({
+          expressions: [
+            { id: "shells", text: "", color: c[1], data: { dataset: "star_counts", x: "shell", y: "stars", mark: "bars" } },
+            // A shell's volume, 4πd² by a parsec, times one density
+            { id: "even", text: "y = 4π · 0.053 x^2", color: c[4], step: 1 }
+          ],
+          // Room under the bars for the distances
+          view: { xMin: 0, xMax: 51, yMin: -100, yMax: 1800 },
+          xLabel: "distance (parsecs)",
+          yLabel: "stars in each parsec-thick shell"
+        }),
+        caption("Press → for 4πd² times one density, 0.053 stars per cubic parsec"),
+        footer()
+      ])
+    ]);
+  },
+  geometry() {
+    const b = builder("geometry");
+    return b.deck("Euclid I.1", false, [
+      b.slide(false, [b.heading("Euclid I.1: an equilateral triangle"), b.placed(...geometry("euclid", false)), b.caption("The construction draws itself one step at a time; drag A or B", false)]),
+      b.slide(false, [b.heading("Thales’ theorem"), b.placed(...geometry("thales", false))])
+    ]);
+  }
+};
+var EXAMPLE_SLUGS = Object.keys(BUILDERS);
+function exampleDeck(slug) {
+  return Object.prototype.hasOwnProperty.call(BUILDERS, slug) ? BUILDERS[slug]() : null;
+}
+
+// client/src/examples/catalog.js
+var EXAMPLES = [
+  { slug: "chemistry", field: "Chemistry", title: "Periodic table and caffeine", desc: "A periodic table to explore, and a caffeine molecule from PubChem that you can turn and zoom.", tags: ["Periodic table", "3D molecule"] },
+  { slug: "circuit", field: "Engineering and CS", title: "Circuits, solved", desc: "A voltage divider and a Wheatstone bridge, with readings from the DC solver and current that flows.", tags: ["Circuit"] },
+  { slug: "rotation", field: "Astronomy", title: "Why galaxies spin too fast", desc: "A rotation curve with a dark halo you tune with sliders, then Bayes’ rule explained term by term.", tags: ["Graph with sliders", "Interactive equation"] },
+  { slug: "logic", field: "Engineering and CS", title: "Digital logic", desc: "A half adder you can click, then an SPI byte as a timing diagram.", tags: ["Logic diagram", "Timing diagram"] },
+  { slug: "orbitals", field: "Physics", title: "Orbitals and surfaces", desc: "The spherical harmonic Y₂¹ in WebGL, then a 3D surface that turns on its own.", tags: ["Spherical harmonics", "3D graph"] },
+  { slug: "freebody", field: "Physics", title: "Forces on a block", desc: "A block sliding down a slope and a sled pulled at an angle, each force on its own step.", tags: ["Free-body diagram"] },
+  { slug: "venn", field: "Mathematics", title: "Venn diagrams", desc: "De Morgan’s law shaded in step by step, then a probability problem.", tags: ["Venn diagram"] },
+  { slug: "feynman", field: "Physics", title: "Feynman diagrams", desc: "Gluon fusion to a Higgs and Compton scattering, drawn one propagator at a time.", tags: ["Feynman diagram"] },
+  { slug: "geometry", field: "Mathematics", title: "Euclid I.1", desc: "An equilateral triangle by compass and straightedge, then Thales’ theorem. Drag the points.", tags: ["Geometry construction"] },
+  { slug: "exoplanets", field: "Astronomy", title: "Every exoplanet, kept current", desc: "A live dataset from the NASA Exoplanet Archive, refreshed daily: each planet’s period and mass, discoveries by year, and the newest finds.", tags: ["Live dataset", "Graph with data"] },
+  { slug: "gaia", field: "Astronomy", title: "The solar neighborhood", desc: "Every well-measured star within 50 parsecs, from ESA’s Gaia archive: an HR diagram, then counts that grow as distance squared.", tags: ["Live dataset", "Graph with data"] }
+];
+var HERO_EXAMPLE = "hero";
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  generateRevealHTML
+  EXAMPLES,
+  EXAMPLE_DATASETS,
+  EXAMPLE_SLUGS,
+  EXAMPLE_SOURCES,
+  HERO_EXAMPLE,
+  MAX_ROWS,
+  buildStaticPluginSrcdoc,
+  carriedData,
+  dataGraphs,
+  datasetSummary,
+  embedDatasetNames,
+  exampleDatasetNames,
+  exampleDeck,
+  findDataset,
+  generateRevealHTML,
+  graphNeeds,
+  graphRowsFrom,
+  hasEmbeds
 });

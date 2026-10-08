@@ -572,7 +572,10 @@ export function createMathParser() {
     const dims3 = !!(opts && opts.dims === 3)
     const RES = dims3 ? RESERVED_3D : RESERVED
     const onlyRes = (set, names) => [...set].every(v => !RES.includes(v) || names.includes(v))
-    const items = (expressions || []).map(e => ({ id: e.id, text: String(e.text || '') }))
+    // A data line plots a dataset's rows (its options say which): nothing to parse
+    const items = (expressions || []).map(e => (e && e.data && typeof e.data === 'object'
+      ? { id: e.id, text: '', kind: 'data' }
+      : { id: e.id, text: String(e.text || '') }))
     // The text of each line's color function and slices, kept aside
     const extras = new Map()
     if (dims3) (expressions || []).forEach((e, i) => {
@@ -606,7 +609,7 @@ export function createMathParser() {
     const userFns = new Set(Object.keys(fns))
 
     for (const item of items) {
-      if (item.kind === 'error' || item.field) continue
+      if (item.kind === 'error' || item.kind === 'data' || item.field) continue
       if (!item.text.trim()) { item.kind = 'empty'; continue }
       try {
         if (item.kind === 'function') {

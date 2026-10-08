@@ -54,6 +54,7 @@ export default defineConfig({
             { text: 'Shapes & Drawing', link: '/tutorials/shapes-drawing' },
             { text: 'Code, LaTeX & Markdown', link: '/tutorials/code-math' },
             { text: 'Tables', link: '/tutorials/tables' },
+            { text: 'Live Datasets', link: '/tutorials/live-datasets' },
             { text: 'Graphs', link: '/tutorials/graphs' },
             { text: 'HTML Embeds & p5.js', link: '/tutorials/html-embeds' },
             { text: 'Kinetic Text', link: '/tutorials/kinetic-text' },
@@ -72,6 +73,13 @@ export default defineConfig({
             { text: 'Molecules', link: '/tutorials/molecules' },
             { text: 'Periodic Table', link: '/tutorials/periodic-table' },
             { text: 'Spherical Harmonics', link: '/tutorials/spherical-harmonics' },
+          ]
+        },
+        {
+          text: 'Plugins',
+          items: [
+            { text: 'Plugins', link: '/tutorials/plugins' },
+            { text: 'Writing Plugins', link: '/tutorials/writing-plugins' },
           ]
         },
         {

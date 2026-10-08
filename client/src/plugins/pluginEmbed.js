@@ -7,9 +7,13 @@
 // interactions work during the talk and aren't saved. Shared, live and
 // exported presentations from the server have it through
 // server/services/deck-html.js, with sandbox pages read from the plugins'
-// folders (server/services/plugin-embed.js).
+// folders (server/services/plugin-embed.js). In a deck with datasets,
+// parallax.datasets asks the deck, which answers from the data it carries
+// (utils/deckData.js).
 
-function staticBridge({ data, width, height }) {
+import { DATASETS_CLIENT } from '../utils/deckData'
+
+function staticBridge({ data, width, height, datasets }) {
   // < keeps "</script>" inside the data from closing the script early
   const json = JSON.stringify(data || {}).replace(/</g, '\\u003c')
   return `<script>
@@ -31,14 +35,16 @@ function staticBridge({ data, width, height }) {
     onResize: function() {},
     onCaptureSnapshot: function() {},
     reportError: function(msg) { console.error('[plugin] ' + msg); },
-    fetch: function(url, opts) { return window.fetch(url, opts); }
+    fetch: function(url, opts) { return window.fetch(url, opts); }${datasets ? `,
+    datasets: ${DATASETS_CLIENT}` : ''}
   });
 })();
 <\/script><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>`
 }
 
-export function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height }) {
-  const injection = staticBridge({ data, width, height })
+// datasets: parallax.datasets, in a deck that carries some
+export function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height, datasets = false }) {
+  const injection = staticBridge({ data, width, height, datasets })
   if (/<head[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<head[^>]*>/i, m => m + injection)
   if (/<html[^>]*>/i.test(sandboxHtml)) return sandboxHtml.replace(/<html[^>]*>/i, m => m + injection)
   return injection + sandboxHtml

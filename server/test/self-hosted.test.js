@@ -7,6 +7,7 @@ const assert = require('node:assert/strict')
 const path = require('path')
 const os = require('os')
 const fs = require('fs')
+const { addFolderPlugin } = require('./helpers')
 
 const serverDir = path.join(__dirname, '..')
 let base, server
@@ -75,6 +76,41 @@ describe('the self-hosted version', () => {
     assert.deepEqual(go.clickAction, { type: 'slide', slideId: end.id })
     assert.notEqual(panel.id, 'panel')
     assert.deepEqual(tab.clickAction, { type: 'visibility', show: [panel.id] })
+  })
+
+  it('serves the landing page’s example decks, sandboxed, and as decks to start from', async () => {
+    const page = await fetch(base + '/examples/hero/deck')
+    assert.equal(page.status, 200)
+    const csp = page.headers.get('content-security-policy') || ''
+    assert.match(csp, /^sandbox allow-scripts\b/)
+    assert.doesNotMatch(csp, /allow-same-origin/)
+    assert.match(await page.text(), /Why galaxies spin too fast/)
+    assert.equal((await fetch(base + '/examples/nope')).status, 404)
+    assert.equal((await fetch(base + '/examples/nope/deck')).status, 404)
+
+    // Each example's own page, around its deck; a self-hosted copy isn't for search engines
+    const venn = await fetch(base + '/examples/venn')
+    assert.equal(venn.status, 200)
+    assert.equal(venn.headers.get('content-security-policy'), null)
+    const html = await venn.text()
+    assert.match(html, /<h1>Venn diagrams<\/h1>/)
+    assert.match(html, /<iframe src="\/examples\/venn\/deck"/)
+    assert.match(html, /<meta property="og:image" content="http:\/\/127\.0\.0\.1:\d+\/examples\/thumbs\/venn\.jpg" \/>/)
+    assert.match(html, /<meta name="robots" content="noindex" \/>/)
+    assert.match(html, /href="\/examples\/chemistry"/)
+    assert.equal((await fetch(base + '/examples/hero')).status, 200)
+    assert.equal(await (await fetch(base + '/robots.txt')).text(), 'User-agent: *\nDisallow: /\n')
+    assert.doesNotMatch(await (await fetch(base + '/sitemap.xml')).text(), /examples/)
+
+    const chemistry = await call('GET', '/api/examples/chemistry')
+    assert.equal(chemistry.status, 200)
+    assert.deepEqual(chemistry.body.slides.map(s => s.elements.map(e => e.type)), [['periodic'], ['text', 'molecule', 'text']])
+    assert.equal(chemistry.body.slides[1].elements[1].src, '/examples/caffeine.sdf')
+    for (const slug of ['nope', '__proto__', 'constructor']) assert.equal((await call('GET', `/api/examples/${slug}`)).status, 404, slug)
+
+    // The molecule's file answers the sandboxed page's null origin
+    const file = await fetch(base + '/examples/caffeine.sdf', { headers: { Origin: 'null' } })
+    assert.equal(file.headers.get('access-control-allow-origin'), '*')
   })
 
   it('presents a deck with states and a morphing shape', async () => {
@@ -195,6 +231,18 @@ describe('the self-hosted version', () => {
     assert.equal(answer(localOnly(), '[::1]:3002'), 200)
     assert.equal(answer(localOnly(), 'parallax.lan:3002'), 403)
     assert.equal(answer(localOnly('localhost, parallax.lan'), 'Parallax.LAN:3002'), 200)
+  })
+
+  it('sends plugin pages with the sandbox header, and has no community plugins', async () => {
+    addFolderPlugin(process.env.SLIDES_DATA_DIR)
+    const page = await fetch(`${base}/api/plugins/local-counter/assets/sandbox.html`)
+    assert.equal(page.status, 200)
+    assert.equal(page.headers.get('content-security-policy'), 'sandbox allow-scripts')
+    assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
+    const listed = (await call('GET', '/api/plugins')).body
+    assert.ok(listed.some(p => p.slug === 'local-counter' && !p.community))
+    assert.equal((await call('GET', '/api/plugin-versions/io.github.someone.lorenz/1.0.0/sandbox')).status, 404)
+    assert.equal((await call('POST', '/api/plugin-repos/lookup', { url: 'someone/lorenz' })).status, 404)
   })
 
   it('has no editing with others', async () => {

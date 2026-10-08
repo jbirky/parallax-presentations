@@ -25,8 +25,9 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install ffmpeg for video transcoding, and libreoffice + poppler-utils for PowerPoint import;
-# su-exec lets the entrypoint drop from root to the node user
-RUN apk add --no-cache ffmpeg libreoffice poppler-utils su-exec
+# su-exec lets the entrypoint drop from root to the node user; a headless Chromium and a
+# font draw the landing page examples' thumbnails (server/services/slide-thumbnail.js)
+RUN apk add --no-cache ffmpeg libreoffice poppler-utils su-exec chromium-headless-shell font-dejavu
 
 # Copy workspace manifests
 COPY package.json package-lock.json ./
@@ -35,7 +36,7 @@ COPY server/package.json ./server/
 # Install only server (production) dependencies
 RUN npm ci --workspace=server --omit=dev
 
-# Copy server source, docs, bundled plugins, and the compiled client
+# Copy server source, docs, and the compiled client
 COPY server/ ./server/
 # Builds from a git URL skip .dockerignore, so drop the sample data it would exclude
 RUN rm -rf server/data/* server/uploads/*
@@ -44,7 +45,6 @@ RUN rm -rf server/data/* server/uploads/*
 RUN mkdir -p server/data server/uploads && chown node:node server/data server/uploads
 COPY docker-entrypoint.sh /usr/local/bin/parallax-entrypoint
 COPY docs/ ./docs/
-COPY plugins/ ./plugins/
 COPY --from=builder /app/client/dist ./client/dist
 
 # Persist uploaded images and presentation data via a named volume

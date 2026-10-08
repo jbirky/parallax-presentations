@@ -34,9 +34,13 @@ const GUEST_ROUTES = [
   ['GET POST', /^\/api\/datasets$/],
   ['GET PATCH DELETE', /^\/api\/datasets\/[^/]+$/],
   ['GET', /^\/api\/datasets\/[^/]+\/data$/],
+  ['PUT', /^\/api\/datasets\/[^/]+\/transforms$/],
+  ['POST', /^\/api\/datasets\/[^/]+\/transforms\/preview$/],
   ['GET POST', /^\/api\/presentations\/[^/]+\/datasets$/],
   ['DELETE', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+$/],
   ['GET', /^\/api\/presentations\/[^/]+\/datasets\/[^/]+\/data$/],
+  // Copies of an example deck's datasets, for the deck made from it
+  ['POST', /^\/api\/examples\/[^/]+\/datasets$/],
   // Fonts and templates read-only
   ['GET', /^\/api\/fonts$/],
   ['GET', /^\/api\/fonts\/file\/[^/]+$/],

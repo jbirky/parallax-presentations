@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
@@ -18,7 +18,7 @@ function snapshotScript(key) {
 function buildHtmlEmbed(userHtml, embedW, embedH, snapKey) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle + snapshotScript(snapKey)
+  const injection = initScript + resetStyle + snapshotScript(snapKey) + EMBED_DATASETS_SCRIPT
   // Inject into <head> so DOCTYPE stays first (preserves standards mode)
   if (/<head[^>]*>/i.test(userHtml))
     return userHtml.replace(/<head[^>]*>/i, m => m + injection)
@@ -57,6 +57,8 @@ import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeViewer'
 import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
+import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
+import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
@@ -252,7 +254,7 @@ function buildP5Srcdoc(userCode, w, h, snapKey) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style>
 <script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script>
-${snapshotScript(snapKey)}
+${snapshotScript(snapKey)}${EMBED_DATASETS_SCRIPT}
 </head><body><script>
 ${userCode}
 <\/script></body></html>`
@@ -266,7 +268,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, onOpenDynSysEditor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -1152,7 +1154,6 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               else if (element.type === 'timing') onOpenTimingEditor?.(element.id)
               else if (element.type === 'geometry') onOpenGeometryEditor?.(element.id)
               else if (element.type === 'p5') onOpenP5Editor?.(element.id)
-              else if (element.type === 'plugin:dynamical-system') onOpenDynSysEditor?.(element.id)
               else if (element.type === 'textpath') onStartEdit(element.id)
               // In and out of tilt mode; its text is edited in the properties panel
               else if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
@@ -1413,6 +1414,26 @@ function CitationCaption({ element, fontSize, fontFamily }) {
   )
 }
 
+// A graph's page, with its data lines' rows once the editor has them (they
+// come later than the graph: graphData.js), and built again only then or
+// when the graph changes
+function GraphFrame({ element, scale }) {
+  const dataVersion = useSyncExternalStore(subscribeGraphData, graphDataVersion)
+  const srcDoc = useMemo(
+    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true }),
+    [element, dataVersion], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  return (
+    <ScaledFrame
+      scale={scale}
+      srcDoc={srcDoc}
+      style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
+      sandbox="allow-scripts"
+      title="Graph"
+    />
+  )
+}
+
 export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
@@ -1613,14 +1634,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
         {element.type === 'graph' && (
           // Edited in its own window (double-click), so the canvas never takes
           // its clicks: dragging moves it
-          <ScaledFrame
-            key={element.id}
-            scale={canvasScale}
-            srcDoc={graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true })}
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
-            sandbox="allow-scripts"
-            title="Graph"
-          />
+          <GraphFrame key={element.id} element={element} scale={canvasScale} />
         )}
         {element.type === 'model' && (
           <ScaledFrame
@@ -1904,23 +1918,22 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const etDef = registry.getElementType(element.type)
           const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
           const slug = pluginEntry?.slug
-          const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
+          // A community plugin's element draws the version it records
+          const sandboxVersion = element.pluginId && element.pluginVersion ? { pluginId: element.pluginId, version: element.pluginVersion } : null
+          const sandboxUrl = !sandboxVersion && pluginEntry?.manifest?.sandbox && slug
             ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
             : null
-          const hasExternalEditor = element.type === 'plugin:dynamical-system'
           return (
             <div style={{ width: '100%', height: '100%', position: 'relative' }}>
               <PluginSandbox
                 sandboxUrl={sandboxUrl}
+                sandboxVersion={sandboxVersion}
                 pluginData={element.pluginData}
                 width={element.width}
                 height={element.height}
-                isSelected={isSelected && !hasExternalEditor}
+                isSelected={isSelected}
                 onDataUpdate={(patch) => onUpdateElement?.(element.id, { pluginData: { ...(element.pluginData || {}), ...patch } })}
               />
-              {hasExternalEditor && isSelected && (
-                <div style={{ position: 'absolute', inset: 0, cursor: 'grab' }} />
-              )}
             </div>
           )
         })()}

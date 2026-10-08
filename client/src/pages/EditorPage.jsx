@@ -47,6 +47,10 @@ import { MODEL_DEFAULTS, isModelFile } from '../utils/modelViewer'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { TEXT3D_DEFAULTS } from '../utils/text3d'
 import GraphEditorModal from '../components/GraphEditorModal'
+import { setGraphDataPresentation, refreshGraphData, loadGraphData, loadEmbedData, deckGraphs } from '../utils/graphData'
+import datasetManager from '../datasets/DatasetManager'
+import { installEmbedDatasets } from '../datasets/embedBridge'
+import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
@@ -83,7 +87,6 @@ import EditorsModal from '../components/EditorsModal'
 import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import DatasetPanel from '../components/DatasetPanel'
-import DynSysEditor from '../components/DynSysEditor'
 import EquationPalette from '../components/EquationPalette'
 import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
 import { workFinder } from '../utils/bibDuplicates'
@@ -104,7 +107,11 @@ import anOldHopeCSS from '../../../node_modules/highlight.js/styles/an-old-hope.
 import atomOneLightCSS from '../../../node_modules/highlight.js/styles/atom-one-light.min.css?raw'
 import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?raw'
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
-import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { loadPlugins, unloadPlugin, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { loadVersionSandbox, pluginVersionsIn, versionSandbox } from '../plugins/versionSandboxes'
+import { pluginUpdates, withPluginVersion } from '../plugins/pluginUpdates'
+import registry from '../plugins/PluginRegistry'
+import PluginBrowser from '../components/PluginBrowser'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // A new graph's size on the slide
@@ -456,7 +463,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showDiffViewer, setShowDiffViewer] = useState(false)
   const [showFontManager, setShowFontManager] = useState(false)
   const [showDatasetPanel, setShowDatasetPanel] = useState(false)
-  const [dynSysEditorState, setDynSysEditorState] = useState(null)
   const [customFonts, setCustomFonts] = useState([])
   const [fontGoogleName, setFontGoogleName] = useState('')
   const [fontUploading, setFontUploading] = useState(false)
@@ -617,20 +623,58 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return () => window.removeEventListener('beforeunload', warn)
   }, [live])
 
-  // Load plugins on mount; guests don't get plugins
+  // Load plugins on mount; guests don't get plugins. In the cloud, the
+  // community plugins you installed load too, and again when you install one
+  // from the Plugins dialog
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
+  const [, setPluginsChanged] = useState(0)
+  const [showPluginBrowser, setShowPluginBrowser] = useState(false)
+  const startPlugins = useCallback(() => loadPlugins({
+    getPresentation: () => presentation,
+    updateElement: (id, patch) => {
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map(s => ({ ...s, elements: (s.elements || []).map(el => el.id === id ? { ...el, ...patch } : el) })) }
+      })
+    },
+    getInstalled: isCloud ? () => api.getInstalledPlugins() : null,
+  }), []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (guest) return
-    loadPlugins({
-      getPresentation: () => presentation,
-      updateElement: (id, patch) => {
-        setPresentation(prev => {
-          if (!prev) return prev
-          return { ...prev, slides: prev.slides.map(s => ({ ...s, elements: (s.elements || []).map(el => el.id === id ? { ...el, ...patch } : el) })) }
-        })
-      },
-    }).then(() => setPluginsLoaded(true)).catch(() => setPluginsLoaded(true))
+    startPlugins().then(() => setPluginsLoaded(true)).catch(() => setPluginsLoaded(true))
   }, [])
+
+  // Community plugin elements' pages, at the versions the deck's elements
+  // record, so presenting and exporting from here have them
+  const deckPluginVersions = useMemo(() => pluginVersionsIn(presentation), [presentation?.slides])
+  const [versionPagesSeen, setVersionPagesSeen] = useState(0)
+  useEffect(() => {
+    for (const v of deckPluginVersions) loadVersionSandbox(v.pluginId, v.version).then(() => setVersionPagesSeen(n => n + 1))
+  }, [deckPluginVersions.map(v => `${v.pluginId}@${v.version}`).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Newer versions of the community plugins the deck uses (or, for a
+  // version that's been withdrawn, one that can be had), offered above the
+  // canvas and in the properties panel; plugins/pluginUpdates.js
+  const [pluginCatalog, setPluginCatalog] = useState([])
+  const [dismissedUpdates, setDismissedUpdates] = useState(() => new Set())
+  useEffect(() => {
+    if (guest) return
+    api.getPluginCatalog().then(list => setPluginCatalog(Array.isArray(list) ? list : [])).catch(() => {})
+  }, [])
+  const pluginUpdatesAll = useMemo(
+    () => pluginUpdates(presentation, pluginCatalog, { unavailable: (id, version) => versionSandbox(id, version) === null }),
+    [presentation?.slides, pluginCatalog, versionPagesSeen], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const offeredUpdates = pluginUpdatesAll.filter(u => !dismissedUpdates.has(`${u.pluginId}@${u.to}`))
+  const updatePlugin = useCallback((u) => {
+    setPresentation(prev => (prev ? withPluginVersion(prev, u.pluginId, u.to) : prev))
+    // New elements of it start at that version too
+    if (registry.getPlugin(u.pluginId)?.community) {
+      unloadPlugin(u.pluginId)
+      startPlugins().then(() => setPluginsChanged(n => n + 1))
+    }
+    showNotice(`${u.name} in this deck is now version ${u.to}`)
+  }, [startPlugins, showNotice])
 
   // Load GitHub + Zenodo config on mount
   useEffect(() => {
@@ -733,7 +777,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Editing live: tell the others where this tab is, what it has selected,
   // and what it has open (the text box being typed in, or an element editor)
   const openElementId = editingElementId || htmlEditorState?.elementId || p5EditorState?.elementId || codeEditorState?.elementId
-    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || dynSysEditorState?.elementId || recording?.elementId || null
+    || latexEditorState?.elementId || tikzEditor?.elementId || graphEditor?.elementId || equationEditor?.elementId || feynmanEditor?.elementId || circuitEditor?.elementId || logicEditor?.elementId || freebodyEditor?.elementId || vennEditor?.elementId || timingEditor?.elementId || geometryEditor?.elementId || moleculePicker?.elementId || recording?.elementId || null
   useEffect(() => {
     const awareness = live?.synced && liveRef.current?.awareness
     if (!awareness) return
@@ -933,6 +977,25 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [presentationId])
+
+  // The rows graphs' data lines plot, and the datasets HTML, p5 and plugin
+  // elements name, fetched for the canvas, the graph editor and Present,
+  // whose page is built at the click (graphData.js). Those elements'
+  // parallax.datasets is answered from them (embedBridge.js); plugins'
+  // ctx.datasets reads the deck's datasets through datasetManager
+  useEffect(() => {
+    const id = isTemplate ? null : presentationId
+    setGraphDataPresentation(id)
+    datasetManager.setPresentation(id)
+  }, [presentationId, isTemplate])
+  useEffect(() => {
+    if (!presentation || isTemplate) return
+    loadGraphData(deckGraphs(presentation))
+    loadEmbedData(presentation)
+  }, [presentation, isTemplate])
+  const dataPresentation = useRef(presentation)
+  dataPresentation.current = presentation
+  useEffect(() => installEmbedDatasets(() => dataPresentation.current), [])
 
   // Presents with drawing on, into a new annotation set or on with `set`
   const presentAnnotated = useCallback((set = null) => {
@@ -4213,18 +4276,17 @@ function draw() {
       )}
 
       {showDatasetPanel && (
-        <DatasetPanel presentationId={presentationId} onClose={() => setShowDatasetPanel(false)} />
-      )}
-
-      {dynSysEditorState && (
-        <DynSysEditor
-          initialData={dynSysEditorState.data}
-          onApply={(newData) => {
-            updateElement(dynSysEditorState.elementId, { pluginData: newData })
-            setDynSysEditorState(null)
-          }}
-          onCancel={() => setDynSysEditorState(null)}
-        />
+        <DatasetPanel presentationId={presentationId} onClose={() => {
+          setShowDatasetPanel(false)
+          // Its datasets may have new rows, steps or links: graphs and
+          // elements fetch again
+          refreshGraphData().then(() => {
+            if (!presentation) return
+            loadGraphData(deckGraphs(presentation))
+            loadEmbedData(presentation)
+          })
+          datasetManager.reload()
+        }} />
       )}
 
       {/* Editor Body */}
@@ -4351,6 +4413,7 @@ function draw() {
             onAddTable={addTableElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}
+            onBrowsePlugins={isCloud && !guest ? () => setShowPluginBrowser(true) : undefined}
             selectedCount={selectedElementIds.length}
             onAlignElements={alignElements}
             smartGuidesEnabled={smartGuidesEnabled}
@@ -4395,6 +4458,23 @@ function draw() {
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
+            {!isViewingReferences && !recording && offeredUpdates.map(u => (
+              <div key={u.pluginId} role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <span>
+                  {u.unavailable
+                    ? `This deck’s ${u.name} ${u.count === 1 ? 'element is' : 'elements are'} at version ${u.from.join(' and ')}, which isn’t available any more.`
+                    : `${u.name} ${u.to} is out; this deck’s ${u.count === 1 ? 'element is' : `${u.count} elements are`} at ${u.from.join(' and ')}.`}
+                </span>
+                <button onClick={() => updatePlugin(u)}
+                  style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: 'var(--accent)', color: '#fff' }}>
+                  {u.unavailable ? `Use ${u.to}` : `Update to ${u.to}`}
+                </button>
+                <button onClick={() => setDismissedUpdates(prev => new Set(prev).add(`${u.pluginId}@${u.to}`))}
+                  style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: 'none', color: 'var(--text-secondary)' }}>
+                  Not now
+                </button>
+              </div>
+            ))}
             {!isViewingReferences && recording && (() => {
               const el = currentSlide?.elements?.find(e => e.id === recording.elementId)
               const name = el?.states?.find(st => st.id === recording.stateId)?.name || 'State'
@@ -4545,10 +4625,6 @@ function draw() {
               onOpenVennEditor={openVennEditor}
               onOpenTimingEditor={openTimingEditor}
               onOpenGeometryEditor={openGeometryEditor}
-              onOpenDynSysEditor={(elementId) => {
-                const el = currentSlide?.elements?.find(e => e.id === elementId)
-                if (el && !heldByOther(elementId)) setDynSysEditorState({ elementId, data: { ...(el.pluginData || {}) } })
-              }}
               onAddImage={async (file, dropX, dropY) => {
                 try {
                   const result = await api.uploadFile(file)
@@ -4568,6 +4644,13 @@ function draw() {
         <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
+          pluginInfo={(() => {
+            if (!selectedElement?.pluginId || !selectedElement.pluginVersion) return null
+            const listed = pluginCatalog.find(p => p.pluginId === selectedElement.pluginId)
+            const update = pluginUpdatesAll.find(u => u.pluginId === selectedElement.pluginId && u.from.includes(selectedElement.pluginVersion))
+            return { name: listed?.name || registry.getPlugin(selectedElement.pluginId)?.manifest?.name || 'Plugin', slug: listed?.slug || null, version: selectedElement.pluginVersion, update: update || null }
+          })()}
+          onUpdatePlugin={updatePlugin}
           recordingState={recording?.elementId === selectedElementId ? recording.stateId : null}
           onRecordState={stateId => setRecording(stateId && selectedElementId ? { elementId: selectedElementId, stateId } : null)}
           onUpdateSlide={updateCurrentSlide}
@@ -4678,7 +4761,7 @@ function draw() {
                 <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>Preview</div>
                 <iframe
                   key={p5EditorState.content}
-                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script></head><body><script>${p5EditorState.content}<\/script></body></html>`)}
+                  srcDoc={localizeLibraries(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#111;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script>${EMBED_DATASETS_SCRIPT}</head><body><script>${p5EditorState.content}<\/script></body></html>`)}
                   style={{ flex: 1, border: 'none', display: 'block' }}
                   sandbox="allow-scripts"
                   title="p5.js preview"
@@ -5079,6 +5162,14 @@ function draw() {
         <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(520px, calc(100vw - 32px))', padding: '8px 14px', borderRadius: 8, background: 'rgba(20,20,35,0.95)', border: '1px solid var(--border)', color: '#e0e0e0', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
           {notice}
         </div>
+      )}
+
+      {showPluginBrowser && (
+        <PluginBrowser
+          onClose={() => setShowPluginBrowser(false)}
+          onInstalled={() => startPlugins().then(() => setPluginsChanged(n => n + 1))}
+          onUninstalled={p => { unloadPlugin(p.pluginId); setPluginsChanged(n => n + 1) }}
+        />
       )}
 
       {showEditorsModal && access && (

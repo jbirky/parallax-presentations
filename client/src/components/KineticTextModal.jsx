@@ -4,6 +4,7 @@
 import { useState, useMemo } from 'react'
 import { Bold, Italic, Underline, Code2 } from 'lucide-react'
 import { localizeLibraries } from '../utils/libraries'
+import { latinModernFaces } from '../utils/latinModern'
 
 const FONTS = [
   "'Barlow', sans-serif",
@@ -65,6 +66,7 @@ function generateHTML(templateId, params) {
   const base = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@100;200;300;400;500;600;700;800;900&family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bebas+Neue&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Space+Mono:wght@400;700&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=Comfortaa:wght@300;400;500;600;700&family=Codystar:wght@300;400&display=swap');
+${latinModernFaces()}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${scale*100}%;height:${scale*100}%;overflow:hidden;background:${bg};transform:scale(${1/scale});transform-origin:0 0}
 body{display:flex;align-items:center;justify-content:center;font-family:${font};color:${col}${tsAttr}}

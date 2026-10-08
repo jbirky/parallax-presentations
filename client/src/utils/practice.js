@@ -145,9 +145,10 @@ export function relayPractice(config, frame) {
   }
   const later = () => { clearTimeout(sendTimer); sendTimer = setTimeout(send, 1500) }
 
+  // The timer sits under the deck's Fullscreen button
   const style = document.createElement('style')
   style.textContent = [
-    '.pp-hud{position:fixed;top:12px;right:12px;z-index:99999;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 12px;border-radius:10px;background:rgba(15,15,23,0.9);color:#e2e8f0;font:13px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,0.45);font-variant-numeric:tabular-nums;border:1px solid rgba(255,255,255,0.08)}',
+    '.pp-hud{position:fixed;top:56px;right:12px;z-index:99999;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 12px;border-radius:10px;background:rgba(15,15,23,0.9);color:#e2e8f0;font:13px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 4px 18px rgba(0,0,0,0.45);font-variant-numeric:tabular-nums;border:1px solid rgba(255,255,255,0.08)}',
     '.pp-hud .pp-col{display:grid;gap:5px;min-width:132px}',
     '.pp-hud .pp-line{display:flex;gap:6px;align-items:baseline;white-space:nowrap}',
     '.pp-hud .pp-dim{color:#94a3b8;font-size:11px}',

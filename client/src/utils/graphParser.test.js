@@ -338,3 +338,17 @@ describe('3D graphs', () => {
   })
 })
 
+describe('data lines', () => {
+  it('read as data, with nothing to parse, beside the rest in 2D and 3D', () => {
+    for (const dims of [2, 3]) {
+      const r = P.analyze([
+        { id: 'd', data: { dataset: 'exoplanets', x: 'pl_orbper', y: 'pl_bmasse' } },
+        { id: 'f', text: dims === 3 ? 'z = x' : 'y = 2x' },
+        { id: 'm', text: 'm = 3', slider: {} },
+      ], { dims })
+      expect(r.items.map(i => i.kind)).toEqual(['data', dims === 3 ? 'surface' : 'explicit', 'param'])
+      expect(r.items[0].error).toBeUndefined()
+      expect(r.missing).toEqual([])
+    }
+  })
+})

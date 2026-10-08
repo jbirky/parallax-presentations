@@ -122,7 +122,8 @@ async function getAdminOverview(storage, planLimits) {
                (SELECT MAX(updated_at) FROM presentations p WHERE p.user_id = u.id) AS last_active,
                (SELECT COALESCE(SUM(size_bytes), 0) FROM (
                   SELECT DISTINCT ON (storage_key) size_bytes FROM uploads up WHERE up.user_id = u.id) files)::bigint AS upload_bytes,
-               (SELECT COALESCE(SUM(byte_size), 0) FROM datasets d WHERE d.user_id = u.id)::bigint AS dataset_bytes,
+               (SELECT COALESCE(SUM(v.byte_size), 0) FROM dataset_versions v JOIN datasets d ON d.id = v.dataset_id
+                 WHERE d.user_id = u.id)::bigint AS dataset_bytes,
                ${usageCols}
           FROM users u
          WHERE ${ACCOUNT}
@@ -132,7 +133,7 @@ async function getAdminOverview(storage, planLimits) {
     storage.query(`
       SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM (
                 SELECT DISTINCT ON (storage_key) size_bytes FROM uploads) files)::bigint AS upload_bytes,
-             (SELECT COALESCE(SUM(byte_size), 0) FROM datasets)::bigint AS dataset_bytes`),
+             (SELECT COALESCE(SUM(byte_size), 0) FROM dataset_versions)::bigint AS dataset_bytes`),
     hasUsage ? storage.query(`
       SELECT kind, COUNT(*)::int AS jobs, COALESCE(SUM(duration_ms), 0)::bigint AS duration_ms
         FROM usage_events WHERE created_at > NOW() - INTERVAL '30 days'

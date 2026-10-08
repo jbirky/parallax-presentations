@@ -25,6 +25,10 @@ services:
       - PARALLAX_MODE=cloud
       - PARALLAX_DB=postgres
       - NODE_ENV=production
+      # Umami as this container reaches it, and the site's own website in it
+      # (the landing page's analytics; Umami's own pages stay private)
+      - UMAMI_URL=http://umami:3000
+      - UMAMI_WEBSITE_ID=ca976091-851a-4e54-b53e-6fa9a8bd8b79
     # A runaway video conversion or PowerPoint import gets this container
     # restarted instead of starving the rest of the server
     mem_limit: 4g
@@ -51,6 +55,11 @@ services:
       - NODE_ENV=production
       # Its own site: prod doesn't trust dev's pages or sign-ins, nor dev prod's
       - PARALLAX_PUBLIC_URL=https://dev.parallax-presentations.com
+      # Its own website in Umami, apart from prod's
+      - UMAMI_URL=http://umami:3000
+      - UMAMI_WEBSITE_ID=3f816c73-39d2-40d7-86bb-1117e33777cb
+      # Kept out of search engines, which should only find prod
+      - PARALLAX_NOINDEX=1
       # Own database and bucket so dev can never touch prod data
       - DATABASE_URL=${DEV_DATABASE_URL:?set DEV_DATABASE_URL in .env}
       - R2_BUCKET=parallax-uploads-dev

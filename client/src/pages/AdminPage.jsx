@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
+import PluginReviewPanel from '../components/PluginReviewPanel'
 import { formatSize, planSummary } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
@@ -182,7 +183,7 @@ function PlanPicker({ user, plans, onChanged }) {
 
 const EMPTY_PLAN = {
   id: '', name: '', storageBytes: GB, maxPresentations: null, expirationDays: null, maxFileBytes: null,
-  stripePriceId: null, priceLabel: null, public: false, sortOrder: 10,
+  stripePriceId: null, priceLabel: null, public: false, sortOrder: 10, liveDatasets: 0, minRefresh: 'daily',
 }
 
 // A plan as form fields: sizes in MB or GB, blanks for no limit
@@ -200,6 +201,8 @@ export function toPlanForm(plan) {
     priceLabel: plan.priceLabel || '',
     public: !!plan.public,
     sortOrder: String(plan.sortOrder ?? 0),
+    liveDatasets: String(plan.liveDatasets ?? 0),
+    minRefresh: plan.minRefresh || 'daily',
   }
 }
 
@@ -217,6 +220,8 @@ export function fromPlanForm(form) {
     priceLabel: form.priceLabel.trim() || null,
     public: form.public,
     sortOrder: form.sortOrder.trim() === '' ? 0 : Number(form.sortOrder),
+    liveDatasets: form.liveDatasets.trim() === '' ? 0 : Number(form.liveDatasets),
+    minRefresh: form.minRefresh,
   }
 }
 
@@ -307,6 +312,14 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
         </Field>
         <Field label="Largest file (MB)" hint="blank: 500">
           <input style={fieldInput} type="number" min="1" max="500" step="any" value={form.maxFileMB} onChange={set('maxFileMB')} />
+        </Field>
+        <Field label="Live datasets" hint="fetched from a URL or TAP query">
+          <input style={fieldInput} type="number" min="0" step="1" value={form.liveDatasets} onChange={set('liveDatasets')} />
+        </Field>
+        <Field label="Fastest refresh">
+          <select className="select-sm" style={fieldInput} value={form.minRefresh} onChange={set('minRefresh')}>
+            <option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option>
+          </select>
         </Field>
         <Field label="Order"><input style={fieldInput} type="number" min="0" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></Field>
         {!builtIn && (
@@ -428,6 +441,344 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
   )
 }
 
+// ---- The landing page's statistics ----
+
+const PERIODS = [7, 30, 90]
+const percent = (part, whole) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—')
+// The change from the period before, as "+12% on the previous 30 days"
+function change(now, before, days) {
+  if (!before) return now ? `New since the previous ${days} days` : `None in the previous ${days} days either`
+  const p = Math.round(((now - before) / before) * 100)
+  return `${p > 0 ? '+' : ''}${p}% on the previous ${days} days`
+}
+const countryName = code => {
+  try { return new Intl.DisplayNames(undefined, { type: 'region' }).of(code) || code } catch { return code }
+}
+const formatShortDay = day => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+// One step of the funnel: a bar as long as its share of the visitors
+function FunnelStep({ label, count, of, note }) {
+  const share = of > 0 && count != null ? Math.min(1, count / of) : 0
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '2px 10px', alignItems: 'baseline' }}>
+      <div style={{ fontSize: 13 }}>{label}{note && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> · {note}</span>}</div>
+      <div style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{count == null ? '—' : count.toLocaleString()} <span style={{ color: 'var(--text-muted)' }}>{count == null ? '' : percent(count, of)}</span></div>
+      <div style={{ gridColumn: '1 / -1', height: 6, borderRadius: 3, background: 'var(--bg-hover)' }}>
+        <div style={{ width: `${share * 100}%`, height: '100%', borderRadius: 3, background: 'var(--accent)' }} />
+      </div>
+    </div>
+  )
+}
+
+function TopList({ title, rows, name = x => x }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>{title}</h3>
+      {rows.length ? <SimpleTable columns={['', 'Count']} rows={rows.map(r => [name(r.name), r.count.toLocaleString()])} />
+        : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>None yet</p>}
+    </div>
+  )
+}
+
+// The landing page's visitors and what they did there, as Umami counts them,
+// with the accounts made in the same days
+export function LandingStatsPanel() {
+  const [days, setDays] = useState(30)
+  const [data, setData] = useState(undefined)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    let current = true
+    setError(null)
+    api.getLandingStats(days).then(d => { if (current) setData(d) }).catch(err => { if (current) setError(err.message) })
+    return () => { current = false }
+  }, [days])
+
+  const header = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div>
+        <h2 style={styles.h2}>Landing page</h2>
+        <p style={styles.sub}>Visitors and what they did, counted by Umami without cookies; new accounts from this app.</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {data?.configured && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{data.activeNow} visitor{data.activeNow === 1 ? '' : 's'} now</span>}
+        <div role="group" aria-label="Period" style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+          {PERIODS.map(d => (
+            <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}
+              style={{ padding: '3px 9px', fontSize: 12, borderRadius: 4, background: days === d ? 'var(--bg-active)' : 'transparent', color: days === d ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {d} days
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  if (error) return <section style={styles.panel}>{header}<p style={{ fontSize: 13, margin: 0 }}>Couldn’t load the statistics: {error}</p></section>
+  if (data === undefined) return <section style={styles.panel}>{header}<p style={{ ...styles.muted, fontSize: 13, margin: 0 }}>Loading…</p></section>
+  if (!data.configured) {
+    return (
+      <section style={styles.panel}>{header}
+        <p style={{ fontSize: 13, margin: 0 }}>Analytics isn’t set up on this server. It needs UMAMI_URL, UMAMI_WEBSITE_ID, UMAMI_STATS_USER and UMAMI_STATS_PASSWORD.</p>
+      </section>
+    )
+  }
+
+  const { totals, previous, events } = data
+  const clicks = (events.try || 0) + (events['sign-in'] || 0)
+  const daily = data.daily.map(d => ({ key: d.day, label: formatShortDay(d.day), tooltipLabel: formatShortDay(d.day), value: d.visits }))
+  return (
+    <section style={styles.panel} aria-labelledby="admin-landing-stats">
+      {header}
+      <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 14, margin: '0 -16px 14px' }}>
+        <Stat first label="Visitors" value={totals.visitors.toLocaleString()} note={change(totals.visitors, previous.visitors, days)} />
+        <Stat label="Visits" value={totals.visits.toLocaleString()} note={`${totals.pageviews.toLocaleString()} page views`} />
+        <Stat label="Left without doing anything" value={percent(totals.bounces, totals.visits)} note="Visits with one page view and no clicks counted" />
+        <Stat label="Average visit" value={totals.visits ? formatDuration((totals.totalSeconds / totals.visits) * 1000) : '—'} />
+      </div>
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
+        <div style={{ minWidth: 0 }}>
+          <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>Visits per day</h3>
+          <ColumnChart data={daily} integer ariaLabel={`Visits to the landing page per day, last ${days} days`} />
+        </div>
+        <div style={{ display: 'grid', gap: 10, alignContent: 'start', minWidth: 0 }}>
+          <h3 style={{ ...styles.h2, fontSize: 13 }}>From visit to account</h3>
+          <FunnelStep label="Visitors" count={totals.visitors} of={totals.visitors} />
+          <FunnelStep label="Clicked Try it or Sign in" count={clicks} of={totals.visitors} note="clicks" />
+          <FunnelStep label="Started a guest session" count={events['guest-start'] || 0} of={totals.visitors} />
+          <FunnelStep label="Made an account" count={data.accounts?.signups ?? null} of={totals.visitors} note="from anywhere" />
+        </div>
+      </div>
+      <h3 style={{ ...styles.h2, fontSize: 13, margin: '18px 0 6px' }}>Examples</h3>
+      {data.examples.length
+        ? <SimpleTable columns={['Example', 'Opened', 'Open in the editor', 'Guest sessions']} rows={data.examples.map(e => [e.title, e.opened, e.toEditor, e.guestStarts].map(v => (typeof v === 'number' ? v.toLocaleString() : v)))} />
+        : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>No example opened yet</p>}
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', marginTop: 18 }}>
+        <TopList title="Came from" rows={data.referrers} />
+        <TopList title="Countries" rows={data.countries} name={countryName} />
+        <TopList title="Devices" rows={data.devices} name={d => d.charAt(0).toUpperCase() + d.slice(1)} />
+      </div>
+    </section>
+  )
+}
+
+// ---- The landing page's examples ----
+
+const slugify = str => str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
+const exampleThumb = e => (e.hasThumbnail ? `/examples/thumbs/${e.slug}.jpg?v=${Date.parse(e.updatedAt) || 0}` : e.builtin && !e.ownDeck ? `/examples/thumbs/${e.slug}.jpg` : null)
+const background = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
+const smallBtn = { padding: '3px 10px', fontSize: 12 }
+
+// A card's words as form fields, and back
+const toExampleForm = e => ({ field: e.field || '', title: e.title || '', description: e.description || '', tags: (e.tags || []).join(', ') })
+
+function ExampleFields({ form, set, fields }) {
+  return (
+    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+      <Field label="Title"><input style={fieldInput} value={form.title} onChange={set('title')} required maxLength={80} /></Field>
+      <Field label="Field" hint="the filter it's under">
+        <input style={fieldInput} value={form.field} onChange={set('field')} maxLength={40} list="example-fields" />
+        <datalist id="example-fields">{fields.map(f => <option key={f} value={f} />)}</datalist>
+      </Field>
+      <Field label="Tags" hint="comma-separated"><input style={fieldInput} value={form.tags} onChange={set('tags')} placeholder="Graph with sliders, 3D molecule" /></Field>
+      <div style={{ gridColumn: '1 / -1' }}>
+        <Field label="Description"><textarea style={{ ...fieldInput, minHeight: 54, resize: 'vertical' }} value={form.description} onChange={set('description')} maxLength={300} /></Field>
+      </div>
+    </div>
+  )
+}
+
+function AddExample({ fields, onAdded, onCancel }) {
+  const [presentations, setPresentations] = useState(null)
+  const [presentationId, setPresentationId] = useState('')
+  const [form, setForm] = useState({ field: '', title: '', description: '', tags: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
+  useEffect(() => {
+    api.getPresentations().then(list => setPresentations((list || []).filter(p => !p.role || p.role === 'owner'))).catch(err => setError(err.message))
+  }, [])
+  function choose(e) {
+    const id = e.target.value
+    setPresentationId(id)
+    const p = presentations.find(x => x.id === id)
+    if (p && !form.title) setForm(f => ({ ...f, title: p.title || '' }))
+  }
+  async function add(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      onAdded(await api.addExample({ presentationId, ...form }))
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+  return (
+    <form onSubmit={add} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 10 }}>
+      <Field label="Presentation" hint="its slides are copied as they are now">
+        <select className="select-sm" value={presentationId} onChange={choose} required disabled={!presentations}>
+          <option value="">{presentations ? 'Choose one of your presentations…' : 'Loading…'}</option>
+          {presentations?.map(p => <option key={p.id} value={p.id}>{p.title || 'Untitled'}</option>)}
+        </select>
+      </Field>
+      <ExampleFields form={form} set={set} fields={fields} />
+      {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="submit" className="btn btn-primary" disabled={saving || !presentationId} style={{ padding: '5px 12px', fontSize: 13 }}>{saving ? 'Adding…' : 'Add example'}</button>
+        <button type="button" className="btn btn-secondary" disabled={saving} onClick={onCancel} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
+        {saving && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Copying the slides and drawing the thumbnail, a few seconds…</span>}
+      </div>
+    </form>
+  )
+}
+
+function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState(() => toExampleForm(e))
+  const set = key => ev => setForm(f => ({ ...f, [key]: ev.target.value }))
+  const thumb = exampleThumb(e)
+  const working = busy === e.slug
+  const save = async ev => {
+    ev.preventDefault()
+    if (await onAct(e, () => api.saveExample(e.slug, form))) setEditing(false)
+  }
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 14, padding: '12px 0', borderTop: first ? 'none' : '1px solid var(--border)', opacity: e.card || e.hero ? 1 : 0.65 }}>
+      <a href={`/examples/${e.slug}/deck`} target="_blank" rel="noopener noreferrer" title="Open the live deck" style={{ display: 'block', aspectRatio: '16 / 9', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: background(e.background) }}>
+        {thumb
+          ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : <span style={{ display: 'grid', placeItems: 'center', height: '100%', padding: 8, fontSize: 11, color: '#fff', textAlign: 'center' }}>{e.title}</span>}
+      </a>
+      <div style={{ display: 'grid', gap: 6, alignContent: 'start', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
+          <strong style={{ fontSize: 14 }}>{e.title}</strong>
+          {e.field && <span style={chip}>{e.field}</span>}
+          {e.hero && <span style={{ ...chip, background: 'var(--accent)', color: '#fff' }}>At the top</span>}
+          {!e.card && !e.hero && <span style={chip}>Hidden</span>}
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {e.sourcePresentationId
+              ? (e.sourceTitle ? <>Copy of <a href={`/dashboard/${slugify(e.sourceTitle)}`} style={{ color: 'var(--accent)' }}>{e.sourceTitle}</a></> : 'Copy of a presentation that’s been deleted')
+              : 'Built in'}
+          </span>
+        </div>
+        {editing ? (
+          <form onSubmit={save} style={{ display: 'grid', gap: 10 }}>
+            <ExampleFields form={form} set={set} fields={fields} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn btn-primary" disabled={working} style={{ padding: '5px 12px', fontSize: 13 }}>{working ? 'Saving…' : 'Save'}</button>
+              <button type="button" className="btn btn-secondary" onClick={() => { setForm(toExampleForm(e)); setEditing(false) }} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
+            </div>
+          </form>
+        ) : (<>
+          {e.description && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{e.description}</div>}
+          {e.tags.length > 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.tags.join(' · ')}</div>}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn btn-secondary" style={smallBtn} disabled={working || first} onClick={() => onMove(e, -1)} aria-label={`Move ${e.title} up`}>↑</button>
+            <button className="btn btn-secondary" style={smallBtn} disabled={working || last} onClick={() => onMove(e, 1)} aria-label={`Move ${e.title} down`}>↓</button>
+            {!e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.saveExample(e.slug, { card: !e.card }))}>{e.card ? 'Hide' : 'Show'}</button>}
+            {!e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.saveExample(e.slug, { hero: true }))}>Put at the top</button>}
+            {e.sourcePresentationId
+              ? <button className="btn btn-secondary" style={smallBtn} disabled={working || !e.sourceTitle} onClick={() => onAct(e, () => api.refreshExample(e.slug))} title="Copy the slides again, as the presentation is now">Update from presentation</button>
+              : <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.copyExample(e.slug))} title="Make a presentation of yours from it, to change its slides">Make an editable copy</button>}
+            <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.redrawExampleThumbnail(e.slug))}>Redraw thumbnail</button>
+            {!e.builtin && !e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working}
+              onClick={() => confirm(`Delete the example “${e.title}”? The presentation it came from stays.`) && onAct(e, () => api.deleteExample(e.slug), { removed: true })}>Delete</button>}
+          </div>
+        </>)}
+        {working && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Working…</div>}
+      </div>
+    </div>
+  )
+}
+
+// The deck at the top of the landing page and the example cards under it
+export function ExamplesPanel() {
+  const [list, setList] = useState(null)
+  const [canDraw, setCanDraw] = useState(true)
+  const [error, setError] = useState(null)
+  const [adding, setAdding] = useState(false)
+  const [busy, setBusy] = useState(null)
+  const [notice, setNotice] = useState(null)
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api.getAdminExamples()
+      setList(r.examples)
+      setCanDraw(r.thumbnails)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  // Runs a change to one example; true when it went through
+  const act = useCallback(async (e, change, { removed = false } = {}) => {
+    setBusy(e.slug)
+    setNotice(null)
+    try {
+      const r = await change()
+      if (removed) setList(l => l.filter(x => x.slug !== e.slug))
+      else await load()
+      const parts = []
+      if (r?.presentation) parts.push(`Made “${r.presentation.title}” in your presentations; change its slides there, then use Update from presentation.`)
+      if (r?.thumbnailError) parts.push(`The thumbnail wasn’t drawn: ${r.thumbnailError}`)
+      if (parts.length) setNotice({ slug: e.slug, text: parts.join(' '), link: r?.presentation ? `/dashboard/${slugify(r.presentation.title)}` : null })
+      return true
+    } catch (err) {
+      setNotice({ slug: e.slug, text: err.message })
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }, [load])
+
+  const move = useCallback(async (e, dir) => {
+    const slugs = list.map(x => x.slug)
+    const at = slugs.indexOf(e.slug)
+    ;[slugs[at], slugs[at + dir]] = [slugs[at + dir], slugs[at]]
+    setBusy(e.slug)
+    try { setList((await api.orderExamples(slugs)).examples) } catch (err) { setNotice({ slug: e.slug, text: err.message }) } finally { setBusy(null) }
+  }, [list])
+
+  const fields = [...new Set(['Physics', 'Astronomy', 'Chemistry', 'Mathematics', 'Engineering and CS', ...(list || []).map(e => e.field).filter(Boolean)])]
+
+  return (
+    <section style={styles.panel} aria-labelledby="admin-examples">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={styles.h2} id="admin-examples">Landing page examples</h2>
+          <p style={styles.sub}>
+            The deck at the top of the landing page and the example cards under it, in this order. An example is a copy
+            of one of your presentations: change the presentation, then use Update from presentation to show it.
+            {canDraw ? ' The server draws each card’s thumbnail from the first slide.' : ' This server has no Chromium, so it can’t draw thumbnails; new cards show a placeholder.'}
+          </p>
+        </div>
+        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add an example</button>}
+      </div>
+      {adding && <AddExample fields={fields} onCancel={() => setAdding(false)} onAdded={async r => {
+        setAdding(false)
+        await load()
+        if (r.thumbnailError) setNotice({ slug: r.example.slug, text: `Added, but the thumbnail wasn’t drawn: ${r.thumbnailError}` })
+      }} />}
+      {error && <p style={{ fontSize: 13, margin: '8px 0 0' }}>Couldn’t load the examples: {error}</p>}
+      {notice && !list?.some(e => e.slug === notice.slug) && <div role="status" style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0' }}>{notice.text}</div>}
+      {list && list.map((e, i) => (
+        <div key={e.slug}>
+          <ExampleRow example={e} first={i === 0} last={i === list.length - 1} fields={fields} busy={busy} onAct={act} onMove={move} />
+          {notice?.slug === e.slug && (
+            <div role="status" style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '-4px 0 10px 174px' }}>
+              {notice.text}{notice.link && <> <a href={notice.link} style={{ color: 'var(--accent)' }}>Open it</a></>}
+            </div>
+          )}
+        </div>
+      ))}
+    </section>
+  )
+}
+
 function ChartPanel({ title, subtitle, children, table }) {
   return (
     <section style={styles.panel}>
@@ -476,7 +827,7 @@ function StorageMeter({ used, limit }) {
 }
 
 // The dashboard itself, rendered from the overview data
-export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded, onPlanChanged }) {
+export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded, onPlanChanged, showExamples = false }) {
   const system = data.system
   const samples = system?.samples || []
   const cpuPoints = samples.map(s => ({ t: s.t, value: s.cpuPercent }))
@@ -533,6 +884,10 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
       {data.plans?.length > 0 && (
         <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />
       )}
+
+      {showExamples && <LandingStatsPanel />}
+      {showExamples && <ExamplesPanel />}
+      <PluginReviewPanel />
 
       <section style={styles.panel}>
         <h2 style={styles.h2}>Accounts</h2>
@@ -665,7 +1020,7 @@ export default function AdminPage() {
           </p>
         )}
 
-        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} onPlanChanged={load} />}
+        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} onPlanChanged={load} showExamples={data.plans?.length > 0} />}
       </div>
     </div>
   )

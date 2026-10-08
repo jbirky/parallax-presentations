@@ -69,6 +69,30 @@ const uploadLimiter = rateLimit({
   message: { error: 'Too many uploads, please try again later' },
 })
 
+// Fetching a live dataset's source by hand (testing one, or making one):
+// each sends a request to someone else's server
+const sourceFetchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: IS_CLOUD ? 10 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKey,
+  skip: () => !IS_CLOUD,
+  message: { error: 'That’s a lot of fetches in a minute. Try again shortly.' },
+})
+
+// Looking up and importing community plugins: each one asks GitHub, which
+// allows the server 60 (or, with a token, 5,000) API calls an hour
+const pluginImportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_CLOUD ? 20 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKey,
+  skip: () => !IS_CLOUD,
+  message: { error: 'That’s a lot of plugin imports at once. Try again in a few minutes.' },
+})
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: IS_CLOUD ? 30 : 0,
@@ -81,6 +105,15 @@ const authLimiter = rateLimit({
 
 // Pages built from a deck (share links, live sessions): outside /api, each
 // builds the whole deck. Per address, with room for a class behind one NAT
+// Analytics events from the landing page, passed on to Umami (/stats/api/send)
+const statsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+})
+
 const deckPageLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: IS_CLOUD ? 600 : 0,
@@ -228,7 +261,10 @@ module.exports = {
   clientIpKey,
   apiLimiter,
   uploadLimiter,
+  sourceFetchLimiter,
+  pluginImportLimiter,
   deckPageLimiter,
+  statsLimiter,
   localOnly,
   listenHost,
   authLimiter,

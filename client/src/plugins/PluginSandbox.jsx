@@ -2,17 +2,38 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import { DATASETS_CLIENT } from '../utils/deckData'
+import { loadVersionSandbox } from './versionSandboxes'
 
-export default function PluginSandbox({ sandboxUrl, pluginData, width, height, isSelected, onDataUpdate }) {
+// A plugin element's sandbox page: fetched from sandboxUrl (a bundled or
+// folder plugin's), loaded by version (sandboxVersion: { pluginId, version },
+// a community plugin's), or given as html
+export default function PluginSandbox({ sandboxUrl, sandboxVersion, html, pluginData, width, height, isSelected, onDataUpdate }) {
   const iframeRef = useRef(null)
   const dataRef = useRef(pluginData)
   dataRef.current = pluginData
   const [fetchedHtml, setFetchedHtml] = useState(null)
+  const [unavailable, setUnavailable] = useState(false)
+  const versionKey = sandboxVersion ? `${sandboxVersion.pluginId}@${sandboxVersion.version}` : null
 
   useEffect(() => {
-    if (!sandboxUrl) return
-    fetch(sandboxUrl).then(r => r.ok ? r.text() : null).then(setFetchedHtml).catch(() => {})
-  }, [sandboxUrl])
+    if (html != null) return
+    const loading = sandboxVersion
+      ? loadVersionSandbox(sandboxVersion.pluginId, sandboxVersion.version)
+      : sandboxUrl ? fetch(sandboxUrl).then(r => (r.ok ? r.text() : null)).catch(() => null) : null
+    if (!loading) return
+    let stale = false
+    setFetchedHtml(null)
+    setUnavailable(false)
+    loading.then(text => {
+      if (stale) return
+      if (text == null) setUnavailable(true)
+      else setFetchedHtml(text)
+    })
+    return () => { stale = true }
+  }, [sandboxUrl, versionKey, html]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pageHtml = html ?? fetchedHtml
+  const wantsPage = html != null || !!sandboxUrl || !!sandboxVersion
 
   const postToSandbox = useCallback((type, payload) => {
     iframeRef.current?.contentWindow?.postMessage({ source: 'parallax-host', type, payload }, '*')
@@ -80,7 +101,9 @@ export default function PluginSandbox({ sandboxUrl, pluginData, width, height, i
     reportError: function(msg) {
       window.parent.postMessage({ source: 'parallax-sandbox', type: 'error', payload: msg }, '*');
     },
-    fetch: function(url, opts) { return window.fetch(url, opts); }
+    fetch: function(url, opts) { return window.fetch(url, opts); },
+    // Answered by the editor (datasets/embedBridge.js)
+    datasets: ${DATASETS_CLIENT}
   });
 
   window.addEventListener('message', function(e) {
@@ -112,19 +135,30 @@ export default function PluginSandbox({ sandboxUrl, pluginData, width, height, i
   const injection = bridgeScript + bridgeStyle
 
   let srcdoc
-  if (fetchedHtml) {
-    if (/<head[^>]*>/i.test(fetchedHtml)) {
-      srcdoc = fetchedHtml.replace(/<head[^>]*>/i, m => m + injection)
-    } else if (/<html[^>]*>/i.test(fetchedHtml)) {
-      srcdoc = fetchedHtml.replace(/<html[^>]*>/i, m => m + injection)
+  if (pageHtml) {
+    if (/<head[^>]*>/i.test(pageHtml)) {
+      srcdoc = pageHtml.replace(/<head[^>]*>/i, m => m + injection)
+    } else if (/<html[^>]*>/i.test(pageHtml)) {
+      srcdoc = pageHtml.replace(/<html[^>]*>/i, m => m + injection)
     } else {
-      srcdoc = injection + fetchedHtml
+      srcdoc = injection + pageHtml
     }
-  } else if (!sandboxUrl) {
+  } else if (!wantsPage) {
     srcdoc = bridgeSrc
   }
 
-  if (!srcdoc && !sandboxUrl) {
+  if (unavailable && !pageHtml) {
+    return (
+      <div style={{
+        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 8, boxSizing: 'border-box',
+        background: 'rgba(128,128,128,0.08)', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'sans-serif',
+      }}>
+        This plugin isn’t available
+      </div>
+    )
+  }
+
+  if (!srcdoc && !wantsPage) {
     return (
       <div style={{
         width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -135,7 +169,7 @@ export default function PluginSandbox({ sandboxUrl, pluginData, width, height, i
     )
   }
 
-  if (sandboxUrl && !srcdoc) {
+  if (wantsPage && !srcdoc) {
     return <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Loading plugin...</div>
   }
 

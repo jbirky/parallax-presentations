@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage'
 import GuestPage from './pages/GuestPage'
 import AdminPage from './pages/AdminPage'
 import InvitePage from './pages/InvitePage'
+import PluginInstallPage from './pages/PluginInstallPage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
 import { chosenTheme, defaultTheme, saveTheme } from './utils/theme'
@@ -15,6 +16,8 @@ const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
 // /invite/<token>: a presentation's invite link (cloud only)
 const inviteToken = () => (isCloud && window.location.pathname.match(/^\/invite\/([0-9a-f-]{36})$/i)?.[1]) || null
+// /plugins/<slug>/install, from a plugin's page in the gallery
+const pluginToInstall = () => (isCloud && window.location.pathname.match(/^\/plugins\/([a-z0-9][a-z0-9_-]{0,63})\/install$/)?.[1]) || null
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
@@ -26,9 +29,11 @@ function TokenBridge() {
   return null
 }
 
-// Signing in from an invite link comes back to it
+// Signing in from an invite link, or a plugin's Install button, comes back to it
 function SignInPage() {
   const invited = !!inviteToken()
+  const installing = !invited && !!pluginToInstall()
+  const comeBack = invited || installing
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -41,10 +46,10 @@ function SignInPage() {
           <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax<BetaBadge />
         </h1>
         <p style={{ color: 'var(--text-muted, #888)', marginTop: 8, fontSize: 15 }}>
-          {invited ? 'Sign in to accept the invitation' : 'Sign in to create and manage presentations'}
+          {invited ? 'Sign in to accept the invitation' : installing ? 'Sign in to install the plugin' : 'Sign in to create and manage presentations'}
         </p>
       </div>
-      <SignIn routing="hash" afterSignInUrl={invited ? window.location.pathname : '/dashboard'} afterSignUpUrl={invited ? window.location.pathname : undefined} appearance={{
+      <SignIn routing="hash" afterSignInUrl={comeBack ? window.location.pathname : '/dashboard'} afterSignUpUrl={comeBack ? window.location.pathname : undefined} appearance={{
         variables: { colorPrimary: '#6366f1', colorBackground: '#2a2a3e', colorText: '#f0f0f0', colorInputBackground: '#3a3a52', colorInputText: '#f0f0f0' },
         elements: { socialButtonsBlockButton: { backgroundColor: '#ffffff', color: '#1a1a2e', borderColor: '#e0e0e0' } },
       }} />
@@ -185,6 +190,15 @@ export default function App() {
         <GuestPage theme={theme} onThemeChange={pickTheme} />
         {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
       </>
+    )
+  }
+
+  const installSlug = page === 'home' ? pluginToInstall() : null
+  if (installSlug) {
+    return (
+      <AuthGate>
+        <PluginInstallPage slug={installSlug} />
+      </AuthGate>
     )
   }
 

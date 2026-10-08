@@ -15,11 +15,13 @@ const GB = 1024 * MB
 const UPLOAD_CAP_BYTES = 500 * MB // multer's limit in index.js
 
 const BUILT_IN = [
-  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0 },
-  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1 },
-  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2 },
-  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, expirationDays: null, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3 },
+  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0, liveDatasets: 1, minRefresh: 'daily' },
+  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1, liveDatasets: 25, minRefresh: 'hourly' },
+  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2, liveDatasets: 100, minRefresh: 'hourly' },
+  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, expirationDays: null, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3, liveDatasets: 0, minRefresh: 'weekly' },
 ]
+// How often a live dataset may refresh, fastest first
+const REFRESH_RATES = ['hourly', 'daily', 'weekly']
 
 const PLAN_LIMITS = {}
 
@@ -41,6 +43,10 @@ function fromRow(r) {
     priceLabel: r.price_label,
     public: r.public,
     sortOrder: r.sort_order,
+    // Null until an admin sets them, or before migration 018: the built-in
+    // plan's, or none
+    liveDatasets: r.live_datasets ?? BUILT_IN.find(p => p.id === r.id)?.liveDatasets ?? 0,
+    minRefresh: REFRESH_RATES.includes(r.min_refresh) ? r.min_refresh : BUILT_IN.find(p => p.id === r.id)?.minRefresh ?? 'daily',
   }
 }
 
@@ -120,6 +126,11 @@ function validatePlan(id, input) {
   if (stripePriceId && (id === 'free' || id === 'guest')) throw new PlanError(`The ${id} plan can’t be sold.`)
   const isPublic = !!input.public
   if (isPublic && id === 'guest') throw new PlanError('The guest plan can’t be listed.')
+  // Fields an edit leaves out keep the plan's values (an admin page from
+  // before live datasets sends none)
+  const current = PLAN_LIMITS[id] || BUILT_IN.find(p => p.id === id)
+  const minRefresh = input.minRefresh === undefined ? current?.minRefresh || 'daily' : input.minRefresh
+  if (!REFRESH_RATES.includes(minRefresh)) throw new PlanError(`The fastest refresh must be ${REFRESH_RATES.join(', ')}.`)
   return {
     name,
     storageBytes,
@@ -130,11 +141,14 @@ function validatePlan(id, input) {
     priceLabel,
     public: isPublic,
     sortOrder: optionalInt(input.sortOrder, 'Order', 0, 1000) ?? 0,
+    liveDatasets: input.liveDatasets === undefined ? current?.liveDatasets ?? 0 : optionalInt(input.liveDatasets, 'Live datasets', 0, 100000) ?? 0,
+    minRefresh,
   }
 }
 
 function friendlyWriteError(err) {
   if (err.code === '42P01') return new PlanError('Plans can’t be edited until migration 014 has run on this database.', 409)
+  if (err.code === '42703') return new PlanError('Plans can’t be edited until migration 018 has run on this database.', 409)
   if (err.code === '23505' && /stripe_price_id/.test(err.constraint || err.detail || '')) {
     return new PlanError('Another plan already uses that Stripe price.')
   }
@@ -148,9 +162,11 @@ async function createPlan(storage, input) {
   const p = validatePlan(id, input)
   try {
     await storage.query(
-      `INSERT INTO plans (id, name, storage_bytes, max_presentations, expiration_days, max_file_bytes, stripe_price_id, price_label, public, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder]
+      `INSERT INTO plans (id, name, storage_bytes, max_presentations, expiration_days, max_file_bytes, stripe_price_id, price_label, public, sort_order,
+                          live_datasets, min_refresh)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
+        p.liveDatasets, p.minRefresh]
     )
   } catch (err) { throw friendlyWriteError(err) }
   await loadPlans(storage)
@@ -168,7 +184,8 @@ async function updatePlan(storage, id, input) {
     ({ rows } = await storage.query(`
       WITH changed AS (
         UPDATE plans SET name = $2, storage_bytes = $3, max_presentations = $4, expiration_days = $5,
-               max_file_bytes = $6, stripe_price_id = $7, price_label = $8, public = $9, sort_order = $10, updated_at = NOW()
+               max_file_bytes = $6, stripe_price_id = $7, price_label = $8, public = $9, sort_order = $10,
+               live_datasets = $11, min_refresh = $12, updated_at = NOW()
          WHERE id = $1 RETURNING id
       ), unexpired AS (
         UPDATE presentations SET expires_at = NULL
@@ -177,7 +194,8 @@ async function updatePlan(storage, id, input) {
         RETURNING id
       )
       SELECT (SELECT COUNT(*) FROM changed)::int AS found, (SELECT COUNT(*) FROM unexpired)::int AS unexpired`,
-      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder]
+      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
+        p.liveDatasets, p.minRefresh]
     ))
   } catch (err) { throw friendlyWriteError(err) }
   if (!rows[0].found) throw new PlanError('No such plan.', 404)

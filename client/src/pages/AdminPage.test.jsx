@@ -97,7 +97,7 @@ describe('AdminDashboard', () => {
     expect(picker).not.toContain('value="guest"')
 
     const badge = renderToStaticMarkup(<AdminDashboard data={overview()} />)
-    expect(badge).not.toContain('<select')
+    expect(badge).not.toContain('aria-label="Plan for')
   })
 })
 
@@ -147,6 +147,10 @@ describe('plan editor', () => {
     const back = fromPlanForm(form)
     expect(back).toMatchObject({ id: 'free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null })
     expect(fromPlanForm({ ...form, storage: '1.5', storageUnit: 'GB', maxFileMB: '50' })).toMatchObject({ storageBytes: 1536 * MB, maxFileBytes: 50 * MB })
+    // Live datasets: how many, and how often they may refresh
+    expect(toPlanForm({ ...free, liveDatasets: 1, minRefresh: 'daily' })).toMatchObject({ liveDatasets: '1', minRefresh: 'daily' })
+    expect(fromPlanForm({ ...form, liveDatasets: '25', minRefresh: 'hourly' })).toMatchObject({ liveDatasets: 25, minRefresh: 'hourly' })
+    expect(fromPlanForm({ ...form, liveDatasets: '' })).toMatchObject({ liveDatasets: 0 })
   })
 
   it('warns about what a save does to accounts on the plan', () => {

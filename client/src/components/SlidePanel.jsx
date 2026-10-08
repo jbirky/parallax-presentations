@@ -14,6 +14,7 @@ import { getCanvasHeight, getCanvasWidth } from '../utils/scrollingSlides'
 import { modelSnapshotContent } from '../utils/modelViewer'
 import { moleculeSnapshotContent } from '../utils/moleculeViewer'
 import { graphSnapshotContent } from '../utils/graphPage'
+import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
 import EquationView from './EquationView'
 import FeynmanView from './FeynmanView'
 import CircuitView from './CircuitView'
@@ -207,6 +208,8 @@ function PresenceDots({ people }) {
 }
 
 export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null }) {
+  // A graph's thumbnail waits for its data lines' rows (graphData.js)
+  useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)

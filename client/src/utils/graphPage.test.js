@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
-import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, defaultGraph3d, graphSnapshotContent, GRAPH_DECK_SCRIPT } from './graphPage'
+import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, defaultGraph3d, graphSnapshotContent, GRAPH_DECK_SCRIPT, GRAPH_FIELDS, setGraphDataSource } from './graphPage'
 import { generateRevealHTML } from './generateHTML'
 
 const graph = (expressions, extra = {}) => ({
@@ -132,3 +132,51 @@ describe('3D graphs', () => {
   })
 })
 
+describe('data lines and log axes', () => {
+  const dataLine = { id: 'd', data: { dataset: 'exoplanets', x: 'p', y: 'm' } }
+
+  it('keep a graph’s scales, and give a log axis a positive range', () => {
+    expect(GRAPH_FIELDS).toEqual(expect.arrayContaining(['xScale', 'yScale']))
+    const c = graphConfig(graph([dataLine], { xScale: 'log', yScale: 'log', view: { xMin: -10, xMax: 1e4, yMin: -7, yMax: -1 } }))
+    expect(c.xScale).toBe('log')
+    expect(c.view).toEqual({ xMin: 10, xMax: 1e4, yMin: 0.1, yMax: 100 })
+    expect(graphConfig(graph([dataLine], { xScale: 'log', view: { xMin: 0.5, xMax: 50, yMin: -1, yMax: 1 } })).view).toEqual({ xMin: 0.5, xMax: 50, yMin: -1, yMax: 1 })
+  })
+
+  it('write a data line’s rows into the page, given or from the editor’s store, where nothing can end the script', () => {
+    const rows = { d: { x: [1, 2], y: [3, 4], label: ['</script><b>x'], version: 'v1' } }
+    const html = graphPageHtml(graph([dataLine]), { data: rows })
+    expect(config(html).data).toEqual(rows)
+    expect(script(html)).not.toContain('</script><b>')
+
+    expect(config(graphPageHtml(graph([dataLine]))).data).toBeUndefined()
+    let asked = 0
+    setGraphDataSource(el => { asked++; return el.id === 'g1' ? rows : null })
+    try {
+      expect(config(graphPageHtml(graph([dataLine]))).data).toEqual(rows)
+      // A graph without data lines doesn't ask
+      const before = asked
+      graphPageHtml(graph([{ id: 'a', text: 'y = x' }]))
+      expect(asked).toBe(before)
+      // nor goes into a deck without them
+      expect(generateRevealHTML(deck([graph([dataLine])]))).toContain('&quot;data&quot;:{&quot;d&quot;')
+    } finally {
+      setGraphDataSource(null)
+    }
+  })
+
+  it('give a thumbnail a new key once the rows come, or change', () => {
+    const g = graph([dataLine])
+    const without = graphSnapshotContent(g)
+    let version = 'v1'
+    setGraphDataSource(() => ({ d: { x: [1], y: [2], version } }))
+    try {
+      const first = graphSnapshotContent(g)
+      expect(first).not.toBe(without)
+      version = 'v2'
+      expect(graphSnapshotContent(g)).not.toBe(first)
+    } finally {
+      setGraphDataSource(null)
+    }
+  })
+})
