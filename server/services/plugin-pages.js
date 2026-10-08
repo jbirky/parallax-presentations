@@ -16,6 +16,8 @@ const CATEGORY_LABELS = {
   data: 'Data', 'computer science': 'Computer science', teaching: 'Teaching', other: 'Other',
 }
 const NAV = [['/#examples', 'Examples', true], ['/plugins', 'Plugins', true], ['/#docs', 'Docs', true]]
+// The repo to copy to start a plugin
+const TEMPLATE_URL = 'https://github.com/jbirky/parallax-plugin-template'
 // Where a README's images may come from
 const IMAGE_HOSTS = ['raw.githubusercontent.com', 'github.com', 'user-images.githubusercontent.com', 'private-user-images.githubusercontent.com', 'camo.githubusercontent.com', 'avatars.githubusercontent.com']
 
@@ -104,11 +106,19 @@ const GALLERY_STYLES = `
   .pmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--faint); margin-top: 2px; }
   .pmeta img { width: 18px; height: 18px; border-radius: 50%; vertical-align: -4px; margin-right: 5px; }
   .empty { margin-top: 24px; color: var(--muted); }
-  .publish { margin-top: 64px; padding-top: 28px; border-top: 1px solid var(--line); max-width: 70ch; }
-  .publish h2 { margin: 0 0 10px; font-size: 22px; letter-spacing: -0.02em; }
-  .publish ol { margin: 0; padding-left: 22px; color: var(--muted); }
-  .publish li { margin-top: 6px; }
-  .publish code { font: 500 13.5px 'JetBrains Mono', ui-monospace, monospace; color: var(--text); }`
+  .publish { margin-top: 64px; padding-top: 28px; border-top: 1px solid var(--line); max-width: 72ch; }
+  .publish h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+  .publish > p { margin: 0; color: var(--muted); }
+  .publish .actions { margin-top: 18px; }
+  .publish ol { margin: 24px 0 0; padding-left: 22px; color: var(--muted); }
+  .publish li { margin-top: 14px; padding-left: 4px; }
+  .publish li strong { color: var(--text); }
+  .publish a { color: var(--soft); }
+  .publish .btn { padding: 9px 16px; font-size: 14.5px; color: var(--text); }
+  .publish .btn.primary { color: #fff; }
+  .publish code { font: 500 13.5px 'JetBrains Mono', ui-monospace, monospace; color: var(--text); }
+  .publish pre { margin: 10px 0 0; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  .publish pre code { font-size: 13px; line-height: 1.7; color: var(--muted); }`
 
 // Filters by search words and category, and sorts, without a reload
 const GALLERY_SCRIPT = `(function () {
@@ -189,11 +199,25 @@ function galleryPage({ origin, plugins, analytics, index }) {
       <p class="lead">${esc(description)}</p>
       ${list}
       <section class="publish" id="publish" aria-labelledby="publish-title">
-        <h2 id="publish-title">Publish your own</h2>
+        <h2 id="publish-title">Make your own plugin</h2>
+        <p>A plugin is a public GitHub repo holding one web page, the element, and a manifest that describes it. The <a href="${TEMPLATE_URL}" rel="noopener" target="_blank">plugin template</a> is one to copy: it has a working example, a pendulum, with a build, tests and a check of the rules Parallax applies.</p>
+        <div class="actions">
+          <a class="btn primary" href="${TEMPLATE_URL}/generate" rel="noopener" target="_blank" data-umami-event="plugin-template" data-umami-event-how="template">Use the template</a>
+          <a class="btn" href="${TEMPLATE_URL}/fork" rel="noopener" target="_blank" data-umami-event="plugin-template" data-umami-event-how="fork">Fork it</a>
+        </div>
         <ol>
-          <li>Put the plugin in a public GitHub repo: <code>parallax-plugin.json</code> at its root, and the built plugin in <code>dist/</code>. Each plugin’s page links to its repo, to copy from.</li>
-          <li>Tag a version, such as <code>v1.0.0</code>, and push the tag.</li>
-          <li>In the editor, open Plugins › Browse plugins… › Publish, paste the repo’s address and pick the tag. It’s listed here once an admin has reviewed it.</li>
+          <li><strong>Copy the template.</strong> Choose Use the template, sign in to GitHub if asked, and name the new repo after your plugin, such as <code>parallax-orbits</code>. On its first push, a GitHub Action names the plugin after the repo: its id becomes <code>io.github.&lt;you&gt;.orbits</code>, and its name Orbits. To fork it instead, choose Fork, then run <code>npm run setup</code> in your copy once, since a fork doesn’t run the Action. Using the template is simpler: your plugin gets a history of its own.</li>
+          <li><strong>Make it yours.</strong> Clone your repo and replace the pendulum in <code>src/</code> with your own element. It needs Node 18 or later, and nothing else:
+            <pre><code>git clone https://github.com/&lt;you&gt;/parallax-orbits
+cd parallax-orbits
+npm run build    # writes the plugin’s page into dist/
+npm test         # the example’s tests, and dist/ matching src/
+npm run check    # the rules Parallax applies on import</code></pre>
+            To try the element outside Parallax, open <code>dist/sandbox.html</code> in a browser. The <a href="/#docs/tutorials/writing-plugins">Writing Plugins</a> guide covers the manifest, the page and what it can reach.</li>
+          <li><strong>Tag a version.</strong> Set the same version in <code>parallax-plugin.json</code> and <code>package.json</code>, commit, and push a tag for it:
+            <pre><code>git tag v0.1.0
+git push origin v0.1.0</code></pre></li>
+          <li><strong>Publish it.</strong> In the editor, open Plugins › Browse plugins… › Publish, paste your repo’s address and pick the tag. An admin reviews each version, and it’s listed here once approved. Later versions are found by themselves: Parallax looks for new version tags each night.</li>
         </ol>
       </section>`,
     script: plugins.length ? GALLERY_SCRIPT : '',

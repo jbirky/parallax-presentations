@@ -196,7 +196,10 @@ function Publish() {
 
   return (
     <>
-      <p style={muted}>Publish a plugin from a public GitHub repo. An admin reviews each version before other people can install it.</p>
+      <p style={muted}>
+        Publish a plugin from a public GitHub repo. An admin reviews each version before other people can install it.{' '}
+        New to plugins? Start from the <a href="https://github.com/jbirky/parallax-plugin-template" target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc' }}>plugin template</a>.
+      </p>
       <details style={{ fontSize: 12, color: '#a0a0b0' }}>
         <summary style={{ cursor: 'pointer' }}>What the repo needs at the tag</summary>
         <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>

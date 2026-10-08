@@ -66,7 +66,10 @@ describe('the gallery', () => {
     assert.match(html, /<span class="picon blank"[^>]*>I<\/span>/)
     assert.match(html, /<button type="button" data-cat="physics" aria-pressed="false">Physics<\/button>/)
     assert.match(html, /12 installs[\s\S]*1 install</)
-    assert.match(html, /Publish your own/)
+    assert.match(html, /<h2 id="publish-title">Make your own plugin<\/h2>/)
+    assert.match(html, /href="https:\/\/github\.com\/jbirky\/parallax-plugin-template\/generate"/)
+    assert.match(html, /href="https:\/\/github\.com\/jbirky\/parallax-plugin-template\/fork"/)
+    assert.match(html, /npm run setup/)
   })
 
   it('says when nothing is listed, and escapes what authors wrote', () => {
