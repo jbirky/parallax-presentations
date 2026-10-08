@@ -303,9 +303,10 @@ function checkManifest(m, { version, files }) {
 // Fetches and checks the plugin at a repo's tag. Resolves to { owner, repo,
 // url, description, stars, avatar, tag, version, commitSha, manifest, readme,
 // files: [{ path, content, sha256, contentType }], sizeBytes, sha256 }, or
-// throws a PluginImportError listing what's wrong
-async function fetchVersion(input, tagName, { fetcher = safeFetch } = {}) {
-  const repoInfo = await lookupRepo(input, { fetcher })
+// throws a PluginImportError listing what's wrong. repo: what lookupRepo
+// gave for it just now, to save asking GitHub again.
+async function fetchVersion(input, tagName, { fetcher = safeFetch, repo = null } = {}) {
+  const repoInfo = repo || await lookupRepo(input, { fetcher })
   const tag = repoInfo.tags.find(t => t.name === tagName)
   if (!tag) throw new PluginImportError(`${repoInfo.owner}/${repoInfo.repo} has no version tag named “${tagName}”`, { status: 404 })
   const at = { owner: repoInfo.owner, repo: repoInfo.repo, sha: tag.sha }

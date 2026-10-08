@@ -23,8 +23,9 @@ async function hasTables(storage) {
 // imported it. reservedTypes: element type -> plugin id, for the plugins
 // that come with Parallax. Refuses (409) an id another repo has, an id
 // that isn't this repo's, an element type another plugin has, and a
-// version already imported.
-async function saveVersion(storage, fetched, { submittedBy = null, reservedTypes = new Map() } = {}) {
+// version already imported. foundByCheck: the nightly check imported it
+// (migration 022).
+async function saveVersion(storage, fetched, { submittedBy = null, reservedTypes = new Map(), foundByCheck = false } = {}) {
   const { manifest } = fetched
   const types = manifest.contributes.elementTypes.map(t => t.type)
   for (const type of types) {
@@ -69,6 +70,7 @@ async function saveVersion(storage, fetched, { submittedBy = null, reservedTypes
       await client.query('INSERT INTO plugin_files (version_id, path, content, content_type, sha256) VALUES ($1, $2, $3, $4, $5)',
         [version.id, f.path, f.content, f.contentType, f.sha256])
     }
+    if (foundByCheck) await client.query('UPDATE plugin_versions SET found_by_check = true WHERE id = $1', [version.id])
     await client.query('COMMIT')
     return getVersion(storage, version.id)
   } catch (err) {
@@ -114,7 +116,7 @@ async function submissions(storage, userId) {
 // other approved version to compare it with
 async function versionsForReview(storage, { status = 'pending' } = {}) {
   const { rows } = await storage.query(
-    `SELECT ${VERSION_COLUMNS}, v.readme, u.email AS "submitterEmail",
+    `SELECT ${VERSION_COLUMNS}, v.readme, u.email AS "submitterEmail", COALESCE((to_jsonb(v)->>'found_by_check')::boolean, false) AS "foundByCheck",
             (SELECT COALESCE(json_agg(json_build_object('path', f.path, 'size', octet_length(f.content), 'contentType', f.content_type, 'sha256', f.sha256) ORDER BY f.path), '[]')
                FROM plugin_files f WHERE f.version_id = v.id) AS files,
             (SELECT COALESCE(json_agg(json_build_object('version', a.version, 'tag', a.tag)), '[]') FROM plugin_versions a
@@ -126,6 +128,13 @@ async function versionsForReview(storage, { status = 'pending' } = {}) {
   return rows.map(({ approvedVersions, ...v }) => ({
     ...v, approved: approvedVersions.sort((a, b) => compareVersions(a.version, b.version)).pop() || null,
   }))
+}
+
+// How many versions are waiting for review
+async function pendingCount(storage) {
+  if (!(await hasTables(storage))) return 0
+  const { rows: [{ n }] } = await storage.query("SELECT count(*)::int AS n FROM plugin_versions WHERE status = 'pending'")
+  return n
 }
 
 const MOVES = {
@@ -256,5 +265,5 @@ async function sandboxesFor(storage, presentation) {
 
 module.exports = {
   hasTables, saveVersion, importedVersions, getVersion, submissions, versionsForReview, reviewVersion, refreshListing,
-  galleryPlugins, galleryPlugin, canSee, versionFile, sandboxPage, pluginVersionsIn, sandboxesFor, versionKey,
+  galleryPlugins, galleryPlugin, pendingCount, canSee, versionFile, sandboxPage, pluginVersionsIn, sandboxesFor, versionKey,
 }

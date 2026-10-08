@@ -356,6 +356,10 @@ export const api = {
   // approved, rejected, revoked or all), and an admin's decision on one
   getPluginReviewQueue: (status = 'pending') => authFetch(`${BASE}/admin/plugin-versions?status=${encodeURIComponent(status)}`).then(adminJson('Could not load the plugin versions')),
   reviewPluginVersion: (id, action, note = '') => authFetch(`${BASE}/admin/plugin-versions/${id}/${action}`, jsonBody('POST', { note })).then(adminJson(`Could not ${action} the version`)),
+  // { pending, lastCheck, checking, nightly }: how many wait, and what the
+  // last check for new version tags found; and that check, run now
+  getPluginReviewSummary: () => authFetch(`${BASE}/admin/plugin-versions/summary`).then(adminJson('Could not load the summary')),
+  checkPluginTags: () => authFetch(`${BASE}/admin/plugin-versions/check`, { method: 'POST' }).then(adminJson('Could not check for new versions')),
   setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

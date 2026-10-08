@@ -42,6 +42,7 @@ const { normalizeTransforms } = require('./services/dataset-transforms')
 const { createSandboxLookup, folderPluginTypes } = require('./services/plugin-embed')
 const communityPlugins = require('./services/community-plugins')
 const pluginImport = require('./services/plugin-import')
+const pluginTagCheck = require('./services/plugin-tag-check')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const { deckDataFor } = require('./services/deck-data')
@@ -213,6 +214,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Molecules', link: 'tutorials/molecules' },
       { text: 'Overview', link: 'features/overview' },
       { text: 'Periodic Table', link: 'tutorials/periodic-table' },
+      { text: 'Plugins', link: 'tutorials/plugins' },
       { text: 'Presenting & Export', link: 'tutorials/presenting' },
       { text: 'Scrolling Slides', link: 'tutorials/scrolling-slides' },
       { text: 'Shapes & Drawing', link: 'tutorials/shapes-drawing' },
@@ -226,6 +228,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Venn Diagrams', link: 'tutorials/venn-diagrams' },
       { text: 'Version Diff', link: 'features/version-diff' },
       { text: 'Video & Audio', link: 'tutorials/media' },
+      { text: 'Writing Plugins', link: 'tutorials/writing-plugins' },
       // Hidden while publishing to Zenodo is turned off (ZENODO_ENABLED)
       // { text: 'Zenodo Integration', link: 'features/zenodo' },
     ],
@@ -3330,6 +3333,29 @@ if (IS_CLOUD) {
       const after = await communityPlugins.reviewVersion(storage, id, action, { note: req.body?.note, reviewerId: req.userId })
       if (!after) return res.status(409).json({ error: `A version that’s ${before.status} can’t be ${REVIEW_PAST[action]}` })
       res.json(after)
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  // Each night at 03:30, server time, the listed plugins' repos are checked
+  // for new version tags, imported for review (services/plugin-tag-check.js).
+  // Only on a production server, so tests and local runs leave GitHub alone.
+  const NIGHTLY_PLUGIN_CHECK = process.env.NODE_ENV === 'production' && process.env.PLUGIN_TAG_CHECK !== 'off'
+  const checkPluginTags = () => pluginTagCheck.checkPluginTags(storage, { reservedTypes: folderPluginTypes([bundledPluginsDir, userPluginsDir]) })
+  if (NIGHTLY_PLUGIN_CHECK) pluginTagCheck.scheduleNightly(checkPluginTags)
+
+  // Admins: how many versions wait for review and what the last check
+  // found, and that check, now
+  app.get('/api/admin/plugin-versions/summary', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      res.json({ pending: await communityPlugins.pendingCount(storage), lastCheck: pluginTagCheck.lastCheck(), checking: pluginTagCheck.checkRunning(), nightly: NIGHTLY_PLUGIN_CHECK })
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+  app.post('/api/admin/plugin-versions/check', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      res.json(await checkPluginTags())
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 }

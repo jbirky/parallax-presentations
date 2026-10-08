@@ -295,7 +295,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
   const [videoUploading, setVideoUploading] = useState(false)
   const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
   const SectionHead = ({ k, children }) => (
@@ -2184,6 +2184,25 @@ export default function PropertiesPanel({ slide, selectedElement, onUpdateSlide,
                     onChange={e => onUpdateElement({ shadowColor: e.target.value })} />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* A community plugin's element: which plugin, at which version, and a newer one when there is */}
+          {pluginInfo && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{pluginInfo.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: pluginInfo.update ? 6 : 0 }}>
+                Version {pluginInfo.version}
+                {pluginInfo.slug && <>{' · '}<a href={`/plugins/${encodeURIComponent(pluginInfo.slug)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Its page</a></>}
+              </div>
+              {pluginInfo.update && (
+                <>
+                  {pluginInfo.update.unavailable && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>This version isn’t available any more.</div>}
+                  <button className="btn btn-secondary" onClick={() => onUpdatePlugin?.(pluginInfo.update)} style={{ fontSize: 12, padding: '4px 10px' }}>
+                    {pluginInfo.update.unavailable ? `Use ${pluginInfo.update.to} in this deck` : `Update this deck to ${pluginInfo.update.to}`}
+                  </button>
+                </>
+              )}
             </div>
           )}
 

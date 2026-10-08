@@ -108,7 +108,9 @@ import atomOneLightCSS from '../../../node_modules/highlight.js/styles/atom-one-
 import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?raw'
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
 import { loadPlugins, unloadPlugin, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
-import { loadVersionSandbox, pluginVersionsIn } from '../plugins/versionSandboxes'
+import { loadVersionSandbox, pluginVersionsIn, versionSandbox } from '../plugins/versionSandboxes'
+import { pluginUpdates, withPluginVersion } from '../plugins/pluginUpdates'
+import registry from '../plugins/PluginRegistry'
 import PluginBrowser from '../components/PluginBrowser'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 
@@ -645,9 +647,34 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // Community plugin elements' pages, at the versions the deck's elements
   // record, so presenting and exporting from here have them
   const deckPluginVersions = useMemo(() => pluginVersionsIn(presentation), [presentation?.slides])
+  const [versionPagesSeen, setVersionPagesSeen] = useState(0)
   useEffect(() => {
-    for (const v of deckPluginVersions) loadVersionSandbox(v.pluginId, v.version)
+    for (const v of deckPluginVersions) loadVersionSandbox(v.pluginId, v.version).then(() => setVersionPagesSeen(n => n + 1))
   }, [deckPluginVersions.map(v => `${v.pluginId}@${v.version}`).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Newer versions of the community plugins the deck uses (or, for a
+  // version that's been withdrawn, one that can be had), offered above the
+  // canvas and in the properties panel; plugins/pluginUpdates.js
+  const [pluginCatalog, setPluginCatalog] = useState([])
+  const [dismissedUpdates, setDismissedUpdates] = useState(() => new Set())
+  useEffect(() => {
+    if (guest) return
+    api.getPluginCatalog().then(list => setPluginCatalog(Array.isArray(list) ? list : [])).catch(() => {})
+  }, [])
+  const pluginUpdatesAll = useMemo(
+    () => pluginUpdates(presentation, pluginCatalog, { unavailable: (id, version) => versionSandbox(id, version) === null }),
+    [presentation?.slides, pluginCatalog, versionPagesSeen], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const offeredUpdates = pluginUpdatesAll.filter(u => !dismissedUpdates.has(`${u.pluginId}@${u.to}`))
+  const updatePlugin = useCallback((u) => {
+    setPresentation(prev => (prev ? withPluginVersion(prev, u.pluginId, u.to) : prev))
+    // New elements of it start at that version too
+    if (registry.getPlugin(u.pluginId)?.community) {
+      unloadPlugin(u.pluginId)
+      startPlugins().then(() => setPluginsChanged(n => n + 1))
+    }
+    showNotice(`${u.name} in this deck is now version ${u.to}`)
+  }, [startPlugins, showNotice])
 
   // Load GitHub + Zenodo config on mount
   useEffect(() => {
@@ -4431,6 +4458,23 @@ function draw() {
             onManageFonts={() => setShowFontManager(true)}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
+            {!isViewingReferences && !recording && offeredUpdates.map(u => (
+              <div key={u.pluginId} role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <span>
+                  {u.unavailable
+                    ? `This deck’s ${u.name} ${u.count === 1 ? 'element is' : 'elements are'} at version ${u.from.join(' and ')}, which isn’t available any more.`
+                    : `${u.name} ${u.to} is out; this deck’s ${u.count === 1 ? 'element is' : `${u.count} elements are`} at ${u.from.join(' and ')}.`}
+                </span>
+                <button onClick={() => updatePlugin(u)}
+                  style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: 'var(--accent)', color: '#fff' }}>
+                  {u.unavailable ? `Use ${u.to}` : `Update to ${u.to}`}
+                </button>
+                <button onClick={() => setDismissedUpdates(prev => new Set(prev).add(`${u.pluginId}@${u.to}`))}
+                  style={{ padding: '3px 10px', borderRadius: 12, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: 'none', color: 'var(--text-secondary)' }}>
+                  Not now
+                </button>
+              </div>
+            ))}
             {!isViewingReferences && recording && (() => {
               const el = currentSlide?.elements?.find(e => e.id === recording.elementId)
               const name = el?.states?.find(st => st.id === recording.stateId)?.name || 'State'
@@ -4600,6 +4644,13 @@ function draw() {
         <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
+          pluginInfo={(() => {
+            if (!selectedElement?.pluginId || !selectedElement.pluginVersion) return null
+            const listed = pluginCatalog.find(p => p.pluginId === selectedElement.pluginId)
+            const update = pluginUpdatesAll.find(u => u.pluginId === selectedElement.pluginId && u.from.includes(selectedElement.pluginVersion))
+            return { name: listed?.name || registry.getPlugin(selectedElement.pluginId)?.manifest?.name || 'Plugin', slug: listed?.slug || null, version: selectedElement.pluginVersion, update: update || null }
+          })()}
+          onUpdatePlugin={updatePlugin}
           recordingState={recording?.elementId === selectedElementId ? recording.stateId : null}
           onRecordState={stateId => setRecording(stateId && selectedElementId ? { elementId: selectedElementId, stateId } : null)}
           onUpdateSlide={updateCurrentSlide}

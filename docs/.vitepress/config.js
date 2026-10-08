@@ -76,6 +76,13 @@ export default defineConfig({
           ]
         },
         {
+          text: 'Plugins',
+          items: [
+            { text: 'Plugins', link: '/tutorials/plugins' },
+            { text: 'Writing Plugins', link: '/tutorials/writing-plugins' },
+          ]
+        },
+        {
           text: 'Presentation',
           items: [
             { text: 'Animations & Fragments', link: '/tutorials/animations' },
