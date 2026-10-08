@@ -45,7 +45,7 @@ const serverSide = {
     build.onResolve({ filter: /^wavedrom-render-any$/ }, () => ({ path: path.join(path.dirname(require.resolve('wavedrom/package.json')), 'lib/render-any.js') }))
     build.onResolve({ filter: /\/PluginRegistry$/ }, () => ({ path: 'plugin-registry', namespace: 'server' }))
     build.onLoad({ filter: /.*/, namespace: 'server' }, () => ({
-      contents: 'export default { getSandboxHtml: () => null }', loader: 'js',
+      contents: 'export default { getSandboxHtml: () => null, sandboxFor: () => null }', loader: 'js',
     }))
   },
 }

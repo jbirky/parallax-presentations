@@ -12,10 +12,22 @@ async function fetchPlugins() {
   return res.json()
 }
 
-export async function loadPlugins({ getPresentation, updateElement, showToast }) {
+// The plugins that come with Parallax (and the server's plugin folder) load
+// for everyone; community plugins load once installed (getInstalled: the
+// user's, from /api/me/plugins), at their newest approved version
+async function pluginsToLoad(getInstalled) {
+  const local = (await fetchPlugins()).filter(p => !p.community)
+  let installed = []
+  if (getInstalled) {
+    try { installed = await getInstalled() } catch { /* signed out, or no community plugins here */ }
+  }
+  return [...local, ...(installed || []).filter(p => p.community)]
+}
+
+export async function loadPlugins({ getPresentation, updateElement, showToast, getInstalled }) {
   let plugins
   try {
-    plugins = await fetchPlugins()
+    plugins = await pluginsToLoad(getInstalled)
   } catch {
     return
   }
@@ -25,6 +37,14 @@ export async function loadPlugins({ getPresentation, updateElement, showToast })
     if (loaded.has(plugin.slug)) continue
     const manifest = plugin.manifest
     if (!manifest || !manifest.id) continue
+
+    if (plugin.community) {
+      // Only its sandbox page, fetched by version as its elements need it
+      // (versionSandboxes.js); a community plugin has no main
+      registry.register(manifest, plugin.slug, { community: true, version: plugin.version })
+      loaded.add(plugin.slug)
+      continue
+    }
 
     registry.register(manifest, plugin.slug)
     loaded.add(plugin.slug)
@@ -60,6 +80,16 @@ export async function loadPlugins({ getPresentation, updateElement, showToast })
   await Promise.all(sandboxFetches)
 }
 
+// Takes an uninstalled plugin out of the Insert menu. Its elements in decks
+// still draw, from their versions.
+export function unloadPlugin(pluginId) {
+  const entry = registry.getPlugin(pluginId)
+  if (!entry) return
+  entry.instance?.dispose?.()
+  loaded.delete(entry.slug)
+  registry.unregister(pluginId)
+}
+
 export function getInsertablePluginTypes() {
   return registry.getAllElementTypes().map(et => ({
     type: et.fullType,
@@ -74,6 +104,7 @@ export function getInsertablePluginTypes() {
 export function createPluginElement(fullType) {
   const et = registry.getElementType(fullType)
   if (!et) return null
+  const plugin = registry.getPlugin(et.pluginId)
   return {
     id: crypto.randomUUID(),
     type: fullType,
@@ -84,5 +115,6 @@ export function createPluginElement(fullType) {
     height: et.defaultSize?.height || 200,
     zIndex: 2,
     pluginData: { ...(et.defaultData || {}) },
+    ...(plugin?.community && plugin.version && { pluginVersion: plugin.version }),
   }
 }

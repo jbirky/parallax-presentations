@@ -33,6 +33,7 @@ import {
   FileText,
   HelpCircle,
   Puzzle,
+  Search,
   Clock,
   MousePointerClick,
   Box,
@@ -85,7 +86,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, onBrowsePlugins, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -1497,8 +1498,9 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
         </div>
       )}
 
-      {/* Plugins dropdown — far right */}
-      {pluginTypes.length > 0 && (<>
+      {/* Plugins dropdown — far right: the plugins' elements, and (cloud)
+          the Plugins dialog to browse and publish community plugins */}
+      {(pluginTypes.length > 0 || onBrowsePlugins) && (<>
         <div style={{ flex: 1 }} />
         <div style={{ position: 'relative' }}>
           <button className="btn-icon" onClick={() => setShowPluginMenu(v => !v)} title="Plugins" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
@@ -1512,6 +1514,12 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                   <Puzzle size={13} style={{ opacity: 0.5 }} /> {pt.label}
                 </button>
               ))}
+              {onBrowsePlugins && (<>
+                {pluginTypes.length > 0 && <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />}
+                <button onClick={() => { setShowPluginMenu(false); onBrowsePlugins() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                  <Search size={13} style={{ opacity: 0.5 }} /> Browse plugins…
+                </button>
+              </>)}
             </div>
           </>)}
         </div>

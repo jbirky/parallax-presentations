@@ -35,6 +35,13 @@ const adminJson = fallback => async r => {
   return b
 }
 
+// Like adminJson, keeping the rules an imported plugin breaks as `problems`
+const pluginImportJson = fallback => async r => {
+  const b = await safeJson(r)
+  if (!r.ok) throw Object.assign(new Error(b.error || fallback), { problems: b.problems || [] })
+  return b
+}
+
 // The version of each presentation as this tab last loaded or saved it. A save
 // sends it, and the server refuses a save made from an older version (409)
 // when someone else has saved since. Self-hosted, presentations have none.
@@ -345,6 +352,10 @@ export const api = {
   redrawExampleThumbnail: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/thumbnail`, { method: 'POST' }).then(adminJson('Could not draw the thumbnail')),
   copyExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}/copy`, { method: 'POST' }).then(adminJson('Could not make a copy')),
   deleteExample: (slug) => authFetch(`${BASE}/admin/examples/${encodeURIComponent(slug)}`, { method: 'DELETE' }).then(adminJson('Could not delete the example')),
+  // Community plugins: versions waiting for review (status: pending,
+  // approved, rejected, revoked or all), and an admin's decision on one
+  getPluginReviewQueue: (status = 'pending') => authFetch(`${BASE}/admin/plugin-versions?status=${encodeURIComponent(status)}`).then(adminJson('Could not load the plugin versions')),
+  reviewPluginVersion: (id, action, note = '') => authFetch(`${BASE}/admin/plugin-versions/${id}/${action}`, jsonBody('POST', { note })).then(adminJson(`Could not ${action} the version`)),
   setUserPlan: (userId, plan) => authFetch(`${BASE}/admin/users/${userId}/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -354,6 +365,21 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not change the plan')
     return b
   }),
+
+  // Community plugins (server/services/community-plugins.js): the listed
+  // plugins, the ones you installed, importing a tag of a GitHub repo, and
+  // what you've imported. An import that breaks the rules rejects with an
+  // Error whose `problems` lists each rule.
+  getPluginCatalog: () => _fetch(`${BASE}/plugins`).then(adminJson('Could not load the plugins')),
+  getInstalledPlugins: () => authFetch(`${BASE}/me/plugins`).then(adminJson('Could not load your plugins')),
+  installPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }).then(adminJson('Could not install the plugin')),
+  uninstallPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'DELETE' }).then(adminJson('Could not uninstall the plugin')),
+  lookupPluginRepo: (url) => authFetch(`${BASE}/plugin-repos/lookup`, jsonBody('POST', { url })).then(pluginImportJson('Could not read that repo')),
+  importPluginVersion: (url, tag) => authFetch(`${BASE}/plugin-repos/import`, jsonBody('POST', { url, tag })).then(pluginImportJson('Could not import that version')),
+  getPluginSubmissions: () => authFetch(`${BASE}/me/plugin-submissions`).then(adminJson('Could not load your plugins')),
+  // A version's sandbox page as its importer or an admin may see it before
+  // it's approved, or null
+  getPluginVersionSandbox: (pluginId, version) => authFetch(`${BASE}/plugin-versions/${encodeURIComponent(pluginId)}/${encodeURIComponent(version)}/sandbox`).then(r => (r.ok ? r.text() : null)),
 
   // Guest mode
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),

@@ -423,38 +423,55 @@ class PgStorage extends StorageInterface {
     }).filter(Boolean)
   }
 
+  // A plugins row, read as JSON so it works with or without the community
+  // plugin columns (migration 021); community: imported from a GitHub repo
+  // (services/community-plugins.js), and listed once a version is approved
+  _pluginFromRow(r) {
+    return {
+      id: r.id, slug: r.slug, name: r.name, description: r.description, version: r.version,
+      priceCents: r.price_cents, manifest: r.manifest, published: r.published, downloads: r.downloads, avgRating: r.avg_rating,
+      community: !!r.repo_owner,
+      ...(r.repo_owner && { pluginId: r.manifest_id, repo: { owner: r.repo_owner, name: r.repo_name }, updatedAt: r.updated_at }),
+    }
+  }
+
   async listPlugins() {
-    const { rows } = await this.query(`SELECT id, slug, name, description, version, price_cents as "priceCents", manifest, published, downloads, avg_rating as "avgRating" FROM plugins WHERE published = true ORDER BY name`)
-    const bundled = this._scanBundledPlugins()
-    const seen = new Set(rows.map(r => r.slug))
-    return [...rows, ...bundled.filter(b => !seen.has(b.slug))]
+    const { rows } = await this.query(`SELECT to_jsonb(p) - 'readme' AS p FROM plugins p WHERE published = true ORDER BY name`)
+    const listed = rows.map(r => this._pluginFromRow(r.p))
+    const bundled = this._scanBundledPlugins().map(b => ({ ...b, community: false }))
+    const seen = new Set(listed.map(r => r.slug))
+    return [...listed, ...bundled.filter(b => !seen.has(b.slug))]
   }
 
   async getPlugin(slug) {
-    const { rows } = await this.query(`SELECT id, slug, name, description, version, price_cents as "priceCents", manifest, published, downloads, avg_rating as "avgRating" FROM plugins WHERE slug = $1`, [slug])
-    if (rows[0]) return rows[0]
+    const { rows } = await this.query(`SELECT to_jsonb(p) - 'readme' AS p FROM plugins p WHERE slug = $1`, [slug])
+    if (rows[0]) return this._pluginFromRow(rows[0].p)
     const bundled = this._scanBundledPlugins().find(b => b.slug === slug)
-    return bundled || null
+    return bundled ? { ...bundled, community: false } : null
   }
 
+  // Counts an install the first time someone installs a plugin (again,
+  // after uninstalling it)
   async installPlugin(pluginId, userId) {
     const licenseKey = require('crypto').randomUUID()
-    await this.query(
-      `INSERT INTO plugin_licenses (user_id, plugin_id, license_key, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (user_id, plugin_id) DO UPDATE SET status = 'active'`,
+    const { rows } = await this.query(
+      `INSERT INTO plugin_licenses (user_id, plugin_id, license_key, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (user_id, plugin_id) DO UPDATE SET status = 'active' RETURNING (xmax = 0) AS inserted`,
       [userId, pluginId, licenseKey]
     )
+    if (rows[0]?.inserted) await this.query('UPDATE plugins SET downloads = downloads + 1 WHERE id = $1', [pluginId])
   }
 
   async uninstallPlugin(pluginId, userId) {
     await this.query(`DELETE FROM plugin_licenses WHERE user_id = $1 AND plugin_id = $2`, [userId, pluginId])
   }
 
+  // The listed plugins someone installed, each at its newest approved version
   async getInstalledPlugins(userId) {
     const { rows } = await this.query(
-      `SELECT p.id, p.slug, p.name, p.description, p.version, p.manifest FROM plugins p INNER JOIN plugin_licenses l ON l.plugin_id = p.id WHERE l.user_id = $1 AND l.status = 'active' ORDER BY p.name`,
+      `SELECT to_jsonb(p) - 'readme' AS p FROM plugins p INNER JOIN plugin_licenses l ON l.plugin_id = p.id WHERE l.user_id = $1 AND l.status = 'active' AND p.published = true ORDER BY p.name`,
       [userId]
     )
-    return rows
+    return rows.map(r => this._pluginFromRow(r.p))
   }
 
   async getPresentationPlugins(presentationId) {

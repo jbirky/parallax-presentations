@@ -266,7 +266,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   const sequenceSections = presentation.sequenceSections || []
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || 'rgba(255,255,255,0.25)'
   const customFonts = (opts.customFonts || []).filter(Boolean)
-  const pluginSandbox = opts.pluginSandbox || (el => registry.getSandboxHtml(el.type))
+  const pluginSandbox = opts.pluginSandbox || (el => registry.sandboxFor(el))
   const deckData = deckDataOf(presentation, opts)
   // Elements' pages read datasets only in a deck that has some
   const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation))

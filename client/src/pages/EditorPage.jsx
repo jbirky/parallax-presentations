@@ -108,7 +108,9 @@ import anOldHopeCSS from '../../../node_modules/highlight.js/styles/an-old-hope.
 import atomOneLightCSS from '../../../node_modules/highlight.js/styles/atom-one-light.min.css?raw'
 import githubCSS from '../../../node_modules/highlight.js/styles/github.min.css?raw'
 import vsCSS from '../../../node_modules/highlight.js/styles/vs.min.css?raw'
-import { loadPlugins, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { loadPlugins, unloadPlugin, getInsertablePluginTypes, createPluginElement } from '../plugins/PluginLoader'
+import { loadVersionSandbox, pluginVersionsIn } from '../plugins/versionSandboxes'
+import PluginBrowser from '../components/PluginBrowser'
 import { libUrl, localizeLibraries } from '../utils/libraries'
 
 // A new graph's size on the slide
@@ -621,20 +623,33 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return () => window.removeEventListener('beforeunload', warn)
   }, [live])
 
-  // Load plugins on mount; guests don't get plugins
+  // Load plugins on mount; guests don't get plugins. In the cloud, the
+  // community plugins you installed load too, and again when you install one
+  // from the Plugins dialog
   const [pluginsLoaded, setPluginsLoaded] = useState(false)
+  const [, setPluginsChanged] = useState(0)
+  const [showPluginBrowser, setShowPluginBrowser] = useState(false)
+  const startPlugins = useCallback(() => loadPlugins({
+    getPresentation: () => presentation,
+    updateElement: (id, patch) => {
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map(s => ({ ...s, elements: (s.elements || []).map(el => el.id === id ? { ...el, ...patch } : el) })) }
+      })
+    },
+    getInstalled: isCloud ? () => api.getInstalledPlugins() : null,
+  }), []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (guest) return
-    loadPlugins({
-      getPresentation: () => presentation,
-      updateElement: (id, patch) => {
-        setPresentation(prev => {
-          if (!prev) return prev
-          return { ...prev, slides: prev.slides.map(s => ({ ...s, elements: (s.elements || []).map(el => el.id === id ? { ...el, ...patch } : el) })) }
-        })
-      },
-    }).then(() => setPluginsLoaded(true)).catch(() => setPluginsLoaded(true))
+    startPlugins().then(() => setPluginsLoaded(true)).catch(() => setPluginsLoaded(true))
   }, [])
+
+  // Community plugin elements' pages, at the versions the deck's elements
+  // record, so presenting and exporting from here have them
+  const deckPluginVersions = useMemo(() => pluginVersionsIn(presentation), [presentation?.slides])
+  useEffect(() => {
+    for (const v of deckPluginVersions) loadVersionSandbox(v.pluginId, v.version)
+  }, [deckPluginVersions.map(v => `${v.pluginId}@${v.version}`).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load GitHub + Zenodo config on mount
   useEffect(() => {
@@ -4384,6 +4399,7 @@ function draw() {
             onAddTable={addTableElement}
             pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
             onAddPluginElement={addPluginElement}
+            onBrowsePlugins={isCloud && !guest ? () => setShowPluginBrowser(true) : undefined}
             selectedCount={selectedElementIds.length}
             onAlignElements={alignElements}
             smartGuidesEnabled={smartGuidesEnabled}
@@ -5112,6 +5128,14 @@ function draw() {
         <div role="status" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9000, maxWidth: 'min(520px, calc(100vw - 32px))', padding: '8px 14px', borderRadius: 8, background: 'rgba(20,20,35,0.95)', border: '1px solid var(--border)', color: '#e0e0e0', fontSize: 13, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
           {notice}
         </div>
+      )}
+
+      {showPluginBrowser && (
+        <PluginBrowser
+          onClose={() => setShowPluginBrowser(false)}
+          onInstalled={() => startPlugins().then(() => setPluginsChanged(n => n + 1))}
+          onUninstalled={p => { unloadPlugin(p.pluginId); setPluginsChanged(n => n + 1) }}
+        />
       )}
 
       {showEditorsModal && access && (

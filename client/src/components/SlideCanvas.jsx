@@ -1919,7 +1919,9 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const etDef = registry.getElementType(element.type)
           const pluginEntry = etDef ? registry.getPlugin(etDef.pluginId) : null
           const slug = pluginEntry?.slug
-          const sandboxUrl = pluginEntry?.manifest?.sandbox && slug
+          // A community plugin's element draws the version it records
+          const sandboxVersion = element.pluginId && element.pluginVersion ? { pluginId: element.pluginId, version: element.pluginVersion } : null
+          const sandboxUrl = !sandboxVersion && pluginEntry?.manifest?.sandbox && slug
             ? `/api/plugins/${slug}/assets/${pluginEntry.manifest.sandbox.replace(/^\.\//, '')}`
             : null
           const hasExternalEditor = element.type === 'plugin:dynamical-system'
@@ -1927,6 +1929,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
             <div style={{ width: '100%', height: '100%', position: 'relative' }}>
               <PluginSandbox
                 sandboxUrl={sandboxUrl}
+                sandboxVersion={sandboxVersion}
                 pluginData={element.pluginData}
                 width={element.width}
                 height={element.height}

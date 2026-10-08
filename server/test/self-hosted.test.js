@@ -232,6 +232,17 @@ describe('the self-hosted version', () => {
     assert.equal(answer(localOnly('localhost, parallax.lan'), 'Parallax.LAN:3002'), 200)
   })
 
+  it('sends plugin pages with the sandbox header, and has no community plugins', async () => {
+    const page = await fetch(`${base}/api/plugins/animated-counter/assets/sandbox.html`)
+    assert.equal(page.status, 200)
+    assert.equal(page.headers.get('content-security-policy'), 'sandbox allow-scripts')
+    assert.equal(page.headers.get('x-content-type-options'), 'nosniff')
+    const listed = (await call('GET', '/api/plugins')).body
+    assert.ok(listed.some(p => p.slug === 'animated-counter' && !p.community))
+    assert.equal((await call('GET', '/api/plugin-versions/io.github.someone.lorenz/1.0.0/sandbox')).status, 404)
+    assert.equal((await call('POST', '/api/plugin-repos/lookup', { url: 'someone/lorenz' })).status, 404)
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

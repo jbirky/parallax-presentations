@@ -97,7 +97,7 @@ describe('AdminDashboard', () => {
     expect(picker).not.toContain('value="guest"')
 
     const badge = renderToStaticMarkup(<AdminDashboard data={overview()} />)
-    expect(badge).not.toContain('<select')
+    expect(badge).not.toContain('aria-label="Plan for')
   })
 })
 

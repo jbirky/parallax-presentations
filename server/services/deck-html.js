@@ -5301,7 +5301,7 @@ function resolveCitationsInHtml(html, labelByKey) {
 }
 
 // server:plugin-registry
-var plugin_registry_default = { getSandboxHtml: () => null };
+var plugin_registry_default = { getSandboxHtml: () => null, sandboxFor: () => null };
 
 // client/src/utils/deckData.js
 var MAX_ROWS = 2e5;
@@ -21925,7 +21925,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const sequenceSections = presentation.sequenceSections || [];
   const footerInactiveColor = cssValue(presentation.footerInactiveColor) || "rgba(255,255,255,0.25)";
   const customFonts = (opts.customFonts || []).filter(Boolean);
-  const pluginSandbox = opts.pluginSandbox || ((el) => plugin_registry_default.getSandboxHtml(el.type));
+  const pluginSandbox = opts.pluginSandbox || ((el) => plugin_registry_default.sandboxFor(el));
   const deckData = deckDataOf(presentation, opts);
   const offersData = !!(deckData?.datasets?.list?.length && hasEmbeds(presentation));
   const seenGroups = /* @__PURE__ */ new Set();

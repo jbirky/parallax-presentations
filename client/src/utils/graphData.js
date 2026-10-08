@@ -153,7 +153,7 @@ export function graphDataFor(el) {
 // the name they use
 function embedNames(presentation) {
   if (!datasets || !presentation) return new Set()
-  return embedDatasetNames(presentation, datasets.map(d => d.alias || d.name), { pluginSandbox: el => registry.getSandboxHtml(el.type) })
+  return embedDatasetNames(presentation, datasets.map(d => d.alias || d.name), { pluginSandbox: el => registry.sandboxFor(el) })
 }
 
 // Fetches, whole (up to MAX_ROWS rows), the datasets a deck's elements name

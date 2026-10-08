@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
+import PluginReviewPanel from '../components/PluginReviewPanel'
 import { formatSize, planSummary } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
@@ -886,6 +887,7 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
 
       {showExamples && <LandingStatsPanel />}
       {showExamples && <ExamplesPanel />}
+      <PluginReviewPanel />
 
       <section style={styles.panel}>
         <h2 style={styles.h2}>Accounts</h2>

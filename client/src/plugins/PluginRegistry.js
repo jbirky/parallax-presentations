@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
+import { versionSandbox } from './versionSandboxes'
+
 const PLUGIN_TYPE_PREFIX = 'plugin:'
 
 class PluginRegistry {
@@ -15,9 +17,11 @@ class PluginRegistry {
     this._listeners = new Set()
   }
 
-  register(manifest, slug) {
+  // extra: { community, version } for a community plugin, which its
+  // elements record the version of
+  register(manifest, slug, extra = {}) {
     if (this._plugins.has(manifest.id)) return
-    this._plugins.set(manifest.id, { manifest, slug: slug || manifest.id, instance: null, activated: false })
+    this._plugins.set(manifest.id, { manifest, slug: slug || manifest.id, instance: null, activated: false, ...extra })
 
     const contributes = manifest.contributes || {}
 
@@ -143,6 +147,14 @@ class PluginRegistry {
 
   getSandboxHtml(elementType) {
     return this.getPluginForElement(elementType)?.sandboxHtml || null
+  }
+
+  // An element's sandbox page: a community plugin's at the version the
+  // element records (null until it's loaded, or when there's none), and
+  // otherwise its plugin's
+  sandboxFor(el) {
+    if (el?.pluginId && el.pluginVersion) return versionSandbox(el.pluginId, el.pluginVersion) ?? null
+    return this.getSandboxHtml(el?.type)
   }
 
   getAllElementTypes() {

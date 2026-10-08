@@ -81,6 +81,18 @@ const sourceFetchLimiter = rateLimit({
   message: { error: 'That’s a lot of fetches in a minute. Try again shortly.' },
 })
 
+// Looking up and importing community plugins: each one asks GitHub, which
+// allows the server 60 (or, with a token, 5,000) API calls an hour
+const pluginImportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_CLOUD ? 20 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKey,
+  skip: () => !IS_CLOUD,
+  message: { error: 'That’s a lot of plugin imports at once. Try again in a few minutes.' },
+})
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: IS_CLOUD ? 30 : 0,
@@ -250,6 +262,7 @@ module.exports = {
   apiLimiter,
   uploadLimiter,
   sourceFetchLimiter,
+  pluginImportLimiter,
   deckPageLimiter,
   statsLimiter,
   localOnly,

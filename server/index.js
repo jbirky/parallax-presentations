@@ -39,12 +39,14 @@ const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
 const { normalizeTransforms } = require('./services/dataset-transforms')
-const { createSandboxLookup } = require('./services/plugin-embed')
+const { createSandboxLookup, folderPluginTypes } = require('./services/plugin-embed')
+const communityPlugins = require('./services/community-plugins')
+const pluginImport = require('./services/plugin-import')
 const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const { deckDataFor } = require('./services/deck-data')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -292,8 +294,8 @@ app.get('/examples/:slug/deck', deckPageLimiter, async (req, res, next) => {
     const version = `${found.version}|${await exampleData.exampleDataVersion(found.deck, { localDir: DATA_DIR })}`
     let page = exampleHtml.get(slug)
     if (!page || page.version !== version) {
-      const deckData = await exampleData.exampleDeckData(found.deck, { localDir: DATA_DIR, pluginSandbox: pluginSandboxes() })
-      page = { version, html: localizeLibraries(generateRevealHTML(found.deck, { notes: false, deckData })) }
+      const deckData = await exampleData.exampleDeckData(found.deck, { localDir: DATA_DIR, pluginSandbox: await pluginSandboxes(found.deck) })
+      page = { version, html: localizeLibraries(await generateRevealHTML(found.deck, { notes: false, deckData })) }
       exampleHtml.set(slug, page)
     }
     sendDeckPage(res, page.html)
@@ -394,11 +396,17 @@ app.post('/stats/api/send', statsLimiter, async (req, res) => {
   }
 })
 
-// Plugin assets (public, before auth — sandbox iframes need these)
+// Plugin assets (public, before auth — sandbox iframes need these). Sent
+// with the sandbox header, so a plugin's page opened at its own address runs
+// with an origin of its own, null, never as this site; a plugin's main
+// script, which the editor imports, isn't a page and isn't affected.
 const userPluginsDir = path.join(DATA_DIR, 'plugins')
 const bundledPluginsDir = path.join(__dirname, '..', 'plugins')
+const PLUGIN_FILE_SANDBOX = 'sandbox allow-scripts'
 fs.ensureDirSync(userPluginsDir)
 app.use('/api/plugins/:slug/assets', requireValidSlug(), (req, res, next) => {
+  res.setHeader('Content-Security-Policy', PLUGIN_FILE_SANDBOX)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   const slug = req.params.slug
   const userDir = path.join(userPluginsDir, slug, 'dist')
   const bundledDir = path.join(bundledPluginsDir, slug, 'dist')
@@ -419,9 +427,15 @@ app.get('/api/plugins', async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// A community plugin with no approved version isn't listed yet
+const listedPlugin = async slug => {
+  const plugin = await storage.getPlugin(slug)
+  return plugin && (!plugin.community || plugin.published) ? plugin : null
+}
+
 app.get('/api/plugins/:slug', async (req, res) => {
   try {
-    const plugin = await storage.getPlugin(req.params.slug)
+    const plugin = await listedPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -429,7 +443,7 @@ app.get('/api/plugins/:slug', async (req, res) => {
 
 app.get('/api/plugins/:slug/manifest', async (req, res) => {
   try {
-    const plugin = await storage.getPlugin(req.params.slug)
+    const plugin = await listedPlugin(req.params.slug)
     if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
     res.json(plugin.manifest)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -564,6 +578,32 @@ if (IS_CLOUD) {
     })
   })
 }
+
+// A community plugin version's sandbox page, with its CSP, and its other
+// files, as the editor and the plugin pages load them: anyone's once it's
+// approved, signed in or not, and before that its importer's and admins'.
+// Sent with the sandbox header, like the plugin folders' assets.
+const PLUGIN_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+const PLUGIN_ID_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/
+async function sendPluginVersionFile(req, res, filePath) {
+  const { pluginId, version } = req.params
+  if (!PLUGIN_ID_RE.test(pluginId) || !PLUGIN_VERSION_RE.test(version) || !IS_CLOUD) return res.status(404).json({ error: 'Not found' })
+  if (!(await communityPlugins.hasTables(storage))) return res.status(404).json({ error: 'Not found' })
+  const file = await communityPlugins.versionFile(storage, pluginId, version, filePath)
+  if (!file?.content || !communityPlugins.canSee(file, { userId: req.userId, admin: isAdmin(req) })) return res.status(404).json({ error: 'Not found' })
+  res.setHeader('Content-Security-Policy', PLUGIN_FILE_SANDBOX)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  // Its status can change (revoked), so it's checked each time
+  res.setHeader('Cache-Control', 'private, no-cache')
+  if (filePath === null) res.type('html').send(communityPlugins.sandboxPage(file))
+  else res.type(file.contentType).send(file.content)
+}
+app.get('/api/plugin-versions/:pluginId/:version/sandbox', async (req, res) => {
+  try { await sendPluginVersionFile(req, res, null) } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+app.get('/api/plugin-files/:pluginId/:version/*', async (req, res) => {
+  try { await sendPluginVersionFile(req, res, req.params[0]) } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
 
 // Protect all /api routes in cloud mode, but for the slide feed of a live
 // session, which its audience follows without signing in
@@ -848,14 +888,29 @@ async function transcodeVideoIfNeeded(filePath) {
 // A deck's page (share links, live sessions, exports, GitHub and Zenodo), from
 // the generator the editor's windows use (services/deck-html.js, built from
 // the client's utils/generateHTML.js). Plugin elements get their sandbox page
-// from the plugins' folders. opts.notes: false leaves speaker notes out, for
+// from pluginSandboxes. opts.notes: false leaves speaker notes out, for
 // pages anyone with a link can open; opts.customFonts are the deck's fonts.
-function generateRevealHTML(presentation, opts = {}) {
-  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: pluginSandboxes() })
+async function generateRevealHTML(presentation, opts = {}) {
+  return deckHtml.generateRevealHTML(presentation, { ...opts, pluginSandbox: await pluginSandboxes(presentation) })
 }
-function pluginSandboxes() {
+// A deck's plugin elements' sandbox pages: a community plugin's from the
+// database, at the version its element records (services/community-plugins.js),
+// and the rest from the plugins' folders
+async function pluginSandboxes(presentation) {
   const lookup = createSandboxLookup([userPluginsDir, bundledPluginsDir])
-  return el => (el.pluginId ? lookup(el.pluginId) : null)
+  let community = new Map()
+  if (IS_CLOUD) {
+    try {
+      community = await communityPlugins.sandboxesFor(storage, presentation)
+    } catch (err) {
+      console.error('Community plugin pages failed:', err.message)
+    }
+  }
+  return el => {
+    if (!el.pluginId) return null
+    const page = el.pluginVersion ? community.get(communityPlugins.versionKey(el.pluginId, el.pluginVersion)) : undefined
+    return page !== undefined ? page : lookup(el.pluginId)
+  }
 }
 
 // The data its slides read from the deck's datasets (services/deck-data.js),
@@ -863,7 +918,7 @@ function pluginSandboxes() {
 // can't be listed is still built, its graphs saying so
 async function deckData(presentation, ownerId) {
   try {
-    return await deckDataFor(storage, presentation, { ownerId, localDir: DATA_DIR, pluginSandbox: pluginSandboxes() })
+    return await deckDataFor(storage, presentation, { ownerId, localDir: DATA_DIR, pluginSandbox: await pluginSandboxes(presentation) })
   } catch (err) {
     console.error('Deck data failed:', err.message)
     return undefined
@@ -1870,7 +1925,7 @@ app.get('/api/presentations/:id/export', requireValidId(), deckAccess(), async (
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    const html = generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })
+    const html = await generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })
     const filename = `${(presentation.title || 'presentation').replace(/[^a-z0-9]/gi, '_')}.html`
     res.setHeader('Content-Type', 'text/html')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
@@ -1896,7 +1951,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
   try {
     const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })))
+    sendDeckPage(res, localizeLibraries(await generateRevealHTML(presentation, { deckData: await deckData(presentation, req.deck.ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2029,7 +2084,7 @@ app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, r
     if (!presentation) return res.status(404).send('Presentation not found or sharing disabled')
 
     const ownerId = await storage.getPresentationOwner(presentation.id)
-    sendDeckPage(res, localizeLibraries(generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) })))
+    sendDeckPage(res, localizeLibraries(await generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) })))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2157,7 +2212,7 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
     if (!presentation) return res.status(404).send('Presentation not found')
 
     const ownerId = (await storage.getPresentationOwner(presentation.id)) || session.userId
-    const baseHtml = localizeLibraries(generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) }))
+    const baseHtml = localizeLibraries(await generateRevealHTML(presentation, { notes: false, deckData: await deckData(presentation, ownerId) }))
     const liveScript = `
     <script>
     // ── Live session viewer ──────────────────────────────────
@@ -2549,7 +2604,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
     ).catch(() => ({ rows: [] }))
     const userFonts = userFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    let htmlContent = generateRevealHTML(exportPres, { customFonts: userFonts, deckData: await deckData(presentation, req.userId) })
+    let htmlContent = await generateRevealHTML(exportPres, { customFonts: userFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // 2b. Inject citation slide with pre-reserved DOI
@@ -2735,7 +2790,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
     ).catch(() => ({ rows: [] }))
     const ghUserFonts = ghFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
 
-    const htmlContent = generateRevealHTML(exportPres, { customFonts: ghUserFonts, deckData: await deckData(presentation, req.userId) })
+    const htmlContent = await generateRevealHTML(exportPres, { customFonts: ghUserFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
 
     // Get default branch
@@ -3138,10 +3193,11 @@ app.post('/api/presentations/fork', async (req, res) => {
 // ---- Plugin API (authenticated routes) ----
 
 if (IS_CLOUD) {
+  // Only listed community plugins are installed; the others load for everyone
   app.post('/api/plugins/:slug/install', requireValidSlug(), requireUser, async (req, res) => {
     try {
       const plugin = await storage.getPlugin(req.params.slug)
-      if (!plugin) return res.status(404).json({ error: 'Plugin not found' })
+      if (!plugin || !plugin.community || !plugin.published) return res.status(404).json({ error: 'Plugin not found' })
       await storage.installPlugin(plugin.id, req.userId)
       res.json({ ok: true })
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -3162,7 +3218,76 @@ if (IS_CLOUD) {
       res.json(plugins)
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
+
+  // ---- Community plugins: imported from a GitHub repo's tag
+  // (services/plugin-import.js), stored and reviewed
+  // (services/community-plugins.js) ----
+
+  const importRefused = (res, err) => (err.importError
+    ? res.status(err.status).json({ error: err.message, ...(err.problems && { problems: err.problems }) })
+    : res.status(500).json({ error: safeErrorMessage(err) }))
+  const communityReady = async res => {
+    if (await communityPlugins.hasTables(storage)) return true
+    res.status(503).json({ error: 'Community plugins need migration 021 on this server’s database' })
+    return false
+  }
+
+  // A repo's details and its version tags, each with its status here if
+  // it's been imported
+  app.post('/api/plugin-repos/lookup', requireUser, pluginImportLimiter, async (req, res) => {
+    try {
+      if (!(await communityReady(res))) return
+      const repo = await pluginImport.lookupRepo(req.body?.url)
+      const imported = await communityPlugins.importedVersions(storage, repo.owner, repo.repo)
+      res.json({ ...repo, tags: repo.tags.slice(0, 30).map(t => ({ name: t.name, version: t.version, status: imported[t.version] || null })) })
+    } catch (err) { importRefused(res, err) }
+  })
+
+  // Imports a repo's tag as a version waiting for review
+  app.post('/api/plugin-repos/import', requireUser, pluginImportLimiter, async (req, res) => {
+    try {
+      if (!(await communityReady(res))) return
+      const { url, tag } = req.body || {}
+      if (typeof tag !== 'string' || !tag) return res.status(400).json({ error: 'Choose a version tag to import' })
+      const fetched = await pluginImport.fetchVersion(url, tag)
+      const reservedTypes = folderPluginTypes([bundledPluginsDir, userPluginsDir])
+      res.status(201).json(await communityPlugins.saveVersion(storage, fetched, { submittedBy: req.userId, reservedTypes }))
+    } catch (err) { importRefused(res, err) }
+  })
+
+  app.get('/api/me/plugin-submissions', requireUser, async (req, res) => {
+    try {
+      if (!(await communityPlugins.hasTables(storage))) return res.json([])
+      res.json(await communityPlugins.submissions(storage, req.userId))
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  // Admins: the versions to review, and their decisions
+  const REVIEW_STATUSES = ['pending', 'approved', 'rejected', 'revoked', 'all']
+  app.get('/api/admin/plugin-versions', async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      const status = REVIEW_STATUSES.includes(req.query.status) ? req.query.status : 'pending'
+      res.json(await communityPlugins.versionsForReview(storage, { status: status === 'all' ? null : status }))
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  const REVIEW_PAST = { approve: 'approved', reject: 'rejected', revoke: 'revoked' }
+  app.post('/api/admin/plugin-versions/:id/:action', requireValidId(), async (req, res) => {
+    const { id, action } = req.params
+    if (!isAdmin(req) || !REVIEW_PAST[action]) return res.status(404).json({ error: 'Not found' })
+    try {
+      if (!(await communityReady(res))) return
+      const before = await communityPlugins.getVersion(storage, id)
+      if (!before) return res.status(404).json({ error: 'Version not found' })
+      const after = await communityPlugins.reviewVersion(storage, id, action, { note: req.body?.note, reviewerId: req.userId })
+      if (!after) return res.status(409).json({ error: `A version that’s ${before.status} can’t be ${REVIEW_PAST[action]}` })
+      res.json(after)
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
 }
+
 
 app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
   try {
