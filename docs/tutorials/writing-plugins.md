@@ -2,7 +2,7 @@
 
 A plugin is a web page that draws one kind of slide element. Parallax shows the page in a sandboxed frame, gives it the element's settings, and saves the settings it changes. You keep the plugin in a public GitHub repo; Parallax imports a version from a tag, and an admin reviews it before it's listed in the [gallery](https://parallax-presentations.com/plugins).
 
-[Exoplanet plot](https://github.com/jbirky/parallax-exoplanets) is a complete plugin to start from. It has a build with no dependencies, tests that check the rules on this page, and a GitHub Action that runs them.
+Start from the [plugin template](https://github.com/jbirky/parallax-plugin-template): choose **Use this template**, and on its first push your new repo names the plugin after itself. It has a working example, a build with no dependencies, tests, and `npm run check`, which applies the rules on this page. [Exoplanet plot](https://github.com/jbirky/parallax-exoplanets) is a larger plugin made the same way.
 
 ## The repo
 
