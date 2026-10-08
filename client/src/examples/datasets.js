@@ -24,6 +24,22 @@ export const EXAMPLE_SOURCES = {
     // server/examples/exoplanets.csv.gz: the archive's answer on this day
     snapshot: '2026-10-07',
   },
+  gaia: {
+    kind: 'tap',
+    source: {
+      service: 'https://gea.esac.esa.int/tap-server/tap',
+      // Every star within 50 parsecs (parallax over 20 mas) whose parallax is
+      // good to 10% and whose color is clean: a well-behaved astrometric
+      // solution (RUWE), bright enough in BP and RP, and the BP + RP flux
+      // excess cut of Gaia's DR2 HR diagram paper (Babusiaux et al. 2018).
+      // Three decimals are finer than a plot can show; the order keeps an
+      // unchanged answer the same
+      query: 'select round(parallax, 3) as parallax, round(phot_g_mean_mag, 3) as phot_g_mean_mag, round(bp_rp, 3) as bp_rp from gaiadr3.gaia_source where parallax > 20 and parallax_over_error > 10 and ruwe < 1.4 and phot_bp_mean_flux_over_error > 20 and phot_rp_mean_flux_over_error > 20 and phot_bp_rp_excess_factor > 1.0 + 0.015 * bp_rp * bp_rp and phot_bp_rp_excess_factor < 1.3 + 0.06 * bp_rp * bp_rp order by source_id',
+    },
+    credit: 'ESA/Gaia/DPAC, Gaia Data Release 3',
+    link: 'https://gea.esac.esa.int/archive/',
+    snapshot: '2026-10-07',
+  },
 }
 
 // The datasets a deck links, by name: a source and the steps that shape it
@@ -45,6 +61,29 @@ export const EXAMPLE_DATASETS = {
       { op: 'sort', column: 'disc_pubdate', direction: 'desc' },
       { op: 'limit', count: 8 },
       { op: 'select', columns: ['pl_name', 'discoverymethod', 'pl_orbper', 'pl_bmasse', 'disc_pubdate'] },
+    ],
+  },
+  // Each nearby star's brightness in Gaia's G band against the Sun's: its
+  // absolute magnitude from the parallax (in mas), and the Sun's, 4.67
+  nearby_stars: {
+    source: 'gaia',
+    transforms: [
+      { op: 'compute', name: 'M_G', expr: 'phot_g_mean_mag + 5 * log(parallax) - 10' },
+      { op: 'compute', name: 'luminosity', expr: '10^(0.4 * (4.67 - M_G))' },
+      // To three figures, all a plot needs, so the deck carries a third as much
+      { op: 'compute', name: 'luminosity', expr: 'round(luminosity * 10^(2 - floor(log(luminosity)))) / 10^(2 - floor(log(luminosity)))' },
+    ],
+  },
+  // The stars in each shell a parsec thick, by its middle
+  star_counts: {
+    source: 'gaia',
+    transforms: [
+      { op: 'compute', name: 'distance', expr: '1000 / parallax' },
+      // A parallax rounded down to 20 mas would make a shell of its own
+      { op: 'filter', expr: 'distance < 50' },
+      { op: 'compute', name: 'shell', expr: 'floor(distance) + 0.5' },
+      { op: 'group', by: ['shell'], aggregates: [{ fn: 'count', name: 'stars' }] },
+      { op: 'sort', column: 'shell' },
     ],
   },
 }

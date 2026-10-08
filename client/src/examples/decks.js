@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The example decks (catalog.js), built from each element's own templates and
-// defaults, so they show what the editor makes today. The exoplanet deck
-// plots the example datasets (datasets.js). The server serves them
+// defaults, so they show what the editor makes today. The exoplanet and
+// Gaia decks plot the example datasets (datasets.js). The server serves them
 // at /examples/<slug> and /api/examples/<slug> through
 // server/services/deck-html.js (scripts/build-deck-html.js), and a guest who
 // opens one in the editor starts from it (GuestPage).
@@ -83,17 +83,32 @@ const SOLAR_SYSTEM = [
   ['jupiter', 4332.6, 317.8, 'Jupiter'], ['saturn', 10759, 95.2, 'Saturn'], ['uranus', 30687, 14.5], ['neptune', 60190, 17.1, 'Neptune'],
 ]
 
-// Under an exoplanet slide: when its data was fetched, and how many planets,
-// from the deck's datasets (parallax.datasets, which names no dataset here,
-// so the deck carries none whole for it)
-const DATA_FOOTER = `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: #6f6d68"></div>
+// Under a slide that plots example datasets: when the data was fetched, how
+// many rows the largest has (`things`), and whose data it is, from the
+// deck's datasets (parallax.datasets, which names no dataset here, so the
+// deck carries none whole for it)
+const dataFooter = (things, credit, color) => `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: ${color}"></div>
 <script>
 parallax.datasets.list().then(function (all) {
   var d = all.reduce(function (a, b) { return (b.rowCount || 0) > (a.rowCount || 0) ? b : a })
   var when = d.asOf ? new Date(d.asOf).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'today'
-  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' planets · NASA Exoplanet Archive'
+  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' ${things} · ${credit}'
 })
 </script>`
+const DATA_FOOTER = dataFooter('planets', 'NASA Exoplanet Archive', '#6f6d68')
+
+// The HR diagram's view: Gaia's BP − RP color across, and G-band
+// luminosity on a log scale, so brighter is up
+const HR_VIEW = { xMin: -0.6, xMax: 5.6, yMin: 5e-6, yMax: 200 }
+const HR_BOX = { x: 60, y: 96, w: 840, h: 360 }
+// Where a point of the HR diagram lies on the slide
+function hrAt(x, y) {
+  const v = HR_VIEW, top = Math.log10(v.yMax), span = top - Math.log10(v.yMin)
+  return {
+    x: HR_BOX.x + (x - v.xMin) / (v.xMax - v.xMin) * HR_BOX.w,
+    y: HR_BOX.y + (top - Math.log10(y)) / span * HR_BOX.h,
+  }
+}
 
 // The latest planets, as a table read from the deck's "newest" dataset
 const NEWEST_TABLE = `<style>
@@ -238,6 +253,59 @@ const BUILDERS = {
         b.heading('The newest planets in the archive'),
         { id: b.id(), type: 'html', x: 60, y: 110, width: 840, height: 340, zIndex: 2, content: NEWEST_TABLE },
         caption('The latest published discoveries, read by an HTML element with parallax.datasets'),
+        footer(),
+      ]),
+    ])
+  },
+  gaia() {
+    const b = builder('gaia')
+    const c = GRAPH_COLORS.dark
+    const footer = () => ({ id: b.id(), type: 'html', x: 60, y: 500, width: 840, height: 28, zIndex: 3, content: dataFooter('stars within 50 parsecs', 'ESA/Gaia/DPAC, Gaia DR3', 'rgba(255, 255, 255, 0.5)') })
+    const graph = fields => ({ id: b.id(), x: HR_BOX.x, y: HR_BOX.y, width: HR_BOX.w, height: HR_BOX.h, zIndex: 2, type: 'graph', ...defaultGraph(true), equalScale: false, ...fields })
+    const caption = html => ({ ...b.caption(html), y: 464, height: 32 })
+    // A name for part of the diagram, left-aligned at its (color, luminosity),
+    // at the slide's step 1
+    const name = (text, x, y) => {
+      const at = hrAt(x, y)
+      return {
+        id: b.id(), type: 'text', x: Math.round(at.x), y: Math.round(at.y - 18), width: 180, height: 36, zIndex: 3, fragment: true, fragmentIndex: 1,
+        content: '<p style="margin: 0; font-size: 17px; line-height: 36px; font-style: italic; color: #f5d68f">' + text + '</p>',
+      }
+    }
+    return b.deck('The solar neighborhood', true, [
+      b.slide(true, [
+        b.heading('The Sun’s neighbors, measured by Gaia'),
+        graph({
+          expressions: [
+            { id: 'stars', text: '', color: '#ffe9c4', data: { dataset: 'nearby_stars', x: 'bp_rp', y: 'luminosity', mark: 'points', size: 1.3, opacity: 0.8 } },
+            // The Sun's BP − RP (Casagrande & VandenBerg 2018)
+            { id: 'sun', text: '(0.82, 1)', color: '#ffc531', step: 2, label: 'Sun' },
+          ],
+          view: { ...HR_VIEW },
+          yScale: 'log',
+          xLabel: 'color, BP − RP (blue to red)',
+          yLabel: 'G-band luminosity (Sun = 1)',
+        }),
+        name('Main sequence', 2.75, 0.06),
+        name('White dwarfs', 1.7, 1.3e-4),
+        name('Red giants', 1.35, 8),
+        caption('Press → to name the sequences, then to find the Sun'),
+        footer(),
+      ]),
+      b.slide(true, [
+        b.heading('Stars fill space evenly'),
+        graph({
+          expressions: [
+            { id: 'shells', text: '', color: c[1], data: { dataset: 'star_counts', x: 'shell', y: 'stars', mark: 'bars' } },
+            // A shell's volume, 4πd² by a parsec, times one density
+            { id: 'even', text: 'y = 4π · 0.053 x^2', color: c[4], step: 1 },
+          ],
+          // Room under the bars for the distances
+          view: { xMin: 0, xMax: 51, yMin: -100, yMax: 1800 },
+          xLabel: 'distance (parsecs)',
+          yLabel: 'stars in each parsec-thick shell',
+        }),
+        caption('Press → for 4πd² times one density, 0.053 stars per cubic parsec'),
         footer(),
       ]),
     ])

@@ -22969,6 +22969,22 @@ var EXAMPLE_SOURCES = {
     link: "https://exoplanetarchive.ipac.caltech.edu/",
     // server/examples/exoplanets.csv.gz: the archive's answer on this day
     snapshot: "2026-10-07"
+  },
+  gaia: {
+    kind: "tap",
+    source: {
+      service: "https://gea.esac.esa.int/tap-server/tap",
+      // Every star within 50 parsecs (parallax over 20 mas) whose parallax is
+      // good to 10% and whose color is clean: a well-behaved astrometric
+      // solution (RUWE), bright enough in BP and RP, and the BP + RP flux
+      // excess cut of Gaia's DR2 HR diagram paper (Babusiaux et al. 2018).
+      // Three decimals are finer than a plot can show; the order keeps an
+      // unchanged answer the same
+      query: "select round(parallax, 3) as parallax, round(phot_g_mean_mag, 3) as phot_g_mean_mag, round(bp_rp, 3) as bp_rp from gaiadr3.gaia_source where parallax > 20 and parallax_over_error > 10 and ruwe < 1.4 and phot_bp_mean_flux_over_error > 20 and phot_rp_mean_flux_over_error > 20 and phot_bp_rp_excess_factor > 1.0 + 0.015 * bp_rp * bp_rp and phot_bp_rp_excess_factor < 1.3 + 0.06 * bp_rp * bp_rp order by source_id"
+    },
+    credit: "ESA/Gaia/DPAC, Gaia Data Release 3",
+    link: "https://gea.esac.esa.int/archive/",
+    snapshot: "2026-10-07"
   }
 };
 var EXAMPLE_DATASETS = {
@@ -22989,6 +23005,29 @@ var EXAMPLE_DATASETS = {
       { op: "sort", column: "disc_pubdate", direction: "desc" },
       { op: "limit", count: 8 },
       { op: "select", columns: ["pl_name", "discoverymethod", "pl_orbper", "pl_bmasse", "disc_pubdate"] }
+    ]
+  },
+  // Each nearby star's brightness in Gaia's G band against the Sun's: its
+  // absolute magnitude from the parallax (in mas), and the Sun's, 4.67
+  nearby_stars: {
+    source: "gaia",
+    transforms: [
+      { op: "compute", name: "M_G", expr: "phot_g_mean_mag + 5 * log(parallax) - 10" },
+      { op: "compute", name: "luminosity", expr: "10^(0.4 * (4.67 - M_G))" },
+      // To three figures, all a plot needs, so the deck carries a third as much
+      { op: "compute", name: "luminosity", expr: "round(luminosity * 10^(2 - floor(log(luminosity)))) / 10^(2 - floor(log(luminosity)))" }
+    ]
+  },
+  // The stars in each shell a parsec thick, by its middle
+  star_counts: {
+    source: "gaia",
+    transforms: [
+      { op: "compute", name: "distance", expr: "1000 / parallax" },
+      // A parallax rounded down to 20 mas would make a shell of its own
+      { op: "filter", expr: "distance < 50" },
+      { op: "compute", name: "shell", expr: "floor(distance) + 0.5" },
+      { op: "group", by: ["shell"], aggregates: [{ fn: "count", name: "stars" }] },
+      { op: "sort", column: "shell" }
     ]
   }
 };
@@ -23070,14 +23109,24 @@ var SOLAR_SYSTEM = [
   ["uranus", 30687, 14.5],
   ["neptune", 60190, 17.1, "Neptune"]
 ];
-var DATA_FOOTER = `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: #6f6d68"></div>
+var dataFooter = (things, credit, color2) => `<div id="f" style="font: 12.5px/1.5 -apple-system, 'Segoe UI', sans-serif; color: ${color2}"></div>
 <script>
 parallax.datasets.list().then(function (all) {
   var d = all.reduce(function (a, b) { return (b.rowCount || 0) > (a.rowCount || 0) ? b : a })
   var when = d.asOf ? new Date(d.asOf).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'today'
-  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' planets · NASA Exoplanet Archive'
+  document.getElementById('f').textContent = 'Data as of ' + when + ' · ' + (d.rowCount || 0).toLocaleString('en-US') + ' ${things} · ${credit}'
 })
 </script>`;
+var DATA_FOOTER = dataFooter("planets", "NASA Exoplanet Archive", "#6f6d68");
+var HR_VIEW = { xMin: -0.6, xMax: 5.6, yMin: 5e-6, yMax: 200 };
+var HR_BOX = { x: 60, y: 96, w: 840, h: 360 };
+function hrAt(x, y) {
+  const v = HR_VIEW, top = Math.log10(v.yMax), span = top - Math.log10(v.yMin);
+  return {
+    x: HR_BOX.x + (x - v.xMin) / (v.xMax - v.xMin) * HR_BOX.w,
+    y: HR_BOX.y + (top - Math.log10(y)) / span * HR_BOX.h
+  };
+}
 var NEWEST_TABLE = `<style>
   body { font: 15px/1.4 -apple-system, 'Segoe UI', sans-serif; color: #1a1a1a; }
   table { border-collapse: collapse; width: 100%; }
@@ -23223,6 +23272,65 @@ var BUILDERS = {
       ])
     ]);
   },
+  gaia() {
+    const b = builder("gaia");
+    const c = GRAPH_COLORS.dark;
+    const footer = () => ({ id: b.id(), type: "html", x: 60, y: 500, width: 840, height: 28, zIndex: 3, content: dataFooter("stars within 50 parsecs", "ESA/Gaia/DPAC, Gaia DR3", "rgba(255, 255, 255, 0.5)") });
+    const graph = (fields) => ({ id: b.id(), x: HR_BOX.x, y: HR_BOX.y, width: HR_BOX.w, height: HR_BOX.h, zIndex: 2, type: "graph", ...defaultGraph(true), equalScale: false, ...fields });
+    const caption = (html) => ({ ...b.caption(html), y: 464, height: 32 });
+    const name = (text, x, y) => {
+      const at = hrAt(x, y);
+      return {
+        id: b.id(),
+        type: "text",
+        x: Math.round(at.x),
+        y: Math.round(at.y - 18),
+        width: 180,
+        height: 36,
+        zIndex: 3,
+        fragment: true,
+        fragmentIndex: 1,
+        content: '<p style="margin: 0; font-size: 17px; line-height: 36px; font-style: italic; color: #f5d68f">' + text + "</p>"
+      };
+    };
+    return b.deck("The solar neighborhood", true, [
+      b.slide(true, [
+        b.heading("The Sun’s neighbors, measured by Gaia"),
+        graph({
+          expressions: [
+            { id: "stars", text: "", color: "#ffe9c4", data: { dataset: "nearby_stars", x: "bp_rp", y: "luminosity", mark: "points", size: 1.3, opacity: 0.8 } },
+            // The Sun's BP − RP (Casagrande & VandenBerg 2018)
+            { id: "sun", text: "(0.82, 1)", color: "#ffc531", step: 2, label: "Sun" }
+          ],
+          view: { ...HR_VIEW },
+          yScale: "log",
+          xLabel: "color, BP − RP (blue to red)",
+          yLabel: "G-band luminosity (Sun = 1)"
+        }),
+        name("Main sequence", 2.75, 0.06),
+        name("White dwarfs", 1.7, 13e-5),
+        name("Red giants", 1.35, 8),
+        caption("Press → to name the sequences, then to find the Sun"),
+        footer()
+      ]),
+      b.slide(true, [
+        b.heading("Stars fill space evenly"),
+        graph({
+          expressions: [
+            { id: "shells", text: "", color: c[1], data: { dataset: "star_counts", x: "shell", y: "stars", mark: "bars" } },
+            // A shell's volume, 4πd² by a parsec, times one density
+            { id: "even", text: "y = 4π · 0.053 x^2", color: c[4], step: 1 }
+          ],
+          // Room under the bars for the distances
+          view: { xMin: 0, xMax: 51, yMin: -100, yMax: 1800 },
+          xLabel: "distance (parsecs)",
+          yLabel: "stars in each parsec-thick shell"
+        }),
+        caption("Press → for 4πd² times one density, 0.053 stars per cubic parsec"),
+        footer()
+      ])
+    ]);
+  },
   geometry() {
     const b = builder("geometry");
     return b.deck("Euclid I.1", false, [
@@ -23247,7 +23355,8 @@ var EXAMPLES = [
   { slug: "venn", field: "Mathematics", title: "Venn diagrams", desc: "De Morgan’s law shaded in step by step, then a probability problem.", tags: ["Venn diagram"] },
   { slug: "feynman", field: "Physics", title: "Feynman diagrams", desc: "Gluon fusion to a Higgs and Compton scattering, drawn one propagator at a time.", tags: ["Feynman diagram"] },
   { slug: "geometry", field: "Mathematics", title: "Euclid I.1", desc: "An equilateral triangle by compass and straightedge, then Thales’ theorem. Drag the points.", tags: ["Geometry construction"] },
-  { slug: "exoplanets", field: "Astronomy", title: "Every exoplanet, kept current", desc: "A live dataset from the NASA Exoplanet Archive, refreshed daily: each planet’s period and mass, discoveries by year, and the newest finds.", tags: ["Live dataset", "Graph with data"] }
+  { slug: "exoplanets", field: "Astronomy", title: "Every exoplanet, kept current", desc: "A live dataset from the NASA Exoplanet Archive, refreshed daily: each planet’s period and mass, discoveries by year, and the newest finds.", tags: ["Live dataset", "Graph with data"] },
+  { slug: "gaia", field: "Astronomy", title: "The solar neighborhood", desc: "Every well-measured star within 50 parsecs, from ESA’s Gaia archive: an HR diagram, then counts that grow as distance squared.", tags: ["Live dataset", "Graph with data"] }
 ];
 var HERO_EXAMPLE = "hero";
 // Annotate the CommonJS export names for ESM import in node:

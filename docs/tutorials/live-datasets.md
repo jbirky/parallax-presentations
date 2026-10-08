@@ -31,6 +31,24 @@ where pl_orbper is not null and pl_bmasse is not null
 
 Use `pscomppars`, which has one row per planet; `ps` has one per planet per paper. Make `pl_name` the key column.
 
+### Another: the stars within 50 parsecs
+
+From a TAP query, with Gaia:
+
+```sql
+select round(parallax, 3) as parallax, round(phot_g_mean_mag, 3) as phot_g_mean_mag, round(bp_rp, 3) as bp_rp
+from gaiadr3.gaia_source
+where parallax > 20 and parallax_over_error > 10 and ruwe < 1.4
+  and phot_bp_mean_flux_over_error > 20 and phot_rp_mean_flux_over_error > 20
+  and phot_bp_rp_excess_factor > 1.0 + 0.015 * bp_rp * bp_rp
+  and phot_bp_rp_excess_factor < 1.3 + 0.06 * bp_rp * bp_rp
+order by source_id
+```
+
+A parallax over 20 milliarcseconds is a distance under 50 parsecs; the other conditions keep the stars whose parallax and color can be trusted. About 28,000 come back in a few seconds. With no key column, `order by source_id` keeps an unchanged answer in the same order, so a refresh that finds nothing new isn't counted as a change.
+
+For an HR diagram, add two columns (see [Steps](#steps-shaping-the-data)): `M_G = phot_g_mean_mag + 5 * log(parallax) - 10`, the absolute magnitude, then `luminosity = 10^(0.4 * (4.67 - M_G))`, the star's brightness in Gaia's G band against the Sun's. Plot `bp_rp` across and `luminosity` up on a log scale, so brighter stars are higher.
+
 ## Refreshing
 
 A live dataset refreshes on its schedule while some deck uses it (it's linked to the deck). Others wait until you press **Refresh**, which you can do once a minute.

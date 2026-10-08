@@ -1,8 +1,9 @@
 // The decks the server builds carry the data their slides read: a graph's
 // data lines' columns, and the datasets HTML, p5 and plugin elements name,
-// from the version a deck holds or the current one; the exoplanet example
-// carries the archive's copy the repository keeps (tests never fetch). In
-// the self-hosted version, so it needs no database. .env isn't read.
+// from the version a deck holds or the current one; the exoplanet and Gaia
+// examples carry the archives' copies the repository keeps (tests never
+// fetch). In the self-hosted version, so it needs no database. .env isn't
+// read.
 
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
@@ -123,7 +124,7 @@ describe('the data in the decks the server builds', () => {
   })
 })
 
-describe('the exoplanet example’s data', () => {
+describe('the examples’ data', () => {
   // On the server the suite above started: node runs a file's suites in turn
   after(() => server?.close())
 
@@ -159,5 +160,19 @@ describe('the exoplanet example’s data', () => {
     const again = await call('POST', '/api/examples/exoplanets/datasets', { presentationId: pid })
     assert.deepEqual(again.body.datasets.map(d => d.id).sort(), res.body.datasets.map(d => d.id).sort())
     assert.equal((await call('POST', '/api/examples/exoplanets/datasets', { presentationId: '00000000-0000-4000-8000-000000000000' })).status, 404)
+  })
+
+  it('writes the Gaia stars into their example, shaped by each dataset’s steps', async () => {
+    const page = await call('GET', '/examples/gaia/deck')
+    assert.equal(page.status, 200)
+    // Every star on the HR diagram, its luminosity to three figures, and a
+    // bar for each parsec-thick shell
+    assert.ok(page.text.includes('&quot;stars&quot;:{&quot;total&quot;:27852,'))
+    assert.ok(page.text.includes('&quot;y&quot;:[0.0016,0.00526,0.0662,'))
+    assert.ok(page.text.includes('&quot;shells&quot;:{&quot;total&quot;:49,'))
+    const data = carried(page.text)
+    assert.deepEqual(data.list.map(d => [d.name, d.rowCount]).sort(), [['nearby_stars', 27852], ['star_counts', 49]])
+    // The footer names no dataset, so none goes in whole
+    assert.deepEqual(Object.keys(data.data), [])
   })
 })

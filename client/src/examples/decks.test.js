@@ -23,8 +23,8 @@ describe('the example decks', () => {
     expect(fs.existsSync(path.join(PUBLIC, CAFFEINE_SRC))).toBe(true)
   })
 
-  it('starts the server’s list (migrations 017 and 019) as the catalog has it', () => {
-    const sql = ['017_landing_examples.sql', '019_exoplanets_example.sql'].map(f => fs.readFileSync(path.join(__dirname, '../../../server/migrations', f), 'utf8')).join('\n')
+  it('starts the server’s list (migrations 017, 019 and 020) as the catalog has it', () => {
+    const sql = ['017_landing_examples.sql', '019_exoplanets_example.sql', '020_gaia_example.sql'].map(f => fs.readFileSync(path.join(__dirname, '../../../server/migrations', f), 'utf8')).join('\n')
     const q = v => "'" + String(v).replace(/'/g, "''") + "'"
     EXAMPLES.forEach((e, i) => expect(sql, e.slug).toContain(`(${q(e.slug)}, ${q(e.field)}, ${q(e.title)}, ${q(e.desc)}, ${q(JSON.stringify(e.tags))}, TRUE, TRUE, FALSE, ${i + 1})`))
     expect(sql).toContain(`(${q(HERO_EXAMPLE)}, '', 'Parallax',`)
@@ -37,6 +37,7 @@ describe('the example decks', () => {
     expect(types(exampleDeck('rotation'))).toEqual([['graph'], ['equation']])
     expect(types(exampleDeck('orbitals'))).toEqual([['harmonics'], ['graph']])
     expect(types(exampleDeck('exoplanets'))).toEqual([['graph', 'html'], ['graph', 'html'], ['html', 'html']])
+    expect(types(exampleDeck('gaia'))).toEqual([['graph', 'html'], ['graph', 'html']])
   })
 
   it('plots only datasets the server provides for examples', () => {
@@ -46,6 +47,14 @@ describe('the example decks', () => {
     for (const name of names) expect(EXAMPLE_SOURCES[EXAMPLE_DATASETS[name].source], name).toBeTruthy()
     // The footer reads the list, so the deck carries only the small "newest" whole
     expect(embedDatasetNames(deck, Object.keys(EXAMPLE_DATASETS))).toEqual(new Set(['newest']))
+  })
+
+  it('plots the Gaia stars, carrying no dataset whole', () => {
+    const deck = exampleDeck('gaia')
+    expect([...graphNeeds(dataGraphs(deck)).keys()].sort()).toEqual(['nearby_stars', 'star_counts'])
+    for (const name of ['nearby_stars', 'star_counts']) expect(EXAMPLE_DATASETS[name].source).toBe('gaia')
+    expect(EXAMPLE_SOURCES.gaia.kind).toBe('tap')
+    expect(embedDatasetNames(deck, Object.keys(EXAMPLE_DATASETS))).toEqual(new Set())
   })
 
   it('gives every element and slide an id of its own, and fits them on the slide', () => {

@@ -19,6 +19,7 @@ export const EXAMPLES = [
   { slug: 'feynman', field: 'Physics', title: 'Feynman diagrams', desc: 'Gluon fusion to a Higgs and Compton scattering, drawn one propagator at a time.', tags: ['Feynman diagram'] },
   { slug: 'geometry', field: 'Mathematics', title: 'Euclid I.1', desc: 'An equilateral triangle by compass and straightedge, then Thales’ theorem. Drag the points.', tags: ['Geometry construction'] },
   { slug: 'exoplanets', field: 'Astronomy', title: 'Every exoplanet, kept current', desc: 'A live dataset from the NASA Exoplanet Archive, refreshed daily: each planet’s period and mass, discoveries by year, and the newest finds.', tags: ['Live dataset', 'Graph with data'] },
+  { slug: 'gaia', field: 'Astronomy', title: 'The solar neighborhood', desc: 'Every well-measured star within 50 parsecs, from ESA’s Gaia archive: an HR diagram, then counts that grow as distance squared.', tags: ['Live dataset', 'Graph with data'] },
 ]
 
 export const HERO_EXAMPLE = 'hero'
