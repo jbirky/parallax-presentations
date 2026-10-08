@@ -371,6 +371,7 @@ export const api = {
   // what you've imported. An import that breaks the rules rejects with an
   // Error whose `problems` lists each rule.
   getPluginCatalog: () => _fetch(`${BASE}/plugins`).then(adminJson('Could not load the plugins')),
+  getPlugin: (slug) => _fetch(`${BASE}/plugins/${encodeURIComponent(slug)}`).then(adminJson('That plugin isn’t listed')),
   getInstalledPlugins: () => authFetch(`${BASE}/me/plugins`).then(adminJson('Could not load your plugins')),
   installPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'POST' }).then(adminJson('Could not install the plugin')),
   uninstallPlugin: (slug) => authFetch(`${BASE}/plugins/${encodeURIComponent(slug)}/install`, { method: 'DELETE' }).then(adminJson('Could not uninstall the plugin')),

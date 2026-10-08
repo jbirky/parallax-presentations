@@ -186,6 +186,7 @@ export default function LandingPage({ onSignIn }) {
           <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
           <div className="lp-links">
             <button type="button" onClick={() => goTo('examples')}>Examples</button>
+            <a className="lp-wide" href="/plugins" onClick={() => track('plugins', { from: 'nav' })}>Plugins</a>
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
             <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
             <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'nav' })}>GitHub</a>

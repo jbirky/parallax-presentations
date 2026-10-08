@@ -162,6 +162,35 @@ async function refreshListing(storage, pluginId) {
     [pluginId, newest.version, newest.manifest.name, newest.manifest.description, newest.manifest, newest.readme])
 }
 
+// --- The gallery ---
+
+const LISTING_COLUMNS = `
+  p.id, p.slug, p.manifest_id AS "pluginId", p.name, p.description, p.version, p.manifest, p.downloads AS installs,
+  p.repo_owner AS "repoOwner", p.repo_name AS "repoName", p.updated_at AS "updatedAt",
+  (SELECT min(v.reviewed_at) FROM plugin_versions v WHERE v.plugin_id = p.id AND v.status = 'approved') AS "listedAt"`
+
+// The listed community plugins, each at its newest approved version, most
+// installed first
+async function galleryPlugins(storage) {
+  if (!(await hasTables(storage))) return []
+  const { rows } = await storage.query(
+    `SELECT ${LISTING_COLUMNS} FROM plugins p WHERE p.published AND p.manifest_id IS NOT NULL ORDER BY p.downloads DESC, lower(p.name)`)
+  return rows.map(({ id, ...row }) => row)
+}
+
+// A listed plugin, with its README and its approved versions, newest first
+// ({ version, tag, commitSha, approvedAt }), or null
+async function galleryPlugin(storage, slug) {
+  if (!(await hasTables(storage))) return null
+  const { rows: [row] } = await storage.query(
+    `SELECT ${LISTING_COLUMNS}, p.readme FROM plugins p WHERE p.slug = $1 AND p.published AND p.manifest_id IS NOT NULL`, [slug])
+  if (!row) return null
+  const { rows: versions } = await storage.query(
+    `SELECT version, tag, commit_sha AS "commitSha", reviewed_at AS "approvedAt" FROM plugin_versions WHERE plugin_id = $1 AND status = 'approved'`, [row.id])
+  const { id, ...plugin } = row
+  return { ...plugin, versions: versions.sort((a, b) => compareVersions(b.version, a.version)) }
+}
+
 // --- Serving a version ---
 
 // Whether the request's user may have a version's files: anyone once it's
@@ -227,5 +256,5 @@ async function sandboxesFor(storage, presentation) {
 
 module.exports = {
   hasTables, saveVersion, importedVersions, getVersion, submissions, versionsForReview, reviewVersion, refreshListing,
-  canSee, versionFile, sandboxPage, pluginVersionsIn, sandboxesFor, versionKey,
+  galleryPlugins, galleryPlugin, canSee, versionFile, sandboxPage, pluginVersionsIn, sandboxesFor, versionKey,
 }

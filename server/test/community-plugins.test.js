@@ -222,6 +222,28 @@ describe('community plugins', { skip }, () => {
     assert.equal((await t.call(someone, 'POST', '/api/plugins/local-counter/install')).status, 404)
   })
 
+  it('shows a listed plugin in the public gallery, live, and in the sitemap', async () => {
+    const page = async url => {
+      const r = await fetch(t.base + url)
+      return { status: r.status, headers: r.headers, text: await r.text() }
+    }
+    const gallery = await page('/plugins')
+    assert.equal(gallery.status, 200)
+    assert.ok(gallery.text.includes(`href="/plugins/${owner}--lorenz"`))
+    const own = await page(`/plugins/${owner}--lorenz`)
+    assert.equal(own.status, 200)
+    assert.match(own.text, /<p>A strange attractor\.<\/p>/)
+    assert.ok(own.text.includes(`<iframe src="/plugins/${owner}--lorenz/preview" sandbox="allow-scripts"`))
+    assert.ok(own.text.includes(`href="/plugins/${owner}--lorenz/install"`))
+    const preview = await page(`/plugins/${owner}--lorenz/preview`)
+    assert.equal(preview.status, 200)
+    assert.match(preview.headers.get('content-security-policy'), /^sandbox allow-scripts/)
+    assert.equal(preview.headers.get('x-robots-tag'), 'noindex')
+    assert.ok(preview.text.startsWith('<!DOCTYPE html><meta http-equiv="Content-Security-Policy"'))
+    assert.match(preview.text, /var _data = \{"sigma":10\};/)
+    assert.ok((await page('/sitemap.xml')).text.includes(`/plugins/${owner}--lorenz</loc>`))
+  })
+
   it('draws each element at its version in deck pages, with the CSP, until it’s revoked', async () => {
     const deck = await t.createDeck(someone, `Chaos ${t.run}`, {
       slides: [{ id: 's1', elements: [
@@ -262,5 +284,8 @@ describe('community plugins', { skip }, () => {
     assert.equal((await t.call(admin, 'POST', `/api/admin/plugin-versions/${v11.id}/revoke`)).status, 200)
     assert.ok(!(await t.call(null, 'GET', '/api/plugins')).body.some(p => p.pluginId === id))
     assert.deepEqual((await t.call(someone, 'GET', '/api/me/plugins')).body, [])
+    assert.equal((await fetch(`${t.base}/plugins/${owner}--lorenz`)).status, 404)
+    assert.equal((await fetch(`${t.base}/plugins/${owner}--lorenz/preview`)).status, 404)
+    assert.ok(!(await (await fetch(`${t.base}/plugins`)).text()).includes(`/plugins/${owner}--lorenz"`))
   })
 })

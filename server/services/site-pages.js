@@ -3,9 +3,10 @@
 
 // What the site tells link previews and search engines: the tags in each
 // page's head (title, description, preview image, canonical address), a page
-// of its own for each landing page example, robots.txt and sitemap.xml. Only
-// the landing page and the examples' pages are for search engines, and only
-// on a site that's indexed (not dev, nor a self-hosted copy).
+// of its own for each landing page example, the shell the plugin gallery's
+// pages share (services/plugin-pages.js), robots.txt and sitemap.xml. Only
+// the landing page and the examples' and plugins' pages are for search
+// engines, and only on a site that's indexed (not dev, nor a self-hosted copy).
 
 const TAGLINE = 'Interactive slides for complex concepts'
 const DESCRIPTION = 'Parallax is a slide editor that runs in your browser. Put live graphs, physics and circuit diagrams, equations and 3D molecules on a slide, and move them while you present. Free to start, open source.'
@@ -67,29 +68,20 @@ function robotsTxt({ origin, index }) {
   ].join('\n')
 }
 
-// The landing page, and each example shown as a card
-function sitemapXml({ origin, examples }) {
-  const urls = [`${origin}/`, ...examples.map(e => `${origin}/examples/${e.slug}`)]
+// The landing page, each example shown as a card, and the plugin gallery
+// with each listed plugin's page (plugins: their slugs; none, no gallery)
+function sitemapXml({ origin, examples, plugins = [] }) {
+  const urls = [`${origin}/`, ...examples.map(e => `${origin}/examples/${e.slug}`),
+    ...(plugins.length ? [`${origin}/plugins`, ...plugins.map(slug => `${origin}/plugins/${slug}`)] : [])]
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`
 }
 
-// An example's own page: what it is, the live deck, a way into the editor,
-// and the other examples. `example` and `others` are as the landing page has
-// them ({ slug, field, title, desc, tags, thumbnail, background }).
-function examplePage({ origin, example: e, others, guestEnabled, analytics, index }) {
-  const thumbnail = e.thumbnail ? { path: e.thumbnail, width: 960, height: 540, alt: `The first slide of ${e.title}` } : SOCIAL_IMAGE
-  const description = e.desc ? `${e.desc} A live Parallax deck.` : `${e.title}, a live Parallax deck.`
-  const meta = pageMeta({ origin, path: `/examples/${e.slug}`, title: `${e.title} · Parallax examples`, description, image: thumbnail, index })
-  const bg = b => (b?.type === 'color' && b.color) || '#1e1e2e'
-  const card = o => `<a class="card" href="/examples/${esc(o.slug)}">
-          <span class="thumb" style="background:${esc(bg(o.background))}">${o.thumbnail ? `<img loading="lazy" alt="" src="${esc(o.thumbnail)}" />` : `<b>${esc(o.title)}</b>`}</span>
-          ${o.field ? `<span class="label">${esc(o.field)}</span>` : ''}
-          <span class="name">${esc(o.title)}</span>
-        </a>`
-  const editor = guestEnabled
-    ? `<a class="btn primary" href="/try?example=${esc(e.slug)}" data-umami-event="example-to-editor" data-umami-event-example="${esc(e.slug)}" data-umami-event-from="page">Open in the editor</a>
-        <span class="small">Opens a copy you can change, with no account. It lasts until you close the tab.</span>`
-    : `<a class="btn primary" href="/" data-umami-event="sign-in" data-umami-event-from="example-page">Make your own with Parallax</a>`
+// The site's own pages around `main`: the head (`meta` from pageMeta, the
+// analytics script when it's on), a header with `nav` (links: [href, text,
+// hide on a phone]) and a link home, and the footer. `styles` and `script`
+// are the page's own, after the shared ones.
+function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' }) {
+  const links = nav.map(([href, text, hide]) => `<a${hide ? ' class="hide"' : ''} href="${esc(href)}">${esc(text)}</a>`)
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -132,6 +124,67 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
       .hint kbd { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; color: var(--text); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
       .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 20px; }
       .small { font-size: 13.5px; color: var(--faint); max-width: 44ch; }
+      footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--faint); font-size: 13.5px; }
+      footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; }
+      @media (max-width: 560px) { nav .hide { display: none; } }${styles ? `\n      ${styles.trim().split('\n').map(l => l.trim()).join('\n      ')}` : ''}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <a class="logo" href="/"><span>P</span>arallax<sup class="beta">Beta</sup></a>
+        <nav aria-label="Main">
+          ${[...links, '<a class="btn" href="/">Parallax home</a>'].join('\n          ')}
+        </nav>
+      </div>
+    </header>
+    <main class="wrap">
+      ${main.trim()}
+    </main>
+    <footer>
+      <div class="wrap">
+        <span>© 2026 Jess Birky. Licensed under AGPL-3.0.</span>
+        <span>Support: <a href="mailto:${SUPPORT}">${SUPPORT}</a></span>
+      </div>
+    </footer>${script ? `
+    <script>
+      ${script.trim()}
+    </script>` : ''}
+  </body>
+</html>
+`
+}
+
+// Scales a page's 960 × 540 deck, or a w × h element, in #slide to the page's width
+const fitScript = (w = 960) => `// Drawn at ${w} pixels wide and scaled to the page's width
+      (function () {
+        var box = document.getElementById('slide')
+        function fit() { box.style.setProperty('--s', String(box.clientWidth / ${w})) }
+        fit()
+        if (window.ResizeObserver) new ResizeObserver(fit).observe(box); else window.addEventListener('resize', fit)
+      })()`
+
+// An example's own page: what it is, the live deck, a way into the editor,
+// and the other examples. `example` and `others` are as the landing page has
+// them ({ slug, field, title, desc, tags, thumbnail, background }).
+function examplePage({ origin, example: e, others, guestEnabled, analytics, index }) {
+  const thumbnail = e.thumbnail ? { path: e.thumbnail, width: 960, height: 540, alt: `The first slide of ${e.title}` } : SOCIAL_IMAGE
+  const description = e.desc ? `${e.desc} A live Parallax deck.` : `${e.title}, a live Parallax deck.`
+  const meta = pageMeta({ origin, path: `/examples/${e.slug}`, title: `${e.title} · Parallax examples`, description, image: thumbnail, index })
+  const bg = b => (b?.type === 'color' && b.color) || '#1e1e2e'
+  const card = o => `<a class="card" href="/examples/${esc(o.slug)}">
+          <span class="thumb" style="background:${esc(bg(o.background))}">${o.thumbnail ? `<img loading="lazy" alt="" src="${esc(o.thumbnail)}" />` : `<b>${esc(o.title)}</b>`}</span>
+          ${o.field ? `<span class="label">${esc(o.field)}</span>` : ''}
+          <span class="name">${esc(o.title)}</span>
+        </a>`
+  const editor = guestEnabled
+    ? `<a class="btn primary" href="/try?example=${esc(e.slug)}" data-umami-event="example-to-editor" data-umami-event-example="${esc(e.slug)}" data-umami-event-from="page">Open in the editor</a>
+        <span class="small">Opens a copy you can change, with no account. It lasts until you close the tab.</span>`
+    : `<a class="btn primary" href="/" data-umami-event="sign-in" data-umami-event-from="example-page">Make your own with Parallax</a>`
+  return sitePage({
+    meta, analytics,
+    nav: [['/#examples', 'All examples', true], ['/plugins', 'Plugins', true], ['/#docs', 'Docs', true]],
+    styles: `
       .more { margin-top: 64px; }
       .more h2 { margin: 0 0 18px; font-size: 24px; letter-spacing: -0.02em; }
       .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 18px; }
@@ -140,24 +193,8 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
       .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
       .thumb b { padding: 12px; text-align: center; color: #fff; }
       .card:hover .thumb { border-color: rgba(143, 146, 250, 0.6); }
-      .card .name { font-weight: 600; }
-      footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--faint); font-size: 13.5px; }
-      footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; }
-      @media (max-width: 560px) { nav .hide { display: none; } }
-    </style>
-  </head>
-  <body>
-    <header>
-      <div class="wrap">
-        <a class="logo" href="/"><span>P</span>arallax<sup class="beta">Beta</sup></a>
-        <nav aria-label="Main">
-          <a class="hide" href="/#examples">All examples</a>
-          <a class="hide" href="/#docs">Docs</a>
-          <a class="btn" href="/">Parallax home</a>
-        </nav>
-      </div>
-    </header>
-    <main class="wrap">
+      .card .name { font-weight: 600; }`,
+    main: `
       ${e.field ? `<div class="label">${esc(e.field)}</div>` : ''}
       <h1>${esc(e.title)}</h1>
       ${e.desc ? `<p class="lead">${esc(e.desc)}</p>` : ''}
@@ -172,26 +209,9 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
         <div class="grid">
         ${others.map(card).join('\n        ')}
         </div>
-      </section>` : ''}
-    </main>
-    <footer>
-      <div class="wrap">
-        <span>© 2026 Jess Birky. Licensed under AGPL-3.0.</span>
-        <span>Support: <a href="mailto:${SUPPORT}">${SUPPORT}</a></span>
-      </div>
-    </footer>
-    <script>
-      // The deck drawn at 960 × 540 and scaled to the page's width
-      (function () {
-        var box = document.getElementById('slide')
-        function fit() { box.style.setProperty('--s', String(box.clientWidth / 960)) }
-        fit()
-        if (window.ResizeObserver) new ResizeObserver(fit).observe(box); else window.addEventListener('resize', fit)
-      })()
-    </script>
-  </body>
-</html>
-`
+      </section>` : ''}`,
+    script: fitScript(),
+  })
 }
 
-module.exports = { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage, DESCRIPTION, TAGLINE }
+module.exports = { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage, sitePage, fitScript, esc, DESCRIPTION, TAGLINE, SOCIAL_IMAGE }

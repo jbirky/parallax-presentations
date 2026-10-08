@@ -6,8 +6,9 @@
 // decks (client/src/examples/decks.js) and the datasets they plot
 // (client/src/examples/datasets.js) come with it, and what
 // client/src/utils/deckData.js works out of the data a deck's slides read
-// (for services/deck-data.js). Run after changing them or anything they
-// import:
+// (for services/deck-data.js), and how a plugin element's page is given its
+// data (client/src/plugins/pluginEmbed.js, for the plugin gallery's live
+// previews). Run after changing them or anything they import:
 //
 //   node scripts/build-deck-html.js
 //
@@ -27,6 +28,7 @@ const EXAMPLES = 'client/src/examples/decks.js'
 const CATALOG = 'client/src/examples/catalog.js'
 const DECK_DATA = 'client/src/utils/deckData.js'
 const EXAMPLE_DATA = 'client/src/examples/datasets.js'
+const PLUGIN_EMBED = 'client/src/plugins/pluginEmbed.js'
 const TARGET = path.join(root, 'server/services/deck-html.js')
 
 const HEADER = `// SPDX-License-Identifier: AGPL-3.0-or-later
@@ -53,7 +55,7 @@ const serverSide = {
 async function bundle() {
   const esbuild = require('esbuild')
   const result = await esbuild.build({
-    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'`, resolveDir: root, sourcefile: 'deck-html.js' },
+    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'\nexport { buildStaticPluginSrcdoc } from './${PLUGIN_EMBED}'`, resolveDir: root, sourcefile: 'deck-html.js' },
     absWorkingDir: root,
     bundle: true,
     format: 'cjs',

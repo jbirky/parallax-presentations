@@ -259,7 +259,8 @@ app.get('/robots.txt', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const { examples: cards } = await examples.landingExamples(storage)
-    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [] }))
+    const plugins = SEARCH_INDEXING ? (await communityPlugins.galleryPlugins(storage)).map(p => p.slug) : []
+    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [], plugins }))
   } catch (err) {
     res.status(500).type('text/plain').send('Sitemap unavailable')
   }
@@ -324,6 +325,51 @@ app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
     next(err)
   }
 })
+
+// ---- The plugin gallery (public, before auth) ----
+// /plugins, every listed community plugin, and each one's own page
+// (services/plugin-pages.js); and a plugin's live preview: its sandbox page
+// with the data a new element starts with, given the way decks give it,
+// and served in a sandbox like a deck. Cloud only. /plugins/<slug>/install
+// is the app's (client/src/pages/PluginInstallPage.jsx).
+const pluginPages = require('./services/plugin-pages')
+const GALLERY_SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
+const pageAnalytics = () => (analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null)
+app.get('/plugins', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD) return next()
+  try {
+    const plugins = await communityPlugins.galleryPlugins(storage)
+    res.type('html').send(pluginPages.galleryPage({ origin: siteOrigin(req), plugins, analytics: pageAnalytics(), index: SEARCH_INDEXING }))
+  } catch (err) {
+    next(err)
+  }
+})
+app.get('/plugins/:slug', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD || !GALLERY_SLUG.test(req.params.slug)) return next()
+  try {
+    const plugin = await communityPlugins.galleryPlugin(storage, req.params.slug)
+    if (!plugin) return next()
+    res.type('html').send(await pluginPages.pluginPage({ origin: siteOrigin(req), plugin, analytics: pageAnalytics(), index: SEARCH_INDEXING }))
+  } catch (err) {
+    next(err)
+  }
+})
+app.get('/plugins/:slug/preview', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD || !GALLERY_SLUG.test(req.params.slug)) return next()
+  try {
+    const plugin = await communityPlugins.galleryPlugin(storage, req.params.slug)
+    const file = plugin && await communityPlugins.versionFile(storage, plugin.pluginId, plugin.version)
+    if (!file?.content || file.status !== 'approved') return next()
+    const type = plugin.manifest?.contributes?.elementTypes?.[0] || {}
+    const size = type.defaultSize || { width: 640, height: 420 }
+    res.setHeader('X-Robots-Tag', 'noindex')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    sendDeckPage(res, deckHtml.buildStaticPluginSrcdoc(communityPlugins.sandboxPage(file), { data: type.defaultData || {}, width: size.width, height: size.height }))
+  } catch (err) {
+    next(err)
+  }
+})
+
 app.get('/api/examples/:slug', async (req, res) => {
   try {
     const found = EXAMPLE_SLUG.test(req.params.slug) && await examples.getExampleDeck(storage, req.params.slug)

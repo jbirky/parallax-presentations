@@ -94,7 +94,10 @@ function Browse({ onInstalled, onUninstalled }) {
   if (plugins === null) return <p style={muted}>Loading…</p>
   return (
     <>
-      <p style={muted}>Plugins made by other people, each from a GitHub repo and reviewed before it’s listed. An installed plugin’s elements are in the Plugins menu.</p>
+      <p style={muted}>
+        Plugins made by other people, each from a GitHub repo and reviewed before it’s listed. An installed plugin’s elements are in the Plugins menu.{' '}
+        <a href="/plugins" target="_blank" rel="noopener noreferrer" style={{ color: '#a5b4fc' }}>See them live in the gallery</a>
+      </p>
       {plugins.length > 0 && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Search size={14} color="#a0a0b0" />
