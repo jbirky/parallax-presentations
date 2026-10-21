@@ -499,6 +499,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     }
 
     const onMouseMove = (e) => {
+      // A release outside the document (or over embedded content) can be missed.
+      // Never promote or continue a drag unless the primary button is held.
+      if ((e.buttons & 1) === 0) {
+        if (pendingDragRef.current || draggingRef.current || draggingGuideRef.current ||
+            draggingAxisRef.current || cropDragRef.current || tiltDragRef.current) onMouseUp()
+        return
+      }
       // Guide drag
       if (draggingGuideRef.current && canvasRef.current) {
         const dg = draggingGuideRef.current
@@ -675,10 +682,12 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       forceUpdate(n => n + 1)
     }
     document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mouseup', onMouseUp, true)
+    window.addEventListener('blur', onMouseUp)
     return () => {
       document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mouseup', onMouseUp, true)
+      window.removeEventListener('blur', onMouseUp)
     }
   }, [onUpdateElement, onUpdateElements])
 
@@ -729,7 +738,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   }, [contextMenu])
 
   const startElementDrag = (e, elementId, type, handle = null) => {
-    if (!canvasRef.current) return
+    if (e.button !== 0 || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
     const element = slide?.elements?.find(el => el.id === elementId)
     if (!element) return
