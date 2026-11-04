@@ -1538,7 +1538,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           <EditorContent editor={editor} style={{
             width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
             fontFamily: globalFont || undefined,
-            lineHeight: element.lineHeight || undefined,
+            lineHeight: element.lineHeight ?? 1.5,
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
           }} />
