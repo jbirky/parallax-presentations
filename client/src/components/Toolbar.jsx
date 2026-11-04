@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
+import { getSelectionTextStyle } from '../extensions/TextStyle'
 import { slideHref, slideIdFromHref, slideLabel } from '../utils/clickActions'
 import { api } from '../utils/api'
 import {
@@ -238,7 +239,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     editor.chain().focus().clearNodes().unsetAllMarks().run()
   }
 
-  const currentColor = editor ? (editor.getAttributes('textStyle').color || '#ffffff') : '#ffffff'
+  const textStyle = getSelectionTextStyle(editor)
+  const currentColor = textStyle.color || '#ffffff'
   // Falls back to the first preset so the custom picker opens on a usable
   // highlight rather than white when nothing is highlighted yet.
   const currentHighlight = editor ? (editor.getAttributes('highlight').color || '#fef08a') : '#fef08a'
@@ -908,7 +910,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           {/* Font Family */}
           <select
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, maxWidth: 120, cursor: 'pointer' }}
-            value={editor.getAttributes('textStyle').fontFamily || ''}
+            value={textStyle.fontFamily || ''}
             onChange={e => e.target.value ? editor.chain().focus().setFontFamily(e.target.value).run() : editor.chain().focus().unsetFontFamily().run()}
             title="Font family"
           >
@@ -1000,7 +1002,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           {/* Font Size */}
           <select
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 60, cursor: 'pointer' }}
-            value={editor.getAttributes('textStyle').fontSize || ''}
+            value={textStyle.fontSize || ''}
             onChange={e => e.target.value ? editor.chain().focus().setFontSize(e.target.value).run() : editor.chain().focus().unsetFontSize().run()}
             title="Font size"
           >
@@ -1013,7 +1015,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           {/* Font Weight */}
           <select
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 80, cursor: 'pointer' }}
-            value={editor.getAttributes('textStyle').fontWeight || ''}
+            value={textStyle.fontWeight || ''}
             onChange={e => e.target.value ? editor.chain().focus().setFontWeight(e.target.value).run() : editor.chain().focus().unsetFontWeight().run()}
             title="Font weight"
           >
