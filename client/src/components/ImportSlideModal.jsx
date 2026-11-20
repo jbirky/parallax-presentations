@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, FileCode } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
@@ -82,7 +82,8 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
   )
 }
 
-export default function ImportSlideModal({ currentPresentationId, onImport, onClose }) {
+// onBeamer: opens the Beamer import instead (BeamerImportModal)
+export default function ImportSlideModal({ currentPresentationId, onImport, onBeamer, onClose }) {
   const [presentations, setPresentations] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedPresentation, setSelectedPresentation] = useState(null)
@@ -156,6 +157,20 @@ export default function ImportSlideModal({ currentPresentationId, onImport, onCl
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {!selectedPresentation && onBeamer && (
+            <button onClick={onBeamer}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', marginBottom: 12, padding: '12px 14px', background: 'var(--bg-card)', border: '1px dashed var(--accent)', borderRadius: 6, cursor: 'pointer', textAlign: 'left' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-card)' }}
+            >
+              <FileCode size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>From LaTeX Beamer</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Type or paste frames, or drop a .tex or a project’s .zip</div>
+              </div>
+              <ArrowLeft size={14} style={{ transform: 'rotate(180deg)', color: 'var(--text-muted)', marginLeft: 'auto' }} />
+            </button>
+          )}
           {!selectedPresentation ? (
             loading ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>Loading presentations...</div>

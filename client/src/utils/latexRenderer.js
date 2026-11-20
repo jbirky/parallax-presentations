@@ -15,6 +15,8 @@ function buildLatexIframeHtml(content, textColor, fontSize) {
   const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
 
   if (hasTikz) {
+    // TikZJax puts its SVG in a box of no height, so the frame (vw, vh) is
+    // what bounds it: 100% of that box drew every diagram 0px tall
     return `<!doctype html><html><head>
 <meta charset="utf-8">
 <link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css">
@@ -23,7 +25,7 @@ function buildLatexIframeHtml(content, textColor, fontSize) {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: transparent; overflow: auto; color: ${c}; }
   body { transform: scale(${scale}); transform-origin: center center; }
-  svg { max-width: 100%; max-height: 100%; }
+  svg { max-width: ${100 / scale}vw; max-height: ${100 / scale}vh; }
 </style>
 </head><body><script type="text/tikz">${content}<\/script></body></html>`
   }

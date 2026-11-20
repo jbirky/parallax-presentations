@@ -21877,7 +21877,9 @@ function getSlideColumns(slides, presentation = {}) {
   return slides.map((s) => [s]);
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
-function referencesHtml(citations, markerColor) {
+var LIGHT_THEMES = /* @__PURE__ */ new Set(["white", "beige", "serif", "simple", "solarized", "sky"]);
+function referencesHtml(citations, markerColor, light = false) {
+  const ink2 = (alpha2) => light ? `rgba(0,0,0,${alpha2})` : `rgba(255,255,255,${alpha2})`;
   const items = citations.entries.map((entry) => {
     const year = entry.year || "";
     const journal = entry.journal || entry.booktitle || "";
@@ -21894,9 +21896,9 @@ function referencesHtml(citations, markerColor) {
     if (journal || vol || pages) line += ".";
     if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`;
     else if (webLink(entry.url)) line += ` <a href="${sanitizeUrl(webLink(entry.url).href)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">${escapeHtml(webLink(entry.url).site)}</a>`;
-    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`;
+    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:${ink2(0.85)}">${line}</div>`;
   }).join("\n          ");
-  return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+  return `<h2 style="font-size:28px;margin:0 0 20px;color:${ink2(0.95)}">References</h2>
         <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
           ${items}
         </div>`;
@@ -22063,7 +22065,7 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "markdown") {
         const md = (el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});</script></body></html>`;
         const escaped = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22164,7 +22166,7 @@ function generateRevealHTML(presentation, opts = {}) {
         const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content);
         const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content);
         if (hasTikz) {
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style></head><body><script type="text/tikz">${content}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${content}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22175,7 +22177,7 @@ function generateRevealHTML(presentation, opts = {}) {
 \\begin{document}
 ${content}
 \\end{document}`;
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"></script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22381,7 +22383,7 @@ ${sections}
     slidesHtml += `
     <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor)}
+        ${referencesHtml(citations, footerColor, LIGHT_THEMES.has(theme))}
       </div>
     </section>`;
   }

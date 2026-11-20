@@ -44,6 +44,7 @@ export default defineConfig({
             { text: 'Your First Presentation', link: '/tutorials/first-presentation' },
             { text: 'Outlining a Talk', link: '/tutorials/outline' },
             { text: 'Academic Slides', link: '/tutorials/academic-slides' },
+            { text: 'Slides from LaTeX Beamer', link: '/tutorials/beamer-import' },
           ]
         },
         {

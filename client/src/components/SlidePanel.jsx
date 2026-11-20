@@ -404,7 +404,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
             <Plus size={12} />
             Add Column
           </button>
-          <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
+          <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation or from LaTeX Beamer" style={{ fontSize: 11 }}>
             <Download size={12} />
             Import Slide
           </button>
@@ -556,7 +556,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
           <Plus size={12} />
           Add to Col {currentColIdx + 1}
         </button>
-        <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
+        <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation or from LaTeX Beamer" style={{ fontSize: 11 }}>
           <Download size={12} />
           Import Slide
         </button>

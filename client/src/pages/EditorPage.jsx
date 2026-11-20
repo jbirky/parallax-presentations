@@ -86,6 +86,8 @@ import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
 import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
+import BeamerImportModal from '../components/BeamerImportModal'
+import { isDarkColor } from '../utils/beamerSlides'
 import DatasetPanel from '../components/DatasetPanel'
 import EquationPalette from '../components/EquationPalette'
 import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
@@ -93,6 +95,7 @@ import { workFinder } from '../utils/bibDuplicates'
 import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
 import { CitationNode } from '../extensions/CitationExtension'
+import { BlockStyle } from '../extensions/BlockStyle'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
 import { FontWeight } from '../extensions/FontWeight'
@@ -474,6 +477,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
+  const [showBeamerModal, setShowBeamerModal] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [showPracticeRuns, setShowPracticeRuns] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
@@ -899,6 +903,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       Placeholder.configure({ placeholder: 'Click to start typing...' }),
       MathNode,
       CitationNode,
+      BlockStyle,
       FontFamily,
       FontSize,
       FontWeight,
@@ -2687,6 +2692,21 @@ function draw() {
       return { ...prev, slides }
     })
     setCurrentSlideIndex(currentSlideIndex + 1)
+  }
+
+  // Slides made from LaTeX Beamer (BeamerImportModal), after this one, with
+  // the references they cite joined to the bibliography
+  const insertBeamerSlides = (newSlides, bibliography) => {
+    if (!newSlides.length) return
+    const column = presentation.slides.some(s => s.column !== undefined) ? presentation.slides[currentSlideIndex]?.column ?? 0 : undefined
+    const placed = column === undefined ? newSlides : newSlides.map(slide => ({ ...slide, column }))
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      slides.splice(currentSlideIndex + 1, 0, ...placed)
+      return applyCitationNumbering({ ...prev, slides, ...(bibliography ? { bibliography } : {}) })
+    })
+    setCurrentSlideIndex(currentSlideIndex + 1)
+    setShowBeamerModal(false)
   }
 
   const deleteSlide = (index) => {
@@ -5329,7 +5349,20 @@ function draw() {
         <ImportSlideModal
           currentPresentationId={presentationId}
           onImport={importSlidesFromPresentation}
+          onBeamer={() => { setShowImportSlideModal(false); setShowBeamerModal(true) }}
           onClose={() => setShowImportSlideModal(false)}
+        />
+      )}
+      {showBeamerModal && (
+        <BeamerImportModal
+          mode="insert"
+          slideW={presentation.slideWidth || 960}
+          slideH={presentation.slideHeight || 540}
+          bibliography={presentation.bibliography || []}
+          globalFont={presentation.globalFont || ''}
+          dark={isDarkColor(currentSlide?.background?.type === 'color' ? currentSlide.background.color : '#1e1e2e')}
+          onInsert={insertBeamerSlides}
+          onClose={() => setShowBeamerModal(false)}
         />
       )}
       {/* Park the TipTap editor DOM off-screen when not editing so ProseMirror's

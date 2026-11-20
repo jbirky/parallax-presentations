@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Window } from 'happy-dom'
 
 // Stub browser APIs that generateHTML uses (only window.location.origin for absoluteSrc)
 if (!globalThis.window) globalThis.window = {}
@@ -526,6 +527,27 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
     const html = generateRevealHTML(embedPresentation(JSX_EMBED))
     const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
     expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
+  })
+})
+
+describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
+  // Each draws in a frame of its own; parsed as a browser parses the srcdoc,
+  // that page's scripts must close, or the first swallows the rest of it
+  const framePage = el => {
+    const html = generateRevealHTML(makePresentation({ slides: [{ id: 's1', elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 300, zIndex: 1, ...el }] }] }))
+    const attr = html.match(/<iframe srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    return new (new Window().DOMParser)().parseFromString(attr, 'text/html')
+  }
+
+  it('closes the scripts of each one’s page', () => {
+    const tikz = framePage({ type: 'latex', content: '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}' })
+    expect(tikz.querySelector('script[type="text/tikz"]').textContent).toContain('\\draw (0,0)')
+    const table = framePage({ type: 'latex', content: '\\begin{tabular}{cc} a & b \\end{tabular}' })
+    expect(table.querySelector('#out')).toBeTruthy()
+    expect([...table.querySelectorAll('script')].pop().textContent).toContain('new HtmlGenerator')
+    const md = framePage({ type: 'markdown', content: '# Hi' })
+    expect(md.querySelector('#out')).toBeTruthy()
+    expect([...md.querySelectorAll('script')].pop().textContent).toContain('marked.parse')
   })
 })
 

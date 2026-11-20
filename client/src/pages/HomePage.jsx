@@ -2,12 +2,14 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
+import BeamerImportModal from '../components/BeamerImportModal'
+import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
 const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
@@ -72,6 +74,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
 
   const [showForkModal, setShowForkModal] = useState(false)
+  const [showBeamerModal, setShowBeamerModal] = useState(false)
   const [forkUrl, setForkUrl] = useState('')
   const [forkBrowseResult, setForkBrowseResult] = useState(null)
   const [forkBrowsing, setForkBrowsing] = useState(false)
@@ -244,6 +247,14 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     } finally {
       setCreating(false)
     }
+  }
+
+  // A new deck of slides made from LaTeX Beamer (BeamerImportModal)
+  async function handleCreateFromBeamer({ title, slides, bibliography, slideWidth, slideHeight, theme }) {
+    const deck = applyCitationNumbering({ title, theme, transition: 'slide', slideWidth, slideHeight, slides, bibliography })
+    const pres = await api.createPresentation(deck)
+    setShowBeamerModal(false)
+    onOpen(pres.id, false, pres.title)
   }
 
   async function handleCreateFromTemplate(templateId) {
@@ -450,6 +461,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <GitFork size={15} />
             Fork from Git
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
+            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <FileCode size={15} />
+            From Beamer
           </button>
           <button className="btn btn-primary" onClick={handleOpenModal} disabled={atLimit}
             title={atLimit ? 'Presentation limit reached' : ''}>
@@ -837,6 +854,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
           </div>
         </div>
+      )}
+
+      {showBeamerModal && (
+        <BeamerImportModal mode="new" onCreate={handleCreateFromBeamer} onClose={() => setShowBeamerModal(false)} />
       )}
 
       {/* Fork from Git modal */}
