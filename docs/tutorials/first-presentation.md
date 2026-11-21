@@ -23,7 +23,7 @@ For this tutorial, choose **Title Slide**.
 
 You'll see a slide with two text placeholders: a large title and a smaller subtitle.
 
-1. **Double-click the title** ("Click to add title") to enter edit mode.
+1. **Double-click the title** ("Presentation Title") to enter edit mode.
 2. Type your presentation title — for example, *Introduction to Reveal.js*.
 3. Press `Escape` to finish editing the title.
 4. **Double-click the subtitle** and type your name or a short description.

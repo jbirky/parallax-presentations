@@ -10,14 +10,15 @@ This tutorial covers the text tools: inserting text boxes, formatting, inline ma
 
 ## Formatting text
 
-With text selected inside a text box, use the toolbar to:
+While you edit a text box, the toolbar shows its formatting tools in place of the insert tools; they come back when you press `Escape`. With text selected, use the toolbar to:
 
-- **Bold** / **Italic** / **Underline** / **Strikethrough**
+- **Bold** / **Italic** / **Underline**
 - **Font family** — choose from 30+ built-in fonts (Barlow, Inter, Playfair Display, Computer Modern, etc.)
 - **Font size** — type a custom size or pick from the dropdown
 - **Text color** — click the color swatch to open the picker
 - **Alignment** — left, center, or right
 - **Lists** — ordered or unordered
+- **More** — strikethrough, inline code, code blocks, quotes, images in the text, font weight and line spacing
 
 ::: tip
 You can mix fonts, sizes, and colors within the same text box by selecting individual words and applying different styles.

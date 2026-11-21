@@ -105,7 +105,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .title-input { flex: 1; max-width: 300px; background: transparent; border: 1px solid transparent; color: var(--text-primary); font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
 .title-input:hover { border-color: var(--border); }
 .title-input:focus { outline: none; border-color: var(--accent); background: var(--bg-card); }
-.header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+.header-controls > * { flex-shrink: 0; }
+/* The top bar's tools (components/HeaderTools.jsx): one row's height, so the
+   tools that wrap are out of sight; they're offered in its More menu */
+.header-controls > .header-tools { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px; height: 32px; }
 .save-indicator { font-size: 12px; color: var(--text-muted); }
 .select-sm { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 5px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .select-sm:focus { outline: none; border-color: var(--accent); }

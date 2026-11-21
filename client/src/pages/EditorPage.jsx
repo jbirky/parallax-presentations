@@ -30,6 +30,7 @@ import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSli
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
+import HeaderTools from '../components/HeaderTools'
 import SlidePanel from '../components/SlidePanel'
 import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import PracticeRunsModal from '../components/PracticeRunsModal'
@@ -128,29 +129,6 @@ const LIVE_WAIT_MS = 10000
 // brought back, along with ZENODO_ENABLED in server/index.js
 const ZENODO_ENABLED = false
 
-// The Share and Export dropdowns in the top bar
-const TOP_MENU_STYLE = {
-  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-  background: 'var(--bg-card)', border: '1px solid var(--border)',
-  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
-}
-
-// A dropdown's items, [{ label, icon, action }]; onPick closes it
-function MenuItems({ items, onPick }) {
-  return items.map(({ label, icon, action }) => (
-    <button
-      key={label}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-      onClick={() => { onPick(); action() }}
-    >
-      {icon}{label}
-    </button>
-  ))
-}
-
 // Downloads the presentation as one HTML file with its libraries and uploads
 // inlined, so it works offline and anywhere
 async function downloadOfflineHTML(presentation) {
@@ -183,39 +161,39 @@ const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'diff
 const SLIDE_TEMPLATES = {
   blank: { label: 'Blank', elements: [] },
   title: { label: 'Title Slide', elements: [
-    { type: 'text', x: 80, y: 160, width: 800, height: 120, zIndex: 1, content: '<h1 style="text-align:center">Presentation Title</h1>' },
-    { type: 'text', x: 160, y: 300, width: 640, height: 80, zIndex: 2, content: '<p style="text-align:center">Subtitle or author name</p>' },
+    { type: 'text', x: 60, y: 170, width: 840, height: 96, sizeMode: 'auto', zIndex: 1, content: '<h2 style="text-align:center">Presentation Title</h2>' },
+    { type: 'text', x: 120, y: 282, width: 720, height: 80, sizeMode: 'auto', zIndex: 2, content: '<p style="text-align:center">Subtitle or author name</p>' },
   ]},
   'two-column': { label: 'Two Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
+    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
     { type: 'text', x: 40, y: 140, width: 420, height: 340, zIndex: 2, content: '<p>Left column content</p>' },
     { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Right column content</p>' },
   ]},
   'image-text': { label: 'Image + Text', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
+    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
     { type: 'shape', shape: 'rect', x: 40, y: 140, width: 420, height: 340, zIndex: 2, fill: '#2d2d4e', stroke: 'none', strokeWidth: 0, text: '[ Image ]', fontSize: 18, textColor: '#888888' },
     { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Add your text here</p>' },
   ]},
   'section-header': { label: 'Section Header', elements: [
     { type: 'shape', shape: 'rect', x: 0, y: 0, width: 960, height: 540, zIndex: 0, fill: '#1a1a4e', stroke: 'none', strokeWidth: 0, opacity: 1, locked: true },
-    { type: 'text', x: 80, y: 200, width: 800, height: 100, zIndex: 1, content: '<h1 style="text-align:center">Section Title</h1>' },
-    { type: 'shape', shape: 'rect', x: 280, y: 310, width: 400, height: 4, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-    { type: 'text', x: 200, y: 330, width: 560, height: 60, zIndex: 3, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Section description</p>' },
+    { type: 'text', x: 80, y: 150, width: 800, height: 140, zIndex: 1, content: '<h1 style="text-align:center">Section Title</h1>' },
+    { type: 'shape', shape: 'rect', x: 280, y: 302, width: 400, height: 4, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
+    { type: 'text', x: 200, y: 320, width: 560, height: 80, zIndex: 3, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Section description</p>' },
   ]},
   'three-column': { label: 'Three Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
+    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
     { type: 'text', x: 20, y: 140, width: 290, height: 340, zIndex: 2, content: '<p>Column 1</p>' },
     { type: 'text', x: 335, y: 140, width: 290, height: 340, zIndex: 3, content: '<p>Column 2</p>' },
     { type: 'text', x: 650, y: 140, width: 290, height: 340, zIndex: 4, content: '<p>Column 3</p>' },
   ]},
   'comparison': { label: 'Comparison', elements: [
-    { type: 'text', x: 40, y: 30, width: 880, height: 70, zIndex: 1, content: '<h2 style="text-align:center">Comparison</h2>' },
-    { type: 'shape', shape: 'rounded-rect', x: 30, y: 110, width: 440, height: 400, zIndex: 2, fill: 'rgba(99,102,241,0.1)', stroke: '#6366f1', strokeWidth: 1, locked: true },
-    { type: 'text', x: 50, y: 120, width: 400, height: 50, zIndex: 3, content: '<h3 style="text-align:center; color: #6366f1">Option A</h3>' },
-    { type: 'text', x: 50, y: 170, width: 400, height: 320, zIndex: 4, content: '<p>Details here...</p>' },
-    { type: 'shape', shape: 'rounded-rect', x: 490, y: 110, width: 440, height: 400, zIndex: 5, fill: 'rgba(236,72,153,0.1)', stroke: '#ec4899', strokeWidth: 1, locked: true },
-    { type: 'text', x: 510, y: 120, width: 400, height: 50, zIndex: 6, content: '<h3 style="text-align:center; color: #ec4899">Option B</h3>' },
-    { type: 'text', x: 510, y: 170, width: 400, height: 320, zIndex: 7, content: '<p>Details here...</p>' },
+    { type: 'text', x: 40, y: 30, width: 880, height: 96, zIndex: 1, content: '<h2 style="text-align:center">Comparison</h2>' },
+    { type: 'shape', shape: 'rounded-rect', x: 30, y: 136, width: 440, height: 380, zIndex: 2, fill: 'rgba(99,102,241,0.1)', stroke: '#6366f1', strokeWidth: 1, locked: true },
+    { type: 'text', x: 50, y: 146, width: 400, height: 80, zIndex: 3, content: '<h3 style="text-align:center; color: #6366f1">Option A</h3>' },
+    { type: 'text', x: 50, y: 230, width: 400, height: 276, zIndex: 4, content: '<p>Details here...</p>' },
+    { type: 'shape', shape: 'rounded-rect', x: 490, y: 136, width: 440, height: 380, zIndex: 5, fill: 'rgba(236,72,153,0.1)', stroke: '#ec4899', strokeWidth: 1, locked: true },
+    { type: 'text', x: 510, y: 146, width: 400, height: 80, zIndex: 6, content: '<h3 style="text-align:center; color: #ec4899">Option B</h3>' },
+    { type: 'text', x: 510, y: 230, width: 400, height: 276, zIndex: 7, content: '<p>Details here...</p>' },
   ]},
   'big-number': { label: 'Big Number', elements: [
     { type: 'text', x: 80, y: 80, width: 800, height: 200, zIndex: 1, content: '<h1 style="text-align:center; font-size: 120px; color: #6366f1">42%</h1>' },
@@ -230,8 +208,8 @@ const SLIDE_TEMPLATES = {
     layoutGrid: { enabled: true, columns: 2, rows: 0, gutter: 0, marginX: 40, marginY: 40, snap: true },
     axisLines: [{ id: 'ax1', axis: 'x', position: 320, visible: true, snap: true }],
     elements: [
-      { type: 'text', x: 40, y: 50, width: 260, height: 80, zIndex: 1, content: '<h2 style="text-align:right">Title</h2>' },
-      { type: 'text', x: 40, y: 140, width: 260, height: 60, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.6)">Subtitle text</p>' },
+      { type: 'text', x: 40, y: 50, width: 260, height: 96, zIndex: 1, content: '<h2 style="text-align:right">Title</h2>' },
+      { type: 'text', x: 40, y: 150, width: 260, height: 80, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.6)">Subtitle text</p>' },
       { type: 'text', x: 340, y: 50, width: 580, height: 440, zIndex: 3, content: '<p>Main content arranged to the right of the axis. The asymmetric division creates visual tension.</p>' },
       { type: 'shape', shape: 'rect', x: 318, y: 40, width: 3, height: 460, zIndex: 0, fill: 'rgba(244,114,182,0.4)', stroke: 'none', strokeWidth: 0, locked: true },
     ]
@@ -242,10 +220,10 @@ const SLIDE_TEMPLATES = {
     category: 'systems',
     axisLines: [{ id: 'ax1', axis: 'x', position: 480, visible: true, snap: true }],
     elements: [
-      { type: 'text', x: 130, y: 60, width: 700, height: 80, zIndex: 1, content: '<h2 style="text-align:center">Title</h2>' },
-      { type: 'shape', shape: 'rect', x: 380, y: 150, width: 200, height: 3, zIndex: 0, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 130, y: 170, width: 700, height: 60, zIndex: 2, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Symmetry centered on a single axis</p>' },
-      { type: 'text', x: 130, y: 260, width: 700, height: 220, zIndex: 3, content: '<p style="text-align:center">Content arranged symmetrically. Place the axis off-center for asymmetric bilateral compositions.</p>' },
+      { type: 'text', x: 130, y: 60, width: 700, height: 96, zIndex: 1, content: '<h2 style="text-align:center">Title</h2>' },
+      { type: 'shape', shape: 'rect', x: 380, y: 164, width: 200, height: 3, zIndex: 0, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
+      { type: 'text', x: 130, y: 176, width: 700, height: 80, zIndex: 2, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Symmetry centered on a single axis</p>' },
+      { type: 'text', x: 130, y: 266, width: 700, height: 230, zIndex: 3, content: '<p style="text-align:center">Content arranged symmetrically. Place the axis off-center for asymmetric bilateral compositions.</p>' },
     ]
   },
 
@@ -254,14 +232,14 @@ const SLIDE_TEMPLATES = {
     category: 'systems',
     layoutGrid: { enabled: true, columns: 3, rows: 2, gutter: 16, marginX: 40, marginY: 40, snap: true },
     elements: [
-      { type: 'text', x: 40, y: 40, width: 880, height: 60, zIndex: 1, content: '<h2>Title</h2>' },
-      { type: 'shape', shape: 'rect', x: 40, y: 105, width: 880, height: 2, zIndex: 0, fill: 'rgba(99,102,241,0.3)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 40, y: 116, width: 277, height: 190, zIndex: 2, content: '<p>Cell 1</p>' },
-      { type: 'text', x: 333, y: 116, width: 277, height: 190, zIndex: 3, content: '<p>Cell 2</p>' },
-      { type: 'text', x: 626, y: 116, width: 277, height: 190, zIndex: 4, content: '<p>Cell 3</p>' },
-      { type: 'text', x: 40, y: 322, width: 277, height: 178, zIndex: 5, content: '<p>Cell 4</p>' },
-      { type: 'text', x: 333, y: 322, width: 277, height: 178, zIndex: 6, content: '<p>Cell 5</p>' },
-      { type: 'text', x: 626, y: 322, width: 277, height: 178, zIndex: 7, content: '<p>Cell 6</p>' },
+      { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
+      { type: 'shape', shape: 'rect', x: 40, y: 140, width: 880, height: 2, zIndex: 0, fill: 'rgba(99,102,241,0.3)', stroke: 'none', strokeWidth: 0, locked: true },
+      { type: 'text', x: 40, y: 152, width: 277, height: 166, zIndex: 2, content: '<p>Cell 1</p>' },
+      { type: 'text', x: 333, y: 152, width: 277, height: 166, zIndex: 3, content: '<p>Cell 2</p>' },
+      { type: 'text', x: 626, y: 152, width: 277, height: 166, zIndex: 4, content: '<p>Cell 3</p>' },
+      { type: 'text', x: 40, y: 326, width: 277, height: 174, zIndex: 5, content: '<p>Cell 4</p>' },
+      { type: 'text', x: 333, y: 326, width: 277, height: 174, zIndex: 6, content: '<p>Cell 5</p>' },
+      { type: 'text', x: 626, y: 326, width: 277, height: 174, zIndex: 7, content: '<p>Cell 6</p>' },
     ]
   },
 
@@ -283,11 +261,11 @@ const SLIDE_TEMPLATES = {
     label: 'Transitional',
     category: 'systems',
     elements: [
-      { type: 'text', x: 60, y: 40, width: 500, height: 80, zIndex: 3, content: '<h2>Title</h2>' },
-      { type: 'text', x: 120, y: 130, width: 380, height: 50, zIndex: 2, content: '<p style="color: rgba(255,255,255,0.6)">Subtitle floats freely</p>' },
+      { type: 'text', x: 60, y: 40, width: 500, height: 96, zIndex: 3, content: '<h2>Title</h2>' },
+      { type: 'text', x: 120, y: 136, width: 460, height: 56, zIndex: 2, content: '<p style="color: rgba(255,255,255,0.6); font-size: 28px">Subtitle floats freely</p>' },
       { type: 'shape', shape: 'rect', x: 0, y: 200, width: 700, height: 3, zIndex: 0, fill: 'rgba(255,255,255,0.15)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 80, y: 220, width: 500, height: 200, zIndex: 1, content: '<p>Elements relate through massing and texture rather than alignment. The transitional system is the most informal — no axis required.</p>' },
-      { type: 'text', x: 520, y: 400, width: 400, height: 120, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.4); font-size: 14px">Details drift toward the lower right, creating natural movement.</p>' },
+      { type: 'text', x: 80, y: 220, width: 460, height: 230, zIndex: 1, content: '<p style="font-size: 26px">Elements relate through massing and texture rather than alignment. The transitional system is the most informal — no axis required.</p>' },
+      { type: 'text', x: 520, y: 440, width: 400, height: 80, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.4); font-size: 14px">Details drift toward the lower right, creating natural movement.</p>' },
     ]
   },
 
@@ -299,10 +277,10 @@ const SLIDE_TEMPLATES = {
       { type: 'shape', shape: 'circle', x: 330, y: 120, width: 300, height: 300, zIndex: 0, fill: 'none', stroke: 'rgba(99,102,241,0.15)', strokeWidth: 1 },
       { type: 'shape', shape: 'circle', x: 444, y: 234, width: 72, height: 72, zIndex: 1, fill: '#6366f1', stroke: 'none', strokeWidth: 0 },
       { type: 'text', x: 440, y: 245, width: 80, height: 50, zIndex: 2, content: '<p style="text-align:center; font-size:11px; color:white">Focus</p>' },
-      { type: 'text', x: 540, y: 100, width: 380, height: 60, zIndex: 3, content: '<h3>Point 1</h3>' },
-      { type: 'text', x: 570, y: 310, width: 350, height: 60, zIndex: 3, content: '<h3>Point 2</h3>' },
-      { type: 'text', x: 40, y: 180, width: 300, height: 60, zIndex: 3, content: '<h3 style="text-align:right">Point 3</h3>' },
-      { type: 'text', x: 40, y: 420, width: 300, height: 60, zIndex: 3, content: '<h3 style="text-align:right">Point 4</h3>' },
+      { type: 'text', x: 540, y: 100, width: 380, height: 80, zIndex: 3, content: '<h3>Point 1</h3>' },
+      { type: 'text', x: 570, y: 310, width: 350, height: 80, zIndex: 3, content: '<h3>Point 2</h3>' },
+      { type: 'text', x: 40, y: 180, width: 300, height: 80, zIndex: 3, content: '<h3 style="text-align:right">Point 3</h3>' },
+      { type: 'text', x: 40, y: 420, width: 300, height: 80, zIndex: 3, content: '<h3 style="text-align:right">Point 4</h3>' },
     ]
   },
 }
@@ -418,8 +396,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return !!peer
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
-  const [showExportMenu, setShowExportMenu] = useState(false)
-  const [showShareMenu, setShowShareMenu] = useState(false)
   // The Share menu: a share link for the owner, and who edits it (cloud, not
   // for guests; a template has no editors)
   const shareItems = [
@@ -429,7 +405,6 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
   const [showMasterPanel, setShowMasterPanel] = useState(false)
-  const [showSyncDropdown, setShowSyncDropdown] = useState(false)
   const [showDefaultSettings, setShowDefaultSettings] = useState(false)
   const [showPresentDropdown, setShowPresentDropdown] = useState(false)
   const [showKineticModal, setShowKineticModal] = useState(false)
@@ -2814,6 +2789,69 @@ function draw() {
     )
   }
 
+
+  // The top bar's buttons (components/HeaderTools.jsx). When the bar runs out
+  // of room, the last of them go into its More menu, so Present stays on screen
+  const exportItems = [
+    { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
+    { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
+    { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
+    { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
+    { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
+    { label: 'Export Annotated\u2026', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
+  ].filter(item => item.label !== 'Export Annotated\u2026' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
+  const syncItems = [
+    { label: 'GitHub', icon: <Github size={13} />, action: () => setShowGithubModal(true) },
+    ZENODO_ENABLED && {
+      label: 'Zenodo',
+      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>,
+      action: () => {
+        setZenodoStatus(null)
+        if (presentationId) api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+        setShowZenodoModal(true)
+      },
+    },
+    { divider: true },
+    {
+      label: 'Git History',
+      icon: <History size={13} />,
+      action: async () => {
+        setShowGitHistory(true)
+        setGitLoading(true)
+        try { setGitCommits(await api.getGitHistory(presentationId)) } catch (e) { setGitCommits([]); console.error(e) }
+        setGitLoading(false)
+      },
+    },
+  ].filter(Boolean)
+  const headerTools = [
+    { key: 'settings', label: 'Settings', icon: <Settings size={14} />, title: 'Default slide settings', onClick: () => setShowDefaultSettings(true) },
+    { key: 'citations', label: 'Citations', icon: <FileText size={14} />, title: 'Bibliography & Citations', badge: (presentation.bibliography || []).length, onClick: () => setShowBibliographyModal(true) },
+    { key: 'find', label: 'Find', icon: <Search size={14} />, title: 'Find & Replace (Ctrl+F)', onClick: () => setShowFindReplace(v => !v) },
+    { key: 'timeline', label: 'Timeline', icon: <Clock size={14} />, title: 'Animation Timeline', active: showTimeline, onClick: () => setShowTimeline(v => !v) },
+    shareItems.length > 0 && { key: 'share', label: 'Share', icon: <Share2 size={14} />, title: 'Share link and editors', items: shareItems },
+    { key: 'export', label: 'Export', icon: <Download size={14} />, title: 'Export', items: exportItems },
+    {
+      key: 'history', label: 'History', icon: <History size={14} />, title: 'Version History',
+      onClick: async () => {
+        const snaps = await api.getSnapshots(presentationId)
+        setSnapshots(snaps)
+        setShowHistoryModal(true)
+      },
+    },
+    {
+      key: 'files', label: 'Files', icon: <Layers size={14} />, title: 'Browse uploaded files',
+      onClick: async () => {
+        setShowFileBrowser(true)
+        setFileBrowserLoading(true)
+        try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
+        catch { setFileBrowserFiles([]) }
+        setFileBrowserLoading(false)
+      },
+    },
+    { key: 'data', label: 'Data', icon: <Database size={14} />, title: 'Manage datasets', onClick: () => setShowDatasetPanel(true) },
+    !guest && !isEditor && { key: 'sync', label: 'Sync', icon: <CloudUpload size={14} />, title: 'Sync options', chevron: true, items: syncItems },
+  ].filter(Boolean)
+
   return (
     <div className="editor-page" style={{ position: 'relative' }}>
       {/* Editor Header */}
@@ -2884,192 +2922,7 @@ function draw() {
             </div>
           )}
 
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowDefaultSettings(true)}
-            title="Default slide settings"
-          >
-            <Settings size={14} />
-            Settings
-          </button>
-
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowBibliographyModal(true)}
-            title="Bibliography & Citations"
-          >
-            <FileText size={14} />
-            Citations
-            {(presentation.bibliography || []).length > 0 && (
-              <span style={{ fontSize: 9, background: 'var(--accent)', color: 'white', borderRadius: 8, padding: '0 4px', lineHeight: '14px', fontWeight: 700 }}>
-                {presentation.bibliography.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowFindReplace(v => !v)}
-            title="Find & Replace (Ctrl+F)"
-          >
-            <Search size={14} />
-            Find
-          </button>
-
-          <button
-            className={`btn btn-secondary ${showTimeline ? 'active' : ''}`}
-            onClick={() => setShowTimeline(v => !v)}
-            title="Animation Timeline"
-          >
-            <Clock size={14} />
-            Timeline
-          </button>
-
-          {shareItems.length > 0 && (
-            <div style={{ position: 'relative' }}>
-              <button
-                className={`btn btn-secondary ${showShareMenu ? 'active' : ''}`}
-                onClick={() => setShowShareMenu(v => !v)}
-                title="Share link and editors"
-              >
-                <Share2 size={14} />
-                Share
-              </button>
-              {showShareMenu && (
-                <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowShareMenu(false)}>
-                  <MenuItems items={shareItems} onPick={() => setShowShareMenu(false)} />
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`btn btn-secondary ${showExportMenu ? 'active' : ''}`}
-              onClick={() => setShowExportMenu(v => !v)}
-              title="Export"
-            >
-              <Download size={14} />
-              Export
-            </button>
-            {showExportMenu && (
-              <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowExportMenu(false)}>
-                <MenuItems onPick={() => setShowExportMenu(false)} items={[
-                  { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
-                  { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
-                  { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
-                  { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
-                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
-                  { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-                ].filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))} />
-              </div>
-            )}
-          </div>
-
-          <button
-            className="btn btn-secondary"
-            onClick={async () => {
-              const snaps = await api.getSnapshots(presentationId)
-              setSnapshots(snaps)
-              setShowHistoryModal(true)
-            }}
-            title="Version History"
-          >
-            <History size={14} />
-            History
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={async () => {
-              setShowFileBrowser(true)
-              setFileBrowserLoading(true)
-              try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
-              catch { setFileBrowserFiles([]) }
-              setFileBrowserLoading(false)
-            }}
-            title="Browse uploaded files"
-          >
-            <Layers size={14} />
-            Files
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowDatasetPanel(true)}
-            title="Manage datasets"
-          >
-            <Database size={14} />
-            Data
-          </button>
-
-          {!guest && !isEditor && (
-            <div style={{ position: 'relative' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowSyncDropdown(v => !v)}
-                title="Sync options"
-              >
-                <CloudUpload size={14} />
-                Sync
-                <ChevronDown size={12} style={{ marginLeft: 2 }} />
-              </button>
-              {showSyncDropdown && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
-                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
-                    >
-                      <Github size={14} />
-                      GitHub
-                    </button>
-                    {ZENODO_ENABLED && (
-                      <button
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                        onClick={async () => {
-                          setShowSyncDropdown(false)
-                          setZenodoStatus(null)
-                          if (presentationId) {
-                            api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                          }
-                          setShowZenodoModal(true)
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                        Zenodo
-                      </button>
-                    )}
-                    <div style={{ borderTop: '1px solid var(--border)' }} />
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={async () => {
-                        setShowSyncDropdown(false)
-                        setShowGitHistory(true)
-                        setGitLoading(true)
-                        try {
-                          const commits = await api.getGitHistory(presentationId)
-                          setGitCommits(commits)
-                        } catch (e) { setGitCommits([]); console.error(e) }
-                        setGitLoading(false)
-                      }}
-                    >
-                      <History size={14} />
-                      Git History
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          <HeaderTools tools={headerTools} />
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>

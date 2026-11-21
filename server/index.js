@@ -1051,11 +1051,18 @@ app.post('/api/presentations', async (req, res) => {
         slides: [
           {
             id: uuidv4(),
+            // The editor's Title Slide layout (SLIDE_TEMPLATES.title in
+            // client/src/pages/EditorPage.jsx); its boxes grow with their text
             elements: [{
               id: uuidv4(),
               type: 'text',
-              x: 80, y: 160, width: 800, height: 220, zIndex: 1,
-              content: '<h2 style="text-align: center">Welcome to your presentation</h2><p style="text-align: center">Double-click to start editing</p>'
+              x: 60, y: 170, width: 840, height: 96, sizeMode: 'auto', zIndex: 1,
+              content: '<h2 style="text-align:center">Presentation Title</h2>'
+            }, {
+              id: uuidv4(),
+              type: 'text',
+              x: 120, y: 282, width: 720, height: 80, sizeMode: 'auto', zIndex: 2,
+              content: '<p style="text-align:center">Subtitle or author name</p>'
             }],
             notes: '',
             background: { type: 'color', color: '#1e1e2e' }

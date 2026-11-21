@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { slideHref, slideIdFromHref, slideLabel } from '../utils/clickActions'
 import { api } from '../utils/api'
 import {
@@ -49,6 +49,7 @@ import {
   Grid3x3,
   DraftingCompass,
   Globe,
+  Check,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 import { libUrl, localizeLibraries } from '../utils/libraries'
@@ -114,6 +115,33 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   const pptxInputRef = useRef(null)
   const [linkModal, setLinkModal] = useState(null)
   const linkInputRef = useRef(null)
+  const [showMoreFormat, setShowMoreFormat] = useState(false)
+  const moreFormatRef = useRef(null)
+
+  // While text is being edited, its formatting tools take the place of the
+  // insert tools. The toolbar keeps at least the height it had before, so the
+  // slide below doesn't move when editing starts or ends
+  const toolbarRef = useRef(null)
+  const [insertHeight, setInsertHeight] = useState(0)
+  const editing = !!editor
+  useLayoutEffect(() => {
+    const el = toolbarRef.current
+    if (!el || editing) return
+    const measure = () => setInsertHeight(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [editing])
+
+  useEffect(() => {
+    if (!showMoreFormat) return
+    const close = e => { if (!moreFormatRef.current?.contains(e.target)) setShowMoreFormat(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showMoreFormat])
+  useEffect(() => { if (!editing) setShowMoreFormat(false) }, [editing])
 
   async function handlePdfUpload(file) {
     if (!file) return
@@ -244,15 +272,24 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   const currentHighlight = editor ? (editor.getAttributes('highlight').color || '#fef08a') : '#fef08a'
 
   return (
-    <div className="toolbar">
-      {/* Global Undo / Redo */}
-      <button className="btn-icon" onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+    <div className="toolbar" ref={toolbarRef}
+      style={editing && insertHeight ? { minHeight: insertHeight, boxSizing: 'border-box' } : undefined}>
+      {/* Undo / Redo: the presentation's, or while editing text, the text's,
+          as Ctrl+Z does */}
+      <button className="btn-icon" title="Undo (Ctrl+Z)"
+        onClick={editor ? () => editor.chain().focus().undo().run() : onUndo}
+        disabled={editor ? !editor.can().undo() : !canUndo}>
         <Undo2 size={14} />
       </button>
-      <button className="btn-icon" onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Y)">
+      <button className="btn-icon" title="Redo (Ctrl+Y)"
+        onClick={editor ? () => editor.chain().focus().redo().run() : onRedo}
+        disabled={editor ? !editor.can().redo() : !canRedo}>
         <Redo2 size={14} />
       </button>
       <span className="toolbar-divider" />
+
+      {/* The insert tools, out of the way while text is being edited */}
+      {!editor && (<>
 
       {/* Slide Background popup */}
       {slide && onUpdateSlide && (() => {
@@ -895,6 +932,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       )}
 
       <span className="toolbar-divider" />
+      </>)}
 
       {/* Hint when no text element is being edited */}
       {!editingElementId && (
@@ -1010,69 +1048,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             ))}
           </select>
 
-          {/* Font Weight */}
-          <select
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 80, cursor: 'pointer' }}
-            value={editor.getAttributes('textStyle').fontWeight || ''}
-            onChange={e => e.target.value ? editor.chain().focus().setFontWeight(e.target.value).run() : editor.chain().focus().unsetFontWeight().run()}
-            title="Font weight"
-          >
-            <option value="">Weight</option>
-            <option value="100">100 Thin</option>
-            <option value="200">200 XLight</option>
-            <option value="300">300 Light</option>
-            <option value="400">400 Regular</option>
-            <option value="500">500 Medium</option>
-            <option value="600">600 SemiBold</option>
-            <option value="700">700 Bold</option>
-            <option value="800">800 ExtraBold</option>
-            <option value="900">900 Black</option>
-          </select>
-
-          {/* Line Height */}
-          <select
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 72, cursor: 'pointer' }}
-            value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || ''}
-            onChange={e => e.target.value ? editor.chain().focus().setLineHeight(e.target.value).run() : editor.chain().focus().unsetLineHeight().run()}
-            title="Line spacing"
-          >
-            <option value="">Spacing</option>
-            <option value="0.7">0.7</option>
-            <option value="0.75">0.75</option>
-            <option value="0.8">0.8</option>
-            <option value="0.85">0.85</option>
-            <option value="0.9">0.9</option>
-            <option value="0.95">0.95</option>
-            <option value="1">1</option>
-            <option value="1.15">1.15</option>
-            <option value="1.25">1.25</option>
-            <option value="1.5">1.5</option>
-            <option value="1.75">1.75</option>
-            <option value="2">2</option>
-            <option value="2.5">2.5</option>
-            <option value="3">3</option>
-          </select>
-
-          <span className="toolbar-divider" />
-
-          {/* Undo / Redo */}
-          <button
-            className="btn-icon"
-            onClick={() => editor.chain().focus().undo().run()}
-            disabled={!editor.can().undo()}
-            title="Undo"
-          >
-            <Undo2 size={15} />
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => editor.chain().focus().redo().run()}
-            disabled={!editor.can().redo()}
-            title="Redo"
-          >
-            <Redo2 size={15} />
-          </button>
-
           <span className="toolbar-divider" />
 
           {/* Headings */}
@@ -1131,13 +1106,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             title="Underline"
           >
             <Underline size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('strike') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            title="Strikethrough"
-          >
-            <Strikethrough size={15} />
           </button>
 
           <span className="toolbar-divider" />
@@ -1318,31 +1286,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
 
           <span className="toolbar-divider" />
 
-          {/* Code */}
-          <button
-            className={`btn-icon ${editor.isActive('code') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleCode().run()}
-            title="Inline code"
-          >
-            <Code size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('codeBlock') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            title="Code block"
-          >
-            <FileCode size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('blockquote') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            title="Blockquote"
-          >
-            <Quote size={15} />
-          </button>
-
-          <span className="toolbar-divider" />
-
           {/* Table */}
           <div style={{ position: 'relative' }}>
             <button
@@ -1404,15 +1347,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             </button>
           )}
 
-          {/* Image in text */}
-          <button
-            className="btn-icon"
-            onClick={handleImage}
-            title="Insert image in text"
-          >
-            <Image size={15} />
-          </button>
-
           <span className="toolbar-divider" />
 
           {/* Math */}
@@ -1440,6 +1374,77 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
           </button>
 
           <span className="toolbar-divider" />
+
+          {/* The less-used formatting, in a menu, so the formatting tools fit
+              in the space the insert tools had */}
+          <div ref={moreFormatRef} style={{ position: 'relative' }}>
+            <button
+              className={`btn-icon ${showMoreFormat ? 'active' : ''}`}
+              title="More formatting"
+              aria-haspopup="menu"
+              aria-expanded={showMoreFormat}
+              onClick={() => setShowMoreFormat(v => !v)}
+              style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}
+            >
+              More <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+            </button>
+            {showMoreFormat && (
+              <div role="menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 240, padding: '4px 0' }}>
+                {[
+                  { label: 'Strikethrough', icon: <Strikethrough size={14} />, on: editor.isActive('strike'), run: () => editor.chain().focus().toggleStrike().run() },
+                  { label: 'Inline code', icon: <Code size={14} />, on: editor.isActive('code'), run: () => editor.chain().focus().toggleCode().run() },
+                  { label: 'Code block', icon: <FileCode size={14} />, on: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
+                  { label: 'Quote', icon: <Quote size={14} />, on: editor.isActive('blockquote'), run: () => editor.chain().focus().toggleBlockquote().run() },
+                  { label: 'Image in text', icon: <Image size={14} />, run: handleImage },
+                ].map(item => (
+                  <button
+                    key={item.label}
+                    role="menuitem"
+                    onClick={() => { setShowMoreFormat(false); item.run() }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    {item.icon} {item.label}
+                    {item.on && <Check size={13} style={{ marginLeft: 'auto', color: 'var(--accent-light)' }} aria-label="on" />}
+                  </button>
+                ))}
+                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                  Weight
+                  <select
+                    style={{ marginLeft: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 110, cursor: 'pointer' }}
+                    value={editor.getAttributes('textStyle').fontWeight || ''}
+                    onChange={e => e.target.value ? editor.chain().focus().setFontWeight(e.target.value).run() : editor.chain().focus().unsetFontWeight().run()}
+                  >
+                    <option value="">Default</option>
+                    <option value="100">100 Thin</option>
+                    <option value="200">200 XLight</option>
+                    <option value="300">300 Light</option>
+                    <option value="400">400 Regular</option>
+                    <option value="500">500 Medium</option>
+                    <option value="600">600 SemiBold</option>
+                    <option value="700">700 Bold</option>
+                    <option value="800">800 ExtraBold</option>
+                    <option value="900">900 Black</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', fontSize: 13, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                  Line spacing
+                  <select
+                    style={{ marginLeft: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, width: 110, cursor: 'pointer' }}
+                    value={editor.getAttributes('paragraph').lineHeight || editor.getAttributes('heading').lineHeight || ''}
+                    onChange={e => e.target.value ? editor.chain().focus().setLineHeight(e.target.value).run() : editor.chain().focus().unsetLineHeight().run()}
+                  >
+                    <option value="">Default</option>
+                    {['0.7', '0.75', '0.8', '0.85', '0.9', '0.95', '1', '1.15', '1.25', '1.5', '1.75', '2', '2.5', '3'].map(v => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
 
           {/* Clear formatting */}
           <button
@@ -1500,7 +1505,7 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
 
       {/* Plugins dropdown — far right: the plugins' elements, and (cloud)
           the Plugins dialog to browse and publish community plugins */}
-      {(pluginTypes.length > 0 || onBrowsePlugins) && (<>
+      {!editor && (pluginTypes.length > 0 || onBrowsePlugins) && (<>
         <div style={{ flex: 1 }} />
         <div style={{ position: 'relative' }}>
           <button className="btn-icon" onClick={() => setShowPluginMenu(v => !v)} title="Plugins" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
