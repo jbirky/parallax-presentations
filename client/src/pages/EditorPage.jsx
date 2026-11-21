@@ -3205,6 +3205,14 @@ function draw() {
     },
   ].filter(Boolean)
 
+  // The Plugins button: each installed plugin's element to add, and the
+  // gallery to find more (cloud, signed in). It isn't there without either.
+  const pluginItems = [
+    ...pluginTypes.map(pt => ({ label: pt.label, action: () => addPluginElement(pt.type) })),
+    pluginTypes.length > 0 && isCloud && !guest && { divider: true },
+    isCloud && !guest && { label: 'Browse plugins…', action: () => setShowPluginBrowser(true) },
+  ].filter(Boolean)
+
   // Practice Talk: a present, for the getting-started checklist too
   const startPractice = () => {
     tickStep('present')
@@ -3338,12 +3346,6 @@ function draw() {
       { label: `Citations and bibliography…${(presentation.bibliography || []).length ? ` (${presentation.bibliography.length})` : ''}`, action: () => setShowBibliographyModal(true) },
       { label: 'Datasets…', action: () => setShowDatasetPanel(true) },
       '-',
-      (pluginTypes.length > 0 || (isCloud && !guest)) && { label: 'Plugins', items: [
-        ...pluginTypes.map(pt => ({ label: pt.label, action: () => addPluginElement(pt.type) })),
-        pluginTypes.length > 0 && isCloud && !guest && '-',
-        isCloud && !guest && { label: 'Browse plugins…', action: () => setShowPluginBrowser(true) },
-      ] },
-      '-',
       !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: startPractice },
       !isTemplate && (presentation.practiceRuns || []).length > 0 && { label: 'Practice runs…', action: () => setShowPracticeRuns(true) },
       annotationSets.length > 0 && { label: 'Annotation sessions…', action: () => setShowSessions(true) },
@@ -3451,6 +3453,7 @@ function draw() {
             <Settings size={14} />
             <span className="header-btn-label">Settings</span>
           </button>
+          <HeaderMenu label="Plugins" icon={<Puzzle size={14} />} title="Add a plugin's element, or find more plugins" items={pluginItems} />
           {!guest && !isEditor && <HeaderMenu label="Sync" icon={<CloudUpload size={14} />} title="GitHub and git history" items={syncItems} />}
           <HeaderMenu label="Share" icon={<Share2 size={14} />} title="Share link and editors" items={shareItems} />
 

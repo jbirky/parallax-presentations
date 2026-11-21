@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// A button beside Present that opens a short menu: Share (the share link and
-// who edits the presentation, as in Google Slides) and Sync (GitHub). Its
+// A button beside Present that opens a short menu: Plugins (plugins'
+// elements, and the gallery), Share (the share link and who edits the
+// presentation, as in Google Slides) and Sync (GitHub). Its
 // menu looks like the menu bar's. Under 1200px wide it shows just its icon
 // (.header-btn-label in index.css). An item is { label, icon, title, action },
 // or '-' / { divider: true } for a line between groups.

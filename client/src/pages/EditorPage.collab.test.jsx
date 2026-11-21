@@ -72,15 +72,16 @@ describe('the editor, shared', () => {
   }
   const closeMenus = async () => act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
 
-  it('has a menu bar where the top bar’s buttons were, and keeps Settings, Sync, Share and Present', async () => {
+  it('has a menu bar where the top bar’s buttons were, and keeps Settings, Plugins, Sync, Share and Present', async () => {
     await open('owner')
     expect([...el.querySelectorAll('.menu-bar .menu-title')].map(b => b.textContent)).toEqual(['File', 'Edit', 'View', 'Insert', 'Format', 'Slide', 'Tools', 'Help'])
     expect(el.querySelector('.menu-bar').getAttribute('role')).toBe('menubar')
     for (const gone of ['Export', 'History', 'Files', 'Data']) expect(button(gone)).toBeUndefined()
-    // Settings, Sync, Share, then Present
-    const settings = button('Settings'), sync = button('Sync'), share = button('Share'), present = button('Present')
-    expect(settings && sync && share && present).toBeTruthy()
-    expect(settings.compareDocumentPosition(sync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Settings, Plugins, Sync, Share, then Present
+    const settings = button('Settings'), plugins = button('Plugins'), sync = button('Sync'), share = button('Share'), present = button('Present')
+    expect(settings && plugins && sync && share && present).toBeTruthy()
+    expect(settings.compareDocumentPosition(plugins) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(plugins.compareDocumentPosition(sync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(sync.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(share.compareDocumentPosition(present) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -145,6 +146,12 @@ describe('the editor, shared', () => {
     const dark = [...el.querySelectorAll('.menu-dropdown [role=menuitemradio]')].find(b => b.textContent.includes('Dark'))
     await act(async () => dark.click())
     expect(onThemeChange).toHaveBeenCalledWith('dark')
+  })
+
+  it('has a Plugins button for finding plugins, not a Tools submenu', async () => {
+    await open('owner')
+    expect(await headerMenu('Plugins')).toEqual(['Browse plugins…'])
+    expect(await menu('Tools')).not.toContain('Plugins')
   })
 
   it('leaves the owner’s Sync button out for an editor', async () => {
