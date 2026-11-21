@@ -1198,14 +1198,23 @@ ${(() => {
           if (t.h === state.h && t.v === state.v) t.el.classList.add('active');
           else t.el.classList.remove('active');
         });
+        // The current slide's thumbnail into view, scrolling the panel alone:
+        // scrollIntoView scrolls every box around it too, and so a page this
+        // deck is embedded in, down to the deck, as it loads
         var active = body.querySelector('.ov-thumb.active');
-        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        if (!active || !isOpen) return;
+        var r = active.getBoundingClientRect(), b = body.getBoundingClientRect();
+        if (r.top < b.top) body.scrollTop -= b.top - r.top;
+        else if (r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom;
+        if (r.left < b.left) body.scrollLeft -= b.left - r.left;
+        else if (r.right > b.right) body.scrollLeft += r.right - b.right;
       }
 
       function togglePanel() {
         isOpen = !isOpen;
         if (isOpen) panel.classList.add('open');
         else panel.classList.remove('open');
+        if (isOpen) updateActive();
       }
 
       toggle.onclick = togglePanel;

@@ -565,6 +565,12 @@ describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
     expect([...md.querySelectorAll('script')].pop().textContent).toContain('marked.parse')
   })
 
+  it('never scrolls a page it\'s embedded in: the overview scrolls its own panel', () => {
+    const html = generateRevealHTML(makePresentation({ slides: [{ id: 's1', elements: [] }, { id: 's2', elements: [] }] }))
+    expect(html).toContain("id=\"ov-body\"")
+    expect(html).not.toContain('scrollIntoView(')
+  })
+
   it('prints a reference\'s page range with an en dash, as stored before -- was read too', () => {
     const html = generateRevealHTML(makePresentation({
       bibliography: [{ type: 'article', key: 'z33', author: 'Zwicky, F.', title: 'Rotverschiebung', journal: 'Helv. Phys. Acta', year: '1933', volume: '6', pages: '110--127' }],
