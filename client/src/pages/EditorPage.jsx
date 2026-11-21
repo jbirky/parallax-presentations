@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users, Keyboard } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Check, X, Search, Share2, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -32,15 +32,18 @@ import { exportToPptx } from '../utils/exportPptx'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
-import Toolbar from '../components/Toolbar'
-import HeaderTools from '../components/HeaderTools'
+import Toolbar, { ALIGN_COMMANDS } from '../components/Toolbar'
+import MenuBar, { MenuSearch } from '../components/MenuBar'
+import NotesStrip from '../components/NotesStrip'
+import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
+import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import { keyLabel } from '../utils/shortcuts'
 import SlidePanel from '../components/SlidePanel'
 import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import PracticeRunsModal from '../components/PracticeRunsModal'
 import { practiceInWindow, PRACTICE_MESSAGE, upsertPracticeRun, removePracticeRun, minutesFromRun } from '../utils/practice'
-import SlideCanvas from '../components/SlideCanvas'
+import SlideCanvas, { editLabelFor } from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
 import FindReplaceBar from '../components/FindReplaceBar'
 import TransitionPreview from '../components/TransitionPreview'
@@ -368,8 +371,19 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const pasteCountRef = useRef(0)
   const addSlideAfterRef = useRef(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
-  // Background… on a menu opens the toolbar's background popup
-  const [bgRequest, setBgRequest] = useState(0)
+  // Help › Search the menus (Alt+/)
+  const [showMenuSearch, setShowMenuSearch] = useState(false)
+  // A menu asking the toolbar for a dropdown (Slide › Background…, Insert ›
+  // Table…), and the canvas for what its right-click menu does (Crop, Edit,
+  // layer order): { name, id, n }, n counting the asks
+  const [toolbarRequest, setToolbarRequest] = useState(null)
+  const askToolbar = useCallback(name => setToolbarRequest(r => ({ name, n: (r?.n ?? 0) + 1 })), [])
+  const [canvasRequest, setCanvasRequest] = useState(null)
+  const askCanvas = useCallback((name, id) => setCanvasRequest(r => ({ name, id, n: (r?.n ?? 0) + 1 })), [])
+  // The inspector's tab: Format, Animate or Slide
+  const [inspectorTab, setInspectorTab] = useState('format')
+  // A PDF's pages, to pick which go on the slide as images
+  const [pdfPages, setPdfPages] = useState(null)
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
@@ -2642,6 +2656,9 @@ function draw() {
         if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
         if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
       }
+      // Alt+/ searches the menus, as in Google Slides, even while typing
+      // (on a Mac, Option+/ types ÷, so it's the key that counts)
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === '/' || e.code === 'Slash')) { setShowMenuSearch(true); e.preventDefault(); return }
       if (editingElementIdRef.current) return
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
@@ -2736,7 +2753,7 @@ function draw() {
     if (index !== null && index !== currentSlideIndex) setCurrentSlideIndex(index)
     stopEditingElement()
     setSelectedElementIds([])
-    setBgRequest(n => n + 1)
+    askToolbar('background')
   }
 
   // Replace image… on an image's menu: another file in its place
@@ -3062,16 +3079,174 @@ function draw() {
   }
 
 
-  // The top bar's buttons (components/HeaderTools.jsx). When the bar runs out
-  // of room, the last of them go into its More menu, so Present stays on screen
-  const exportItems = [
-    { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
-    { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
-    { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
-    { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
-    { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
-    { label: 'Export Annotated\u2026', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-  ].filter(item => item.label !== 'Export Annotated\u2026' || (!isTemplate && recentAnnotationSets(presentation).length > 0))
+  // ── What can be added, for the toolbar's Insert ▾ and Science ▾ and the
+  // Insert menu ─────────────────────────────────────────────────────────────
+  const uploadImage = () => pickFile('image/*', async file => {
+    try { const result = await api.uploadFile(file); if (result.url) addImageElement(result.url) }
+    catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+  })
+  const imageFromUrl = () => { const url = window.prompt('Image URL:'); if (url?.trim()) addImageElement(url.trim()) }
+  const uploadVideo = () => pickFile('video/mp4,video/webm,video/ogg,video/*', async file => {
+    try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addVideoElement(result.url) }
+    catch (err) { showNotice(`The video couldn’t be uploaded: ${err.message}`) }
+  })
+  const videoFromUrl = () => { const url = window.prompt('Video URL:'); if (url?.trim()) addVideoElement(url.trim()) }
+  const uploadAudio = () => pickFile('audio/*', async file => {
+    try { const result = await api.uploadFile(file); if (result.url) addAudioElement(result.url) }
+    catch (err) { showNotice(`The audio couldn’t be uploaded: ${err.message}`) }
+  })
+  const uploadModel = () => pickFile('.stl,.glb', async file => {
+    if (!isModelFile(file.name)) { showNotice('3D models can be STL or GLB files.'); return }
+    try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addModelElement(result.url, file.name) }
+    catch (err) { showNotice(`The model couldn’t be uploaded: ${err.message}`) }
+  })
+  const importPdfPages = () => pickFile('application/pdf,.pdf', async file => {
+    showNotice('Reading the PDF…')
+    try { setPdfPages(await loadPdfPages(file)) }
+    catch (err) { showNotice(`The PDF couldn’t be read: ${err.message}`) }
+  })
+  const importPptx = () => pickFile('.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint', async file => {
+    showNotice('Converting the PowerPoint file…')
+    try { await handleImportPptx(file) }
+    catch (err) { showNotice(`The PowerPoint file couldn’t be imported: ${err.message}`) }
+  })
+  const glyph = (text, style) => <span style={{ fontSize: 13, lineHeight: 1, ...style }}>{text}</span>
+  const ruleIcon = (w, h, color = '#fff', extra) => <span style={{ display: 'inline-block', width: w, height: h, background: color, ...extra }} />
+  const pluginTypes = pluginsLoaded ? getInsertablePluginTypes() : []
+  const insertGroups = [
+    { heading: 'Text', docs: 'text-typography', items: [
+      { label: 'Text path', icon: glyph('T/', { fontStyle: 'italic' }), title: 'Text along a curve', action: addTextPathElement },
+      { label: '3D text', icon: glyph('T', { fontWeight: 800, textShadow: '1px 1px 0 var(--accent), 2px 2px 0 var(--accent)' }), action: addText3dElement },
+      { label: 'Kinetic text', icon: <Type size={14} />, title: 'Words that move in, one after another', action: () => setShowKineticModal(true) },
+    ] },
+    { heading: 'Math and code', docs: 'code-math', items: [
+      { label: 'LaTeX and TikZ', icon: glyph('TeX', { fontFamily: 'serif', fontSize: 11, fontWeight: 700 }), keywords: 'math equation', action: addLatexElement },
+      { label: 'Interactive equation', icon: glyph('x²', { fontFamily: 'serif', fontStyle: 'italic', color: 'var(--accent)' }), title: 'An equation whose terms are colored and labeled one at a time', keywords: 'math', action: addEquation },
+      { label: 'Markdown', icon: glyph('M↓', { fontWeight: 700 }), action: addMarkdownElement },
+      { label: 'Code', icon: <Code2 size={14} />, keywords: 'syntax highlighting', action: addCodeElement },
+      { label: 'Math grid', icon: glyph('∮'), title: 'Equations lined up in a grid', keywords: 'equations', action: () => setShowMathGridModal(true) },
+    ] },
+    { heading: 'Media', docs: 'media', items: [
+      { label: 'Upload video…', icon: <Video size={14} />, action: uploadVideo },
+      { label: 'Video from URL…', icon: <Video size={14} />, keywords: 'youtube vimeo', action: videoFromUrl },
+      { label: 'Upload audio…', icon: <Music size={14} />, keywords: 'sound', action: uploadAudio },
+      { label: '3D model…', icon: <Box size={14} />, title: 'An STL or GLB file, to turn while presenting', keywords: 'stl glb', action: uploadModel },
+      { label: 'PDF pages…', icon: <FileText size={14} />, title: 'Pages of a PDF, as images', action: importPdfPages },
+      { label: 'Icon', icon: <Star size={14} />, title: 'Pick one under Shape', action: () => askToolbar('shape') },
+    ] },
+    { heading: 'Shapes and layout', docs: 'shapes-drawing', items: [
+      { label: 'Callout', icon: glyph('1', { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700 }), title: 'A numbered marker', action: addCalloutElement },
+      { label: 'Lines and rules', icon: <Minus size={14} />, keywords: 'composition circles tone blocks', items: [
+        ...[['rule-h-thin', 'Thin line', ruleIcon(14, 1)], ['rule-h-medium', 'Medium line', ruleIcon(14, 2)], ['rule-h-heavy', 'Heavy line', ruleIcon(14, 4)], ['rule-diagonal', 'Diagonal line', ruleIcon(14, 2, '#fff', { transform: 'rotate(-15deg)' })],
+          ['rule-v-thin', 'Thin vertical line', ruleIcon(1, 14)], ['rule-v-medium', 'Medium vertical line', ruleIcon(2, 14)], ['rule-v-heavy', 'Heavy vertical line', ruleIcon(4, 14)],
+          ['circle-dot', 'Dot', ruleIcon(6, 6, '#fff', { borderRadius: '50%' })], ['circle-medium', 'Circle', ruleIcon(12, 12, '#6366f1', { borderRadius: '50%' })], ['circle-large', 'Large circle', ruleIcon(14, 14, 'rgba(99,102,241,0.25)', { borderRadius: '50%' })],
+          ['tone-dark', 'Dark block', ruleIcon(14, 9, '#0a0a14', { border: '1px solid rgba(255,255,255,0.2)' })], ['tone-medium', 'Mid block', ruleIcon(14, 9, '#2d2d4e')], ['tone-light', 'Light block', ruleIcon(14, 9, 'rgba(255,255,255,0.15)')], ['tone-accent', 'Accent block', ruleIcon(14, 9, 'rgba(99,102,241,0.3)')],
+        ].map(([id, label, icon]) => ({ label, icon, action: () => addNonobjectiveElement(id) })),
+      ] },
+      { label: 'Modular grid', icon: <LayoutGrid size={14} />, title: 'Boxes in rows and columns', items: [
+        ['2 × 2 squares', 'rect', 2, 2, 16], ['3 × 2 rectangles', 'rect', 3, 2, 12], ['4 × 3 rectangles', 'rect', 4, 3, 8],
+        ['3 × 3 circles', 'circle', 3, 3, 12], ['4 × 2 cards', 'rounded-rect', 4, 2, 10], ['6 × 1 strip', 'rect', 6, 1, 8],
+      ].map(([label, shape, cols, rows, gap]) => ({ label, action: () => addModularGrid(shape, cols, rows, gap) })) },
+      { label: 'Draw', icon: <Pencil size={14} />, title: 'Draw freehand on the slide (Esc to stop)', keywords: 'pen freehand ink', action: () => { stopEditingElement(); setSelectedElementIds([]); setDrawTool({ color: '#ffffff', strokeWidth: 3, opacity: 1, smooth: true }) } },
+    ] },
+    { heading: 'Interactive', docs: 'interactive-slides', items: [
+      { label: 'Tabs', icon: glyph('⎕'), title: 'Tabs that switch between panels when presenting', items: [2, 3, 4].map(n => ({ label: `${n} tabs`, action: () => addTabs(n) })) },
+      { label: 'Hotspot', icon: glyph('ⓘ'), title: 'A marker that shows a card while the pointer is over it', action: addHotspot },
+      { label: 'Flip card', icon: glyph('↻'), title: 'A card that turns over when clicked', action: () => addStatePreset(buildFlipCard, 0) },
+      { label: 'Quiz', icon: glyph('✓'), title: 'A question with answers that turn green or red when clicked', action: () => addStatePreset(buildQuiz, 1) },
+      { label: 'Timeline', icon: <Clock size={14} />, title: 'Dates and events', action: addTimelineElement },
+    ] },
+    { heading: 'Embed', docs: 'html-embeds', items: [
+      { label: 'HTML', icon: <FileCode size={14} />, action: addHtmlElement },
+      { label: 'D3', icon: <FileCode size={14} />, keywords: 'd3.js chart', action: addD3Element },
+      { label: 'p5.js', icon: <Code2 size={14} />, keywords: 'sketch processing', action: addP5Element },
+      { label: 'anime.js', icon: glyph('✨'), keywords: 'animation', action: () => setShowAnimeModal(true) },
+      { label: 'three.js', icon: glyph('▲'), keywords: '3d', action: () => setShowThreeModal(true) },
+    ] },
+    (pluginTypes.length > 0 || (isCloud && !guest)) && { heading: 'Plugins', docs: 'plugins', items: [
+      ...pluginTypes.map(pt => ({ label: pt.label, icon: <Puzzle size={14} />, action: () => addPluginElement(pt.type) })),
+      isCloud && !guest && { label: 'Browse plugins…', icon: <Search size={14} />, action: () => setShowPluginBrowser(true) },
+    ].filter(Boolean) },
+  ].filter(Boolean)
+  const scienceItems = [
+    { label: 'Graph', icon: <ChartSpline size={14} />, title: 'Functions, curves, regions and fields', keywords: 'plot chart function', action: addGraph },
+    { label: '3D graph', icon: <ChartSpline size={14} />, title: 'Surfaces, curves and points in 3D, to turn while presenting', keywords: 'surface plot', action: addGraph3d },
+    { label: 'Diagram', icon: glyph('▦'), title: 'Boxes and arrows', keywords: 'flowchart', action: () => setShowDiagramModal(true) },
+    { label: 'TikZ diagram', icon: glyph('⬡'), keywords: 'latex', action: () => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() }) },
+    { label: 'Feynman diagram', icon: <Atom size={14} />, title: 'Particle physics diagrams that build up line by line', keywords: 'particle physics', action: addFeynman },
+    { label: 'Circuit', icon: <CircuitBoard size={14} />, title: 'Circuit schematics, solved to show currents and meter readings', keywords: 'electronics circuitikz', action: addCircuit },
+    { label: 'Logic gates', icon: <Binary size={14} />, title: 'Gates, latches and flip-flops, simulated step by step', keywords: 'digital truth table', action: addLogic },
+    { label: 'Free-body diagram', icon: <ArrowDownToDot size={14} />, title: 'A body and the forces on it', keywords: 'forces physics mechanics', action: addFreebody },
+    { label: 'Venn diagram', icon: <Blend size={14} />, title: 'Sets shaded from an expression or by clicking regions', keywords: 'sets', action: addVenn },
+    { label: 'Timing diagram', icon: <Activity size={14} />, title: 'Clock, signal and bus waveforms', keywords: 'wavedrom waveform', action: addTiming },
+    { label: 'Geometry', icon: <DraftingCompass size={14} />, title: 'Ruler-and-compass constructions', keywords: 'construction geogebra', action: addGeometry },
+    { label: 'Molecule', icon: <FlaskConical size={14} />, title: 'A 3D structure from PubChem, the Protein Data Bank or a file', keywords: 'chemistry protein', action: addMolecule },
+    { label: 'Periodic table', icon: <Grid3x3 size={14} />, title: 'Point at an element to see its details', keywords: 'chemistry elements', action: addPeriodic },
+    { label: 'Spherical harmonics', icon: <Globe size={14} />, title: 'Lobes, a colored sphere, a sky map or the ℓ, m table', keywords: 'quantum orbitals', action: addHarmonics },
+  ]
+  // A group's items as menu items (sub-items as a submenu)
+  const asMenuItems = items => items.map(item => ({ label: item.label, title: item.title, keywords: item.keywords, ...(item.items ? { items: asMenuItems(item.items) } : { action: item.action }) }))
+
+  // ── What's selected, for the toolbar and the menus ───────────────────────
+  const selectedEls = (currentSlide?.elements || []).filter(el => selectedElementIds.includes(el.id))
+  const singleEl = selectedEls.length === 1 ? selectedEls[0] : null
+  const toolbarSelection = {
+    count: selectedEls.length,
+    image: singleEl?.type === 'image' && !singleEl.locked,
+    editLabel: singleEl && !singleEl.locked ? editLabelFor(singleEl.type) : null,
+    canUngroup: selectedEls.some(el => el.groupId),
+  }
+  const selectionCommand = name => {
+    if (name === 'crop' || name === 'edit') { if (singleEl) askCanvas(name, singleEl.id) }
+    else elementCommand(name, singleEl?.id)
+  }
+  // The text the Format menu formats: the text being edited, or a selected
+  // text box as a whole
+  const textTarget = editingElementId ? editor : boxEditor
+  const selectedTexts = selectedEls.filter(el => el.type === 'text')
+  const textCommand = run => () => { if (textTarget) run(textTarget.chain().focus()).run() }
+  const markCommand = (key, toggle) => () => {
+    if (textTarget) textTarget.chain().focus()[toggle]().run()
+    else formatSelectedText(key)
+  }
+  // Edit › Cut, Copy, Paste…: the text's while it's being edited, else the elements'
+  const editCommand = name => {
+    if (editingElementId && editor) {
+      if (name === 'cut' || name === 'copy') { try { document.execCommand(name) } catch { /* refused */ } return }
+      if (name === 'paste') {
+        navigator.clipboard?.readText?.()
+          .then(text => { if (text) editor.chain().focus().insertContent(textToHtml(text)).run() })
+          .catch(() => showNotice(`To paste, press ${keyLabel('Mod+V')}`))
+        return
+      }
+      if (name === 'select-all') { editor.chain().focus().selectAll().run(); return }
+      if (name === 'delete') { editor.chain().focus().deleteSelection().run(); return }
+    }
+    if (name === 'select-all') canvasCommand('select-all')
+    else elementCommand(name, singleEl?.id)
+  }
+  const addGuide = guide => setGuides(prev => {
+    const next = [...prev, guide]
+    setPresentation(p => p ? { ...p, guides: next } : p)
+    return next
+  })
+  const clearGuides = () => { setGuides([]); setPresentation(p => p ? { ...p, guides: [] } : p) }
+  const openHistory = async () => {
+    setSnapshots(await api.getSnapshots(presentationId))
+    setShowHistoryModal(true)
+  }
+  const openFiles = async () => {
+    setShowFileBrowser(true)
+    setFileBrowserLoading(true)
+    try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
+    catch { setFileBrowserFiles([]) }
+    setFileBrowserLoading(false)
+  }
+  const annotationSets = isTemplate ? [] : recentAnnotationSets(presentation)
+  const editing = !!editingElementId
+  const anySelected = selectedEls.length > 0
+
+  // Tools › Sync (the owner's)
   const syncItems = [
     { label: 'GitHub', icon: <Github size={13} />, action: () => setShowGithubModal(true) },
     ZENODO_ENABLED && {
@@ -3095,34 +3270,145 @@ function draw() {
       },
     },
   ].filter(Boolean)
-  const headerTools = [
-    { key: 'settings', label: 'Settings', icon: <Settings size={14} />, title: 'Default slide settings', onClick: () => setShowDefaultSettings(true) },
-    { key: 'citations', label: 'Citations', icon: <FileText size={14} />, title: 'Bibliography & Citations', badge: (presentation.bibliography || []).length, onClick: () => setShowBibliographyModal(true) },
-    { key: 'find', label: 'Find', icon: <Search size={14} />, title: 'Find & Replace (Ctrl+F)', onClick: () => setShowFindReplace(v => !v) },
-    { key: 'timeline', label: 'Timeline', icon: <Clock size={14} />, title: 'Animation Timeline', active: showTimeline, onClick: () => setShowTimeline(v => !v) },
-    shareItems.length > 0 && { key: 'share', label: 'Share', icon: <Share2 size={14} />, title: 'Share link and editors', items: shareItems },
-    { key: 'export', label: 'Export', icon: <Download size={14} />, title: 'Export', items: exportItems },
-    {
-      key: 'history', label: 'History', icon: <History size={14} />, title: 'Version History',
-      onClick: async () => {
-        const snaps = await api.getSnapshots(presentationId)
-        setSnapshots(snaps)
-        setShowHistoryModal(true)
-      },
-    },
-    {
-      key: 'files', label: 'Files', icon: <Layers size={14} />, title: 'Browse uploaded files',
-      onClick: async () => {
-        setShowFileBrowser(true)
-        setFileBrowserLoading(true)
-        try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
-        catch { setFileBrowserFiles([]) }
-        setFileBrowserLoading(false)
-      },
-    },
-    { key: 'data', label: 'Data', icon: <Database size={14} />, title: 'Manage datasets', onClick: () => setShowDatasetPanel(true) },
-    !guest && !isEditor && { key: 'sync', label: 'Sync', icon: <CloudUpload size={14} />, title: 'Sync options', chevron: true, items: syncItems },
-  ].filter(Boolean)
+
+  // ── The menu bar (components/MenuBar.jsx) ────────────────────────────────
+  const menus = [
+    { key: 'file', label: 'File', items: [
+      { label: 'Import', items: [
+        !guest && { label: 'PowerPoint (.pptx)…', action: importPptx },
+        { label: 'PDF pages…', action: importPdfPages },
+        { label: 'LaTeX Beamer…', action: () => setShowBeamerModal(true) },
+        { label: 'Slides from another presentation…', action: () => setShowImportSlideModal(true) },
+      ] },
+      { label: 'Export', items: [
+        { label: 'PDF', action: () => exportPDF(presentation) },
+        { label: 'PowerPoint (.pptx)', action: () => exportToPptx(presentation) },
+        { label: 'HTML', action: () => downloadHTML(presentation) },
+        { label: 'This slide as HTML', action: () => downloadSlideHTML(presentation, currentSlideIndex) },
+        { label: 'Offline HTML', title: 'One file that presents without a connection', action: () => downloadOfflineHTML(presentation) },
+        annotationSets.length > 0 && { label: 'With annotations…', action: () => setShowSessions(true) },
+      ] },
+      '-',
+      { label: 'Version history…', action: openHistory },
+      { label: 'Files…', title: 'Files uploaded to this presentation', action: openFiles },
+      '-',
+      { label: 'Deck settings…', title: 'Font, theme, transition, size, footer and more, for the whole presentation', action: () => setShowDefaultSettings(true) },
+    ] },
+    { key: 'edit', label: 'Edit', items: [
+      { label: 'Undo', shortcut: 'Mod+Z', action: editing && editor ? () => editor.chain().focus().undo().run() : doUndo, disabled: !editing && !canUndo() },
+      { label: 'Redo', shortcut: 'Mod+Y', action: editing && editor ? () => editor.chain().focus().redo().run() : doRedo, disabled: !editing && !canRedo() },
+      '-',
+      { label: 'Cut', shortcut: 'Mod+X', action: () => editCommand('cut'), disabled: !editing && !anySelected },
+      { label: 'Copy', shortcut: 'Mod+C', action: () => editCommand('copy'), disabled: !editing && !anySelected },
+      { label: 'Paste', shortcut: 'Mod+V', action: () => editCommand('paste') },
+      { label: 'Duplicate', shortcut: 'Mod+D', action: () => editCommand('duplicate'), disabled: editing || !anySelected },
+      { label: 'Delete', shortcut: 'Delete', action: () => editCommand('delete'), disabled: !editing && !anySelected },
+      '-',
+      { label: 'Select all', shortcut: 'Mod+A', action: () => editCommand('select-all') },
+      '-',
+      { label: 'Find and replace', shortcut: 'Mod+F', action: () => setShowFindReplace(true) },
+    ] },
+    { key: 'view', label: 'View', items: [
+      { label: 'Slides', radio: true, checked: leftView === 'slides', action: () => chooseLeftView('slides') },
+      { label: 'Outline', radio: true, checked: leftView === 'outline', action: () => chooseLeftView('outline') },
+      '-',
+      { label: 'Grid', checked: showGrid, action: () => setShowGrid(v => !v) },
+      { label: 'Grid size', items: [10, 20, 40, 80].map(size => ({ label: `${size} px`, radio: true, checked: gridSize === size, action: () => { setGridSize(size); setPresentation(prev => prev ? { ...prev, gridSize: size } : prev) } })) },
+      { label: 'Rulers', checked: showRulers, action: () => setShowRulers(v => !v) },
+      { label: 'Guides', items: [
+        { label: 'Smart guides', title: 'Lines that show when something lines up with the slide or another element', checked: smartGuidesEnabled, action: () => setSmartGuidesEnabled(v => !v) },
+        '-',
+        { label: 'Add horizontal guide', action: () => { setShowRulers(true); addGuide({ axis: 'y', position: Math.round(slideH / 2) }) } },
+        { label: 'Add vertical guide', action: () => { setShowRulers(true); addGuide({ axis: 'x', position: Math.round(slideW / 2) }) } },
+        { label: 'Remove all guides', action: clearGuides, disabled: !guides.length },
+      ] },
+      '-',
+      { label: 'Animation timeline', checked: showTimeline, action: () => setShowTimeline(v => !v) },
+      onThemeChange && '-',
+      onThemeChange && { label: 'Editor theme', items: [
+        { label: 'Light', radio: true, checked: theme === 'light', action: () => onThemeChange('light') },
+        { label: 'Dark', radio: true, checked: theme === 'dark', action: () => onThemeChange('dark') },
+      ] },
+    ] },
+    { key: 'insert', label: 'Insert', items: [
+      { label: 'Text box', action: addTextElement },
+      { label: 'Image', items: [
+        { label: 'Upload image…', action: uploadImage },
+        { label: 'Image from URL…', action: imageFromUrl },
+      ] },
+      { label: 'Shape…', action: () => { stopEditingElement(); setSelectedElementIds([]); askToolbar('shape') } },
+      { label: 'Table…', action: () => { stopEditingElement(); setSelectedElementIds([]); askToolbar('table') } },
+      '-',
+      ...insertGroups.map(group => ({ label: group.heading, items: asMenuItems(group.items) })),
+      '-',
+      { label: 'Science', items: asMenuItems(scienceItems) },
+    ] },
+    { key: 'format', label: 'Format', items: [
+      { label: 'Text', items: [
+        { label: 'Bold', shortcut: 'Mod+B', action: markCommand('b', 'toggleBold'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Italic', shortcut: 'Mod+I', action: markCommand('i', 'toggleItalic'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Underline', shortcut: 'Mod+U', action: markCommand('u', 'toggleUnderline'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Strikethrough', action: textCommand(c => c.toggleStrike()), disabled: !textTarget },
+        { label: 'Inline code', action: textCommand(c => c.toggleCode()), disabled: !textTarget },
+      ] },
+      { label: 'Alignment', items: [
+        { label: 'Left', action: textCommand(c => c.setTextAlign('left')), disabled: !textTarget },
+        { label: 'Center', action: textCommand(c => c.setTextAlign('center')), disabled: !textTarget },
+        { label: 'Right', action: textCommand(c => c.setTextAlign('right')), disabled: !textTarget },
+      ] },
+      { label: 'Lists', items: [
+        { label: 'Bulleted list', action: textCommand(c => c.toggleBulletList()), disabled: !textTarget },
+        { label: 'Numbered list', action: textCommand(c => c.toggleOrderedList()), disabled: !textTarget },
+      ] },
+      { label: 'Clear formatting', action: textCommand(c => c.clearNodes().unsetAllMarks()), disabled: !textTarget },
+      '-',
+      { label: 'Arrange', items: [
+        ['front', 'Bring to front'], ['forward', 'Bring forward'], ['backward', 'Send backward'], ['back', 'Send to back'],
+      ].map(([name, label]) => ({ label, action: () => askCanvas(name, singleEl?.id), disabled: !singleEl })) },
+      { label: 'Align and distribute', items: ALIGN_COMMANDS.map(([type, label]) => ({ label, action: () => alignElements(type), disabled: selectedEls.length < 2 })) },
+      { label: 'Group', shortcut: 'Mod+G', action: () => elementCommand('group'), disabled: selectedEls.length < 2 },
+      { label: 'Ungroup', shortcut: 'Mod+Shift+G', action: () => elementCommand('ungroup'), disabled: !toolbarSelection.canUngroup },
+      '-',
+      anySelected && selectedEls.every(el => el.locked)
+        ? { label: 'Unlock', action: () => elementCommand('unlock') }
+        : { label: 'Lock', title: 'Keep it from being moved or resized', action: () => elementCommand('lock'), disabled: !anySelected },
+    ] },
+    { key: 'slide', label: 'Slide', items: [
+      { label: 'New slide', shortcut: 'Mod+M', action: () => addSlideAfter() },
+      { label: 'New slide from a layout…', action: () => { setPendingAddColumn(null); setShowTemplateModal(true) } },
+      { label: 'Duplicate slide', action: () => duplicateSlide(currentSlideIndex), disabled: isViewingReferences },
+      { label: 'Delete slide', action: () => deleteSlide(currentSlideIndex), disabled: isViewingReferences || presentation.slides.length <= 1 },
+      '-',
+      { label: 'Background…', action: () => openBackground(), disabled: isViewingReferences },
+      { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => setInspectorTab('animate') },
+      { label: 'Theme', title: 'The fonts and colors the presentation is shown in', items: THEMES.map(t => ({ label: t.charAt(0).toUpperCase() + t.slice(1), radio: true, checked: (presentation.theme || 'black') === t, action: () => setPresentation(prev => ({ ...prev, theme: t })) })) },
+      { label: 'Footer and page numbers…', action: () => setShowDefaultSettings(true) },
+      '-',
+      { label: 'New vertical section', title: 'A column of slides reached with ↓ when presenting', action: addColumn },
+    ] },
+    { key: 'tools', label: 'Tools', items: [
+      { label: `Citations and bibliography…${(presentation.bibliography || []).length ? ` (${presentation.bibliography.length})` : ''}`, action: () => setShowBibliographyModal(true) },
+      { label: 'Datasets…', action: () => setShowDatasetPanel(true) },
+      '-',
+      (pluginTypes.length > 0 || (isCloud && !guest)) && { label: 'Plugins', items: [
+        ...pluginTypes.map(pt => ({ label: pt.label, action: () => addPluginElement(pt.type) })),
+        pluginTypes.length > 0 && isCloud && !guest && '-',
+        isCloud && !guest && { label: 'Browse plugins…', action: () => setShowPluginBrowser(true) },
+      ] },
+      !guest && !isEditor && { label: 'Sync', items: syncItems.map(item => (item.divider ? '-' : { label: `${item.label}…`, action: item.action })) },
+      '-',
+      !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: () => practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) },
+      !isTemplate && (presentation.practiceRuns || []).length > 0 && { label: 'Practice runs…', action: () => setShowPracticeRuns(true) },
+      annotationSets.length > 0 && { label: 'Annotation sessions…', action: () => setShowSessions(true) },
+      shareItems.length > 0 && '-',
+      ...shareItems.map(item => ({ label: item.label.endsWith('…') ? item.label : `${item.label}…`, action: item.action })),
+    ] },
+    { key: 'help', label: 'Help', items: [
+      { label: 'Docs', action: () => { window.location.hash = '#docs' } },
+      { label: 'Keyboard shortcuts', shortcut: 'Mod+/', action: () => setShowShortcuts(true) },
+      { label: 'Search the menus', shortcut: 'Alt+/', action: () => setShowMenuSearch(true) },
+    ] },
+  ]
 
   return (
     <div className="editor-page" style={{ position: 'relative' }}>
@@ -3162,7 +3448,9 @@ function draw() {
           value={presentation.title || ''}
           onChange={e => setPresentation(prev => ({ ...prev, title: e.target.value }))}
           placeholder={isTemplate ? 'Untitled Template' : 'Untitled Presentation'}
+          aria-label="Title"
         />
+        <MenuBar menus={menus} />
         <div className="header-controls">
           {live?.synced && (live.status !== 'connected'
             ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
@@ -3194,10 +3482,6 @@ function draw() {
             </div>
           )}
 
-          <HeaderTools tools={headerTools} />
-          <button className="btn btn-secondary" onClick={() => setShowShortcuts(true)} title={`Keyboard shortcuts (${keyLabel('Mod+/')})`} aria-label="Keyboard shortcuts" style={{ padding: '6px 8px' }}>
-            <Keyboard size={14} />
-          </button>
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
@@ -3348,13 +3632,13 @@ function draw() {
         </div>
       </div>
 
-      {/* Default Settings Modal */}
+      {/* Deck settings */}
       {showDefaultSettings && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowDefaultSettings(false) }}>
           <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Default Settings</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Deck settings</h2>
               <button onClick={() => setShowDefaultSettings(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
             </div>
 
@@ -3441,8 +3725,8 @@ function draw() {
 
               {/* Theme */}
               <div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Background</div>
-                <select className="prop-input" value={presentation.theme || 'black'}
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Theme</div>
+                <select className="prop-input" value={presentation.theme || 'black'} aria-label="Theme"
                   onChange={e => setPresentation(prev => ({ ...prev, theme: e.target.value }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
                   {THEMES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
@@ -4473,7 +4757,6 @@ function draw() {
           onMoveMultiple={moveSlides}
           onAdd={(colNum) => { setPendingAddColumn(colNum ?? null); setShowTemplateModal(true) }}
           onAddColumn={addColumn}
-          onImport={() => setShowImportSlideModal(true)}
           onDelete={deleteSlide}
           onDeleteMultiple={deleteSlides}
           onNewSlideAfter={addSlideAfter}
@@ -4493,120 +4776,31 @@ function draw() {
           <Toolbar
             editor={editingElementId ? editor : boxEditor}
             wholeBox={!editingElementId && !!boxEditor}
-            bgRequest={bgRequest}
             editingElementId={editingElementId}
-            showGrid={showGrid}
-            onToggleGrid={() => setShowGrid(v => !v)}
-            gridSize={gridSize}
-            onGridSizeChange={(v) => { setGridSize(v); setPresentation(prev => prev ? { ...prev, gridSize: v } : prev) }}
-            onAddText={addTextElement}
-            onAddTextPath={addTextPathElement}
-            onAddText3d={addText3dElement}
-            onAddImage={() => {
-              const url = window.prompt('Image URL:')
-              if (url) addImageElement(url)
-            }}
-            onAddImageUpload={async (file) => {
-              try {
-                const result = await api.uploadFile(file)
-                if (result.url) addImageElement(result.url)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-
-            onAddShape={addShapeElement}
-            onAddNonobjective={addNonobjectiveElement}
-            onAddModularGrid={addModularGrid}
-            onAddHtml={addHtmlElement}
-            onAddD3={addD3Element}
-            onAddKineticText={() => setShowKineticModal(true)}
-            onAddMathGrid={() => setShowMathGridModal(true)}
-            onAddTabs={addTabs}
-            onAddHotspot={addHotspot}
-            onAddFlipCard={() => addStatePreset(buildFlipCard, 0)}
-            onAddQuiz={() => addStatePreset(buildQuiz, 1)}
-            onAddAnime={() => setShowAnimeModal(true)}
-            onAddThree={() => setShowThreeModal(true)}
-            onAddGraph={addGraph}
-            onAddGraph3d={addGraph3d}
-            onAddDiagram={() => setShowDiagramModal(true)}
-            onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
-            onAddP5={addP5Element}
-            onAddCode={addCodeElement}
-            onAddLatex={addLatexElement}
-            onAddEquation={addEquation}
-            onAddFeynman={addFeynman}
-            onAddCircuit={addCircuit}
-            onAddLogic={addLogic}
-            onAddFreebody={addFreebody}
-            onAddVenn={addVenn}
-            onAddTiming={addTiming}
-            onAddGeometry={addGeometry}
-            onAddMolecule={addMolecule}
-            onAddPeriodic={addPeriodic}
-            onAddHarmonics={addHarmonics}
-            onAddMarkdown={addMarkdownElement}
-            onAddTimeline={addTimelineElement}
-            onAddCallout={addCalloutElement}
-            onAddIcon={addIconElement}
-            onAddVideo={addVideoElement}
-            onAddVideoUpload={async (file) => {
-              try {
-                const result = await api.uploadFileToPresentation(presentation.id, file)
-                if (result.url) addVideoElement(result.url)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-            onAddAudio={addAudioElement}
-            onAddModelUpload={async (file) => {
-              if (!isModelFile(file.name)) { alert('3D models can be STL or GLB files.'); return }
-              try {
-                const result = await api.uploadFileToPresentation(presentation.id, file)
-                if (result.url) addModelElement(result.url, file.name)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-            onAddTable={addTableElement}
-            pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
-            onAddPluginElement={addPluginElement}
-            onBrowsePlugins={isCloud && !guest ? () => setShowPluginBrowser(true) : undefined}
-            selectedCount={selectedElementIds.length}
-            onAlignElements={alignElements}
-            smartGuidesEnabled={smartGuidesEnabled}
-            onToggleSmartGuides={() => setSmartGuidesEnabled(v => !v)}
-            slide={currentSlide}
-            slides={presentation.slides}
-            onUpdateSlide={updateCurrentSlide}
-            onGroupElements={groupElements}
-            onUngroupElements={ungroupElements}
-            showRulers={showRulers}
-            onToggleRulers={() => setShowRulers(v => !v)}
-            guides={guides}
-            onAddGuide={(guide) => {
-              setGuides(prev => {
-                const next = [...prev, guide]
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onRemoveGuide={(idx) => {
-              setGuides(prev => {
-                const next = prev.filter((_, i) => i !== idx)
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onUpdateGuide={(idx, pos) => {
-              setGuides(prev => {
-                const next = prev.map((g, i) => i === idx ? { ...g, position: pos } : g)
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onImportPptx={guest ? undefined : handleImportPptx}
-            drawTool={drawTool}
-            onSetDrawTool={setDrawTool}
+            request={toolbarRequest}
             onUndo={doUndo}
             onRedo={doRedo}
             canUndo={canUndo()}
             canRedo={canRedo()}
+            onNewSlide={() => addSlideAfter()}
+            onNewSlideFromLayout={() => { setPendingAddColumn(null); setShowTemplateModal(true) }}
+            onAddText={addTextElement}
+            onAddImage={imageFromUrl}
+            onUploadImage={uploadImage}
+            onAddShape={addShapeElement}
+            onAddIcon={addIconElement}
+            onAddCallout={() => addCalloutElement()}
+            onAddTable={addTableElement}
+            insertGroups={insertGroups}
+            scienceItems={scienceItems}
+            selection={toolbarSelection}
+            onSelectionCommand={selectionCommand}
+            onAlignElements={alignElements}
+            slide={isViewingReferences ? null : currentSlide}
+            slides={presentation.slides}
+            onUpdateSlide={updateCurrentSlide}
+            drawTool={drawTool}
+            onSetDrawTool={setDrawTool}
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
           />
@@ -4761,6 +4955,7 @@ function draw() {
               onStartEdit={startEditingElement}
               onElementCommand={elementCommand}
               onCanvasCommand={canvasCommand}
+              request={canvasRequest}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -4794,6 +4989,9 @@ function draw() {
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
             />}
           </div>
+          {!isViewingReferences && currentSlide && (
+            <NotesStrip notes={currentSlide.notes || ''} onChange={notes => updateCurrentSlide({ notes })} slideNumber={currentSlideIndex + 1} />
+          )}
         </div>
 
         <PropertiesPanel
@@ -4841,6 +5039,8 @@ function draw() {
           onCloseMathNode={() => { setActiveMathNode(null); mathNodeUpdateRef.current = null }}
           onPreviewSlide={() => previewSlideInWindow(presentation, currentSlideIndex)}
           currentSlideIndex={currentSlideIndex}
+          tab={inspectorTab}
+          onTabChange={setInspectorTab}
         />
 
       {/* HTML / D3 Code Editor Modal */}
@@ -5400,6 +5600,16 @@ function draw() {
       )}
 
       {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
+      {showMenuSearch && <MenuSearch menus={menus} onClose={() => setShowMenuSearch(false)} />}
+      {pdfPages && (
+        <PdfPagesModal pages={pdfPages} onClose={() => setPdfPages(null)}
+          onInsert={async files => {
+            for (const file of files) {
+              try { const result = await api.uploadFile(file); if (result.url) addImageElement(result.url) }
+              catch (err) { showNotice(`A page couldn’t be uploaded: ${err.message}`); return }
+            }
+          }} />
+      )}
 
       {showTemplateModal && (
         <div className="modal-overlay" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>

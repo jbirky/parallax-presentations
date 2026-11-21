@@ -6,8 +6,8 @@ This tutorial is a deep dive into writing mathematical notation and diagrams in 
 
 A **LaTeX block** is a dedicated slide element for display math and diagrams.
 
-1. Right-click anywhere on the slide canvas.
-2. Choose **Insert → LaTeX** from the context menu.
+1. Open **Insert** in the toolbar.
+2. Under **Math and code**, choose **LaTeX and TikZ**.
 3. A LaTeX element is placed on the slide and the **LaTeX editor panel** opens on the right side.
 4. The panel has two panes: the left pane is the editor, the right pane is a live preview.
 

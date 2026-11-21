@@ -4,7 +4,7 @@ Bring a Beamer talk into Parallax, or write frames in Beamer and get slides. Eac
 
 ## Adding slides to a presentation
 
-1. Click **Import Slide** under the slide list, then **From LaTeX Beamer**.
+1. Choose **File › Import › LaTeX Beamer…**.
 2. Type or paste Beamer source on the left: a whole document, or just some frames. The slides appear on the right as you type. **Start from an example** fills in a short talk to try.
 3. Click a frame to leave it out, or **Select none** and pick the ones you want.
 4. Click **Add slides**. They go in after the slide you're on.

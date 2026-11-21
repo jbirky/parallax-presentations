@@ -66,7 +66,7 @@ Push your presentations to a **GitHub repository** and host them for free with *
 
 ### Setting up GitHub
 
-1. Open any presentation and click the **GitHub** button in the top toolbar.
+1. Open any presentation and choose **Tools › Sync › GitHub…**.
 2. Enter your **repository owner** (your username or org) and **repository name**.
 3. Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope and paste it into the token field.
 4. Optionally set a **Pages URL** if you use a custom domain (e.g. `https://yoursite.com/presentations`). If left blank, it defaults to `https://<owner>.github.io/<repo>`.
@@ -102,7 +102,7 @@ If you have multiple presentations in one repo, they each get their own folder. 
 
 Parallax can also pull commit history from GitHub to browse and restore previous versions of a presentation:
 
-- Click the **History** button (clock icon) in the editor toolbar.
+- Choose **File › Version history…** in the editor.
 - Browse past commits with timestamps and messages.
 - Click any version to preview it, and restore it if needed.
 

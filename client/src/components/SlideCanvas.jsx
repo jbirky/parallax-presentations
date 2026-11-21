@@ -259,7 +259,13 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand }) {
+// What Edit… is called on an element that opens in an editor, or null
+const EDIT_LABELS = { html: 'Edit HTML', code: 'Edit code', latex: 'Edit LaTeX', graph: 'Edit graph', equation: 'Edit equation', circuit: 'Edit circuit', geometry: 'Edit construction', p5: 'Edit sketch', tikz: 'Edit diagram', feynman: 'Edit diagram', logic: 'Edit diagram', freebody: 'Edit diagram', venn: 'Edit diagram', timing: 'Edit diagram' }
+export function editLabelFor(type) {
+  return EDIT_LABELS[type] || null
+}
+
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -803,6 +809,19 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     setContextMenu(null)
   }, [slide, onUpdateElements])
 
+  // The toolbar or a menu asking for what the right-click menu does: Crop,
+  // Edit, or a layer move, for the element `request.id`
+  const requestSeen = useRef(request?.n ?? 0)
+  useEffect(() => {
+    if (!request || request.n === requestSeen.current) return
+    requestSeen.current = request.n
+    const element = slide?.elements?.find(el => el.id === request.id)
+    if (!element) return
+    if (request.name === 'crop' && element.type === 'image') startCrop(element.id)
+    else if (request.name === 'edit') openElement(element)
+    else if (['front', 'forward', 'backward', 'back'].includes(request.name)) reorderElement(element.id, request.name)
+  }, [request?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // File drop on canvas
   const onDragOver = (e) => {
     if (!e.dataTransfer.types.includes('Files')) return
@@ -1328,7 +1347,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           width: el.imageW, height: el.imageH,
           imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null, crop: null,
         })
-        const editLabel = { text: 'Edit text', textpath: 'Edit text', html: 'Edit HTML', code: 'Edit code', latex: 'Edit LaTeX', graph: 'Edit graph', equation: 'Edit equation', circuit: 'Edit circuit', geometry: 'Edit construction', p5: 'Edit sketch' }[el.type] || 'Edit diagram'
+        const editLabel = el.type === 'text' || el.type === 'textpath' ? 'Edit text' : editLabelFor(el.type)
         const canOpen = el.type === 'text' || el.type === 'textpath' || !!openers[el.type]
         return (
           <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={closeMenus} label="Element" items={[

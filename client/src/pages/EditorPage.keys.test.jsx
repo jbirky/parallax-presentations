@@ -73,4 +73,34 @@ describe('keys on the slide', () => {
     await press('a', { ctrlKey: true })
     expect(onCanvas().every(d => d.style.outline.includes('solid'))).toBe(true)
   })
+
+  it('searches the menus with Alt+/, and runs the command found', async () => {
+    await open()
+    await press('/', { altKey: true, code: 'Slash' })
+    const input = document.querySelector('input[aria-label="Search the menus"]')
+    expect(input).toBeTruthy()
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'new slide')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(document.querySelector('[role=option]').textContent).toMatch(/^New slideSlide(Ctrl\+M|⌘M)$/)
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(thumbs()).toEqual([false, true, false])
+    expect(document.querySelector('input[aria-label="Search the menus"]')).toBeNull()
+  })
+
+  it('writes speaker notes in the strip under the slide', async () => {
+    await open()
+    await act(async () => el.querySelector('.notes-strip-empty').click())
+    const notes = el.querySelector('textarea[aria-label="Speaker notes for slide 1"]')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(notes, 'Welcome everyone')
+      notes.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    // To slide 2, which has none, and back
+    await act(async () => el.querySelectorAll('.slide-item')[1].click())
+    expect(el.querySelector('.notes-strip-empty')).toBeTruthy()
+    await act(async () => el.querySelectorAll('.slide-item')[0].click())
+    expect(el.querySelector('textarea[aria-label="Speaker notes for slide 1"]').value).toBe('Welcome everyone')
+  })
 })

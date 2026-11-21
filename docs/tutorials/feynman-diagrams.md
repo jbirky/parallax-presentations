@@ -4,7 +4,7 @@ Draw Feynman diagrams from vertices and propagator lines, build them up one line
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Feynman Diagram**.
+1. Open **Science** in the toolbar and click **Feynman diagram**.
 2. The editor opens with e⁺e⁻ → μ⁺μ⁻ drawn. Change it, pick another process from **Start from…**, or choose **Blank**.
 3. Click **Insert**.
 

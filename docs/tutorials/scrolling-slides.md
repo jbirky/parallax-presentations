@@ -5,7 +5,7 @@ A slide is normally one screen. Give it a taller or wider canvas and it becomes 
 ## Making a slide scroll
 
 1. Click an empty part of the canvas so no element is selected.
-2. In the **Properties** panel on the right, open **Scrolling**.
+2. In the inspector on the right, open the **Slide** tab, then **Advanced**, then **Scrolling**.
 3. Choose **↓ Down** or **→ Sideways**.
 4. Pick how long the canvas is: **1.5×**, **2×** or **3×** the screen, or type a height (or width) in pixels and press `Enter` (up to 8 screens).
 

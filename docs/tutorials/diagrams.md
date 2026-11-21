@@ -4,7 +4,7 @@ The diagram editor lets you create flowcharts, system diagrams, and other schema
 
 ## Opening the diagram editor
 
-1. Click the **Diagrams** dropdown in the toolbar.
+1. Open **Science** in the toolbar (or **Insert › Science** in the menu bar).
 2. Select **Diagram**.
 
 The same menu has the other diagram tools:

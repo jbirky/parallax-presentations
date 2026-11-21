@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
+// The toolbar: one row of the basics, as in Google Slides. Undo and Redo, New
+// slide, then Text box, Image, Shape, Table, Insert (everything else, in
+// groups) and Science (Parallax's own elements), then what the selection
+// offers (Crop, Edit, Align) and the slide's Background. While a text box is
+// selected or being edited, its formatting tools take the place of the
+// insert tools.
+
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { slideHref, slideIdFromHref, slideLabel } from '../utils/clickActions'
-import { api } from '../utils/api'
+import { keyLabel } from '../utils/shortcuts'
+import BackgroundEditor, { BackgroundSwatch } from './BackgroundEditor'
 import {
   Undo2, Redo2,
   Pencil,
@@ -15,50 +23,31 @@ import {
   Image,
   Type,
   RemoveFormatting,
-  Type as TypeIcon,
-  Image as ImageIcon,
   Upload,
-  Grid,
-  Columns3,
-  Minus,
   Shapes,
-  Video,
-  Music,
   Table2,
-  Magnet,
   Highlighter,
-  Ruler,
   Group,
   Ungroup,
-  FileText,
   HelpCircle,
-  Puzzle,
-  Search,
-  Clock,
-  MousePointerClick,
-  Box,
-  ChartSpline,
-  Atom,
-  Waypoints,
-  CircuitBoard,
-  Binary,
-  ArrowDownToDot,
-  Blend,
-  Activity,
-  FlaskConical,
-  Grid3x3,
-  DraftingCompass,
-  Globe,
   Check,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  Crop,
+  ImageUp,
+  FlaskConical,
+  LayoutGrid,
+  AlignHorizontalSpaceAround,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
-import { libUrl, localizeLibraries } from '../utils/libraries'
 
 const DOCS_BASE = '/#docs/tutorials/'
 const DocsLink = ({ page, onClose }) => (
   <>
     <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-    <a href={`${DOCS_BASE}${page}`} target="_blank" rel="noopener noreferrer" onClick={() => onClose?.()} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 12px', background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textAlign: 'left', textDecoration: 'none' }} onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)' }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)' }}>
+    <a href={`${DOCS_BASE}${page}`} target="_blank" rel="noopener noreferrer" onClick={() => onClose?.()} className="tool-menu-docs">
       <HelpCircle size={12} /> How to use
     </a>
   </>
@@ -72,47 +61,158 @@ const COLOR_PALETTE = [
   '#d8b4fe','#c084fc','#a855f7','#7c3aed','#f5d0fe','#f0abfc','#e879f9','#d946ef',
 ]
 
-const COLOR_SWATCHES_BG = [
-  '#1e1e2e', '#0a0a0f', '#1a1a4e', '#0d3349',
-  '#1a3a1a', '#3a1a1a', '#2d1b69', '#000000',
-  '#ffffff', '#f8f9fa', '#4a4a6a', '#6b3fa0'
+const ICON_NAMES = ['Star','Heart','Check','X','AlertTriangle','Info','ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Zap','Target','Award','BookOpen','Briefcase','Calendar','Camera','Cloud','Coffee','Cpu','Database','Eye','Flag','Globe','Home','Key','Layers','Lock','Mail','Map','MessageCircle','Monitor','Moon','Music','Phone','Play','Search','Settings','Shield','Sun','ThumbsUp','ThumbsDown','Trash2','TrendingUp','TrendingDown','User','Users','Wifi','Wrench','Lightbulb','Rocket','Clock','Gift','Link','Clipboard','FileText','Folder','Image','PieChart','BarChart3']
+
+// Narrower than this (px), the toolbar's buttons drop their words
+const COMPACT_BELOW = 800
+
+export const ALIGN_COMMANDS = [
+  ['left', 'Align left'], ['center-h', 'Align centers'], ['right', 'Align right'],
+  ['top', 'Align top'], ['center-v', 'Align middles'], ['bottom', 'Align bottom'],
+  ['distribute-h', 'Distribute horizontally'], ['distribute-v', 'Distribute vertically'],
 ]
 
-const GRADIENT_PRESETS_BG = [
-  'linear-gradient(135deg, #1e1e2e, #4a0e8f)',
-  'linear-gradient(135deg, #0f2027, #203a43, #2c5364)',
-  'linear-gradient(135deg, #360033, #0b8793)',
-  'radial-gradient(ellipse at center, #1e3c72 0%, #2a5298 100%)',
-  'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
-  'linear-gradient(135deg, #2c3e50, #3498db)'
-]
+// A toolbar button with a dropdown under it
+function ToolMenu({ id, open, onToggle, onClose, icon, label, title, width, align = 'left', children }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className={`btn-icon toolbar-labeled ${open ? 'active' : ''}`} title={title || label} aria-label={label}
+        aria-haspopup="true" aria-expanded={open} onClick={() => onToggle(id)}>
+        {icon} <span className="tl-text">{label}</span> <ChevronDown size={11} style={{ opacity: 0.6 }} aria-hidden="true" />
+      </button>
+      {open && (<>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={onClose} />
+        <div className="tool-menu" data-menu={id} onMouseDown={e => e.stopPropagation()}
+          style={{ [align]: 0, ...(width ? { width } : {}) }}>
+          {children}
+        </div>
+      </>)}
+    </div>
+  )
+}
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, onBrowsePlugins, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts, wholeBox = false, bgRequest = 0 }) {
-  const [showTextMenu, setShowTextMenu] = useState(false)
-  const [showImageMenu, setShowImageMenu] = useState(false)
-  const [showEmbedMenu, setShowEmbedMenu] = useState(false)
-  const [showDiagramMenu, setShowDiagramMenu] = useState(false)
-  const [showMediaMenu, setShowMediaMenu] = useState(false)
-  const [showModelMenu, setShowModelMenu] = useState(false)
-  const [showShapeMenu, setShowShapeMenu] = useState(false)
-  const [showLayoutMenu, setShowLayoutMenu] = useState(false)
-  const [showInteractiveMenu, setShowInteractiveMenu] = useState(false)
-  const [showNonobjectiveMenu, setShowNonobjectiveMenu] = useState(false)
-  const [showModularMenu, setShowModularMenu] = useState(false)
+// A rows-by-columns grid: point at the size, click to insert
+export function TablePicker({ onPick, rows = 8, cols = 10 }) {
+  const [size, setSize] = useState([3, 3])
+  const [r, c] = size
+  return (
+    <div>
+      <div role="grid" aria-label="Table size" tabIndex={0} autoFocus
+        onKeyDown={e => {
+          const moves = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] }
+          if (moves[e.key]) {
+            e.preventDefault()
+            setSize(([a, b]) => [Math.max(1, Math.min(rows, a + moves[e.key][0])), Math.max(1, Math.min(cols, b + moves[e.key][1]))])
+          } else if (e.key === 'Enter') { e.preventDefault(); onPick(r, c) }
+        }}
+        style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 16px)`, gap: 3, outline: 'none' }}>
+        {Array.from({ length: rows * cols }, (_, i) => {
+          const row = Math.floor(i / cols) + 1
+          const col = (i % cols) + 1
+          const on = row <= r && col <= c
+          return (
+            <button key={i} type="button" aria-label={`${row} × ${col}`}
+              onMouseEnter={() => setSize([row, col])} onClick={() => onPick(row, col)}
+              style={{ width: 16, height: 16, padding: 0, borderRadius: 2, cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'rgba(99,102,241,0.35)' : 'var(--bg-hover)' }} />
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, textAlign: 'center' }} aria-live="polite">
+        {r} {r === 1 ? 'row' : 'rows'} × {c} {c === 1 ? 'column' : 'columns'}
+      </div>
+    </div>
+  )
+}
+
+// What can be added, in groups under headings, with a search field when
+// asked: [{ heading, docs, items: [{ label, icon, title, keywords, action, items }] }]
+export function InsertList({ groups, onClose, searchable = false }) {
+  const [query, setQuery] = useState('')
+  const [expanded, setExpanded] = useState(null)
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const matches = (item, heading) => words.every(w => `${heading || ''} ${item.label} ${item.keywords || ''}`.toLowerCase().includes(w))
+  const shown = groups.filter(Boolean).map(group => ({
+    ...group,
+    items: group.items.filter(Boolean).flatMap(item => {
+      if (!words.length || matches(item, group.heading)) return [item]
+      const sub = (item.items || []).filter(s => matches(s, `${group.heading} ${item.label}`))
+      return sub.length ? [{ ...item, items: sub }] : []
+    }),
+  })).filter(group => group.items.length)
+  const run = item => { onClose(); item.action() }
+  const first = shown[0]?.items[0]
+
+  return (
+    <div className="insert-list">
+      {searchable && (
+        <div className="insert-search">
+          <Search size={13} aria-hidden="true" />
+          <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" aria-label="Search what to insert"
+            onKeyDown={e => { if (e.key === 'Enter' && first) { e.preventDefault(); first.items ? setExpanded(first.label) : run(first) } }} />
+        </div>
+      )}
+      {shown.map((group, g) => (
+        <div key={group.heading || g} role="group" aria-label={group.heading}>
+          {group.heading && (
+            <div className="insert-heading">
+              <span>{group.heading}</span>
+              {group.docs && (
+                <a href={`${DOCS_BASE}${group.docs}`} target="_blank" rel="noopener noreferrer" onClick={onClose} title={`How to use: ${group.heading}`} aria-label={`How to use: ${group.heading}`}>
+                  <HelpCircle size={11} />
+                </a>
+              )}
+            </div>
+          )}
+          {group.items.map(item => {
+            const open = item.items && (expanded === item.label || words.length > 0)
+            return (
+              <div key={item.label}>
+                <button type="button" className="insert-item" title={item.title} disabled={item.disabled}
+                  aria-expanded={item.items ? !!open : undefined}
+                  onClick={() => (item.items ? setExpanded(open ? null : item.label) : run(item))}>
+                  <span className="insert-icon" aria-hidden="true">{item.icon}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.items && <ChevronRight size={12} style={{ opacity: 0.6, transform: open ? 'rotate(90deg)' : undefined }} aria-hidden="true" />}
+                </button>
+                {open && item.items.map(sub => (
+                  <button key={sub.label} type="button" className="insert-item insert-sub" title={sub.title} onClick={() => run(sub)}>
+                    <span className="insert-icon" aria-hidden="true">{sub.icon}</span>
+                    <span style={{ flex: 1 }}>{sub.label}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+          {!group.heading && group.docs && <DocsLink page={group.docs} onClose={onClose} />}
+        </div>
+      ))}
+      {searchable && !shown.length && <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>Nothing matches “{query.trim()}”.</div>}
+    </div>
+  )
+}
+
+export default function Toolbar({
+  editor, editingElementId, wholeBox = false,
+  onUndo, onRedo, canUndo, canRedo,
+  onNewSlide, onNewSlideFromLayout,
+  onAddText, onAddImage, onUploadImage, onAddShape, onAddIcon, onAddCallout, onAddTable,
+  insertGroups = [], scienceItems = [],
+  selection = null, onSelectionCommand, onAlignElements,
+  slide, slides = [], onUpdateSlide,
+  drawTool, onSetDrawTool,
+  customFonts = [], onManageFonts,
+  request = null,
+}) {
+  // The insert tools' dropdown that's open: 'image', 'shape', 'table',
+  // 'insert', 'science', 'align' or 'background'
+  const [openMenu, setOpenMenu] = useState(null)
+  const toggleMenu = id => setOpenMenu(m => (m === id ? null : id))
+  const closeMenu = () => { setOpenMenu(null); setIconSearch('') }
   const [showTableMenu, setShowTableMenu] = useState(false)
-  const [showPluginMenu, setShowPluginMenu] = useState(false)
   const [showColorPalette, setShowColorPalette] = useState(false)
   const [showHighlightPalette, setShowHighlightPalette] = useState(false)
-  const [showBgMenu, setShowBgMenu] = useState(false)
-  const [showIconPicker, setShowIconPicker] = useState(false)
   const [iconSearch, setIconSearch] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const bgFileRef = useRef(null)
-  const pdfInputRef = useRef(null)
-  const [pdfModal, setPdfModal] = useState(null) // { pages: [{canvas, num}], selected: Set }
-  const [pdfLoading, setPdfLoading] = useState(false)
-  const [pptxLoading, setPptxLoading] = useState(false)
-  const pptxInputRef = useRef(null)
   const [linkModal, setLinkModal] = useState(null)
   const linkInputRef = useRef(null)
   const [showMoreFormat, setShowMoreFormat] = useState(false)
@@ -135,6 +235,41 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     return () => observer.disconnect()
   }, [editing])
 
+  // A narrow toolbar shows its buttons' icons without their words, to stay
+  // one row
+  const [compact, setCompact] = useState(false)
+  useLayoutEffect(() => {
+    const el = toolbarRef.current
+    if (!el) return
+    const measure = () => setCompact(el.clientWidth > 0 && el.clientWidth < COMPACT_BELOW)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // The formatting row: alignment, lists, link, math, table, headings and
+  // clear formatting take what room is left, in that order; the groups that
+  // don't fit are hidden and offered under More
+  const zoneRef = useRef(null)
+  const [hiddenGroups, setHiddenGroups] = useState([])
+  const inLink = !!editor?.isActive?.('link')
+  useLayoutEffect(() => {
+    const zone = zoneRef.current
+    if (!zone) { setHiddenGroups(h => (h.length ? [] : h)); return }
+    const measure = () => {
+      // Wrapped to a second line, or (the first, which never wraps) too wide
+      const hidden = [...zone.children].filter(g => g.offsetTop > 2 || g.offsetLeft + g.offsetWidth > zone.clientWidth + 1).map(g => g.dataset.group)
+      setHiddenGroups(prev => (prev.join() === hidden.join() ? prev : hidden))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(zone)
+    return () => observer.disconnect()
+  }, [editing, wholeBox, inLink])
+
   useEffect(() => {
     if (!showMoreFormat) return
     const close = e => { if (!moreFormatRef.current?.contains(e.target)) setShowMoreFormat(false) }
@@ -142,55 +277,21 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     return () => document.removeEventListener('mousedown', close)
   }, [showMoreFormat])
   useEffect(() => { if (!editing) setShowMoreFormat(false) }, [editing])
+  useEffect(() => { if (editing || drawTool) setOpenMenu(null) }, [editing, drawTool])
   // Undo while editing text undoes the typing; for a selected box (a whole-box
   // stand-in), it's the presentation's
   const textUndo = editing && !wholeBox
 
-  // Background… on a menu opens the background popup
-  useEffect(() => { if (bgRequest) setShowBgMenu(true) }, [bgRequest])
+  // A menu asking for one of the dropdowns: Slide › Background…, Insert › Table…
+  useEffect(() => { if (request?.name) setOpenMenu(request.name) }, [request?.n]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handlePdfUpload(file) {
-    if (!file) return
-    setPdfLoading(true)
-    try {
-      // PDF.js, a module, from this app's copy (server/vendor-libraries.js).
-      // Its legacy build: the modern one calls Map.prototype.getOrInsertComputed
-      // on every page it draws, which the desktop app's Electron and browsers
-      // older than 2025's don't have
-      const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.min.mjs')))
-      pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.worker.min.mjs'))
-      const arrayBuffer = await file.arrayBuffer()
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-      const pages = []
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i)
-        const viewport = page.getViewport({ scale: 2 }) // 2x for quality
-        const canvas = document.createElement('canvas')
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        await page.render({ canvas, viewport }).promise
-        pages.push({ canvas, num: i })
-      }
-      setPdfModal({ pages, selected: new Set([1]) })
-    } catch (e) {
-      alert('Failed to load PDF: ' + e.message)
-    } finally {
-      setPdfLoading(false)
-      if (pdfInputRef.current) pdfInputRef.current.value = ''
-    }
-  }
-
-  async function insertPdfPages() {
-    if (!pdfModal || !onAddImageUpload) return
-    const { pages, selected } = pdfModal
-    setPdfModal(null)
-    for (const { canvas, num } of pages) {
-      if (!selected.has(num)) continue
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'))
-      const f = new File([blob], `pdf-page-${num}.png`, { type: 'image/png' })
-      await onAddImageUpload(f)
-    }
-  }
+  // Escape closes the dropdown, and nothing else
+  useEffect(() => {
+    if (!openMenu) return
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu() } }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [openMenu])
 
   useEffect(() => {
     if (!showColorPalette) return
@@ -205,17 +306,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [showHighlightPalette])
-
-  useEffect(() => {
-    if (!showBgMenu) return
-    const close = (e) => {
-      // Don't close if clicking inside the popup
-      if (e.target.closest?.('.bg-popup-container')) return
-      setShowBgMenu(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [showBgMenu])
 
   function handleLink() {
     if (!editor) return
@@ -277,681 +367,225 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
   // highlight rather than white when nothing is highlighted yet.
   const currentHighlight = editor ? (editor.getAttributes('highlight').color || '#fef08a') : '#fef08a'
 
+  // The formatting groups as More's items, when they don't fit in the row
+  const chain = () => editor.chain().focus()
+  const overflowItems = editor ? {
+    align: [
+      { label: 'Align left', icon: <AlignLeft size={14} />, on: editor.isActive({ textAlign: 'left' }), run: () => chain().setTextAlign('left').run() },
+      { label: 'Align center', icon: <AlignCenter size={14} />, on: editor.isActive({ textAlign: 'center' }), run: () => chain().setTextAlign('center').run() },
+      { label: 'Align right', icon: <AlignRight size={14} />, on: editor.isActive({ textAlign: 'right' }), run: () => chain().setTextAlign('right').run() },
+    ],
+    lists: [
+      { label: 'Bullet list', icon: <List size={14} />, on: editor.isActive('bulletList'), run: () => chain().toggleBulletList().run() },
+      { label: 'Ordered list', icon: <ListOrdered size={14} />, on: editor.isActive('orderedList'), run: () => chain().toggleOrderedList().run() },
+    ],
+    link: [
+      { label: 'Link…', icon: <Link size={14} />, on: inLink, run: handleLink },
+      inLink && { label: 'Remove link', icon: <Unlink size={14} />, run: () => chain().unsetLink().run() },
+    ].filter(Boolean),
+    math: [
+      { label: 'Inline math…', icon: <span style={{ fontFamily: 'serif', fontWeight: 700, width: 14, textAlign: 'center' }}>∑</span>, run: () => { const latex = window.prompt('LaTeX (inline):', 'E = mc^2'); if (latex) chain().insertMath(latex, false).run() } },
+      { label: 'Display math…', icon: <span style={{ fontFamily: 'serif', fontWeight: 700, width: 14, textAlign: 'center' }}>∫</span>, run: () => { const latex = window.prompt('LaTeX (display):', '\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}'); if (latex) chain().insertMath(latex, true).run() } },
+    ],
+    table: [
+      { label: 'Insert table…', icon: <Table2 size={14} />, run: () => { const r = parseInt(window.prompt('Rows:', '3') || '3'); const c = parseInt(window.prompt('Cols:', '3') || '3'); if (r && c) chain().insertTable({ rows: r, cols: c, withHeaderRow: true }).run() } },
+      ...(editor.isActive('table') ? [
+        ['Add row before', c => c.addRowBefore()], ['Add row after', c => c.addRowAfter()], ['Delete row', c => c.deleteRow()],
+        ['Add column before', c => c.addColumnBefore()], ['Add column after', c => c.addColumnAfter()], ['Delete column', c => c.deleteColumn()],
+        ['Delete table', c => c.deleteTable()],
+      ].map(([label, op]) => ({ label, icon: <span style={{ width: 14 }} />, run: () => op(chain()).run() })) : []),
+    ],
+    headings: [
+      { label: 'Heading 1', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H1</span>, on: editor.isActive('heading', { level: 1 }), run: () => chain().toggleHeading({ level: 1 }).run() },
+      { label: 'Heading 2', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H2</span>, on: editor.isActive('heading', { level: 2 }), run: () => chain().toggleHeading({ level: 2 }).run() },
+      { label: 'Heading 3', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H3</span>, on: editor.isActive('heading', { level: 3 }), run: () => chain().toggleHeading({ level: 3 }).run() },
+      { label: 'Normal text', icon: <Type size={14} />, on: editor.isActive('paragraph') && !editor.isActive('heading'), run: () => chain().setParagraph().run() },
+    ],
+    clear: [{ label: 'Clear formatting', icon: <RemoveFormatting size={14} />, run: handleClearFormatting }],
+  } : {}
+
+  const menuProps = { onToggle: toggleMenu, onClose: closeMenu }
+  const pickFromMenu = action => () => { closeMenu(); action() }
+
   return (
-    <div className="toolbar" ref={toolbarRef}
+    <div className={`toolbar ${compact ? 'toolbar-compact' : ''}`} ref={toolbarRef}
       style={editing && insertHeight ? { minHeight: insertHeight, boxSizing: 'border-box' } : undefined}>
       {/* Undo / Redo: the presentation's, or while editing text, the text's,
           as Ctrl+Z does */}
-      <button className="btn-icon" title="Undo (Ctrl+Z)"
+      <button className="btn-icon" title={`Undo (${keyLabel('Mod+Z')})`}
         onClick={textUndo ? () => editor.chain().focus().undo().run() : onUndo}
         disabled={textUndo ? !editor.can().undo() : !canUndo}>
         <Undo2 size={14} />
       </button>
-      <button className="btn-icon" title="Redo (Ctrl+Y)"
+      <button className="btn-icon" title={`Redo (${keyLabel('Mod+Y')})`}
         onClick={textUndo ? () => editor.chain().focus().redo().run() : onRedo}
         disabled={textUndo ? !editor.can().redo() : !canRedo}>
         <Redo2 size={14} />
       </button>
-      <span className="toolbar-divider" />
-
-      {/* The insert tools, out of the way while text is being edited */}
-      {!editor && (<>
-
-      {/* Slide Background popup */}
-      {slide && onUpdateSlide && (() => {
-        const bg = slide.background || { type: 'color', color: '#1e1e2e' }
-        const bgType = bg.type || 'color'
-        const setBgType = (type) => onUpdateSlide({ background: { ...bg, type } })
-        const setBgColor = (color) => onUpdateSlide({ background: { ...bg, type: 'color', color } })
-        const setBgGradient = (gradient) => onUpdateSlide({ background: { ...bg, type: 'gradient', gradient } })
-        const setBgImage = (image) => onUpdateSlide({ background: { ...bg, type: 'image', image, size: bg.size || 'cover', position: bg.position || 'center' } })
-        return (
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`btn-icon ${showBgMenu ? 'active' : ''}`}
-              style={{ width: 'auto', padding: '0 8px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
-              title="Slide Background"
-              onClick={() => setShowBgMenu(v => !v)}
-            >
-              <div style={{
-                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-                border: '1px solid rgba(255,255,255,0.3)',
-                ...(bgType === 'color' ? { backgroundColor: bg.color || '#1e1e2e' } :
-                    bgType === 'gradient' ? { background: bg.gradient || '#1e1e2e' } :
-                    bgType === 'image' ? { backgroundImage: `url(${bg.image})`, backgroundSize: 'cover' } :
-                    { backgroundColor: '#1e1e2e' })
-              }} />
-              BG
+      {/* New slide: after this one, in the layout that follows; ▾ picks the layout */}
+      {onNewSlide && (
+        <div className="split-button">
+          <button className="btn-icon toolbar-labeled" title={`New slide (${keyLabel('Mod+M')})`} aria-label="New slide" onClick={onNewSlide}>
+            <Plus size={14} />{!editing && <span className="tl-text">New slide</span>}
+          </button>
+          {onNewSlideFromLayout && (
+            <button className="btn-icon split-arrow" title="New slide from a layout" aria-label="New slide from a layout" onClick={onNewSlideFromLayout}>
+              <ChevronDown size={11} />
             </button>
-            {showBgMenu && (
-              <div
-                className="bg-popup-container"
-                style={{
-                  position: 'absolute', top: '100%', left: 0, marginTop: 4,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 12, zIndex: 1000,
-                  width: 260, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                }}
-                onMouseDown={e => e.stopPropagation()}
-              >
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Slide Background</div>
-                <div className="bg-type-tabs" style={{ marginBottom: 8 }}>
-                  {['color', 'gradient', 'image', 'none'].map(type => (
-                    <button key={type} className={`bg-type-tab ${bgType === type ? 'active' : ''}`}
-                      onClick={() => setBgType(type)}
-                    >{type.charAt(0).toUpperCase() + type.slice(1)}</button>
-                  ))}
-                </div>
-
-                {bgType === 'color' && (
-                  <>
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                      <input type="color" value={bg.color || '#1e1e2e'} onChange={e => setBgColor(e.target.value)}
-                        style={{ width: 32, height: 28, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg-card)', cursor: 'pointer', padding: 1 }} />
-                      <input className="prop-input" type="text" value={bg.color || '#1e1e2e'} onChange={e => setBgColor(e.target.value)}
-                        style={{ flex: 1, fontSize: 12, padding: '4px 6px' }} />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
-                      {COLOR_SWATCHES_BG.map(color => (
-                        <div key={color} onClick={() => setBgColor(color)} title={color}
-                          style={{
-                            width: '100%', aspectRatio: '1', borderRadius: 4, cursor: 'pointer',
-                            backgroundColor: color,
-                            border: bg.color === color ? '2px solid white' : color === '#ffffff' || color === '#f8f9fa' ? '1px solid var(--border)' : '1px solid transparent',
-                          }} />
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {bgType === 'gradient' && (
-                  <>
-                    <div style={{ height: 32, borderRadius: 4, background: bg.gradient || 'linear-gradient(135deg, #1e1e2e, #4a0e8f)', marginBottom: 8, border: '1px solid var(--border)' }} />
-                    <input className="prop-input" type="text" value={bg.gradient || ''} onChange={e => setBgGradient(e.target.value)}
-                      placeholder="linear-gradient(...)" style={{ marginBottom: 8, fontSize: 11, padding: '4px 6px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {GRADIENT_PRESETS_BG.map((preset, i) => (
-                        <button key={i} onClick={() => setBgGradient(preset)}
-                          style={{ height: 24, borderRadius: 4, background: preset, cursor: 'pointer',
-                            border: bg.gradient === preset ? '2px solid white' : '1px solid var(--border)' }}
-                          title={preset} />
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {bgType === 'image' && (
-                  <>
-                    {bg.image && (
-                      <div style={{ height: 60, borderRadius: 4, backgroundImage: `url(${bg.image})`, backgroundSize: 'cover', backgroundPosition: 'center', marginBottom: 8, border: '1px solid var(--border)' }} />
-                    )}
-                    <input className="prop-input" type="text" value={bg.image || ''} onChange={e => setBgImage(e.target.value)}
-                      placeholder="https://example.com/image.jpg" style={{ marginBottom: 6, fontSize: 11, padding: '4px 6px' }} />
-                    <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', marginBottom: 6, fontSize: 11, padding: '4px 8px' }}
-                      onClick={() => bgFileRef.current?.click()} disabled={uploading}
-                    >
-                      <Upload size={12} />
-                      {uploading ? 'Uploading...' : 'Upload Image'}
-                    </button>
-                    <input ref={bgFileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                      onChange={async e => {
-                        const file = e.target.files?.[0]; if (!file) return
-                        setUploading(true)
-                        try { const res = await api.uploadFile(file); if (res.url) setBgImage(res.url) }
-                        catch(err) { alert('Upload failed: ' + err.message) }
-                        finally { setUploading(false); if (bgFileRef.current) bgFileRef.current.value = '' }
-                      }} />
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Size</div>
-                        <select className="prop-input" value={bg.size || 'cover'} onChange={e => onUpdateSlide({ background: { ...bg, size: e.target.value } })} style={{ padding: '3px 4px', fontSize: 11 }}>
-                          <option value="cover">Cover</option><option value="contain">Contain</option><option value="auto">Auto</option><option value="100% 100%">Stretch</option>
-                        </select>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Position</div>
-                        <select className="prop-input" value={bg.position || 'center'} onChange={e => onUpdateSlide({ background: { ...bg, position: e.target.value } })} style={{ padding: '3px 4px', fontSize: 11 }}>
-                          <option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option>
-                        </select>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {bgType === 'none' && (
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>No background (uses theme default)</p>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })()}
-
-      {/* Layout tools dropdown */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" onClick={() => setShowLayoutMenu(v => !v)} title="Layout & grid tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <Grid size={14} /> Layout <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-        </button>
-        {showLayoutMenu && (<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowLayoutMenu(false)} />
-          <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, width: 300, padding: 12, maxHeight: '70vh', overflowY: 'auto' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Grid &amp; Guides</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showGrid} onChange={onToggleGrid} style={{ accentColor: 'var(--accent)' }} />
-                Snap grid
-                {showGrid && <input type="number" min="5" max="200" step="5" value={gridSize} onChange={e => onGridSizeChange(Math.max(5, Math.min(200, Number(e.target.value) || 40)))} style={{ width: 44, padding: '2px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, fontSize: 11, textAlign: 'center', marginLeft: 'auto' }} title="Grid size (px)" />}
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={smartGuidesEnabled} onChange={onToggleSmartGuides} style={{ accentColor: 'var(--accent)' }} />
-                Smart guides
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showRulers} onChange={onToggleRulers} style={{ accentColor: 'var(--accent)' }} />
-                Rulers &amp; guides
-              </label>
-              {showRulers && (
-                <div style={{ marginLeft: 26, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                  <button onClick={() => onAddGuide?.({ axis: 'y', position: 270 })} title="Add horizontal guide" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: '#22d3ee', fontWeight: 700, fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>+H</button>
-                  <button onClick={() => onAddGuide?.({ axis: 'x', position: 480 })} title="Add vertical guide" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', cursor: 'pointer', color: '#22d3ee', fontWeight: 700, fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>+V</button>
-                  {guides.map((g, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <span style={{ fontSize: 9, color: '#22d3ee', fontWeight: 700 }}>{g.axis === 'x' ? 'V' : 'H'}</span>
-                      <input type="number" min="0" max={g.axis === 'x' ? 960 : 540} value={g.position} onChange={e => onUpdateGuide?.(i, Math.max(0, Math.min(g.axis === 'x' ? 960 : 540, Number(e.target.value) || 0)))} style={{ width: 38, padding: '1px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 3, fontSize: 11, textAlign: 'center' }} />
-                      <button onClick={() => onRemoveGuide?.(i)} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', flex: 1 }}>
-                  <input type="checkbox" checked={!!slide?.layoutGrid?.enabled} onChange={() => { const lg = slide?.layoutGrid || {}; onUpdateSlide({ layoutGrid: { columns: 3, rows: 0, gutter: 20, marginX: 40, marginY: 40, snap: true, ...lg, enabled: !lg.enabled } }) }} style={{ accentColor: 'var(--accent)' }} />
-                  Layout grid
-                </label>
-                {slide?.layoutGrid?.enabled && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>C</span>
-                    <input type="number" min="1" max="12" value={slide.layoutGrid?.columns ?? 3} onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, columns: Math.max(1, Math.min(12, Number(e.target.value) || 3)) } })} style={{ width: 30, padding: '1px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 3, fontSize: 11, textAlign: 'center' }} title="Columns" />
-                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>G</span>
-                    <input type="number" min="0" max="100" value={slide.layoutGrid?.gutter ?? 20} onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, gutter: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } })} style={{ width: 30, padding: '1px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 3, fontSize: 11, textAlign: 'center' }} title="Gutter" />
-                  </div>
-                )}
-              </div>
-              <button onClick={() => { const existing = slide?.axisLines || []; const id = crypto.randomUUID(); const axis = existing.length % 2 === 0 ? 'x' : 'y'; const position = axis === 'x' ? Math.round(960 / 3) : 270; onUpdateSlide({ axisLines: [...existing, { id, axis, position, visible: true, snap: true }] }) }} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
-                <Minus size={14} style={{ transform: 'rotate(90deg)' }} /> Add axis line
-              </button>
-            </div>
-
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Composition</div>
-              <div style={{ marginBottom: 6 }}>
-                <button onClick={() => setShowNonobjectiveMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }}>
-                  <span style={{ fontSize: 16, lineHeight: 1, width: 14, textAlign: 'center' }}>|</span> Compose <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5 }}>{showNonobjectiveMenu ? '▾' : '▸'}</span>
-                </button>
-                {showNonobjectiveMenu && (
-                  <div style={{ marginTop: 6, padding: 8, background: 'var(--bg-hover)', borderRadius: 6 }}>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Rules</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 8 }}>
-                      {[
-                        { id: 'rule-h-thin', label: 'H thin', icon: <div style={{width:28,height:1,background:'rgba(255,255,255,0.5)'}}/> },
-                        { id: 'rule-h-medium', label: 'H med', icon: <div style={{width:28,height:3,background:'rgba(255,255,255,0.7)'}}/> },
-                        { id: 'rule-h-heavy', label: 'H heavy', icon: <div style={{width:28,height:6,background:'#fff'}}/> },
-                        { id: 'rule-diagonal', label: 'Diag', icon: <div style={{width:28,height:2,background:'#fff',transform:'rotate(-15deg)'}}/> },
-                        { id: 'rule-v-thin', label: 'V thin', icon: <div style={{width:1,height:20,background:'rgba(255,255,255,0.5)'}}/> },
-                        { id: 'rule-v-medium', label: 'V med', icon: <div style={{width:3,height:20,background:'rgba(255,255,255,0.7)'}}/> },
-                        { id: 'rule-v-heavy', label: 'V heavy', icon: <div style={{width:6,height:20,background:'#fff'}}/> },
-                      ].map(item => (
-                        <button key={item.id} title={item.label} style={{ padding: '6px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: 36 }} onClick={() => { onAddNonobjective?.(item.id); setShowLayoutMenu(false) }}>{item.icon}<span style={{fontSize:7,color:'var(--text-muted)'}}>{item.label}</span></button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Circles</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, marginBottom: 8 }}>
-                      {[
-                        { id: 'circle-dot', label: 'Dot', icon: <div style={{width:10,height:10,borderRadius:'50%',background:'#fff'}}/> },
-                        { id: 'circle-medium', label: 'Medium', icon: <div style={{width:20,height:20,borderRadius:'50%',background:'#6366f1'}}/> },
-                        { id: 'circle-large', label: 'Large', icon: <div style={{width:28,height:28,borderRadius:'50%',background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.3)'}}/> },
-                      ].map(item => (
-                        <button key={item.id} title={item.label} style={{ padding: '6px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: 36 }} onClick={() => { onAddNonobjective?.(item.id); setShowLayoutMenu(false) }}>{item.icon}<span style={{fontSize:7,color:'var(--text-muted)'}}>{item.label}</span></button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Tone Blocks</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                      {[
-                        { id: 'tone-dark', label: 'Dark', color: '#0a0a14' },
-                        { id: 'tone-medium', label: 'Mid', color: '#2d2d4e' },
-                        { id: 'tone-light', label: 'Light', color: 'rgba(255,255,255,0.08)' },
-                        { id: 'tone-accent', label: 'Accent', color: 'rgba(99,102,241,0.15)' },
-                      ].map(item => (
-                        <button key={item.id} title={item.label} style={{ padding: '6px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: 36 }} onClick={() => { onAddNonobjective?.(item.id); setShowLayoutMenu(false) }}>
-                          <div style={{width:28,height:18,background:item.color,borderRadius:2,border:'1px solid rgba(255,255,255,0.1)'}}/>
-                          <span style={{fontSize:7,color:'var(--text-muted)'}}>{item.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <button onClick={() => setShowModularMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }}>
-                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x25A3;</span> Modular Grid <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.5 }}>{showModularMenu ? '▾' : '▸'}</span>
-                </button>
-                {showModularMenu && (
-                  <div style={{ marginTop: 6, padding: 8, background: 'var(--bg-hover)', borderRadius: 6 }}>
-                    {[
-                      { label: '2 × 2 Squares', shape: 'rect', cols: 2, rows: 2, gap: 16 },
-                      { label: '3 × 2 Rectangles', shape: 'rect', cols: 3, rows: 2, gap: 12 },
-                      { label: '4 × 3 Rectangles', shape: 'rect', cols: 4, rows: 3, gap: 8 },
-                      { label: '3 × 3 Circles', shape: 'circle', cols: 3, rows: 3, gap: 12 },
-                      { label: '4 × 2 Cards', shape: 'rounded-rect', cols: 4, rows: 2, gap: 10 },
-                      { label: '6 × 1 Strip', shape: 'rect', cols: 6, rows: 1, gap: 8 },
-                    ].map(preset => (
-                      <button key={preset.label} onClick={() => { onAddModularGrid?.(preset.shape, preset.cols, preset.rows, preset.gap); setShowLayoutMenu(false) }} style={{ display: 'block', width: '100%', padding: '5px 8px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)', fontSize: 11, textAlign: 'left', marginBottom: 3 }} onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>{preset.label}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button onClick={() => { setShowLayoutMenu(false); onAddMathGrid?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left', marginTop: 4 }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
-                <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x222E;</span> Math Grid
-              </button>
-            </div>
-
-            {selectedCount >= 2 && (
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Align ({selectedCount} selected)</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
-                  {[['left','←L','Align left'],['center-h','↔','Center H'],['right','R→','Align right'],['top','↑T','Align top'],['center-v','↕','Center V'],['bottom','B↓','Align bottom'],['distribute-h','⇔','Distribute H'],['distribute-v','⇕','Distribute V']].map(([type, label, title]) => (
-                    <button key={type} className="btn-icon" title={title} style={{ fontSize: 11, padding: '3px 6px', width: 'auto', fontFamily: 'monospace' }} onClick={() => onAlignElements(type)}>{label}</button>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button className="btn-icon" title="Group" onClick={onGroupElements} style={{ flex: 1, fontSize: 11, justifyContent: 'center', gap: 4 }}><Group size={13} /> Group</button>
-                  <button className="btn-icon" title="Ungroup" onClick={onUngroupElements} style={{ flex: 1, fontSize: 11, justifyContent: 'center', gap: 4 }}><Ungroup size={13} /> Ungroup</button>
-                </div>
-              </div>
-            )}
-            <div style={{ height: 1, background: 'var(--border)', margin: '8px 0 4px' }} />
-            <a href={`${DOCS_BASE}animations`} target="_blank" rel="noopener noreferrer" onClick={() => setShowLayoutMenu(false)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '4px 0', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'none', background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
-              <HelpCircle size={12} /> How to use
-            </a>
-          </div>
-        </>)}
-      </div>
-
-      {/* Draw / Freehand tool */}
-      <button
-        className={`btn-icon ${drawTool ? 'active' : ''}`}
-        title={drawTool ? 'Exit draw mode (Esc)' : 'Freehand draw'}
-        onClick={() => onSetDrawTool(drawTool ? null : { color: '#ffffff', strokeWidth: 3, opacity: 1, smooth: true })}
-        style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}
-      >
-        <Pencil size={14} /> Draw
-      </button>
-      {drawTool && (
-        <>
-          <input type="color"
-            title="Stroke color"
-            value={drawTool.color || '#ffffff'}
-            onChange={e => onSetDrawTool({ ...drawTool, color: e.target.value })}
-            style={{ width: 28, height: 28, padding: 2, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-          />
-          <select
-            title="Stroke width"
-            value={drawTool.strokeWidth || 3}
-            onChange={e => onSetDrawTool({ ...drawTool, strokeWidth: Number(e.target.value) })}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '2px 4px', borderRadius: 4, fontSize: 12, width: 52 }}
-          >
-            {[1, 2, 3, 4, 6, 8, 12, 18].map(w => <option key={w} value={w}>{w}px</option>)}
-          </select>
-          <select
-            title="Opacity"
-            value={drawTool.opacity ?? 1}
-            onChange={e => onSetDrawTool({ ...drawTool, opacity: Number(e.target.value) })}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '2px 4px', borderRadius: 4, fontSize: 12, width: 60 }}
-          >
-            {[1, 0.75, 0.5, 0.25].map(o => <option key={o} value={o}>{Math.round(o * 100)}%</option>)}
-          </select>
-          <button
-            className={`btn-icon ${drawTool.smooth ? 'active' : ''}`}
-            title={drawTool.smooth ? 'Auto-smooth: on' : 'Auto-smooth: off'}
-            onClick={() => onSetDrawTool({ ...drawTool, smooth: !drawTool.smooth })}
-            style={{ width: 'auto', padding: '0 6px', fontSize: 11 }}
-          >
-            ~
-          </button>
-          <button className="btn-icon" title="Undo last stroke (Ctrl+Z)" onClick={onUndo} style={{ width: 'auto', padding: '0 6px', fontSize: 11 }}>
-            ↩
-          </button>
-        </>
+          )}
+        </div>
       )}
       <span className="toolbar-divider" />
 
-      {/* Element tools — always active */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" title="Text tools" onClick={() => setShowTextMenu(v => !v)} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <TypeIcon size={14} /> Text <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
+      {/* The insert tools, out of the way while text is being edited or drawn */}
+      {!editor && !drawTool && (<>
+        <button className="btn-icon toolbar-labeled" title="Text box" aria-label="Text box" onClick={onAddText}>
+          <Type size={14} /> <span className="tl-text">Text box</span>
         </button>
-        {showTextMenu && (
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowTextMenu(false)} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 170, overflow: 'hidden', padding: '4px 0' }}>
-              <button onClick={() => { setShowTextMenu(false); onAddText() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <TypeIcon size={14} /> Text
-              </button>
-              <button onClick={() => { setShowTextMenu(false); onAddTextPath() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 13, fontStyle: 'italic', transform: 'rotate(-8deg)', display: 'inline-block', lineHeight: 1, width: 14, textAlign: 'center' }}>T/</span> Text Path
-              </button>
-              <button onClick={() => { setShowTextMenu(false); onAddText3d() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 12, fontWeight: 800, width: 14, textAlign: 'center', textShadow: '1px 1px 0 var(--accent), 2px 2px 0 var(--accent)' }}>T</span> 3D Text
-              </button>
-              <button onClick={() => { setShowTextMenu(false); onAddKineticText() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Type size={14} /> Kinetic Text
-              </button>
-              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-              <button onClick={() => { setShowTextMenu(false); onAddLatex() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 14, fontFamily: 'serif', fontWeight: 'bold', width: 14, textAlign: 'center' }}>T<sub style={{ fontSize: 9 }}>E</sub>X</span> LaTeX / TikZ
-              </button>
-              {onAddEquation && (
-                <button onClick={() => { setShowTextMenu(false); onAddEquation() }} title="An equation whose terms are colored and labeled one at a time" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                  <span style={{ fontSize: 13, fontFamily: 'serif', fontStyle: 'italic', width: 14, textAlign: 'center', color: 'var(--accent)' }}>x²</span> Interactive Equation
-                </button>
-              )}
-              <button onClick={() => { setShowTextMenu(false); onAddMarkdown() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 13, fontWeight: 700, width: 14, textAlign: 'center' }}>M&#8595;</span> Markdown
-              </button>
-              <button onClick={() => { setShowTextMenu(false); onAddCode() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Code size={14} /> Code
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button title="Add a table" onClick={() => { setShowTextMenu(false); const r = parseInt(window.prompt('Rows:', '3') || '3'); const c = parseInt(window.prompt('Columns:', '3') || '3'); if (r && c) onAddTable?.(r, c) }} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                  <Table2 size={14} /> Table
-                </button>
-                <a href={`${DOCS_BASE}tables`} target="_blank" rel="noopener noreferrer" title="Table docs" onClick={() => setShowTextMenu(false)} style={{ display: 'flex', alignItems: 'center', padding: '0 12px', alignSelf: 'stretch', color: 'var(--text-muted)' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}><HelpCircle size={12} /></a>
-              </div>
-              <DocsLink page="text-typography" onClose={() => setShowTextMenu(false)} />
-            </div>
-          </>
-        )}
-      </div>
 
-      {/* Image tools dropdown */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" onClick={() => setShowImageMenu(v => !v)} title="Image tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <ImageIcon size={14} /> Image <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-        </button>
-        {showImageMenu && (<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowImageMenu(false)} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 190, overflow: 'hidden', padding: '4px 0' }}>
-            <button onClick={() => { setShowImageMenu(false); onAddImage() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <ImageIcon size={14} /> Image URL
-            </button>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Upload size={14} /> Upload Image
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { onAddImageUpload(f); e.target.value = '' }; setShowImageMenu(false) }} />
-            </label>
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pdfLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pdfLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <FileText size={14} /> {pdfLoading ? 'Loading…' : 'Import PDF'}
-              <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); setShowImageMenu(false) }} disabled={pdfLoading} />
-            </label>
-            {onImportPptx && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: pptxLoading ? 'wait' : 'pointer', textAlign: 'left', opacity: pptxLoading ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <FileText size={14} /> {pptxLoading ? 'Converting…' : 'Import PPTX'}
-                <input ref={pptxInputRef} type="file" accept=".pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" style={{ display: 'none' }} disabled={pptxLoading}
-                  onChange={async e => { const f = e.target.files?.[0]; if (!f || !onImportPptx) return; if (pptxInputRef.current) pptxInputRef.current.value = ''; setShowImageMenu(false); setPptxLoading(true); try { await onImportPptx(f) } catch (err) { alert('PPTX import failed: ' + err.message) } finally { setPptxLoading(false) } }} />
-              </label>
-            )}
-            <DocsLink page="images" onClose={() => setShowImageMenu(false)} />
-          </div>
-        </>)}
-      </div>
+        <ToolMenu id="image" open={openMenu === 'image'} {...menuProps} icon={<Image size={14} />} label="Image">
+          <button className="tool-menu-item" onClick={pickFromMenu(onUploadImage)}><Upload size={14} /> Upload image…</button>
+          <button className="tool-menu-item" onClick={pickFromMenu(onAddImage)}><Link size={14} /> Image from URL…</button>
+          <DocsLink page="images" onClose={closeMenu} />
+        </ToolMenu>
 
-      {/* Media dropdown */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" onClick={() => setShowMediaMenu(v => !v)} title="Media" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <Video size={14} /> Media <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-        </button>
-        {showMediaMenu && (<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowMediaMenu(false)} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Video size={14} /> Upload Video
-              <input type="file" accept="video/mp4,video/webm,video/ogg,video/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); if (onAddVideoUpload) onAddVideoUpload(f); else { try { const res = await api.uploadFile(f); if (res.url) onAddVideo?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } } }} />
-            </label>
-            <button style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'} onClick={() => { const url = window.prompt('Video URL:'); if (url?.trim()) { onAddVideo?.(url.trim()); setShowMediaMenu(false) } }}>
-              <Link size={14} /> Video from URL
-            </button>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Music size={14} /> Upload Audio
-              <input type="file" accept="audio/*" style={{ display: 'none' }} onChange={async e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowMediaMenu(false); try { const res = await api.uploadFile(f); if (res.url) onAddAudio?.(res.url) } catch (err) { alert('Upload failed: ' + err.message) } }} />
-            </label>
-            <DocsLink page="media" onClose={() => setShowMediaMenu(false)} />
-          </div>
-        </>)}
-      </div>
-
-      {/* Shape tools dropdown */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" onClick={() => setShowShapeMenu(v => !v)} title="Shape tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <Shapes size={14} /> Shape <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-        </button>
-        {showShapeMenu && (<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => { setShowShapeMenu(false); setIconSearch('') }} />
-          <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, width: 260, padding: 10 }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Shapes</div>
+        <ToolMenu id="shape" open={openMenu === 'shape'} {...menuProps} icon={<Shapes size={14} />} label="Shape" width={260}>
+          <div style={{ padding: '4px 6px' }}>
+            <div className="tool-menu-heading">Shapes</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 8 }}>
               {SHAPES.map(s => (
-                <button key={s.id} title={s.name} style={{ padding: '6px 4px', background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 18, color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }} onClick={() => { onAddShape(s.id); setShowShapeMenu(false) }}>
+                <button key={s.id} title={s.name} aria-label={s.name} className="shape-choice" onClick={pickFromMenu(() => onAddShape(s.id))}>
                   <span>{s.icon}</span><span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{s.name.split(' ')[0]}</span>
                 </button>
               ))}
             </div>
-            <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
-            <button onClick={() => { onAddCallout?.(); setShowShapeMenu(false) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 4px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left', borderRadius: 4 }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>1</span> Callout
-            </button>
-            <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Icons</div>
-            <input type="text" placeholder="Search icons..." value={iconSearch} onChange={e => setIconSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3, maxHeight: 140, overflow: 'auto' }}>
-              {['Star','Heart','Check','X','AlertTriangle','Info','ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Zap','Target','Award','BookOpen','Briefcase','Calendar','Camera','Cloud','Coffee','Cpu','Database','Eye','Flag','Globe','Home','Key','Layers','Lock','Mail','Map','MessageCircle','Monitor','Moon','Music','Phone','Play','Search','Settings','Shield','Sun','ThumbsUp','ThumbsDown','Trash2','TrendingUp','TrendingDown','User','Users','Wifi','Wrench','Lightbulb','Rocket','Clock','Gift','Link','Clipboard','FileText','Folder','Image','PieChart','BarChart3'].filter(name => !iconSearch || name.toLowerCase().includes(iconSearch.toLowerCase())).map(name => (
-                <button key={name} title={name} style={{ padding: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 10, color: 'var(--text-primary)', textAlign: 'center' }} onClick={() => { onAddIcon?.(name); setShowShapeMenu(false); setIconSearch('') }}>{name.slice(0, 3)}</button>
-              ))}
-            </div>
-            <DocsLink page="shapes-drawing" onClose={() => { setShowShapeMenu(false); setIconSearch('') }} />
+            {onAddCallout && (
+              <button className="tool-menu-item" style={{ padding: '6px 4px' }} onClick={pickFromMenu(onAddCallout)}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', background: '#ef4444', color: 'white', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>1</span> Callout
+              </button>
+            )}
+            {onAddIcon && (<>
+              <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
+              <div className="tool-menu-heading">Icons</div>
+              <input type="text" placeholder="Search icons..." aria-label="Search icons" value={iconSearch} onChange={e => setIconSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, fontSize: 12, marginBottom: 6, boxSizing: 'border-box' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3, maxHeight: 140, overflow: 'auto' }}>
+                {ICON_NAMES.filter(name => !iconSearch || name.toLowerCase().includes(iconSearch.toLowerCase())).map(name => (
+                  <button key={name} title={name} style={{ padding: 6, background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 10, color: 'var(--text-primary)', textAlign: 'center' }} onClick={pickFromMenu(() => onAddIcon(name))}>{name.slice(0, 3)}</button>
+                ))}
+              </div>
+            </>)}
           </div>
-        </>)}
-      </div>
+          <DocsLink page="shapes-drawing" onClose={closeMenu} />
+        </ToolMenu>
 
-      {/* Interactive presets: parts of a slide that respond to clicks and hovers */}
-      {(onAddTabs || onAddHotspot || onAddFlipCard || onAddQuiz || onAddTimeline) && (
-        <div style={{ position: 'relative' }}>
-          <button className="btn-icon" onClick={() => setShowInteractiveMenu(v => !v)} title="Tabs, hotspots, flip cards, quizzes and timelines" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-            <MousePointerClick size={14} /> Interactive <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-          </button>
-          {showInteractiveMenu && (<>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowInteractiveMenu(false)} />
-            <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, width: 240, padding: 12 }}>
-              {onAddTabs && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', padding: '4px 0' }}>
-                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>&#x2395;</span> Tabs
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                    {[2, 3, 4].map(n => (
-                      <button key={n} title={`Insert ${n} tabs that switch between panels when presenting`}
-                        onClick={() => { setShowInteractiveMenu(false); onAddTabs(n) }}
-                        style={{ minWidth: 26, padding: '2px 6px', fontSize: 12, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-hover)', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                        {n}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-              )}
-              {[
-                [onAddHotspot, '\u24D8', 'Hotspot', 'Insert a marker that shows a card while the pointer is over it when presenting'],
-                [onAddFlipCard, '\u21BB', 'Flip card', 'Insert a card that turns over to its back when clicked'],
-                [onAddQuiz, '\u2713', 'Quiz answers', 'Insert a question with answers that turn green or red when clicked'],
-                [onAddTimeline, <Clock key="icon" size={14} />, 'Timeline', 'Insert a timeline of dates and events'],
-              ].filter(([add]) => add).map(([add, icon, label, title]) => (
-                <button key={label} onClick={() => { setShowInteractiveMenu(false); add() }} title={title}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 13, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left', marginTop: 4 }} onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-primary)'}>
-                  <span style={{ fontSize: 14, lineHeight: 1, width: 14, textAlign: 'center' }}>{icon}</span> {label}
-                </button>
+        {onAddTable && (
+          <ToolMenu id="table" open={openMenu === 'table'} {...menuProps} icon={<Table2 size={14} />} label="Table" title="Table: pick its rows and columns">
+            <div style={{ padding: 8 }}>
+              <TablePicker onPick={(r, c) => { closeMenu(); onAddTable(r, c) }} />
+            </div>
+            <DocsLink page="tables" onClose={closeMenu} />
+          </ToolMenu>
+        )}
+
+        {insertGroups.length > 0 && (
+          <ToolMenu id="insert" open={openMenu === 'insert'} {...menuProps} icon={<LayoutGrid size={14} />} label="Insert" title="Everything else that can go on a slide" width={250}>
+            <InsertList groups={insertGroups} onClose={closeMenu} searchable />
+          </ToolMenu>
+        )}
+
+        {scienceItems.length > 0 && (
+          <ToolMenu id="science" open={openMenu === 'science'} {...menuProps} icon={<FlaskConical size={14} />} label="Science" title="Graphs, diagrams, molecules and more" width={230}>
+            <InsertList groups={[{ items: scienceItems, docs: 'diagrams' }]} onClose={closeMenu} />
+          </ToolMenu>
+        )}
+
+        {/* What the selection offers: an image's Crop and Replace, a
+            diagram's Edit, and for several elements, Align and Group */}
+        {selection && (selection.image || selection.editLabel || selection.count >= 2 || selection.canUngroup) && (<>
+          <span className="toolbar-divider" />
+          {selection.image && (<>
+            <button className="btn-icon toolbar-labeled" title="Crop the image" aria-label="Crop" onClick={() => onSelectionCommand?.('crop')}><Crop size={14} /> <span className="tl-text">Crop</span></button>
+            <button className="btn-icon toolbar-labeled" title="Replace the image with another file" aria-label="Replace image" onClick={() => onSelectionCommand?.('replace-image')}><ImageUp size={14} /> <span className="tl-text">Replace</span></button>
+          </>)}
+          {selection.editLabel && (
+            <button className="btn-icon toolbar-labeled" title={selection.editLabel} aria-label={selection.editLabel} onClick={() => onSelectionCommand?.('edit')}><Pencil size={14} /> <span className="tl-text">Edit</span></button>
+          )}
+          {selection.count >= 2 && onAlignElements && (
+            <ToolMenu id="align" open={openMenu === 'align'} {...menuProps} icon={<AlignHorizontalSpaceAround size={14} />} label="Align" title={`Align or distribute the ${selection.count} selected`}>
+              {ALIGN_COMMANDS.map(([type, label]) => (
+                <button key={type} className="tool-menu-item" onClick={pickFromMenu(() => onAlignElements(type))}>{label}</button>
               ))}
-              <div style={{ height: 1, background: 'var(--border)', margin: '8px 0 4px' }} />
-              <a href={`${DOCS_BASE}interactive-slides`} target="_blank" rel="noopener noreferrer" onClick={() => setShowInteractiveMenu(false)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '4px 0', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', textDecoration: 'none', background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
-                <HelpCircle size={12} /> How to use
-              </a>
-            </div>
-          </>)}
-        </div>
-      )}
-
-      {/* Diagrams dropdown */}
-      {(onAddDiagram || onAddTikz || onAddFeynman || onAddCircuit || onAddLogic || onAddFreebody || onAddVenn || onAddTiming || onAddGeometry || onAddMolecule || onAddPeriodic || onAddHarmonics) && (
-        <div style={{ position: 'relative' }}>
-          <button className="btn-icon" onClick={() => setShowDiagramMenu(v => !v)} title="Diagram tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-            <Waypoints size={14} /> Diagrams <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-          </button>
-          {showDiagramMenu && (<>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowDiagramMenu(false)} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 180, overflow: 'hidden', padding: '4px 0' }}>
-              <button onClick={() => { setShowDiagramMenu(false); onAddDiagram?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25A6;</span> Diagram
-              </button>
-              <button onClick={() => { setShowDiagramMenu(false); onAddTikz?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2B21;</span> TikZ Diagram
-              </button>
-              <button onClick={() => { setShowDiagramMenu(false); onAddFeynman?.() }} title="Particle physics diagrams that build up line by line and copy out as TikZ-Feynman" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Atom size={14} /> Feynman Diagram
-              </button>
-              <button onClick={() => { setShowDiagramMenu(false); onAddCircuit?.() }} title="Circuit schematics, solved so they can show their current and meter readings, and copied out as CircuiTikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <CircuitBoard size={14} /> Circuit Diagram
-              </button>
-              <button onClick={() => { setShowDiagramMenu(false); onAddLogic?.() }} title="Logic gates, latches and flip-flops, simulated so each step shows its signals, with a truth table" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Binary size={14} /> Logic Diagram
-              </button>
-              {onAddFreebody && <button onClick={() => { setShowDiagramMenu(false); onAddFreebody() }} title="A body and the forces on it, with the unknown ones worked out, built up force by force and copied out as TikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <ArrowDownToDot size={14} /> Free-Body Diagram
-              </button>}
-              {onAddVenn && <button onClick={() => { setShowDiagramMenu(false); onAddVenn() }} title="Sets shaded from an expression like A ∩ (B ∪ C), or by clicking regions, built up step by step, with counts worked out and copied out as TikZ" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Blend size={14} /> Venn Diagram
-              </button>}
-              {onAddTiming && <button onClick={() => { setShowDiagramMenu(false); onAddTiming() }} title="Clock, signal and bus waveforms written in WaveJSON and drawn by WaveDrom, revealed cycle by cycle; register fields too" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Activity size={14} /> Timing Diagram
-              </button>}
-              {onAddGeometry && <button onClick={() => { setShowDiagramMenu(false); onAddGeometry() }} title="Ruler-and-compass constructions in GeoGebra's commands: drag a point and the rest follows, built up line by line and copied out as tkz-euclide" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <DraftingCompass size={14} /> Geometry
-              </button>}
-              {onAddMolecule && <button onClick={() => { setShowDiagramMenu(false); onAddMolecule() }} title="A 3D structure from PubChem, the Protein Data Bank or a file, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <FlaskConical size={14} /> Molecule
-              </button>}
-              {onAddPeriodic && <button onClick={() => { setShowDiagramMenu(false); onAddPeriodic() }} title="PubChem's periodic table: point at an element to see its details and electrons, colored by category or a property, with steps" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Grid3x3 size={14} /> Periodic Table
-              </button>}
-              {onAddHarmonics && <button onClick={() => { setShowDiagramMenu(false); onAddHarmonics() }} title="Spherical harmonics as lobes, a colored sphere, a vibrating shape, a sky map or the ℓ, m table, to turn while presenting, with steps that morph" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Globe size={14} /> Spherical Harmonics
-              </button>}
-              <DocsLink page="diagrams" onClose={() => setShowDiagramMenu(false)} />
-            </div>
-          </>)}
-        </div>
-      )}
-
-      {onAddGraph && (
-        <button className="btn-icon" title="Graph functions, curves, regions and fields; switch it to 3D for surfaces" onClick={onAddGraph} style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <ChartSpline size={14} /> Graph
-        </button>
-      )}
-
-      {/* 3D model dropdown */}
-      {onAddModelUpload && (
-        <div style={{ position: 'relative' }}>
-          <button className="btn-icon" onClick={() => setShowModelMenu(v => !v)} title="3D Model" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-            <Box size={14} /> 3D Model <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-          </button>
-          {showModelMenu && (<>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowModelMenu(false)} />
-            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <Box size={14} /> Upload STL / GLB
-                <input type="file" accept=".stl,.glb" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (!f) return; e.target.value = ''; setShowModelMenu(false); onAddModelUpload(f) }} />
-              </label>
-              {onAddGraph3d && <button onClick={() => { setShowModelMenu(false); onAddGraph3d() }} title="Surfaces z = f(x, y), parametric and implicit surfaces, curves and points, typed as in Graph, to turn while presenting" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <ChartSpline size={14} /> 3D Graph
-              </button>}
-              <DocsLink page="media" onClose={() => setShowModelMenu(false)} />
-            </div>
-          </>)}
-        </div>
-      )}
-
-      {/* Embed tools dropdown */}
-      <div style={{ position: 'relative' }}>
-        <button className="btn-icon" onClick={() => setShowEmbedMenu(v => !v)} title="Embed tools" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-          <FileCode size={14} /> Embed <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-        </button>
-        {showEmbedMenu && (<>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowEmbedMenu(false)} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 160, overflow: 'hidden', padding: '4px 0' }}>
-            <button onClick={() => { setShowEmbedMenu(false); onAddHtml() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <FileCode size={14} /> HTML
-            </button>
-            <button onClick={() => { setShowEmbedMenu(false); onAddD3?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <FileCode size={14} /> D3.js
-            </button>
-            <button onClick={() => { setShowEmbedMenu(false); onAddP5() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <Code size={14} /> p5.js
-            </button>
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-            <button onClick={() => { setShowEmbedMenu(false); onAddAnime?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x2728;</span> Anime.js
-            </button>
-            <button onClick={() => { setShowEmbedMenu(false); onAddThree?.() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              <span style={{ fontSize: 14, width: 14, textAlign: 'center' }}>&#x25B2;</span> Three.js
-            </button>
-            <DocsLink page="html-embeds" onClose={() => setShowEmbedMenu(false)} />
-          </div>
+            </ToolMenu>
+          )}
+          {selection.count >= 2 && (
+            <button className="btn-icon" title={`Group (${keyLabel('Mod+G')})`} aria-label="Group" onClick={() => onSelectionCommand?.('group')}><Group size={14} /></button>
+          )}
+          {selection.canUngroup && (
+            <button className="btn-icon" title={`Ungroup (${keyLabel('Mod+Shift+G')})`} aria-label="Ungroup" onClick={() => onSelectionCommand?.('ungroup')}><Ungroup size={14} /></button>
+          )}
         </>)}
-      </div>
 
-      {selectedCount >= 2 && (
-        <>
-          <span className="toolbar-divider" />
-          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Align:</span>
-          {[
-            ['left','←L','Align left'], ['center-h','↔','Center H'], ['right','R→','Align right'],
-            ['top','↑T','Align top'], ['center-v','↕','Center V'], ['bottom','B↓','Align bottom'],
-            ['distribute-h','⇔','Distribute H'], ['distribute-v','⇕','Distribute V'],
-          ].map(([type, label, title]) => (
-            <button key={type} className="btn-icon" title={title}
-              style={{ fontSize: 11, padding: '0 5px', width: 'auto', fontFamily: 'monospace' }}
-              onClick={() => onAlignElements(type)}
-            >{label}</button>
-          ))}
-          <span className="toolbar-divider" />
-          <button className="btn-icon" title="Group selected elements" onClick={onGroupElements} style={{ width: 'auto', padding: '0 6px', fontSize: 11 }}>
-            <Group size={13} />
-          </button>
-          <button className="btn-icon" title="Ungroup elements" onClick={onUngroupElements} style={{ width: 'auto', padding: '0 6px', fontSize: 11 }}>
-            <Ungroup size={13} />
-          </button>
-        </>
-      )}
+        <span className="toolbar-divider" />
+        {/* The slide's background */}
+        {slide && onUpdateSlide && (
+          <ToolMenu id="background" open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} />} label="Background" title="The slide's background" width={260}>
+            <div style={{ padding: 8 }}>
+              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} />
+            </div>
+          </ToolMenu>
+        )}
 
-      <span className="toolbar-divider" />
+        {/* Hint when nothing is selected or being edited */}
+        {!selection?.count && (
+          <span className="toolbar-hint"><span>Double-click a text box to edit</span></span>
+        )}
       </>)}
 
-      {/* Hint when no text box is selected or being edited */}
-      {!editor && (
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 8px' }}>
-          Double-click a text box to edit
-        </span>
-      )}
+      {/* Drawing: the pen, in place of the insert tools */}
+      {!editor && drawTool && (<>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '0 6px', display: 'flex', alignItems: 'center', gap: 4 }}><Pencil size={14} /> Drawing</span>
+        <input type="color"
+          title="Stroke color"
+          aria-label="Stroke color"
+          value={drawTool.color || '#ffffff'}
+          onChange={e => onSetDrawTool({ ...drawTool, color: e.target.value })}
+          style={{ width: 28, height: 28, padding: 2, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+        />
+        <select
+          title="Stroke width"
+          value={drawTool.strokeWidth || 3}
+          onChange={e => onSetDrawTool({ ...drawTool, strokeWidth: Number(e.target.value) })}
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '2px 4px', borderRadius: 4, fontSize: 12, width: 52 }}
+        >
+          {[1, 2, 3, 4, 6, 8, 12, 18].map(w => <option key={w} value={w}>{w}px</option>)}
+        </select>
+        <select
+          title="Opacity"
+          value={drawTool.opacity ?? 1}
+          onChange={e => onSetDrawTool({ ...drawTool, opacity: Number(e.target.value) })}
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '2px 4px', borderRadius: 4, fontSize: 12, width: 60 }}
+        >
+          {[1, 0.75, 0.5, 0.25].map(o => <option key={o} value={o}>{Math.round(o * 100)}%</option>)}
+        </select>
+        <button
+          className={`btn-icon ${drawTool.smooth ? 'active' : ''}`}
+          title={drawTool.smooth ? 'Auto-smooth: on' : 'Auto-smooth: off'}
+          onClick={() => onSetDrawTool({ ...drawTool, smooth: !drawTool.smooth })}
+          style={{ width: 'auto', padding: '0 6px', fontSize: 11 }}
+        >
+          ~
+        </button>
+        <button className="btn btn-primary" title="Stop drawing (Esc)" onClick={() => onSetDrawTool(null)} style={{ padding: '3px 10px', fontSize: 12, marginLeft: 4 }}>
+          Done
+        </button>
+      </>)}
+
 
       {editor && (
         <>
           {/* Font Family */}
           <select
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, maxWidth: 120, cursor: 'pointer' }}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, maxWidth: compact ? 92 : 120, cursor: 'pointer' }}
             value={editor.getAttributes('textStyle').fontFamily || ''}
             onChange={e => e.target.value ? editor.chain().focus().setFontFamily(e.target.value).run() : editor.chain().focus().unsetFontFamily().run()}
             title="Font family"
@@ -1053,41 +687,6 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               <option key={s} value={s}>{s.replace('px','')}</option>
             ))}
           </select>
-
-          <span className="toolbar-divider" />
-
-          {/* Headings */}
-          <button
-            className={`btn-icon ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            title="Heading 1"
-            style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
-          >
-            H1
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            title="Heading 2"
-            style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
-          >
-            H2
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-            title="Heading 3"
-            style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
-          >
-            H3
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('paragraph') && !editor.isActive('heading') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().setParagraph().run()}
-            title="Normal text"
-          >
-            <Type size={15} />
-          </button>
 
           <span className="toolbar-divider" />
 
@@ -1247,146 +846,186 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             )}
           </div>
 
-          <span className="toolbar-divider" />
 
-          {/* Alignment */}
-          <button
-            className={`btn-icon ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().setTextAlign('left').run()}
-            title="Align left"
-          >
-            <AlignLeft size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().setTextAlign('center').run()}
-            title="Align center"
-          >
-            <AlignCenter size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().setTextAlign('right').run()}
-            title="Align right"
-          >
-            <AlignRight size={15} />
-          </button>
-
-          <span className="toolbar-divider" />
-
-          {/* Lists */}
-          <button
-            className={`btn-icon ${editor.isActive('bulletList') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            title="Bullet list"
-          >
-            <List size={15} />
-          </button>
-          <button
-            className={`btn-icon ${editor.isActive('orderedList') ? 'active' : ''}`}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            title="Ordered list"
-          >
-            <ListOrdered size={15} />
-          </button>
-
-          <span className="toolbar-divider" />
-
-          {/* What puts something into the text, not for a whole box */}
-          {!wholeBox && (<>
-          {/* Table */}
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`btn-icon ${editor.isActive('table') ? 'active' : ''}`}
-              title="Table"
-              onClick={() => setShowTableMenu(v => !v)}
-              style={{ fontSize: 13 }}
-            >
-              ⊞
-            </button>
-            {showTableMenu && (
-              <div
-                style={{
-                  position: 'absolute', top: '100%', left: 0, marginTop: 4,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: 4, zIndex: 1000, width: 160, display: 'flex', flexDirection: 'column', gap: 2
-                }}
-                onMouseLeave={() => setShowTableMenu(false)}
+          {/* What fits of the rest, in one row; what doesn't is under More */}
+          <div className="format-overflow" ref={zoneRef}>
+            <span className="format-group" data-group="align" data-hidden={hiddenGroups.includes('align') || undefined} aria-hidden={hiddenGroups.includes('align') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className={`btn-icon ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                title="Align left"
               >
-                {[
-                  ['Insert Table', () => { const r=parseInt(window.prompt('Rows:','3')||'3'); const c=parseInt(window.prompt('Cols:','3')||'3'); if(r&&c) editor.chain().focus().insertTable({rows:r,cols:c,withHeaderRow:true}).run() }],
-                  ['Add Row Before', () => editor.chain().focus().addRowBefore().run()],
-                  ['Add Row After',  () => editor.chain().focus().addRowAfter().run()],
-                  ['Delete Row',     () => editor.chain().focus().deleteRow().run()],
-                  ['Add Col Before', () => editor.chain().focus().addColumnBefore().run()],
-                  ['Add Col After',  () => editor.chain().focus().addColumnAfter().run()],
-                  ['Delete Col',     () => editor.chain().focus().deleteColumn().run()],
-                  ['Delete Table',   () => editor.chain().focus().deleteTable().run()],
-                ].map(([label, action]) => (
-                  <button
-                    key={label}
-                    style={{ padding: '6px 10px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer', textAlign: 'left', borderRadius: 4 }}
-                    onMouseEnter={e => e.target.style.background='var(--bg-hover)'}
-                    onMouseLeave={e => e.target.style.background='none'}
-                    onClick={() => { action(); setShowTableMenu(false) }}
-                  >{label}</button>
-                ))}
+                <AlignLeft size={15} />
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                title="Align center"
+              >
+                <AlignCenter size={15} />
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                title="Align right"
+              >
+                <AlignRight size={15} />
+              </button>
+            </span>
+            <span className="format-group" data-group="lists" data-hidden={hiddenGroups.includes('lists') || undefined} aria-hidden={hiddenGroups.includes('lists') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className={`btn-icon ${editor.isActive('bulletList') ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                title="Bullet list"
+              >
+                <List size={15} />
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive('orderedList') ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                title="Ordered list"
+              >
+                <ListOrdered size={15} />
+              </button>
+            </span>
+            {!wholeBox && (<>
+            <span className="format-group" data-group="link" data-hidden={hiddenGroups.includes('link') || undefined} aria-hidden={hiddenGroups.includes('link') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className={`btn-icon ${editor.isActive('link') ? 'active' : ''}`}
+                onClick={handleLink}
+                title="Add link"
+              >
+                <Link size={15} />
+              </button>
+              {editor.isActive('link') && (
+                <button
+                  className="btn-icon"
+                  onClick={() => editor.chain().focus().unsetLink().run()}
+                  title="Remove link"
+                >
+                  <Unlink size={15} />
+                </button>
+              )}
+            </span>
+            <span className="format-group" data-group="math" data-hidden={hiddenGroups.includes('math') || undefined} aria-hidden={hiddenGroups.includes('math') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className="btn-icon"
+                title="Insert inline math ($…$)"
+                onClick={() => {
+                  const latex = window.prompt('LaTeX (inline):', 'E = mc^2')
+                  if (latex) editor.chain().focus().insertMath(latex, false).run()
+                }}
+                style={{ fontFamily: 'serif', fontWeight: 'bold', fontSize: 14 }}
+              >
+                ∑
+              </button>
+              <button
+                className="btn-icon"
+                title="Insert display math ($$…$$)"
+                onClick={() => {
+                  const latex = window.prompt('LaTeX (display):', '\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}')
+                  if (latex) editor.chain().focus().insertMath(latex, true).run()
+                }}
+                style={{ fontFamily: 'serif', fontWeight: 'bold', fontSize: 14 }}
+              >
+                ∫
+              </button>
+            </span>
+            <span className="format-group" data-group="table" data-hidden={hiddenGroups.includes('table') || undefined} aria-hidden={hiddenGroups.includes('table') || undefined}>
+              <span className="toolbar-divider" />
+              <div style={{ position: 'relative' }}>
+                <button
+                  className={`btn-icon ${editor.isActive('table') ? 'active' : ''}`}
+                  title="Table"
+                  onClick={() => setShowTableMenu(v => !v)}
+                  style={{ fontSize: 13 }}
+                >
+                  ⊞
+                </button>
+                {showTableMenu && (
+                  <div
+                    style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 4,
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      borderRadius: 8, padding: 4, zIndex: 1000, width: 160, display: 'flex', flexDirection: 'column', gap: 2
+                    }}
+                    onMouseLeave={() => setShowTableMenu(false)}
+                  >
+                    {[
+                      ['Insert Table', () => { const r=parseInt(window.prompt('Rows:','3')||'3'); const c=parseInt(window.prompt('Cols:','3')||'3'); if(r&&c) editor.chain().focus().insertTable({rows:r,cols:c,withHeaderRow:true}).run() }],
+                      ['Add Row Before', () => editor.chain().focus().addRowBefore().run()],
+                      ['Add Row After',  () => editor.chain().focus().addRowAfter().run()],
+                      ['Delete Row',     () => editor.chain().focus().deleteRow().run()],
+                      ['Add Col Before', () => editor.chain().focus().addColumnBefore().run()],
+                      ['Add Col After',  () => editor.chain().focus().addColumnAfter().run()],
+                      ['Delete Col',     () => editor.chain().focus().deleteColumn().run()],
+                      ['Delete Table',   () => editor.chain().focus().deleteTable().run()],
+                    ].map(([label, action]) => (
+                      <button
+                        key={label}
+                        style={{ padding: '6px 10px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer', textAlign: 'left', borderRadius: 4 }}
+                        onMouseEnter={e => e.target.style.background='var(--bg-hover)'}
+                        onMouseLeave={e => e.target.style.background='none'}
+                        onClick={() => { action(); setShowTableMenu(false) }}
+                      >{label}</button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </span>
+            </>)}
+            <span className="format-group" data-group="headings" data-hidden={hiddenGroups.includes('headings') || undefined} aria-hidden={hiddenGroups.includes('headings') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className={`btn-icon ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                title="Heading 1"
+                style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
+              >
+                H1
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                title="Heading 2"
+                style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
+              >
+                H2
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                title="Heading 3"
+                style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
+              >
+                H3
+              </button>
+              <button
+                className={`btn-icon ${editor.isActive('paragraph') && !editor.isActive('heading') ? 'active' : ''}`}
+                onClick={() => editor.chain().focus().setParagraph().run()}
+                title="Normal text"
+              >
+                <Type size={15} />
+              </button>
+            </span>
+            <span className="format-group" data-group="clear" data-hidden={hiddenGroups.includes('clear') || undefined} aria-hidden={hiddenGroups.includes('clear') || undefined}>
+              <span className="toolbar-divider" />
+              <button
+                className="btn-icon"
+                onClick={handleClearFormatting}
+                title="Clear formatting"
+              >
+                <RemoveFormatting size={15} />
+              </button>
+            </span>
           </div>
 
           <span className="toolbar-divider" />
-
-          {/* Link */}
-          <button
-            className={`btn-icon ${editor.isActive('link') ? 'active' : ''}`}
-            onClick={handleLink}
-            title="Add link"
-          >
-            <Link size={15} />
-          </button>
-          {editor.isActive('link') && (
-            <button
-              className="btn-icon"
-              onClick={() => editor.chain().focus().unsetLink().run()}
-              title="Remove link"
-            >
-              <Unlink size={15} />
-            </button>
-          )}
-
-          <span className="toolbar-divider" />
-
-          {/* Math */}
-          <button
-            className="btn-icon"
-            title="Insert inline math ($…$)"
-            onClick={() => {
-              const latex = window.prompt('LaTeX (inline):', 'E = mc^2')
-              if (latex) editor.chain().focus().insertMath(latex, false).run()
-            }}
-            style={{ fontFamily: 'serif', fontWeight: 'bold', fontSize: 14 }}
-          >
-            ∑
-          </button>
-          <button
-            className="btn-icon"
-            title="Insert display math ($$…$$)"
-            onClick={() => {
-              const latex = window.prompt('LaTeX (display):', '\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}')
-              if (latex) editor.chain().focus().insertMath(latex, true).run()
-            }}
-            style={{ fontFamily: 'serif', fontWeight: 'bold', fontSize: 14 }}
-          >
-            ∫
-          </button>
-
-          <span className="toolbar-divider" />
-
-          </>)}
-
-          {/* The less-used formatting, in a menu, so the formatting tools fit
-              in the space the insert tools had */}
+          {/* The less-used formatting, and what didn't fit in the row */}
           <div ref={moreFormatRef} style={{ position: 'relative' }}>
             <button
               className={`btn-icon ${showMoreFormat ? 'active' : ''}`}
@@ -1401,12 +1040,14 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
             {showMoreFormat && (
               <div role="menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 240, padding: '4px 0' }}>
                 {[
+                  ...hiddenGroups.flatMap(key => overflowItems[key] || []),
+                  hiddenGroups.length > 0 && '-',
                   { label: 'Strikethrough', icon: <Strikethrough size={14} />, on: editor.isActive('strike'), run: () => editor.chain().focus().toggleStrike().run() },
                   { label: 'Inline code', icon: <Code size={14} />, on: editor.isActive('code'), run: () => editor.chain().focus().toggleCode().run() },
                   { label: 'Code block', icon: <FileCode size={14} />, on: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
                   { label: 'Quote', icon: <Quote size={14} />, on: editor.isActive('blockquote'), run: () => editor.chain().focus().toggleBlockquote().run() },
                   !wholeBox && { label: 'Image in text', icon: <Image size={14} />, run: handleImage },
-                ].filter(Boolean).map(item => (
+                ].filter(Boolean).map((item, i) => item === '-' ? <div key={`line-${i}`} style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} /> : (
                   <button
                     key={item.label}
                     role="menuitem"
@@ -1455,90 +1096,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
               </div>
             )}
           </div>
-
-          {/* Clear formatting */}
-          <button
-            className="btn-icon"
-            onClick={handleClearFormatting}
-            title="Clear formatting"
-          >
-            <RemoveFormatting size={15} />
-          </button>
         </>
       )}
-
-      {/* PDF page picker modal */}
-      {pdfModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onKeyDown={e => { if (e.key === 'Escape') setPdfModal(null) }}
-        >
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '80vw', maxWidth: 960, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>Select PDF Pages to Insert</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{pdfModal.pages.length} page{pdfModal.pages.length !== 1 ? 's' : ''} — click to select</span>
-            </div>
-            <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexWrap: 'wrap', gap: 12, flex: 1 }}>
-              {pdfModal.pages.map(({ canvas, num }) => {
-                const isSelected = pdfModal.selected.has(num)
-                return (
-                  <div
-                    key={num}
-                    onClick={() => setPdfModal(prev => {
-                      const s = new Set(prev.selected)
-                      s.has(num) ? s.delete(num) : s.add(num)
-                      return { ...prev, selected: s }
-                    })}
-                    style={{ cursor: 'pointer', border: `2px solid ${isSelected ? '#6366f1' : 'var(--border)'}`, borderRadius: 6, overflow: 'hidden', position: 'relative', flexShrink: 0 }}
-                  >
-                    <img src={canvas.toDataURL()} alt={`Page ${num}`} style={{ display: 'block', width: 160, height: 'auto' }} />
-                    <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.7)', pointerEvents: 'none' }}>
-                      {num}
-                    </div>
-                    {isSelected && (
-                      <div style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'white', fontWeight: 700 }}>✓</div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
-              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setPdfModal(null)}>Cancel</button>
-              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setPdfModal(prev => ({ ...prev, selected: new Set(prev.pages.map(p => p.num)) }))}>Select All</button>
-              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={insertPdfPages} disabled={pdfModal.selected.size === 0}>
-                Insert {pdfModal.selected.size > 0 ? `${pdfModal.selected.size} Page${pdfModal.selected.size !== 1 ? 's' : ''}` : ''}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Plugins dropdown — far right: the plugins' elements, and (cloud)
-          the Plugins dialog to browse and publish community plugins */}
-      {!editor && (pluginTypes.length > 0 || onBrowsePlugins) && (<>
-        <div style={{ flex: 1 }} />
-        <div style={{ position: 'relative' }}>
-          <button className="btn-icon" onClick={() => setShowPluginMenu(v => !v)} title="Plugins" style={{ width: 'auto', padding: '0 8px', fontSize: 12, gap: 4, display: 'flex', alignItems: 'center' }}>
-            <Puzzle size={14} /> Plugins <span style={{ fontSize: 9, marginLeft: 1, opacity: 0.6 }}>&#9660;</span>
-          </button>
-          {showPluginMenu && (<>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowPluginMenu(false)} />
-            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 180, overflow: 'hidden', padding: '4px 0' }}>
-              {pluginTypes.map(pt => (
-                <button key={pt.type} onClick={() => { setShowPluginMenu(false); onAddPluginElement?.(pt.type) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                  <Puzzle size={13} style={{ opacity: 0.5 }} /> {pt.label}
-                </button>
-              ))}
-              {onBrowsePlugins && (<>
-                {pluginTypes.length > 0 && <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />}
-                <button onClick={() => { setShowPluginMenu(false); onBrowsePlugins() }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                  <Search size={13} style={{ opacity: 0.5 }} /> Browse plugins…
-                </button>
-              </>)}
-            </div>
-          </>)}
-        </div>
-      </>)}
 
       {linkModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}

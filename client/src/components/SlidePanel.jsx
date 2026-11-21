@@ -3,7 +3,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react'
 import ContextMenu from './ContextMenu'
-import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
+import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
+import { keyLabel } from '../utils/shortcuts'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
@@ -208,7 +209,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
@@ -359,6 +360,20 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     }
   }
 
+  // New slide, at the top of the list: after the current slide, in the
+  // layout that follows its own (Ctrl+M); ▾ picks a layout
+  const newSlideBar = colNum => (
+    <div className="new-slide-bar">
+      <button className="add-slide-btn" onClick={() => (onNewSlideAfter ? onNewSlideAfter(currentIndex) : onAdd(colNum))} title={`New slide after this one (${keyLabel('Mod+M')})`}>
+        <Plus size={14} />
+        New slide
+      </button>
+      <button className="add-slide-btn new-slide-layouts" onClick={() => onAdd(colNum)} title="New slide from a layout" aria-label="New slide from a layout">
+        <ChevronDown size={13} />
+      </button>
+    </div>
+  )
+
   if (!is2D) {
     // ── 1D layout (original) ──────────────────────────────────────────────────
     return (
@@ -370,6 +385,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
             {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
           </span>
         </div>
+        {newSlideBar(null)}
 
         <div
           className="slide-list"
@@ -426,6 +442,12 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <button className="slide-action-btn" title="Move down" onClick={e => { e.stopPropagation(); onMove(index, index + 1) }} disabled={index === slides.length - 1}><ArrowDown size={10} /></button>
                 <button className="slide-action-btn" title="Delete" onClick={e => { e.stopPropagation(); if (slides.length > 1) onDelete(index) }} style={{ color: slides.length > 1 ? 'white' : 'rgba(255,255,255,0.3)' }}><Trash2 size={10} /></button>
               </div>
+              {onNewSlideAfter && (
+                <button className="slide-gap-add" title="New slide here" aria-label={`New slide after slide ${index + 1}`}
+                  draggable={false} onClick={e => { e.stopPropagation(); onNewSlideAfter(index) }}>
+                  <Plus size={11} />
+                </button>
+              )}
             </div>
             )
           })}
@@ -449,20 +471,6 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
           )}
         </div>
 
-        <div className="slide-panel-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <button className="add-slide-btn" onClick={() => onAdd(null)}>
-            <Plus size={14} />
-            Add Slide
-          </button>
-          <button className="add-slide-btn" onClick={onAddColumn} title="Start a 2D vertical column" style={{ fontSize: 11 }}>
-            <Plus size={12} />
-            Add Column
-          </button>
-          <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation or from LaTeX Beamer" style={{ fontSize: 11 }}>
-            <Download size={12} />
-            Import Slide
-          </button>
-        </div>
       </div>
     )
   }
@@ -477,6 +485,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
           {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
         </span>
       </div>
+      {newSlideBar(currentColNum)}
 
       <div
         style={{ flex: 1, display: 'flex', flexDirection: 'row', gap: 4, overflowX: 'auto', overflowY: 'hidden', padding: '6px 4px', outline: 'none' }}
@@ -607,16 +616,6 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
         </div>
       </div>
 
-      <div className="slide-panel-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <button className="add-slide-btn" style={{ fontSize: 11 }} onClick={() => onAdd(currentColNum)}>
-          <Plus size={12} />
-          Add to Col {currentColIdx + 1}
-        </button>
-        <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation or from LaTeX Beamer" style={{ fontSize: 11 }}>
-          <Download size={12} />
-          Import Slide
-        </button>
-      </div>
     </div>
   )
 }

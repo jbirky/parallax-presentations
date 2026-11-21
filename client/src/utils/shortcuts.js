@@ -50,6 +50,7 @@ export const SHORTCUT_GROUPS = [
       ['Undo, redo', 'Mod+Z  Mod+Y'],
       ['Find and replace', 'Mod+F'],
       ['This list', 'Mod+/'],
+      ['Search the menus', 'Alt+/'],
     ],
   },
 ]

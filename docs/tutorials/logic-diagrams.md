@@ -4,7 +4,7 @@ Draw logic circuits from gates, inputs, outputs, clocks and flip-flops, and the 
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Logic Diagram**.
+1. Open **Science** in the toolbar and click **Logic gates**.
 2. The editor opens with a half adder. Change it, pick another diagram from **Start from…**, or choose **Blank**.
 3. Click **Insert**.
 

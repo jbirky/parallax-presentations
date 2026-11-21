@@ -4,7 +4,7 @@ Draw clock, signal and bus waveforms from a few lines of WaveJSON, the format of
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Timing Diagram**.
+1. Open **Science** in the toolbar and click **Timing diagram**.
 2. The editor opens with a clock, a data bus and a request and acknowledge handshake. Edit the WaveJSON on the left, or pick another diagram from **Start from…**: an SPI byte, I²C, a UART frame, an AXI-style valid and ready handshake, a pipeline, or a RISC-V instruction's fields.
 3. Click **Insert**.
 

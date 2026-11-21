@@ -4,7 +4,7 @@ Parallax has a built-in citation manager that lets you import references from Bi
 
 ## Opening the bibliography manager
 
-Click the **Citations** button in the top toolbar to open the bibliography modal. You can also access it from **Settings > Manage Bibliography**.
+Choose **Tools › Citations and bibliography…** to open the bibliography. You can also open it from **File › Deck settings…**, with **Manage Bibliography**.
 
 The modal has three tabs:
 
@@ -52,7 +52,7 @@ Choose between two styles in the **Settings** tab of the bibliography modal:
 ## Inserting citations in text
 
 1. Click into a **text element** on your slide so the cursor is active.
-2. Open the bibliography modal (click **Citations** in the toolbar).
+2. Open the bibliography (**Tools › Citations and bibliography…**).
 3. In the **Library** tab, click the **Cite** button next to the reference you want to insert.
 4. A styled citation marker (e.g. `[1]` or `(Smith et al., 2020)`) is inserted at the cursor position. It is one piece, like an equation: it moves and deletes as a whole, and it remembers which entry it cites.
 

@@ -1,6 +1,6 @@
 # Tables
 
-1. Open the **Text** menu in the toolbar and click **Table**, then give the number of rows and columns.
+1. Click **Table** in the toolbar, then point at the number of rows and columns in the grid and click.
 2. A table element appears with default dimensions. Double-click to edit.
 3. Click any cell to type content.
 4. In the right panel, configure:

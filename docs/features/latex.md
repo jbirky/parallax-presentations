@@ -4,7 +4,7 @@ Parallax provides first-class support for mathematical notation and diagrams thr
 
 ## Inserting a LaTeX block
 
-1. Right-click on the slide canvas and choose **Insert → LaTeX**, or use the **Insert** toolbar button.
+1. Choose **Insert → Math and code → LaTeX and TikZ** in the menu bar, or the same under the toolbar's **Insert** button.
 2. A LaTeX element is placed on the slide, and the **LaTeX editor panel** opens on the right.
 3. Type your LaTeX source in the left pane; the right pane shows a **live preview** that updates as you type.
 4. Click elsewhere on the slide to close the editor and see the final rendered output embedded in your slide.

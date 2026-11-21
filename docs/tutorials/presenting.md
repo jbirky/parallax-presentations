@@ -39,13 +39,13 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 ## Speaker notes
 
-1. In the editor, click the **Notes** area at the bottom of the properties panel.
+1. In the editor, click **Click to add speaker notes** in the strip under the slide. Drag the strip's top edge to make it taller.
 2. Type your speaker notes for the current slide.
 3. In present mode, press `S` to open the speaker view with notes, timer, and next-slide preview.
 
 ## Themes
 
-Change the visual theme in the toolbar under **Theme**:
+Change the visual theme under **Slide › Theme** in the menu bar:
 
 - Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula
 
@@ -53,7 +53,7 @@ Themes affect the background color, text color, and heading styles. Element-leve
 
 ## Footer & page numbers
 
-1. Open footer settings in the toolbar.
+1. Choose **Slide › Footer and page numbers…**.
 2. Configure:
    - **Section labels** — show active section in a progress bar
    - **Page numbers** — `n/total` or just `n`
@@ -63,19 +63,19 @@ Themes affect the background color, text color, and heading styles. Element-leve
 
 ### HTML
 
-Click **Export** > **Download HTML** to get a self-contained HTML file. All fonts, scripts, and images (if from URLs) are loaded via CDN. The file can be opened in any browser without a server.
+Choose **File › Export › HTML** to get a self-contained HTML file. All fonts, scripts, and images (if from URLs) are loaded via CDN. The file can be opened in any browser without a server.
 
 ### Single slide HTML
 
-Click **Export** > **Export Slide HTML** to download just the current slide.
+Choose **File › Export › This slide as HTML** to download just the current slide.
 
 ### PDF
 
-Click **Export** > **Export PDF** to generate a print-ready PDF with one page per slide. Fragment states are expanded into separate pages.
+Choose **File › Export › PDF** to generate a print-ready PDF with one page per slide. Fragment states are expanded into separate pages.
 
 ### PowerPoint
 
-Click **Export** > **Export PPTX** to generate a PowerPoint file. Text, shapes, and images are converted to native PowerPoint objects.
+Choose **File › Export › PowerPoint (.pptx)** to generate a PowerPoint file. Text, shapes, and images are converted to native PowerPoint objects.
 
 ## Sharing
 

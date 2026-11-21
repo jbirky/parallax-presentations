@@ -8,14 +8,65 @@ import PropertiesPanel from './PropertiesPanel'
 const text = (id, extra = {}) => ({ id, type: 'text', x: 0, y: 0, width: 100, height: 40, zIndex: 1, content: `<p>${id}</p>`, ...extra })
 
 // The panel's text, one line per piece, with each select showing its chosen option
-function panel(slide, selected, props = {}) {
-  const html = renderToStaticMarkup(
+function panel(slide, selected, props = {}, { before } = {}) {
+  const whole = renderToStaticMarkup(
     <PropertiesPanel slide={slide} selectedElement={selected} selectedElementIds={[selected.id]} presentation={{ id: 'p', slides: [slide] }}
       onUpdateSlide={() => {}} onUpdateElement={() => {}} onUpdateWithGroup={() => {}} onSelectElement={() => {}} currentSlideIndex={0} {...props} />)
+  // Up to `before`, as the element's part of a tab, without the slide's after it
+  const html = before && whole.includes(before) ? whole.slice(0, whole.indexOf(before)) : whole
   const chosen = [...html.matchAll(/<option value="[^"]*" selected="">([^<]*)</g)].map(m => m[1])
   const lines = html.replace(/<option[^>]*>[^<]*<\/option>/g, '').replace(/<[^>]+>/g, '\n').split('\n').map(s => s.trim()).filter(Boolean)
   return { html, lines, chosen }
 }
+
+// The Animate tab, where interactions, states and steps are (the element's
+// part, without the slide's transition after it)
+const animate = (slide, selected, props = {}) => panel(slide, selected, { tab: 'animate', ...props }, { before: '>Transition' })
+// The panel with nothing selected
+function nothing(slide, props = {}) {
+  const html = renderToStaticMarkup(
+    <PropertiesPanel slide={slide} selectedElement={null} selectedElementIds={[]} presentation={{ id: 'p', slides: [slide] }}
+      onUpdateSlide={() => {}} onUpdateElement={() => {}} onUpdateWithGroup={() => {}} onSelectElement={() => {}} currentSlideIndex={0} {...props} />)
+  return { html, lines: html.replace(/<option[^>]*>[^<]*<\/option>/g, '').replace(/<[^>]+>/g, '\n').split('\n').map(s => s.trim()).filter(Boolean) }
+}
+
+describe('The inspector’s tabs', () => {
+  const box = text('Box')
+  const slide = { id: 's1', elements: [box], notes: 'Say hello' }
+
+  it('formats a text box under Text, Box and Arrange, without its animations', () => {
+    const { lines, html } = panel(slide, box)
+    expect(html).toContain('role="tablist"')
+    expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*>Format</)
+    expect(lines.slice(lines.indexOf('Slide') + 1, lines.indexOf('Slide') + 3)).toEqual(['Text box', 'Text'])
+    expect(lines).toEqual(expect.arrayContaining(['Box', 'Fixed size', 'Grow box', 'Arrange', 'Anchor point', 'Delete']))
+    expect(lines.indexOf('Text')).toBeLessThan(lines.indexOf('Box'))
+    expect(lines.indexOf('Box')).toBeLessThan(lines.indexOf('Arrange'))
+    expect(lines).not.toContain('Appear on click')
+    expect(lines).not.toContain('Interactions')
+    expect(lines).not.toContain('Transition')
+  })
+
+  it('animates it under Animate, with the slide’s transition', () => {
+    const { lines } = panel(slide, box, { tab: 'animate' })
+    expect(lines).toEqual(expect.arrayContaining(['Entry animation, as the slide opens', 'Appear on click', 'Interactions', 'Transition']))
+    expect(lines).not.toContain('Arrange')
+    expect(lines).not.toContain('Fixed size')
+  })
+
+  it('shows the slide’s background when nothing is selected', () => {
+    const { lines } = nothing(slide)
+    expect(lines).toEqual(expect.arrayContaining(['Slide 1', 'Select something on the slide to format it.', 'Background', 'Color', 'Gradient']))
+  })
+
+  it('keeps the background and footer on the Slide tab, the rest folded under Advanced, and the notes under the slide', () => {
+    const { lines } = nothing(slide, { tab: 'slide' })
+    expect(lines).toEqual(expect.arrayContaining(['Background', 'Footer', 'Advanced']))
+    expect(lines).not.toContain('Slide Group')
+    expect(lines).not.toContain('Speaker Notes')
+    expect(lines).not.toContain('Say hello')
+  })
+})
 
 describe('Interactions in the Properties panel', () => {
   const tab = text('Tab A', { clickAction: { type: 'visibility', show: ['Panel A', 'Panel A text'], hide: ['Tab A'] }, hoverEffect: 'lift' })
@@ -26,7 +77,7 @@ describe('Interactions in the Properties panel', () => {
   ] }
 
   it('lists what a click shows or hides, a group as one', () => {
-    const { lines, chosen } = panel(slide, tab)
+    const { lines, chosen } = animate(slide, tab)
     const at = lines.indexOf('Interactions')
     expect(at).toBeGreaterThan(-1)
     expect(lines.slice(at)).toEqual(expect.arrayContaining(['On click', 'Tab A (this)', 'Group: Panel A', '· hidden at start', 'Html 1', 'Hover style', 'On hover', 'Hidden until a click or hover shows it']))
@@ -37,7 +88,7 @@ describe('Interactions in the Properties panel', () => {
   it('lists what a hover shows or hides, leaving out the element itself', () => {
     const spot = text('Spot', { groupId: 'm', hoverAction: { type: 'visibility', show: ['Panel A', 'Panel A text'], hide: ['chart'] } })
     const hoverSlide = { ...slide, elements: [...slide.elements, spot, text('Spot label', { groupId: 'm' })] }
-    const { lines, chosen, html } = panel(hoverSlide, spot)
+    const { lines, chosen, html } = animate(hoverSlide, spot)
     // No click action, then the hover: the tab no change, the group: show, the chart: hide
     expect(chosen.slice(-5)).toEqual(['Nothing', 'Show, hide or change elements', '—', 'Show', 'Hide'])
     expect(html).toContain('aria-label="Group: Panel A: on hover"')
@@ -47,7 +98,7 @@ describe('Interactions in the Properties panel', () => {
   })
 
   it('lets an embed be hidden at start, without a click action of its own', () => {
-    const { lines, html } = panel(slide, slide.elements[3])
+    const { lines, html } = animate(slide, slide.elements[3])
     expect(lines).toContain('This element takes its own clicks and hovers, but a click or hover on something else can still show or hide it.')
     expect(lines).toContain('Hidden until a click or hover shows it')
     expect(html).not.toContain('aria-label="On click"')
@@ -56,10 +107,10 @@ describe('Interactions in the Properties panel', () => {
 
   it('warns when nothing shows an element hidden at start', () => {
     const lonely = { id: 's', elements: [text('x', { startHidden: true })] }
-    expect(panel(lonely, lonely.elements[0]).lines).toContain('Nothing on this slide shows it yet.')
-    expect(panel(slide, slide.elements[1]).lines).not.toContain('Nothing on this slide shows it yet.')
+    expect(animate(lonely, lonely.elements[0]).lines).toContain('Nothing on this slide shows it yet.')
+    expect(animate(slide, slide.elements[1]).lines).not.toContain('Nothing on this slide shows it yet.')
     const hovered = { id: 's', elements: [text('x', { startHidden: true }), text('y', { hoverAction: { type: 'visibility', show: ['x'] } })] }
-    expect(panel(hovered, hovered.elements[0]).lines).not.toContain('Nothing on this slide shows it yet.')
+    expect(animate(hovered, hovered.elements[0]).lines).not.toContain('Nothing on this slide shows it yet.')
   })
 })
 
@@ -69,28 +120,29 @@ describe('States in the Properties panel', () => {
   const slide = { id: 's1', elements: [card, button] }
 
   it('lists the states, what it starts as, and offers zooming for an element without any', () => {
-    const { lines, chosen, html } = panel(slide, card)
+    const { lines, chosen, html } = animate(slide, card)
     expect(html).toContain('aria-label="States"')
     expect(lines).toEqual(expect.arrayContaining(['Default', 'Flipped', 'Big', '+ State', 'Starts as']))
     expect(html).toContain('be seen while turned over (for flip cards)')
     expect(chosen).toContain('Big') // starts as
     expect(lines).not.toContain('Zoom in when clicked')
-    expect(panel({ id: 's', elements: [text('x')] }, text('x')).lines).toContain('Zoom in when clicked')
+    expect(animate({ id: 's', elements: [text('x')] }, text('x')).lines).toContain('Zoom in when clicked')
   })
 
   it('shows the state being recorded, and hides the layer buttons', () => {
-    const { lines, chosen, html } = panel(slide, card, { recordingState: 'st_a' })
+    const { lines, chosen, html } = animate(slide, card, { recordingState: 'st_a' })
     expect(html).toContain('aria-pressed="true" style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);font-size:11px;cursor:pointer;background:#d946ef')
     expect(html).toContain('value="Flipped"')
     expect(html).toContain('value="300"')
     expect(chosen).toContain('Spring')
     expect(lines).toEqual(expect.arrayContaining(['Clear changes', 'Delete state', 'In front of everything']))
-    expect(lines).not.toContain('↑ Forward')
+    // The layer buttons, on the Format tab, are hidden while recording
+    expect(panel(slide, card, { recordingState: 'st_a' }).lines).not.toContain('↑ Forward')
     expect(panel(slide, card).lines).toContain('↑ Forward')
   })
 
   it('lets a click put elements in their states', () => {
-    const { chosen, html } = panel(slide, button)
+    const { chosen, html } = animate(slide, button)
     expect(html).toContain('aria-label="Card: state on click"')
     expect(chosen).toContain('Toggle Flipped')
     expect(html).toContain('<option value="cycle:">Next state</option>')
@@ -101,7 +153,7 @@ describe('Steps in the Properties panel', () => {
   it('lists the steps that change its state, and adds one after the slide’s last', () => {
     const el = text('Dot', { states: [{ id: 'st_a', name: 'Moved' }], stateSteps: { 3: 'st_a', 5: null } })
     const slide = { id: 's1', elements: [el, text('Frag', { fragment: true, fragmentIndex: 6 })] }
-    const { html, chosen, lines } = panel(slide, el)
+    const { html, chosen, lines } = animate(slide, el)
     expect(html).toMatch(/aria-label="Step 3"[^>]*value="3"/)
     expect(html).toMatch(/aria-label="Step 5"[^>]*value="5"/)
     expect(chosen).toEqual(expect.arrayContaining(['Moved', 'Default']))

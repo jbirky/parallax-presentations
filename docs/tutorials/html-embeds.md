@@ -4,7 +4,7 @@ Embed custom interactive content directly on your slides — D3 visualizations, 
 
 ## HTML / D3 embed
 
-1. Click **Embed** in the toolbar.
+1. Open **Insert** in the toolbar and, under **Embed**, click **D3** (or **HTML** for an empty page).
 2. A code editor opens with a starter D3 scatter plot.
 3. Write any valid HTML — the content renders inside a sandboxed iframe.
 4. Click **Apply** to insert. The element previews live on the slide.
@@ -19,7 +19,7 @@ The embedded HTML is completely self-contained. It works in present mode, export
 
 ## p5.js sketches
 
-1. Click **p5** in the toolbar.
+1. Open **Insert** in the toolbar and, under **Embed**, click **p5.js**.
 2. A code editor opens pre-loaded with the p5.js library.
 3. Write your p5.js sketch using `setup()` and `draw()`.
 4. Click **Apply**. The sketch renders live on the slide.

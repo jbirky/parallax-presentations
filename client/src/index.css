@@ -102,14 +102,32 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .editor-header { display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 52px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .editor-header .back-btn { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; padding: 6px 10px; border-radius: 6px; }
 .editor-header .back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.title-input { flex: 1; max-width: 300px; background: transparent; border: 1px solid transparent; color: var(--text-primary); font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
+.title-input { flex: 0 1 260px; min-width: 100px; max-width: 300px; background: transparent; border: 1px solid transparent; color: var(--text-primary); font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
 .title-input:hover { border-color: var(--border); }
 .title-input:focus { outline: none; border-color: var(--accent); background: var(--bg-card); }
 .header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
 .header-controls > * { flex-shrink: 0; }
-/* The top bar's tools (components/HeaderTools.jsx): one row's height, so the
-   tools that wrap are out of sight; they're offered in its More menu */
-.header-controls > .header-tools { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 8px; height: 32px; }
+/* The menu bar (components/MenuBar.jsx), after the title, as in Google Slides */
+.menu-bar { display: flex; align-items: center; gap: 0; flex-shrink: 0; margin-left: -4px; }
+.menu-title { padding: 5px 8px; border-radius: 5px; font-size: 13px; color: var(--text-secondary); background: none; border: none; cursor: pointer; white-space: nowrap; }
+.menu-title:hover, .menu-title.open { background: var(--bg-hover); color: var(--text-primary); }
+.menu-title:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-dropdown { z-index: 1100; margin-top: 2px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 6px; padding: 4px; min-width: 220px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.menu-dropdown.menu-flyout { margin-top: 0; }
+.menu-row > button { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; padding: 6px 10px 6px 6px; font-size: 13px; border-radius: 4px; color: var(--text-primary); cursor: pointer; background: none; border: none; white-space: nowrap; }
+.menu-row > button.active:not(:disabled) { background: var(--bg-hover); }
+.menu-row > button:disabled { color: var(--text-muted); cursor: default; }
+.menu-label { flex: 1; display: flex; align-items: center; }
+.menu-check { display: inline-block; width: 18px; text-align: center; color: var(--accent-light); }
+.menu-dropdown .menu-shortcut, .menu-search .menu-shortcut { font-size: 11px; color: var(--text-muted); }
+.menu-more { color: var(--text-muted); margin-right: -4px; }
+.menu-separator { height: 1px; background: var(--border); margin: 4px 0; }
+.menu-search { width: min(560px, 92vw); background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,0.5); overflow: hidden; }
+.menu-search [role=option] { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; border-radius: 5px; color: var(--text-primary); background: none; border: none; cursor: pointer; }
+.menu-search [role=option].active { background: var(--bg-hover); }
+.menu-search [role=option]:disabled { color: var(--text-muted); }
+.menu-trail { margin-left: 10px; font-size: 11px; color: var(--text-muted); }
+@media (max-width: 1100px) { .menu-title { padding: 5px 6px; } }
 .save-indicator { font-size: 12px; color: var(--text-muted); }
 .select-sm { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 5px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .select-sm:focus { outline: none; border-color: var(--accent); }
@@ -248,13 +266,55 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .ol-help kbd { font-family: inherit; font-size: 10.5px; padding: 0 4px; border: 1px solid var(--border-light); border-radius: 3px; color: var(--text-secondary); }
 .add-slide-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 6px; border: 1px dashed var(--border); color: var(--text-muted); font-size: 12px; transition: all 0.15s; cursor: pointer; background: none; }
 .add-slide-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.05); }
+.new-slide-bar { display: flex; gap: 4px; padding: 8px 8px 0; }
+.new-slide-bar .add-slide-btn:first-child { flex: 1; }
+.new-slide-bar .new-slide-layouts { width: 32px; flex-shrink: 0; padding: 8px 0; }
+.slide-gap-add { position: absolute; left: 50%; bottom: -12px; transform: translateX(-50%); width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--accent); background: var(--bg-panel); color: var(--accent); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; z-index: 20; transition: opacity 0.15s; }
+.slide-item:hover .slide-gap-add, .slide-gap-add:focus-visible { opacity: 1; }
+.slide-gap-add:hover { background: var(--accent); color: #fff; }
+
 
 /* EDITOR MAIN */
-.editor-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-primary); }
+.editor-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-primary); }
 
 /* TOOLBAR */
 .toolbar { display: flex; align-items: center; gap: 2px; padding: 6px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 46px; }
 .toolbar-divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+/* The formatting row's groups that don't fit wrap out of sight (the row is
+   one line tall) and are offered under More */
+.format-overflow { flex: 1 1 0; min-width: 0; height: 30px; position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.format-group { display: inline-flex; align-items: center; gap: 2px; height: 30px; }
+.format-group[data-hidden] { visibility: hidden; }
+.btn-icon.toolbar-labeled { width: auto; padding: 0 8px; gap: 4px; font-size: 12px; white-space: nowrap; }
+.split-button { display: flex; align-items: center; }
+.split-button > .btn-icon:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-button > .split-arrow { width: 18px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+/* The hint takes what room is left and never a row of its own */
+.toolbar-hint { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; color: var(--text-muted); }
+.toolbar-hint > span { padding-left: 8px; }
+/* A narrow toolbar (components/Toolbar.jsx) keeps its buttons' icons and
+   drops their words */
+.toolbar-compact .tl-text { display: none; }
+.toolbar-compact .btn-icon.toolbar-labeled { padding: 0 6px; gap: 2px; }
+.toolbar-compact .toolbar-hint { display: none; }
+.tool-menu { position: absolute; top: 100%; margin-top: 4px; z-index: 1000; min-width: 190px; padding: 4px 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-height: min(70vh, 640px); overflow-y: auto; }
+.tool-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; background: none; border: none; color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: left; border-radius: 4px; white-space: nowrap; }
+.tool-menu-item:hover { background: var(--bg-hover); }
+.tool-menu-heading { font-size: 10px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.tool-menu-docs { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 12px; color: var(--text-muted); font-size: 11px; text-decoration: none; }
+.tool-menu-docs:hover { background: var(--bg-hover); color: var(--text-primary); }
+.shape-choice { padding: 6px 4px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 18px; color: var(--text-primary); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.shape-choice:hover { border-color: var(--accent); }
+.insert-search { display: flex; align-items: center; gap: 6px; margin: 2px 8px 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-muted); }
+.insert-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-primary); font-size: 12px; }
+.insert-heading { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.insert-heading a { color: var(--text-muted); display: flex; }
+.insert-heading a:hover { color: var(--text-primary); }
+.insert-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 12px; background: none; border: none; color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: left; }
+.insert-item:hover:not(:disabled) { background: var(--bg-hover); }
+.insert-item.insert-sub { padding-left: 34px; font-size: 12px; color: var(--text-secondary); }
+.insert-icon { width: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-secondary); }
+
 .color-btn-wrapper { position: relative; display: inline-flex; align-items: center; }
 .color-btn-wrapper input[type="color"] { position: absolute; opacity: 0; width: 30px; height: 30px; cursor: pointer; }
 .color-indicator { width: 10px; height: 3px; border-radius: 2px; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); }
@@ -301,6 +361,22 @@ sup[data-cite] { font-weight: 700; }
 .properties-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .prop-section { padding: 16px; border-bottom: 1px solid var(--border); }
 .prop-section h3 { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+/* The inspector's tabs: Format, Animate, Slide */
+.inspector-tabs { display: flex; gap: 2px; margin: 8px 12px 0; padding: 2px; background: var(--bg-card); border-radius: 7px; flex-shrink: 0; }
+.inspector-tabs button { flex: 1; padding: 5px 4px; border-radius: 5px; font-size: 12px; font-weight: 500; color: var(--text-secondary); background: none; border: none; cursor: pointer; }
+.inspector-tabs button:hover { color: var(--text-primary); }
+.inspector-tabs button.active { background: var(--accent); color: #fff; }
+.prop-subhead { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin: 14px 0 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.prop-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+/* Speaker notes, in a strip under the slide (components/NotesStrip.jsx) */
+.notes-strip { position: relative; flex-shrink: 0; display: flex; background: var(--bg-secondary); border-top: 1px solid var(--border); }
+.notes-strip-empty { height: 32px; width: 100%; align-items: center; padding: 0 16px; font-size: 12px; color: var(--text-muted); cursor: text; text-align: left; border-left: none; border-right: none; border-bottom: none; }
+.notes-strip-empty:hover { color: var(--text-secondary); background: var(--bg-hover); }
+.notes-strip-resize { position: absolute; left: 0; right: 0; top: -4px; height: 8px; cursor: ns-resize; z-index: 5; }
+.notes-strip-resize:hover, .notes-strip-resize:focus-visible { background: rgba(99,102,241,0.35); outline: none; }
+.notes-strip-text { flex: 1; resize: none; background: none; border: none; outline: none; color: var(--text-primary); font-size: 13px; line-height: 1.5; padding: 10px 16px; font-family: inherit; }
+.notes-strip-text::placeholder { color: var(--text-muted); }
+
 .prop-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .prop-row label { font-size: 12px; color: var(--text-secondary); }
 .prop-row input[type="color"] { width: 36px; height: 28px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; padding: 1px; background: var(--bg-card); }

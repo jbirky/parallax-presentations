@@ -4,7 +4,7 @@ Put a 3D molecule or protein on a slide, from PubChem, the Protein Data Bank or 
 
 ## Adding one
 
-1. Open the **Diagrams** menu in the toolbar and click **Molecule**.
+1. Open **Science** in the toolbar and click **Molecule**.
 2. Choose where the structure comes from:
    - **PubChem**: type a compound's name or CID (`caffeine`, `aspirin`, `2519`). You get the 3D shape PubChem computed for it.
    - **Protein Data Bank**: type a PDB ID (`1UBQ`, `4HHB`). Entries too large for PDB format come as mmCIF.

@@ -4,7 +4,7 @@ Draw a body and the forces on it: a block on a floor or an incline, a sign on tw
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Free-Body Diagram**.
+1. Open **Science** in the toolbar and click **Free-body diagram**.
 2. The editor opens with a block at rest on an incline. Change it, pick another diagram from **Start from…**, or choose **Blank**.
 3. Click **Insert**.
 

@@ -15,7 +15,7 @@ Slide links point at the slide itself rather than its position, so they keep wor
 Any element can do something when it's clicked while presenting:
 
 1. Select the element.
-2. In the **Properties** panel on the right, scroll to **Interactions**, at the bottom of the **Element** section.
+2. In the inspector on the right, open the **Animate** tab and find **Interactions**.
 3. Choose what happens in **On click**:
 
 | On click | What it does |
@@ -53,7 +53,7 @@ When presenting:
 
 ### Hotspots
 
-To add a hotspot that's already set up, open **Interactive ▾** in the toolbar and click **Hotspot**. This adds a round marker and a card that shows while the pointer is over the marker. Double-click the card's text to edit it, and drag the marker and the card where you want them. The card's box and text are grouped, so they move together.
+To add a hotspot that's already set up, open **Insert** in the toolbar and, under **Interactive**, click **Hotspot**. This adds a round marker and a card that shows while the pointer is over the marker. Double-click the card's text to edit it, and drag the marker and the card where you want them. The card's box and text are grouped, so they move together.
 
 ## Showing and hiding elements
 
@@ -67,8 +67,8 @@ When presenting, elements fade in and out, and each time you come back to a slid
 
 To add tabs that are already set up:
 
-1. Open **Interactive ▾** in the toolbar.
-2. Next to **Tabs**, click **2**, **3** or **4**.
+1. Open **Insert** in the toolbar and, under **Interactive**, open **Tabs**.
+2. Click **2 tabs**, **3 tabs** or **4 tabs**.
 
 This adds a row of tab buttons over a panel. Clicking a tab shows its own text, with a bar under the tab, and hides the other tabs' text. Tab 1 shows first.
 

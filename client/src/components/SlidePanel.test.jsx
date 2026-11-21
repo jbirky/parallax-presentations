@@ -62,4 +62,21 @@ describe('the slide list', () => {
     await key('Enter')
     expect(h.onNewSlideAfter).toHaveBeenCalledWith(1)
   })
+
+  it('puts New slide at the top, with its layouts, and a + between slides', async () => {
+    const h = await render({ currentIndex: 1 })
+    const bar = el.querySelector('.new-slide-bar')
+    expect(bar.compareDocumentPosition(el.querySelector('.slide-list')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await act(async () => bar.querySelector('button').click())
+    expect(h.onNewSlideAfter).toHaveBeenCalledWith(1)
+    await act(async () => bar.querySelector('button[aria-label="New slide from a layout"]').click())
+    expect(h.onAdd).toHaveBeenCalledWith(null)
+    // + under the first slide: a new slide after it, without selecting it
+    await act(async () => el.querySelector('button[aria-label="New slide after slide 1"]').click())
+    expect(h.onNewSlideAfter).toHaveBeenLastCalledWith(0)
+    expect(h.onSelect).not.toHaveBeenCalled()
+    // Add Column and Import Slide moved to the Slide and File menus
+    expect(el.textContent).not.toContain('Add Column')
+    expect(el.textContent).not.toContain('Import Slide')
+  })
 })

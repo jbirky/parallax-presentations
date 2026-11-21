@@ -4,7 +4,7 @@ Put an interactive periodic table on a slide. While you present, point at an ele
 
 ## Adding one
 
-Open the **Diagrams** menu in the toolbar and click **Periodic Table**. The whole table goes on the slide, as large as fits, in colors for the slide's background, showing iron in its card. Everything else is set in the right panel.
+Open **Science** in the toolbar and click **Periodic table**. The whole table goes on the slide, as large as fits, in colors for the slide's background, showing iron in its card. Everything else is set in the right panel.
 
 ## When presenting
 

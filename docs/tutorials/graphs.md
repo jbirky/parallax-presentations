@@ -105,7 +105,7 @@ In a PDF, particles are drawn as still streamlines, dots are at rest, and clicke
 
 ## 3D graphs
 
-Switch a graph to **3D** at the top of its editor, or choose **3D Graph** in the toolbar's **3D Model** menu. The same expression list then draws surfaces, curves and points in a box, which you can turn while presenting.
+Switch a graph to **3D** at the top of its editor, or choose **3D graph** under **Science** in the toolbar. The same expression list then draws surfaces, curves and points in a box, which you can turn while presenting.
 
 | Type | Example |
 | --- | --- |
@@ -165,7 +165,7 @@ While presenting, drag to turn it, scroll or pinch to zoom, and double-click to 
 
 ## Plotting data
 
-A graph can plot a dataset's rows beside its curves. Link the dataset to the deck first (**Data** at the top of the editor; see [Live Datasets](./live-datasets.md)), then click **+ Data** under the expression list. The new line plots the dataset's first two number columns; choose the dataset, and the columns for **x** and **y**, in its row. In a new graph it takes the example's place, and the view fits the rows once they arrive.
+A graph can plot a dataset's rows beside its curves. Link the dataset to the deck first (**Tools › Datasets…**; see [Live Datasets](./live-datasets.md)), then click **+ Data** under the expression list. The new line plots the dataset's first two number columns; choose the dataset, and the columns for **x** and **y**, in its row. In a new graph it takes the example's place, and the view fits the rows once they arrive.
 
 | Choice | What it does |
 | --- | --- |

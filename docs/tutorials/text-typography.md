@@ -4,7 +4,7 @@ This tutorial covers the text tools: inserting text boxes, formatting, inline ma
 
 ## Inserting a text box
 
-1. Click the **Text** button in the toolbar (or press `T`).
+1. Click **Text box** in the toolbar (or choose **Insert › Text box**).
 2. A text element appears on the slide. Double-click it to start typing.
 3. Press `Escape` when you're done editing.
 
@@ -43,10 +43,10 @@ You can insert LaTeX math expressions directly inside running text.
 
 Text Path lets you place text along a curved line.
 
-1. Click the **Text Path** button in the toolbar (the curved-T icon).
+1. Open **Insert** in the toolbar and, under **Text**, click **Text path**.
 2. A text path element appears with default text on a sine wave.
 3. Double-click to edit the text content.
-4. In the right panel, adjust the **path type** (wave, arc, circle) and **amplitude**.
+4. In the inspector's **Format** tab, adjust the **path type** (wave, arc, circle) and **amplitude**.
 
 ## 3D text
 
@@ -57,7 +57,7 @@ stays real text, in any font the deck has, in one solid color, and looks
 the same in the editor, when presenting, and in PDFs. Presented, it stays
 exactly where you tilted it.
 
-1. Open **Text** in the toolbar and choose **3D Text**. It starts flat and
+1. Open **Insert** in the toolbar and, under **Text**, choose **3D text**. It starts flat and
    slightly tilted.
 2. Type your text in **Text Content** in the right panel. Press Enter for a
    new line.

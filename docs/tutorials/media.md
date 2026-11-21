@@ -4,7 +4,7 @@
 
 ### From a URL
 
-1. Click the **Video** button in the toolbar.
+1. Open **Insert** in the toolbar and, under **Media**, click **Video from URL…** (or **Upload video…** for a file).
 2. Paste a video URL (MP4, WebM, or Ogg).
 3. The video element appears on the slide with playback controls.
 
@@ -31,7 +31,7 @@ For autoplay to work in most browsers, you need to also enable **Muted**. Browse
 
 ## Audio
 
-1. Click the **Audio** button in the toolbar (under the media section).
+1. Open **Insert** in the toolbar and, under **Media**, click **Upload audio…**.
 2. Enter an audio file URL or upload a file.
 3. An audio player element appears on the slide.
 
@@ -41,7 +41,7 @@ Audio elements support the same controls, autoplay, loop, and muted options as v
 
 Show a part or an assembly that you and your audience can turn around.
 
-1. Open the **3D Model** menu in the toolbar and choose **Upload STL / GLB**.
+1. Open **Insert** in the toolbar and, under **Media**, choose **3D model…**.
 2. Pick an **STL** or **GLB** file. Most CAD programs can export one of these (SolidWorks, Fusion, Onshape, FreeCAD, Blender).
 3. The model appears on the slide, framed to fit.
 

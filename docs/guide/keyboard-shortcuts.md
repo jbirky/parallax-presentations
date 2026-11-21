@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-A complete reference for keyboard shortcuts available in Parallax. In the editor, press `Ctrl+/` (`⌘/` on a Mac), or click the keyboard button in the top bar, to see them. On a Mac, use `⌘` for `Ctrl`.
+A complete reference for keyboard shortcuts available in Parallax. In the editor, press `Ctrl+/` (`⌘/` on a Mac), or choose **Help › Keyboard shortcuts**, to see them. `Alt+/` (`⌥/` on a Mac) searches the menus for any command. On a Mac, use `⌘` for `Ctrl`.
 
 ## Editing shortcuts
 
@@ -17,6 +17,7 @@ A complete reference for keyboard shortcuts available in Parallax. In the editor
 | `Ctrl+M` | New slide after the current one |
 | `Ctrl+F` | Find & replace |
 | `Ctrl+/` | Show the keyboard shortcuts |
+| `Alt+/` | Search the menus for a command |
 | `Delete` / `Backspace` | Delete selected element(s) |
 | `Enter`, `F2`, or type | Edit the selected text box, at the end of its text |
 | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` | Bold / italic / underline all the text of the selected text boxes |

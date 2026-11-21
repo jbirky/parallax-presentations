@@ -4,7 +4,7 @@ Build a ruler-and-compass construction from points, lines and circles, each made
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Geometry**.
+1. Open **Science** in the toolbar and click **Geometry**.
 2. The editor opens with Euclid's first proposition: an equilateral triangle on a segment. Change it, or pick another from **Start from…**: the perpendicular bisector by compass, the circumcircle, the incircle, the Euler line, Thales' theorem, the inscribed angle theorem, tangents from a point, or a blank figure.
 3. Click **Insert**.
 

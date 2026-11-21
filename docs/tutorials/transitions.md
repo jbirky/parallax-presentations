@@ -4,7 +4,7 @@ Control how slides change during your presentation.
 
 ## Built-in transitions
 
-Set the global transition in the editor toolbar under **Transition**:
+Set the deck's transition in **File › Deck settings…** under **Transition**, and a slide's own in the inspector's **Animate** tab (or **Slide › Transition…**):
 
 | Transition | Description |
 |-----------|-------------|
@@ -15,7 +15,7 @@ Set the global transition in the editor toolbar under **Transition**:
 | Concave | 3D concave rotation |
 | Zoom | Zoom in/out |
 
-You can also set a **per-slide transition** in the right panel under **Slide transition**, overriding the global default.
+You can also set a **per-slide transition** in the inspector's **Animate** tab under **Transition**, overriding the global default.
 
 ## Differential Rotation
 
@@ -36,7 +36,7 @@ A custom physics-inspired transition where horizontal bands sweep across at diff
 
 ## Transition speed
 
-For any transition, set the speed in the right panel:
+For any transition, set the speed in the inspector's **Animate** tab:
 
 - **Fast** — quick transitions for rapid pacing
 - **Default** — standard timing
@@ -46,6 +46,6 @@ For any transition, set the speed in the right panel:
 
 For morphing transitions between slides:
 
-1. In the right panel, enable **Auto-Animate** on the slide.
+1. In the inspector's **Animate** tab, enable **Auto-Animate** on the slide.
 2. Duplicate the slide and rearrange elements.
 3. Elements with the same `data-id` (auto-assigned) smoothly morph between positions, sizes, and styles.

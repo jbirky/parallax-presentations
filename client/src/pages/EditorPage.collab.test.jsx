@@ -58,56 +58,74 @@ afterEach(() => {
 })
 
 describe('the editor, shared', () => {
-  // The labels of the items in a top-bar menu, after opening it
-  async function menu(name) {
-    await act(async () => button(name).click())
-    return [...el.querySelectorAll('button')].map(b => b.textContent.trim())
+  // The labels in a menu of the menu bar, after opening it and, along
+  // `path`, its submenus
+  async function menu(name, ...path) {
+    const title = [...el.querySelectorAll('.menu-bar .menu-title')].find(b => b.textContent === name)
+    await act(async () => title.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+    for (const label of path) {
+      const row = [...el.querySelectorAll('.menu-dropdown [role^=menuitem]')].find(b => b.querySelector('.menu-label').textContent.replace(/^[✓•]/, '').trim() === label)
+      await act(async () => row.click())
+    }
+    const deepest = [...el.querySelectorAll('.menu-dropdown')].pop()
+    return [...deepest.querySelectorAll(':scope > .menu-row > button')].map(b => b.querySelector('.menu-label').textContent.replace(/^[✓•]/, '').trim())
   }
+  const closeMenus = async () => act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
 
-  it('puts the share link and editors under Share, not Export', async () => {
+  it('has a menu bar where the top bar’s buttons were, and keeps Present', async () => {
     await open('owner')
-    const share = await menu('Share')
-    expect(share).toContain('Share link')
-    expect(share).toContain('Editors…')
-    await act(async () => button('Share').click())
-    const exports = await menu('Export')
-    expect(exports).toContain('Export PDF')
-    expect(exports).not.toContain('Share link')
-    expect(exports).not.toContain('Editors…')
+    expect([...el.querySelectorAll('.menu-bar .menu-title')].map(b => b.textContent)).toEqual(['File', 'Edit', 'View', 'Insert', 'Format', 'Slide', 'Tools', 'Help'])
+    expect(el.querySelector('.menu-bar').getAttribute('role')).toBe('menubar')
+    for (const gone of ['Settings', 'Export', 'Share', 'History', 'Files', 'Data', 'Sync']) expect(button(gone)).toBeUndefined()
+    expect(button('Present')).toBeTruthy()
+  })
+
+  it('puts the share link and editors under Tools, not Export', async () => {
+    await open('owner')
+    const tools = await menu('Tools')
+    expect(tools).toContain('Share link…')
+    expect(tools).toContain('Editors…')
+    await closeMenus()
+    const exports = await menu('File', 'Export')
+    expect(exports).toEqual(expect.arrayContaining(['PDF', 'PowerPoint (.pptx)', 'HTML']))
+    expect(exports).not.toContain('Share link…')
   })
 
   it('gives an editor the editors but not the share link, which is the owner’s', async () => {
     await open('editor')
-    const share = await menu('Share')
-    expect(share).toContain('Editors…')
-    expect(share).not.toContain('Share link')
+    const tools = await menu('Tools')
+    expect(tools).toContain('Editors…')
+    expect(tools).not.toContain('Share link…')
   })
 
-  it('has no Share menu for a guest', async () => {
+  it('has no sharing for a guest', async () => {
     await open('owner', { guest: { idleHours: 12 } })
-    expect(button('Share')).toBeUndefined()
-    expect(button('Export')).toBeTruthy()
+    const tools = await menu('Tools')
+    expect(tools).not.toContain('Share link…')
+    expect(tools).not.toContain('Editors…')
+    await closeMenus()
+    expect(await menu('File', 'Export')).toContain('Offline HTML')
   })
 
-  it('switches the editor between light and dark in Settings', async () => {
+  it('switches the editor between light and dark in View', async () => {
     const onThemeChange = vi.fn()
     await open('owner', { theme: 'light', onThemeChange })
-    await act(async () => button('Settings').click())
-    const select = el.querySelector('select[aria-label="Editor theme"]')
-    expect(select.value).toBe('light')
-    await act(async () => { select.value = 'dark'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const themes = await menu('View', 'Editor theme')
+    expect(themes).toEqual(['Light', 'Dark'])
+    const dark = [...el.querySelectorAll('.menu-dropdown [role=menuitemradio]')].find(b => b.textContent.includes('Dark'))
+    await act(async () => dark.click())
     expect(onThemeChange).toHaveBeenCalledWith('dark')
   })
 
   it('leaves the owner’s Sync menu out for an editor', async () => {
     await open('editor')
     expect(el.querySelector('.editor-header .title-input').value).toBe('Group talk')
-    expect(button('Sync')).toBeUndefined()
+    expect(await menu('Tools')).not.toContain('Sync')
   })
 
   it('keeps the Sync menu for the owner', async () => {
     await open('owner')
-    expect(button('Sync')).toBeTruthy()
+    expect(await menu('Tools')).toContain('Sync')
   })
 
   it('stops saving when someone else saved first, and can load their version', async () => {

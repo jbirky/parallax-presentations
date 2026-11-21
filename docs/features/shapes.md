@@ -4,8 +4,8 @@ Parallax includes a set of built-in vector shapes that you can place, style, and
 
 ## Inserting a shape
 
-1. Right-click on the slide canvas and choose **Insert → Shape**, or click the **Shape** button in the Insert toolbar.
-2. A submenu shows the available shape types:
+1. Click **Shape** in the toolbar (or choose **Insert → Shape…**).
+2. A panel shows the available shape types:
    - **Rectangle** — filled or outlined box; supports rounded corners
    - **Ellipse / Circle** — oval or perfect circle (hold `Shift` while dragging to constrain to circle)
    - **Line** — straight line with optional arrowheads at either end
@@ -53,7 +53,7 @@ Use the layer controls to adjust the stacking order of overlapping elements:
 - **Bring Forward** — move up one layer
 - **Send Backward** — move down one layer
 
-Right-click an element and choose the layer option, or use the toolbar buttons.
+Right-click an element and choose the layer option, or use **Format › Arrange** in the menu bar.
 
 ## Grouping elements
 

@@ -5,7 +5,7 @@
 Make elements animate in when a slide becomes active.
 
 1. Select an element.
-2. In the right panel, find **Animation** > **Entry Animation**.
+2. In the inspector on the right, open the **Animate** tab and find **Entry animation, as the slide opens**.
 3. Choose a preset:
 
 | Animation | Description |
@@ -28,7 +28,7 @@ Make elements animate in when a slide becomes active.
 
 For fine-grained control over animation ordering:
 
-1. Click the **Timeline** button in the top toolbar.
+1. Choose **View › Animation timeline**.
 2. A timeline panel opens at the bottom showing all animated elements.
 3. Drag elements to reorder their sequence.
 4. Adjust delays to stagger entry times.
@@ -38,7 +38,7 @@ For fine-grained control over animation ordering:
 Fragments let you reveal elements step-by-step within a single slide (advancing with arrow keys or clicks).
 
 1. Select an element.
-2. In the right panel, enable **Fragment**.
+2. In the inspector's **Animate** tab, tick **Appear on click** (a reveal.js fragment).
 3. Choose the fragment animation: fade-in, fade-up, highlight, etc.
 4. Set the **fragment index** to control the reveal order (lower numbers appear first).
 

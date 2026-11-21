@@ -4,13 +4,13 @@ Plugins add elements that other people made: plots, simulations, diagrams. Each 
 
 ## Installing one
 
-In the editor, open **Plugins** at the right end of the toolbar, then **Browse plugins…**. Under **Browse**, search or scroll, and choose **Install**. On a plugin's page in the gallery, **Install in Parallax** does the same, signing you in first if you need to.
+In the editor, open **Insert** in the toolbar and, under **Plugins**, choose **Browse plugins…** (or **Tools › Plugins › Browse plugins…**). Under **Browse**, search or scroll, and choose **Install**. On a plugin's page in the gallery, **Install in Parallax** does the same, signing you in first if you need to.
 
-An installed plugin's elements are in the **Plugins** menu, in every presentation. Installing is for your account; it doesn't change anyone else's menu.
+An installed plugin's elements are under **Plugins** in the toolbar's **Insert** menu, in every presentation. Installing is for your account; it doesn't change anyone else's menu.
 
 ## Using a plugin's element
 
-Insert it from the **Plugins** menu, then move and resize it like any other element. To use it on the canvas, select it first: a plugin's element takes clicks and hovers only while it's selected. Most plugins keep their settings inside the element, such as a settings button in a corner.
+Insert it from **Insert › Plugins**, then move and resize it like any other element. To use it on the canvas, select it first: a plugin's element takes clicks and hovers only while it's selected. Most plugins keep their settings inside the element, such as a settings button in a corner.
 
 With the element selected, the properties panel shows which plugin it is, its version, and a link to its page in the gallery.
 
@@ -26,7 +26,7 @@ If a version is withdrawn, its elements show "This plugin isn't available", and 
 
 ## Uninstalling
 
-In **Browse plugins…**, choose **Installed** on the plugin. It leaves the **Plugins** menu. Its elements already in decks still draw, for you and for everyone who opens those decks: a deck shows its plugins whether or not the person viewing it installed them.
+In **Browse plugins…**, choose **Installed** on the plugin. It leaves **Insert › Plugins**. Its elements already in decks still draw, for you and for everyone who opens those decks: a deck shows its plugins whether or not the person viewing it installed them.
 
 ## What a plugin can reach
 

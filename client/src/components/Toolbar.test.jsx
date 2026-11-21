@@ -39,23 +39,74 @@ const titled = title => [...el.querySelectorAll('button')].filter(b => b.title =
 const click = async b => act(async () => b.click())
 
 describe('Toolbar', () => {
-  it('shows the insert tools when no text is being edited', async () => {
+  it('shows one row of insert tools when no text is being edited', async () => {
     const onUndo = vi.fn()
-    await render({ editor: null, canUndo: true, onUndo })
-    expect(titled('Text tools')).toHaveLength(1)
-    expect(titled('Shape tools')).toHaveLength(1)
+    const onAddText = vi.fn()
+    await render({ editor: null, canUndo: true, onUndo, onAddText, onNewSlide: () => {}, onNewSlideFromLayout: () => {}, onAddTable: () => {},
+      insertGroups: [{ heading: 'Media', items: [{ label: 'Video', action: () => {} }] }], scienceItems: [{ label: 'Graph', action: () => {} }] })
+    const labels = [...el.querySelectorAll('.toolbar > button, .toolbar > div > button')].map(b => b.textContent.trim()).filter(Boolean)
+    expect(labels).toEqual(['New slide', 'Text box', 'Image', 'Shape', 'Table', 'Insert', 'Science'])
     expect(el.textContent).toContain('Double-click a text box to edit')
     expect(titled('Bold')).toHaveLength(0)
+    await click(titled('Text box')[0])
+    expect(onAddText).toHaveBeenCalled()
     await click(titled('Undo (Ctrl+Z)')[0])
     expect(onUndo).toHaveBeenCalled()
+  })
+
+  it('groups the rest under Insert, with a search, and runs what’s picked', async () => {
+    const video = vi.fn(), sketch = vi.fn()
+    await render({ editor: null, insertGroups: [
+      { heading: 'Media', docs: 'media', items: [{ label: 'Upload video…', keywords: 'movie', action: video }] },
+      { heading: 'Embed', items: [{ label: 'p5.js', action: sketch }, { label: 'Lines', items: [{ label: 'Thin line', action: () => {} }] }] },
+    ] })
+    await click(titled('Everything else that can go on a slide')[0])
+    const menu = el.querySelector('.tool-menu')
+    expect([...menu.querySelectorAll('.insert-heading span')].map(h => h.textContent)).toEqual(['Media', 'Embed'])
+    // A search by a word the item doesn't show
+    const search = menu.querySelector('input[aria-label="Search what to insert"]')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'movie')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect([...menu.querySelectorAll('.insert-item')].map(b => b.textContent.trim())).toEqual(['Upload video…'])
+    await click(menu.querySelector('.insert-item'))
+    expect(video).toHaveBeenCalled()
+    expect(el.querySelector('.tool-menu')).toBeNull()
+  })
+
+  it('picks a table’s rows and columns from a grid', async () => {
+    const onAddTable = vi.fn()
+    await render({ editor: null, onAddTable })
+    await click(titled('Table: pick its rows and columns')[0])
+    await click(el.querySelector('[role="grid"] button[aria-label="2 × 4"]'))
+    expect(onAddTable).toHaveBeenCalledWith(2, 4)
+  })
+
+  it('offers what the selection can do: an image’s Crop and Replace, a diagram’s Edit, Align for several', async () => {
+    const onSelectionCommand = vi.fn()
+    await render({ editor: null, selection: { count: 1, image: true }, onSelectionCommand })
+    await click(titled('Crop the image')[0])
+    expect(onSelectionCommand).toHaveBeenCalledWith('crop')
+    expect(titled('Replace the image with another file')).toHaveLength(1)
+    // Nothing selected: no hint once something is
+    expect(el.textContent).not.toContain('Double-click a text box to edit')
+    await act(async () => root.render(<Toolbar onAddText={() => {}} onAddImage={() => {}} onAddShape={() => {}} editor={null} selection={{ count: 1, editLabel: 'Edit circuit' }} onSelectionCommand={onSelectionCommand} />))
+    await click(titled('Edit circuit')[0])
+    expect(onSelectionCommand).toHaveBeenCalledWith('edit')
+    const onAlignElements = vi.fn()
+    await act(async () => root.render(<Toolbar onAddText={() => {}} onAddImage={() => {}} onAddShape={() => {}} editor={null} selection={{ count: 3 }} onSelectionCommand={onSelectionCommand} onAlignElements={onAlignElements} />))
+    await click(titled('Align or distribute the 3 selected')[0])
+    await click([...el.querySelectorAll('.tool-menu button')].find(b => b.textContent === 'Distribute vertically'))
+    expect(onAlignElements).toHaveBeenCalledWith('distribute-v')
   })
 
   it('puts the formatting tools in their place while editing, with one Undo', async () => {
     const editor = fakeEditor()
     const onUndo = vi.fn()
     await render({ editor, editingElementId: 'e1', canUndo: true, onUndo })
-    expect(titled('Text tools')).toHaveLength(0)
-    expect(titled('Shape tools')).toHaveLength(0)
+    expect(titled('Text box')).toHaveLength(0)
+    expect(titled('Shape')).toHaveLength(0)
     expect(titled('Bold')).toHaveLength(1)
     expect([...el.querySelectorAll('button')].filter(b => /^Undo/.test(b.title))).toHaveLength(1)
     // Undo undoes the typing, as Ctrl+Z does while editing
@@ -99,9 +150,13 @@ describe('Toolbar', () => {
 
   it('opens the background popup when a menu asks', async () => {
     const slide = { id: 's1', elements: [], background: { type: 'color', color: '#1e1e2e' } }
-    await render({ editor: null, slide, onUpdateSlide: () => {}, bgRequest: 0 })
+    await render({ editor: null, slide, onUpdateSlide: () => {}, request: null })
     expect(el.querySelector('.bg-type-tab')).toBeNull()
-    await act(async () => root.render(<Toolbar onAddText={() => {}} onAddImage={() => {}} onAddShape={() => {}} editor={null} slide={slide} onUpdateSlide={() => {}} bgRequest={1} />))
+    expect(titled("The slide's background")[0].textContent.trim()).toBe('Background')
+    await act(async () => root.render(<Toolbar onAddText={() => {}} onAddImage={() => {}} onAddShape={() => {}} editor={null} slide={slide} onUpdateSlide={() => {}} request={{ name: 'background', n: 1 }} />))
     expect(el.querySelector('.bg-type-tab')).toBeTruthy()
+    // Escape closes it
+    await act(async () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    expect(el.querySelector('.bg-type-tab')).toBeNull()
   })
 })
