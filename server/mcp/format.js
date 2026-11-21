@@ -447,6 +447,13 @@ function neverTogether(a, b, actions) {
   })
 }
 
+// A slide's elements back to front, as get_slide numbers them
+function elementsInOrder(slide) {
+  return (slide.elements || []).filter(Boolean).map((el, i) => ({ el, i }))
+    .sort((a, b) => ((Number(a.el.zIndex) || 0) - (Number(b.el.zIndex) || 0)) || (a.i - b.i))
+    .map(({ el }) => el)
+}
+
 const round = n => Math.round(Number(n) || 0)
 const box = el => ({ x: Number(el.x) || 0, y: Number(el.y) || 0, w: Number(el.width) || 0, h: Number(el.height) || 0 })
 
@@ -503,9 +510,7 @@ function slideDetail(deck, found) {
   if (outline.length) lines.push('', 'Outline notes:', ...outline)
   const notes = notesText(slide.notes)
   if (notes) lines.push('', 'Speaker notes:', ...clip(notes, MAX_TEXT).split('\n').map(l => '> ' + l))
-  const els = (slide.elements || []).filter(Boolean).map((el, i) => ({ el, i }))
-    .sort((a, b) => ((Number(a.el.zIndex) || 0) - (Number(b.el.zIndex) || 0)) || (a.i - b.i))
-    .map(({ el }) => el)
+  const els = elementsInOrder(slide)
   const numberOf = new Map(els.map((el, k) => [el.id, k + 1]))
   const byId = new Map(els.map(el => [el.id, el]))
   lines.push('', `### Elements, back to front (slide is ${w}×${h})`)
@@ -551,6 +556,6 @@ function deckMarkdown(deck) {
 }
 
 module.exports = {
-  parseHtml, htmlToMarkdown, textOf, titleOf, slideOrder, shownSlides, findSlide,
+  parseHtml, htmlToMarkdown, textOf, titleOf, slideOrder, shownSlides, findSlide, elementsInOrder,
   deckOutline, slideDetail, deckMarkdown,
 }

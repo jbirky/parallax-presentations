@@ -56,12 +56,34 @@ const initialize = secret => rpc(secret, 'initialize', { protocolVersion: '2025-
 const callTool = (secret, name, args = {}) => rpc(secret, 'tools/call', { name, arguments: args })
 const toolText = res => res.body.result.content.map(c => c.text).join('\n')
 
+// A browser with presentation `id` open as `who`, as live.test.js connects
+const providers = []
+function openLive(who, id) {
+  const Y = require('yjs')
+  const { HocuspocusProvider } = require('@hocuspocus/provider')
+  const doc = new Y.Doc()
+  const events = []
+  return new Promise(resolve => {
+    const provider = new HocuspocusProvider({
+      url: `${t.base.replace('http', 'ws')}/collab`, name: id, document: doc, token: who,
+      onSynced: () => resolve({ provider, doc, events, deck: () => require('../services/deck-doc').readDeck(doc) }),
+      onClose: () => events.push('closed'),
+    })
+    providers.push(provider)
+  })
+}
+// The AI links a browser sees in its avatars
+const aiHere = live => [...live.provider.awareness.getStates().values()].filter(s => s && s.ai)
+
 describe('AI collaborator links', { skip }, () => {
   before(async () => {
     t = await startCloudServer()
     ;({ call, createDeck, pool } = t)
   })
-  after(() => t?.stop())
+  after(async () => {
+    for (const provider of providers) provider.destroy()
+    await t?.stop()
+  })
 
   it('lets the owner make a link, shown once, lasting 30 days', async () => {
     const owner = t.user('owner')
@@ -149,15 +171,20 @@ describe('AI collaborator links', { skip }, () => {
     const init = await initialize(secret)
     assert.equal(init.status, 200, JSON.stringify(init.body))
     assert.equal(init.body.result.serverInfo.name, 'parallax')
-    assert.match(init.body.result.instructions, /read the presentation but not change it/)
+    assert.match(init.body.result.instructions, /You can read it and change it/)
     assert.equal((await rpc(secret, 'notifications/initialized', {}, { notification: true })).status, 202)
 
     const list = await rpc(secret, 'tools/list')
     assert.equal(list.status, 200, JSON.stringify(list.body))
     const tools = Object.fromEntries(list.body.result.tools.map(tool => [tool.name, tool]))
-    assert.deepEqual(Object.keys(tools).sort(), ['get_deck', 'get_slide'])
-    for (const tool of Object.values(tools)) assert.equal(tool.annotations.readOnlyHint, true)
+    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'delete_element', 'delete_slide', 'get_deck', 'get_slide',
+      'move_slide', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
+    for (const name of ['get_deck', 'get_slide']) assert.equal(tools[name].annotations.readOnlyHint, true)
+    assert.equal(tools.add_slide.annotations.readOnlyHint, false)
+    assert.equal(tools.add_slide.annotations.destructiveHint, false)
+    assert.equal(tools.delete_slide.annotations.destructiveHint, true)
     assert.deepEqual(tools.get_slide.inputSchema.required, ['slide'])
+    assert.match(tools.add_slide.inputSchema.properties.layout.description, /two-column \(title, 2 bodies\)/)
 
     const outline = toolText(await callTool(secret, 'get_deck'))
     assert.match(outline, /^# Filters talk/)
@@ -223,6 +250,98 @@ describe('AI collaborator links', { skip }, () => {
 
     assert.equal((await call(owner, 'DELETE', `/api/presentations/${id}`)).status, 200)
     assert.equal((await fetch(`${t.base}/mcp/${secretOf(b.url)}`)).status, 404)
+  })
+
+  it('edits the deck live, shows the AI in the avatars, and saves a version first', async () => {
+    const owner = t.user('owner9')
+    const id = await createDeck(owner, 'Filters talk', { slides: SLIDES })
+    const link = (await makeLink(owner, id)).body
+    const secret = secretOf(link.url)
+    const live = await openLive(owner, id)
+
+    const added = await callTool(secret, 'add_slide', { layout: 'title-content', after: 1, title: 'Why it *works*', body: '- Because $x^2$\n- And [@smith2020]' })
+    assert.equal(added.body.result.isError, undefined, toolText(added))
+    assert.match(toolText(added), /Added slide 2 \(`[0-9a-f-]{36}`\), layout title-content\./)
+    assert.match(toolText(added), /a version named "Before Claude's edits" was saved/)
+
+    // The open editor has it at once
+    await until(() => live.deck().slides.length === 3, 'the new slide to reach the open editor')
+    const slide = live.deck().slides[1]
+    const title = slide.elements.find(el => el.placeholder === 'title')
+    const body = slide.elements.find(el => el.placeholder === 'body')
+    assert.equal(title.content, '<h2>Why it <em>works</em></h2>')
+    assert.match(body.content, /^<ul><li><p>Because <span data-math-latex="x\^2"/)
+    assert.match(body.content, /<sup data-cite="smith2020"/)
+
+    // with the AI in its avatars, on that slide
+    await until(() => aiHere(live).some(s => s.slide === slide.id), 'the AI to show in the avatars')
+    assert.deepEqual(aiHere(live)[0].ai, { link: link.id, name: 'Claude' })
+
+    // One version for the session, not one per edit
+    const moved = await callTool(secret, 'apply_edits', { edits: [
+      { op: 'update_slide', slide: 2, notes: 'Say why' },
+      { op: 'move_slide', slide: 2, after: 3 },
+      { op: 'update_deck', title: 'RC filters' },
+    ] })
+    assert.equal(moved.body.result.isError, undefined, toolText(moved))
+    assert.doesNotMatch(toolText(moved), /version/)
+    await until(() => live.deck().title === 'RC filters', 'the batch to reach the open editor')
+    assert.deepEqual(live.deck().slides.map(s => s.notes || ''), ['Welcome everyone', '', 'Say why'])
+    const versions = (await call(owner, 'GET', `/api/presentations/${id}/snapshots`)).body
+    assert.deepEqual(versions.map(v => v.name), ["Before Claude's edits"])
+    assert.equal(versions[0].slideCount, 2)
+
+    // and the reading tools see the edits
+    assert.match(toolText(await callTool(secret, 'get_deck')), /^# RC filters[\s\S]*3\. \*\*Why it works\*\* · `[0-9a-f-]{36}`[\s\S]*Speaker notes: Say why/)
+    // Revoked, it leaves the avatars
+    assert.equal((await call(owner, 'DELETE', `/api/presentations/${id}/ai-links/${link.id}`)).status, 200)
+    await until(() => !aiHere(live).length, 'the AI to leave the avatars')
+  })
+
+  it('changes nothing when an edit is wrong, and says what to fix', async () => {
+    const owner = t.user('owner10')
+    const id = await createDeck(owner, 'Careful', { slides: SLIDES })
+    const secret = secretOf((await makeLink(owner, id)).body.url)
+    const batch = await callTool(secret, 'apply_edits', { edits: [
+      { op: 'add_slide', title: 'Fine' },
+      { op: 'update_slide', slide: 1, body: '- There is no body here' },
+    ] })
+    assert.equal(batch.body.result.isError, true)
+    assert.match(toolText(batch), /^Edit 2 \(update_slide\): This slide has no body placeholder/)
+    const element = await callTool(secret, 'add_element', { slide: 2, type: 'graph' })
+    assert.ok(element.body.error || element.body.result.isError)
+    const deck = (await call(owner, 'GET', `/api/presentations/${id}`)).body
+    assert.equal(deck.slides.length, 2)
+    // and saves no version
+    assert.deepEqual((await call(owner, 'GET', `/api/presentations/${id}/snapshots`)).body, [])
+  })
+
+  it("leaves alone what someone has open, and says who", async () => {
+    const owner = t.user('owner11')
+    const id = await createDeck(owner, 'Busy', { slides: SLIDES })
+    const secret = secretOf((await makeLink(owner, id)).body.url)
+    const live = await openLive(owner, id)
+    live.provider.awareness.setLocalState({ user: await t.userId(owner), slide: 'slide-cutoff', selected: ['el-body'], editing: 'el-body' })
+    await new Promise(resolve => setTimeout(resolve, 200))
+
+    const held = await callTool(secret, 'update_element', { slide: 2, element: 'el-body', text: '- Rewritten' })
+    assert.equal(held.body.result.isError, true)
+    assert.match(toolText(held), new RegExp(`^${owner} is editing an element this would change \\(\`el-body\` on slide 2\\), so nothing was changed`))
+    // Deleting its slide would change it too
+    assert.equal((await callTool(secret, 'delete_slide', { slide: 2 })).body.result.isError, true)
+    // The rest of the slide is free
+    const title = await callTool(secret, 'update_slide', { slide: 2, title: 'The corner frequency' })
+    assert.equal(title.body.result.isError, undefined, toolText(title))
+    await until(() => live.deck().slides[1].elements[0].content === '<h2>The corner frequency</h2>', 'the free edit to land')
+    assert.match(live.deck().slides[1].elements[1].content, /It is/)
+  })
+
+  it('closes the connection of a tab that says it is an AI', async () => {
+    const owner = t.user('owner12')
+    const id = await createDeck(owner, 'Honest', { slides: SLIDES })
+    const live = await openLive(owner, id)
+    live.provider.awareness.setLocalState({ ai: { link: 'fake', name: 'Claude' }, slide: 'slide-title', selected: [] })
+    await until(() => live.events.includes('closed'), 'the connection to be closed')
   })
 
   it('refuses MCP requests that are not JSON', async () => {

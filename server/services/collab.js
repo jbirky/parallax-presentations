@@ -87,8 +87,9 @@ function tokenBucket(rate, burst, now = Date.now) {
 }
 
 // A tab says who it is in its presence (utils/presence.js), and may only
-// say it's the user it signed in as. A message that names anyone else is
-// refused, which closes the connection.
+// say it's the user it signed in as. A message that names anyone else, or
+// says it's an AI collaborator link (whose presence only the server holds,
+// server/mcp/presence.js), is refused, which closes the connection.
 function checkPresence(rawMessage, userId) {
   const message = decoding.createDecoder(rawMessage)
   decoding.readVarString(message)
@@ -99,7 +100,7 @@ function checkPresence(rawMessage, userId) {
     decoding.readVarUint(update)
     decoding.readVarUint(update)
     const state = JSON.parse(decoding.readVarString(update))
-    if (state && state.user != null && state.user !== userId) throw Forbidden
+    if (state && ((state.user != null && state.user !== userId) || state.ai != null)) throw Forbidden
   }
 }
 
@@ -208,6 +209,41 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
     return { saved: true }
   }
 
+  // The elements people have open in a presentation's live room (a text box
+  // being typed in, or an element whose editor is open): element id → the
+  // user id holding it
+  function heldElements(id) {
+    const held = new Map()
+    const document = hocuspocus.documents.get(id)
+    for (const state of document ? document.awareness.getStates().values() : []) {
+      if (state && state.user && typeof state.editing === 'string') held.set(state.editing, state.user)
+    }
+    return held
+  }
+
+  // An edit the server makes for an AI collaborator link (server/mcp).
+  // change(deck, held) gets the deck as it is now and the elements people
+  // have open (heldElements), and returns { deck, result }, the deck as it
+  // should be; it may throw to change nothing. The deck goes into the
+  // presentation's document in one transaction, so everyone editing sees it
+  // at once, and is stored as their edits are. A presentation no one has
+  // open is loaded for it, as when someone opens it. Returns result.
+  async function editDeck(id, change, context = {}) {
+    const connection = await hocuspocus.openDirectConnection(id, { ...context, server: true })
+    try {
+      let result
+      await connection.transact(doc => {
+        const prev = readDeck(doc)
+        const out = change(prev, heldElements(id))
+        writeDeck(doc, prev, out.deck)
+        result = out.result
+      })
+      return result
+    } finally {
+      await connection.disconnect()
+    }
+  }
+
   // After a presentation is deleted: everyone editing it is disconnected
   function closeDocument(id) {
     hocuspocus.closeConnections(id)
@@ -261,7 +297,7 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
       console.error(`Live editing: storing ${id} on shutdown failed:`, err.message))))
   }
 
-  return { hocuspocus, attach, applySave, flush, flushAll, closeDocument, disconnectUser }
+  return { hocuspocus, attach, applySave, editDeck, heldElements, flush, flushAll, closeDocument, disconnectUser }
 }
 
 module.exports = { createCollab, deckFromData, tokenBucket, PATH }

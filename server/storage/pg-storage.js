@@ -280,7 +280,8 @@ class PgStorage extends StorageInterface {
 
   // --- Snapshots ---
 
-  async createSnapshot(presentationId, name, userId) {
+  // aiLinkId: the AI collaborator link whose session it starts (server/mcp)
+  async createSnapshot(presentationId, name, userId, { aiLinkId = null } = {}) {
     const stored = await this.getPresentation(presentationId, userId)
     if (!stored) return null
     // A version is the slides; present-mode ink and practice runs aren't part of it
@@ -289,8 +290,10 @@ class PgStorage extends StorageInterface {
     const label = name || new Date().toISOString()
     const now = new Date().toISOString()
     await this.query(
-      'INSERT INTO snapshots (id, presentation_id, data, label, created_at) VALUES ($1, $2, $3, $4, $5)',
-      [id, presentationId, JSON.stringify(pres), label, now]
+      aiLinkId
+        ? 'INSERT INTO snapshots (id, presentation_id, data, label, created_at, ai_link_id) VALUES ($1, $2, $3, $4, $5, $6)'
+        : 'INSERT INTO snapshots (id, presentation_id, data, label, created_at) VALUES ($1, $2, $3, $4, $5)',
+      aiLinkId ? [id, presentationId, JSON.stringify(pres), label, now, aiLinkId] : [id, presentationId, JSON.stringify(pres), label, now]
     )
     return { id, name: label, createdAt: now }
   }

@@ -10,6 +10,11 @@
 //     editing: element id | null }  // a text box being typed in, or an
 //                                   // element whose editor is open
 //
+// An AI collaborator link at work has a state the server holds for it
+// (server/mcp/presence.js), naming the link instead of a user:
+//
+//   { ai: { link: link id, name: the link's name }, slide, selected }
+//
 // Names, pictures and colors come from the presentation's people list
 // (api.getCollaborators), looked up by user id, not from what a tab says.
 // Editing an element holds it: others can't open it until it's let go.
@@ -26,14 +31,33 @@ export function colorFor(userId) {
 }
 
 // The other tabs, from awareness states (client id → state), as
-// { clientId, userId, name, avatarUrl, color, self, slide, selected, editing }.
-// `self` marks this user's own other tabs. Tabs that haven't said who they
-// are yet are left out.
+// { clientId, userId, name, avatarUrl, color, self, ai, slide, selected,
+// editing }. `self` marks this user's own other tabs, and `ai` an AI
+// collaborator link (userId 'ai:<link id>'). Tabs that haven't said who
+// they are yet are left out.
 export function peersFrom(states, ownClientId, people = [], you = null) {
   const byId = new Map(people.map(p => [p.id, p]))
   const peers = []
   for (const [clientId, state] of states) {
-    if (clientId === ownClientId || !state?.user) continue
+    if (clientId === ownClientId || !state) continue
+    if (state.ai && typeof state.ai === 'object' && state.ai.link) {
+      const userId = `ai:${state.ai.link}`
+      peers.push({
+        clientId,
+        userId,
+        name: String(state.ai.name || 'AI').slice(0, 40),
+        avatarUrl: '',
+        color: colorFor(userId),
+        self: false,
+        ai: true,
+        known: true,
+        slide: state.slide || null,
+        selected: Array.isArray(state.selected) ? state.selected : [],
+        editing: null,
+      })
+      continue
+    }
+    if (!state.user) continue
     const person = byId.get(state.user)
     peers.push({
       clientId,
@@ -42,6 +66,7 @@ export function peersFrom(states, ownClientId, people = [], you = null) {
       avatarUrl: person?.avatarUrl || '',
       color: colorFor(state.user),
       self: state.user === you,
+      ai: false,
       known: !!person,
       slide: state.slide || null,
       selected: Array.isArray(state.selected) ? state.selected : [],

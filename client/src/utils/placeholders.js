@@ -70,7 +70,7 @@ function inlineHtml(html) {
 // `content` laid out as `template` (a layout's placeholder HTML): a title's
 // words go into the layout's heading; body text keeps its paragraphs and
 // lists, taking the layout's alignment
-function fillPlaceholder(template, content, role) {
+export function fillPlaceholder(template, content, role) {
   const open = /<(h[1-6]|p)\b[^>]*>/i.exec(template || '')
   if (role === 'title' || role === 'subtitle') {
     if (open) return template.replace(/(<(h[1-6]|p)\b[^>]*>)(\s|<br\s*\/?>)*(<\/\2>)/i, (_, o, tag, _s, c) => `${o}${inlineHtml(content)}${c}`)

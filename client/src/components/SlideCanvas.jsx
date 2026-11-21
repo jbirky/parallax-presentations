@@ -2369,7 +2369,7 @@ function TimelineRenderer({ element }) {
 // with their names, or who's editing it
 function RemoteUse({ use }) {
   const lead = use.editing || use.people[0]
-  const names = use.people.map(p => p.self ? 'You (other tab)' : p.name)
+  const names = use.people.map(p => p.self ? 'You (other tab)' : p.ai ? `${p.name} (AI)` : p.name)
   const label = use.editing
     ? (use.editing.self ? 'You’re editing in another tab' : `${use.editing.name} is editing`)
     : names.join(', ')

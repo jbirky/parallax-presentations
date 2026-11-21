@@ -2145,6 +2145,10 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
 // The owner makes, renews and revokes them. A link is an MCP server at
 // /mcp/<secret> that an AI chat app adds as a connector.
 
+// The link's MCP server and page, made here so revoking a link can take it
+// out of the avatars
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab }) : null
+
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
 const aiLinkUrl = (req, secret) => `${siteOrigin(req)}/mcp/${secret}`
@@ -2188,6 +2192,7 @@ app.post('/api/presentations/:id/ai-links/:linkId/renew', requireValidId(), requ
 app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireValidId('linkId'), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
   try {
     if (!(await aiLinks.revokeLink(storage, req.params.id, req.params.linkId))) return res.status(404).json({ error: 'No such AI collaborator link' })
+    mcpRoute?.leave(req.params.linkId)
     res.json({ success: true })
   } catch (err) {
     aiLinkFailed(res, err)
@@ -2195,9 +2200,7 @@ app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireV
 })
 
 // /mcp/:secret - the link itself: MCP for a connector, a page for a person
-if (IS_CLOUD && storage.query) {
-  app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, createMcpRoute({ storage, origin: siteOrigin }))
-}
+if (mcpRoute) app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, mcpRoute)
 
 app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {

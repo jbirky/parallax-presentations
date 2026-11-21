@@ -1,7 +1,8 @@
-// Writes the server's copies of the click actions and shape geometry in
-// client/src/utils, for the pages the server builds: everything above
-// "Editor helpers" in clickActions.js, and all of shapeGeometry.js, turned
-// into CommonJS. Run after changing those parts:
+// Writes the server's copies of modules in client/src/utils, turned into
+// CommonJS: the click actions and shape geometry, for the pages the server
+// builds (everything above "Editor helpers" in clickActions.js, and all of
+// shapeGeometry.js), and the slide layouts, placeholders and themes, for AI
+// collaborator links (server/mcp). Run after changing those parts:
 //
 //   node scripts/copy-click-actions.js
 //
@@ -14,6 +15,9 @@ const root = path.join(__dirname, '..')
 const COPIES = [
   { source: 'client/src/utils/clickActions.js', target: 'server/services/click-actions.js', end: '// ── Editor helpers' },
   { source: 'client/src/utils/shapeGeometry.js', target: 'server/services/shape-geometry.js' },
+  { source: 'client/src/utils/slideLayouts.js', target: 'server/services/slide-layouts.js' },
+  { source: 'client/src/utils/placeholders.js', target: 'server/services/placeholders.js' },
+  { source: 'client/src/utils/themes.js', target: 'server/services/themes.js' },
 ].map(copy => ({ ...copy, SOURCE: path.join(root, copy.source), TARGET: path.join(root, copy.target) }))
 // What the copies import from each other
 const REQUIRES = { './shapeGeometry': './shape-geometry' }

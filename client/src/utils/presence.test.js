@@ -33,6 +33,21 @@ describe('presence', () => {
     expect(peers.find(p => p.clientId === 3).selected).toEqual([])
   })
 
+  it('shows an AI collaborator link at work under its name, holding nothing', () => {
+    const peers = peersFrom(states([
+      [4, { ai: { link: 'l1', name: 'Claude' }, slide: 's2', selected: ['e9'] }],
+      [6, { ai: { link: 'l2', name: 'x'.repeat(60) }, slide: null }],
+      [9, { user: 'u-ada', slide: 's2', selected: [], editing: null }],
+      [10, { ai: {} }],
+    ]), 1, people, 'u-me')
+    expect(peers.map(p => [p.clientId, p.userId, p.name.length, p.ai])).toEqual([
+      [4, 'ai:l1', 6, true], [6, 'ai:l2', 40, true], [9, 'u-ada', 3, false],
+    ])
+    expect(peers[0]).toMatchObject({ name: 'Claude', slide: 's2', selected: ['e9'], editing: null, self: false, color: colorFor('ai:l1') })
+    expect(distinctPeople(peers).map(p => p.userId)).toEqual(['ai:l1', 'ai:l2', 'u-ada'])
+    expect(elementsInUse(peers, 's2').get('e9').people.map(p => p.name)).toEqual(['Claude'])
+  })
+
   it('shows each person once, by the tab that’s editing', () => {
     const peers = peersFrom(states([
       [1, { user: 'u-ada', slide: 's1' }],

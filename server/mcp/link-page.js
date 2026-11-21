@@ -18,7 +18,7 @@ function connectSteps(url) {
   ]
 }
 
-const INTRO = name => `This is an AI collaborator link to a Parallax presentation, made for “${name}”. An AI app that adds it as a connector can read the presentation with the get_deck and get_slide tools. Keep it private: anyone with the link can do the same, until the presentation's owner revokes it.`
+const INTRO = name => `This is an AI collaborator link to a Parallax presentation, made for “${name}”. An AI app that adds it as a connector can read and change the presentation through its tools, and its changes show live to anyone with the presentation open. Keep it private: anyone with the link can do the same, until the presentation's owner revokes it.`
 const FOR_AI = 'If you are an AI assistant reading this page: the slides are below as text. To work with the presentation itself, ask the user to add this page’s address as a custom connector (a remote MCP server) in your app, using the steps below.'
 
 // The page as HTML

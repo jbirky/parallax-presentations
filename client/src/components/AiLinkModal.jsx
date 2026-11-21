@@ -3,8 +3,9 @@
 
 // AI collaborator links (cloud only, the owner's): a link to this
 // presentation that an AI chat app (Claude, ChatGPT, …) adds as a connector,
-// so the AI can read the slides. The owner names a link, picks how long it
-// lasts, and copies it, once; the list below renews and revokes links.
+// so the AI can read and change the slides (server/mcp). The owner names a
+// link, picks how long it lasts, and copies it, once; the list below renews
+// and revokes links.
 
 import { useEffect, useState } from 'react'
 import { X, Copy, Bot, RefreshCw, Trash2 } from 'lucide-react'
@@ -80,8 +81,9 @@ export default function AiLinkModal({ presentationId, onClose }) {
           <button className="btn btn-ghost" onClick={onClose} style={{ padding: 4 }} aria-label="Close"><X size={16} /></button>
         </div>
         <p style={muted}>
-          Add a link as a connector in Claude, ChatGPT or another AI chat app, and the AI can read this presentation&apos;s slides.
-          Editing through a link comes next. Anyone with a link can use it until you revoke it.
+          Add a link as a connector in Claude, ChatGPT or another AI chat app, and the AI can read and change this presentation.
+          Its changes appear here as it makes them, and a version is saved before each session, so you can undo them from History.
+          Anyone with a link can use it until you revoke it.
         </p>
 
         {made ? (

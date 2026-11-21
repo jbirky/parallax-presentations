@@ -1,8 +1,6 @@
 # AI Collaborators
 
-Give an AI chat app, such as Claude or ChatGPT, a link to one of your presentations, and the AI can read its slides while you talk to it: "what's missing from this talk?", "which slides run long?", "suggest a better title for slide 4". AI collaborator links are part of the cloud version of Parallax.
-
-For now an AI can read a presentation through its link but not change it. Editing through a link comes next.
+Give an AI chat app, such as Claude or ChatGPT, a link to one of your presentations, and the AI works on it with you while you talk to it: "what's missing from this talk?", "turn my outline into slides", "tighten slide 4". It shows up in the presentation like another editor, and its changes appear as it makes them. AI collaborator links are part of the cloud version of Parallax.
 
 ## Making a link
 
@@ -31,14 +29,31 @@ A few things to know:
 
 ## What the AI can do
 
-Once the link is added, the AI has two tools:
+Once the link is added, the AI has tools for reading the presentation and for changing it:
 
-| Tool | What it reads |
-|------|---------------|
-| `get_deck` | The outline: each slide's number, title, layout, minutes, what's on it, and its outline and speaker notes in short |
-| `get_slide` | One slide in full: every element with its position and size, its text, and warnings for anything past the slide's edges or overlapping |
+| Tool | What it does |
+|------|--------------|
+| `get_deck` | Reads the outline: each slide's number, title, layout, minutes, what's on it, and its outline and speaker notes in short |
+| `get_slide` | Reads one slide in full: every element with its position and size, its text, what clicking on it does, and warnings for anything past the slide's edges or overlapping |
+| `add_slide`, `update_slide` | Adds a slide in a layout, or changes one: its layout, title, subtitle and body text, speaker notes, minutes and background |
+| `move_slide`, `delete_slide` | Moves or deletes a slide |
+| `add_element`, `update_element`, `delete_element` | Adds a text box or shape; moves, resizes or deletes any element; changes a text box's text or a shape's look |
+| `update_outline` | Changes a slide's outline notes, minutes and section, never what's on the slide |
+| `update_deck` | Changes the title, theme, font, transition and talk length |
+| `apply_edits` | Makes several of these changes at once, all or nothing |
 
-Text comes to the AI as Markdown, with `$…$` for math and `[@key]` for citations. Ink you drew while presenting and your practice runs are never shared.
+The AI fills slides through their layouts, so its text sits in the layout's places and shrinks to fit. It writes Markdown, with `$…$` for math and `[@key]` for citations. Ink you drew while presenting and your practice runs are never read or changed.
+
+For now the AI can add text boxes and shapes, but not diagrams, graphs or images; it describes those, and you add them. It can move and resize them, though. Changing a text box replaces all of its text, so colors and sizes set by hand inside it go.
+
+## Watching it work
+
+While the AI works, it appears in the avatars at the top of the editor, under the link's name with a bot icon, on the slide it's working on. Click it to go to that slide. The elements it just changed are outlined with its name. It leaves the avatars two minutes after it stops.
+
+Its changes reach every open copy of the presentation at once, as other editors' do.
+
+- **Undoing a session.** Before the AI's first change after half an hour without any, a version named "Before Claude's edits" (with the link's name) is saved. To undo the session, restore that version in **History**. Each presentation keeps the five latest of these versions.
+- **What you're typing in is yours.** The AI can't change a text box you're typing in, or an element whose editor you have open. It's told who has it, so it can wait or work on something else.
 
 ## Managing links
 
@@ -53,6 +68,6 @@ A presentation can have up to 10 links. Only the owner can make, renew or revoke
 
 ## Keeping links private
 
-Anyone who has a link can read the presentation through it, so treat it like a password. Don't paste it anywhere public, and revoke it when you're done. Links that expire are the safer choice.
+Anyone who has a link can read and change the presentation through it, so treat it like a password. Don't paste it anywhere public, and revoke it when you're done. Links that expire are the safer choice.
 
 If an AI app says the link doesn't work, it was revoked or has expired, or the presentation was deleted. Make a new one.
