@@ -691,7 +691,8 @@ sup[data-cite] { font-weight: 700; }
 .landing-page h1, .landing-page h2, .landing-page h3 { text-wrap: balance; font-family: var(--lp-display); font-weight: 600; }
 /* The docs, which open in place of the page, keep the app's font */
 .landing-page .docs-layout { font-family: var(--lp-display); }
-.lp-wrap { max-width: 1140px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); }
+/* Wide enough that the showcase's slides show large; every section uses it */
+.lp-wrap { max-width: 1340px; margin: 0 auto; padding-inline: 16px; }
 .lp-label { font: 500 11.5px var(--lp-mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--lp-soft); }
 
 /* Nav */
@@ -809,7 +810,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-new { margin-left: 8px; font: 600 10px var(--lp-mono); letter-spacing: 0.06em; text-transform: uppercase; color: #0f0f17; background: var(--lp-soft); border-radius: 4px; padding: 1px 5px; vertical-align: 2px; }
 
 /* Feature showcase (components/landing/FeatureShowcase.jsx) */
-.lp-show { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 40px; }
+.lp-show { display: grid; grid-template-columns: minmax(210px, 250px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 40px; }
 .lp-show-tabs { display: grid; gap: 4px; position: sticky; top: 76px; }
 .lp-show-tabs button { text-align: left; color: var(--lp-muted); background: none; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px; cursor: pointer; display: grid; gap: 2px; font-family: inherit; }
 .lp-show-tabs button:hover { background: var(--lp-card); color: var(--lp-text); }
@@ -822,7 +823,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-feature h3 { font-size: clamp(22px, 2.8vw, 28px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: #fff; }
 .lp-lede { color: var(--lp-muted); max-width: 64ch; }
 .lp-feature code, .lp-practice code { font: 0.9em var(--lp-mono); color: var(--lp-text); }
-.lp-proof { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.lp-proof { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
 .lp-proof-side { display: grid; gap: 12px; min-width: 0; }
 .lp-proof-deck { margin: 0; min-width: 0; }
 .lp-proof-deck .lp-frame { box-shadow: none; }
