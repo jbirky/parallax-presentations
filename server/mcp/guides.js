@@ -253,18 +253,10 @@ function makeLatex(spec, cx) {
   only(spec, 'spec', ['content', 'textColor', 'fontSize'])
   if (typeof spec.content !== 'string' || !spec.content.trim()) fail('A LaTeX element needs content: a tikzpicture, a tabular, or display math.')
   if (spec.content.length > 20000) fail('content can be up to 20000 characters.')
-  const content = spec.content.replace(/\r\n?/g, '\n')
-  // TikZ draws in black whatever the text color, which a dark slide hides
-  const tikz = /\\begin\{tikzpicture\}|\\tikz\s*[[{]/.test(content)
-  const notes = cx.dark && tikz && !/color\s*=|\[\s*(white|\w+!\d+)/.test(content)
-    ? ['The slide is dark and TikZ draws in black: start with \\begin{tikzpicture}[color=white], and use light colors such as cyan or orange for lines.'] : []
   return {
-    fields: {
-      content,
-      textColor: spec.textColor === undefined ? ink(cx.dark) : color(spec.textColor, 'textColor'),
-      fontSize: spec.fontSize === undefined ? 20 : num(spec.fontSize, 'fontSize', 8, 80),
-    },
-    notes,
+    content: spec.content.replace(/\r\n?/g, '\n'),
+    textColor: spec.textColor === undefined ? ink(cx.dark) : color(spec.textColor, 'textColor'),
+    fontSize: spec.fontSize === undefined ? 20 : num(spec.fontSize, 'fontSize', 8, 80),
   }
 }
 const readLatex = el => [`   ${/\\begin\{tikzpicture\}|\\tikz[[{]/.test(el.content || '') ? 'TikZ' : /tabular|longtable/.test(el.content || '') ? 'table' : 'math'}: ${json(clip(el.content, 300))}`]
@@ -537,7 +529,7 @@ Example: { "op": "add_element", "slide": 5, "type": "code", "x": 80, "y": 130, "
     make: makeLatex, size: () => ({ w: 500, h: 380 }), fit: { cap: 1, fw: 0.9, fh: 0.85 }, read: readLatex,
     text: `spec: { "content": "LaTeX", and optional textColor (defaults to ink that reads on the slide), fontSize (20 is normal size) }.
 
-What content holds decides how it's drawn: \\begin{tikzpicture}…\\end{tikzpicture} by TikZJax (core TikZ; not pgfplots — use a graph for plots); a tabular by latex.js (booktabs works); anything else as display math by KaTeX. For math in text, a text box with $…$ is simpler. TikZ draws in black: on a dark slide, start with \\begin{tikzpicture}[color=white] and use light colors for lines. fontSize scales the picture (20 is its natural size, 40 twice that). Check a TikZ picture with render_slide.
+What content holds decides how it's drawn: \\begin{tikzpicture}…\\end{tikzpicture} by TikZJax (core TikZ; not pgfplots — use a graph for plots); a tabular by latex.js (booktabs works); anything else as display math by KaTeX. For math in text, a text box with $…$ is simpler. Lines and text with no color of their own are drawn in textColor; on a dark slide, pick light colors (cyan, orange) for the ones you color. fontSize scales the picture (20 is its natural size, 40 twice that). Check a TikZ picture with render_slide.
 
 Example: { "op": "add_element", "slide": 6, "type": "latex", "x": 280, "y": 120, "width": 400, "height": 300, "spec": { "content": "\\\\begin{tikzpicture}\\n\\\\draw[->] (0,0) -- (3,0) node[right] {$x$};\\n\\\\draw[->] (0,0) -- (0,2) node[above] {$y$};\\n\\\\end{tikzpicture}" } }`,
   },

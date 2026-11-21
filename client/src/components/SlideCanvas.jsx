@@ -1139,6 +1139,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           <CanvasElement
             key={element.id}
             element={element}
+            slideText={palette.text}
             canvasScale={scale}
             faded={!!fadedIds?.has(element.id)}
             unseen={!!unseenIds?.has(element.id)}
@@ -1432,7 +1433,7 @@ function GraphFrame({ element, scale }) {
   )
 }
 
-export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
+export function CanvasElement({ element, slideText, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1762,7 +1763,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           <TableRenderer element={element} isEditing={isEditing} />
         )}
         {element.type === 'latex' && (
-          <LatexRenderer element={element} isSelected={isSelected} />
+          <LatexRenderer element={element} isSelected={isSelected} slideText={slideText} />
         )}
         {element.type === 'equation' && (
           <EquationView element={element} style={{ pointerEvents: 'none' }} />
@@ -2391,8 +2392,8 @@ function RemoteUse({ use }) {
   )
 }
 
-function LatexRenderer({ element, isSelected }) {
-  const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize)
+function LatexRenderer({ element, isSelected, slideText }) {
+  const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize, slideText)
   return (
     <iframe
       srcDoc={localizeLibraries(html)}

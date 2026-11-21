@@ -8,6 +8,7 @@ import { webLink } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
+import { tikzInk } from './latexRenderer'
 import { modelViewerHtml } from './modelViewer'
 import { moleculeViewerHtml } from './moleculeViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
@@ -538,7 +539,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
           const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
           if (hasTikz) {
-            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${content}<\/script></body></html>`
+            const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${tikzInk(content, [el.textColor, palette.text])}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
             return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }

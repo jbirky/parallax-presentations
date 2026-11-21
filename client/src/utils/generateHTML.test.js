@@ -564,6 +564,18 @@ describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
     expect(md.querySelector('#out')).toBeTruthy()
     expect([...md.querySelectorAll('script')].pop().textContent).toContain('marked.parse')
   })
+
+  it('draws TikZ in the slide\'s ink, or its own text color, since TikZJax draws in black', () => {
+    const tikzIn = (slide, el = {}, theme) => {
+      const html = generateRevealHTML(makePresentation({ ...(theme ? { theme } : {}), slides: [{ id: 's1', ...slide, elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 300, zIndex: 1, type: 'latex', content: '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}', ...el }] }] }))
+      const attr = html.match(/<iframe srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+      return new (new Window().DOMParser)().parseFromString(attr, 'text/html').querySelector('script[type="text/tikz"]').textContent
+    }
+    expect(tikzIn({}, {}, 'black')).toBe('\\definecolor{parallaxink}{HTML}{FFFFFF}\\color{parallaxink}\n\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}')
+    expect(tikzIn({}, {}, 'white')).toMatch(/^\\definecolor\{parallaxink\}\{HTML\}\{222222\}/)
+    expect(tikzIn({ background: { type: 'color', color: '#1e1e2e' } }, {}, 'white')).toMatch(/\{HTML\}\{FFFFFF\}/)
+    expect(tikzIn({}, { textColor: 'rgb(255, 136, 0)' }, 'white')).toMatch(/\{HTML\}\{FF8800\}/)
+  })
 })
 
 describe('what a deck writes into its page', () => {

@@ -5549,10 +5549,89 @@ function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height, datasets = 
 }
 
 // client/src/utils/generateHTML.js
-var import_libraries4 = require("./libraries");
+var import_libraries5 = require("./libraries");
+
+// client/src/utils/latexRenderer.js
+var import_libraries = require("./libraries");
+
+// client/src/utils/themes.js
+var THEME_LIST = [
+  { id: "black", label: "Black", background: "#191919", text: "#ffffff", heading: "#ffffff", link: "#42affa", dark: true },
+  { id: "white", label: "White", background: "#ffffff", text: "#222222", heading: "#222222", link: "#2a76dd", dark: false },
+  { id: "league", label: "League", background: "#2b2b2b", text: "#eeeeee", heading: "#eeeeee", link: "#13daec", dark: true },
+  { id: "beige", label: "Beige", background: "#f7f3de", text: "#333333", heading: "#333333", link: "#8b743d", dark: false },
+  { id: "sky", label: "Sky", background: "#f7fbfc", backgroundCss: "radial-gradient(circle farthest-corner at center, #f7fbfc 0%, #add9e4 100%)", text: "#333333", heading: "#333333", link: "#3b759e", dark: false },
+  { id: "night", label: "Night", background: "#111111", text: "#eeeeee", heading: "#eeeeee", link: "#e7ad52", dark: true },
+  { id: "serif", label: "Serif", background: "#f0f1eb", text: "#000000", heading: "#383d3d", link: "#51483d", dark: false },
+  { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
+  { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
+  { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
+  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true }
+];
+var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
+function themeOf(id) {
+  return THEMES[id] || THEMES.black;
+}
+function parseColor(value) {
+  const s = String(value || "").trim();
+  let m = /^#([0-9a-f]{3})$/i.exec(s);
+  if (m) return m[1].split("").map((c) => parseInt(c + c, 16));
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+  if (m) return [m[1], m[2], m[3]].map(Number);
+  if (s.toLowerCase() === "white") return [255, 255, 255];
+  if (s.toLowerCase() === "black") return [0, 0, 0];
+  return null;
+}
+function isDark(value, fallback = true) {
+  const rgb = parseColor(value);
+  if (!rgb) return fallback;
+  const [r, g, b] = rgb;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+}
+function firstColor(gradient) {
+  const m = /(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(String(gradient || ""));
+  return m ? m[1] : null;
+}
+function ownBackground(bg) {
+  if (!bg) return null;
+  if (bg.type === "color" && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark(bg.color) };
+  if (bg.type === "gradient" && bg.gradient) return { style: { background: bg.gradient }, dark: isDark(firstColor(bg.gradient)) };
+  if (bg.type === "image" && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || "cover", backgroundPosition: bg.position || "center" }, dark: true };
+  return null;
+}
+function themeBackgroundStyle(themeId) {
+  const t = themeOf(themeId);
+  return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background };
+}
+function slidePalette(slide, themeId) {
+  const t = themeOf(themeId);
+  const own = ownBackground(slide?.background);
+  if (!own) return { background: themeBackgroundStyle(themeId), text: t.text, heading: t.heading, link: t.link, dark: t.dark, own: false };
+  const match = own.dark === t.dark;
+  const plain2 = own.dark ? "#ffffff" : "#222222";
+  return {
+    background: own.style,
+    text: own.dark ? "#ffffff" : match ? t.text : plain2,
+    heading: match ? t.heading : plain2,
+    link: match ? t.link : own.dark ? "#42affa" : "#2a76dd",
+    dark: own.dark,
+    own: true
+  };
+}
+
+// client/src/utils/latexRenderer.js
+function tikzInk(content, colors) {
+  const rgb = colors.map(parseColor).find(Boolean);
+  if (!rgb) return content;
+  const hex = rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+  return `\\definecolor{parallaxink}{HTML}{${hex}}\\color{parallaxink}
+${content}`;
+}
 
 // client/src/utils/modelViewer.js
-var import_libraries = require("./libraries");
+var import_libraries2 = require("./libraries");
 var MODEL_DEFAULTS = {
   color: "#b8c2cc",
   background: "transparent",
@@ -5578,7 +5657,7 @@ function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false }
     print
   };
   const imports = {
-    three: (0, import_libraries.libUrl)("three", "build/three.module.js")
+    three: (0, import_libraries2.libUrl)("three", "build/three.module.js")
   };
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}canvas{display:block;outline:none}#status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;text-align:center;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:rgba(128,128,128,0.9);pointer-events:none}#status.error{color:#e5484d}</style>
@@ -5586,10 +5665,10 @@ function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false }
 </head><body><div id="status">Loading model…</div>
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from '${(0, import_libraries.libUrl)("three", "examples/jsm/controls/OrbitControls.js")}';
-import { GLTFLoader } from '${(0, import_libraries.libUrl)("three", "examples/jsm/loaders/GLTFLoader.js")}';
-import { STLLoader } from '${(0, import_libraries.libUrl)("three", "examples/jsm/loaders/STLLoader.js")}';
-import { RoomEnvironment } from '${(0, import_libraries.libUrl)("three", "examples/jsm/environments/RoomEnvironment.js")}';
+import { OrbitControls } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/controls/OrbitControls.js")}';
+import { GLTFLoader } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/loaders/GLTFLoader.js")}';
+import { STLLoader } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/loaders/STLLoader.js")}';
+import { RoomEnvironment } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/environments/RoomEnvironment.js")}';
 
 const O = ${scriptJson(options)};
 const status = document.getElementById('status');
@@ -5751,7 +5830,7 @@ if (!O.src) {
 }
 
 // client/src/utils/moleculeViewer.js
-var import_libraries2 = require("./libraries");
+var import_libraries3 = require("./libraries");
 var MOLECULE_FORMATS = {
   ".pdb": "pdb",
   ".ent": "pdb",
@@ -5818,7 +5897,7 @@ function moleculeViewerHtml(el, { src = el.src, snapshotKey = null, viewKey = nu
   };
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}#stage{position:absolute;inset:0}canvas{display:block;outline:none}#status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;text-align:center;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:rgba(128,128,128,0.9);pointer-events:none}#status.error{color:#e5484d}</style>
-<script src="${(0, import_libraries2.libUrl)("3dmol", "build/3Dmol-min.js")}"></script>
+<script src="${(0, import_libraries3.libUrl)("3dmol", "build/3Dmol-min.js")}"></script>
 </head><body><div id="stage"></div><div id="status">Loading molecule…</div>
 <script>
 (function () {
@@ -11308,7 +11387,7 @@ function termIdsIn(latex) {
 var int = (v, min, max, dflt) => Number.isInteger(+v) && +v >= min && +v <= max ? +v : dflt;
 var num2 = (v, min, max, dflt) => typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : dflt;
 var str = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
-var isDark = (hex) => {
+var isDark2 = (hex) => {
   const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d) => d + d) : hex;
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   return 0.299 * r + 0.587 * g + 0.114 * b < 140;
@@ -11317,7 +11396,7 @@ function equationConfig(el) {
   const latex = str(el?.latex, 2e4);
   const ids = termIdsIn(latex);
   const textColor = typeof el?.textColor === "string" && COLOR.test(el.textColor) ? el.textColor : null;
-  const palette = EQUATION_COLORS[textColor && isDark(textColor) ? "light" : "dark"];
+  const palette = EQUATION_COLORS[textColor && isDark2(textColor) ? "light" : "dark"];
   const given = Array.isArray(el?.terms) ? el.terms : [];
   const terms = [];
   for (const t of given) {
@@ -21287,73 +21366,6 @@ var SCROLLING_SCRIPT = `
 // client/src/utils/annotations.js
 var ANNOTATION_MESSAGE = "parallax-annotations";
 
-// client/src/utils/themes.js
-var THEME_LIST = [
-  { id: "black", label: "Black", background: "#191919", text: "#ffffff", heading: "#ffffff", link: "#42affa", dark: true },
-  { id: "white", label: "White", background: "#ffffff", text: "#222222", heading: "#222222", link: "#2a76dd", dark: false },
-  { id: "league", label: "League", background: "#2b2b2b", text: "#eeeeee", heading: "#eeeeee", link: "#13daec", dark: true },
-  { id: "beige", label: "Beige", background: "#f7f3de", text: "#333333", heading: "#333333", link: "#8b743d", dark: false },
-  { id: "sky", label: "Sky", background: "#f7fbfc", backgroundCss: "radial-gradient(circle farthest-corner at center, #f7fbfc 0%, #add9e4 100%)", text: "#333333", heading: "#333333", link: "#3b759e", dark: false },
-  { id: "night", label: "Night", background: "#111111", text: "#eeeeee", heading: "#eeeeee", link: "#e7ad52", dark: true },
-  { id: "serif", label: "Serif", background: "#f0f1eb", text: "#000000", heading: "#383d3d", link: "#51483d", dark: false },
-  { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
-  { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
-  { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
-  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true }
-];
-var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
-function themeOf(id) {
-  return THEMES[id] || THEMES.black;
-}
-function parseColor(value) {
-  const s = String(value || "").trim();
-  let m = /^#([0-9a-f]{3})$/i.exec(s);
-  if (m) return m[1].split("").map((c) => parseInt(c + c, 16));
-  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
-  if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
-  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
-  if (m) return [m[1], m[2], m[3]].map(Number);
-  if (s.toLowerCase() === "white") return [255, 255, 255];
-  if (s.toLowerCase() === "black") return [0, 0, 0];
-  return null;
-}
-function isDark2(value, fallback = true) {
-  const rgb = parseColor(value);
-  if (!rgb) return fallback;
-  const [r, g, b] = rgb;
-  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
-}
-function firstColor(gradient) {
-  const m = /(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(String(gradient || ""));
-  return m ? m[1] : null;
-}
-function ownBackground(bg) {
-  if (!bg) return null;
-  if (bg.type === "color" && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark2(bg.color) };
-  if (bg.type === "gradient" && bg.gradient) return { style: { background: bg.gradient }, dark: isDark2(firstColor(bg.gradient)) };
-  if (bg.type === "image" && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || "cover", backgroundPosition: bg.position || "center" }, dark: true };
-  return null;
-}
-function themeBackgroundStyle(themeId) {
-  const t = themeOf(themeId);
-  return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background };
-}
-function slidePalette(slide, themeId) {
-  const t = themeOf(themeId);
-  const own = ownBackground(slide?.background);
-  if (!own) return { background: themeBackgroundStyle(themeId), text: t.text, heading: t.heading, link: t.link, dark: t.dark, own: false };
-  const match = own.dark === t.dark;
-  const plain2 = own.dark ? "#ffffff" : "#222222";
-  return {
-    background: own.style,
-    text: own.dark ? "#ffffff" : match ? t.text : plain2,
-    heading: match ? t.heading : plain2,
-    link: match ? t.link : own.dark ? "#42affa" : "#2a76dd",
-    dark: own.dark,
-    own: true
-  };
-}
-
 // client/src/utils/placeholders.js
 function isEmptyHtml(html) {
   const s = String(html || "");
@@ -21889,9 +21901,9 @@ var CLICK_ACTION_SCRIPT = `
     })();`;
 
 // client/src/utils/latinModern.js
-var import_libraries3 = require("./libraries");
+var import_libraries4 = require("./libraries");
 var FACES = [["normal", 400, "cmunrm"], ["normal", 700, "cmunbx"], ["italic", 400, "cmunti"], ["italic", 700, "cmunbi"]];
-function latinModernFaces(url = import_libraries3.libUrl) {
+function latinModernFaces(url = import_libraries4.libUrl) {
   return FACES.map(([style, weight, file]) => `@font-face { font-family: 'Latin Modern Roman'; font-style: ${style}; font-weight: ${weight}; src: url('${url("latex.js", `dist/fonts/Serif/${file}.woff`)}') format('woff'); }`).join("\n");
 }
 
@@ -22190,7 +22202,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
-        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
+        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries5.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
         const srcdoc = p5Doc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22201,7 +22213,7 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "markdown") {
         const md = (el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});</script></body></html>`;
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries5.libUrl)("marked", "lib/marked.umd.js")}"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});</script></body></html>`;
         const escaped = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22302,7 +22314,7 @@ function generateRevealHTML(presentation, opts = {}) {
         const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content);
         const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content);
         if (hasTikz) {
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${content}</script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${tikzInk(content, [el.textColor, palette.text])}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22313,7 +22325,7 @@ function generateRevealHTML(presentation, opts = {}) {
 \\begin{document}
 ${content}
 \\end{document}`;
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"></script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}</script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries5.libUrl)("latex.js", "dist/latex.js")}"></script><link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22529,15 +22541,15 @@ ${sections}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(presentation.title || "Presentation")}</title>
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reset.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reset.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reveal.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/fonts/cmu.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
@@ -22646,11 +22658,11 @@ ${slidesHtml}
   <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${sanitizeAttr(presentation.overviewLayout || "linear")}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "dist/reveal.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || "slide")};
