@@ -30,6 +30,7 @@ import TimingView from './TimingView'
 import GeometryView from './GeometryView'
 import PeriodicView from './PeriodicView'
 import HarmonicsView from './HarmonicsView'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const THUMB_W = 150
 
@@ -71,7 +72,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
         width: slideW, height: slideH,
         transform: `scale(${scale})`, transformOrigin: 'top left',
         pointerEvents: 'none',
-        fontSize: '42px',
+        fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
         ...palette.background,
         '--slide-text': palette.text,
         '--slide-heading': palette.heading,

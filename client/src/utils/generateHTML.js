@@ -25,6 +25,7 @@ import { periodicSvg, periodicDeckHtml, periodicStepMarkers, periodicSteps, peri
 import { harmonicsDeckAttrs, harmonicsStepMarkers, harmonicsSteps, harmonicsStepAt, hasHarmonics, harmonicsDeckScript, harmonicsPrintScript } from './harmonicsView'
 import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
+import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { slidePalette, cssText, themeBackgroundStyle } from './themes'
@@ -617,7 +618,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           const fontSize = el.fontSize || 64
           const w = el.width
           const pathSide = el.pathSide || 'bottom'
-          const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
+          const ff = (el.fontFamily || deckFont(globalFont)).replace(/"/g, '\'')
           const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
           let svg, svgH
           if (pathSide === 'leftedge' || pathSide === 'rightedge') {
@@ -792,8 +793,10 @@ export function generateRevealHTML(presentation, opts = {}) {
     /* Override reveal.js theme CSS variables to match editor */
     :root { --r-main-font-size: 42px; --r-block-margin: 0px; --r-heading-margin: 0 0 0.4em 0; --r-heading-text-transform: none; --r-heading-letter-spacing: normal; }
     /* Reset reveal.js section padding/alignment so absolute positions match the editor canvas exactly */
-    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
+    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: ${DEFAULT_DECK_FONT}; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
     .reveal .slides section > * { overflow: hidden; }
+    /* Headings are in the deck's font, as in the editor, not the reveal.js theme's heading font (League Gothic, Source Sans Pro, …) */
+    .reveal .slides section :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; }
     /* Override ALL theme element styles to match TipTap editor exactly */
     .reveal p { margin: 0 0 0.4em !important; }
     .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 { margin: 0 0 0.4em !important; text-transform: none !important; letter-spacing: normal !important; text-shadow: none !important; }
@@ -1603,7 +1606,7 @@ function generatePrintHTML(presentation) {
           const fontSize = el.fontSize || 64
           const w = el.width
           const pathSide = el.pathSide || 'bottom'
-          const ff = (el.fontFamily || globalFont || 'sans-serif').replace(/"/g, '\'')
+          const ff = (el.fontFamily || deckFont(globalFont)).replace(/"/g, '\'')
           const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || '#ffffff'}" font-weight="${el.fontWeight || 'normal'}" font-style="${el.fontStyle || 'normal'}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ''}`
           let svg, svgH
           if (pathSide === 'leftedge' || pathSide === 'rightedge') {
@@ -1730,7 +1733,7 @@ function generatePrintHTML(presentation) {
     html, body { width: ${slideW}px; background: #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .slide-page {
       width: ${slideW}px; height: ${slideH}px; position: relative; overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: ${DEFAULT_DECK_FONT};
       break-after: page; page-break-after: always;
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }

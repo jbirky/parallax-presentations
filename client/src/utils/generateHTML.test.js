@@ -234,6 +234,21 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('font-family:Inter, sans-serif')
   })
 
+  it('sets slides in Arial when no font is picked, headings too', () => {
+    const html = generateRevealHTML(makePresentation())
+    expect(html).toMatch(/\.reveal \.slides section \{[^}]*font-family: Arial, sans-serif;/)
+    expect(html).not.toMatch(/\.reveal \.slides section \{[^}]*-apple-system/)
+    // the reveal.js theme's heading font (League Gothic, …) doesn't win
+    expect(html).toContain('.reveal .slides section :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; }')
+  })
+
+  it('draws text paths in Arial when neither they nor the deck pick a font', () => {
+    const pres = makePresentation({
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'textpath', x: 0, y: 0, width: 400, height: 200, zIndex: 1, content: 'Around', pathType: 'arc' }] }],
+    })
+    expect(generateRevealHTML(pres)).toContain('font-family="Arial, sans-serif"')
+  })
+
   it('renders code elements', () => {
     const pres = makePresentation({
       slides: [{

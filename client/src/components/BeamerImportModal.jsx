@@ -17,10 +17,11 @@ import { parseBibtex } from '../utils/bibtexParser'
 import { safeHtml } from '../utils/safeHtml'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { api } from '../utils/api'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const THUMB_W = 216
 // The type a slide's text boxes sit in, on the canvas and in decks
-const SLIDE_TYPE = { fontSize: 42, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }
+const SLIDE_TYPE = { fontSize: 42, fontFamily: DEFAULT_DECK_FONT }
 
 const EXAMPLE = `\\documentclass[aspectratio=169]{beamer}
 \\title{A talk in Beamer}
@@ -129,7 +130,7 @@ function Thumb({ slide, slideW, slideH, fontFamily }) {
   const scale = THUMB_W / slideW
   const steps = new Set(slide.elements.filter(e => e.fragment).map(e => e.fragmentIndex)).size
   return (
-    <div style={{ width: THUMB_W, height: Math.round(slideH * scale), overflow: 'hidden', position: 'relative', borderRadius: 3, background: slide.background?.color, boxShadow: '0 0 0 1px var(--border)' }}>
+    <div style={{ width: THUMB_W, height: Math.round(slideH * scale), overflow: 'hidden', position: 'relative', borderRadius: 3, background: slide.background?.color, boxShadow: '0 0 0 1px var(--border)', fontFamily: DEFAULT_DECK_FONT }}>
       <div ref={ref} style={{ position: 'absolute', left: 0, top: 0, width: slideW, height: slideH, transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none', ...SLIDE_TYPE }}>
         {slide.elements.map(el => <ThumbElement key={el.id} el={el} fontFamily={fontFamily} />)}
       </div>

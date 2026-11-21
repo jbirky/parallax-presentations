@@ -25,6 +25,7 @@ import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
 import PeriodicProperties from './PeriodicProperties'
 import HarmonicsProperties from './HarmonicsProperties'
 import BackgroundEditor from './BackgroundEditor'
+import { deckFont } from '../utils/deckFont'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -231,7 +232,7 @@ function CopyTikzButton({ tikz, label = 'Copy TikZ' }) {
 function FontFamilySelect({ value, onChange, globalFont }) {
   return (
     <select className="prop-input" value={value || ''} onChange={e => onChange(e.target.value || null)}>
-      <option value="">↺ Use Global{globalFont ? ` (${globalFont.split(',')[0].replace(/'/g, '')})` : ''}</option>
+      <option value="">↺ Use Global ({deckFont(globalFont).split(',')[0].replace(/'/g, '')})</option>
       <option value="sans-serif">Default Sans</option>
       <optgroup label="Sans-serif">
         <option value="Arial, sans-serif">Arial</option>

@@ -9,6 +9,7 @@ import { ArrowLeft, Check, FileCode } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const THUMB_W = 160
 
@@ -24,7 +25,7 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540, theme }) {
         width: slideW, height: slideH,
         transform: `scale(${scale})`, transformOrigin: 'top left',
         pointerEvents: 'none',
-        fontSize: '42px',
+        fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
         ...palette.background,
         '--slide-heading': palette.heading,
       }} className="slide-thumb-canvas">

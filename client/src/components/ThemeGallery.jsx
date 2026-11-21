@@ -7,11 +7,12 @@
 
 import { X, Check } from 'lucide-react'
 import { THEME_LIST, themeBackgroundStyle } from '../utils/themes'
+import { deckFont } from '../utils/deckFont'
 
 // One theme's title slide, small
 export function ThemeSwatch({ theme, font, title = 'Presentation title', width = 168 }) {
   return (
-    <div className="theme-swatch" style={{ width, height: Math.round(width * 9 / 16), ...themeBackgroundStyle(theme.id), fontFamily: font || undefined }}>
+    <div className="theme-swatch" style={{ width, height: Math.round(width * 9 / 16), ...themeBackgroundStyle(theme.id), fontFamily: deckFont(font) }}>
       <span style={{ color: theme.heading, fontSize: Math.round(width / 11), fontWeight: 700, lineHeight: 1.15 }}>{title}</span>
       <span style={{ color: theme.text, fontSize: Math.round(width / 19), marginTop: Math.round(width / 40) }}>Subtitle</span>
       <span style={{ display: 'block', width: '24%', height: 2, marginTop: Math.round(width / 24), background: theme.link, borderRadius: 1 }} />

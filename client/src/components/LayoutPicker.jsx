@@ -10,6 +10,7 @@ import { X } from 'lucide-react'
 import { slidePalette } from '../utils/themes'
 import { placeholderHint, withHint } from '../utils/placeholders'
 import { safeHtml } from '../utils/safeHtml'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const PREVIEW_W = 184
 
@@ -21,7 +22,7 @@ export function LayoutPreview({ layout, theme, slideW = 960, slideH = 540, width
     <div style={{ width, height: Math.round(width * slideH / slideW), overflow: 'hidden', position: 'relative', borderRadius: 4 }}>
       <div className="slide-thumb-canvas" style={{
         position: 'absolute', top: 0, left: 0, width: slideW, height: slideH,
-        transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none', fontSize: '42px',
+        transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none', fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
         ...palette.background, '--slide-heading': palette.heading,
       }}>
         {layout.elements.map((el, i) => {

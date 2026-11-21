@@ -68,6 +68,7 @@ import { slidePalette } from '../utils/themes'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
+import { DEFAULT_DECK_FONT, deckFont } from '../utils/deckFont'
 
 function highlightCode(code, language) {
   try {
@@ -921,7 +922,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
-          flexShrink: 0, position: 'relative', fontSize: '42px',
+          flexShrink: 0, position: 'relative', fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
           outline: dragOver ? '3px dashed #6366f1' : 'none',
           cursor: drawTool ? 'crosshair' : undefined,
           ...palette.background,
@@ -1825,7 +1826,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const pathSide = element.pathSide || 'bottom'
           const fontSize = element.fontSize || 64
           const w = element.width
-          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+          const effectiveFont = element.fontFamily || deckFont(globalFont)
 
           // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
           if (pathSide === 'leftedge' || pathSide === 'rightedge') {
@@ -1897,7 +1898,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const pathSide = element.pathSide || 'bottom'
           const fontSize = element.fontSize || 64
           const w = element.width
-          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+          const effectiveFont = element.fontFamily || deckFont(globalFont)
 
           const editOverlay = (svgH, svgPreview) => (
             <div style={{ position: 'relative', width: w, height: svgH }}>

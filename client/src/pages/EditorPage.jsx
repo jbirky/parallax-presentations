@@ -3753,7 +3753,7 @@ function draw() {
                 <select className="prop-input" value={presentation.globalFont || ''}
                   onChange={e => setPresentation(prev => ({ ...prev, globalFont: e.target.value || null }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
-                  <option value="">— Default —</option>
+                  <option value="">Default (Arial)</option>
                   <optgroup label="Sans-serif">
                     <option value="Arial, sans-serif">Arial</option>
                     <option value="'Helvetica Neue', sans-serif">Helvetica</option>

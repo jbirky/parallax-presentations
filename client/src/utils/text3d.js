@@ -12,6 +12,8 @@
 // opacity, filter and the like on the stack flatten it. They go on the
 // element's own box, outside this markup.
 
+import { deckFont } from './deckFont'
+
 export const TEXT3D_DEFAULTS = {
   content: '3D Text',
   fontSize: 96, fontWeight: '800', fontStyle: 'normal',
@@ -60,7 +62,7 @@ export function text3dSettings(el, fallbackFont) {
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
     fontStyle: STYLES.includes(el.fontStyle) ? el.fontStyle : 'normal',
     textAlign: ALIGNS[el.textAlign] ? el.textAlign : 'center',
-    fontFamily: String(el.fontFamily || fallbackFont || 'sans-serif').replace(/[<>"`;{}\\\r\n]/g, ''),
+    fontFamily: String(el.fontFamily || deckFont(fallbackFont)).replace(/[<>"`;{}\\\r\n]/g, ''),
   }
 }
 

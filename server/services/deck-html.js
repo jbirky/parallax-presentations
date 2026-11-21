@@ -20588,6 +20588,12 @@ function harmonicsDeckScript() {
   return deckScript4;
 }
 
+// client/src/utils/deckFont.js
+var DEFAULT_DECK_FONT = "Arial, sans-serif";
+function deckFont(globalFont) {
+  return typeof globalFont === "string" && globalFont.trim() || DEFAULT_DECK_FONT;
+}
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -20642,7 +20648,7 @@ function text3dSettings(el, fallbackFont) {
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
     fontStyle: STYLES.includes(el.fontStyle) ? el.fontStyle : "normal",
     textAlign: ALIGNS[el.textAlign] ? el.textAlign : "center",
-    fontFamily: String(el.fontFamily || fallbackFont || "sans-serif").replace(/[<>"`;{}\\\r\n]/g, "")
+    fontFamily: String(el.fontFamily || deckFont(fallbackFont)).replace(/[<>"`;{}\\\r\n]/g, "")
   };
 }
 var escapeText2 = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -22380,7 +22386,7 @@ ${content}
         const fontSize = el.fontSize || 64;
         const w = el.width;
         const pathSide = el.pathSide || "bottom";
-        const ff = (el.fontFamily || globalFont || "sans-serif").replace(/"/g, "'");
+        const ff = (el.fontFamily || deckFont(globalFont)).replace(/"/g, "'");
         const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || "#ffffff"}" font-weight="${el.fontWeight || "normal"}" font-style="${el.fontStyle || "normal"}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ""}`;
         let svg, svgH;
         if (pathSide === "leftedge" || pathSide === "rightedge") {
@@ -22543,8 +22549,10 @@ ${sections}
     /* Override reveal.js theme CSS variables to match editor */
     :root { --r-main-font-size: 42px; --r-block-margin: 0px; --r-heading-margin: 0 0 0.4em 0; --r-heading-text-transform: none; --r-heading-letter-spacing: normal; }
     /* Reset reveal.js section padding/alignment so absolute positions match the editor canvas exactly */
-    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
+    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: ${DEFAULT_DECK_FONT}; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
     .reveal .slides section > * { overflow: hidden; }
+    /* Headings are in the deck's font, as in the editor, not the reveal.js theme's heading font (League Gothic, Source Sans Pro, …) */
+    .reveal .slides section :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; }
     /* Override ALL theme element styles to match TipTap editor exactly */
     .reveal p { margin: 0 0 0.4em !important; }
     .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 { margin: 0 0 0.4em !important; text-transform: none !important; letter-spacing: normal !important; text-shadow: none !important; }
