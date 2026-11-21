@@ -3,7 +3,8 @@
 
 // A button beside Present that opens a short menu: Share (the share link and
 // who edits the presentation, as in Google Slides) and Sync (GitHub). Its
-// menu looks like the menu bar's. An item is { label, icon, title, action },
+// menu looks like the menu bar's. Under 1200px wide it shows just its icon
+// (.header-btn-label in index.css). An item is { label, icon, title, action },
 // or '-' / { divider: true } for a line between groups.
 
 import { useState, useRef, useEffect } from 'react'
@@ -36,10 +37,10 @@ export default function HeaderMenu({ label, icon, title, items }) {
   if (!items.some(item => item && !isDivider(item))) return null
   return (
     <div ref={wrap} style={{ position: 'relative' }} onKeyDown={open ? onKeyDown : undefined}>
-      <button ref={button} type="button" className="btn btn-secondary" title={title}
+      <button ref={button} type="button" className="btn btn-secondary" title={title} aria-label={label}
         aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)}>
         {icon}
-        {label}
+        <span className="header-btn-label">{label}</span>
         <ChevronDown size={12} style={{ marginLeft: -2, opacity: 0.7 }} />
       </button>
       {open && (

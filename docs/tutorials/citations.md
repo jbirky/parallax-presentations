@@ -4,7 +4,7 @@ Parallax has a built-in citation manager that lets you import references from Bi
 
 ## Opening the bibliography manager
 
-Choose **Tools › Citations and bibliography…** to open the bibliography. You can also open it from **File › Deck settings…**, with **Manage Bibliography**.
+Choose **Tools › Citations and bibliography…** to open the bibliography. You can also open it from the **Settings** button at the top right (the deck settings), with **Manage Bibliography**.
 
 The modal has three tabs:
 

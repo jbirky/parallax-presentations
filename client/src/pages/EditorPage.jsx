@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Check, X, Search, Share2, CloudUpload, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Settings, Check, X, Search, Share2, CloudUpload, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -3380,8 +3380,6 @@ function draw() {
       '-',
       { label: 'Version history…', action: openHistory },
       { label: 'Files…', title: 'Files uploaded to this presentation', action: openFiles },
-      '-',
-      { label: 'Deck settings…', title: 'Font, theme, transition, size, footer and more, for the whole presentation', action: () => setShowDefaultSettings(true) },
     ] },
     { key: 'edit', label: 'Edit', items: [
       { label: 'Undo', shortcut: SHORTCUTS.undo, action: editing && editor ? () => editor.chain().focus().undo().run() : doUndo, disabled: !editing && !canUndo() },
@@ -3587,6 +3585,12 @@ function draw() {
             </div>
           )}
 
+          <button type="button" className="btn btn-secondary" aria-label="Deck settings"
+            title="Deck settings: font, theme, transition, size, footer and more, for the whole presentation"
+            onClick={() => setShowDefaultSettings(true)}>
+            <Settings size={14} />
+            <span className="header-btn-label">Settings</span>
+          </button>
           {!guest && !isEditor && <HeaderMenu label="Sync" icon={<CloudUpload size={14} />} title="GitHub and git history" items={syncItems} />}
           <HeaderMenu label="Share" icon={<Share2 size={14} />} title="Share link and editors" items={shareItems} />
 

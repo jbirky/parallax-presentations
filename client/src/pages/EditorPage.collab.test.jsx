@@ -72,14 +72,15 @@ describe('the editor, shared', () => {
   }
   const closeMenus = async () => act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
 
-  it('has a menu bar where the top bar’s buttons were, and keeps Sync, Share and Present', async () => {
+  it('has a menu bar where the top bar’s buttons were, and keeps Settings, Sync, Share and Present', async () => {
     await open('owner')
     expect([...el.querySelectorAll('.menu-bar .menu-title')].map(b => b.textContent)).toEqual(['File', 'Edit', 'View', 'Insert', 'Format', 'Slide', 'Tools', 'Help'])
     expect(el.querySelector('.menu-bar').getAttribute('role')).toBe('menubar')
-    for (const gone of ['Settings', 'Export', 'History', 'Files', 'Data']) expect(button(gone)).toBeUndefined()
-    // Sync, then Share, then Present
-    const sync = button('Sync'), share = button('Share'), present = button('Present')
-    expect(sync && share && present).toBeTruthy()
+    for (const gone of ['Export', 'History', 'Files', 'Data']) expect(button(gone)).toBeUndefined()
+    // Settings, Sync, Share, then Present
+    const settings = button('Settings'), sync = button('Sync'), share = button('Share'), present = button('Present')
+    expect(settings && sync && share && present).toBeTruthy()
+    expect(settings.compareDocumentPosition(sync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(sync.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(share.compareDocumentPosition(present) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
@@ -152,6 +153,24 @@ describe('the editor, shared', () => {
     expect(el.querySelector('[role=menu][aria-label=Sync]')).toBeNull()
     expect(api.getGitHistory).toHaveBeenCalledWith('p1')
     expect(await menu('Tools')).not.toContain('Sync')
+  })
+
+  it('opens the GitHub settings from Sync', async () => {
+    api.getGithubConfig.mockResolvedValue({ owner: '', repo: '', hasToken: false, pagesUrl: '' })
+    await open('owner')
+    await headerMenu('Sync')
+    await act(async () => [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'GitHub…').click())
+    expect(button('Save Settings')).toBeTruthy()
+  })
+
+  it('opens the deck settings from their own button, for an editor too, and not from File', async () => {
+    await open('editor')
+    const settings = button('Settings')
+    expect(settings.getAttribute('aria-label')).toBe('Deck settings')
+    expect(await menu('File')).not.toContain('Deck settings…')
+    await closeMenus()
+    await act(async () => settings.click())
+    expect([...el.querySelectorAll('h2')].map(h => h.textContent)).toContain('Deck settings')
   })
 
   it('has no Sync button for a guest', async () => {

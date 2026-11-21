@@ -4,7 +4,7 @@ Control how slides change during your presentation.
 
 ## Built-in transitions
 
-Set the deck's transition in **File › Deck settings…** under **Transition**, and a slide's own in the inspector's **Animate** tab (or **Slide › Transition…**):
+Set the deck's transition in the deck settings (the **Settings** button at the top right) under **Transition**, and a slide's own in the inspector's **Animate** tab (or **Slide › Transition…**):
 
 | Transition | Description |
 |-----------|-------------|
