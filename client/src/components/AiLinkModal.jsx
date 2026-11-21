@@ -34,7 +34,7 @@ export function ConnectSteps({ url }) {
     <div>
       <p style={step}><strong>Claude</strong> (claude.ai, Desktop): Customize › Connectors › Add › Add custom connector. Paste the link and choose “No sign-in”. Use a personal account: on Team and Enterprise plans connectors are added for everyone.</p>
       <p style={step}><strong>Claude Code</strong>: <code style={{ fontSize: 11, wordBreak: 'break-all' }}>claude mcp add --transport http parallax {url}</code></p>
-      <p style={step}><strong>ChatGPT</strong>: an admin on a Business or Enterprise workspace adds it under Plugins › + › Add custom MCP server, with “No authentication”.</p>
+      <p style={step}><strong>ChatGPT</strong> (web): Plugins › + › Add custom MCP server. Paste the link as the Server URL, choose “No authentication”, and create it as a plugin. In a chat, type @ and pick it. On Business and Enterprise workspaces only admins can add one.</p>
       <p style={{ ...step, marginBottom: 0 }}>Pasted into a chat message instead, it opens a page the AI can read.</p>
     </div>
   )

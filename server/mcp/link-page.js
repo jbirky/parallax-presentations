@@ -13,7 +13,7 @@ function connectSteps(url) {
   return [
     ['Claude (claude.ai and Claude Desktop)', `Customize › Connectors › Add › Add custom connector. Paste ${url} as the URL and choose “No sign-in”. On Team and Enterprise plans only an Owner can add connectors, for everyone, so use a personal account.`],
     ['Claude Code', `claude mcp add --transport http parallax ${url}`],
-    ['ChatGPT', `On Business and Enterprise/Edu workspaces, an admin adds it under Plugins › + › Add custom MCP server, with “No authentication”. Other ChatGPT plans can read this page but not connect.`],
+    ['ChatGPT (on the web)', `Plugins › + › Add custom MCP server. Paste ${url} as the Server URL, choose “No authentication”, and create it as a plugin. In a chat, type @ and pick it. On Business and Enterprise workspaces only admins can add one.`],
     ['Other apps', 'Any app that takes a remote MCP server by URL, with no authentication.'],
   ]
 }

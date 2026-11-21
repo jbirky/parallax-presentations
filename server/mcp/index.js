@@ -61,7 +61,7 @@ function buildServer(link, loadDeck) {
   })
   server.registerTool('get_slide', {
     title: 'Read a slide',
-    description: "One slide in full: its layout, section, minutes and background, its outline and speaker notes, and each element back to front with its id, type, position and size in pixels, and contents (text as Markdown, with $…$ for math and [@key] for citations). Ends with warnings for elements past the slide's edges and text boxes that overlap.",
+    description: "One slide in full: its layout, section, minutes and background, its outline and speaker notes, and each element back to front with its id, type, position and size in pixels, whether it starts hidden, what clicking or hovering on it does (such as tabs showing and hiding panels), and its contents (text as Markdown, with $…$ for math and [@key] for citations). Ends with warnings for elements past the slide's edges and text boxes that overlap while both show.",
     inputSchema: SLIDE_INPUT,
     annotations: READ_ONLY,
   }, async ({ slide }) => {

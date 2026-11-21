@@ -340,9 +340,13 @@ function deckOutline(deck) {
   return lines.join('\n')
 }
 
-// Fields every element has, left out of its summary
+// Fields every element has, or that its first line describes, left out of
+// its summary
 const COMMON = new Set(['id', 'type', 'x', 'y', 'width', 'height', 'zIndex', 'rotation', 'opacity', 'content', 'layoutPart',
-  'fragment', 'fragmentIndex', 'placeholder', 'hint', 'outline', 'sizeMode', 'locked', 'editorState'])
+  'fragment', 'fragmentIndex', 'placeholder', 'hint', 'outline', 'sizeMode', 'locked', 'editorState',
+  'clickAction', 'hoverAction', 'states', 'initialState', 'stateSteps', 'startHidden', 'hoverEffect', 'backfaceHidden'])
+// A shape's text styling, left out when it has no text
+const TEXT_STYLE = new Set(['fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'textColor', 'textAlign', 'verticalAlign', 'lineHeight', 'letterSpacing'])
 
 function fieldValue(value) {
   if (typeof value === 'string') {
@@ -358,13 +362,89 @@ function fieldValue(value) {
 // An element's other fields, short, for get_slide
 function fieldsOf(el) {
   const out = []
+  const noText = el.type === 'shape' && !String(el.text || '').trim()
   for (const [key, value] of Object.entries(el)) {
     if (COMMON.has(key) || value == null || value === '') continue
+    if ((noText && TEXT_STYLE.has(key)) || (key === 'strokeWidth' && (!el.stroke || el.stroke === 'none'))) continue
     const v = fieldValue(value)
     if (v != null) out.push(`${key}: ${v}`)
     if (out.length >= 10) break
   }
   return out
+}
+
+// ── Interactions (services/click-actions.js) ──
+// What clicking or hovering on an element does, and which elements start
+// hidden, so tabs and click-to-reveal read as that, not clutter. Elements
+// are named by their number in get_slide's list.
+
+const idList = list => (Array.isArray(list) ? list : []).filter(id => typeof id === 'string')
+const showsOf = action => [...idList(action.show), ...idList(action.toggle)]
+
+function refs(list, numberOf) {
+  const names = idList(list).map(id => (numberOf.has(id) ? String(numberOf.get(id)) : `\`${id}\` (not on this slide)`))
+  return `${names.length === 1 ? 'element' : 'elements'} ${names.join(', ')}`
+}
+
+function stateName(el, stateId) {
+  if (!stateId) return 'its default look'
+  const state = (Array.isArray(el?.states) ? el.states : []).find(s => s && s.id === stateId)
+  return state ? `state "${clip(String(state.name || stateId), 40)}"` : 'a state that is gone'
+}
+
+function visibilityText(action, numberOf, byId) {
+  const parts = []
+  if (idList(action.show).length) parts.push(`shows ${refs(action.show, numberOf)}`)
+  if (idList(action.hide).length) parts.push(`hides ${refs(action.hide, numberOf)}`)
+  if (idList(action.toggle).length) parts.push(`shows or hides ${refs(action.toggle, numberOf)}`)
+  for (const s of Array.isArray(action.set) ? action.set : []) {
+    if (!s || typeof s.id !== 'string') continue
+    const target = refs([s.id], numberOf)
+    if (s.mode === 'cycle') parts.push(`moves ${target} to its next state`)
+    else if (s.mode === 'toggle') parts.push(`switches ${target} between ${stateName(byId.get(s.id), s.state)} and its default look`)
+    else parts.push(`puts ${target} in ${stateName(byId.get(s.id), s.state)}`)
+  }
+  return parts.join('; ') || 'does nothing yet'
+}
+
+function clickText(action, deck, numberOf, byId) {
+  if (action.type === 'next') return 'goes to the next slide'
+  if (action.type === 'prev') return 'goes to the previous slide'
+  if (action.type === 'url') return `opens ${JSON.stringify(clip(String(action.url || ''), MAX_FIELD))}`
+  if (action.type === 'slide') {
+    const target = shownSlides(deck).find(({ slide }) => slide.id === action.slideId)
+    return target ? `goes to slide ${target.number}` : 'goes to a slide that is gone or hidden'
+  }
+  if (action.type === 'visibility') return visibilityText(action, numberOf, byId)
+  return null
+}
+
+function interactionFacts(el, deck, numberOf, byId) {
+  const out = []
+  if (el.startHidden) out.push('starts hidden')
+  const click = el.clickAction && typeof el.clickAction === 'object' && clickText(el.clickAction, deck, numberOf, byId)
+  if (click) out.push(`click: ${click}`)
+  const hover = el.hoverAction && el.hoverAction.type === 'visibility' && visibilityText(el.hoverAction, numberOf, byId)
+  if (hover) out.push(`hover: ${hover}, until the pointer leaves`)
+  const states = (Array.isArray(el.states) ? el.states : []).filter(Boolean)
+  if (states.length) {
+    out.push(`${states.length} state${states.length === 1 ? '' : 's'}: ${states.map(s => JSON.stringify(clip(String(s.name || s.id || ''), 40))).join(', ')}`)
+    if (el.initialState) out.push(`starts in ${stateName(el, el.initialState)}`)
+  }
+  const steps = el.stateSteps && typeof el.stateSteps === 'object' ? Object.keys(el.stateSteps) : []
+  if (steps.length) out.push(`changes look at step${steps.length === 1 ? '' : 's'} ${steps.join(', ')}`)
+  return out
+}
+
+// Whether two elements are never seen at once: not both shown when the
+// slide opens, and every click or hover that shows one hides the other, as
+// a tab's panels are
+function neverTogether(a, b, actions) {
+  if (!a.startHidden && !b.startHidden) return false
+  return actions.every(action => {
+    const shows = showsOf(action); const hides = idList(action.hide)
+    return (!shows.includes(a.id) || hides.includes(b.id)) && (!shows.includes(b.id) || hides.includes(a.id))
+  })
 }
 
 const round = n => Math.round(Number(n) || 0)
@@ -384,8 +464,10 @@ function warningsOf(slide, w, h) {
     if (over.length) out.push(`\`${el.id}\` (${el.type}) runs past the slide's ${over.join(' and ')}.`)
   }
   const texts = els.filter(el => el.type === 'text' && hasText(el))
+  const actions = els.flatMap(el => [el.clickAction, el.hoverAction]).filter(action => action && action.type === 'visibility')
   for (let i = 0; i < texts.length; i++) {
     for (let j = i + 1; j < texts.length; j++) {
+      if (neverTogether(texts[i], texts[j], actions)) continue
       const a = box(texts[i]); const b = box(texts[j])
       const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
       const iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
@@ -424,20 +506,23 @@ function slideDetail(deck, found) {
   const els = (slide.elements || []).filter(Boolean).map((el, i) => ({ el, i }))
     .sort((a, b) => ((Number(a.el.zIndex) || 0) - (Number(b.el.zIndex) || 0)) || (a.i - b.i))
     .map(({ el }) => el)
+  const numberOf = new Map(els.map((el, k) => [el.id, k + 1]))
+  const byId = new Map(els.map(el => [el.id, el]))
   lines.push('', `### Elements, back to front (slide is ${w}×${h})`)
   if (!els.length) lines.push('', 'None.')
   els.forEach((el, k) => {
     const b = box(el)
     const facts = [
-      el.placeholder && `${el.placeholder} placeholder${hasText(el) ? '' : ', empty'}`,
+      el.placeholder && `${el.placeholder} placeholder${hasText(el) ? '' : ', empty (hidden when presenting)'}`,
       el.layoutPart && 'part of the layout',
       el.sizeMode === 'shrink' && 'text shrinks to fit',
       el.fragment && `appears on click${el.fragmentIndex != null ? ` (step ${el.fragmentIndex})` : ''}`,
       Number(el.rotation) && `rotated ${round(el.rotation)}°`,
+      ...interactionFacts(el, deck, numberOf, byId),
     ].filter(Boolean)
     lines.push('', `${k + 1}. **${el.type}** \`${el.id}\` at x ${round(b.x)}, y ${round(b.y)}, ${round(b.w)}×${round(b.h)}${facts.length ? ' · ' + facts.join(' · ') : ''}`)
     if (el.type === 'text') {
-      const md = htmlToMarkdown(el.content)
+      const md = hasText(el) && htmlToMarkdown(el.content)
       if (md) lines.push(...clip(md, MAX_TEXT).split('\n').map(l => (l ? '   ' + l : '')))
     } else {
       lines.push(...fieldsOf(el).map(f => '   - ' + f))

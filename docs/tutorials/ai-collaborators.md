@@ -19,13 +19,14 @@ The link is shown only once. If you lose it, make a new one and revoke the old o
 |-----|---------------------|
 | Claude (claude.ai and Claude Desktop) | **Customize › Connectors › Add › Add custom connector**. Paste the link and choose **No sign-in**. |
 | Claude Code | `claude mcp add --transport http parallax <link>` |
-| ChatGPT | An admin of a Business or Enterprise/Edu workspace adds it under **Plugins › + › Add custom MCP server**, with **No authentication**. |
+| ChatGPT (on the web) | **Plugins › + › Add custom MCP server**. Paste the link as the **Server URL**, choose **No authentication**, and create it as a plugin. |
 | Other apps | Any app that takes a remote MCP server by its URL, with no authentication. |
 
 A few things to know:
 
 - Claude's free plan allows one custom connector, so one presentation at a time.
 - On Claude Team and Enterprise plans, only an Owner can add connectors, and they're added for everyone in the organization. Add links to a personal account instead.
+- ChatGPT's free plan can add a link as a plugin too. Type **@** and pick the plugin in each message you want it to use. On Business and Enterprise workspaces, only admins can add plugins.
 - Pasted into a chat message instead, the link opens a page with the presentation as text, which the AI can read but not connect through.
 
 ## What the AI can do
