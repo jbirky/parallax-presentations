@@ -25,9 +25,9 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Install ffmpeg for video transcoding, and libreoffice + poppler-utils for PowerPoint import;
-# su-exec lets the entrypoint drop from root to the node user; a headless Chromium and a
-# font draw the landing page examples' thumbnails (server/services/slide-thumbnail.js)
-RUN apk add --no-cache ffmpeg libreoffice poppler-utils su-exec chromium-headless-shell font-dejavu
+# su-exec lets the entrypoint drop from root to the node user; a headless Chromium and fonts
+# draw slides (server/services/slide-thumbnail.js): Liberation has Arial's widths, so text wraps as it does for people
+RUN apk add --no-cache ffmpeg libreoffice poppler-utils su-exec chromium-headless-shell font-dejavu font-liberation
 
 # Copy workspace manifests
 COPY package.json package-lock.json ./

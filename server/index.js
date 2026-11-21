@@ -2147,7 +2147,9 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
 
 // The link's MCP server and page, made here so revoking a link can take it
 // out of the avatars
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab }) : null
+// An AI link's slides are drawn from the page a share link has
+const mcpDeckPage = async (deck, ownerId) => localizeLibraries(await generateRevealHTML(deck, { notes: false, deckData: await deckData(deck, ownerId) }))
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, localDir: DATA_DIR }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())

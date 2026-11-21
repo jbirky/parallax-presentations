@@ -5,7 +5,9 @@
 
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('crypto')
 const { DB, startCloudServer, until } = require('./helpers')
+const thumbnails = require('../services/slide-thumbnail')
 
 const skip = DB ? false : 'TEST_DATABASE_URL is not set'
 let t, call, createDeck, pool
@@ -177,9 +179,12 @@ describe('AI collaborator links', { skip }, () => {
     const list = await rpc(secret, 'tools/list')
     assert.equal(list.status, 200, JSON.stringify(list.body))
     const tools = Object.fromEntries(list.body.result.tools.map(tool => [tool.name, tool]))
-    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'delete_element', 'delete_slide', 'get_deck', 'get_slide',
-      'move_slide', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
-    for (const name of ['get_deck', 'get_slide']) assert.equal(tools[name].annotations.readOnlyHint, true)
+    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
+      'get_slide', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'list_datasets', 'get_element_guide']) assert.equal(tools[name].annotations.readOnlyHint, true)
+    assert.ok(tools.add_element.inputSchema.properties.type.enum.includes('circuit'))
+    assert.match(toolText(await callTool(secret, 'get_element_guide')), /- \*\*graph\*\* \(Graph\)/)
+    assert.match(toolText(await callTool(secret, 'get_element_guide', { type: 'circuit' })), /^# Circuit diagram \(type "circuit"\)[\s\S]*Templates \("template": key, with spec to change it\): lamp \(Switch and lamp\)/)
     assert.equal(tools.add_slide.annotations.readOnlyHint, false)
     assert.equal(tools.add_slide.annotations.destructiveHint, false)
     assert.equal(tools.delete_slide.annotations.destructiveHint, true)
@@ -342,6 +347,77 @@ describe('AI collaborator links', { skip }, () => {
     const live = await openLive(owner, id)
     live.provider.awareness.setLocalState({ ai: { link: 'fake', name: 'Claude' }, slide: 'slide-title', selected: [] })
     await until(() => live.events.includes('closed'), 'the connection to be closed')
+  })
+
+  it('draws a slide as presented, once until it changes, and says when it cannot', async () => {
+    const owner = t.user('owner13')
+    const id = await createDeck(owner, 'Pictures', { slides: SLIDES })
+    const secret = secretOf((await makeLink(owner, id)).body.url)
+    const real = { renderSlide: thumbnails.renderSlide, chromiumPath: thumbnails.chromiumPath }
+    const drawn = []
+    thumbnails.chromiumPath = () => '/usr/bin/chromium'
+    thumbnails.renderSlide = async opts => { drawn.push(opts); return Buffer.from(`picture of ${opts.slideId}`) }
+    try {
+      const res = await callTool(secret, 'render_slide', { slide: 2 })
+      const [words, picture] = res.body.result.content
+      assert.equal(words.text, 'Slide 2 of 2, as presented, with all its steps shown.')
+      assert.deepEqual([picture.type, picture.mimeType, Buffer.from(picture.data, 'base64').toString()], ['image', 'image/jpeg', 'picture of slide-cutoff'])
+      // From the page a share link has, with the server's files where the renderer can reach them
+      assert.match(drawn[0].html, /<section data-slide-id="slide-cutoff"/)
+      assert.match(drawn[0].origin, /^http:\/\/127\.0\.0\.1:\d+$/)
+      assert.deepEqual([drawn[0].width, drawn[0].height], [960, 540])
+
+      await callTool(secret, 'render_slide', { slide: 'slide-cutoff' })
+      assert.equal(drawn.length, 1, 'an unchanged slide is not drawn again')
+      await callTool(secret, 'update_slide', { slide: 2, notes: 'Changed' })
+      await callTool(secret, 'render_slide', { slide: 2 })
+      assert.equal(drawn.length, 2, 'a changed deck is drawn again')
+
+      const missing = await callTool(secret, 'render_slide', { slide: 5 })
+      assert.equal(missing.body.result.isError, true)
+      assert.match(toolText(missing), /from 1 to 2/)
+
+      thumbnails.renderSlide = async () => { throw new thumbnails.ThumbnailError('The slide couldn’t be drawn: Timeout.') }
+      const failed = await callTool(secret, 'render_slide', { slide: 1 })
+      assert.equal(failed.body.result.isError, true)
+      assert.equal(toolText(failed), 'The slide couldn’t be drawn: Timeout. Read the slide with get_slide instead.')
+
+      thumbnails.chromiumPath = () => null
+      const none = await callTool(secret, 'render_slide', { slide: 1 })
+      assert.equal(none.body.result.isError, true)
+      assert.match(toolText(none), /can't draw slides\. Read the slide with get_slide instead/)
+    } finally {
+      Object.assign(thumbnails, real)
+    }
+  })
+
+  it('lists the datasets linked to the deck, with their columns and first rows', async () => {
+    const owner = t.user('owner14')
+    const id = await createDeck(owner, 'Data talk', { slides: SLIDES })
+    const secret = secretOf((await makeLink(owner, id)).body.url)
+    assert.match(toolText(await callTool(secret, 'list_datasets')), /^No datasets are linked to this presentation\. .*Tools › Datasets…/)
+
+    const boundary = `----parallax${crypto.randomBytes(8).toString('hex')}`
+    const csv = 'planet,mass,found\r\nMars,0.107,1659\r\nEarth,1,\r\nKepler-22b,9.1,2011\r\nJupiter,317.8,1610'
+    const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\nplanets\r\n`
+      + `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="planets.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`)
+    const uploaded = await call(owner, 'POST', '/api/datasets', body, { 'Content-Type': `multipart/form-data; boundary=${boundary}` })
+    assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body))
+    assert.equal((await call(owner, 'POST', `/api/presentations/${id}/datasets`, { datasetId: uploaded.body.id })).status, 200)
+
+    const list = toolText(await callTool(secret, 'list_datasets'))
+    assert.match(list, /^# Datasets this presentation can use \(1\)/)
+    assert.match(list, /## planets\n\n4 rows · from an uploaded file, planets\.csv · data as of \d{4}-\d{2}-\d{2}\./)
+    assert.match(list, /\| mass \| float \| 0\.107 to 317\.8 \|/)
+    assert.match(list, /\| found \| integer \| 1610 to 2011 \|/)
+    assert.match(list, /First 3 rows:\n\n\| planet \| mass \| found \|\n\| --- \| --- \| --- \|\n\| Mars \| 0\.107 \| 1659 \|\n\| Earth \| 1 \|  \|/)
+
+    // A graph's data lines name the deck's datasets and their columns
+    const plotted = await callTool(secret, 'add_element', { slide: 2, type: 'graph', spec: { expressions: [{ data: { dataset: 'planets', x: 'found', y: 'mass', mark: 'points' } }], yScale: 'log' } })
+    assert.equal(plotted.body.result.isError, undefined, toolText(plotted))
+    const wrong = await callTool(secret, 'add_element', { slide: 2, type: 'graph', spec: { expressions: [{ data: { dataset: 'planets', x: 'found', y: 'radius' } }] } })
+    assert.equal(wrong.body.result.isError, true)
+    assert.match(toolText(wrong), /no column "radius" \(for y\)\. Its columns: planet, mass, found/)
   })
 
   it('refuses MCP requests that are not JSON', async () => {

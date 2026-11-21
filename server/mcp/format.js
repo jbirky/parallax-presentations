@@ -530,7 +530,10 @@ function slideDetail(deck, found) {
       const md = hasText(el) && htmlToMarkdown(el.content)
       if (md) lines.push(...clip(md, MAX_TEXT).split('\n').map(l => (l ? '   ' + l : '')))
     } else {
-      lines.push(...fieldsOf(el).map(f => '   - ' + f))
+      // Graphs, diagrams and the rest as their guides read them (guides.js),
+      // in the form update_element's spec takes
+      const read = require('./guides').readElement(el)
+      lines.push(...(read || fieldsOf(el).map(f => '   - ' + f)))
     }
   })
   const warnings = warningsOf(slide, w, h)

@@ -16,51 +16,29 @@
 const { randomUUID } = require('crypto')
 const { SLIDE_TEMPLATES, layoutElements } = require('../services/slide-layouts')
 const { fillPlaceholder, changeLayout, titleOf: titleBoxOf } = require('../services/placeholders')
-const { THEMES, newSlideBackground, isLegacyBackground } = require('../services/themes')
+const { THEMES, newSlideBackground, isLegacyBackground, slidePalette } = require('../services/themes')
 const { CLOSED_SHAPES } = require('../services/shape-geometry')
 const format = require('./format')
 const { toHtml, MarkdownError, MAX_MARKDOWN } = require('./markdown')
+const shared = require('./shared')
+const guides = require('./guides')
+const { EditError, fail, num, str, color, oneOf } = require('./checks')
 
-class EditError extends Error {}
-const fail = message => { throw new EditError(message) }
 
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 const LAYOUTS = Object.keys(SLIDE_TEMPLATES)
-const ELEMENT_TYPES = ['text', 'shape']
+const ELEMENT_TYPES = ['text', 'shape', ...guides.TYPES]
 const MAX_EDITS = 50
 const MAX_SLIDES = 500
 const MAX_ELEMENTS = 200
 const MAX_OUTLINE_LINES = 40
 const MAX_NOTES = 20000
 const OUTLINE_LEVELS = 3
+const MAX_BEAMER = 200000
+const MAX_BIBTEX = 200000
+const MAX_IMPORTED = 100
 
-// ── Checking values ──
-
-function num(value, name, min, max) {
-  if (value === undefined) return undefined
-  const n = typeof value === 'string' && value.trim() ? Number(value) : value
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < min || n > max) fail(`${name} must be a number from ${min} to ${max}.`)
-  return Math.round(n * 100) / 100
-}
-
-function str(value, name, max, { min = 0, pattern = null, hint = '' } = {}) {
-  if (value === undefined) return undefined
-  if (typeof value !== 'string') fail(`${name} must be text.`)
-  const s = value.trim()
-  if (s.length < min || s.length > max) fail(min ? `${name} must be 1 to ${max} characters.` : `${name} can be up to ${max} characters.`)
-  if (s && pattern && !pattern.test(s)) fail(`${name} ${hint}`)
-  return s
-}
-
-// Hex, rgb() or rgba(), or a CSS color name
-const COLOR = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\)|[a-z]{3,20})$/i
-const color = (value, name) => str(value, name, 40, { min: 1, pattern: COLOR, hint: 'must be a color such as "#1f6feb", "rgba(0,0,0,0.5)" or "none".' })
-
-function oneOf(value, name, options) {
-  if (value === undefined) return undefined
-  if (!options.includes(value)) fail(`${name} must be one of: ${options.join(', ')}.`)
-  return value
-}
+// ── Checking values (checks.js) ──
 
 function markdown(value, name) {
   if (value === undefined) return undefined
@@ -106,6 +84,61 @@ function insertIndex(deck, after, moving = null) {
   const target = slideAt(deck, after, 'after').slide
   if (target === moving) fail('A slide can\'t go after itself.')
   return { index: slides.indexOf(target) + 1, before: target }
+}
+
+// ── Beamer ──
+
+// The slides LaTeX Beamer source makes, as the editor's File › Import ›
+// LaTeX Beamer… makes them (utils/beamerSlides.js), with the references it
+// cites. An import is checked on the deck as it is, then made on the live
+// document, so the source is read once for both.
+const converted = new WeakMap()
+
+function convertBeamer(deck, input, before) {
+  if (converted.has(input)) return converted.get(input)
+  const source = str(input.source, 'source', MAX_BEAMER, { min: 1 })
+  if (source === undefined) fail('import_beamer needs source: the Beamer LaTeX, from \\documentclass{beamer} or just its frames.')
+  const bibtex = str(input.bibtex, 'bibtex', MAX_BIBTEX)
+  let doc
+  try {
+    doc = shared.readBeamer(source)
+  } catch (err) {
+    fail(`The Beamer source couldn't be read: ${err.message}`)
+  }
+  if (!doc.frames || !doc.frames.length) fail('The source has no frames. Each slide is a \\begin{frame} … \\end{frame}.')
+  let incoming = []
+  if (bibtex) {
+    try { incoming = shared.parseBibtex(bibtex) } catch (err) { fail(`The BibTeX couldn't be read: ${err.message}`) }
+  }
+  for (const item of doc.bibItems || []) incoming.push({ type: 'misc', key: item.key, title: item.text })
+  const library = deck.bibliography || []
+  const references = shared.mergeBibliography(library, incoming)
+  const citeKey = shared.citeKeyFinder(references.keyMap, library)
+  const order = new Map()
+  const unlinked = new Set()
+  const cite = key => {
+    const k = citeKey(key)
+    if (!k) { unlinked.add(key); return null }
+    if (!order.has(k)) order.set(k, order.size + 1)
+    return { key: k, label: `[${order.get(k)}]` }
+  }
+  const look = slidePalette(before || deck.slides[0] || {}, deck.theme).dark ? 'dark' : 'light'
+  const layout = shared.beamerSlides(doc, { slideW: Number(deck.slideWidth) || 960, slideH: Number(deck.slideHeight) || 540, look, overlays: 'steps', cite })
+  if (!layout.slides.length) fail('The source\'s frames made no slides.')
+  if (layout.slides.length > MAX_IMPORTED) fail(`The source makes ${layout.slides.length} slides; import up to ${MAX_IMPORTED} at a time.`)
+  const slides = layout.slides.map(s => s.slide)
+  const cited = shared.citedKeys(slides)
+  const result = {
+    slides,
+    frames: new Set(layout.slides.map(s => s.frame)).size,
+    added: references.added.filter(e => cited.has(e.key)),
+    missing: layout.missing,
+    crowded: layout.crowded,
+    unlinked: [...unlinked],
+    warnings: doc.warnings || [],
+  }
+  converted.set(input, result)
+  return result
 }
 
 // ── Text boxes ──
@@ -204,6 +237,49 @@ function geometry(input, el = {}) {
   }
   for (const [key, value] of Object.entries(out)) if (value !== undefined) el[key] = value
   return el
+}
+
+// ── Graphs, diagrams and the other guided elements (guides.js) ──
+
+// What a guided element's checks need to know about where it goes
+function slideContext(deck, slide, ctx) {
+  return { dark: !!slidePalette(slide, deck.theme).dark, slideW: Number(deck.slideWidth) || 960, slideH: Number(deck.slideHeight) || 540, datasets: ctx.datasets || null }
+}
+
+// A line saying what an edit did, with what the element's checks noticed
+function withNotes(line, ctx) {
+  const notes = ctx.notes.splice(0)
+  return notes.length ? `${line} Notes: ${notes.join(' ')}` : line
+}
+
+function addGuided(deck, slide, number, input, ctx) {
+  const type = input.type
+  for (const key of ['text', 'shape', 'fill', 'stroke', 'strokeWidth', 'textColor', 'fontSize']) {
+    if (input[key] !== undefined) fail(`${key} is for text boxes and shapes; a ${type} takes spec (get_element_guide with type ${type} says what).`)
+  }
+  const cx = slideContext(deck, slide, ctx)
+  const given = geometry(input, {})
+  // A geometry construction is framed for its box, so its size comes first
+  let size = null
+  if (guides.GUIDES[type].sized) {
+    const natural = guides.GUIDES[type].size({}, cx)
+    const w = given.width ?? (given.height ? Math.round(given.height * natural.w / natural.h) : natural.w)
+    size = { w, h: given.height ?? Math.round(w * natural.h / natural.w) }
+  }
+  const { fields, notes } = guides.makeSpec(type, input.spec ?? {}, cx, { template: input.template, size: size || { w: 640, h: 400 } })
+  const fit = size ? { w: size.w, h: size.h, ratio: size.h / size.w } : guides.defaultSize(type, fields, cx)
+  const width = given.width ?? (given.height ? Math.round(given.height / fit.ratio) : fit.w)
+  const height = given.height ?? (given.width ? Math.round(given.width * fit.ratio) : fit.h)
+  const el = {
+    id: randomUUID(), type,
+    x: given.x ?? Math.round((cx.slideW - width) / 2), y: given.y ?? Math.round((cx.slideH - height) / 2),
+    width, height, zIndex: maxZ(slide) + 1, ...fields,
+  }
+  if (!Array.isArray(slide.elements)) slide.elements = []
+  slide.elements.push(el)
+  ctx.touch(slide, [el])
+  ctx.notes.push(...notes)
+  return withNotes(`Added a ${type} \`${el.id}\` to slide ${number} at x ${el.x}, y ${el.y}, ${el.width}×${el.height}${input.template ? `, from the ${input.template} template` : ''}.`, ctx)
 }
 
 // ── The operations ──
@@ -323,9 +399,11 @@ const OPS = {
     const { slide, number } = slideAt(deck, input.slide)
     const type = input.type
     if (!ELEMENT_TYPES.includes(type)) {
-      fail('type must be text or shape for now. Diagrams, graphs, images and the other elements come later: describe them to the person, who can add them in the editor.')
+      fail(`type must be one of: ${ELEMENT_TYPES.join(', ')}. Images, video, molecules, HTML and plugins can't be added through a link yet: describe them to the person, who can add them in the editor.`)
     }
     if ((slide.elements || []).length >= MAX_ELEMENTS) fail(`A slide can have up to ${MAX_ELEMENTS} elements.`)
+    if (guides.GUIDES[type]) return addGuided(deck, slide, number, input, ctx)
+    for (const key of ['spec', 'template']) if (input[key] !== undefined) fail(`${key} is for graphs, diagrams and the other guided elements; a ${type} takes text${type === 'shape' ? ' and its look' : ''}.`)
     const el = { id: randomUUID(), type, x: 80, y: 140, width: type === 'text' ? 800 : 200, height: type === 'text' ? 120 : 120, zIndex: maxZ(slide) + 1 }
     geometry(input, el)
     if (type === 'text') {
@@ -356,6 +434,21 @@ const OPS = {
     const { slide, number } = slideAt(deck, input.slide)
     const el = elementAt(slide, input.element, number)
     const done = []
+    if (input.spec !== undefined || input.template !== undefined) {
+      if (!guides.GUIDES[el.type]) fail(`spec and template are for graphs, diagrams and the other guided elements (${guides.TYPES.join(', ')}); this is a ${el.type}.`)
+      const cx = slideContext(deck, slide, ctx)
+      const size = { w: Number(input.width ?? el.width) || 640, h: Number(input.height ?? el.height) || 400 }
+      const { fields, notes } = guides.makeSpec(el.type, input.spec ?? {}, cx, { template: input.template, size, element: input.template === undefined ? el : null })
+      for (const key of guides.FIELDS[el.type]) delete el[key]
+      Object.assign(el, fields)
+      // A drawing keeps its width, and its height follows its new shape, as its editor does
+      if (input.height === undefined && guides.GUIDES[el.type].keepsShape) {
+        const { ratio } = guides.defaultSize(el.type, fields, cx)
+        el.height = Math.max(20, Math.round((Number(input.width ?? el.width) || 400) * ratio))
+      }
+      done.push(input.template !== undefined ? `contents, from the ${input.template} template` : 'contents')
+      ctx.notes.push(...notes)
+    }
     const moved = geometry(input, {})
     if (Object.keys(moved).length) { Object.assign(el, moved); done.push('position and size') }
     const rotation = num(input.rotation, 'rotation', -360, 360)
@@ -365,6 +458,7 @@ const OPS = {
     if (input.text !== undefined) {
       if (el.type === 'text') writeText(el, markdown(input.text, 'text'))
       else if (el.type === 'shape') el.text = str(input.text, 'text', 500)
+      else if (guides.GUIDES[el.type]) fail(`A ${el.type} changes through spec (get_element_guide with type ${el.type} says what it takes), not text.`)
       else fail(`A ${el.type} element's contents can't be changed through a link yet, only its position, size, rotation and opacity. Describe the change to the person.`)
       done.push('text')
     }
@@ -376,9 +470,9 @@ const OPS = {
       el[key] = check(input[key])
       done.push(key)
     }
-    if (!done.length) fail('update_element needs something to change: x, y, width, height, rotation, opacity, text, or a shape\'s look.')
+    if (!done.length) fail('update_element needs something to change: x, y, width, height, rotation, opacity, text, a shape\'s look, or a guided element\'s spec.')
     ctx.touch(slide, [el])
-    return `Changed \`${el.id}\` on slide ${number}: ${done.join(', ')}.`
+    return withNotes(`Changed \`${el.id}\` on slide ${number}: ${done.join(', ')}.`, ctx)
   },
 
   delete_element(deck, input, ctx) {
@@ -387,6 +481,29 @@ const OPS = {
     slide.elements = slide.elements.filter(e => e !== el)
     ctx.touch(slide, [])
     return `Deleted the ${el.type} \`${el.id}\` from slide ${number}.`
+  },
+
+  import_beamer(deck, input, ctx) {
+    if (!Array.isArray(deck.slides)) deck.slides = []
+    const { index, before } = insertIndex(deck, input.after)
+    const result = convertBeamer(deck, input, before)
+    if (deck.slides.length + result.slides.length > MAX_SLIDES) fail(`A presentation can have up to ${MAX_SLIDES} slides, and this would make ${deck.slides.length + result.slides.length}.`)
+    const is2D = deck.slides.some(s => s && s.column !== undefined)
+    const column = is2D ? (before || deck.slides[0])?.column ?? 0 : undefined
+    const slides = result.slides.map(slide => ({ ...structuredClone(slide), ...(column === undefined ? {} : { column }) }))
+    deck.slides.splice(index, 0, ...slides)
+    if (result.added.length) deck.bibliography = [...(deck.bibliography || []), ...structuredClone(result.added)]
+    ctx.touch(slides[0], [])
+    const first = numberOf(deck, slides[0]), last = numberOf(deck, slides[slides.length - 1])
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+    const lines = [`Added ${plural(slides.length, 'slide')} from ${plural(result.frames, 'frame')}, as ${first === last ? `slide ${first}` : `slides ${first} to ${last}`}.`]
+    if (slides.length > result.frames) lines.push('Frames with overlays became a slide for each step, shown one after another without a transition.')
+    if (result.added.length) lines.push(`${plural(result.added.length, 'reference')} joined the bibliography: ${result.added.map(e => e.key).join(', ')}.`)
+    if (result.unlinked.length) lines.push(`Citations not found in the BibTeX or the bibliography show as [key]: ${result.unlinked.join(', ')}.`)
+    if (result.missing.length) lines.push(`Figures show as empty boxes, since Parallax has no copy of them: ${result.missing.join(', ')}. Tell the person, who can put the images in.`)
+    if (result.crowded.length) lines.push(`Frame${result.crowded.length === 1 ? '' : 's'} ${result.crowded.join(', ')} may overflow the slide; check ${result.crowded.length === 1 ? 'it' : 'them'} with render_slide.`)
+    for (const w of result.warnings.slice(0, 8)) lines.push(`${w.message}${w.frames && w.frames.length ? ` (frame${w.frames.length === 1 ? '' : 's'} ${w.frames.join(', ')})` : ''}`)
+    return lines.join('\n')
   },
 
   update_outline(deck, input, ctx) {
@@ -423,22 +540,25 @@ const FIELDS = {
   update_slide: ['slide', 'layout', 'title', 'subtitle', 'body', 'notes', 'minutes', 'background'],
   move_slide: ['slide', 'after'],
   delete_slide: ['slide'],
-  add_element: ['slide', 'type', 'x', 'y', 'width', 'height', 'text', 'shape', 'fill', 'stroke', 'strokeWidth', 'textColor', 'fontSize'],
-  update_element: ['slide', 'element', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'text', 'shape', 'fill', 'stroke', 'strokeWidth', 'textColor', 'fontSize'],
+  add_element: ['slide', 'type', 'x', 'y', 'width', 'height', 'text', 'shape', 'fill', 'stroke', 'strokeWidth', 'textColor', 'fontSize', 'spec', 'template'],
+  update_element: ['slide', 'element', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'text', 'shape', 'fill', 'stroke', 'strokeWidth', 'textColor', 'fontSize', 'spec', 'template'],
   delete_element: ['slide', 'element'],
   update_outline: ['slide', 'outline', 'minutes', 'section'],
+  import_beamer: ['source', 'after', 'bibtex'],
 }
 const DESTRUCTIVE = new Set(['delete_slide', 'delete_element'])
 
 // Makes edits, [{ op, ...fields }], to deck in place, in order. Returns
 // { lines, slideId, elementIds }: what each did, and the slide changed last
 // with the elements changed on it, for the AI's place in the avatars.
-function runEdits(deck, edits) {
+function runEdits(deck, edits, { datasets = null } = {}) {
   if (!Array.isArray(edits) || !edits.length) fail('Give at least one edit.')
   if (edits.length > MAX_EDITS) fail(`Give at most ${MAX_EDITS} edits at once.`)
   let slideId = null
   let elementIds = []
   const ctx = {
+    datasets,
+    notes: [],
     touch(slide, elements) {
       if (slide.id !== slideId) elementIds = []
       slideId = slide.id
@@ -498,6 +618,10 @@ const GEOMETRY = {
 }
 
 const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false })
+const SPEC_FIELDS = {
+  spec: { type: 'object', description: 'For a graph, diagram or other guided element: its fields, as its guide (get_element_guide) says. In update_element, the fields given replace the element\'s.' },
+  template: { type: 'string', maxLength: 40, description: 'For a diagram: the template to start from (its guide lists them), changed by spec' },
+}
 
 const SCHEMAS = {
   update_deck: object({
@@ -526,10 +650,11 @@ const SCHEMAS = {
   delete_slide: object({ slide: SLIDE }, ['slide']),
   add_element: object({
     slide: SLIDE,
-    type: { type: 'string', enum: ELEMENT_TYPES, description: 'text (a text box, whose text shrinks to fit) or shape' },
+    type: { type: 'string', enum: ELEMENT_TYPES, description: `text (a text box, whose text shrinks to fit), shape, or a guided element: ${guides.TYPES.join(', ')}. Read a guided element's guide first (get_element_guide).` },
     ...GEOMETRY,
     text: md('A text box\'s text as Markdown, or a shape\'s label as plain text'),
     ...SHAPE_FIELDS,
+    ...SPEC_FIELDS,
   }, ['slide', 'type']),
   update_element: object({
     slide: SLIDE,
@@ -539,6 +664,7 @@ const SCHEMAS = {
     opacity: number('Opacity, from 0 to 1', 0, 1),
     text: md('New text: Markdown for a text box (replacing all its text; inline colors and sizes go), plain text for a shape\'s label'),
     ...SHAPE_FIELDS,
+    ...SPEC_FIELDS,
   }, ['slide', 'element']),
   delete_element: object({ slide: SLIDE, element: ELEMENT }, ['slide', 'element']),
   update_outline: object({
@@ -547,6 +673,11 @@ const SCHEMAS = {
     minutes: number('Minutes planned for the slide; 0 for none', 0, 120),
     section: { type: 'string', maxLength: 80, description: 'The section the slide is in. Every slide of a section carries its name, so set it on each; "" for none.' },
   }, ['slide']),
+  import_beamer: object({
+    source: { type: 'string', minLength: 1, maxLength: MAX_BEAMER, description: 'LaTeX Beamer source: a whole document from \\documentclass{beamer}, or just frames. Macros it defines are expanded; \\input files and figures are not available.' },
+    after: AFTER,
+    bibtex: { type: 'string', maxLength: MAX_BIBTEX, description: 'BibTeX entries for what the source \\cite-s, which join the presentation\'s bibliography' },
+  }, ['source']),
 }
 
 module.exports = { OPS, FIELDS, SCHEMAS, DESTRUCTIVE, LAYOUTS, LAYOUT_LIST, MAX_EDITS, runEdits, EditError }

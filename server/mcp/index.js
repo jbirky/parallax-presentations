@@ -21,6 +21,7 @@
 // quiet spell, so the person can undo a session from History, and an
 // element someone has open is never changed under them.
 
+const crypto = require('crypto')
 const { Readable } = require('stream')
 const { McpServer, createMcpHandler, fromJsonSchema } = require('@modelcontextprotocol/server')
 const { findLink } = require('../services/ai-links')
@@ -30,15 +31,18 @@ const markdown = require('./markdown')
 const { SCHEMAS, DESTRUCTIVE, LAYOUT_LIST, MAX_EDITS, runEdits, EditError } = require('./edits')
 const { createPresence } = require('./presence')
 const { linkPageHtml, linkPageMarkdown, PAGE_HEADERS } = require('./link-page')
+const thumbnails = require('../services/slide-thumbnail')
+const { datasetList } = require('./datasets')
+const guides = require('./guides')
 
 const GONE = "This AI collaborator link was revoked or has expired, or its presentation is gone. Ask the presentation's owner for a new link."
 const INSTRUCTIONS = [
   'This server is one Parallax presentation, shared with you through an AI collaborator link. You can read it and change it; anyone with it open sees your changes as you make them, with you in their avatars under the link\'s name.',
-  'Start with get_deck for its outline, and read a slide with get_slide before changing it. Slides are 960×540 pixels.',
+  'Start with get_deck for its outline, and read a slide with get_slide before changing it. Slides are 960×540 pixels. render_slide shows you a slide as presented, to check how it looks after changing it.',
   'Fill slides through their layouts: add_slide takes a layout with its title, subtitle and body, and update_slide changes them. Text in a layout\'s placeholders shrinks to fit, so it needs no positions. add_element and update_element are for anything else.',
-  'Text is Markdown, with $…$ for math and [@key] for citations. apply_edits makes several changes at once, all or nothing.',
+  'Text is Markdown, with $…$ for math and [@key] for citations. apply_edits makes several changes at once, all or nothing. import_beamer turns LaTeX Beamer source into slides.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
-  'For now you can add text boxes and shapes, but not diagrams, graphs or images: describe those to the person, who can add them in the editor.',
+  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules, HTML and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
 ].join(' ')
 
 // How long without an edit before the next one starts a new session, with a
@@ -59,6 +63,12 @@ const SLIDE_INPUT = fromJsonSchema({
     },
   },
   required: ['slide'],
+  additionalProperties: false,
+})
+
+const GUIDE_INPUT = fromJsonSchema({
+  type: 'object',
+  properties: { type: { type: 'string', enum: guides.TYPES, description: 'The element type; leave out to list them' } },
   additionalProperties: false,
 })
 
@@ -83,10 +93,11 @@ const WRITE_TOOLS = [
   ['update_slide', 'Change a slide', "Change a slide: its layout (its title and text move into the new layout's placeholders), its title, subtitle and body placeholders (Markdown, replacing what's there), its speaker notes, planned minutes or background color."],
   ['move_slide', 'Move a slide', 'Move a slide to after another slide, or to the start with after: 0.'],
   ['delete_slide', 'Delete a slide', 'Delete a slide and everything on it.'],
-  ['add_element', 'Add a text box or shape', "Add a text box (Markdown, shrinking to fit its box) or a shape to a slide, at a position in pixels on the 960×540 slide. For titles and body text, use the slide's layout placeholders instead (add_slide, update_slide)."],
-  ['update_element', 'Change an element', "Change one element on a slide, by its id from get_slide: move or resize it, turn it, fade it, replace a text box's text (Markdown) or a shape's label, or change a shape's look. Diagrams, graphs and other elements can be moved and resized but not changed inside yet."],
+  ['add_element', 'Add an element', "Add an element to a slide, at a position in pixels on the 960×540 slide: a text box (Markdown, shrinking to fit its box), a shape, or a graph, equation, table, code block, LaTeX picture, timeline or diagram from its spec (or a diagram's template), as get_element_guide describes. For titles and body text, use the slide's layout placeholders instead (add_slide, update_slide)."],
+  ['update_element', 'Change an element', "Change one element on a slide, by its id from get_slide: move or resize it, turn it, fade it, replace a text box's text (Markdown) or a shape's label, change a shape's look, or change a graph's, table's or diagram's spec (the fields given replace its own). Images, video, molecules, HTML and plugins can be moved and resized but not changed inside."],
   ['delete_element', 'Delete an element', 'Delete one element from a slide.'],
   ['update_outline', "Change a slide's outline notes", "Change a slide's outline notes (planning notes for the talk, which never show on the slide), its planned minutes, or its section. Never changes what's on the slide."],
+  ['import_beamer', 'Add slides from LaTeX Beamer', "Turn LaTeX Beamer source into slides, as the editor's Beamer import does: each frame a slide, with its title, text, math, lists, columns, tables, blocks, code, overlays as steps, and speaker notes from \\note. Give BibTeX for what it cites, and its references join the bibliography. Figures can't come along: they show as empty boxes for the person to fill. Good for a talk you've drafted in LaTeX, or for a person's existing Beamer slides."],
 ]
 const EDITS_INPUT = fromJsonSchema({
   type: 'object',
@@ -103,9 +114,22 @@ const EDITS_INPUT = fromJsonSchema({
   additionalProperties: false,
 })
 
+// How many slides a link may have drawn in an hour (a slide drawn already,
+// and unchanged since, doesn't count), and how many renders may wait
+const RENDERS_PER_HOUR = 30
+const MAX_RENDER_QUEUE = 4
+const KEEP_RENDERS = 40
+
+const noSlide = (deck, slide) => {
+  const count = format.shownSlides(deck).length
+  return failure(`There's no slide ${JSON.stringify(slide)}. The presentation has ${count} slide${count === 1 ? '' : 's'}: give a number from 1 to ${count}, or an id from get_deck.`)
+}
+
 // The server for one request: the link's tools for its presentation.
-// read(link) and write(link, edits) do the work (createMcpRoute).
-function buildServer(link, { loadDeck, write, touch }) {
+// loadDeck(link), write(link, edits) and render(link, slide, local) do the
+// work (createMcpRoute); local is this server's address for its own
+// renderer.
+function buildServer(link, { loadDeck, write, touch, render, datasets }, local) {
   const server = new McpServer({ name: 'parallax', title: 'Parallax', version: '1.0.0' }, { instructions: INSTRUCTIONS })
   server.registerTool('get_deck', {
     title: 'Read the presentation outline',
@@ -127,13 +151,28 @@ function buildServer(link, { loadDeck, write, touch }) {
     const deck = await loadDeck(link)
     if (!deck) return failure(GONE)
     const found = format.findSlide(deck, slide)
-    if (!found) {
-      const count = format.shownSlides(deck).length
-      return failure(`There's no slide ${JSON.stringify(slide)}. The presentation has ${count} slide${count === 1 ? '' : 's'}: give a number from 1 to ${count}, or an id from get_deck.`)
-    }
+    if (!found) return noSlide(deck, slide)
     touch(link, { slide: found.slide.id })
     return text(format.slideDetail(deck, found))
   }))
+  server.registerTool('render_slide', {
+    title: 'See a slide',
+    description: 'A picture of one slide as it looks when presented, with all its steps shown, for checking layout after changing it: text that overflows or wraps badly, overlaps, and how diagrams and graphs came out. It takes several seconds, so check the slides you changed rather than every slide.',
+    inputSchema: SLIDE_INPUT,
+    annotations: READ_ONLY,
+  }, guarded('render_slide', async ({ slide }) => render(link, slide, local)))
+  server.registerTool('get_element_guide', {
+    title: 'Read how to add an element',
+    description: `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
+    inputSchema: GUIDE_INPUT,
+    annotations: READ_ONLY,
+  }, guarded('get_element_guide', async ({ type }) => text(guides.guideText(type))))
+  server.registerTool('list_datasets', {
+    title: 'List the datasets',
+    description: 'The datasets linked to the presentation, which its graphs can plot: each one\'s name, columns with their types and ranges, row count, where its data comes from and how old it is, and its first rows.',
+    inputSchema: NO_INPUT,
+    annotations: READ_ONLY,
+  }, guarded('list_datasets', async () => datasets(link)))
   for (const [name, title, description] of WRITE_TOOLS) {
     server.registerTool(name, {
       title,
@@ -197,7 +236,7 @@ async function serve(handler, req, res, link) {
     signal: controller.signal,
   })
   const response = await handler.fetch(request, {
-    authInfo: { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link } },
+    authInfo: { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link, local: `http://127.0.0.1:${req.socket.localPort}` } },
     ...(post && { parsedBody: req.body }),
   })
   res.status(response.status)
@@ -214,9 +253,11 @@ const wantsMarkdown = req => req.query.format === 'md'
 
 // The /mcp/:secret route. origin(req): the site's origin, for the link
 // written on its page. collab: live editing (services/collab.js), which
-// edits go through. The route's leave(linkId) takes a revoked link out of
-// the avatars.
-function createMcpRoute({ storage, origin, collab }) {
+// edits go through. deckPage(deck, ownerId): the deck's presented page, as
+// share links have it, for render_slide. localDir: where datasets' files
+// are kept without R2. The route's leave(linkId) takes a
+// revoked link out of the avatars.
+function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer = thumbnails }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -260,8 +301,9 @@ function createMcpRoute({ storage, origin, collab }) {
     const current = await loadDeck(link)
     if (!current) return failure(GONE)
     if (!collab) return failure('Editing through a link needs live editing, which this server doesn\'t have.')
+    const datasets = (await storage.getPresentationDatasets(link.deckId).catch(() => null))?.map(d => ({ name: d.alias || d.name, columns: d.columns || [] })) ?? null
     try {
-      runEdits(structuredClone(current), edits)
+      runEdits(structuredClone(current), edits, { datasets })
     } catch (err) {
       if (err instanceof EditError) return failure(err.message)
       throw err
@@ -271,7 +313,7 @@ function createMcpRoute({ storage, origin, collab }) {
     try {
       outcome = await collab.editDeck(link.deckId, (deck, held) => {
         const next = structuredClone(deck)
-        const result = runEdits(next, edits)
+        const result = runEdits(next, edits, { datasets })
         const blocked = heldChanges(deck, next, held)
         if (blocked.length) throw new HeldError(blocked)
         return { deck: next, result }
@@ -288,8 +330,58 @@ function createMcpRoute({ storage, origin, collab }) {
     return text(lines.join('\n'))
   }
 
-  const tools = { loadDeck, write, touch }
-  const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools), {
+  // Slides drawn lately, by the deck as it was and the slide, so asking
+  // again for one that hasn't changed costs nothing; and when each link last
+  // had slides drawn
+  const renders = new Map()
+  const rendered = new Map()
+
+  async function render(link, slide, local) {
+    const deck = await loadDeck(link)
+    if (!deck) return failure(GONE)
+    const found = format.findSlide(deck, slide)
+    if (!found) return noSlide(deck, slide)
+    touch(link, { slide: found.slide.id })
+    const sw = Number(deck.slideWidth) || 960, sh = Number(deck.slideHeight) || 540
+    const width = 960, height = Math.min(1440, Math.max(270, Math.round(960 * sh / sw)))
+    const { version, createdAt, updatedAt, expiresAt, ...content } = deck
+    const key = `${crypto.createHash('sha256').update(JSON.stringify(content)).digest('hex')}|${found.slide.id}`
+    const says = `Slide ${found.number} of ${format.shownSlides(deck).length}, as presented, with all its steps shown.`
+    const picture = image => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' }] })
+    if (renders.has(key)) {
+      const image = renders.get(key)
+      renders.delete(key)
+      renders.set(key, image)
+      return picture(image)
+    }
+    if (!deckPage || !renderer.chromiumPath()) return failure('This Parallax server can\'t draw slides. Read the slide with get_slide instead.')
+    const hour = Date.now() - 60 * 60 * 1000
+    const times = (rendered.get(link.id) || []).filter(t => t > hour)
+    if (times.length >= RENDERS_PER_HOUR) {
+      const wait = Math.ceil((times[0] - hour) / 60000)
+      return failure(`That's ${RENDERS_PER_HOUR} slides drawn in the last hour, the most a link can have. Try again in ${wait} minute${wait === 1 ? '' : 's'}, or read the slide with get_slide.`)
+    }
+    if (renderer.queueLength() >= MAX_RENDER_QUEUE) return failure('The server is busy drawing other slides. Try again in a minute.')
+    rendered.set(link.id, [...times, Date.now()])
+    let image
+    try {
+      image = await renderer.renderSlide({ html: await deckPage(deck, link.ownerId), origin: local, slideId: found.slide.id, width, height })
+    } catch (err) {
+      if (err instanceof renderer.ThumbnailError) return failure(`${err.message.replace(/\.$/, '')}. Read the slide with get_slide instead.`)
+      throw err
+    }
+    renders.set(key, image)
+    if (renders.size > KEEP_RENDERS) renders.delete(renders.keys().next().value)
+    return picture(image)
+  }
+
+  async function datasets(link) {
+    if (!(await loadDeck(link))) return failure(GONE)
+    return text(await datasetList(storage, link.deckId, { ownerId: link.ownerId, localDir }))
+  }
+
+  const tools = { loadDeck, write, touch, render, datasets }
+  const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra?.local), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })
 
