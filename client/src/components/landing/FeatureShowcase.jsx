@@ -28,11 +28,12 @@ where  pl_orbper is not null
 const BIB_ENTRY = `@article{rubin1970,
   author  = {Rubin, Vera C. and
              Ford, W. Kent, Jr.},
-  title   = {Rotation of the Andromeda Nebula
-             from a Spectroscopic Survey
-             of Emission Regions},
+  title   = {Rotation of the Andromeda
+             Nebula from a Spectroscopic
+             Survey of Emission Regions},
   journal = {ApJ},
-  year    = {1970}, volume = {159},
+  year    = {1970},
+  volume  = {159},
   pages   = {379}
 }`
 
@@ -40,8 +41,12 @@ const BIB_ENTRY = `@article{rubin1970,
 export const SKETCH = `// 3000 random walkers from one point: where
 // they are after 50, 400 and 2000 steps
 const ctx = c.getContext('2d'), N = 3000
-const x = new Float32Array(N), y = new Float32Array(N)
-const snaps = { 50: '#7dd3fc', 400: '#a78bfa', 2000: '#fb923c' }
+const x = new Float32Array(N)
+const y = new Float32Array(N)
+const snaps = {
+  50: '#7dd3fc', 400: '#a78bfa',
+  2000: '#fb923c',
+}
 for (let t = 1; t <= 2000; t++) {
   for (let i = 0; i < N; i++) {
     x[i] += Math.random() - 0.5
@@ -49,10 +54,13 @@ for (let t = 1; t <= 2000; t++) {
   }
   if (!snaps[t]) continue
   ctx.fillStyle = ctx.strokeStyle = snaps[t]
-  for (let i = 0; i < N; i++)
-    ctx.fillRect(480 + 9 * x[i], 290 + 9 * y[i], 2, 2)
+  for (let i = 0; i < N; i++) {
+    ctx.fillRect(480 + 9 * x[i],
+      290 + 9 * y[i], 2, 2)
+  }
+  const r = 9 * Math.sqrt(t / 6)
   ctx.beginPath()
-  ctx.arc(480, 290, 9 * Math.sqrt(t / 6), 0, 2 * Math.PI)
+  ctx.arc(480, 290, r, 0, 2 * Math.PI)
   ctx.stroke()
 }`
 
