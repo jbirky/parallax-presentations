@@ -565,6 +565,15 @@ describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
     expect([...md.querySelectorAll('script')].pop().textContent).toContain('marked.parse')
   })
 
+  it('prints a reference\'s page range with an en dash, as stored before -- was read too', () => {
+    const html = generateRevealHTML(makePresentation({
+      bibliography: [{ type: 'article', key: 'z33', author: 'Zwicky, F.', title: 'Rotverschiebung', journal: 'Helv. Phys. Acta', year: '1933', volume: '6', pages: '110--127' }],
+      slides: [{ id: 's1', elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 100, zIndex: 1, type: 'text', content: '<p>Coma <sup data-cite="z33">[1]</sup></p>' }] }],
+    }))
+    expect(html).toContain('6, 110–127.')
+    expect(html).not.toContain('110--127')
+  })
+
   it('draws TikZ in the slide\'s ink, or its own text color, since TikZJax draws in black', () => {
     const tikzIn = (slide, el = {}, theme) => {
       const html = generateRevealHTML(makePresentation({ ...(theme ? { theme } : {}), slides: [{ id: 's1', ...slide, elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 300, zIndex: 1, type: 'latex', content: '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}', ...el }] }] }))

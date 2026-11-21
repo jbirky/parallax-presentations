@@ -5085,6 +5085,7 @@ function pointsToPath(points, smooth = true) {
 }
 
 // client/src/utils/bibtexParser.js
+var texDashes = (str7) => str7.replace(/---/g, "—").replace(/--/g, "–");
 function splitNames(str7) {
   const names = [];
   let depth = 0, from = 0;
@@ -5137,6 +5138,9 @@ function webLink(url) {
   } catch {
     return null;
   }
+}
+function pageRange(pages) {
+  return texDashes(String(pages || "").trim()).replace(/(\d)\s*[-\u2013]\s*(\d)/g, "$1–$2");
 }
 
 // client/src/utils/citationIndex.js
@@ -22028,7 +22032,7 @@ function referencesHtml(citations, markerColor, light = false) {
     const year = entry.year || "";
     const journal = entry.journal || entry.booktitle || "";
     const vol = entry.volume || "";
-    const pages = entry.pages || "";
+    const pages = pageRange(entry.pages);
     const doi = entry.doi || "";
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
     line += `${escapeHtml(String(entry.author || "").replace(/[{}]/g, ""))}`;

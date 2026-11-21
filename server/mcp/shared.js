@@ -7324,6 +7324,7 @@ function extractBraced(str7, from) {
   }
   return depth === 0 ? str7.slice(from, i - 1) : null;
 }
+var VERBATIM = /* @__PURE__ */ new Set(["url", "doi", "eprint", "file"]);
 function parseFields(body) {
   const fields = {};
   const re = /(\w+)\s*=\s*/g;
@@ -7332,7 +7333,7 @@ function parseFields(body) {
     const name = m[1].toLowerCase();
     const valStart = m.index + m[0].length;
     const val = readValue(body, valStart);
-    if (val !== null) fields[name] = cleanLatex(val);
+    if (val !== null) fields[name] = VERBATIM.has(name) ? val.trim() : cleanLatex(val);
   }
   return fields;
 }
@@ -7364,8 +7365,9 @@ function readValue(str7, from) {
   while (i < str7.length && /[a-zA-Z0-9]/.test(str7[i])) i++;
   return str7.slice(start, i);
 }
+var texDashes = (str7) => str7.replace(/---/g, "—").replace(/--/g, "–");
 function cleanLatex(str7) {
-  return str7.replace(/\{([^{}]*)\}/g, "$1").replace(/\\&/g, "&").replace(/~/g, " ").replace(/``/g, '"').replace(/''/g, '"').replace(/\\textit\{([^}]*)\}/g, "$1").replace(/\\textbf\{([^}]*)\}/g, "$1").replace(/\\emph\{([^}]*)\}/g, "$1").trim();
+  return texDashes(str7).replace(/\{([^{}]*)\}/g, "$1").replace(/\\&/g, "&").replace(/~/g, " ").replace(/``/g, '"').replace(/''/g, '"').replace(/\\textit\{([^}]*)\}/g, "$1").replace(/\\textbf\{([^}]*)\}/g, "$1").replace(/\\emph\{([^}]*)\}/g, "$1").trim();
 }
 
 // client/src/utils/citationIndex.js

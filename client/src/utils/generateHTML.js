@@ -4,7 +4,7 @@
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
 import { buildCitationIndex, resolveCitationsInHtml, CITATION_CSS } from './citationIndex'
-import { webLink } from './bibtexParser'
+import { webLink, pageRange } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
@@ -223,7 +223,7 @@ function referencesHtml(citations, markerColor, light = false) {
     const year = entry.year || ''
     const journal = entry.journal || entry.booktitle || ''
     const vol = entry.volume || ''
-    const pages = entry.pages || ''
+    const pages = pageRange(entry.pages)
     const doi = entry.doi || ''
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`
     // An organisation's name is braced, as BibTeX writes one
