@@ -56,7 +56,8 @@ describe('keys on the slide', () => {
     expect(thumbs()).toEqual([true, false])
     await press('m', { ctrlKey: true })
     expect(thumbs()).toEqual([false, true, false])
-    expect(onCanvas().map(d => d.textContent)).toEqual(['Title', 'First pointSecond point'])
+    // Its placeholders, empty, showing their hints
+    expect(onCanvas().map(d => d.textContent)).toEqual(['Click to add title', 'Click to add text'])
   })
 
   it('pastes text from another app as a text box', async () => {

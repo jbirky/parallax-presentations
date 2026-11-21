@@ -147,7 +147,8 @@ function withNotes(deck, id, fn) {
 }
 const newId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2))
 
-// A blank slide after the one at `after`, in its column, section and background
+// A blank slide after the one at `after`, in its column, section and
+// background; without one before, in the theme's
 function blankSlideAfter(deck, after) {
   const like = deck.slides[after]
   const s = {
@@ -155,7 +156,7 @@ function blankSlideAfter(deck, after) {
     ...(like && like.column !== undefined ? { column: like.column } : {}),
     elements: [],
     notes: '',
-    background: like && like.background ? { ...like.background } : { type: 'color', color: '#1e1e2e' },
+    ...(like && like.background ? { background: { ...like.background } } : {}),
     ...(like && like.section ? { section: like.section } : {}),
   }
   const slides = deck.slides.slice()

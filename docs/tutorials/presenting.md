@@ -45,11 +45,11 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 ## Themes
 
-Change the visual theme under **Slide › Theme** in the menu bar:
+Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
 - Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula
 
-Themes affect the background color, text color, and heading styles. Element-level formatting takes precedence over theme defaults.
+A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
 ## Footer & page numbers
 

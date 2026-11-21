@@ -1052,20 +1052,22 @@ app.post('/api/presentations', async (req, res) => {
           {
             id: uuidv4(),
             // The editor's Title Slide layout (SLIDE_TEMPLATES.title in
-            // client/src/pages/EditorPage.jsx); its boxes grow with their text
+            // client/src/pages/EditorPage.jsx): empty placeholders, showing
+            // their hints and shrinking their text to fit, on the theme's
+            // background (no background of its own)
+            layout: 'title',
             elements: [{
               id: uuidv4(),
-              type: 'text',
-              x: 60, y: 170, width: 840, height: 96, sizeMode: 'auto', zIndex: 1,
-              content: '<h2 style="text-align:center">Presentation Title</h2>'
+              type: 'text', placeholder: 'title', sizeMode: 'shrink',
+              x: 60, y: 150, width: 840, height: 120, zIndex: 1,
+              content: '<h2 style="text-align:center"></h2>'
             }, {
               id: uuidv4(),
-              type: 'text',
-              x: 120, y: 282, width: 720, height: 80, sizeMode: 'auto', zIndex: 2,
-              content: '<p style="text-align:center">Subtitle or author name</p>'
+              type: 'text', placeholder: 'subtitle', sizeMode: 'shrink',
+              x: 120, y: 282, width: 720, height: 80, zIndex: 2,
+              content: '<p style="text-align:center"></p>'
             }],
-            notes: '',
-            background: { type: 'color', color: '#1e1e2e' }
+            notes: ''
           }
         ],
         createdAt: now,

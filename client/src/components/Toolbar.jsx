@@ -40,6 +40,7 @@ import {
   FlaskConical,
   LayoutGrid,
   AlignHorizontalSpaceAround,
+  Palette,
 } from 'lucide-react'
 import { SHAPES } from '../utils/shapeUtils'
 
@@ -203,6 +204,7 @@ export default function Toolbar({
   drawTool, onSetDrawTool,
   customFonts = [], onManageFonts,
   request = null,
+  theme = 'black', onTheme, themesOpen = false,
 }) {
   // The insert tools' dropdown that's open: 'image', 'shape', 'table',
   // 'insert', 'science', 'align' or 'background'
@@ -526,11 +528,17 @@ export default function Toolbar({
         </>)}
 
         <span className="toolbar-divider" />
+        {/* The deck's theme, in a panel beside the slide */}
+        {onTheme && (
+          <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
+            <Palette size={14} /> <span className="tl-text">Theme</span>
+          </button>
+        )}
         {/* The slide's background */}
         {slide && onUpdateSlide && (
-          <ToolMenu id="background" open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} />} label="Background" title="The slide's background" width={260}>
+          <ToolMenu id="background" open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} />} label="Background" title="The slide's background" width={260}>
             <div style={{ padding: 8 }}>
-              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} />
+              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
             </div>
           </ToolMenu>
         )}

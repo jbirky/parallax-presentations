@@ -7033,7 +7033,7 @@ function createMathParser() {
 // client/src/utils/graphRuntime.js
 function graphRuntime(P, G2, G3, config) {
   let C2 = config;
-  const THEMES = {
+  const THEMES2 = {
     light: {
       axis: "#2b2b2b",
       major: "rgba(0,0,0,0.14)",
@@ -7078,7 +7078,7 @@ function graphRuntime(P, G2, G3, config) {
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d");
   let W2 = 0, H2 = 0;
-  let theme = THEMES.light;
+  let theme = THEMES2.light;
   let analysis = null;
   let values = {};
   let view = null;
@@ -7107,7 +7107,7 @@ function graphRuntime(P, G2, G3, config) {
   const copyCam = (c) => ({ turn: c && isFinite(+c.turn) ? +c.turn : 35, tilt: c && isFinite(+c.tilt) ? +c.tilt : 25 });
   function setConfig(next, keepState) {
     C2 = next;
-    theme = THEMES[C2.theme] || THEMES.light;
+    theme = THEMES2[C2.theme] || THEMES2.light;
     logX = C2.xScale === "log" && C2.dims !== 3;
     logY = C2.yScale === "log" && C2.dims !== 3;
     dataStyles = /* @__PURE__ */ new Map();
@@ -16606,7 +16606,7 @@ function geometryRuntime() {
     var m = /^([A-Za-zα-ωΑ-Ω]+'*)_?(\d+)('*)$/.exec(name);
     return m ? m[1] + "_{" + m[2] + "}" + m[3] : name.replace(/_(\w+)/, "_{$1}");
   }
-  var THEMES = {
+  var THEMES2 = {
     dark: { ink: "#e7ebf3", soft: "#8d96aa", grid: "#3a4152", axis: "#7d8698", blue: "#5aa2ff", red: "#ff6f61", yellow: "#ffcc4d", green: "#52c78d", purple: "#b58cff", accent: "#ffcc4d", halo: "#1e1e2e", fillOp: 0.2 },
     light: { ink: "#1b2230", soft: "#7a8396", grid: "#e1e5ec", axis: "#8790a2", blue: "#1f62c4", red: "#cc2f24", yellow: "#e3a400", green: "#2a8a57", purple: "#7a42c8", accent: "#cc2f24", halo: "#ffffff", fillOp: 0.26 }
   };
@@ -16651,7 +16651,7 @@ function geometryRuntime() {
     return raw <= p ? p : raw <= 2 * p ? 2 * p : raw <= 5 * p ? 5 * p : 10 * p;
   }
   function render(objs, vals, o) {
-    var th = THEMES[o.dark ? "dark" : "light"], F2 = frame(o), W2 = F2.W, H2 = F2.H;
+    var th = THEMES2[o.dark ? "dark" : "light"], F2 = frame(o), W2 = F2.W, H2 = F2.H;
     var S = function(p) {
       return toScreen(F2, p);
     };
@@ -16955,7 +16955,7 @@ function geometryRuntime() {
   }
   return {
     CMDS: CMDS2,
-    THEMES,
+    THEMES: THEMES2,
     parse: parse2,
     serialize,
     compute,
@@ -17552,7 +17552,7 @@ function periodicRuntime(ROWS) {
     year: { label: "Year discovered", unit: "", key: "year", dp: 0 }
   };
   var RAMP = ["#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b"];
-  var THEMES = {
+  var THEMES2 = {
     light: { dark: false, fg: "#16202a", muted: "#56636f", faint: "#87929c", line: "#d6dce1", surface: "#ffffff", accent: "#1d5fa6", onAccent: "#ffffff", code: "#e8ecef", pos: "#cf5a1f", neg: "#2470cc", tileS: 72, tileL: 89, strongS: 58, strongL: 44, edge: 0.09 },
     dark: { dark: true, fg: "#e3e8ed", muted: "#9ba7b3", faint: "#7a8692", line: "#3a4652", surface: "#151c22", accent: "#7db0ff", onAccent: "#0e1317", code: "#1f2a33", pos: "#ff9759", neg: "#63a6f7", tileS: 32, tileL: 23, strongS: 62, strongL: 64, edge: 0.08 }
   };
@@ -18251,7 +18251,7 @@ function periodicRuntime(ROWS) {
   }
   function render(s, o) {
     o = o || {};
-    var v = o.view || viewAt(s, 0), th = THEMES[s.theme], L = layout(s);
+    var v = o.view || viewAt(s, 0), th = THEMES2[s.theme], L = layout(s);
     var pinned = o.pinned !== void 0 ? o.pinned : v.pin;
     var shown = o.shown !== void 0 ? o.shown : pinned || s.restingElement;
     var mode = o.mode || "static", ro = { mode, key: o.key == null ? null : o.key, sub: o.sub, pinned, animate: o.animate, tab: shown || L.tiles[0] && L.tiles[0].z };
@@ -18285,7 +18285,7 @@ function periodicRuntime(ROWS) {
   var live = [], escOn = false;
   function attach(root, el, opts) {
     opts = opts || {};
-    var s = normalize(el), L = layout(s), th = THEMES[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
+    var s = normalize(el), L = layout(s), th = THEMES2[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
     var st = { view: viewAt(s, 0), hover: null, pin: null, sub: null, key: null };
     var raf = 0, canvas = null, gone = false;
     var win = root.ownerDocument.defaultView || window;
@@ -19658,7 +19658,7 @@ function harmonicsRuntime(SH2) {
     var x = p[0], y = p[1], z = p[2];
     return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[3] * x + M[7] * y + M[11] * z + M[15]];
   }
-  var THEMES = {
+  var THEMES2 = {
     light: { pos: "#cf5a1f", neg: "#2470cc", mid: "#e7e5e0", node: "#1f2328", zero: "#34363d", axis: "#8a939d", fg: "#16202a", muted: "#56636f", hue0: 42 * DEG, L: 0.69, C: 0.12 },
     dark: { pos: "#ff9759", neg: "#63a6f7", mid: "#d8d5cf", node: "#15181b", zero: "#26282e", axis: "#8f9aa6", fg: "#e3e8ed", muted: "#9ba7b3", hue0: 42 * DEG, L: 0.74, C: 0.115 }
   };
@@ -19905,7 +19905,7 @@ function harmonicsRuntime(SH2) {
       ctx.clearRect(0, 0, W2, H2);
       return true;
     }
-    var s = pic.s, th = THEMES[s.theme] || THEMES.dark, t = o.t || 0;
+    var s = pic.s, th = THEMES2[s.theme] || THEMES2.dark, t = o.t || 0;
     var turn = (o.turn != null ? o.turn : s.turn) + (s.motion === "spin" ? t * 24 * s.speed : 0);
     var tilt = o.tilt != null ? o.tilt : s.tilt;
     var wt = s.motion === "wave" ? t * 2.2 * s.speed : 0;
@@ -20236,7 +20236,7 @@ function harmonicsRuntime(SH2) {
       node.textContent = src.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\^/g, "").replace(/_/g, "");
     }
     function sized() {
-      var h = root.clientHeight || 0, th = THEMES[s.theme] || THEMES.dark;
+      var h = root.clientHeight || 0, th = THEMES2[s.theme] || THEMES2.dark;
       var fs = Math.max(10, Math.min(48, h * 0.06));
       label.style.fontSize = fs + "px";
       label.style.color = th.fg;
@@ -20398,7 +20398,7 @@ function harmonicsRuntime(SH2) {
   }
   function still(el, w, h, dpr, n) {
     var s = normalize(el), state = stepState(s, n || 0), pic = picture(state);
-    var c = document.createElement("canvas"), th = THEMES[s.theme] || THEMES.dark;
+    var c = document.createElement("canvas"), th = THEMES2[s.theme] || THEMES2.dark;
     var capH = state.caption ? Math.max(10, h * 0.055) * 1.4 : 0;
     if (!draw(c, pic, { w, h: h - capH, dpr })) {
       freePicture(pic);
@@ -20430,7 +20430,7 @@ function harmonicsRuntime(SH2) {
     return out.toDataURL("image/png");
   }
   return {
-    THEMES,
+    THEMES: THEMES2,
     DEFAULTS: DEFAULTS2,
     PICTURE_FIELDS,
     SOURCES,
@@ -21281,6 +21281,131 @@ var SCROLLING_SCRIPT = `
 // client/src/utils/annotations.js
 var ANNOTATION_MESSAGE = "parallax-annotations";
 
+// client/src/utils/themes.js
+var THEME_LIST = [
+  { id: "black", label: "Black", background: "#191919", text: "#ffffff", heading: "#ffffff", link: "#42affa", dark: true },
+  { id: "white", label: "White", background: "#ffffff", text: "#222222", heading: "#222222", link: "#2a76dd", dark: false },
+  { id: "league", label: "League", background: "#2b2b2b", text: "#eeeeee", heading: "#eeeeee", link: "#13daec", dark: true },
+  { id: "beige", label: "Beige", background: "#f7f3de", text: "#333333", heading: "#333333", link: "#8b743d", dark: false },
+  { id: "sky", label: "Sky", background: "#f7fbfc", backgroundCss: "radial-gradient(circle farthest-corner at center, #f7fbfc 0%, #add9e4 100%)", text: "#333333", heading: "#333333", link: "#3b759e", dark: false },
+  { id: "night", label: "Night", background: "#111111", text: "#eeeeee", heading: "#eeeeee", link: "#e7ad52", dark: true },
+  { id: "serif", label: "Serif", background: "#f0f1eb", text: "#000000", heading: "#383d3d", link: "#51483d", dark: false },
+  { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
+  { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
+  { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
+  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true }
+];
+var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
+function themeOf(id) {
+  return THEMES[id] || THEMES.black;
+}
+function parseColor(value) {
+  const s = String(value || "").trim();
+  let m = /^#([0-9a-f]{3})$/i.exec(s);
+  if (m) return m[1].split("").map((c) => parseInt(c + c, 16));
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+  if (m) return [m[1], m[2], m[3]].map(Number);
+  if (s.toLowerCase() === "white") return [255, 255, 255];
+  if (s.toLowerCase() === "black") return [0, 0, 0];
+  return null;
+}
+function isDark2(value, fallback = true) {
+  const rgb = parseColor(value);
+  if (!rgb) return fallback;
+  const [r, g, b] = rgb;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+}
+function firstColor(gradient) {
+  const m = /(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(String(gradient || ""));
+  return m ? m[1] : null;
+}
+function ownBackground(bg) {
+  if (!bg) return null;
+  if (bg.type === "color" && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark2(bg.color) };
+  if (bg.type === "gradient" && bg.gradient) return { style: { background: bg.gradient }, dark: isDark2(firstColor(bg.gradient)) };
+  if (bg.type === "image" && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || "cover", backgroundPosition: bg.position || "center" }, dark: true };
+  return null;
+}
+function themeBackgroundStyle(themeId) {
+  const t = themeOf(themeId);
+  return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background };
+}
+function slidePalette(slide, themeId) {
+  const t = themeOf(themeId);
+  const own = ownBackground(slide?.background);
+  if (!own) return { background: themeBackgroundStyle(themeId), text: t.text, heading: t.heading, link: t.link, dark: t.dark, own: false };
+  const match = own.dark === t.dark;
+  const plain2 = own.dark ? "#ffffff" : "#222222";
+  return {
+    background: own.style,
+    text: own.dark ? "#ffffff" : match ? t.text : plain2,
+    heading: match ? t.heading : plain2,
+    link: match ? t.link : own.dark ? "#42affa" : "#2a76dd",
+    dark: own.dark,
+    own: true
+  };
+}
+
+// client/src/utils/placeholders.js
+function isEmptyHtml(html) {
+  const s = String(html || "");
+  if (/<(img|table|hr|iframe|svg|video)\b/i.test(s) || /data-math-latex|data-cite/.test(s)) return false;
+  const text = s.replace(/<[^>]*>/g, "").replace(/&nbsp;|&#160;| /g, " ").replace(/&[a-z]+;|&#\d+;/gi, "x");
+  return text.trim() === "";
+}
+function isEmptyPlaceholder(el) {
+  return !!el && el.type === "text" && !!el.placeholder && isEmptyHtml(el.content);
+}
+
+// client/src/utils/shrinkFit.js
+var MIN_FIT = 0.3;
+var SHRINK_FIT_SCRIPT = `
+(function () {
+  function height(el) {
+    var last = el.lastElementChild
+    if (!last) return el.offsetHeight
+    return last.offsetTop + last.offsetHeight + (parseFloat(getComputedStyle(el).paddingBottom) || 0)
+  }
+  function fit(box) {
+    var inner = box.firstElementChild
+    var w = box.clientWidth, h = box.clientHeight
+    if (!inner || !w || !h) return
+    inner.style.transform = ''
+    inner.style.transformOrigin = '0 0'
+    inner.style.width = w + 'px'
+    var s = 1
+    if (height(inner) > h + 0.5) {
+      var lo = ${MIN_FIT}, hi = 1
+      for (var i = 0; i < 9; i++) {
+        var mid = (lo + hi) / 2
+        inner.style.width = (w / mid) + 'px'
+        if (height(inner) * mid <= h + 0.5) lo = mid; else hi = mid
+      }
+      s = Math.floor(lo * 100) / 100
+    }
+    inner.style.width = (w / s) + 'px'
+    inner.style.transform = s < 1 ? 'scale(' + s + ')' : ''
+  }
+  function fitAll(root) {
+    var boxes = (root || document).querySelectorAll('[data-fit="shrink"]')
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].getClientRects().length) fit(boxes[i])
+  }
+  window.parallaxFitText = fitAll
+  function start() {
+    fitAll()
+    if (window.Reveal && window.Reveal.on) {
+      window.Reveal.on('ready', function () { fitAll() })
+      window.Reveal.on('slidechanged', function (e) { fitAll(e.currentSlide) })
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fitAll() })
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start)
+  else start()
+})();
+`;
+
 // client/src/utils/clickActions.js
 var HOVER_EFFECTS = ["brighten", "lift", "grow", "none"];
 var VISIBILITY_KEYS = ["show", "hide", "toggle"];
@@ -21945,6 +22070,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const slideSectionHtmlByIndex = /* @__PURE__ */ new Map();
   presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background);
+    const palette = slidePalette(slide, theme);
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : "";
     const sideCitations = (slide.elements || []).filter((el) => CITABLE_TYPES.includes(el.type) && (el.citationText || el.citationLink) && el.citationMode === "side").map((el) => ({ id: el.id, text: el.citationText, link: el.citationLink }));
     const clickTargets = visibilityTargets(slide);
@@ -21952,7 +22078,7 @@ function generateRevealHTML(presentation, opts = {}) {
     const canvasW = getCanvasWidth(slide, slideW, slideH);
     const axis = scrollAxis(slide, slideW, slideH);
     const scrolling = axis !== null;
-    const sortedElements = (slide.elements || []).slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+    const sortedElements = (slide.elements || []).filter((el) => !isEmptyPlaceholder(el)).sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
     const renderedElements = sortedElements.map((el) => {
       const shadowStyle = el.shadowBlur || el.shadowX || el.shadowY ? `box-shadow:${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 0}px ${cssValue(el.shadowColor) || "rgba(0,0,0,0.5)"};` : "";
       const borderRadiusStyle = (el.type === "image" || el.type === "code") && el.borderRadius ? `border-radius:${el.borderRadius}px;` : "";
@@ -21965,8 +22091,12 @@ function generateRevealHTML(presentation, opts = {}) {
       const actionAttrs2 = clickActionAttrs(el, clickTargets);
       if (el.type === "text") {
         const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ""}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ""}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ""}`;
+        const content = resolveCitationsInHtml(el.content || "", citations.labelByKey);
+        if (el.sizeMode === "shrink") {
+          return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`;
+        }
         const textStyle = el.sizeMode === "auto" ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}` : style;
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || "", citations.labelByKey)}</div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`;
       }
       if (el.type === "image") {
         const src = absoluteSrc(sanitizeUrl(el.src));
@@ -22359,7 +22489,7 @@ ${content}
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};">
 ${bodyHtml}
 ${footerHtml}
 ${gridHtml}
@@ -22720,7 +22850,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -22930,6 +23060,9 @@ function annotationScript(presentation, set) {
     if (Reveal.isReady()) start(); else Reveal.on('ready', start)
   })()
   </script>`;
+}
+function hasShrinkText(presentation) {
+  return (presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "text" && el.sizeMode === "shrink" && !isEmptyPlaceholder(el)));
 }
 function getBackgroundAttrs(bg) {
   if (!bg) return "";

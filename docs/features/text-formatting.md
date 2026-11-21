@@ -10,6 +10,14 @@ Double-click any text element to enter editing mode. The toolbar then shows the 
 You can also single-click a text element to select it, then press `Enter` or `F2`, or just start typing, to edit it.
 :::
 
+## Fitting text in its box
+
+The inspector's **Format** tab, under **Box**, sets what happens when the text is longer than the box:
+
+- **Fixed size**: the box and the text keep their size; what doesn't fit is cut off.
+- **Shrink text**: the text gets smaller until it fits, as in PowerPoint and Google Slides. Layouts' placeholders start this way.
+- **Grow box**: the box grows taller to hold the text.
+
 ## Formatting a whole text box
 
 Click a text box once to select it without editing it. The toolbar then shows the formatting tools, and what you pick applies to all of its text: font, size, bold, color, alignment, lists and the rest. `Ctrl+B`, `Ctrl+I` and `Ctrl+U` do the same for every selected text box. Click the empty slide to get the insert tools back.

@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { Upload } from 'lucide-react'
 import { api } from '../utils/api'
 import { pickFile } from '../utils/pickFile'
+import { ownBackground, themeOf, themeBackgroundStyle } from '../utils/themes'
 
 export const DEFAULT_BG = '#1e1e2e'
 
@@ -26,28 +27,27 @@ const GRADIENT_PRESETS = [
   'linear-gradient(135deg, #2c3e50, #3498db)',
 ]
 
-// A small square showing the background, for a button
-export function BackgroundSwatch({ background }) {
-  const bg = background || { type: 'color', color: DEFAULT_BG }
-  const type = bg.type || 'color'
+// A small square showing the background (the theme's, for a slide without
+// one of its own), for a button
+export function BackgroundSwatch({ background, theme }) {
+  const own = ownBackground(background)
   return (
     <span aria-hidden="true" style={{
       display: 'inline-block', width: 14, height: 14, borderRadius: 3, flexShrink: 0,
-      border: '1px solid rgba(255,255,255,0.3)',
-      ...(type === 'color' ? { backgroundColor: bg.color || DEFAULT_BG }
-        : type === 'gradient' ? { background: bg.gradient || DEFAULT_BG }
-        : type === 'image' ? { backgroundImage: `url(${bg.image})`, backgroundSize: 'cover' }
-        : { background: 'repeating-conic-gradient(#888 0 25%, transparent 0 50%) 50% / 6px 6px' }),
+      border: '1px solid rgba(128,128,128,0.5)',
+      ...(own ? { ...own.style, backgroundSize: 'cover' } : themeBackgroundStyle(theme)),
     }} />
   )
 }
 
-export default function BackgroundEditor({ slide, onUpdateSlide }) {
+export default function BackgroundEditor({ slide, onUpdateSlide, theme }) {
   const [uploading, setUploading] = useState(false)
-  const bg = slide?.background || { type: 'color', color: DEFAULT_BG }
+  // A slide without a background of its own shows the theme's (None)
+  const bg = slide?.background || { type: 'none' }
   const bgType = bg.type || 'color'
   const update = background => onUpdateSlide({ background })
-  const setType = type => update({ ...bg, type })
+  // A color starts as the page it replaces
+  const setType = type => update({ ...bg, type, ...(type === 'color' && !bg.color ? { color: themeOf(theme).background } : {}), ...(type === 'gradient' && !bg.gradient ? { gradient: GRADIENT_PRESETS[0] } : {}) })
   const setColor = color => update({ ...bg, type: 'color', color })
   const setGradient = gradient => update({ ...bg, type: 'gradient', gradient })
   const setImage = image => update({ ...bg, type: 'image', image, size: bg.size || 'cover', position: bg.position || 'center' })
@@ -135,7 +135,7 @@ export default function BackgroundEditor({ slide, onUpdateSlide }) {
       )}
 
       {bgType === 'none' && (
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>No background of its own: the theme's shows when presenting.</p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>No background of its own: the {themeOf(theme).label} theme’s page shows.</p>
       )}
     </div>
   )

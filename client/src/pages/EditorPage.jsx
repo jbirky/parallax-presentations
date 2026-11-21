@@ -36,6 +36,10 @@ import Toolbar, { ALIGN_COMMANDS } from '../components/Toolbar'
 import MenuBar, { MenuSearch } from '../components/MenuBar'
 import NotesStrip from '../components/NotesStrip'
 import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
+import LayoutPicker from '../components/LayoutPicker'
+import { ThemePanel } from '../components/ThemeGallery'
+import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
+import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
 import { keyLabel } from '../utils/shortcuts'
@@ -96,7 +100,6 @@ import EditorsModal from '../components/EditorsModal'
 import { renewSlideIds, renewElementIds, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import BeamerImportModal from '../components/BeamerImportModal'
-import { isDarkColor } from '../utils/beamerSlides'
 import DatasetPanel from '../components/DatasetPanel'
 import EquationPalette from '../components/EquationPalette'
 import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
@@ -163,53 +166,57 @@ const CODE_THEME_CSS = {
   'vs': vsCSS,
 }
 
-const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 
+// The slide layouts. Their text boxes are placeholders (utils/placeholders.js):
+// empty, showing a hint, and shrinking their text to fit. Their shapes become
+// the slide's layout parts, which Change layout swaps for the next layout's.
+const ph = (placeholder, x, y, width, height, content, extra = {}) => ({ type: 'text', placeholder, sizeMode: 'shrink', x, y, width, height, zIndex: 2, content, ...extra })
+const layoutTitle = (x, y, width, height, align) => ph('title', x, y, width, height, `<h2${align ? ` style="text-align:${align}"` : ''}></h2>`, { zIndex: 1 })
+const bullets = (x, y, width, height) => ph('body', x, y, width, height, '<ul><li><p></p></li></ul>')
 const SLIDE_TEMPLATES = {
   blank: { label: 'Blank', elements: [] },
   title: { label: 'Title Slide', elements: [
-    { type: 'text', x: 60, y: 170, width: 840, height: 96, sizeMode: 'auto', zIndex: 1, content: '<h2 style="text-align:center">Presentation Title</h2>' },
-    { type: 'text', x: 120, y: 282, width: 720, height: 80, sizeMode: 'auto', zIndex: 2, content: '<p style="text-align:center">Subtitle or author name</p>' },
+    layoutTitle(60, 150, 840, 120, 'center'),
+    ph('subtitle', 120, 282, 720, 80, '<p style="text-align:center"></p>'),
   ]},
   'title-content': { label: 'Title and Content', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'text', x: 40, y: 140, width: 880, height: 360, zIndex: 2, content: '<ul><li><p>First point</p></li><li><p>Second point</p></li></ul>' },
+    layoutTitle(40, 36, 880, 100),
+    bullets(40, 140, 880, 360),
   ]},
   'two-column': { label: 'Two Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'text', x: 40, y: 140, width: 420, height: 340, zIndex: 2, content: '<p>Left column content</p>' },
-    { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Right column content</p>' },
+    layoutTitle(40, 36, 880, 100),
+    bullets(40, 140, 420, 360),
+    bullets(500, 140, 420, 360),
   ]},
   'image-text': { label: 'Image + Text', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
+    layoutTitle(40, 36, 880, 100),
     { type: 'shape', shape: 'rect', x: 40, y: 140, width: 420, height: 340, zIndex: 2, fill: '#2d2d4e', stroke: 'none', strokeWidth: 0, text: '[ Image ]', fontSize: 18, textColor: '#888888' },
-    { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Add your text here</p>' },
+    ph('body', 500, 140, 420, 340, '<p></p>'),
   ]},
   'section-header': { label: 'Section Header', elements: [
-    { type: 'shape', shape: 'rect', x: 0, y: 0, width: 960, height: 540, zIndex: 0, fill: '#1a1a4e', stroke: 'none', strokeWidth: 0, opacity: 1, locked: true },
-    { type: 'text', x: 80, y: 150, width: 800, height: 140, zIndex: 1, content: '<h1 style="text-align:center">Section Title</h1>' },
+    ph('title', 80, 140, 800, 150, '<h1 style="text-align:center"></h1>', { zIndex: 1 }),
     { type: 'shape', shape: 'rect', x: 280, y: 302, width: 400, height: 4, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-    { type: 'text', x: 200, y: 320, width: 560, height: 80, zIndex: 3, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Section description</p>' },
+    ph('subtitle', 200, 320, 560, 80, '<p style="text-align:center"></p>', { hint: 'Click to add a description' }),
   ]},
   'three-column': { label: 'Three Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'text', x: 20, y: 140, width: 290, height: 340, zIndex: 2, content: '<p>Column 1</p>' },
-    { type: 'text', x: 335, y: 140, width: 290, height: 340, zIndex: 3, content: '<p>Column 2</p>' },
-    { type: 'text', x: 650, y: 140, width: 290, height: 340, zIndex: 4, content: '<p>Column 3</p>' },
+    layoutTitle(40, 36, 880, 100),
+    ph('body', 20, 140, 290, 340, '<p></p>'),
+    ph('body', 335, 140, 290, 340, '<p></p>'),
+    ph('body', 650, 140, 290, 340, '<p></p>'),
   ]},
   'comparison': { label: 'Comparison', elements: [
-    { type: 'text', x: 40, y: 30, width: 880, height: 96, zIndex: 1, content: '<h2 style="text-align:center">Comparison</h2>' },
-    { type: 'shape', shape: 'rounded-rect', x: 30, y: 136, width: 440, height: 380, zIndex: 2, fill: 'rgba(99,102,241,0.1)', stroke: '#6366f1', strokeWidth: 1, locked: true },
-    { type: 'text', x: 50, y: 146, width: 400, height: 80, zIndex: 3, content: '<h3 style="text-align:center; color: #6366f1">Option A</h3>' },
-    { type: 'text', x: 50, y: 230, width: 400, height: 276, zIndex: 4, content: '<p>Details here...</p>' },
-    { type: 'shape', shape: 'rounded-rect', x: 490, y: 136, width: 440, height: 380, zIndex: 5, fill: 'rgba(236,72,153,0.1)', stroke: '#ec4899', strokeWidth: 1, locked: true },
-    { type: 'text', x: 510, y: 146, width: 400, height: 80, zIndex: 6, content: '<h3 style="text-align:center; color: #ec4899">Option B</h3>' },
-    { type: 'text', x: 510, y: 230, width: 400, height: 276, zIndex: 7, content: '<p>Details here...</p>' },
+    layoutTitle(40, 26, 880, 100, 'center'),
+    { type: 'shape', shape: 'rounded-rect', x: 30, y: 136, width: 440, height: 380, zIndex: 1, fill: 'rgba(99,102,241,0.1)', stroke: '#6366f1', strokeWidth: 1, locked: true },
+    ph('subtitle', 50, 146, 400, 80, '<h3 style="text-align:center; color: #6366f1"></h3>', { hint: 'Click to add heading' }),
+    bullets(50, 230, 400, 276),
+    { type: 'shape', shape: 'rounded-rect', x: 490, y: 136, width: 440, height: 380, zIndex: 1, fill: 'rgba(236,72,153,0.1)', stroke: '#ec4899', strokeWidth: 1, locked: true },
+    ph('subtitle', 510, 146, 400, 80, '<h3 style="text-align:center; color: #ec4899"></h3>', { hint: 'Click to add heading' }),
+    bullets(510, 230, 400, 276),
   ]},
   'big-number': { label: 'Big Number', elements: [
-    { type: 'text', x: 80, y: 80, width: 800, height: 200, zIndex: 1, content: '<h1 style="text-align:center; font-size: 120px; color: #6366f1">42%</h1>' },
-    { type: 'text', x: 160, y: 300, width: 640, height: 120, zIndex: 2, content: '<p style="text-align:center">Key statistic or metric description</p>' },
+    ph('title', 80, 80, 800, 200, '<h1 style="text-align:center; font-size: 120px; color: #6366f1"></h1>', { zIndex: 1, hint: '42%' }),
+    ph('subtitle', 160, 300, 640, 120, '<p style="text-align:center"></p>', { hint: 'Click to add what the number means' }),
   ]},
 
   // ── Typographic System Presets (Elam / Bauhaus) ──────────────────────
@@ -220,9 +227,9 @@ const SLIDE_TEMPLATES = {
     layoutGrid: { enabled: true, columns: 2, rows: 0, gutter: 0, marginX: 40, marginY: 40, snap: true },
     axisLines: [{ id: 'ax1', axis: 'x', position: 320, visible: true, snap: true }],
     elements: [
-      { type: 'text', x: 40, y: 50, width: 260, height: 96, zIndex: 1, content: '<h2 style="text-align:right">Title</h2>' },
-      { type: 'text', x: 40, y: 150, width: 260, height: 80, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.6)">Subtitle text</p>' },
-      { type: 'text', x: 340, y: 50, width: 580, height: 440, zIndex: 3, content: '<p>Main content arranged to the right of the axis. The asymmetric division creates visual tension.</p>' },
+      layoutTitle(40, 50, 260, 100, 'right'),
+      ph('subtitle', 40, 150, 260, 80, '<p style="text-align:right"></p>'),
+      ph('body', 340, 50, 580, 440, '<p></p>'),
       { type: 'shape', shape: 'rect', x: 318, y: 40, width: 3, height: 460, zIndex: 0, fill: 'rgba(244,114,182,0.4)', stroke: 'none', strokeWidth: 0, locked: true },
     ]
   },
@@ -232,10 +239,10 @@ const SLIDE_TEMPLATES = {
     category: 'systems',
     axisLines: [{ id: 'ax1', axis: 'x', position: 480, visible: true, snap: true }],
     elements: [
-      { type: 'text', x: 130, y: 60, width: 700, height: 96, zIndex: 1, content: '<h2 style="text-align:center">Title</h2>' },
+      layoutTitle(130, 56, 700, 100, 'center'),
       { type: 'shape', shape: 'rect', x: 380, y: 164, width: 200, height: 3, zIndex: 0, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 130, y: 176, width: 700, height: 80, zIndex: 2, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Symmetry centered on a single axis</p>' },
-      { type: 'text', x: 130, y: 266, width: 700, height: 230, zIndex: 3, content: '<p style="text-align:center">Content arranged symmetrically. Place the axis off-center for asymmetric bilateral compositions.</p>' },
+      ph('subtitle', 130, 176, 700, 80, '<p style="text-align:center"></p>'),
+      ph('body', 130, 266, 700, 230, '<p style="text-align:center"></p>'),
     ]
   },
 
@@ -244,14 +251,14 @@ const SLIDE_TEMPLATES = {
     category: 'systems',
     layoutGrid: { enabled: true, columns: 3, rows: 2, gutter: 16, marginX: 40, marginY: 40, snap: true },
     elements: [
-      { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
+      layoutTitle(40, 36, 880, 100),
       { type: 'shape', shape: 'rect', x: 40, y: 140, width: 880, height: 2, zIndex: 0, fill: 'rgba(99,102,241,0.3)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 40, y: 152, width: 277, height: 166, zIndex: 2, content: '<p>Cell 1</p>' },
-      { type: 'text', x: 333, y: 152, width: 277, height: 166, zIndex: 3, content: '<p>Cell 2</p>' },
-      { type: 'text', x: 626, y: 152, width: 277, height: 166, zIndex: 4, content: '<p>Cell 3</p>' },
-      { type: 'text', x: 40, y: 326, width: 277, height: 174, zIndex: 5, content: '<p>Cell 4</p>' },
-      { type: 'text', x: 333, y: 326, width: 277, height: 174, zIndex: 6, content: '<p>Cell 5</p>' },
-      { type: 'text', x: 626, y: 326, width: 277, height: 174, zIndex: 7, content: '<p>Cell 6</p>' },
+      ph('body', 40, 152, 277, 166, '<p></p>'),
+      ph('body', 333, 152, 277, 166, '<p></p>'),
+      ph('body', 626, 152, 277, 166, '<p></p>'),
+      ph('body', 40, 326, 277, 174, '<p></p>'),
+      ph('body', 333, 326, 277, 174, '<p></p>'),
+      ph('body', 626, 326, 277, 174, '<p></p>'),
     ]
   },
 
@@ -260,11 +267,12 @@ const SLIDE_TEMPLATES = {
     category: 'systems',
     layoutGrid: { enabled: true, columns: 4, rows: 3, gutter: 8, marginX: 32, marginY: 32, snap: true },
     elements: [
-      { type: 'shape', shape: 'rect', x: 32, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1, text: 'Module', fontSize: 12, textColor: 'rgba(255,255,255,0.4)' },
+      { type: 'shape', shape: 'rect', x: 32, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
       { type: 'shape', shape: 'rect', x: 254, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
       { type: 'shape', shape: 'rect', x: 476, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
       { type: 'shape', shape: 'rect', x: 698, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
-      { type: 'text', x: 32, y: 198, width: 436, height: 304, zIndex: 1, content: '<h2>Title</h2><p>Content spans multiple modules</p>' },
+      layoutTitle(32, 198, 436, 100),
+      ph('body', 32, 300, 436, 202, '<p></p>'),
       { type: 'shape', shape: 'circle', x: 828, y: 420, width: 80, height: 80, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, opacity: 0.7 },
     ]
   },
@@ -273,11 +281,11 @@ const SLIDE_TEMPLATES = {
     label: 'Transitional',
     category: 'systems',
     elements: [
-      { type: 'text', x: 60, y: 40, width: 500, height: 96, zIndex: 3, content: '<h2>Title</h2>' },
-      { type: 'text', x: 120, y: 136, width: 460, height: 56, zIndex: 2, content: '<p style="color: rgba(255,255,255,0.6); font-size: 28px">Subtitle floats freely</p>' },
-      { type: 'shape', shape: 'rect', x: 0, y: 200, width: 700, height: 3, zIndex: 0, fill: 'rgba(255,255,255,0.15)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 80, y: 220, width: 460, height: 230, zIndex: 1, content: '<p style="font-size: 26px">Elements relate through massing and texture rather than alignment. The transitional system is the most informal — no axis required.</p>' },
-      { type: 'text', x: 520, y: 440, width: 400, height: 80, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.4); font-size: 14px">Details drift toward the lower right, creating natural movement.</p>' },
+      layoutTitle(60, 36, 500, 100),
+      ph('subtitle', 120, 136, 460, 56, '<p style="font-size: 28px"></p>'),
+      { type: 'shape', shape: 'rect', x: 0, y: 200, width: 700, height: 3, zIndex: 0, fill: 'rgba(128,128,128,0.35)', stroke: 'none', strokeWidth: 0, locked: true },
+      ph('body', 80, 220, 460, 230, '<p style="font-size: 26px"></p>'),
+      ph('body', 520, 440, 400, 80, '<p style="text-align:right; font-size: 14px"></p>', { hint: 'Click to add a detail' }),
     ]
   },
 
@@ -288,14 +296,22 @@ const SLIDE_TEMPLATES = {
       { type: 'shape', shape: 'circle', x: 380, y: 170, width: 200, height: 200, zIndex: 0, fill: 'rgba(99,102,241,0.12)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
       { type: 'shape', shape: 'circle', x: 330, y: 120, width: 300, height: 300, zIndex: 0, fill: 'none', stroke: 'rgba(99,102,241,0.15)', strokeWidth: 1 },
       { type: 'shape', shape: 'circle', x: 444, y: 234, width: 72, height: 72, zIndex: 1, fill: '#6366f1', stroke: 'none', strokeWidth: 0 },
-      { type: 'text', x: 440, y: 245, width: 80, height: 50, zIndex: 2, content: '<p style="text-align:center; font-size:11px; color:white">Focus</p>' },
-      { type: 'text', x: 540, y: 100, width: 380, height: 80, zIndex: 3, content: '<h3>Point 1</h3>' },
-      { type: 'text', x: 570, y: 310, width: 350, height: 80, zIndex: 3, content: '<h3>Point 2</h3>' },
-      { type: 'text', x: 40, y: 180, width: 300, height: 80, zIndex: 3, content: '<h3 style="text-align:right">Point 3</h3>' },
-      { type: 'text', x: 40, y: 420, width: 300, height: 80, zIndex: 3, content: '<h3 style="text-align:right">Point 4</h3>' },
+      ph('body', 440, 245, 80, 50, '<p style="text-align:center; font-size:11px; color:white"></p>', { hint: 'Focus' }),
+      ph('body', 540, 100, 380, 80, '<h3></h3>', { zIndex: 3, hint: 'Click to add a point' }),
+      ph('body', 570, 310, 350, 80, '<h3></h3>', { zIndex: 3, hint: 'Click to add a point' }),
+      ph('body', 40, 180, 300, 80, '<h3 style="text-align:right"></h3>', { zIndex: 3, hint: 'Click to add a point' }),
+      ph('body', 40, 420, 300, 80, '<h3 style="text-align:right"></h3>', { zIndex: 3, hint: 'Click to add a point' }),
     ]
   },
 }
+
+// A layout's elements for a new slide: new ids, and its shapes marked as the
+// layout's own (Change layout swaps them)
+const layoutElements = template => template.elements.map(el => ({
+  ...el,
+  id: crypto.randomUUID(),
+  ...(el.type === 'text' && el.placeholder ? {} : { layoutPart: true }),
+}))
 
 // The text editor's extensions: for editing a text box, and for formatting a
 // selected one as a whole (utils/wholeBoxEditor.js)
@@ -307,7 +323,8 @@ const textExtensions = () => [
   TextStyle,
   Link.configure({ openOnClick: false }),
   Image.configure({ inline: false }),
-  Placeholder.configure({ placeholder: 'Click to start typing...' }),
+  // A placeholder's own hint while it's empty (utils/placeholders.js)
+  Placeholder.configure({ placeholder: () => editingHint.current || 'Click to start typing...' }),
   MathNode,
   CitationNode,
   BlockStyle,
@@ -382,6 +399,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const askCanvas = useCallback((name, id) => setCanvasRequest(r => ({ name, id, n: (r?.n ?? 0) + 1 })), [])
   // The inspector's tab: Format, Animate or Slide
   const [inspectorTab, setInspectorTab] = useState('format')
+  // The themes panel, in the inspector's place (components/ThemeGallery.jsx)
+  const [showThemes, setShowThemes] = useState(false)
+  // The slide whose layout is being changed (Slide › Change layout…)
+  const [layoutChangeIndex, setLayoutChangeIndex] = useState(null)
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
@@ -1464,14 +1485,8 @@ function draw() {
   // Opens the TikZ diagram editor on a canvas as dark or light as the slide,
   // so the diagram looks there as it will on the slide
   const slideIsDark = useCallback(() => {
-    const slide = presentation?.slides[currentSlideIndexRef.current]
-    const bg = slide?.background
-    if (bg?.type === 'color' && /^#[0-9a-f]{6}$/i.test(bg.color || '')) {
-      const [r, g, b] = [1, 3, 5].map(i => parseInt(bg.color.slice(i, i + 2), 16))
-      return 0.299 * r + 0.587 * g + 0.114 * b < 140
-    }
-    if (bg?.type === 'image' || bg?.type === 'gradient') return true
-    return !['white', 'beige', 'simple', 'serif', 'sky', 'solarized'].includes(presentation?.theme)
+    // The slide's own background, or the theme's (utils/themes.js)
+    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme).dark
   }, [presentation])
 
   const openTikzEditor = useCallback((elementId) => {
@@ -1482,8 +1497,10 @@ function draw() {
 
   // The slide's color behind the graph editor's preview
   const slideBackdrop = useCallback(() => {
-    const bg = presentation?.slides[currentSlideIndexRef.current]?.background
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    const bg = slide?.background
     if (bg?.type === 'color' && bg.color) return bg.color
+    if (!ownBackground(bg)) return themeOf(presentation?.theme).background
     return slideIsDark() ? '#1e1e2e' : '#ffffff'
   }, [presentation, slideIsDark])
 
@@ -2279,6 +2296,7 @@ function draw() {
     setEditingElementId(elementId)
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
+    editingHint.current = element.placeholder ? placeholderHint(element) : ''
     settingContent.current = true
     // With its citations' labels as the index has them now
     editor?.commands.setContent(resolveCitationsInHtml(element.content || '', citationIndex.labelByKey), false)
@@ -2518,7 +2536,7 @@ function draw() {
     // New ids, links between them following, and groups of their own
     const groups = new Map()
     const groupOf = id => { if (!groups.has(id)) groups.set(id, crypto.randomUUID()); return groups.get(id) }
-    const renewed = renewElementIds(elements, () => crypto.randomUUID()).map(el => ({
+    const renewed = renewElementIds(elements, () => crypto.randomUUID()).map(({ layoutPart, ...el }) => ({
       ...el,
       zIndex: (el.zIndex || 1) - lowest + top + 1,
       ...(el.groupId ? { groupId: groupOf(el.groupId) } : {}),
@@ -2791,6 +2809,7 @@ function draw() {
     if (command === 'paste') pasteFromMenu()
     else if (command === 'select-all') setSelectedElementIds((currentSlide?.elements || []).map(el => el.id))
     else if (command === 'background') openBackground()
+    else if (command === 'change-layout') setLayoutChangeIndex(currentSlideIndex)
     else if (command === 'toggle-grid') setShowGrid(v => !v)
     else if (command === 'toggle-rulers') setShowRulers(v => !v)
   }
@@ -2818,18 +2837,19 @@ function draw() {
         ? (presentation.slides[afterIndex]?.column ?? 0)
         : null
 
-    const template = templateKey && SLIDE_TEMPLATES[templateKey] ? SLIDE_TEMPLATES[templateKey] : null
-    const baseElements = template
-      ? template.elements.map(el => ({ ...el, id: crypto.randomUUID() }))
-      : [{ id: crypto.randomUUID(), type: 'text', x: 80, y: 160, width: 800, height: 220, zIndex: 1, content: '<h2 style="text-align: center">New Slide</h2><p style="text-align: center">Double-click to edit</p>' }]
+    const key = templateKey && SLIDE_TEMPLATES[templateKey] ? templateKey : 'title-content'
+    const template = SLIDE_TEMPLATES[key]
+    // The theme's background, unless the slide before has the old default
+    // (utils/themes.js)
+    const background = newSlideBackground(presentation.slides[afterIndex])
     const newSlide = {
       id: crypto.randomUUID(),
       ...(colNum !== null ? { column: colNum } : {}),
       // Which layout it came from, for the next new slide to follow
-      ...(template ? { layout: templateKey } : {}),
-      elements: baseElements,
+      layout: key,
+      elements: layoutElements(template),
       notes: '',
-      background: { type: 'color', color: '#1e1e2e' },
+      ...(background ? { background } : {}),
       ...(template?.layoutGrid ? { layoutGrid: { ...template.layoutGrid } } : {}),
       ...(template?.axisLines ? { axisLines: template.axisLines.map(a => ({ ...a, id: crypto.randomUUID() })) } : {}),
     }
@@ -2850,6 +2870,42 @@ function draw() {
   }
   addSlideAfterRef.current = addSlideAfter
 
+  // Slide › Change layout: the slide's title and body text move into the
+  // layout's placeholders; the rest stays (utils/placeholders.js)
+  const changeSlideLayout = (index, key) => {
+    const layout = SLIDE_TEMPLATES[key]
+    if (!layout || !presentation?.slides[index]) return
+    stopEditingElement()
+    setSelectedElementIds([])
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      const slide = slides[index]
+      slides[index] = {
+        ...slide,
+        layout: key,
+        elements: changeLayout(slide, layout, () => crypto.randomUUID()),
+        ...(layout.layoutGrid ? { layoutGrid: { ...layout.layoutGrid } } : {}),
+        ...(layout.axisLines ? { axisLines: layout.axisLines.map(a => ({ ...a, id: crypto.randomUUID() })) } : {}),
+      }
+      return { ...prev, slides }
+    })
+    if (index !== currentSlideIndex) setCurrentSlideIndex(index)
+  }
+
+  // A theme from the gallery: the deck's, and every slide that still has the
+  // old dark default takes the theme's page instead (one undo step)
+  const applyTheme = (id) => {
+    setPresentation(prev => ({
+      ...prev,
+      theme: id,
+      slides: prev.slides.map(slide => {
+        if (!isLegacyBackground(slide.background)) return slide
+        const { background, ...rest } = slide
+        return rest
+      }),
+    }))
+  }
+
   const addColumn = () => {
     const slides = presentation?.slides || []
     const is2D = slides.some(s => s.column !== undefined)
@@ -2858,9 +2914,10 @@ function draw() {
     const newSlide = {
       id: crypto.randomUUID(),
       column: newColNum,
-      elements: [{ id: crypto.randomUUID(), type: 'text', x: 80, y: 160, width: 800, height: 220, zIndex: 1, content: '<h2 style="text-align: center">New Slide</h2><p style="text-align: center">Double-click to edit</p>' }],
+      layout: 'title-content',
+      elements: layoutElements(SLIDE_TEMPLATES['title-content']),
       notes: '',
-      background: { type: 'color', color: '#1e1e2e' }
+      ...(newSlideBackground(slides[currentSlideIndex]) ? { background: newSlideBackground(slides[currentSlideIndex]) } : {}),
     }
     setPresentation(prev => ({
       ...prev,
@@ -3379,9 +3436,10 @@ function draw() {
       { label: 'Duplicate slide', action: () => duplicateSlide(currentSlideIndex), disabled: isViewingReferences },
       { label: 'Delete slide', action: () => deleteSlide(currentSlideIndex), disabled: isViewingReferences || presentation.slides.length <= 1 },
       '-',
+      { label: 'Change layout', title: 'Move this slide’s title and text into another layout', disabled: isViewingReferences, items: Object.entries(SLIDE_TEMPLATES).map(([key, layout]) => ({ label: layout.label, radio: true, checked: currentSlide?.layout === key, action: () => changeSlideLayout(currentSlideIndex, key) })) },
       { label: 'Background…', action: () => openBackground(), disabled: isViewingReferences },
-      { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => setInspectorTab('animate') },
-      { label: 'Theme', title: 'The fonts and colors the presentation is shown in', items: THEMES.map(t => ({ label: t.charAt(0).toUpperCase() + t.slice(1), radio: true, checked: (presentation.theme || 'black') === t, action: () => setPresentation(prev => ({ ...prev, theme: t })) })) },
+      { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => { setShowThemes(false); setInspectorTab('animate') } },
+      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => setShowThemes(true) },
       { label: 'Footer and page numbers…', action: () => setShowDefaultSettings(true) },
       '-',
       { label: 'New vertical section', title: 'A column of slides reached with ↓ when presenting', action: addColumn },
@@ -3726,11 +3784,14 @@ function draw() {
               {/* Theme */}
               <div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Theme</div>
-                <select className="prop-input" value={presentation.theme || 'black'} aria-label="Theme"
-                  onChange={e => setPresentation(prev => ({ ...prev, theme: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 8px' }}>
-                  {THEMES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                </select>
+                <button type="button" className="btn btn-secondary" onClick={() => { setShowDefaultSettings(false); setShowThemes(true) }}
+                  style={{ width: '100%', justifyContent: 'space-between', padding: '6px 8px' }} aria-label={`Theme: ${themeOf(presentation.theme).label}. Change`}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 3, border: '1px solid var(--border)', background: themeOf(presentation.theme).background }} />
+                    {themeOf(presentation.theme).label}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Change…</span>
+                </button>
               </div>
 
               {/* Transition */}
@@ -4761,6 +4822,8 @@ function draw() {
           onDeleteMultiple={deleteSlides}
           onNewSlideAfter={addSlideAfter}
           onBackground={openBackground}
+          onChangeLayout={index => setLayoutChangeIndex(index)}
+          theme={presentation.theme || 'black'}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
           onMoveInColumn={moveSlideInColumn}
@@ -4803,6 +4866,9 @@ function draw() {
             onSetDrawTool={setDrawTool}
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
+            theme={presentation.theme || 'black'}
+            onTheme={() => setShowThemes(v => !v)}
+            themesOpen={showThemes}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
             {!isViewingReferences && !recording && offeredUpdates.map(u => (
@@ -4956,6 +5022,7 @@ function draw() {
               onElementCommand={elementCommand}
               onCanvasCommand={canvasCommand}
               request={canvasRequest}
+              theme={presentation.theme || 'black'}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -4994,7 +5061,9 @@ function draw() {
           )}
         </div>
 
-        <PropertiesPanel
+        {showThemes ? (
+          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)} />
+        ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
           pluginInfo={(() => {
@@ -5041,7 +5110,8 @@ function draw() {
           currentSlideIndex={currentSlideIndex}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
-        />
+          theme={presentation.theme || 'black'}
+        />}
 
       {/* HTML / D3 Code Editor Modal */}
       {htmlEditorState && (
@@ -5611,64 +5681,21 @@ function draw() {
           }} />
       )}
 
-      {showTemplateModal && (
-        <div className="modal-overlay" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
-            <h2 style={{ marginBottom: 16 }}>Add Slide</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-              {Object.entries(SLIDE_TEMPLATES).filter(([, t]) => !t.category).map(([key, tmpl]) => (
-                <button key={key}
-                  onClick={() => { addSlide(key, pendingAddColumn); setPendingAddColumn(null); setShowTemplateModal(false) }}
-                  style={{ background: 'var(--bg-card)', border: '2px solid var(--border)', borderRadius: 8, padding: 10, cursor: 'pointer', textAlign: 'left' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover)' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-card)' }}
-                >
-                  <div style={{ height: 55, background: '#1e1e2e', borderRadius: 4, marginBottom: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-                    {key === 'blank' && <span style={{ fontSize: 20, opacity: 0.4 }}>□</span>}
-                    {key === 'title' && <div style={{textAlign:'center'}}><div style={{fontSize:9,fontWeight:700,color:'white',marginBottom:3}}>─────────</div><div style={{fontSize:7,color:'#aaa'}}>─────</div></div>}
-                    {key === 'title-content' && <div style={{width:'80%',height:'70%',display:'flex',flexDirection:'column',gap:4}}><div style={{width:'60%',height:6,background:'rgba(255,255,255,0.55)',borderRadius:1}}/>{[0,1,2].map(i => <div key={i} style={{display:'flex',alignItems:'center',gap:3}}><div style={{width:3,height:3,borderRadius:'50%',background:'#aaa'}}/><div style={{width:`${70 - i * 12}%`,height:3,background:'rgba(255,255,255,0.2)',borderRadius:1}}/></div>)}</div>}
-                    {key === 'two-column' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'image-text' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(99,102,241,0.3)',borderRadius:2,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}}>🖼</div><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'section-header' && <div style={{textAlign:'center'}}><div style={{fontSize:10,fontWeight:700,color:'#6366f1'}}>─────</div><div style={{width:30,height:2,background:'#6366f1',margin:'3px auto'}}/><div style={{fontSize:6,color:'#888'}}>section</div></div>}
-                    {key === 'three-column' && <div style={{display:'flex',gap:2,width:'85%',height:'60%'}}><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'comparison' && <div style={{display:'flex',gap:4,width:'80%',height:'60%'}}><div style={{flex:1,border:'1px solid #6366f1',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#6366f1'}}>A</div><div style={{flex:1,border:'1px solid #ec4899',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#ec4899'}}>B</div></div>}
-                    {key === 'big-number' && <div style={{textAlign:'center'}}><div style={{fontSize:18,fontWeight:700,color:'#6366f1'}}>42</div><div style={{fontSize:6,color:'#888'}}>metric</div></div>}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#e0e0e0', fontWeight: 500 }}>{tmpl.label}</div>
-                </button>
-              ))}
-            </div>
-            <h3 style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, borderTop: '1px solid var(--border)', paddingTop: 12 }}>Typographic Systems</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-              {Object.entries(SLIDE_TEMPLATES).filter(([, t]) => t.category === 'systems').map(([key, tmpl]) => {
-                const icons = {
-                  'system-axial':        <div style={{display:'flex',height:'60%',width:'80%',gap:0}}><div style={{width:'35%',borderRight:'2px solid #f472b6'}}/><div style={{flex:1,background:'rgba(255,255,255,0.06)'}}/></div>,
-                  'system-bilateral':    <div style={{display:'flex',flexDirection:'column',alignItems:'center',height:'60%',width:'80%'}}><div style={{width:'60%',height:2,background:'#6366f1',marginTop:'30%'}}/></div>,
-                  'system-grid':         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gridTemplateRows:'1fr 1fr',gap:2,width:'80%',height:'60%'}}>{Array.from({length:6}).map((_,i)=><div key={i} style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:1}}/>)}</div>,
-                  'system-modular':      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:2,width:'85%',height:'60%'}}>{Array.from({length:8}).map((_,i)=><div key={i} style={{background:i<4?'rgba(99,102,241,0.15)':'transparent',border:'1px solid rgba(99,102,241,0.2)',borderRadius:1}}/>)}</div>,
-                  'system-transitional': <div style={{width:'80%',height:'60%',position:'relative'}}><div style={{position:'absolute',top:'10%',left:'5%',width:'55%',height:8,background:'rgba(255,255,255,0.12)',borderRadius:1}}/><div style={{position:'absolute',top:'35%',left:'15%',width:'45%',height:6,background:'rgba(255,255,255,0.08)',borderRadius:1}}/><div style={{position:'absolute',top:'55%',width:'70%',height:1,background:'rgba(255,255,255,0.15)'}}/><div style={{position:'absolute',top:'65%',left:'10%',width:'50%',height:8,background:'rgba(255,255,255,0.1)',borderRadius:1}}/></div>,
-                  'system-radial':       <div style={{width:'80%',height:'60%',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{width:16,height:16,borderRadius:'50%',background:'#6366f1'}}/><div style={{position:'absolute',width:32,height:32,borderRadius:'50%',border:'1px solid rgba(99,102,241,0.3)'}}/><div style={{position:'absolute',width:48,height:48,borderRadius:'50%',border:'1px solid rgba(99,102,241,0.15)'}}/></div>,
-                }
-                return (
-                  <button key={key}
-                    onClick={() => { addSlide(key, pendingAddColumn); setPendingAddColumn(null); setShowTemplateModal(false) }}
-                    style={{ background: 'var(--bg-card)', border: '2px solid var(--border)', borderRadius: 8, padding: 10, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#f472b6'; e.currentTarget.style.background = 'var(--bg-hover)' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-card)' }}
-                  >
-                    <div style={{ height: 55, background: '#1e1e2e', borderRadius: 4, marginBottom: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-                      {icons[key] || <span style={{ fontSize: 9 }}>{tmpl.label}</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#f472b6', fontWeight: 500 }}>{tmpl.label}</div>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>Cancel</button>
-            </div>
-          </div>
-        </div>
+      {(showTemplateModal || layoutChangeIndex !== null) && (
+        <LayoutPicker
+          layouts={SLIDE_TEMPLATES}
+          theme={presentation.theme || 'black'}
+          slideW={slideW}
+          slideH={slideH}
+          title={layoutChangeIndex !== null ? 'Change layout' : 'New slide'}
+          current={layoutChangeIndex !== null ? presentation.slides[layoutChangeIndex]?.layout ?? null : null}
+          onPick={key => {
+            if (layoutChangeIndex !== null) changeSlideLayout(layoutChangeIndex, key)
+            else addSlide(key, pendingAddColumn)
+            setPendingAddColumn(null); setShowTemplateModal(false); setLayoutChangeIndex(null)
+          }}
+          onClose={() => { setShowTemplateModal(false); setPendingAddColumn(null); setLayoutChangeIndex(null) }}
+        />
       )}
       {showPracticeRuns && (
         <PracticeRunsModal
@@ -5708,7 +5735,7 @@ function draw() {
           slideH={presentation.slideHeight || 540}
           bibliography={presentation.bibliography || []}
           globalFont={presentation.globalFont || ''}
-          dark={isDarkColor(currentSlide?.background?.type === 'color' ? currentSlide.background.color : '#1e1e2e')}
+          dark={slidePalette(currentSlide, presentation.theme).dark}
           onInsert={insertBeamerSlides}
           onClose={() => setShowBeamerModal(false)}
         />

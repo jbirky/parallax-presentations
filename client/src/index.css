@@ -338,7 +338,18 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .ProseMirror { width: 100%; height: 100%; padding: 8px 12px; outline: none; overflow: hidden; cursor: text; line-height: 1.4; }
 /* Citation markers (utils/citationIndex.js), on the canvas and while editing */
 sup[data-cite] { font-weight: 700; }
-.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: rgba(255,255,255,0.3); pointer-events: none; float: left; height: 0; }
+/* The hint in an empty text box being typed in: a placeholder's own
+   (utils/placeholders.js), in the block's alignment */
+.ProseMirror .is-editor-empty:first-child::before { content: attr(data-placeholder); display: block; height: 0; opacity: 0.45; pointer-events: none; white-space: nowrap; }
+/* Placeholders: an empty one's hint and outline on the canvas */
+.placeholder-hint { opacity: 0.45; }
+.placeholder-outline { position: absolute; inset: 0; border: 1px dashed var(--slide-text, #fff); opacity: 0.35; pointer-events: none; border-radius: 2px; z-index: 1; }
+/* Text that shrinks to fit (utils/shrinkFit.js), while it's typed in */
+.fit-shrink .ProseMirror { height: auto; overflow: visible; position: relative; }
+/* The slide's heading and link colors: the theme's, or ones that show on the
+   slide's own background (utils/themes.js) */
+:is(.slide-canvas, .slide-thumb-canvas) .slide-text-content :is(h1, h2, h3, h4, h5, h6), .slide-canvas .ProseMirror :is(h1, h2, h3, h4, h5, h6) { color: var(--slide-heading, inherit); }
+:is(.slide-canvas, .slide-thumb-canvas) .slide-text-content a, .slide-canvas .ProseMirror a { color: var(--slide-link, inherit); }
 .ProseMirror h1 { font-size: 2.5em; margin-bottom: 0.4em; line-height: 1.2; }
 .ProseMirror h2 { font-size: 1.6em; margin-bottom: 0.4em; line-height: 1.2; }
 .ProseMirror h3 { font-size: 1.3em; margin-bottom: 0.4em; line-height: 1.2; }
@@ -908,3 +919,20 @@ sup[data-cite] { font-weight: 700; }
 .docs-markdown iframe { width: 100%; border: none; border-radius: 8px; margin: 8px 0 12px; }
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* The layout picker (components/LayoutPicker.jsx) */
+.layout-picker { width: min(680px, 94vw); max-width: none; padding: 20px; }
+.layout-picker-heading { font-size: 12px; color: var(--text-muted); margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--border); font-weight: 600; }
+.layout-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 10px; }
+.layout-choice { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 8px; border: 2px solid var(--border); background: var(--bg-card); cursor: pointer; text-align: left; color: var(--text-primary); font-size: 12px; }
+.layout-choice:hover, .layout-choice:focus-visible { border-color: var(--accent); background: var(--bg-hover); outline: none; }
+.layout-choice.current { border-color: var(--accent); }
+/* The theme gallery and panel (components/ThemeGallery.jsx) */
+.theme-gallery { display: grid; gap: 10px; }
+.theme-choice { display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 8px; border: 2px solid transparent; background: none; cursor: pointer; color: var(--text-primary); text-align: left; }
+.theme-choice:hover { border-color: var(--border-light); }
+.theme-choice.on { border-color: var(--accent); }
+.theme-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.theme-choice-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 0 2px; }
+.theme-swatch { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-radius: 5px; border: 1px solid rgba(128,128,128,0.35); box-sizing: border-box; padding: 6px; overflow: hidden; }
+.theme-panel { width: 240px; }

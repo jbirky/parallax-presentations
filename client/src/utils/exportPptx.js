@@ -1,4 +1,6 @@
 import pptxgen from 'pptxgenjs'
+import { slidePalette, ownBackground, themeOf } from './themes'
+import { isEmptyPlaceholder } from './placeholders'
 import { sanitizeSvg } from './tikzDiagram'
 import { feynmanSvg } from './feynmanDiagram'
 import { circuitSvg } from './circuitDiagram'
@@ -49,16 +51,17 @@ export function exportToPptx(presentation) {
     const pptSlide = pptx.addSlide()
     const axis = scrollAxis(slide, slideW, slideH)
 
-    // Background
+    // Background: the slide's own color, or the theme's page
     const bg = slide.background
+    const palette = slidePalette(slide, presentation.theme)
     if (bg?.type === 'color' && bg.color) {
       pptSlide.background = { color: bg.color.replace('#', '') }
-    } else if (!bg || bg.type === 'none') {
-      pptSlide.background = { color: '1e1e2e' }
+    } else if (!ownBackground(bg)) {
+      pptSlide.background = { color: themeOf(presentation.theme).background.replace('#', '') }
     }
 
-    // Sort elements by zIndex
-    const elements = [...(slide.elements || [])].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    // Sort elements by zIndex; an empty placeholder never shows
+    const elements = (slide.elements || []).filter(el => !isEmptyPlaceholder(el)).sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
 
     for (const el of elements) {
       // Where it is on this page's screen: the canvas moves up (or left) a screen a page
@@ -79,10 +82,12 @@ export function exportToPptx(presentation) {
           pptSlide.addText(text, {
             x, y, w, h,
             fontSize: 14,
-            color: 'FFFFFF',
+            color: (el.type === 'text' ? palette.text : '#ffffff').replace('#', ''),
             valign: 'top',
             wrap: true,
             rotate: rotation,
+            // Text that shrinks to fit, as PowerPoint's own placeholders do
+            ...(el.sizeMode === 'shrink' ? { fit: 'shrink' } : {}),
           })
         }
       } else if (el.type === 'image') {

@@ -27,6 +27,9 @@ import { diagramDeckScript } from './diagramCore'
 import { text3dHtml, text3dShadowFilter } from './text3d'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
+import { slidePalette, cssText, themeBackgroundStyle } from './themes'
+import { isEmptyPlaceholder } from './placeholders'
+import { SHRINK_FIT_SCRIPT } from './shrinkFit'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 import { latinModernFaces } from './latinModern'
@@ -292,6 +295,9 @@ export function generateRevealHTML(presentation, opts = {}) {
   const slideSectionHtmlByIndex = new Map()
   presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background)
+    // Its text and heading colors: the theme's, or for a background of its
+    // own, ones that show on it (utils/themes.js)
+    const palette = slidePalette(slide, theme)
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
@@ -303,8 +309,9 @@ export function generateRevealHTML(presentation, opts = {}) {
     const canvasW = getCanvasWidth(slide, slideW, slideH)
     const axis = scrollAxis(slide, slideW, slideH)
     const scrolling = axis !== null
+    // An empty placeholder never shows (utils/placeholders.js)
     const sortedElements = (slide.elements || [])
-      .slice()
+      .filter(el => !isEmptyPlaceholder(el))
       .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
     const renderedElements = sortedElements
       .map(el => {
@@ -325,11 +332,16 @@ export function generateRevealHTML(presentation, opts = {}) {
         const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
+          const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
+          // Text that shrinks to fit its box (utils/shrinkFit.js)
+          if (el.sizeMode === 'shrink') {
+            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+          }
           // Auto-sized text grows with what it holds, as on the canvas
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -729,7 +741,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
 
@@ -1084,7 +1096,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'
@@ -1296,6 +1308,11 @@ function annotationScript(presentation, set) {
   </script>`
 }
 
+// Whether a deck has text that shrinks to fit (utils/shrinkFit.js)
+function hasShrinkText(presentation) {
+  return (presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'text' && el.sizeMode === 'shrink' && !isEmptyPlaceholder(el)))
+}
+
 function getBackgroundAttrs(bg) {
   if (!bg) return ''
   if (bg.type === 'color' && bg.color) return ` data-background-color="${sanitizeAttr(bg.color)}"`
@@ -1347,15 +1364,17 @@ export function previewSlideInWindow(presentation, slideIndex) {
 
 // ─── PDF export (print-ready HTML, one page per fragment state) ───────────────
 
-function getBgPrintStyle(bg) {
-  if (!bg || bg.type === 'none') return 'background-color:#1e1e2e;'
-  if (bg.type === 'color') return `background-color:${bg.color || '#1e1e2e'};`
-  if (bg.type === 'gradient') return `background:${bg.gradient || '#1e1e2e'};`
+// A page's background: the slide's own, or the theme's
+function getBgPrintStyle(bg, theme) {
+  const themed = cssText(themeBackgroundStyle(theme))
+  if (!bg || bg.type === 'none') return themed
+  if (bg.type === 'color') return bg.color ? `background-color:${bg.color};` : themed
+  if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
   if (bg.type === 'image' && bg.image) {
     const src = absoluteSrc(bg.image)
     return `background-image:url('${src}');background-size:${bg.size || 'cover'};background-position:${bg.position || 'center'};`
   }
-  return 'background-color:#1e1e2e;'
+  return themed
 }
 
 function generatePrintHTML(presentation) {
@@ -1363,6 +1382,7 @@ function generatePrintHTML(presentation) {
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
+  const theme = presentation.theme || 'black'
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
   const footerTimeMode = presentation.footerTimeMode || 'none'
@@ -1425,10 +1445,12 @@ function generatePrintHTML(presentation) {
     const axis = scrollAxis(slide, slideW, slideH)
     const scrolling = axis !== null
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
-    const bgStyle = canvasBg ? getBgPrintStyle(null) : getBgPrintStyle(slide.background)
+    const bgStyle = canvasBg ? getBgPrintStyle(null, theme) : getBgPrintStyle(slide.background, theme)
+    const palette = slidePalette(slide, theme)
 
     const sortedElements = (slide.elements || [])
-      .slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+      .filter(el => !isEmptyPlaceholder(el))
+      .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
     const renderedElements = sortedElements
       .map(base => {
         const isHidden = hiddenOnPage(base)
@@ -1439,7 +1461,9 @@ function generatePrintHTML(presentation) {
         const vis = isHidden ? 'visibility:hidden;' : ''
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
-          return `<div style="${style}${vis}padding:8px 12px;color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || '', citations.labelByKey)}</div>`
+          const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
+          if (el.sizeMode === 'shrink') return `<div data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+          return `<div style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(el.src)
@@ -1679,7 +1703,7 @@ function generatePrintHTML(presentation) {
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })
     }
-    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;">\n${bodyHtml}\n${footerHtml}\n</div>`
+    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n') + (citations.entries.length > 0
     // The references, last, as the presented deck has them
     ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
@@ -1711,6 +1735,8 @@ function generatePrintHTML(presentation) {
       print-color-adjust: exact; -webkit-print-color-adjust: exact;
     }
     .slide-page:last-child { break-after: avoid; page-break-after: avoid; }
+    .slide-page h1, .slide-page h2, .slide-page h3, .slide-page h4, .slide-page h5, .slide-page h6 { color: var(--slide-heading); }
+    .slide-page a { color: var(--slide-link); }
     .slide-page h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
@@ -1746,12 +1772,13 @@ ${pagesHtml}
   <script src="${libUrl('katex', 'dist/katex.min.js')}"></script>
   <script src="${libUrl('katex', 'dist/contrib/mhchem.min.js')}"></script>
   <script src="${libUrl('@highlightjs/cdn-assets', 'highlight.min.js')}"></script>
-  <script>
+  <script>${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}
     window.addEventListener('load', function() {
       document.querySelectorAll('pre code').forEach(function(el) { try { hljs.highlightElement(el); } catch(e) {} });
       document.querySelectorAll('span[data-math-latex]').forEach(function(el) {
         try { katex.render(el.getAttribute('data-math-latex'), el, { throwOnError: false, displayMode: el.getAttribute('data-math-display') === 'true' }); } catch(e) {}
       });
+      if (window.parallaxFitText) window.parallaxFitText();
       setTimeout(function() { window.print(); }, 1000);
     });${hasEquations(presentation) ? equationPrintScript() : ''}${hasHarmonics(presentation) ? harmonicsPrintScript() : ''}
     // Printing these pages, not the one frame of them the window around shows
@@ -1928,11 +1955,12 @@ export function generatePresenterHTML(presentation) {
     // Escaped: this page has this site's origin
     const bgStyle = escapeHtml((() => {
       const bg = slide.background
-      if (!bg) return 'background:#1e1e2e;'
-      if (bg.type === 'color') return `background:${bg.color || '#1e1e2e'};`
-      if (bg.type === 'gradient') return `background:${bg.gradient || '#1e1e2e'};`
+      const themed = cssText(themeBackgroundStyle(presentation.theme))
+      if (!bg) return themed
+      if (bg.type === 'color') return bg.color ? `background:${bg.color};` : themed
+      if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
       if (bg.type === 'image' && bg.image) return `background-image:url(${absoluteSrc(bg.image)});background-size:${bg.size||'cover'};background-position:${bg.position||'center'};`
-      return 'background:#1e1e2e;'
+      return themed
     })())
     const textEls = (slide.elements || [])
       .filter(el => el.type === 'text')
@@ -1940,7 +1968,7 @@ export function generatePresenterHTML(presentation) {
       .slice(0, 3)
       .map(el => {
         const plain = (el.content || '').replace(/<[^>]*>/g, '').trim()
-        return plain ? `<div style="font-size:7px;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
+        return plain ? `<div style="font-size:7px;color:${slidePalette(slide, presentation.theme).text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
       }).join('')
     return `<div class="pv-thumb" data-idx="${i}" style="width:140px;height:${thumbH}px;${bgStyle}">${textEls}<span class="pv-thumb-num">${i + 1}</span></div>`
   }).join('\n          ')

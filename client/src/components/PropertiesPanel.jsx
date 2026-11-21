@@ -312,7 +312,7 @@ export function elementName(el) {
   return ELEMENT_NAMES[el?.type] || (el?.type ? el.type.charAt(0).toUpperCase() + el.type.slice(1) : 'Element')
 }
 
-export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange }) {
+export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black' }) {
   // The inspector's tab, Format, Animate or Slide, as in Keynote; the editor
   // can choose it (Slide › Transition… opens Animate)
   const [ownTab, setOwnTab] = useState('format')
@@ -2004,12 +2004,12 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           {/* Text box sizing mode */}
           {selectedElement.type === 'text' && (
             <div role="radiogroup" aria-label="Fit" style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              {[['fixed', 'Fixed size'], ['auto', 'Grow box']].map(([mode, label]) => (
+              {[['fixed', 'Fixed size'], ['shrink', 'Shrink text'], ['auto', 'Grow box']].map(([mode, label]) => (
                 <button
                   key={mode}
                   role="radio"
                   aria-checked={(selectedElement.sizeMode || 'fixed') === mode}
-                  title={mode === 'auto' ? 'The box grows to fit its text' : 'The box keeps its size'}
+                  title={{ auto: 'The box grows to fit its text', shrink: 'The text gets smaller to fit the box', fixed: 'The box and its text keep their size' }[mode]}
                   onClick={() => onUpdateElement({ sizeMode: mode })}
                   style={{
                     flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, cursor: 'pointer',
@@ -2153,7 +2153,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           <h3>Slide {(currentSlideIndex ?? 0) + 1}</h3>
           <p className="prop-hint">Select something on the slide to format it.</p>
           <h4 className="prop-subhead">Background</h4>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
         </div>
       )}
 
@@ -2726,7 +2726,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
       {tab === 'slide' && (<>
         <div className="prop-section">
           <h3>Background</h3>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
         </div>
         {/* Slide Section + Footer Style */}
         <div className="prop-section">

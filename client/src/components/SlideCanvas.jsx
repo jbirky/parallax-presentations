@@ -64,6 +64,9 @@ import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
+import { slidePalette } from '../utils/themes'
+import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
+import { fitScale, applyScale } from '../utils/shrinkFit'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
 
 function highlightCode(code, language) {
@@ -251,21 +254,15 @@ ${userCode}
 <\/script></body></html>`
 }
 
-function getBgStyle(bg) {
-  if (!bg) return { backgroundColor: '#1e1e2e' }
-  if (bg.type === 'color') return { backgroundColor: bg.color || '#1e1e2e' }
-  if (bg.type === 'gradient') return { background: bg.gradient || 'linear-gradient(135deg, #1e1e2e, #2d2d5e)' }
-  if (bg.type === 'image' && bg.image) return { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }
-  return { backgroundColor: '#1e1e2e' }
-}
-
 // What Edit… is called on an element that opens in an editor, or null
 const EDIT_LABELS = { html: 'Edit HTML', code: 'Edit code', latex: 'Edit LaTeX', graph: 'Edit graph', equation: 'Edit equation', circuit: 'Edit circuit', geometry: 'Edit construction', p5: 'Edit sketch', tikz: 'Edit diagram', feynman: 'Edit diagram', logic: 'Edit diagram', freebody: 'Edit diagram', venn: 'Edit diagram', timing: 'Edit diagram' }
 export function editLabelFor(type) {
   return EDIT_LABELS[type] || null
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black' }) {
+  // The slide's colors: its background, or the theme's (utils/themes.js)
+  const palette = slidePalette(slide, theme)
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -322,6 +319,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   })()
   const pendingDragRef = useRef(null)
   const draggingRef = useRef(null)
+  const dragEndedRef = useRef(0)
   const [, forceUpdate] = useState(0)
   const showGridRef = useRef(showGrid)
   const selectedElementIdsRef = useRef(selectedElementIds)
@@ -664,6 +662,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       }
     }
     const onMouseUp = () => {
+      // A drag that moved something isn't a click on it
+      if (draggingRef.current) dragEndedRef.current = Date.now()
       draggingGuideRef.current = null
       draggingAxisRef.current = null
       cropDragRef.current = null
@@ -924,7 +924,10 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           flexShrink: 0, position: 'relative', fontSize: '42px',
           outline: dragOver ? '3px dashed #6366f1' : 'none',
           cursor: drawTool ? 'crosshair' : undefined,
-          ...getBgStyle(slide?.background)
+          ...palette.background,
+          '--slide-text': palette.text,
+          '--slide-heading': palette.heading,
+          '--slide-link': palette.link,
         }}
         onMouseDown={(e) => {
           if (!drawToolRef.current || editingElementId || cropMode) return
@@ -1161,7 +1164,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey)
               startElementDrag(e, element.id, type, handle)
             }}
-            onClick={(e) => { e.stopPropagation(); if (!cropMode && !drawToolRef.current) onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (cropMode || drawToolRef.current) return
+              const many = e.shiftKey || e.ctrlKey || e.metaKey
+              onToggleSelectElement(element.id, many)
+              // One click on an empty placeholder starts typing in it, as in
+              // PowerPoint, Keynote and Google Slides (not after a drag)
+              if (!many && !element.locked && isEmptyPlaceholder(element) && Date.now() - dragEndedRef.current > 250) onStartEdit(element.id)
+            }}
             onDoubleClick={(e) => {
               e.stopPropagation()
               if (openElement(element)) return
@@ -1381,6 +1392,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           { label: 'Paste', shortcut: 'Mod+V', action: () => onCanvasCommand('paste') },
           { label: 'Select all', shortcut: 'Mod+A', action: () => onCanvasCommand('select-all'), disabled: !slide?.elements?.length },
           '-',
+          { label: 'Change layout\u2026', action: () => onCanvasCommand('change-layout') },
           { label: 'Background\u2026', action: () => onCanvasCommand('background') },
           { label: 'Grid', checked: !!showGrid, action: () => onCanvasCommand('toggle-grid') },
           { label: 'Rulers', checked: !!showRulers, action: () => onCanvasCommand('toggle-rulers') },
@@ -1424,6 +1436,9 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
   const isAutoFit = element.type === 'text' && element.sizeMode === 'auto'
+  const isShrink = element.type === 'text' && element.sizeMode === 'shrink'
+  const emptyPlaceholder = element.type === 'text' && !isEditing && isEmptyPlaceholder(element)
+  const editFitRef = useRef(null)
 
   // Render KaTeX math in preview (when not editing)
   useEffect(() => {
@@ -1439,6 +1454,31 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
       } catch(e) {}
     })
   }, [element.content, isEditing])
+
+  // Text that shrinks to fit its box: after its math is drawn, and again once
+  // fonts are in (utils/shrinkFit.js)
+  useEffect(() => {
+    if (!isShrink || isEditing || !contentRef.current) return
+    const inner = contentRef.current
+    const fit = () => applyScale(inner, element.width, fitScale(inner, element.width, element.height))
+    fit()
+    let live = true
+    document.fonts?.ready?.then(() => { if (live) fit() })
+    return () => { live = false }
+  }, [isShrink, isEditing, element.content, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont, emptyPlaceholder])
+
+  // …and while it's being typed in
+  useEffect(() => {
+    if (!isShrink || !isEditing || !editFitRef.current) return
+    const inner = editFitRef.current
+    let frame = 0
+    const fit = () => applyScale(inner, element.width, fitScale(inner, element.width, element.height, inner.querySelector('.ProseMirror') || inner))
+    fit()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit) })
+    observer.observe(inner.querySelector('.ProseMirror') || inner)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [isShrink, isEditing, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont])
 
   // Sync auto-fit height back to element data so drag, export, etc. stay consistent
   useEffect(() => {
@@ -1504,30 +1544,51 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
             ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
           </div>
         )}
-        {element.type === 'text' && !isEditing && (
-          <div
-            ref={contentRef}
-            className="slide-text-content"
-            style={{
-              width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
-              color: 'white', padding: '8px 12px', boxSizing: 'border-box',
-              fontFamily: globalFont || undefined,
-              lineHeight: element.lineHeight ?? 1.5,
-              letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
-              wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-            }}
-            dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(element.content, citationLabels)) }}
-          />
-        )}
-        {element.type === 'text' && isEditing && (
-          <EditorContent editor={editor} style={{
-            width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
+        {/* An empty placeholder's outline, as in Google Slides */}
+        {emptyPlaceholder && !isSelected && <div className="placeholder-outline" aria-hidden="true" />}
+        {element.type === 'text' && !isEditing && (() => {
+          const textStyle = {
+            color: 'var(--slide-text, white)', padding: '8px 12px', boxSizing: 'border-box',
+            fontFamily: globalFont || undefined,
+            lineHeight: element.lineHeight ?? 1.5,
+            letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
+            wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
+          }
+          const html = safeHtml(resolveCitationsInHtml(emptyPlaceholder ? withHint(element.content, placeholderHint(element)) : element.content, citationLabels))
+          // Text that shrinks to fit: laid out wider, then scaled (utils/shrinkFit.js)
+          if (isShrink) return (
+            <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+              <div ref={contentRef} className="slide-text-content" style={{ ...textStyle, position: 'relative' }} dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          )
+          return (
+            <div
+              ref={contentRef}
+              className="slide-text-content"
+              style={{ ...textStyle, width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden' }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )
+        })()}
+        {element.type === 'text' && isEditing && (() => {
+          const editorStyle = {
+            color: 'var(--slide-text, white)',
             fontFamily: globalFont || undefined,
             lineHeight: element.lineHeight || undefined,
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-          }} />
-        )}
+          }
+          if (isShrink) return (
+            <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+              <div ref={editFitRef} className="fit-shrink">
+                <EditorContent editor={editor} style={editorStyle} />
+              </div>
+            </div>
+          )
+          return (
+            <EditorContent editor={editor} style={{ ...editorStyle, width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined }} />
+          )
+        })()}
         {element.type === 'image' && (() => {
           const imgFilter = [
             (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
