@@ -5,6 +5,8 @@ import { useRef, useEffect, useState, useCallback, useMemo, useSyncExternalStore
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
+import ContextMenu from './ContextMenu'
+import { SNAP_REF_OPTIONS } from '../utils/snapRef'
 
 // Editor only: hand the slide panel a still of this embed once it has settled,
 // so thumbnails need no second run of the embed's script. Serialising an SVG is
@@ -75,17 +77,6 @@ function highlightCode(code, language) {
   }
 }
 
-const SNAP_REF_OPTIONS = [
-  { id: 'ul', label: 'Upper Left',   fx: 0,   fy: 0   },
-  { id: 'uc', label: 'Upper Center', fx: 0.5, fy: 0   },
-  { id: 'ur', label: 'Upper Right',  fx: 1,   fy: 0   },
-  { id: 'ml', label: 'Middle Left',  fx: 0,   fy: 0.5 },
-  { id: 'mc', label: 'Center',       fx: 0.5, fy: 0.5 },
-  { id: 'mr', label: 'Middle Right', fx: 1,   fy: 0.5 },
-  { id: 'll', label: 'Lower Left',   fx: 0,   fy: 1   },
-  { id: 'lc', label: 'Lower Center', fx: 0.5, fy: 1   },
-  { id: 'lr', label: 'Lower Right',  fx: 1,   fy: 1   },
-]
 
 function snapWithRef(rawX, rawY, w, h, ref, snapFn) {
   const opt = SNAP_REF_OPTIONS.find(o => o.id === ref) || SNAP_REF_OPTIONS[0]
@@ -268,7 +259,7 @@ function getBgStyle(bg) {
   return { backgroundColor: '#1e1e2e' }
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand }) {
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -330,6 +321,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   const selectedElementIdsRef = useRef(selectedElementIds)
   const gridSizeRef = useRef(gridSize)
   const [contextMenu, setContextMenu] = useState(null) // { elementId, x, y }
+  const [canvasMenu, setCanvasMenu] = useState(null) // { x, y }, on the empty slide
+  const closeMenus = useCallback(() => { setContextMenu(null); setCanvasMenu(null) }, [])
   const [cropMode, setCropMode] = useState(null) // { elementId, x, y, w, h }
   const cropDragRef = useRef(null) // { handle, startX, startY, startCrop, elW, elH }
   // The 3D text in tilt mode: double-click it, drag to tilt, Esc when done
@@ -720,13 +713,20 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     if (!el || el.locked || selectedElementIds.length !== 1 || selectedElementIds[0] !== tiltId) setTiltId(null)
   }, [tiltId, selectedElementIds, slide])
 
-  // Close context menu on outside click
-  useEffect(() => {
-    if (!contextMenu) return
-    const close = () => setContextMenu(null)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [contextMenu])
+  // What a double-click, or Edit on the right-click menu, opens
+  const openers = {
+    html: onOpenHtmlEditor, code: onOpenCodeEditor, latex: onOpenLatexEditor, tikz: onOpenTikzEditor,
+    graph: onOpenGraphEditor, equation: onOpenEquationEditor, feynman: onOpenFeynmanEditor,
+    circuit: onOpenCircuitEditor, logic: onOpenLogicEditor, freebody: onOpenFreebodyEditor,
+    venn: onOpenVennEditor, timing: onOpenTimingEditor, geometry: onOpenGeometryEditor, p5: onOpenP5Editor,
+  }
+  const openElement = (element) => {
+    if (element.type === 'text' || element.type === 'textpath') { onStartEdit(element.id); return true }
+    const open = openers[element.type]
+    if (!open) return false
+    open(element.id)
+    return true
+  }
 
   const startElementDrag = (e, elementId, type, handle = null) => {
     if (!canvasRef.current) return
@@ -923,7 +923,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           if (cropMode || drawTool) return
           if (e.target === canvasRef.current) { onToggleSelectElement(null, false); onStopEdit() }
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          if (cropMode || drawTool || editingElementId || !onCanvasCommand) return
+          onToggleSelectElement(null, false)
+          setContextMenu(null)
+          setCanvasMenu({ x: e.clientX, y: e.clientY })
+        }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -1139,27 +1145,16 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             onClick={(e) => { e.stopPropagation(); if (!cropMode && !drawToolRef.current) onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey) }}
             onDoubleClick={(e) => {
               e.stopPropagation()
-              if (element.type === 'text') onStartEdit(element.id)
-              else if (element.type === 'html') onOpenHtmlEditor?.(element.id)
-              else if (element.type === 'code') onOpenCodeEditor?.(element.id)
-              else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
-              else if (element.type === 'tikz') onOpenTikzEditor?.(element.id)
-              else if (element.type === 'graph') onOpenGraphEditor?.(element.id)
-              else if (element.type === 'equation') onOpenEquationEditor?.(element.id)
-              else if (element.type === 'feynman') onOpenFeynmanEditor?.(element.id)
-              else if (element.type === 'circuit') onOpenCircuitEditor?.(element.id)
-              else if (element.type === 'logic') onOpenLogicEditor?.(element.id)
-              else if (element.type === 'freebody') onOpenFreebodyEditor?.(element.id)
-              else if (element.type === 'venn') onOpenVennEditor?.(element.id)
-              else if (element.type === 'timing') onOpenTimingEditor?.(element.id)
-              else if (element.type === 'geometry') onOpenGeometryEditor?.(element.id)
-              else if (element.type === 'p5') onOpenP5Editor?.(element.id)
-              else if (element.type === 'textpath') onStartEdit(element.id)
+              if (openElement(element)) return
               // In and out of tilt mode; its text is edited in the properties panel
-              else if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
+              if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
             }}
             onContextMenu={(e) => {
+              // Text being edited keeps the browser's own menu (spelling, paste)
+              if (editingElementId === element.id) { e.stopPropagation(); return }
               e.preventDefault(); e.stopPropagation()
+              if (!selectedElementIdsRef.current.includes(element.id)) onToggleSelectElement(element.id, false)
+              setCanvasMenu(null)
               setContextMenu({ elementId: element.id, elementType: element.type, x: e.clientX, y: e.clientY })
             }}
             onStopEdit={onStopEdit}
@@ -1316,91 +1311,62 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         )}
       </div>
 
-      {/* Context menu */}
+      {/* Right-click menus: on an element, and on the empty slide */}
       {contextMenu && (() => {
-        const ctxEl = slide?.elements?.find(e => e.id === contextMenu.elementId)
-        const currentRef = ctxEl?.snapRef || 'ul'
+        const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
+        if (!el) return null
+        const id = el.id
+        const command = name => () => onElementCommand?.(name, id)
+        const selected = (slide?.elements || []).filter(e => selectedElementIds.includes(e.id))
+        const all = selected.length ? selected : [el]
+        const copyUrl = () => {
+          const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
+          navigator.clipboard?.writeText(url).catch(() => {})
+        }
+        const resetCrop = () => onUpdateElement(id, {
+          x: el.x + (el.imageOffsetX ?? 0), y: el.y + (el.imageOffsetY ?? 0),
+          width: el.imageW, height: el.imageH,
+          imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null, crop: null,
+        })
+        const editLabel = { text: 'Edit text', textpath: 'Edit text', html: 'Edit HTML', code: 'Edit code', latex: 'Edit LaTeX', graph: 'Edit graph', equation: 'Edit equation', circuit: 'Edit circuit', geometry: 'Edit construction', p5: 'Edit sketch' }[el.type] || 'Edit diagram'
+        const canOpen = el.type === 'text' || el.type === 'textpath' || !!openers[el.type]
         return (
-          <div
-            className="canvas-context-menu"
-            style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button onClick={() => reorderElement(contextMenu.elementId, 'front')}>▲▲ Bring to Front</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'forward')}>▲ Bring Forward</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'backward')}>▼ Send Backward</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'back')}>▼▼ Send to Back</button>
-            <div className="canvas-context-menu-separator" />
-
-            {contextMenu.elementType === 'image' && (<>
-              <button onClick={() => startCrop(contextMenu.elementId)}>
-                ✂ Crop
-              </button>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el && el.imageW != null) {
-                  onUpdateElement(contextMenu.elementId, {
-                    x: el.x + (el.imageOffsetX ?? 0),
-                    y: el.y + (el.imageOffsetY ?? 0),
-                    width: el.imageW,
-                    height: el.imageH,
-                    imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null, crop: null,
-                  })
-                }
-                setContextMenu(null)
-              }}>
-                ↺ Reset crop
-              </button>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el?.src) {
-                  const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
-                  navigator.clipboard.writeText(url)
-                }
-                setContextMenu(null)
-              }}>
-                📋 Copy URL
-              </button>
-              <div className="canvas-context-menu-separator" />
-            </>)}
-            {contextMenu.elementType === 'video' && (<>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el?.src) {
-                  const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
-                  navigator.clipboard.writeText(url)
-                }
-                setContextMenu(null)
-              }}>
-                📋 Copy URL
-              </button>
-              <div className="canvas-context-menu-separator" />
-            </>)}
-            <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', userSelect: 'none' }}>Snap Reference</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, padding: '2px 6px 6px' }}>
-              {SNAP_REF_OPTIONS.map(opt => (
-                <button
-                  key={opt.id}
-                  title={opt.label}
-                  style={{
-                    padding: '5px 4px', fontSize: 11, background: currentRef === opt.id ? 'var(--accent)' : 'var(--bg-hover)',
-                    border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onClick={() => {
-                    onUpdateElement(contextMenu.elementId, { snapRef: opt.id })
-                    setContextMenu(null)
-                  }}
-                >
-                  {opt.id === 'ul' ? '↖' : opt.id === 'uc' ? '↑' : opt.id === 'ur' ? '↗' :
-                   opt.id === 'ml' ? '←' : opt.id === 'mc' ? '⊕' : opt.id === 'mr' ? '→' :
-                   opt.id === 'll' ? '↙' : opt.id === 'lc' ? '↓' : '↘'}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={closeMenus} label="Element" items={[
+            { label: 'Cut', shortcut: 'Mod+X', action: command('cut') },
+            { label: 'Copy', shortcut: 'Mod+C', action: command('copy') },
+            { label: 'Paste', shortcut: 'Mod+V', action: command('paste') },
+            { label: 'Duplicate', shortcut: 'Mod+D', action: command('duplicate') },
+            { label: 'Delete', shortcut: 'Delete', action: command('delete') },
+            '-',
+            canOpen && { label: editLabel, action: () => openElement(el) },
+            el.type === 'image' && { label: 'Crop', action: () => startCrop(id) },
+            el.type === 'image' && el.imageW != null && { label: 'Reset crop', action: resetCrop },
+            el.type === 'image' && { label: 'Replace image\u2026', action: command('replace-image') },
+            (el.type === 'image' || el.type === 'video') && el.src && { label: 'Copy URL', action: copyUrl },
+            '-',
+            { label: 'Bring to front', action: () => reorderElement(id, 'front') },
+            { label: 'Bring forward', action: () => reorderElement(id, 'forward') },
+            { label: 'Send backward', action: () => reorderElement(id, 'backward') },
+            { label: 'Send to back', action: () => reorderElement(id, 'back') },
+            '-',
+            selected.length >= 2 && { label: 'Group', shortcut: 'Mod+G', action: command('group') },
+            all.some(e => e.groupId) && { label: 'Ungroup', shortcut: 'Mod+Shift+G', action: command('ungroup') },
+            all.every(e => e.locked)
+              ? { label: 'Unlock', action: command('unlock') }
+              : { label: 'Lock', action: command('lock') },
+          ]} />
         )
       })()}
+      {canvasMenu && (
+        <ContextMenu x={canvasMenu.x} y={canvasMenu.y} onClose={closeMenus} label="Slide" items={[
+          { label: 'Paste', shortcut: 'Mod+V', action: () => onCanvasCommand('paste') },
+          { label: 'Select all', shortcut: 'Mod+A', action: () => onCanvasCommand('select-all'), disabled: !slide?.elements?.length },
+          '-',
+          { label: 'Background\u2026', action: () => onCanvasCommand('background') },
+          { label: 'Grid', checked: !!showGrid, action: () => onCanvasCommand('toggle-grid') },
+          { label: 'Rulers', checked: !!showRulers, action: () => onCanvasCommand('toggle-rulers') },
+        ]} />
+      )}
     </div>
   )
 }

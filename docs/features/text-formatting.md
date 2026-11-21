@@ -7,8 +7,12 @@ Parallax uses [TipTap](https://tiptap.dev/) as its rich text engine, giving you 
 Double-click any text element to enter editing mode. The toolbar then shows the **formatting tools** in place of the insert tools, and Undo and Redo undo your typing. Press `Escape` to finish; the insert tools come back. Less-used formatting is under the toolbar's **More** menu.
 
 ::: tip
-You can also single-click a text element to select it, then press `Enter` to start editing.
+You can also single-click a text element to select it, then press `Enter` or `F2`, or just start typing, to edit it.
 :::
+
+## Formatting a whole text box
+
+Click a text box once to select it without editing it. The toolbar then shows the formatting tools, and what you pick applies to all of its text: font, size, bold, color, alignment, lists and the rest. `Ctrl+B`, `Ctrl+I` and `Ctrl+U` do the same for every selected text box. Click the empty slide to get the insert tools back.
 
 ## Headings
 

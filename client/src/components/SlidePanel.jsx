@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react'
+import ContextMenu from './ContextMenu'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
@@ -207,13 +208,16 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
   const itemRefs = useRef([])
+  // The right-click menu on a slide: { index, x, y }
+  const [menu, setMenu] = useState(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   const columns = useMemo(() => buildColumns(slides), [slides])
   const is2D = slides.some(s => s.column !== undefined)
@@ -267,13 +271,61 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     itemRefs.current[currentIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [currentIndex])
 
+  function openMenu(e, index) {
+    e.preventDefault()
+    if (!(isMultiSelect && selectedIndices.includes(index)) && index !== currentIndex) onSelect(index)
+    setMenu({ index, x: e.clientX, y: e.clientY })
+  }
+
+  const slideMenu = menu && slides[menu.index] && (() => {
+    const { index } = menu
+    const many = isMultiSelect && selectedIndices.includes(index)
+    return (
+      <ContextMenu x={menu.x} y={menu.y} onClose={closeMenu} label="Slide" items={[
+        onNewSlideAfter && { label: 'New slide', shortcut: 'Mod+M', action: () => onNewSlideAfter(index) },
+        { label: 'Duplicate slide', shortcut: 'Mod+D', action: () => onDuplicate(index) },
+        many
+          ? { label: `Delete ${selectedIndices.length} slides`, shortcut: 'Delete', action: () => onDeleteMultiple?.(selectedIndices), disabled: !onDeleteMultiple || selectedIndices.length >= slides.length }
+          : { label: 'Delete slide', shortcut: 'Delete', action: () => onDelete(index), disabled: slides.length <= 1 },
+        '-',
+        onBackground && { label: 'Background\u2026', action: () => onBackground(index) },
+        // Moving to the ends of a deck of columns isn't one place
+        !is2D && '-',
+        !is2D && { label: 'Move to start', action: () => onMove(index, 0), disabled: index === 0 },
+        !is2D && { label: 'Move to end', action: () => onMove(index, slides.length - 1), disabled: index === slides.length - 1 },
+      ]} />
+    )
+  })()
+
   const currentColNum = slides[currentIndex]?.column ?? (is2D ? 0 : currentIndex)
   const currentColIdx = columns.findIndex(c => c.colNum === currentColNum)
+
+  // Delete, Ctrl+D and Enter act on the slide the list has selected
+  function deleteSelected() {
+    if (isMultiSelect && onDeleteMultiple) onDeleteMultiple(selectedIndices)
+    else if (slides.length > 1) onDelete(currentIndex)
+  }
 
   function handleKeyDown(e) {
     if (e.key === 'Escape' && isMultiSelect) {
       e.preventDefault()
       onSelect(currentIndex)
+      return
+    }
+    if (currentIndex >= slides.length) return
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      deleteSelected()
+      return
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      onDuplicate(currentIndex)
+      return
+    }
+    if (e.key === 'Enter' && onNewSlideAfter) {
+      e.preventDefault()
+      onNewSlideAfter(currentIndex)
       return
     }
     if (is2D) {
@@ -311,6 +363,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     // ── 1D layout (original) ──────────────────────────────────────────────────
     return (
       <div className="slide-panel">
+        {slideMenu}
         <div className="slide-panel-header">
           {viewSwitch || <span>Slides</span>}
           <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
@@ -351,6 +404,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
               onDrop={e => { e.preventDefault(); handleDrop(index) }}
               onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
               onClick={e => { handleItemClick(e, index); listRef.current?.focus() }}
+              onContextMenu={e => openMenu(e, index)}
             >
               {isGrouped && (
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
@@ -416,6 +470,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
   // ── 2D layout ──────────────────────────────────────────────────────────────
   return (
     <div className="slide-panel" style={{ width: Math.min(columns.length * (THUMB_W + 28) + 20, 480), maxWidth: '45vw', minWidth: 200 }}>
+      {slideMenu}
       <div className="slide-panel-header">
         {viewSwitch || <span>Slides</span>}
         <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
@@ -496,6 +551,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onDrop={e => { e.preventDefault(); handleDrop(flatIndex, colNum) }}
                   onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
                   onClick={e => handleItemClick(e, flatIndex)}
+                  onContextMenu={e => openMenu(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
                   <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useRef, useMemo } from 'react'
+import { SNAP_REF_OPTIONS } from '../utils/snapRef'
 import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
@@ -545,6 +546,21 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               style={{ accentColor: 'var(--accent)' }} />
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedElement.locked ? '🔒' : '🔓'} Lock element</span>
           </label>
+
+          {/* The point of the element that snaps to the grid and guides */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="The point of the element that snaps to the grid and guides">Anchor point</span>
+            <div role="radiogroup" aria-label="Anchor point" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 16px)', gap: 2 }}>
+              {SNAP_REF_OPTIONS.map(opt => {
+                const on = (selectedElement.snapRef || 'ul') === opt.id
+                return (
+                  <button key={opt.id} type="button" role="radio" aria-checked={on} aria-label={opt.label} title={opt.label}
+                    onClick={() => onUpdateElement({ snapRef: opt.id })}
+                    style={{ width: 16, height: 16, padding: 0, borderRadius: 3, border: '1px solid var(--border)', background: on ? 'var(--accent)' : 'var(--bg-hover)', cursor: 'pointer' }} />
+                )
+              })}
+            </div>
+          </div>
 
           {/* HTML embed options */}
           {selectedElement.type === 'html' && (

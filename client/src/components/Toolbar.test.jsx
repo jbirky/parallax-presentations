@@ -80,4 +80,28 @@ describe('Toolbar', () => {
     expect(editor.calls).toContain('toggleCodeBlock')
     expect(el.querySelector('[role="menu"]')).toBeNull()
   })
+
+  it('formats a whole selected box: no inserting into the text, and the presentation\u2019s Undo', async () => {
+    const box = { ...fakeEditor(), wholeBox: true }
+    const onUndo = vi.fn()
+    await render({ editor: box, wholeBox: true, canUndo: true, onUndo })
+    expect(titled('Bold')).toHaveLength(1)
+    expect(titled('Table')).toHaveLength(0)
+    expect(titled('Add link')).toHaveLength(0)
+    expect(titled('Insert inline math ($\u2026$)')).toHaveLength(0)
+    expect(el.textContent).not.toContain('Double-click a text box to edit')
+    await click(titled('Undo (Ctrl+Z)')[0])
+    expect(onUndo).toHaveBeenCalled()
+    await click(titled('More formatting')[0])
+    const items = [...el.querySelectorAll('[role="menu"] button')].map(b => b.textContent.trim())
+    expect(items).not.toContain('Image in text')
+  })
+
+  it('opens the background popup when a menu asks', async () => {
+    const slide = { id: 's1', elements: [], background: { type: 'color', color: '#1e1e2e' } }
+    await render({ editor: null, slide, onUpdateSlide: () => {}, bgRequest: 0 })
+    expect(el.querySelector('.bg-type-tab')).toBeNull()
+    await act(async () => root.render(<Toolbar onAddText={() => {}} onAddImage={() => {}} onAddShape={() => {}} editor={null} slide={slide} onUpdateSlide={() => {}} bgRequest={1} />))
+    expect(el.querySelector('.bg-type-tab')).toBeTruthy()
+  })
 })

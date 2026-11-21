@@ -37,9 +37,8 @@ To change the font size:
 
 ## 4. Adding a new slide
 
-1. In the **slide panel** on the left, click the **+** button at the bottom, or right-click an existing slide and choose **Add Slide After**.
-2. A new blank slide appears.
-3. Click the new slide thumbnail to navigate to it.
+1. In the **slide panel** on the left, click **Add Slide** at the bottom and pick a layout. You can also press `Ctrl+M`, or right-click a slide and choose **New slide**.
+2. The new slide appears right after the one you were on, and opens.
 
 ## 5. Adding a text box and an image
 

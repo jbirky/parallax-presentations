@@ -265,9 +265,12 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .canvas-area::-webkit-scrollbar-track { background: #111; }
 .canvas-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .slide-canvas { position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.6); border-radius: 4px; overflow: hidden; }
-.canvas-context-menu { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 6px; padding: 4px; min-width: 140px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
-.canvas-context-menu button { display: block; width: 100%; text-align: left; padding: 7px 12px; font-size: 13px; border-radius: 4px; color: var(--text-primary); cursor: pointer; background: none; border: none; }
-.canvas-context-menu button:hover { background: var(--bg-hover); }
+.canvas-context-menu { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 6px; padding: 4px; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.canvas-context-menu button { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; text-align: left; padding: 6px 12px; font-size: 13px; border-radius: 4px; color: var(--text-primary); cursor: pointer; background: none; border: none; white-space: nowrap; }
+.canvas-context-menu button:hover:not(:disabled) { background: var(--bg-hover); }
+.canvas-context-menu button:disabled { color: var(--text-muted); cursor: default; }
+.canvas-context-menu .menu-shortcut { font-size: 11px; color: var(--text-muted); }
+.canvas-context-menu .menu-check { display: inline-block; width: 16px; }
 .canvas-context-menu-separator { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* TipTap editor inside slide */

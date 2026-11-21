@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users, Keyboard } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -24,6 +24,9 @@ import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
 import { reorderSlides } from '../utils/slideReorder'
+import { nextLayoutKey, newSlideIndex, nudgeFor, typesCharacter } from '../utils/slideEditing'
+import { writeElements, readElements, elementsFromHtml, sanitizePastedHtml, textToHtml, placePasted } from '../utils/elementClipboard'
+import { createWholeBoxEditor, toggleMarkAcross } from '../utils/wholeBoxEditor'
 import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
@@ -31,6 +34,8 @@ import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
 import Toolbar from '../components/Toolbar'
 import HeaderTools from '../components/HeaderTools'
+import KeyboardShortcuts from '../components/KeyboardShortcuts'
+import { keyLabel } from '../utils/shortcuts'
 import SlidePanel from '../components/SlidePanel'
 import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import PracticeRunsModal from '../components/PracticeRunsModal'
@@ -85,7 +90,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
+import { renewSlideIds, renewElementIds, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import BeamerImportModal from '../components/BeamerImportModal'
 import { isDarkColor } from '../utils/beamerSlides'
@@ -163,6 +168,10 @@ const SLIDE_TEMPLATES = {
   title: { label: 'Title Slide', elements: [
     { type: 'text', x: 60, y: 170, width: 840, height: 96, sizeMode: 'auto', zIndex: 1, content: '<h2 style="text-align:center">Presentation Title</h2>' },
     { type: 'text', x: 120, y: 282, width: 720, height: 80, sizeMode: 'auto', zIndex: 2, content: '<p style="text-align:center">Subtitle or author name</p>' },
+  ]},
+  'title-content': { label: 'Title and Content', elements: [
+    { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
+    { type: 'text', x: 40, y: 140, width: 880, height: 360, zIndex: 2, content: '<ul><li><p>First point</p></li><li><p>Second point</p></li></ul>' },
   ]},
   'two-column': { label: 'Two Column', elements: [
     { type: 'text', x: 40, y: 40, width: 880, height: 96, zIndex: 1, content: '<h2>Title</h2>' },
@@ -285,6 +294,31 @@ const SLIDE_TEMPLATES = {
   },
 }
 
+// The text editor's extensions: for editing a text box, and for formatting a
+// selected one as a whole (utils/wholeBoxEditor.js)
+const textExtensions = () => [
+  StarterKit,
+  Underline,
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Color,
+  TextStyle,
+  Link.configure({ openOnClick: false }),
+  Image.configure({ inline: false }),
+  Placeholder.configure({ placeholder: 'Click to start typing...' }),
+  MathNode,
+  CitationNode,
+  BlockStyle,
+  FontFamily,
+  FontSize,
+  FontWeight,
+  LineHeight,
+  Highlight.configure({ multicolor: true }),
+  Table.configure({ resizable: false }),
+  TableRow,
+  TableHeader,
+  TableCell,
+]
+
 // An element with `updates`, or, while one of its states is being recorded
 // (`recording`), with what a state can change going into that state
 const editElement = (recording, el, updates) =>
@@ -327,7 +361,15 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const selectedElementId = selectedElementIds[selectedElementIds.length - 1] ?? null
   const [showGrid, setShowGrid] = useState(false)
   const [gridSize, setGridSize] = useState(40) // synced to presentation.gridSize when changed
-  const [clipboard, setClipboard] = useState(null)
+  // The last elements copied in this tab, for Paste on the menus when the
+  // browser won't let the page read the system clipboard
+  const clipboardRef = useRef(null)
+  // Pastes onto the slide a copy came from, each stepping further
+  const pasteCountRef = useRef(0)
+  const addSlideAfterRef = useRef(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  // Background… on a menu opens the toolbar's background popup
+  const [bgRequest, setBgRequest] = useState(0)
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
@@ -867,28 +909,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // TipTap editor
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Color,
-      TextStyle,
-      Link.configure({ openOnClick: false }),
-      Image.configure({ inline: false }),
-      Placeholder.configure({ placeholder: 'Click to start typing...' }),
-      MathNode,
-      CitationNode,
-      BlockStyle,
-      FontFamily,
-      FontSize,
-      FontWeight,
-      LineHeight,
-      Highlight.configure({ multicolor: true }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell
-    ],
+    extensions: textExtensions(),
     content: '',
     onUpdate: ({ editor }) => {
       // Don't trigger if we're setting content programmatically
@@ -2236,7 +2257,9 @@ function draw() {
     setSelectedElementIds([newEl.id])
   }, [])
 
-  const startEditingElement = useCallback((elementId) => {
+  // Editing a text box: where a click put it, at the end of its text
+  // (caret: 'end'), or with a typed character added there (insert)
+  const startEditingElement = useCallback((elementId, { caret = null, insert = null } = {}) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'text' || heldByOther(elementId)) return
     setEditingElementId(elementId)
@@ -2246,7 +2269,11 @@ function draw() {
     // With its citations' labels as the index has them now
     editor?.commands.setContent(resolveCitationsInHtml(element.content || '', citationIndex.labelByKey), false)
     settingContent.current = false
-    setTimeout(() => editor?.commands.focus(), 10)
+    setTimeout(() => {
+      if (!editor) return
+      if (insert) editor.chain().focus('end').command(({ tr }) => { tr.insertText(insert); return true }).run()
+      else editor.commands.focus(caret || undefined)
+    }, 10)
   }, [presentation, editor, citationIndex])
 
   const stopEditingElement = useCallback(() => {
@@ -2303,77 +2330,6 @@ function draw() {
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [recording])
 
-  // Cut / copy / paste / duplicate keyboard shortcuts
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        if (drawTool) { setDrawTool(null); e.preventDefault(); return }
-        if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
-        if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
-      }
-      if (editingElementId) return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      // Typing elsewhere, as in the outline, which has its own undo keys
-      if (document.activeElement?.isContentEditable) return
-      const ctrl = e.ctrlKey || e.metaKey
-      if (!ctrl) return
-      const element = selectedElementId
-        ? presentation?.slides[currentSlideIndex]?.elements?.find(el => el.id === selectedElementId)
-        : null
-      // How far down and across a pasted or duplicated element can go: the
-      // canvas, or the screen when it's pinned
-      const bottomOf = el => isPinned(el) ? slideH : getCanvasHeight(presentation?.slides[currentSlideIndex], slideH)
-      const rightOf = el => isPinned(el) ? slideW : getCanvasWidth(presentation?.slides[currentSlideIndex], slideW, slideH)
-      if (e.key === 'f') {
-        setShowFindReplace(v => !v)
-        e.preventDefault()
-        return
-      }
-      if (e.key === 'c' && element) {
-        setClipboard({ ...element })
-        e.preventDefault()
-      } else if (e.key === 'x' && element) {
-        setClipboard({ ...element })
-        deleteElement(selectedElementId)
-        e.preventDefault()
-      } else if (e.key === 'v' && clipboard) {
-        const newEl = {
-          ...copyElement(clipboard, crypto.randomUUID()),
-          x: Math.min((clipboard.x || 0) + 20, rightOf(clipboard) - (clipboard.width || 100)),
-          y: Math.min((clipboard.y || 0) + 20, bottomOf(clipboard) - (clipboard.height || 100))
-        }
-        setPresentation(prev => ({
-          ...prev,
-          slides: prev.slides.map((s, i) =>
-            i === currentSlideIndex ? { ...s, elements: [...s.elements, newEl] } : s
-          )
-        }))
-        setSelectedElementIds([newEl.id])
-        e.preventDefault()
-      } else if (e.key === 'd' && element) {
-        const newEl = {
-          ...copyElement(element, crypto.randomUUID()),
-          x: Math.min((element.x || 0) + 20, rightOf(element) - (element.width || 100)),
-          y: Math.min((element.y || 0) + 20, bottomOf(element) - (element.height || 100))
-        }
-        setPresentation(prev => ({
-          ...prev,
-          slides: prev.slides.map((s, i) =>
-            i === currentSlideIndex ? { ...s, elements: [...s.elements, newEl] } : s
-          )
-        }))
-        setSelectedElementIds([newEl.id])
-        e.preventDefault()
-      } else if (e.key === 'z' && !e.shiftKey) {
-        doUndo(); e.preventDefault()
-      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
-        doRedo(); e.preventDefault()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [selectedElementId, selectedElementIds, editingElementId, clipboard, presentation, currentSlideIndex, deleteElement, stopEditingElement, doUndo, doRedo, drawTool])
 
   // Inject hljs theme CSS into the document head for the editor preview
   useEffect(() => {
@@ -2527,6 +2483,301 @@ function draw() {
     })
   }, [])
 
+  // What's selected on the current slide, in the slide's order
+  const selectedOnSlide = useCallback(() => {
+    const ids = selectedElementIdsRef.current
+    return (presentation?.slides[currentSlideIndexRef.current]?.elements || []).filter(el => ids.includes(el.id))
+  }, [presentation])
+
+  // Elements onto the current slide, on top of what's there, selected:
+  // pasted (copied from the slide `slideId`) or duplicated. On the slide
+  // they came from, each paste steps down and to the right.
+  const pasteElements = useCallback(({ slideId, elements }) => {
+    if (!elements?.length) return
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    if (!slide) return
+    const here = new Set((slide.elements || []).map(el => el.id))
+    const sameSlide = slide.id === slideId && elements.some(el => here.has(el.id))
+    const pastes = sameSlide ? ++pasteCountRef.current : 0
+    const top = Math.max(0, ...(slide.elements || []).map(el => el.zIndex || 0))
+    const lowest = Math.min(...elements.map(el => el.zIndex || 1))
+    // New ids, links between them following, and groups of their own
+    const groups = new Map()
+    const groupOf = id => { if (!groups.has(id)) groups.set(id, crypto.randomUUID()); return groups.get(id) }
+    const renewed = renewElementIds(elements, () => crypto.randomUUID()).map(el => ({
+      ...el,
+      zIndex: (el.zIndex || 1) - lowest + top + 1,
+      ...(el.groupId ? { groupId: groupOf(el.groupId) } : {}),
+    }))
+    const placed = placePasted(renewed, { sameSlide, pastes, width: getCanvasWidth(slide, slideW, slideH), height: getCanvasHeight(slide, slideH) })
+    setPresentation(prev => prev && ({
+      ...prev,
+      slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...placed] } : s),
+    }))
+    setSelectedElementIds(placed.map(el => el.id))
+  }, [presentation, slideW, slideH])
+
+  // A copy of what's selected: for Paste on the menus, and, given a copy
+  // event's clipboard, for pasting here, in another tab or presentation, or
+  // as text in another app
+  const copySelection = useCallback((dataTransfer = null) => {
+    const elements = selectedOnSlide()
+    if (!elements.length) return false
+    const slideId = presentation?.slides[currentSlideIndexRef.current]?.id ?? null
+    clipboardRef.current = { slideId, elements }
+    pasteCountRef.current = 0
+    if (dataTransfer) writeElements(dataTransfer, elements, slideId)
+    return true
+  }, [presentation, selectedOnSlide])
+
+  const duplicateSelection = useCallback(() => {
+    const elements = selectedOnSlide()
+    if (!elements.length) return
+    pasteCountRef.current = 0
+    pasteElements({ slideId: presentation?.slides[currentSlideIndexRef.current]?.id, elements })
+  }, [presentation, selectedOnSlide, pasteElements])
+
+  // Text from another app, as a text box; a long text in smaller type
+  const pasteText = useCallback((html, length = 0) => {
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    if (!html || !slide) return
+    const content = length > 120 ? html.replace(/<(p|li)>/g, '<$1 style="font-size: 24px">') : html
+    const width = Math.min(720, slideW - 80)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'text', sizeMode: 'auto',
+      x: Math.round((slideW - width) / 2), y: 120, width, height: 120,
+      zIndex: Math.max(0, ...(slide.elements || []).map(el => el.zIndex || 0)) + 1,
+      content,
+    }
+    setPresentation(prev => prev && ({
+      ...prev,
+      slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s),
+    }))
+    setSelectedElementIds([newEl.id])
+  }, [presentation, slideW])
+
+  // An image from the clipboard, uploaded as a dropped one is
+  const pasteImage = useCallback(async (file) => {
+    try {
+      const result = await api.uploadFile(file)
+      if (result.url) addImageElement(result.url)
+    } catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+  }, [addImageElement, showNotice])
+
+  // A paste event's clipboard: elements copied from Parallax, an image, or
+  // text. Whether there was something to paste.
+  const pasteFromClipboard = useCallback((data) => {
+    const own = readElements(data)
+    if (own) { pasteElements(own); return true }
+    const image = [...(data.files || [])].find(f => f.type.startsWith('image/'))
+    if (image) { pasteImage(image); return true }
+    const html = data.getData('text/html')
+    const text = data.getData('text/plain')
+    const content = html ? sanitizePastedHtml(html) : textToHtml(text)
+    if (!content) return false
+    pasteText(content, text.length)
+    return true
+  }, [pasteElements, pasteImage, pasteText])
+
+  // Paste on a menu: what's on the system clipboard, where the browser lets
+  // the page read it, else the last copy made in this tab
+  const pasteFromMenu = useCallback(async () => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const image = item.types.find(t => t.startsWith('image/'))
+        if (image) { await pasteImage(new File([await item.getType(image)], 'pasted-image', { type: image })); return }
+        if (item.types.includes('text/html')) {
+          const html = await (await item.getType('text/html')).text()
+          const own = elementsFromHtml(html)
+          if (own) { pasteElements(own); return }
+          const content = sanitizePastedHtml(html)
+          if (content) { pasteText(content, content.length); return }
+        }
+        if (item.types.includes('text/plain')) {
+          const text = await (await item.getType('text/plain')).text()
+          if (text) { pasteText(textToHtml(text), text.length); return }
+        }
+      }
+    } catch {
+      if (clipboardRef.current) { pasteElements(clipboardRef.current); return }
+      showNotice('To paste from another app, press Ctrl+V')
+    }
+  }, [pasteElements, pasteImage, pasteText, showNotice])
+
+  // Copy and Cut on a menu: the copy event the browser fires puts the copy
+  // on the system clipboard; where it doesn't, the copy stays in this tab
+  const copyFromMenu = useCallback((cut = false) => {
+    let copied = false
+    try { copied = document.execCommand('copy') } catch { /* refused */ }
+    if (!copied) copySelection()
+    if (cut) deleteSelectedElements()
+  }, [copySelection, deleteSelectedElements])
+
+  // Arrow keys: what's selected moves by `dx`, `dy`, onto the grid when it's
+  // on; what's locked or open in someone else's editor stays put
+  const nudgeSelection = useCallback(({ dx, dy }) => {
+    const grid = showGrid ? gridSize : 0
+    const to = (v, d) => (!d ? v : grid ? Math.round((v + d) / grid) * grid : v + d)
+    const movable = selectedOnSlide().filter(el => !el.locked && !editorOf(peersRef.current, el.id))
+    if (!movable.length) return
+    updateElements(movable.map(el => ({ id: el.id, x: to(el.x || 0, dx), y: to(el.y || 0, dy) })))
+  }, [showGrid, gridSize, selectedOnSlide, updateElements])
+
+  // Ctrl+B, Ctrl+I, Ctrl+U on selected text boxes: all of their text
+  const formatSelectedText = useCallback((key) => {
+    const mark = { b: 'bold', i: 'italic', u: 'underline' }[key]
+    const texts = selectedOnSlide().filter(el => el.type === 'text' && !editorOf(peersRef.current, el.id))
+    if (!mark || !texts.length) return false
+    const htmls = toggleMarkAcross(textExtensions(), texts.map(el => resolveCitationsInHtml(el.content || '', citationIndex.labelByKey)), mark)
+    updateElements(texts.map((el, i) => ({ id: el.id, content: htmls[i] })))
+    return true
+  }, [selectedOnSlide, updateElements, citationIndex])
+
+  // The keys PowerPoint, Keynote and Google Slides users bring, on the slide
+  // (utils/shortcuts.js lists them for the Ctrl+/ sheet)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (drawTool) { setDrawTool(null); e.preventDefault(); return }
+        if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
+        if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
+      }
+      if (editingElementIdRef.current) return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // Typing elsewhere, as in the outline, which has its own undo keys
+      if (document.activeElement?.isContentEditable) return
+      // A key the slide list took
+      if (e.defaultPrevented) return
+      const ctrl = e.ctrlKey || e.metaKey
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      const slide = presentation?.slides[currentSlideIndex]
+      const selected = (slide?.elements || []).filter(el => selectedElementIds.includes(el.id))
+      const inSlideList = !!document.activeElement?.closest?.('.slide-panel')
+
+      if (ctrl && !e.altKey) {
+        if (key === 'z' && !e.shiftKey) { doUndo(); e.preventDefault(); return }
+        if (key === 'y' || (key === 'z' && e.shiftKey)) { doRedo(); e.preventDefault(); return }
+        if (key === 'f') { setShowFindReplace(v => !v); e.preventDefault(); return }
+        if (key === 'm') { addSlideAfterRef.current?.(); e.preventDefault(); return }
+        if (key === '/') { setShowShortcuts(v => !v); e.preventDefault(); return }
+        if (inSlideList) return
+        if (key === 'a') { setSelectedElementIds((slide?.elements || []).map(el => el.id)); e.preventDefault(); return }
+        if (!selected.length) return
+        if (key === 'd') { duplicateSelection(); e.preventDefault(); return }
+        if (key === 'g') { if (e.shiftKey) ungroupElements(); else groupElements(); e.preventDefault(); return }
+        if (['b', 'i', 'u'].includes(key) && !e.shiftKey && formatSelectedText(key)) e.preventDefault()
+        return
+      }
+      if (e.altKey || inSlideList || !selected.length) return
+      const move = nudgeFor(e.key, { shift: e.shiftKey, grid: showGrid, gridSize })
+      if (move) { nudgeSelection(move); e.preventDefault(); return }
+      // Typing on a selected text box edits it, at the end of its text, as do
+      // Enter and F2
+      const box = selected.length === 1 && selected[0].type === 'text' && !selected[0].locked ? selected[0] : null
+      if (!box) return
+      if (e.key === 'Enter' || e.key === 'F2') { startEditingElement(box.id, { caret: 'end' }); e.preventDefault() }
+      else if (typesCharacter(e)) { startEditingElement(box.id, { insert: e.key }); e.preventDefault() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedElementIds, editingElementId, presentation, currentSlideIndex, stopEditingElement, startEditingElement, doUndo, doRedo, drawTool, showGrid, gridSize, duplicateSelection, groupElements, ungroupElements, formatSelectedText, nudgeSelection])
+
+  // Copy, cut and paste with the system clipboard, from the keys or the
+  // browser's own menu; not while text is being typed or is selected
+  useEffect(() => {
+    const typing = () => {
+      if (editingElementIdRef.current) return true
+      const active = document.activeElement
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(active?.tagName) || !!active?.isContentEditable
+    }
+    const textSelected = () => String(window.getSelection?.() || '').length > 0
+    const onCopy = e => {
+      if (typing() || textSelected() || !e.clipboardData) return
+      if (copySelection(e.clipboardData)) e.preventDefault()
+    }
+    const onCut = e => {
+      if (typing() || textSelected() || !e.clipboardData) return
+      if (copySelection(e.clipboardData)) { e.preventDefault(); deleteSelectedElements() }
+    }
+    const onPaste = e => {
+      if (typing() || !e.clipboardData) return
+      if (pasteFromClipboard(e.clipboardData)) e.preventDefault()
+    }
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCut)
+    document.addEventListener('paste', onPaste)
+    return () => {
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCut)
+      document.removeEventListener('paste', onPaste)
+    }
+  }, [copySelection, deleteSelectedElements, pasteFromClipboard])
+
+  // A selected text box, formatted as a whole from the toolbar
+  // (utils/wholeBoxEditor.js)
+  const boxElement = !editingElementId && selectedElementIds.length === 1
+    ? (currentSlide?.elements?.find(el => el.id === selectedElementIds[0] && el.type === 'text') ?? null)
+    : null
+  const [boxEditor, setBoxEditor] = useState(null)
+  useEffect(() => {
+    if (!boxElement) { setBoxEditor(null); return }
+    const id = boxElement.id
+    const box = createWholeBoxEditor(textExtensions(), resolveCitationsInHtml(boxElement.content || '', citationIndex.labelByKey), html => {
+      if (heldByOther(id)) return
+      updateElement(id, { content: html })
+    })
+    setBoxEditor(box)
+    return () => box.destroy()
+  }, [boxElement?.id, boxElement?.content]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background… on a menu: the background popup, for the slide at `index`
+  const openBackground = (index = null) => {
+    if (index !== null && index !== currentSlideIndex) setCurrentSlideIndex(index)
+    stopEditingElement()
+    setSelectedElementIds([])
+    setBgRequest(n => n + 1)
+  }
+
+  // Replace image… on an image's menu: another file in its place
+  const replaceImage = (id) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const result = await api.uploadFile(file)
+        if (result.url) updateElement(id, { src: result.url, crop: null, imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null })
+      } catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+    }
+    input.click()
+  }
+
+  // An element's right-click menu, for what's selected (the element
+  // right-clicked is)
+  const elementCommand = (command, id) => {
+    if (command === 'cut') copyFromMenu(true)
+    else if (command === 'copy') copyFromMenu(false)
+    else if (command === 'paste') pasteFromMenu()
+    else if (command === 'duplicate') duplicateSelection()
+    else if (command === 'delete') deleteSelectedElements()
+    else if (command === 'group') groupElements()
+    else if (command === 'ungroup') ungroupElements()
+    else if (command === 'lock' || command === 'unlock') updateElements(selectedOnSlide().map(el => ({ id: el.id, locked: command === 'lock' })))
+    else if (command === 'replace-image') replaceImage(id)
+  }
+
+  // The empty slide's right-click menu
+  const canvasCommand = (command) => {
+    if (command === 'paste') pasteFromMenu()
+    else if (command === 'select-all') setSelectedElementIds((currentSlide?.elements || []).map(el => el.id))
+    else if (command === 'background') openBackground()
+    else if (command === 'toggle-grid') setShowGrid(v => !v)
+    else if (command === 'toggle-rulers') setShowRulers(v => !v)
+  }
+
   // Helper: build a map of colNum → flat indices within that column
   const getColumnsMap = (slides) => {
     const colMap = {}
@@ -2538,14 +2789,17 @@ function draw() {
     return colMap
   }
 
-  const addSlide = (templateKey = null, targetColNum = null) => {
+  // A slide from the layout `templateKey`, right after the slide at
+  // `afterIndex` (the current one), as PowerPoint, Keynote and Google Slides
+  // add it. In a deck of columns, a slide for another column (`targetColNum`)
+  // goes at the end of that column.
+  const addSlide = (templateKey = null, targetColNum = null, afterIndex = currentSlideIndex) => {
     const is2D = presentation.slides.some(s => s.column !== undefined)
-    // Determine which column to add to
     const colNum = targetColNum !== null
       ? targetColNum
       : is2D
-        ? (presentation.slides[currentSlideIndex]?.column ?? 0)
-        : null // 1D mode: append at end
+        ? (presentation.slides[afterIndex]?.column ?? 0)
+        : null
 
     const template = templateKey && SLIDE_TEMPLATES[templateKey] ? SLIDE_TEMPLATES[templateKey] : null
     const baseElements = template
@@ -2554,31 +2808,30 @@ function draw() {
     const newSlide = {
       id: crypto.randomUUID(),
       ...(colNum !== null ? { column: colNum } : {}),
+      // Which layout it came from, for the next new slide to follow
+      ...(template ? { layout: templateKey } : {}),
       elements: baseElements,
       notes: '',
       background: { type: 'color', color: '#1e1e2e' },
       ...(template?.layoutGrid ? { layoutGrid: { ...template.layoutGrid } } : {}),
       ...(template?.axisLines ? { axisLines: template.axisLines.map(a => ({ ...a, id: crypto.randomUUID() })) } : {}),
     }
-
-    if (colNum === null || !is2D) {
-      // 1D: append at end
-      setPresentation(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
-      setCurrentSlideIndex(presentation.slides.length)
-    } else {
-      // 2D: insert after the last slide in this column
-      const colMap = getColumnsMap(presentation.slides)
-      const colSlides = colMap[colNum] || []
-      const insertAfterIdx = colSlides.length > 0 ? colSlides[colSlides.length - 1] : presentation.slides.length - 1
-      const newFlatIndex = insertAfterIdx + 1
-      setPresentation(prev => {
-        const slides = [...prev.slides]
-        slides.splice(newFlatIndex, 0, newSlide)
-        return { ...prev, slides }
-      })
-      setCurrentSlideIndex(newFlatIndex)
-    }
+    const index = newSlideIndex(presentation.slides, afterIndex, is2D ? colNum : null)
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      slides.splice(index, 0, newSlide)
+      return { ...prev, slides }
+    })
+    setCurrentSlideIndex(index)
   }
+
+  // A slide after the one at `index`, in the layout that follows its own:
+  // Ctrl+M, Enter in the slide list, and New slide on a slide's menu
+  const addSlideAfter = (index = currentSlideIndex) => {
+    if (!presentation?.slides[index]) return
+    addSlide(nextLayoutKey(presentation.slides[index], SLIDE_TEMPLATES), null, index)
+  }
+  addSlideAfterRef.current = addSlideAfter
 
   const addColumn = () => {
     const slides = presentation?.slides || []
@@ -2700,6 +2953,25 @@ function draw() {
       slides: prev.slides.filter((_, i) => i !== index)
     }))
     setCurrentSlideIndex(prev => Math.min(prev, presentation.slides.length - 2))
+  }
+
+  // Slides deleted together from the slide list; one at least stays
+  const deleteSlides = (indices) => {
+    if (!presentation) return
+    const doomed = new Set(indices.filter(i => i >= 0 && i < presentation.slides.length))
+    if (!doomed.size || doomed.size >= presentation.slides.length) return
+    const open = [...doomed].flatMap(i => presentation.slides[i]?.elements || []).map(el => editorOf(peersRef.current, el.id)).find(Boolean)
+    if (open) {
+      return showNotice(open.self
+        ? 'You’re editing something on one of these slides in another tab, so they weren’t deleted'
+        : `${open.name} is editing something on one of these slides, so they weren’t deleted`)
+    }
+    const kept = presentation.slides.filter((_, i) => !doomed.has(i))
+    const links = [...doomed].reduce((n, i) => n + countLinksTo(kept, presentation.slides[i]?.id), 0)
+    if (links && !confirm(`${links} ${links === 1 ? 'link or button goes' : 'links or buttons go'} to these slides, and won't do anything once they're deleted. Delete them anyway?`)) return
+    setPresentation(prev => ({ ...prev, slides: prev.slides.filter((_, i) => !doomed.has(i)) }))
+    setSelectedSlideIds([])
+    setCurrentSlideIndex(Math.min(Math.min(...doomed), kept.length - 1))
   }
 
   const duplicateSlide = (index) => {
@@ -2923,6 +3195,9 @@ function draw() {
           )}
 
           <HeaderTools tools={headerTools} />
+          <button className="btn btn-secondary" onClick={() => setShowShortcuts(true)} title={`Keyboard shortcuts (${keyLabel('Mod+/')})`} aria-label="Keyboard shortcuts" style={{ padding: '6px 8px' }}>
+            <Keyboard size={14} />
+          </button>
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
@@ -4200,6 +4475,9 @@ function draw() {
           onAddColumn={addColumn}
           onImport={() => setShowImportSlideModal(true)}
           onDelete={deleteSlide}
+          onDeleteMultiple={deleteSlides}
+          onNewSlideAfter={addSlideAfter}
+          onBackground={openBackground}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
           onMoveInColumn={moveSlideInColumn}
@@ -4213,7 +4491,9 @@ function draw() {
 
         <div className="editor-main">
           <Toolbar
-            editor={editingElementId ? editor : null}
+            editor={editingElementId ? editor : boxEditor}
+            wholeBox={!editingElementId && !!boxEditor}
+            bgRequest={bgRequest}
             editingElementId={editingElementId}
             showGrid={showGrid}
             onToggleGrid={() => setShowGrid(v => !v)}
@@ -4479,6 +4759,8 @@ function draw() {
               }}
               onToggleSelectElement={toggleElementSelection}
               onStartEdit={startEditingElement}
+              onElementCommand={elementCommand}
+              onCanvasCommand={canvasCommand}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -5117,6 +5399,8 @@ function draw() {
         </div>
       )}
 
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
+
       {showTemplateModal && (
         <div className="modal-overlay" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
@@ -5132,6 +5416,7 @@ function draw() {
                   <div style={{ height: 55, background: '#1e1e2e', borderRadius: 4, marginBottom: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
                     {key === 'blank' && <span style={{ fontSize: 20, opacity: 0.4 }}>□</span>}
                     {key === 'title' && <div style={{textAlign:'center'}}><div style={{fontSize:9,fontWeight:700,color:'white',marginBottom:3}}>─────────</div><div style={{fontSize:7,color:'#aaa'}}>─────</div></div>}
+                    {key === 'title-content' && <div style={{width:'80%',height:'70%',display:'flex',flexDirection:'column',gap:4}}><div style={{width:'60%',height:6,background:'rgba(255,255,255,0.55)',borderRadius:1}}/>{[0,1,2].map(i => <div key={i} style={{display:'flex',alignItems:'center',gap:3}}><div style={{width:3,height:3,borderRadius:'50%',background:'#aaa'}}/><div style={{width:`${70 - i * 12}%`,height:3,background:'rgba(255,255,255,0.2)',borderRadius:1}}/></div>)}</div>}
                     {key === 'two-column' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
                     {key === 'image-text' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(99,102,241,0.3)',borderRadius:2,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}}>🖼</div><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
                     {key === 'section-header' && <div style={{textAlign:'center'}}><div style={{fontSize:10,fontWeight:700,color:'#6366f1'}}>─────</div><div style={{width:30,height:2,background:'#6366f1',margin:'3px auto'}}/><div style={{fontSize:6,color:'#888'}}>section</div></div>}

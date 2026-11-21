@@ -87,7 +87,7 @@ const GRADIENT_PRESETS_BG = [
   'linear-gradient(135deg, #2c3e50, #3498db)'
 ]
 
-export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, onBrowsePlugins, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts }) {
+export default function Toolbar({ editor, editingElementId, showGrid, onToggleGrid, gridSize, onGridSizeChange, onAddText, onAddTextPath, onAddText3d, onAddImage, onAddImageUpload, onAddShape, onAddNonobjective, onAddModularGrid, onAddHtml, onAddD3, onAddKineticText, onAddCode, onAddLatex, onAddEquation, onAddMarkdown, onAddTimeline, onAddCallout, onAddIcon, onAddVideo, onAddVideoUpload, onAddAudio, onAddModelUpload, onAddTable, onAddP5, onAddMathGrid, onAddTabs, onAddHotspot, onAddFlipCard, onAddQuiz, onAddAnime, onAddThree, onAddGraph, onAddGraph3d, onAddDiagram, onAddTikz, onAddFeynman, onAddCircuit, onAddLogic, onAddFreebody, onAddVenn, onAddTiming, onAddGeometry, onAddMolecule, onAddPeriodic, onAddHarmonics, pluginTypes = [], onAddPluginElement, onBrowsePlugins, selectedCount, onAlignElements, smartGuidesEnabled, onToggleSmartGuides, slide, slides = [], onUpdateSlide, onGroupElements, onUngroupElements, showRulers, onToggleRulers, guides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onImportPptx, drawTool, onSetDrawTool, onUndo, onRedo, canUndo, canRedo, customFonts = [], onManageFonts, wholeBox = false, bgRequest = 0 }) {
   const [showTextMenu, setShowTextMenu] = useState(false)
   const [showImageMenu, setShowImageMenu] = useState(false)
   const [showEmbedMenu, setShowEmbedMenu] = useState(false)
@@ -142,6 +142,12 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
     return () => document.removeEventListener('mousedown', close)
   }, [showMoreFormat])
   useEffect(() => { if (!editing) setShowMoreFormat(false) }, [editing])
+  // Undo while editing text undoes the typing; for a selected box (a whole-box
+  // stand-in), it's the presentation's
+  const textUndo = editing && !wholeBox
+
+  // Background… on a menu opens the background popup
+  useEffect(() => { if (bgRequest) setShowBgMenu(true) }, [bgRequest])
 
   async function handlePdfUpload(file) {
     if (!file) return
@@ -277,13 +283,13 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       {/* Undo / Redo: the presentation's, or while editing text, the text's,
           as Ctrl+Z does */}
       <button className="btn-icon" title="Undo (Ctrl+Z)"
-        onClick={editor ? () => editor.chain().focus().undo().run() : onUndo}
-        disabled={editor ? !editor.can().undo() : !canUndo}>
+        onClick={textUndo ? () => editor.chain().focus().undo().run() : onUndo}
+        disabled={textUndo ? !editor.can().undo() : !canUndo}>
         <Undo2 size={14} />
       </button>
       <button className="btn-icon" title="Redo (Ctrl+Y)"
-        onClick={editor ? () => editor.chain().focus().redo().run() : onRedo}
-        disabled={editor ? !editor.can().redo() : !canRedo}>
+        onClick={textUndo ? () => editor.chain().focus().redo().run() : onRedo}
+        disabled={textUndo ? !editor.can().redo() : !canRedo}>
         <Redo2 size={14} />
       </button>
       <span className="toolbar-divider" />
@@ -934,8 +940,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
       <span className="toolbar-divider" />
       </>)}
 
-      {/* Hint when no text element is being edited */}
-      {!editingElementId && (
+      {/* Hint when no text box is selected or being edited */}
+      {!editor && (
         <span style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 8px' }}>
           Double-click a text box to edit
         </span>
@@ -1286,6 +1292,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
 
           <span className="toolbar-divider" />
 
+          {/* What puts something into the text, not for a whole box */}
+          {!wholeBox && (<>
           {/* Table */}
           <div style={{ position: 'relative' }}>
             <button
@@ -1375,6 +1383,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
 
           <span className="toolbar-divider" />
 
+          </>)}
+
           {/* The less-used formatting, in a menu, so the formatting tools fit
               in the space the insert tools had */}
           <div ref={moreFormatRef} style={{ position: 'relative' }}>
@@ -1395,8 +1405,8 @@ export default function Toolbar({ editor, editingElementId, showGrid, onToggleGr
                   { label: 'Inline code', icon: <Code size={14} />, on: editor.isActive('code'), run: () => editor.chain().focus().toggleCode().run() },
                   { label: 'Code block', icon: <FileCode size={14} />, on: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
                   { label: 'Quote', icon: <Quote size={14} />, on: editor.isActive('blockquote'), run: () => editor.chain().focus().toggleBlockquote().run() },
-                  { label: 'Image in text', icon: <Image size={14} />, run: handleImage },
-                ].map(item => (
+                  !wholeBox && { label: 'Image in text', icon: <Image size={14} />, run: handleImage },
+                ].filter(Boolean).map(item => (
                   <button
                     key={item.label}
                     role="menuitem"
