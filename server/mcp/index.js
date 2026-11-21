@@ -42,7 +42,7 @@ const INSTRUCTIONS = [
   'Fill slides through their layouts: add_slide takes a layout with its title, subtitle and body, and update_slide changes them. Text in a layout\'s placeholders shrinks to fit, so it needs no positions. add_element and update_element are for anything else.',
   'Text is Markdown, with $…$ for math and [@key] for citations. apply_edits makes several changes at once, all or nothing. import_beamer turns LaTeX Beamer source into slides.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
-  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules, HTML and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
+  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
 ].join(' ')
 
 // How long without an edit before the next one starts a new session, with a
@@ -93,8 +93,8 @@ const WRITE_TOOLS = [
   ['update_slide', 'Change a slide', "Change a slide: its layout (its title and text move into the new layout's placeholders), its title, subtitle and body placeholders (Markdown, replacing what's there), its speaker notes, planned minutes or background color."],
   ['move_slide', 'Move a slide', 'Move a slide to after another slide, or to the start with after: 0.'],
   ['delete_slide', 'Delete a slide', 'Delete a slide and everything on it.'],
-  ['add_element', 'Add an element', "Add an element to a slide, at a position in pixels on the 960×540 slide: a text box (Markdown, shrinking to fit its box), a shape, or a graph, equation, table, code block, LaTeX picture, timeline or diagram from its spec (or a diagram's template), as get_element_guide describes. For titles and body text, use the slide's layout placeholders instead (add_slide, update_slide)."],
-  ['update_element', 'Change an element', "Change one element on a slide, by its id from get_slide: move or resize it, turn it, fade it, replace a text box's text (Markdown) or a shape's label, change a shape's look, or change a graph's, table's or diagram's spec (the fields given replace its own). Images, video, molecules, HTML and plugins can be moved and resized but not changed inside."],
+  ['add_element', 'Add an element', "Add an element to a slide, at a position in pixels on the 960×540 slide: a text box (Markdown, shrinking to fit its box), a shape, or a graph, equation, table, code block, LaTeX picture, timeline, HTML embed or diagram from its spec (or a diagram's template), as get_element_guide describes. For titles and body text, use the slide's layout placeholders instead (add_slide, update_slide)."],
+  ['update_element', 'Change an element', "Change one element on a slide, by its id from get_slide: move or resize it, turn it, fade it, replace a text box's text (Markdown) or a shape's label, change a shape's look, or change a graph's, table's, HTML embed's or diagram's spec (the fields given replace its own). Images, video, molecules and plugins can be moved and resized but not changed inside."],
   ['delete_element', 'Delete an element', 'Delete one element from a slide.'],
   ['update_outline', "Change a slide's outline notes", "Change a slide's outline notes (planning notes for the talk, which never show on the slide), its planned minutes, or its section. Never changes what's on the slide."],
   ['import_beamer', 'Add slides from LaTeX Beamer', "Turn LaTeX Beamer source into slides, as the editor's Beamer import does: each frame a slide, with its title, text, math, lists, columns, tables, blocks, code, overlays as steps, and speaker notes from \\note. Give BibTeX for what it cites, and its references join the bibliography. Figures can't come along: they show as empty boxes for the person to fill. Good for a talk you've drafted in LaTeX, or for a person's existing Beamer slides."],
@@ -163,7 +163,7 @@ function buildServer(link, { loadDeck, write, touch, render, datasets }, local) 
   }, guarded('render_slide', async ({ slide }) => render(link, slide, local)))
   server.registerTool('get_element_guide', {
     title: 'Read how to add an element',
-    description: `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
+    description: `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline, HTML embed or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
     inputSchema: GUIDE_INPUT,
     annotations: READ_ONLY,
   }, guarded('get_element_guide', async ({ type }) => text(guides.guideText(type))))

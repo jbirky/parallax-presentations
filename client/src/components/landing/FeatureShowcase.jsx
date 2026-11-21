@@ -3,9 +3,10 @@
 
 // The landing page's showcase of what sets Parallax apart: a list of
 // features beside one panel at a time, each a claim and something that shows
-// it. Live data, citations and code play live decks (the exoplanet example
-// and the showcase decks, client/src/examples/decks.js); only the panel
-// showing has its deck. The hero's chips open a panel here (LandingPage).
+// it. Live data, citations, code and the AI's slide play live decks (the
+// exoplanet example and the showcase decks, client/src/examples/decks.js);
+// only the panel showing has its deck. The hero's chips open a panel here
+// (LandingPage).
 
 import { track } from '../../utils/analytics'
 import SlideFrame from './SlideFrame'
@@ -188,17 +189,20 @@ function Panel({ feature, guestEnabled }) {
       <p className="lp-lede">Make a link for one presentation and add it to your AI chat app. The AI reads the slides, adds and changes them while you watch, and appears in the editor beside the people working on it. It can look at its slides to check them, and a version is saved before each session, so undoing a session takes one click.</p>
       <div className="lp-proof">
         <div className="lp-chat" aria-label="A conversation in an AI chat app">
-          <div className="you">Add a slide after slide 3 comparing slides before and after, in two columns.</div>
-          <div className="bot">Added slide 4, “Before and after”, in the two-column layout. I looked at it, and both columns fit.<small>add_slide · render_slide</small></div>
-          <div className="you">Now tighten the right column.</div>
+          <div className="you">Add a slide with an interactive JSXGraph plot of y = a sin(bx), with sliders for a and b.</div>
+          <div className="bot">Added slide 5, “A sine wave you can tune”, with the plot as an HTML element: a JSXGraph board with sliders for a and b. I looked at it, and the curve and the sliders fit.<small>add_slide · get_element_guide · add_element · render_slide</small></div>
+          <div className="you">Now mark where it crosses zero.</div>
         </div>
-        <div className="lp-mock-editor">
-          <div className="lp-mock-top"><span>Editor · slide 4</span><span className="lp-avatars"><i className="me">JB</i><i className="ai" title="Claude (AI)">AI</i></span></div>
+        <figure className="lp-mock-editor">
+          <div className="lp-mock-top"><span>Editor · slide 5</span><span className="lp-avatars"><i className="me">JB</i><i className="ai" title="Claude (AI)">AI</i></span></div>
           <div className="lp-mock-canvas">
-            <img src="/landing/ai-slide.jpg" alt="A two-column slide titled Before and after, made by the AI" loading="lazy" />
-            <div className="lp-mock-held"><span>Claude (AI)</span></div>
+            <div className="lp-mock-slide">
+              <SlideFrame src="/examples/showcase-ai/deck" title="An interactive JSXGraph plot the AI made, a live Parallax deck" />
+              <div className="lp-mock-held"><span>Claude (AI)</span></div>
+            </div>
           </div>
-        </div>
+          <figcaption>Live: drag the sliders for a and b</figcaption>
+        </figure>
       </div>
       <Links links={[['AI collaborator links', '#docs/tutorials/ai-collaborators'], ['Works with Claude, ChatGPT and other apps that connect to MCP servers', null, true]]} />
     </>)

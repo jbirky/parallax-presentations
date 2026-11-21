@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The elements an AI collaborator can add beyond text boxes and shapes:
-// graphs, equations, tables, code, LaTeX, timelines, and the diagrams
+// graphs, equations, tables, code, LaTeX, timelines, HTML embeds, and the diagrams
 // (circuits, Feynman, logic, free-body, Venn, timing, geometry), the
 // periodic table and spherical harmonics. For each: a guide (get_element_
 // guide) saying what it takes, with examples; make(spec, cx), which checks
@@ -260,6 +260,18 @@ function makeLatex(spec, cx) {
   }
 }
 const readLatex = el => [`   ${/\\begin\{tikzpicture\}|\\tikz[[{]/.test(el.content || '') ? 'TikZ' : /tabular|longtable/.test(el.content || '') ? 'table' : 'math'}: ${json(clip(el.content, 300))}`]
+
+// An HTML embed: a page of its own, the size of its box, that runs its
+// scripts kept apart from the presentation (generateHTML's buildHtmlEmbed),
+// as one a person pastes into the editor does
+const MAX_HTML = 50000
+function makeHtml(spec) {
+  only(spec, 'spec', ['content'])
+  if (typeof spec.content !== 'string' || !spec.content.trim()) fail('An HTML element needs content: its HTML, with the <script> and <style> it needs.')
+  if (spec.content.length > MAX_HTML) fail(`content can be up to ${MAX_HTML} characters.`)
+  return { content: spec.content.replace(/\r\n?/g, '\n') }
+}
+const readHtml = el => [`   HTML, ${plural(String(el.content || '').split('\n').length, 'line')}: ${json(clip(el.content, 400))}`]
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const YEAR = /^-?\d{1,5}$/
@@ -540,6 +552,15 @@ Example: { "op": "add_element", "slide": 6, "type": "latex", "x": 280, "y": 120,
 
 Example: { "op": "add_element", "slide": 2, "type": "timeline", "x": 40, "y": 160, "spec": { "startDate": "1900", "endDate": "1930", "items": [ { "date": "1905", "label": "Special relativity" }, { "date": "1915", "label": "General relativity" }, { "date": "1927", "label": "Copenhagen" } ] } }`,
   },
+  html: {
+    label: 'HTML embed', about: 'Your own HTML and JavaScript on a slide: an interactive plot or simulation with a library such as JSXGraph, D3, three.js or p5.js.',
+    make: makeHtml, size: () => ({ w: 840, h: 400 }), fit: { cap: 1, fw: 0.9, fh: 0.8 }, read: readHtml,
+    text: `spec: { "content": "HTML" }.
+
+The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${'JSXGraph 1.11.1, D3 7, three.js, p5.js, GSAP, anime.js, KaTeX'}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank, so check it with render_slide. For plots of functions, a graph element is simpler and follows the theme.
+
+Example, an interactive JSXGraph plot with two sliders: { "op": "add_element", "slide": 5, "type": "html", "x": 60, "y": 110, "width": 840, "height": 400, "spec": { "content": "<div id=\\"board\\" style=\\"width:100%;height:100%\\"></div>\\n<link rel=\\"stylesheet\\" href=\\"https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraph.css\\">\\n<script src=\\"https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraphcore.js\\"></script>\\n<script>\\nconst board = JXG.JSXGraph.initBoard('board', { boundingbox: [-7, 4, 7, -4], axis: true, showCopyright: false, showNavigation: false })\\nconst a = board.create('slider', [[-6, 3.2], [-2, 3.2], [0, 2, 3]], { name: 'a' })\\nconst b = board.create('slider', [[-6, 2.5], [-2, 2.5], [0.2, 1, 3]], { name: 'b' })\\nboard.create('functiongraph', [x => a.Value() * Math.sin(b.Value() * x)], { strokeColor: '#f97316', strokeWidth: 3 })\\n</script>" } }`,
+  },
   circuit: {
     label: 'Circuit diagram', about: 'An electric circuit with US or IEC symbols, its currents and meter readings worked out, switches that flip at steps.',
     parts: true, fit: { cap: 1, fw: 0.6, fh: 0.7 }, text: PART_RULES.circuit,
@@ -614,7 +635,7 @@ for (const [type, d] of Object.entries(PART_DIAGRAMS)) {
 const FIELDS = {
   graph: shared.GRAPH_FIELDS, equation: shared.EQUATION_FIELDS,
   table: ['data', 'headerRow', 'fontSize', 'textColor', 'borderColor', 'borderWidth', 'headerBgColor', 'cellBgColor', 'cellPadding'],
-  code: ['content', 'language', 'fontSize', 'borderRadius'], latex: ['content', 'textColor', 'fontSize'],
+  code: ['content', 'language', 'fontSize', 'borderRadius'], latex: ['content', 'textColor', 'fontSize'], html: ['content'],
   timeline: ['startDate', 'endDate', 'items', 'tickSpacing', 'lineColor', 'dotColor', 'textColor', 'fontSize'],
   ...Object.fromEntries(Object.entries(PART_DIAGRAMS).map(([type, d]) => [type, d.fields])),
   venn: shared.VENN_FIELDS, timing: shared.TIMING_FIELDS, geometry: shared.GEOMETRY_FIELDS, periodic: shared.PERIODIC_FIELDS, harmonics: shared.HARMONICS_FIELDS,
@@ -662,7 +683,7 @@ function guideText(type) {
   if (!type) {
     return ['Elements add_element takes besides text and shape, by type. Read one\'s guide before adding it: get_element_guide with its type.', '',
       ...TYPES.map(t => `- **${t}** (${GUIDES[t].label}): ${GUIDES[t].about}${GUIDES[t].templates ? ` Templates: ${GUIDES[t].templates.map(x => x.key ?? x.id).join(', ')}.` : ''}`),
-      '', 'Images, video, molecules, HTML and plugins can\'t be added through a link yet: describe them to the person.'].join('\n')
+      '', 'Images, video, molecules and plugins can\'t be added through a link yet: describe them to the person.'].join('\n')
   }
   const guide = GUIDES[type]
   const lines = [`# ${guide.label} (type "${type}")`, '', guide.about, '', 'add_element takes it with type, slide, a position and size (x, y, width, height; it is centered at a size that fits if left out), and spec. update_element changes it with spec: the fields given replace the ones there.', '']

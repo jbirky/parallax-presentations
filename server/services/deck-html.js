@@ -23364,7 +23364,25 @@ for (let t = 1; t <= 2000; t++) {
 ctx.fillStyle = '#e8ecff'; ctx.font = '26px sans-serif'
 ctx.fillText('Diffusion: the spread grows as √t', 30, 48)
 </script>`;
+var JSXGRAPH_PLOT = `<div id="board" style="width:100%;height:100%"></div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraph.css">
+<script src="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraphcore.js"></script>
+<script>
+const board = JXG.JSXGraph.initBoard('board', { boundingbox: [-7, 4, 7, -4], axis: true, showCopyright: false, showNavigation: false })
+const a = board.create('slider', [[-6, 3.2], [-2, 3.2], [0, 2, 3]], { name: 'a' })
+const b = board.create('slider', [[-6, 2.5], [-2, 2.5], [0.2, 1, 3]], { name: 'b' })
+board.create('functiongraph', [x => a.Value() * Math.sin(b.Value() * x)], { strokeColor: '#f97316', strokeWidth: 3 })
+</script>`;
 var BUILDERS = {
+  "showcase-ai"() {
+    const b = builder("showcase-ai");
+    return b.deck("A sine wave you can tune", false, [
+      b.slide(false, [
+        { ...b.heading("A sine wave you can tune"), content: '<h2 style="margin: 0; font-size: 40px; line-height: 1.25; color: #1a1a1a">A sine wave you can tune</h2>' },
+        { id: b.id(), type: "html", x: 60, y: 110, width: 840, height: 400, zIndex: 2, content: JSXGRAPH_PLOT }
+      ])
+    ]);
+  },
   "showcase-cite"() {
     const b = builder("showcase-cite");
     const point = (html) => '<li><p style="font-size: 30px; line-height: 1.45">' + html + "</p></li>";

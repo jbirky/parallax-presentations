@@ -399,7 +399,7 @@ const OPS = {
     const { slide, number } = slideAt(deck, input.slide)
     const type = input.type
     if (!ELEMENT_TYPES.includes(type)) {
-      fail(`type must be one of: ${ELEMENT_TYPES.join(', ')}. Images, video, molecules, HTML and plugins can't be added through a link yet: describe them to the person, who can add them in the editor.`)
+      fail(`type must be one of: ${ELEMENT_TYPES.join(', ')}. Images, video, molecules and plugins can't be added through a link yet: describe them to the person, who can add them in the editor.`)
     }
     if ((slide.elements || []).length >= MAX_ELEMENTS) fail(`A slide can have up to ${MAX_ELEMENTS} elements.`)
     if (guides.GUIDES[type]) return addGuided(deck, slide, number, input, ctx)

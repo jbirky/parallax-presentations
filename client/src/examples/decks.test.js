@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS, CAFFEINE_SRC } from './decks'
+import { createRequire } from 'module'
+import { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS, CAFFEINE_SRC, JSXGRAPH_PLOT } from './decks'
 import { SKETCH } from '../components/landing/FeatureShowcase'
 import { EXAMPLES, EXAMPLE_FIELDS, HERO_EXAMPLE } from './catalog'
 import { generateRevealHTML } from '../utils/generateHTML'
@@ -77,7 +78,7 @@ describe('the example decks', () => {
   })
 
   it('has the decks the landing page’s showcase plays, the code as its panel shows it', () => {
-    expect(SHOWCASE_SLUGS).toEqual(['showcase-cite', 'showcase-code'])
+    expect(SHOWCASE_SLUGS).toEqual(['showcase-ai', 'showcase-cite', 'showcase-code'])
     const cite = exampleDeck('showcase-cite')
     expect(cite.bibliography.map(e => e.key)).toEqual(['zwicky1933', 'rubin1970', 'bertone2018'])
     expect(JSON.stringify(cite.slides).match(/data-cite=/g)).toHaveLength(3)
@@ -85,6 +86,14 @@ describe('the example decks', () => {
     const code = exampleDeck('showcase-code').slides[0].elements[0]
     expect(code.type).toBe('html')
     expect(code.content).toContain(SKETCH)
+    // The AI's slide: the HTML its guide shows an AI collaborator, with
+    // JSXGraph at the version Parallax bundles, so it loads from Parallax
+    const guide = createRequire(import.meta.url)('../../../server/mcp/guides.js').guideText('html')
+    const example = guide.slice(guide.indexOf('{ "op"'))
+    expect(JSON.parse(example.slice(0, example.indexOf('\n'))).spec.content).toBe(JSXGRAPH_PLOT)
+    expect(exampleDeck('showcase-ai').slides[0].elements.find(e => e.type === 'html').content).toBe(JSXGRAPH_PLOT)
+    const { devDependencies } = createRequire(import.meta.url)('../../../package.json')
+    expect(JSXGRAPH_PLOT).toContain(`cdn.jsdelivr.net/npm/jsxgraph@${devDependencies.jsxgraph}/`)
   })
 
   it('makes a fresh deck each time, and nothing for a name it doesn’t have', () => {

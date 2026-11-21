@@ -174,6 +174,11 @@ describe("an AI collaborator's edits", () => {
     assert.equal(venn.color, '#ffffff')
     assert.deepEqual(d.slides[1].elements[3].data, [['Planet', 'Mass'], ['Mars', '0.107']])
 
+    // An HTML embed: the AI's own HTML and JavaScript, centered at a size that fits
+    runEdits(d, [{ op: 'add_element', slide: 2, type: 'html', spec: { content: '<div id="b"></div>\r\n<script>draw()</script>' } }])
+    const embed = d.slides[1].elements.find(el => el.type === 'html')
+    assert.deepEqual([embed.x, embed.y, embed.width, embed.height, embed.content], [60, 70, 840, 400, '<div id="b"></div>\n<script>draw()</script>'])
+
     // get_slide reads them back as spec
     const detail = format.slideDetail(d, format.findSlide(d, 1))
     assert.match(detail, /Graph: x -10 to 10, y -7 to 7, log y/)
@@ -202,6 +207,8 @@ describe("an AI collaborator's edits", () => {
     bad({ op: 'add_element', slide: 1, type: 'graph', spec: { expressions: [{ text: 'y = x' }], hue: 'red' } }, /spec has "hue", which it doesn't take/)
     bad({ op: 'update_element', slide: 2, element: 'h2', spec: { data: [['a']] } }, /spec and template are for graphs, diagrams/)
     bad({ op: 'add_element', slide: 1, type: 'image' }, /type must be one of: text, shape, graph/)
+    bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: '  ' } }, /An HTML element needs content/)
+    bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: 'x'.repeat(50001) } }, /content can be up to 50000 characters/)
   })
 
   it('say what to fix', () => {

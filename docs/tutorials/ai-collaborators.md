@@ -39,7 +39,7 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 | `list_datasets` | Reads the datasets linked to the presentation (**Tools › Datasets…**): their columns, sizes and first rows |
 | `add_slide`, `update_slide` | Adds a slide in a layout, or changes one: its layout, title, subtitle and body text, speaker notes, minutes and background |
 | `move_slide`, `delete_slide` | Moves or deletes a slide |
-| `add_element`, `update_element`, `delete_element` | Adds a text box, shape, graph, equation, table, code block, LaTeX or TikZ picture, timeline or diagram; moves, resizes or deletes any element; changes what's in one |
+| `add_element`, `update_element`, `delete_element` | Adds a text box, shape, graph, equation, table, code block, LaTeX or TikZ picture, timeline, HTML embed or diagram; moves, resizes or deletes any element; changes what's in one |
 | `get_element_guide` | Reads how to describe a graph or diagram: its fields, templates and an example |
 | `update_outline` | Changes a slide's outline notes, minutes and section, never what's on the slide |
 | `update_deck` | Changes the title, theme, font, transition and talk length |
@@ -48,9 +48,9 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 
 The AI fills slides through their layouts, so its text sits in the layout's places and shrinks to fit. It writes Markdown, with `$…$` for math and `[@key]` for citations. Ink you drew while presenting and your practice runs are never read or changed.
 
-Besides text, the AI can add and change graphs (2D and 3D, sliders, vector fields, and data from your datasets), equations with labeled parts, tables, code, LaTeX and TikZ pictures, timelines, circuit, Feynman, logic, free-body, Venn, timing and geometry diagrams, the periodic table and spherical harmonics. Its graphs and diagrams are checked as their editors check them, so a mistake is caught before it reaches the slide, and it can look at a slide to see how it came out. Diagrams often start from the same templates their editors offer.
+Besides text, the AI can add and change graphs (2D and 3D, sliders, vector fields, and data from your datasets), equations with labeled parts, tables, code, LaTeX and TikZ pictures, timelines, HTML embeds with your own JavaScript (a JSXGraph or D3 plot, say), circuit, Feynman, logic, free-body, Venn, timing and geometry diagrams, the periodic table and spherical harmonics. Its graphs and diagrams are checked as their editors check them, so a mistake is caught before it reaches the slide, and it can look at a slide to see how it came out. Diagrams often start from the same templates their editors offer.
 
-It can't add images, video, molecules, HTML or plugins; it describes those, and you add them. It can move and resize them, though. Changing a text box replaces all of its text, so colors and sizes set by hand inside it go.
+An HTML embed the AI writes runs kept apart from the rest of the presentation, as one you paste in does. It can't add images, video, molecules or plugins; it describes those, and you add them. It can move and resize them, though. Changing a text box replaces all of its text, so colors and sizes set by hand inside it go.
 
 ## Watching it work
 

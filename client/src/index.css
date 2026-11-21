@@ -863,10 +863,13 @@ sup[data-cite] { font-weight: 700; }
 .lp-avatars i { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: normal 700 11px var(--lp-mono); color: #fff; border: 2px solid var(--lp-raise); margin-left: -6px; }
 .lp-avatars .me { background: #0ea5e9; }
 .lp-avatars .ai { background: #7c3aed; }
-.lp-mock-canvas { position: relative; padding: 12px; }
-.lp-mock-canvas img { display: block; width: 100%; border-radius: 6px; aspect-ratio: 16 / 9; }
-.lp-mock-held { position: absolute; left: calc(12px + 3.5%); top: calc(12px + 7%); width: 30%; height: 13%; border: 2px dashed #a78bfa; border-radius: 4px; pointer-events: none; }
-.lp-mock-held span { position: absolute; top: -22px; left: -2px; background: #7c3aed; color: #fff; font: 600 11px var(--lp-mono); padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.lp-mock-editor { margin: 0; }
+.lp-mock-editor figcaption { padding: 0 12px 10px; font: 500 11.5px var(--lp-mono); color: var(--lp-faint); }
+.lp-mock-canvas { padding: 12px; }
+.lp-mock-slide { position: relative; border-radius: 6px; overflow: hidden; }
+/* Around the element the AI just added (the showcase-ai deck's HTML element, 60, 110, 840 × 400 on 960 × 540) */
+.lp-mock-held { position: absolute; left: 6.25%; top: 20.37%; width: 87.5%; height: 74.07%; border: 2px dashed #a78bfa; border-radius: 4px; pointer-events: none; }
+.lp-mock-held span { position: absolute; top: -20px; left: -2px; background: #7c3aed; color: #fff; font: 600 11px var(--lp-mono); padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
 @media (max-width: 900px) {
   .lp-show { grid-template-columns: 1fr; }
   .lp-show-tabs { position: static; grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; padding-bottom: 4px; }

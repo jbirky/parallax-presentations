@@ -150,7 +150,9 @@ describe('what sets Parallax apart', () => {
     expect(selected()).toMatch(/^BibTeX citations/)
     await act(async () => tabs()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
     expect(selected()).toMatch(/^AI collaborators/)
-    expect(el.querySelector('.lp-feature img').getAttribute('src')).toBe('/landing/ai-slide.jpg')
+    // The JSXGraph plot an AI made, live
+    expect(showcaseDecks()).toEqual(['/examples/showcase-ai/deck'])
+    expect(el.querySelector('.lp-chat').textContent).toContain('JSXGraph')
     await act(async () => tabs()[5].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
     expect(selected()).toMatch(/^Live data/)
   })
