@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { exampleDeck, EXAMPLE_SLUGS, CAFFEINE_SRC } from './decks'
+import { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS, CAFFEINE_SRC } from './decks'
+import { SKETCH } from '../components/landing/FeatureShowcase'
 import { EXAMPLES, EXAMPLE_FIELDS, HERO_EXAMPLE } from './catalog'
 import { generateRevealHTML } from '../utils/generateHTML'
 import { graphNeeds, dataGraphs, embedDatasetNames } from '../utils/deckData'
@@ -73,6 +74,17 @@ describe('the example decks', () => {
       const html = generateRevealHTML(exampleDeck(slug), { notes: false })
       expect(html, slug).toContain('Reveal.initialize')
     }
+  })
+
+  it('has the decks the landing page’s showcase plays, the code as its panel shows it', () => {
+    expect(SHOWCASE_SLUGS).toEqual(['showcase-cite', 'showcase-code'])
+    const cite = exampleDeck('showcase-cite')
+    expect(cite.bibliography.map(e => e.key)).toEqual(['zwicky1933', 'rubin1970', 'bertone2018'])
+    expect(JSON.stringify(cite.slides).match(/data-cite=/g)).toHaveLength(3)
+    expect(generateRevealHTML(cite, { notes: false })).toContain('data-slide-id="references"')
+    const code = exampleDeck('showcase-code').slides[0].elements[0]
+    expect(code.type).toBe('html')
+    expect(code.content).toContain(SKETCH)
   })
 
   it('makes a fresh deck each time, and nothing for a name it doesn’t have', () => {

@@ -103,7 +103,8 @@ async function getExampleDeck(storage, slug) {
     return deck ? { deck, version: 'built-in' } : null
   }
   const { rows: [r] } = await storage.query('SELECT deck, builtin, updated_at FROM landing_examples WHERE slug = $1', [slug])
-  if (!r) return null
+  // The showcase's decks aren't in the list, which /admin arranges
+  if (!r) return deckHtml.SHOWCASE_SLUGS.includes(slug) ? { deck: deckHtml.exampleDeck(slug), version: 'built-in' } : null
   const deck = r.deck || (r.builtin ? deckHtml.exampleDeck(slug) : null)
   return deck ? { deck, version: String(r.updated_at instanceof Date ? r.updated_at.getTime() : r.updated_at) } : null
 }

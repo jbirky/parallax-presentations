@@ -123,3 +123,103 @@ describe('the landing page', () => {
     expect(el.querySelector('#examples')).not.toBeNull()
   })
 })
+
+describe('what sets Parallax apart', () => {
+  const tabs = () => [...el.querySelectorAll('.lp-show-tabs [role="tab"]')]
+  const selected = () => tabs().find(t => t.getAttribute('aria-selected') === 'true')?.textContent
+  const showcaseDecks = () => [...el.querySelectorAll('.lp-feature iframe')].map(f => f.getAttribute('src'))
+
+  it('opens a feature from the hero, with only its own deck', async () => {
+    track.mockClear()
+    await mount()
+    expect(selected()).toMatch(/^Live data/)
+    expect(showcaseDecks()).toEqual(['/examples/exoplanets/deck'])
+    const chip = [...el.querySelectorAll('.lp-chips button')].find(b => b.textContent === 'BibTeX citations')
+    await act(async () => chip.click())
+    expect(track).toHaveBeenLastCalledWith('feature', { feature: 'cite', from: 'hero' })
+    expect(selected()).toMatch(/^BibTeX citations/)
+    expect(showcaseDecks()).toEqual(['/examples/showcase-cite/deck'])
+    expect(el.querySelector('.lp-feature').textContent).toContain('@article{rubin1970')
+    // A guest can open it in the editor
+    expect([...el.querySelectorAll('.lp-panel-links a')].map(a => a.getAttribute('href'))).toContain('/try?example=showcase-cite')
+  })
+
+  it('moves between features with the arrow keys', async () => {
+    await mount()
+    await act(async () => tabs()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    expect(selected()).toMatch(/^BibTeX citations/)
+    await act(async () => tabs()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
+    expect(selected()).toMatch(/^AI collaborators/)
+    expect(el.querySelector('.lp-feature img').getAttribute('src')).toBe('/landing/ai-slide.jpg')
+    await act(async () => tabs()[5].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    expect(selected()).toMatch(/^Live data/)
+  })
+
+  it('never promises a DOI, while publishing to Zenodo is turned off', async () => {
+    await mount()
+    for (const tab of tabs()) {
+      await act(async () => tab.click())
+      expect(el.querySelector('.lp-feature').textContent).not.toMatch(/DOI|Zenodo/)
+    }
+    expect(el.querySelector('#workflow').textContent).not.toMatch(/DOI|Zenodo/)
+  })
+
+  it('compares Parallax with the tools people use', async () => {
+    await mount()
+    const heads = [...el.querySelectorAll('.lp-compare thead th')].map(th => th.textContent)
+    expect(heads.slice(1)).toEqual(['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax'])
+    const bib = [...el.querySelectorAll('.lp-compare tbody tr')].find(tr => tr.textContent.startsWith('Citations from BibTeX'))
+    expect([...bib.querySelectorAll('td')].map(td => td.className)).toEqual(['n', 'y', 'n', 'y us'])
+  })
+})
+
+describe('Practice Talk to try', () => {
+  const hud = () => el.querySelector('.lp-pr-hud')?.textContent
+  const click = text => act(async () => [...el.querySelectorAll('.lp-practice button')].find(b => b.textContent.includes(text)).click())
+  const advance = ms => act(async () => { vi.advanceTimersByTime(ms) })
+  afterEach(() => vi.useRealTimers())
+
+  it('times each slide against its plan, and plans the next run from this one', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance'] })
+    await mount()
+    await click('Start practicing')
+    expect(hud()).toContain('Slide 1')
+    expect(hud()).toContain('of 0:30')
+    // 20 seconds of talk a second
+    await advance(1000)
+    expect(hud()).toMatch(/Slide 10:20of 0:30/)
+    // The sample run spends 28 seconds on the title, then moves on
+    await advance(500)
+    expect(hud()).toContain('Slide 2')
+    expect(hud()).toContain('On pace')
+    // 2:00 planned for slide 2; spend 2:20 on it (the sample run would stay 2:30), then go on
+    await advance(7000)
+    await click('Next slide')
+    expect(hud()).toContain('Slide 3')
+    expect(el.querySelector('.lp-pr-pace').textContent).toMatch(/^0:\d\d behind plan$/)
+    await click('Finish')
+    const rows = [...el.querySelectorAll('.lp-pr-table tbody tr')].map(tr => [...tr.querySelectorAll('td')].slice(0, 5).map(td => td.textContent))
+    expect(rows.map(r => r[1])).toEqual(['Dark matter in ten minutes', 'Missing mass, twice', 'Why galaxies spin too fast', 'What a halo predicts', 'What’s next'])
+    expect(rows[3][3]).toBe('skipped')
+    expect(rows[1][4]).toMatch(/^\+0:\d\d$/)
+    expect(el.querySelector('.lp-pr-sum .over, .lp-pr-sum .under')).not.toBeNull()
+    // The outline shows each slide's time, amber where it ran over
+    const outline = () => [...el.querySelectorAll('.lp-pr-outline li')].map(li => [li.querySelector('.m').textContent, li.querySelector('.pt').textContent, li.querySelector('.pt').className])
+    expect(outline()[1][2]).toContain('over')
+    expect(outline()[4][1]).toBe('')
+    await click('Plan from this run')
+    // To the half minute; the skipped slides keep their plan
+    expect(outline().map(r => r[0])).toEqual(['0.5 min', '2.5 min', expect.stringMatching(/min$/), '2.5 min', '1 min'])
+  })
+
+  it('pauses', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance'] })
+    await mount()
+    await click('Start practicing')
+    await advance(500)
+    await click('Pause')
+    const at = hud()
+    await advance(3000)
+    expect(hud()).toBe(at.replace('Pause', 'Resume'))
+  })
+})

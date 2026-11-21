@@ -51,6 +51,17 @@ describe('the landing page’s examples', { skip }, () => {
     assert.ok(!list.examples.some(e => e.slug === 'hero'))
   })
 
+  it('serves the showcase’s decks, which aren’t in the list, and nothing for a name it doesn’t have', async () => {
+    const page = await fetch(`${t.base}/examples/showcase-cite/deck`)
+    assert.equal(page.status, 200)
+    const html = await page.text()
+    assert.match(html, /Missing mass, twice/)
+    assert.match(html, /data-slide-id="references"/)
+    assert.ok(!(await publicList()).examples.some(e => e.slug.startsWith('showcase-')))
+    assert.equal((await fetch(`${t.base}/examples/showcase-code/deck`)).status, 200)
+    assert.equal((await fetch(`${t.base}/examples/showcase-nope/deck`)).status, 404)
+  })
+
   it('adds a copy of one of the admin’s presentations, without what’s private to it', async () => {
     const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: deck, title: 'Cell division', field: 'Biology', description: 'Mitosis, step by step', tags: 'Diagram, Timeline' })
     assert.equal(res.status, 201, JSON.stringify(res.body))

@@ -4923,6 +4923,7 @@ __export(deck_html_exports, {
   EXAMPLE_SOURCES: () => EXAMPLE_SOURCES,
   HERO_EXAMPLE: () => HERO_EXAMPLE,
   MAX_ROWS: () => MAX_ROWS,
+  SHOWCASE_SLUGS: () => SHOWCASE_SLUGS,
   buildStaticPluginSrcdoc: () => buildStaticPluginSrcdoc,
   carriedData: () => carriedData,
   dataGraphs: () => dataGraphs,
@@ -23314,7 +23315,56 @@ parallax.datasets.query("newest").then(function (d) {
   }
 })
 </script>`;
+var CITE = (key, n) => '<sup data-cite="' + key + '" style="color:#6366f1;cursor:default">[' + n + "]</sup>";
+var SHOWCASE_BIB = [
+  { type: "article", key: "zwicky1933", author: "Zwicky, F.", title: "Die Rotverschiebung von extragalaktischen Nebeln", journal: "Helvetica Physica Acta", year: "1933", volume: "6", pages: "110–127" },
+  { type: "article", key: "rubin1970", author: "Rubin, Vera C. and Ford, W. Kent, Jr.", title: "Rotation of the Andromeda Nebula from a Spectroscopic Survey of Emission Regions", journal: "The Astrophysical Journal", year: "1970", volume: "159", pages: "379", doi: "10.1086/150317" },
+  { type: "article", key: "bertone2018", author: "Bertone, Gianfranco and Hooper, Dan", title: "History of dark matter", journal: "Reviews of Modern Physics", year: "2018", volume: "90", pages: "045002", doi: "10.1103/RevModPhys.90.045002" }
+];
+var DIFFUSION_SKETCH = `<canvas id="c" width="960" height="540" style="display:block;width:100%;height:100%"></canvas>
+<script>
+// 3000 random walkers from one point: where
+// they are after 50, 400 and 2000 steps
+const ctx = c.getContext('2d'), N = 3000
+const x = new Float32Array(N), y = new Float32Array(N)
+const snaps = { 50: '#7dd3fc', 400: '#a78bfa', 2000: '#fb923c' }
+for (let t = 1; t <= 2000; t++) {
+  for (let i = 0; i < N; i++) {
+    x[i] += Math.random() - 0.5
+    y[i] += Math.random() - 0.5
+  }
+  if (!snaps[t]) continue
+  ctx.fillStyle = ctx.strokeStyle = snaps[t]
+  for (let i = 0; i < N; i++)
+    ctx.fillRect(480 + 9 * x[i], 290 + 9 * y[i], 2, 2)
+  ctx.beginPath()
+  ctx.arc(480, 290, 9 * Math.sqrt(t / 6), 0, 2 * Math.PI)
+  ctx.stroke()
+}
+ctx.fillStyle = '#e8ecff'; ctx.font = '26px sans-serif'
+ctx.fillText('Diffusion: the spread grows as √t', 30, 48)
+</script>`;
 var BUILDERS = {
+  "showcase-cite"() {
+    const b = builder("showcase-cite");
+    const point = (html) => '<li><p style="font-size: 30px; line-height: 1.45">' + html + "</p></li>";
+    return {
+      ...b.deck("Missing mass", false, [
+        b.slide(false, [
+          b.heading("Missing mass, twice"),
+          { id: b.id(), type: "text", x: 60, y: 130, width: 840, height: 300, zIndex: 2, content: '<ul style="color: #1a1a1a">' + point("Coma’s galaxies move too fast for their light " + CITE("zwicky1933", 1)) + point("Andromeda’s rotation curve stays flat far past its light " + CITE("rubin1970", 2)) + point("Both point to the same unseen matter " + CITE("bertone2018", 3)) + "</ul>" },
+          b.caption("Press → for the references slide Parallax builds", false)
+        ])
+      ]),
+      bibliography: SHOWCASE_BIB
+    };
+  },
+  "showcase-code"() {
+    const b = builder("showcase-code");
+    return b.deck("Diffusion", true, [
+      { id: b.id(), notes: "", background: { type: "color", color: "#0f1222" }, elements: [{ id: b.id(), type: "html", x: 0, y: 0, width: W, height: H, zIndex: 1, content: DIFFUSION_SKETCH }] }
+    ]);
+  },
   hero() {
     const b = builder("hero");
     return b.deck("Parallax", true, [
@@ -23496,6 +23546,7 @@ var BUILDERS = {
   }
 };
 var EXAMPLE_SLUGS = Object.keys(BUILDERS);
+var SHOWCASE_SLUGS = EXAMPLE_SLUGS.filter((slug) => slug.startsWith("showcase-"));
 function exampleDeck(slug) {
   return Object.prototype.hasOwnProperty.call(BUILDERS, slug) ? BUILDERS[slug]() : null;
 }
@@ -23523,6 +23574,7 @@ var HERO_EXAMPLE = "hero";
   EXAMPLE_SOURCES,
   HERO_EXAMPLE,
   MAX_ROWS,
+  SHOWCASE_SLUGS,
   buildStaticPluginSrcdoc,
   carriedData,
   dataGraphs,
