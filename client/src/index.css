@@ -716,7 +716,6 @@ sup[data-cite] { font-weight: 700; }
 .lp-eyebrow { font: 500 12.5px var(--lp-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-soft); }
 .lp-hero h1 { margin-top: 18px; font-weight: 600; font-size: clamp(36px, 6.2vw, 66px); line-height: 1.04; letter-spacing: -0.035em; color: #fff; }
 .lp-hero h1 em { display: block; font: italic 600 1.04em/1.12 var(--lp-serif); letter-spacing: -0.01em; color: var(--lp-soft); }
-.lp-sub { max-width: 640px; margin: 22px auto 0; font-size: clamp(16px, 2vw, 18.5px); color: var(--lp-muted); }
 .lp-ctas { display: flex; justify-content: center; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
 .lp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none; border: 1px solid transparent; }
 .lp-btn.primary { background: var(--accent); color: #fff; }

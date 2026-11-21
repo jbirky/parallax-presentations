@@ -206,7 +206,6 @@ export default function LandingPage({ onSignIn }) {
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
             <h1>Create interactive and intuitive slides <em>for complex concepts.</em></h1>
-            <p className="lp-sub">Parallax is a slide editor that runs in your browser. Put live graphs, physics and circuit diagrams, equations and 3D molecules on a slide, and move them while you present.</p>
             <div className="lp-ctas">
               {tryIt}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
