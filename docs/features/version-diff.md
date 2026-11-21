@@ -15,7 +15,7 @@ There are two ways to compare versions:
 
 ### From git history
 
-1. Click **Sync → Git History** in the editor toolbar.
+1. Click **Sync** at the top right of the editor and choose **Git History…**.
 2. Next to each commit, click **Compare**.
 3. The diff viewer opens, comparing the presentation at that commit against your current version.
 

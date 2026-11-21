@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Check, X, Search, Share2, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Check, X, Search, Share2, CloudUpload, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -99,6 +99,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
+import HeaderMenu from '../components/HeaderMenu'
 import { renewSlideIds, renewElementIds, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
 import BeamerImportModal from '../components/BeamerImportModal'
@@ -479,10 +480,11 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return !!peer
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
-  // The Share menu: a share link for the owner, and who edits it (cloud, not
-  // for guests; a template has no editors)
+  // The Share button beside Present (components/HeaderMenu.jsx): a share link
+  // for the owner, and who edits it (cloud, not for guests; a template has no
+  // editors)
   const shareItems = [
-    isCloud && !guest && !isEditor && { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+    isCloud && !guest && !isEditor && { label: 'Share link…', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
     isCloud && !guest && !isTemplate && { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
   ].filter(Boolean)
   const [showTimeline, setShowTimeline] = useState(false)
@@ -3318,11 +3320,11 @@ function draw() {
   const editing = !!editingElementId
   const anySelected = selectedEls.length > 0
 
-  // Tools › Sync (the owner's)
+  // The Sync button beside Share (the owner's)
   const syncItems = [
-    { label: 'GitHub', icon: <Github size={13} />, action: () => setShowGithubModal(true) },
+    { label: 'GitHub…', icon: <Github size={13} />, action: () => setShowGithubModal(true) },
     ZENODO_ENABLED && {
-      label: 'Zenodo',
+      label: 'Zenodo…',
       icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>,
       action: () => {
         setZenodoStatus(null)
@@ -3332,7 +3334,7 @@ function draw() {
     },
     { divider: true },
     {
-      label: 'Git History',
+      label: 'Git History…',
       icon: <History size={13} />,
       action: async () => {
         setShowGitHistory(true)
@@ -3483,13 +3485,10 @@ function draw() {
         pluginTypes.length > 0 && isCloud && !guest && '-',
         isCloud && !guest && { label: 'Browse plugins…', action: () => setShowPluginBrowser(true) },
       ] },
-      !guest && !isEditor && { label: 'Sync', items: syncItems.map(item => (item.divider ? '-' : { label: `${item.label}…`, action: item.action })) },
       '-',
       !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: startPractice },
       !isTemplate && (presentation.practiceRuns || []).length > 0 && { label: 'Practice runs…', action: () => setShowPracticeRuns(true) },
       annotationSets.length > 0 && { label: 'Annotation sessions…', action: () => setShowSessions(true) },
-      shareItems.length > 0 && '-',
-      ...shareItems.map(item => ({ label: item.label.endsWith('…') ? item.label : `${item.label}…`, action: item.action })),
     ] },
     { key: 'help', label: 'Help', items: [
       { label: 'Docs', action: () => { window.location.hash = '#docs' } },
@@ -3587,6 +3586,9 @@ function draw() {
               </button>
             </div>
           )}
+
+          {!guest && !isEditor && <HeaderMenu label="Sync" icon={<CloudUpload size={14} />} title="GitHub and git history" items={syncItems} />}
+          <HeaderMenu label="Share" icon={<Share2 size={14} />} title="Share link and editors" items={shareItems} />
 
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex' }}>

@@ -105,7 +105,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .title-input { flex: 0 1 260px; min-width: 100px; max-width: 300px; background: transparent; border: 1px solid transparent; color: var(--text-primary); font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; }
 .title-input:hover { border-color: var(--border); }
 .title-input:focus { outline: none; border-color: var(--accent); background: var(--bg-card); }
-.header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; }
+/* The title gives up its room first, so Sync, Share and Present stay on screen */
+.header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 .header-controls > * { flex-shrink: 0; }
 /* The menu bar (components/MenuBar.jsx), after the title, as in Google Slides */
 .menu-bar { display: flex; align-items: center; gap: 0; flex-shrink: 0; margin-left: -4px; }

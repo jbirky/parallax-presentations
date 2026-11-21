@@ -81,10 +81,10 @@ Choose **File › Export › PowerPoint (.pptx)** to generate a PowerPoint file.
 
 Sharing is only in the cloud version at parallax-presentations.com. The self-hosted version and the desktop app keep everything on your computer, so share an exported HTML file from them instead.
 
-1. Click the **Share** button in the toolbar.
-2. Toggle sharing on. A shareable URL is generated.
+1. Click **Share**, next to **Present** at the top right, and choose **Share link…**.
+2. Click **Enable Sharing**. A link to the presentation appears; click it to copy it.
 3. Anyone with the link can view the presentation in present mode (read-only).
-4. Toggle sharing off to revoke access.
+4. Click **Disable Sharing** to stop the link working. Sharing again makes a new link.
 
 ### Example: exported slide
 
