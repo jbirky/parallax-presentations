@@ -22,6 +22,7 @@ The editor is laid out like Google Slides, PowerPoint and Keynote:
 - **The toolbar** under it is one row of the basics: Undo and Redo, **New slide**, **Text box**, **Image**, **Shape**, **Table**, **Insert** (everything else, in groups, with a search) and **Science** (graphs, diagrams, molecules and the rest of Parallax's own elements), then the deck's **Theme** and the slide's **Background**. Select an image and it offers **Crop** and **Replace**; select a diagram and it offers **Edit**. Select a text box and its formatting tools take the place of the insert tools; what doesn't fit is under **More**.
 - **The inspector** on the right has three tabs. **Format** follows what's selected: a text box's text, its box, and how it's arranged. **Animate** has how it comes in, **Appear on click**, what clicking or hovering on it does, and the slide's transition. **Slide** has the slide's background and footer, with the rest folded under **Advanced**.
 - **Speaker notes** go in the strip under the slide. Drag its top edge to make it taller.
+- **Getting started**, above the slide list on your first decks, is a checklist of five things to try: pick a theme, add a slide, add an image, add speaker notes, and present. Each one ticks itself when you do it, and clicking one that isn't done does it for you. Close it with its ×; **Help › Getting-started checklist** brings it back.
 
 ## 3. Editing the title slide
 

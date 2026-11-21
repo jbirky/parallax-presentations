@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-A complete reference for keyboard shortcuts available in Parallax. In the editor, press `Ctrl+/` (`⌘/` on a Mac), or choose **Help › Keyboard shortcuts**, to see them. `Alt+/` (`⌥/` on a Mac) searches the menus for any command. On a Mac, use `⌘` for `Ctrl`.
+A complete reference for keyboard shortcuts available in Parallax. In the editor, press `Ctrl+/` (`⌘/` on a Mac), or choose **Help › Keyboard shortcuts**, to see them, with a search. `Alt+/` (`⌥/` on a Mac) searches the menus for any command. On a Mac, use `⌘` for `Ctrl`.
 
 ## Editing shortcuts
 
@@ -72,11 +72,19 @@ A new slide takes the layout of the slide before it. After a title or section sl
 | `Ctrl+B` | Bold |
 | `Ctrl+I` | Italic |
 | `Ctrl+U` | Underline |
-| `Ctrl+Shift+X` | Strikethrough |
+| `Ctrl+Shift+S` | Strikethrough |
 | `Ctrl+Shift+H` | Highlight |
+| `Ctrl+Shift+L` / `Ctrl+Shift+E` / `Ctrl+Shift+R` | Align left / center / right |
+| `Ctrl+Shift+8` / `Ctrl+Shift+7` | Bullet list / numbered list |
+| `Ctrl+Alt+1` / `Ctrl+Alt+2` / `Ctrl+Alt+3` | Heading 1 / 2 / 3 |
+| `Ctrl+Alt+0` | Normal text |
+| `Ctrl+E` / `Ctrl+Alt+C` | Inline code / code block |
+| `Ctrl+Shift+B` | Quote |
 | `Ctrl+A` | Select all text in element |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo within text |
 | `Ctrl+K` | Add or edit a link, to a web page or a slide |
+
+The toolbar's tooltips name these too, as in "Bold (Ctrl+B)".
 
 ::: tip
 Press `Escape` once to finish editing text while keeping the element selected. Press `Escape` again to fully deselect.

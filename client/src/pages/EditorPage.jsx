@@ -37,12 +37,14 @@ import MenuBar, { MenuSearch } from '../components/MenuBar'
 import NotesStrip from '../components/NotesStrip'
 import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
 import LayoutPicker from '../components/LayoutPicker'
+import GettingStarted from '../components/GettingStarted'
+import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
 import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
-import { keyLabel } from '../utils/shortcuts'
+import { keyLabel, SHORTCUTS, matchesShortcut } from '../utils/shortcuts'
 import SlidePanel from '../components/SlidePanel'
 import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import PracticeRunsModal from '../components/PracticeRunsModal'
@@ -403,6 +405,10 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [showThemes, setShowThemes] = useState(false)
   // The slide whose layout is being changed (Slide › Change layout…)
   const [layoutChangeIndex, setLayoutChangeIndex] = useState(null)
+  // The getting-started checklist (utils/gettingStarted.js), and asking the
+  // notes strip to open for typing
+  const checklist = useChecklist()
+  const [notesRequest, setNotesRequest] = useState(0)
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
@@ -1035,6 +1041,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Presents with drawing on, into a new annotation set or on with `set`
   const presentAnnotated = useCallback((set = null) => {
+    tickStep('present')
     if (isTemplate) return presentInWindow(presentation)
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
   }, [presentation, isTemplate])
@@ -1223,6 +1230,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [slideW, slideH])
 
   const addImageElement = useCallback((src, dropX, dropY) => {
+    tickStep('image')
     const newEl = {
       id: crypto.randomUUID(),
       type: 'image',
@@ -2676,7 +2684,7 @@ function draw() {
       }
       // Alt+/ searches the menus, as in Google Slides, even while typing
       // (on a Mac, Option+/ types ÷, so it's the key that counts)
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === '/' || e.code === 'Slash')) { setShowMenuSearch(true); e.preventDefault(); return }
+      if (matchesShortcut(e, SHORTCUTS.searchMenus)) { setShowMenuSearch(true); e.preventDefault(); return }
       if (editingElementIdRef.current) return
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
@@ -2685,23 +2693,27 @@ function draw() {
       // A key the slide list took
       if (e.defaultPrevented) return
       const ctrl = e.ctrlKey || e.metaKey
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
       const slide = presentation?.slides[currentSlideIndex]
       const selected = (slide?.elements || []).filter(el => selectedElementIds.includes(el.id))
       const inSlideList = !!document.activeElement?.closest?.('.slide-panel')
 
+      // The keys in the shortcuts table (utils/shortcuts.js), which the
+      // Ctrl+/ sheet, the menus and the tooltips show
+      const is = name => matchesShortcut(e, SHORTCUTS[name])
       if (ctrl && !e.altKey) {
-        if (key === 'z' && !e.shiftKey) { doUndo(); e.preventDefault(); return }
-        if (key === 'y' || (key === 'z' && e.shiftKey)) { doRedo(); e.preventDefault(); return }
-        if (key === 'f') { setShowFindReplace(v => !v); e.preventDefault(); return }
-        if (key === 'm') { addSlideAfterRef.current?.(); e.preventDefault(); return }
-        if (key === '/') { setShowShortcuts(v => !v); e.preventDefault(); return }
+        if (is('undo')) { doUndo(); e.preventDefault(); return }
+        if (is('redo') || is('redoAlt')) { doRedo(); e.preventDefault(); return }
+        if (is('find')) { setShowFindReplace(v => !v); e.preventDefault(); return }
+        if (is('newSlide')) { addSlideAfterRef.current?.(); e.preventDefault(); return }
+        if (is('shortcuts')) { setShowShortcuts(v => !v); e.preventDefault(); return }
         if (inSlideList) return
-        if (key === 'a') { setSelectedElementIds((slide?.elements || []).map(el => el.id)); e.preventDefault(); return }
+        if (is('selectAll')) { setSelectedElementIds((slide?.elements || []).map(el => el.id)); e.preventDefault(); return }
         if (!selected.length) return
-        if (key === 'd') { duplicateSelection(); e.preventDefault(); return }
-        if (key === 'g') { if (e.shiftKey) ungroupElements(); else groupElements(); e.preventDefault(); return }
-        if (['b', 'i', 'u'].includes(key) && !e.shiftKey && formatSelectedText(key)) e.preventDefault()
+        if (is('duplicate')) { duplicateSelection(); e.preventDefault(); return }
+        if (is('group')) { groupElements(); e.preventDefault(); return }
+        if (is('ungroup')) { ungroupElements(); e.preventDefault(); return }
+        const mark = is('bold') ? 'b' : is('italic') ? 'i' : is('underline') ? 'u' : null
+        if (mark && formatSelectedText(mark)) e.preventDefault()
         return
       }
       if (e.altKey || inSlideList || !selected.length) return
@@ -2839,6 +2851,7 @@ function draw() {
 
     const key = templateKey && SLIDE_TEMPLATES[templateKey] ? templateKey : 'title-content'
     const template = SLIDE_TEMPLATES[key]
+    tickStep('slide')
     // The theme's background, unless the slide before has the old default
     // (utils/themes.js)
     const background = newSlideBackground(presentation.slides[afterIndex])
@@ -2895,6 +2908,7 @@ function draw() {
   // A theme from the gallery: the deck's, and every slide that still has the
   // old dark default takes the theme's page instead (one undo step)
   const applyTheme = (id) => {
+    tickStep('theme')
     setPresentation(prev => ({
       ...prev,
       theme: id,
@@ -2911,6 +2925,7 @@ function draw() {
     const is2D = slides.some(s => s.column !== undefined)
     const maxCol = is2D ? slides.reduce((m, s) => Math.max(m, s.column ?? 0), 0) : 0
     const newColNum = maxCol + 1
+    tickStep('slide')
     const newSlide = {
       id: crypto.randomUUID(),
       column: newColNum,
@@ -3328,6 +3343,21 @@ function draw() {
     },
   ].filter(Boolean)
 
+  // Practice Talk: a present, for the getting-started checklist too
+  const startPractice = () => {
+    tickStep('present')
+    practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 })
+  }
+
+  // A step of the getting-started checklist, done for you or shown where
+  const checklistStep = id => {
+    if (id === 'theme') setShowThemes(true)
+    else if (id === 'slide') addSlideAfter()
+    else if (id === 'image') uploadImage()
+    else if (id === 'notes') setNotesRequest(n => n + 1)
+    else if (id === 'present') presentAnnotated()
+  }
+
   // ── The menu bar (components/MenuBar.jsx) ────────────────────────────────
   const menus = [
     { key: 'file', label: 'File', items: [
@@ -3352,18 +3382,18 @@ function draw() {
       { label: 'Deck settings…', title: 'Font, theme, transition, size, footer and more, for the whole presentation', action: () => setShowDefaultSettings(true) },
     ] },
     { key: 'edit', label: 'Edit', items: [
-      { label: 'Undo', shortcut: 'Mod+Z', action: editing && editor ? () => editor.chain().focus().undo().run() : doUndo, disabled: !editing && !canUndo() },
-      { label: 'Redo', shortcut: 'Mod+Y', action: editing && editor ? () => editor.chain().focus().redo().run() : doRedo, disabled: !editing && !canRedo() },
+      { label: 'Undo', shortcut: SHORTCUTS.undo, action: editing && editor ? () => editor.chain().focus().undo().run() : doUndo, disabled: !editing && !canUndo() },
+      { label: 'Redo', shortcut: SHORTCUTS.redo, action: editing && editor ? () => editor.chain().focus().redo().run() : doRedo, disabled: !editing && !canRedo() },
       '-',
-      { label: 'Cut', shortcut: 'Mod+X', action: () => editCommand('cut'), disabled: !editing && !anySelected },
-      { label: 'Copy', shortcut: 'Mod+C', action: () => editCommand('copy'), disabled: !editing && !anySelected },
-      { label: 'Paste', shortcut: 'Mod+V', action: () => editCommand('paste') },
-      { label: 'Duplicate', shortcut: 'Mod+D', action: () => editCommand('duplicate'), disabled: editing || !anySelected },
-      { label: 'Delete', shortcut: 'Delete', action: () => editCommand('delete'), disabled: !editing && !anySelected },
+      { label: 'Cut', shortcut: SHORTCUTS.cut, action: () => editCommand('cut'), disabled: !editing && !anySelected },
+      { label: 'Copy', shortcut: SHORTCUTS.copy, action: () => editCommand('copy'), disabled: !editing && !anySelected },
+      { label: 'Paste', shortcut: SHORTCUTS.paste, action: () => editCommand('paste') },
+      { label: 'Duplicate', shortcut: SHORTCUTS.duplicate, action: () => editCommand('duplicate'), disabled: editing || !anySelected },
+      { label: 'Delete', shortcut: SHORTCUTS.delete, action: () => editCommand('delete'), disabled: !editing && !anySelected },
       '-',
-      { label: 'Select all', shortcut: 'Mod+A', action: () => editCommand('select-all') },
+      { label: 'Select all', shortcut: SHORTCUTS.selectAll, action: () => editCommand('select-all') },
       '-',
-      { label: 'Find and replace', shortcut: 'Mod+F', action: () => setShowFindReplace(true) },
+      { label: 'Find and replace', shortcut: SHORTCUTS.find, action: () => setShowFindReplace(true) },
     ] },
     { key: 'view', label: 'View', items: [
       { label: 'Slides', radio: true, checked: leftView === 'slides', action: () => chooseLeftView('slides') },
@@ -3402,20 +3432,20 @@ function draw() {
     ] },
     { key: 'format', label: 'Format', items: [
       { label: 'Text', items: [
-        { label: 'Bold', shortcut: 'Mod+B', action: markCommand('b', 'toggleBold'), disabled: !textTarget && !selectedTexts.length },
-        { label: 'Italic', shortcut: 'Mod+I', action: markCommand('i', 'toggleItalic'), disabled: !textTarget && !selectedTexts.length },
-        { label: 'Underline', shortcut: 'Mod+U', action: markCommand('u', 'toggleUnderline'), disabled: !textTarget && !selectedTexts.length },
-        { label: 'Strikethrough', action: textCommand(c => c.toggleStrike()), disabled: !textTarget },
-        { label: 'Inline code', action: textCommand(c => c.toggleCode()), disabled: !textTarget },
+        { label: 'Bold', shortcut: SHORTCUTS.bold, action: markCommand('b', 'toggleBold'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Italic', shortcut: SHORTCUTS.italic, action: markCommand('i', 'toggleItalic'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Underline', shortcut: SHORTCUTS.underline, action: markCommand('u', 'toggleUnderline'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Strikethrough', shortcut: SHORTCUTS.strike, action: textCommand(c => c.toggleStrike()), disabled: !textTarget },
+        { label: 'Inline code', shortcut: SHORTCUTS.code, action: textCommand(c => c.toggleCode()), disabled: !textTarget },
       ] },
       { label: 'Alignment', items: [
-        { label: 'Left', action: textCommand(c => c.setTextAlign('left')), disabled: !textTarget },
-        { label: 'Center', action: textCommand(c => c.setTextAlign('center')), disabled: !textTarget },
-        { label: 'Right', action: textCommand(c => c.setTextAlign('right')), disabled: !textTarget },
+        { label: 'Left', shortcut: SHORTCUTS.alignLeft, action: textCommand(c => c.setTextAlign('left')), disabled: !textTarget },
+        { label: 'Center', shortcut: SHORTCUTS.alignCenter, action: textCommand(c => c.setTextAlign('center')), disabled: !textTarget },
+        { label: 'Right', shortcut: SHORTCUTS.alignRight, action: textCommand(c => c.setTextAlign('right')), disabled: !textTarget },
       ] },
       { label: 'Lists', items: [
-        { label: 'Bulleted list', action: textCommand(c => c.toggleBulletList()), disabled: !textTarget },
-        { label: 'Numbered list', action: textCommand(c => c.toggleOrderedList()), disabled: !textTarget },
+        { label: 'Bulleted list', shortcut: SHORTCUTS.bulletList, action: textCommand(c => c.toggleBulletList()), disabled: !textTarget },
+        { label: 'Numbered list', shortcut: SHORTCUTS.orderedList, action: textCommand(c => c.toggleOrderedList()), disabled: !textTarget },
       ] },
       { label: 'Clear formatting', action: textCommand(c => c.clearNodes().unsetAllMarks()), disabled: !textTarget },
       '-',
@@ -3423,15 +3453,15 @@ function draw() {
         ['front', 'Bring to front'], ['forward', 'Bring forward'], ['backward', 'Send backward'], ['back', 'Send to back'],
       ].map(([name, label]) => ({ label, action: () => askCanvas(name, singleEl?.id), disabled: !singleEl })) },
       { label: 'Align and distribute', items: ALIGN_COMMANDS.map(([type, label]) => ({ label, action: () => alignElements(type), disabled: selectedEls.length < 2 })) },
-      { label: 'Group', shortcut: 'Mod+G', action: () => elementCommand('group'), disabled: selectedEls.length < 2 },
-      { label: 'Ungroup', shortcut: 'Mod+Shift+G', action: () => elementCommand('ungroup'), disabled: !toolbarSelection.canUngroup },
+      { label: 'Group', shortcut: SHORTCUTS.group, action: () => elementCommand('group'), disabled: selectedEls.length < 2 },
+      { label: 'Ungroup', shortcut: SHORTCUTS.ungroup, action: () => elementCommand('ungroup'), disabled: !toolbarSelection.canUngroup },
       '-',
       anySelected && selectedEls.every(el => el.locked)
         ? { label: 'Unlock', action: () => elementCommand('unlock') }
         : { label: 'Lock', title: 'Keep it from being moved or resized', action: () => elementCommand('lock'), disabled: !anySelected },
     ] },
     { key: 'slide', label: 'Slide', items: [
-      { label: 'New slide', shortcut: 'Mod+M', action: () => addSlideAfter() },
+      { label: 'New slide', shortcut: SHORTCUTS.newSlide, action: () => addSlideAfter() },
       { label: 'New slide from a layout…', action: () => { setPendingAddColumn(null); setShowTemplateModal(true) } },
       { label: 'Duplicate slide', action: () => duplicateSlide(currentSlideIndex), disabled: isViewingReferences },
       { label: 'Delete slide', action: () => deleteSlide(currentSlideIndex), disabled: isViewingReferences || presentation.slides.length <= 1 },
@@ -3455,7 +3485,7 @@ function draw() {
       ] },
       !guest && !isEditor && { label: 'Sync', items: syncItems.map(item => (item.divider ? '-' : { label: `${item.label}…`, action: item.action })) },
       '-',
-      !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: () => practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) },
+      !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: startPractice },
       !isTemplate && (presentation.practiceRuns || []).length > 0 && { label: 'Practice runs…', action: () => setShowPracticeRuns(true) },
       annotationSets.length > 0 && { label: 'Annotation sessions…', action: () => setShowSessions(true) },
       shareItems.length > 0 && '-',
@@ -3463,8 +3493,10 @@ function draw() {
     ] },
     { key: 'help', label: 'Help', items: [
       { label: 'Docs', action: () => { window.location.hash = '#docs' } },
-      { label: 'Keyboard shortcuts', shortcut: 'Mod+/', action: () => setShowShortcuts(true) },
-      { label: 'Search the menus', shortcut: 'Alt+/', action: () => setShowMenuSearch(true) },
+      { label: 'Keyboard shortcuts', shortcut: SHORTCUTS.shortcuts, action: () => setShowShortcuts(true) },
+      { label: 'Search the menus', shortcut: SHORTCUTS.searchMenus, action: () => setShowMenuSearch(true) },
+      '-',
+      { label: 'Getting-started checklist', title: 'Five steps to a first talk, above the slide list', action: () => { chooseLeftView('slides'); reopenChecklist() } },
     ] },
   ]
 
@@ -3593,7 +3625,7 @@ function draw() {
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowPresentDropdown(false); presenterInWindow(presentation) }}
+                    onClick={() => { setShowPresentDropdown(false); tickStep('present'); presenterInWindow(presentation) }}
                   >
                     <Monitor size={14} />
                     Presenter Mode
@@ -3603,7 +3635,7 @@ function draw() {
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowPresentDropdown(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+                      onClick={() => { setShowPresentDropdown(false); startPractice() }}
                       title="Present with a timer on each slide, against the minutes planned in the outline"
                     >
                       <Timer size={14} />
@@ -4824,6 +4856,7 @@ function draw() {
           onBackground={openBackground}
           onChangeLayout={index => setLayoutChangeIndex(index)}
           theme={presentation.theme || 'black'}
+          notice={!isTemplate && showChecklist(checklist, { guest: !!guest }) ? <GettingStarted onStep={checklistStep} /> : null}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
           onMoveInColumn={moveSlideInColumn}
@@ -5057,7 +5090,8 @@ function draw() {
             />}
           </div>
           {!isViewingReferences && currentSlide && (
-            <NotesStrip notes={currentSlide.notes || ''} onChange={notes => updateCurrentSlide({ notes })} slideNumber={currentSlideIndex + 1} />
+            <NotesStrip notes={currentSlide.notes || ''} focusRequest={notesRequest}
+              onChange={notes => { if (notes.trim()) tickStep('notes'); updateCurrentSlide({ notes }) }} slideNumber={currentSlideIndex + 1} />
           )}
         </div>
 
@@ -5700,7 +5734,7 @@ function draw() {
       {showPracticeRuns && (
         <PracticeRunsModal
           runs={presentation.practiceRuns || []}
-          onPractice={() => { setShowPracticeRuns(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+          onPractice={() => { setShowPracticeRuns(false); startPractice() }}
           onUsePlan={run => { stopCapturing(); setPresentation(prev => minutesFromRun(prev, run)); stopCapturing(); showNotice('Planned minutes set from this run; see them in the outline') }}
           onDelete={id => setPresentation(prev => removePracticeRun(prev, id))}
           onClose={() => setShowPracticeRuns(false)}

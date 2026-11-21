@@ -294,9 +294,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .toolbar-hint > span { padding-left: 8px; }
 /* A narrow toolbar (components/Toolbar.jsx) keeps its buttons' icons and
    drops their words */
-.toolbar-compact .tl-text { display: none; }
+.toolbar-compact-1 .tl-minor, .toolbar-compact-2 .tl-text { display: none; }
 .toolbar-compact .btn-icon.toolbar-labeled { padding: 0 6px; gap: 2px; }
 .toolbar-compact .toolbar-hint { display: none; }
+.toolbar .font-family-select { max-width: 120px; }
+.toolbar-compact-2 .font-family-select { max-width: 92px; }
 .tool-menu { position: absolute; top: 100%; margin-top: 4px; z-index: 1000; min-width: 190px; padding: 4px 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-height: min(70vh, 640px); overflow-y: auto; }
 .tool-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; background: none; border: none; color: var(--text-primary); font-size: 13px; cursor: pointer; text-align: left; border-radius: 4px; white-space: nowrap; }
 .tool-menu-item:hover { background: var(--bg-hover); }
@@ -936,3 +938,18 @@ sup[data-cite] { font-weight: 700; }
 .theme-choice-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 0 2px; }
 .theme-swatch { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-radius: 5px; border: 1px solid rgba(128,128,128,0.35); box-sizing: border-box; padding: 6px; overflow: hidden; }
 .theme-panel { width: 240px; }
+
+/* The getting-started checklist, above the slide list (components/GettingStarted.jsx) */
+.getting-started { margin: 8px 8px 0; padding: 8px 8px 6px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-card); }
+.getting-started-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.getting-started-toggle { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; background: none; border: none; padding: 0; cursor: pointer; color: var(--text-primary); font-size: 12px; font-weight: 600; text-align: left; }
+.getting-started-count { margin-left: auto; font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.getting-started-bar { height: 3px; border-radius: 2px; background: var(--bg-hover); margin: 6px 0 4px; overflow: hidden; }
+.getting-started-bar span { display: block; height: 100%; background: var(--accent); transition: width 0.3s; }
+.getting-started ul { list-style: none; margin: 0; padding: 0; }
+.getting-started li button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 2px; background: none; border: none; border-radius: 4px; cursor: pointer; color: var(--text-secondary); font-size: 12px; text-align: left; }
+.getting-started li button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.getting-started li button.ticked { color: var(--text-muted); text-decoration: line-through; cursor: default; }
+.getting-started-check { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-light); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ticked .getting-started-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.getting-started-done { font-size: 12px; color: var(--text-secondary); margin: 4px 0 2px; }

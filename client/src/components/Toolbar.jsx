@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { slideHref, slideIdFromHref, slideLabel } from '../utils/clickActions'
-import { keyLabel } from '../utils/shortcuts'
+import { keyLabel, withShortcut, SHORTCUTS } from '../utils/shortcuts'
 import BackgroundEditor, { BackgroundSwatch } from './BackgroundEditor'
 import {
   Undo2, Redo2,
@@ -64,8 +64,6 @@ const COLOR_PALETTE = [
 
 const ICON_NAMES = ['Star','Heart','Check','X','AlertTriangle','Info','ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Zap','Target','Award','BookOpen','Briefcase','Calendar','Camera','Cloud','Coffee','Cpu','Database','Eye','Flag','Globe','Home','Key','Layers','Lock','Mail','Map','MessageCircle','Monitor','Moon','Music','Phone','Play','Search','Settings','Shield','Sun','ThumbsUp','ThumbsDown','Trash2','TrendingUp','TrendingDown','User','Users','Wifi','Wrench','Lightbulb','Rocket','Clock','Gift','Link','Clipboard','FileText','Folder','Image','PieChart','BarChart3']
 
-// Narrower than this (px), the toolbar's buttons drop their words
-const COMPACT_BELOW = 800
 
 export const ALIGN_COMMANDS = [
   ['left', 'Align left'], ['center-h', 'Align centers'], ['right', 'Align right'],
@@ -74,12 +72,12 @@ export const ALIGN_COMMANDS = [
 ]
 
 // A toolbar button with a dropdown under it
-function ToolMenu({ id, open, onToggle, onClose, icon, label, title, width, align = 'left', children }) {
+function ToolMenu({ id, open, onToggle, onClose, icon, label, title, width, align = 'left', minor = false, children }) {
   return (
     <div style={{ position: 'relative' }}>
       <button className={`btn-icon toolbar-labeled ${open ? 'active' : ''}`} title={title || label} aria-label={label}
         aria-haspopup="true" aria-expanded={open} onClick={() => onToggle(id)}>
-        {icon} <span className="tl-text">{label}</span> <ChevronDown size={11} style={{ opacity: 0.6 }} aria-hidden="true" />
+        {icon} <span className={`tl-text ${minor ? 'tl-minor' : ''}`}>{label}</span> <ChevronDown size={11} style={{ opacity: 0.6 }} aria-hidden="true" />
       </button>
       {open && (<>
         <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={onClose} />
@@ -237,16 +235,35 @@ export default function Toolbar({
     return () => observer.disconnect()
   }, [editing])
 
-  // A narrow toolbar shows its buttons' icons without their words, to stay
-  // one row
-  const [compact, setCompact] = useState(false)
-  useLayoutEffect(() => {
+  // A toolbar too narrow for one row drops its buttons' words: first the
+  // minor ones' (level 1), then all (level 2). The level is worked out
+  // before each paint from the row's natural widths, measured unwrapped
+  const [compact, setCompact] = useState(0)
+  const levelRef = useRef(0)
+  const measureCompact = useRef(() => {})
+  measureCompact.current = () => {
     const el = toolbarRef.current
-    if (!el) return
-    const measure = () => setCompact(el.clientWidth > 0 && el.clientWidth < COMPACT_BELOW)
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
+    const width = el?.clientWidth
+    if (!width) return
+    const classes = el.classList
+    const had = [...classes].filter(c => c.startsWith('toolbar-compact'))
+    const wrap = el.style.flexWrap
+    had.forEach(c => classes.remove(c))
+    el.style.flexWrap = 'nowrap'
+    const natural = el.scrollWidth
+    classes.add('toolbar-compact', 'toolbar-compact-1')
+    const minorHidden = el.scrollWidth
+    classes.remove('toolbar-compact', 'toolbar-compact-1')
+    el.style.flexWrap = wrap
+    had.forEach(c => classes.add(c))
+    const level = natural <= width ? 0 : minorHidden <= width ? 1 : 2
+    if (level !== levelRef.current) { levelRef.current = level; setCompact(level) }
+  }
+  useLayoutEffect(() => measureCompact.current())
+  useEffect(() => {
+    const el = toolbarRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => measureCompact.current())
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
@@ -373,16 +390,16 @@ export default function Toolbar({
   const chain = () => editor.chain().focus()
   const overflowItems = editor ? {
     align: [
-      { label: 'Align left', icon: <AlignLeft size={14} />, on: editor.isActive({ textAlign: 'left' }), run: () => chain().setTextAlign('left').run() },
-      { label: 'Align center', icon: <AlignCenter size={14} />, on: editor.isActive({ textAlign: 'center' }), run: () => chain().setTextAlign('center').run() },
-      { label: 'Align right', icon: <AlignRight size={14} />, on: editor.isActive({ textAlign: 'right' }), run: () => chain().setTextAlign('right').run() },
+      { keys: SHORTCUTS.alignLeft, label: 'Align left', icon: <AlignLeft size={14} />, on: editor.isActive({ textAlign: 'left' }), run: () => chain().setTextAlign('left').run() },
+      { keys: SHORTCUTS.alignCenter, label: 'Align center', icon: <AlignCenter size={14} />, on: editor.isActive({ textAlign: 'center' }), run: () => chain().setTextAlign('center').run() },
+      { keys: SHORTCUTS.alignRight, label: 'Align right', icon: <AlignRight size={14} />, on: editor.isActive({ textAlign: 'right' }), run: () => chain().setTextAlign('right').run() },
     ],
     lists: [
-      { label: 'Bullet list', icon: <List size={14} />, on: editor.isActive('bulletList'), run: () => chain().toggleBulletList().run() },
-      { label: 'Ordered list', icon: <ListOrdered size={14} />, on: editor.isActive('orderedList'), run: () => chain().toggleOrderedList().run() },
+      { keys: SHORTCUTS.bulletList, label: 'Bullet list', icon: <List size={14} />, on: editor.isActive('bulletList'), run: () => chain().toggleBulletList().run() },
+      { keys: SHORTCUTS.orderedList, label: 'Ordered list', icon: <ListOrdered size={14} />, on: editor.isActive('orderedList'), run: () => chain().toggleOrderedList().run() },
     ],
     link: [
-      { label: 'Link…', icon: <Link size={14} />, on: inLink, run: handleLink },
+      { keys: SHORTCUTS.link, label: 'Link…', icon: <Link size={14} />, on: inLink, run: handleLink },
       inLink && { label: 'Remove link', icon: <Unlink size={14} />, run: () => chain().unsetLink().run() },
     ].filter(Boolean),
     math: [
@@ -398,10 +415,10 @@ export default function Toolbar({
       ].map(([label, op]) => ({ label, icon: <span style={{ width: 14 }} />, run: () => op(chain()).run() })) : []),
     ],
     headings: [
-      { label: 'Heading 1', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H1</span>, on: editor.isActive('heading', { level: 1 }), run: () => chain().toggleHeading({ level: 1 }).run() },
-      { label: 'Heading 2', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H2</span>, on: editor.isActive('heading', { level: 2 }), run: () => chain().toggleHeading({ level: 2 }).run() },
-      { label: 'Heading 3', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H3</span>, on: editor.isActive('heading', { level: 3 }), run: () => chain().toggleHeading({ level: 3 }).run() },
-      { label: 'Normal text', icon: <Type size={14} />, on: editor.isActive('paragraph') && !editor.isActive('heading'), run: () => chain().setParagraph().run() },
+      { keys: SHORTCUTS.heading1, label: 'Heading 1', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H1</span>, on: editor.isActive('heading', { level: 1 }), run: () => chain().toggleHeading({ level: 1 }).run() },
+      { keys: SHORTCUTS.heading2, label: 'Heading 2', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H2</span>, on: editor.isActive('heading', { level: 2 }), run: () => chain().toggleHeading({ level: 2 }).run() },
+      { keys: SHORTCUTS.heading3, label: 'Heading 3', icon: <span style={{ fontSize: 11, fontWeight: 700, width: 14 }}>H3</span>, on: editor.isActive('heading', { level: 3 }), run: () => chain().toggleHeading({ level: 3 }).run() },
+      { keys: SHORTCUTS.paragraph, label: 'Normal text', icon: <Type size={14} />, on: editor.isActive('paragraph') && !editor.isActive('heading'), run: () => chain().setParagraph().run() },
     ],
     clear: [{ label: 'Clear formatting', icon: <RemoveFormatting size={14} />, run: handleClearFormatting }],
   } : {}
@@ -410,16 +427,16 @@ export default function Toolbar({
   const pickFromMenu = action => () => { closeMenu(); action() }
 
   return (
-    <div className={`toolbar ${compact ? 'toolbar-compact' : ''}`} ref={toolbarRef}
+    <div className={`toolbar ${compact ? `toolbar-compact toolbar-compact-${compact}` : ''}`} ref={toolbarRef}
       style={editing && insertHeight ? { minHeight: insertHeight, boxSizing: 'border-box' } : undefined}>
       {/* Undo / Redo: the presentation's, or while editing text, the text's,
           as Ctrl+Z does */}
-      <button className="btn-icon" title={`Undo (${keyLabel('Mod+Z')})`}
+      <button className="btn-icon" title={withShortcut('Undo', SHORTCUTS.undo)}
         onClick={textUndo ? () => editor.chain().focus().undo().run() : onUndo}
         disabled={textUndo ? !editor.can().undo() : !canUndo}>
         <Undo2 size={14} />
       </button>
-      <button className="btn-icon" title={`Redo (${keyLabel('Mod+Y')})`}
+      <button className="btn-icon" title={withShortcut('Redo', SHORTCUTS.redo)}
         onClick={textUndo ? () => editor.chain().focus().redo().run() : onRedo}
         disabled={textUndo ? !editor.can().redo() : !canRedo}>
         <Redo2 size={14} />
@@ -427,7 +444,7 @@ export default function Toolbar({
       {/* New slide: after this one, in the layout that follows; ▾ picks the layout */}
       {onNewSlide && (
         <div className="split-button">
-          <button className="btn-icon toolbar-labeled" title={`New slide (${keyLabel('Mod+M')})`} aria-label="New slide" onClick={onNewSlide}>
+          <button className="btn-icon toolbar-labeled" title={withShortcut('New slide', SHORTCUTS.newSlide)} aria-label="New slide" onClick={onNewSlide}>
             <Plus size={14} />{!editing && <span className="tl-text">New slide</span>}
           </button>
           {onNewSlideFromLayout && (
@@ -445,13 +462,13 @@ export default function Toolbar({
           <Type size={14} /> <span className="tl-text">Text box</span>
         </button>
 
-        <ToolMenu id="image" open={openMenu === 'image'} {...menuProps} icon={<Image size={14} />} label="Image">
+        <ToolMenu id="image" minor open={openMenu === 'image'} {...menuProps} icon={<Image size={14} />} label="Image">
           <button className="tool-menu-item" onClick={pickFromMenu(onUploadImage)}><Upload size={14} /> Upload image…</button>
           <button className="tool-menu-item" onClick={pickFromMenu(onAddImage)}><Link size={14} /> Image from URL…</button>
           <DocsLink page="images" onClose={closeMenu} />
         </ToolMenu>
 
-        <ToolMenu id="shape" open={openMenu === 'shape'} {...menuProps} icon={<Shapes size={14} />} label="Shape" width={260}>
+        <ToolMenu id="shape" minor open={openMenu === 'shape'} {...menuProps} icon={<Shapes size={14} />} label="Shape" width={260}>
           <div style={{ padding: '4px 6px' }}>
             <div className="tool-menu-heading">Shapes</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 8 }}>
@@ -481,7 +498,7 @@ export default function Toolbar({
         </ToolMenu>
 
         {onAddTable && (
-          <ToolMenu id="table" open={openMenu === 'table'} {...menuProps} icon={<Table2 size={14} />} label="Table" title="Table: pick its rows and columns">
+          <ToolMenu id="table" minor open={openMenu === 'table'} {...menuProps} icon={<Table2 size={14} />} label="Table" title="Table: pick its rows and columns">
             <div style={{ padding: 8 }}>
               <TablePicker onPick={(r, c) => { closeMenu(); onAddTable(r, c) }} />
             </div>
@@ -506,24 +523,24 @@ export default function Toolbar({
         {selection && (selection.image || selection.editLabel || selection.count >= 2 || selection.canUngroup) && (<>
           <span className="toolbar-divider" />
           {selection.image && (<>
-            <button className="btn-icon toolbar-labeled" title="Crop the image" aria-label="Crop" onClick={() => onSelectionCommand?.('crop')}><Crop size={14} /> <span className="tl-text">Crop</span></button>
-            <button className="btn-icon toolbar-labeled" title="Replace the image with another file" aria-label="Replace image" onClick={() => onSelectionCommand?.('replace-image')}><ImageUp size={14} /> <span className="tl-text">Replace</span></button>
+            <button className="btn-icon toolbar-labeled" title="Crop the image" aria-label="Crop" onClick={() => onSelectionCommand?.('crop')}><Crop size={14} /> <span className="tl-text tl-minor">Crop</span></button>
+            <button className="btn-icon toolbar-labeled" title="Replace the image with another file" aria-label="Replace image" onClick={() => onSelectionCommand?.('replace-image')}><ImageUp size={14} /> <span className="tl-text tl-minor">Replace</span></button>
           </>)}
           {selection.editLabel && (
-            <button className="btn-icon toolbar-labeled" title={selection.editLabel} aria-label={selection.editLabel} onClick={() => onSelectionCommand?.('edit')}><Pencil size={14} /> <span className="tl-text">Edit</span></button>
+            <button className="btn-icon toolbar-labeled" title={selection.editLabel} aria-label={selection.editLabel} onClick={() => onSelectionCommand?.('edit')}><Pencil size={14} /> <span className="tl-text tl-minor">Edit</span></button>
           )}
           {selection.count >= 2 && onAlignElements && (
-            <ToolMenu id="align" open={openMenu === 'align'} {...menuProps} icon={<AlignHorizontalSpaceAround size={14} />} label="Align" title={`Align or distribute the ${selection.count} selected`}>
+            <ToolMenu id="align" minor open={openMenu === 'align'} {...menuProps} icon={<AlignHorizontalSpaceAround size={14} />} label="Align" title={`Align or distribute the ${selection.count} selected`}>
               {ALIGN_COMMANDS.map(([type, label]) => (
                 <button key={type} className="tool-menu-item" onClick={pickFromMenu(() => onAlignElements(type))}>{label}</button>
               ))}
             </ToolMenu>
           )}
           {selection.count >= 2 && (
-            <button className="btn-icon" title={`Group (${keyLabel('Mod+G')})`} aria-label="Group" onClick={() => onSelectionCommand?.('group')}><Group size={14} /></button>
+            <button className="btn-icon" title={withShortcut('Group', SHORTCUTS.group)} aria-label="Group" onClick={() => onSelectionCommand?.('group')}><Group size={14} /></button>
           )}
           {selection.canUngroup && (
-            <button className="btn-icon" title={`Ungroup (${keyLabel('Mod+Shift+G')})`} aria-label="Ungroup" onClick={() => onSelectionCommand?.('ungroup')}><Ungroup size={14} /></button>
+            <button className="btn-icon" title={withShortcut('Ungroup', SHORTCUTS.ungroup)} aria-label="Ungroup" onClick={() => onSelectionCommand?.('ungroup')}><Ungroup size={14} /></button>
           )}
         </>)}
 
@@ -531,12 +548,12 @@ export default function Toolbar({
         {/* The deck's theme, in a panel beside the slide */}
         {onTheme && (
           <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
-            <Palette size={14} /> <span className="tl-text">Theme</span>
+            <Palette size={14} /> <span className="tl-text tl-minor">Theme</span>
           </button>
         )}
         {/* The slide's background */}
         {slide && onUpdateSlide && (
-          <ToolMenu id="background" open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} />} label="Background" title="The slide's background" width={260}>
+          <ToolMenu id="background" minor open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} />} label="Background" title="The slide's background" width={260}>
             <div style={{ padding: 8 }}>
               <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
             </div>
@@ -593,7 +610,8 @@ export default function Toolbar({
         <>
           {/* Font Family */}
           <select
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, maxWidth: compact ? 92 : 120, cursor: 'pointer' }}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 6px', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
+            className="font-family-select"
             value={editor.getAttributes('textStyle').fontFamily || ''}
             onChange={e => e.target.value ? editor.chain().focus().setFontFamily(e.target.value).run() : editor.chain().focus().unsetFontFamily().run()}
             title="Font family"
@@ -702,21 +720,21 @@ export default function Toolbar({
           <button
             className={`btn-icon ${editor.isActive('bold') ? 'active' : ''}`}
             onClick={() => editor.chain().focus().toggleBold().run()}
-            title="Bold"
+            title={withShortcut('Bold', SHORTCUTS.bold)}
           >
             <Bold size={15} />
           </button>
           <button
             className={`btn-icon ${editor.isActive('italic') ? 'active' : ''}`}
             onClick={() => editor.chain().focus().toggleItalic().run()}
-            title="Italic"
+            title={withShortcut('Italic', SHORTCUTS.italic)}
           >
             <Italic size={15} />
           </button>
           <button
             className={`btn-icon ${editor.isActive('underline') ? 'active' : ''}`}
             onClick={() => editor.chain().focus().toggleUnderline().run()}
-            title="Underline"
+            title={withShortcut('Underline', SHORTCUTS.underline)}
           >
             <Underline size={15} />
           </button>
@@ -862,21 +880,21 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                title="Align left"
+                title={withShortcut('Align left', SHORTCUTS.alignLeft)}
               >
                 <AlignLeft size={15} />
               </button>
               <button
                 className={`btn-icon ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                title="Align center"
+                title={withShortcut('Align center', SHORTCUTS.alignCenter)}
               >
                 <AlignCenter size={15} />
               </button>
               <button
                 className={`btn-icon ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                title="Align right"
+                title={withShortcut('Align right', SHORTCUTS.alignRight)}
               >
                 <AlignRight size={15} />
               </button>
@@ -886,14 +904,14 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('bulletList') ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
-                title="Bullet list"
+                title={withShortcut('Bullet list', SHORTCUTS.bulletList)}
               >
                 <List size={15} />
               </button>
               <button
                 className={`btn-icon ${editor.isActive('orderedList') ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                title="Ordered list"
+                title={withShortcut('Ordered list', SHORTCUTS.orderedList)}
               >
                 <ListOrdered size={15} />
               </button>
@@ -904,7 +922,7 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('link') ? 'active' : ''}`}
                 onClick={handleLink}
-                title="Add link"
+                title={withShortcut('Add link', SHORTCUTS.link)}
               >
                 <Link size={15} />
               </button>
@@ -991,7 +1009,7 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                title="Heading 1"
+                title={withShortcut('Heading 1', SHORTCUTS.heading1)}
                 style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
               >
                 H1
@@ -999,7 +1017,7 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                title="Heading 2"
+                title={withShortcut('Heading 2', SHORTCUTS.heading2)}
                 style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
               >
                 H2
@@ -1007,7 +1025,7 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-                title="Heading 3"
+                title={withShortcut('Heading 3', SHORTCUTS.heading3)}
                 style={{ fontSize: 12, fontWeight: 700, width: 'auto', padding: '0 6px' }}
               >
                 H3
@@ -1015,7 +1033,7 @@ export default function Toolbar({
               <button
                 className={`btn-icon ${editor.isActive('paragraph') && !editor.isActive('heading') ? 'active' : ''}`}
                 onClick={() => editor.chain().focus().setParagraph().run()}
-                title="Normal text"
+                title={withShortcut('Normal text', SHORTCUTS.paragraph)}
               >
                 <Type size={15} />
               </button>
@@ -1050,10 +1068,10 @@ export default function Toolbar({
                 {[
                   ...hiddenGroups.flatMap(key => overflowItems[key] || []),
                   hiddenGroups.length > 0 && '-',
-                  { label: 'Strikethrough', icon: <Strikethrough size={14} />, on: editor.isActive('strike'), run: () => editor.chain().focus().toggleStrike().run() },
-                  { label: 'Inline code', icon: <Code size={14} />, on: editor.isActive('code'), run: () => editor.chain().focus().toggleCode().run() },
-                  { label: 'Code block', icon: <FileCode size={14} />, on: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
-                  { label: 'Quote', icon: <Quote size={14} />, on: editor.isActive('blockquote'), run: () => editor.chain().focus().toggleBlockquote().run() },
+                  { label: 'Strikethrough', icon: <Strikethrough size={14} />, keys: SHORTCUTS.strike, on: editor.isActive('strike'), run: () => editor.chain().focus().toggleStrike().run() },
+                  { label: 'Inline code', icon: <Code size={14} />, keys: SHORTCUTS.code, on: editor.isActive('code'), run: () => editor.chain().focus().toggleCode().run() },
+                  { label: 'Code block', icon: <FileCode size={14} />, keys: SHORTCUTS.codeBlock, on: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
+                  { label: 'Quote', icon: <Quote size={14} />, keys: SHORTCUTS.quote, on: editor.isActive('blockquote'), run: () => editor.chain().focus().toggleBlockquote().run() },
                   !wholeBox && { label: 'Image in text', icon: <Image size={14} />, run: handleImage },
                 ].filter(Boolean).map((item, i) => item === '-' ? <div key={`line-${i}`} style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} /> : (
                   <button
@@ -1065,7 +1083,8 @@ export default function Toolbar({
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
                   >
                     {item.icon} {item.label}
-                    {item.on && <Check size={13} style={{ marginLeft: 'auto', color: 'var(--accent-light)' }} aria-label="on" />}
+                    {item.keys && <span className="menu-shortcut" style={{ marginLeft: 'auto', paddingLeft: 12, fontSize: 11, color: 'var(--text-muted)' }}>{keyLabel(item.keys)}</span>}
+                    {item.on && <Check size={13} style={{ marginLeft: item.keys ? 6 : 'auto', color: 'var(--accent-light)' }} aria-label="on" />}
                   </button>
                 ))}
                 <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />

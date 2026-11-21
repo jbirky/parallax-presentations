@@ -17,7 +17,7 @@ function storedHeight() {
   return 110
 }
 
-export default function NotesStrip({ notes = '', onChange, slideNumber }) {
+export default function NotesStrip({ notes = '', onChange, slideNumber, focusRequest = 0 }) {
   const [height, setHeight] = useState(storedHeight)
   const [writing, setWriting] = useState(false)
   const textRef = useRef(null)
@@ -30,6 +30,13 @@ export default function NotesStrip({ notes = '', onChange, slideNumber }) {
   }
 
   useEffect(() => { if (writing && !notes) textRef.current?.focus() }, [writing]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Asked to open for typing (the getting-started checklist's Add speaker notes)
+  useEffect(() => {
+    if (!focusRequest) return
+    setWriting(true)
+    requestAnimationFrame(() => textRef.current?.focus())
+  }, [focusRequest])
 
   const startDrag = e => {
     e.preventDefault()

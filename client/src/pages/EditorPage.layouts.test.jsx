@@ -23,6 +23,7 @@ vi.mock('../utils/liveDeck', () => ({
 }))
 import { api } from '../utils/api'
 import EditorPage from './EditorPage'
+import { resetChecklistForTests } from '../utils/gettingStarted'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -47,6 +48,8 @@ async function pick(menu, ...path) {
 }
 
 beforeEach(() => {
+  localStorage.clear()
+  resetChecklistForTests()
   vi.useFakeTimers()
   vi.clearAllMocks()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('[]')))
@@ -81,5 +84,30 @@ describe('placeholders and layouts', () => {
     // A background of its own stays
     await act(async () => el.querySelectorAll('.slide-item')[1].click())
     expect(canvas().style.backgroundColor).toMatch(/#ff0000|rgb\(255, 0, 0\)/)
+  })
+})
+
+describe('getting started', () => {
+  const card = () => el.querySelector('.getting-started')
+  const step = label => [...el.querySelectorAll('.getting-started li button')].find(b => b.textContent === label)
+
+  it('shows above the slide list on a first deck, ticking steps as they’re done', async () => {
+    await open()
+    expect(card()).toBeTruthy()
+    expect(card().compareDocumentPosition(el.querySelector('.slide-list')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true, bubbles: true, cancelable: true })))
+    expect(step('Add a slide').disabled).toBe(true)
+    expect(card().textContent).toContain('1 of 5')
+    // A step not done yet does it: Pick a theme opens the themes
+    await act(async () => step('Pick a theme').click())
+    expect(el.querySelector('aside[aria-label="Themes"]')).toBeTruthy()
+  })
+
+  it('closes for good, and comes back from Help', async () => {
+    await open()
+    await act(async () => card().querySelector('button[aria-label="Close the checklist"]').click())
+    expect(card()).toBeNull()
+    await pick('Help', 'Getting-started checklist')
+    expect(card()).toBeTruthy()
   })
 })

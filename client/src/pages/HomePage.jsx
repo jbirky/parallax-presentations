@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import ThemeGallery from '../components/ThemeGallery'
+import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode } from 'lucide-react'
@@ -220,6 +221,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         api.getTemplates(),
       ])
       setPresentations(Array.isArray(presData) ? presData : [])
+      // For the getting-started checklist: shown on someone's first decks
+      rememberDeckCount((Array.isArray(presData) ? presData : []).filter(p => p.role !== 'editor').length)
       setTemplates(Array.isArray(tmplData) ? tmplData : [])
       if (isCloud) {
         api.getMe().then(setPlanInfo).catch(() => {})
@@ -825,7 +828,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   <div className="form-group">
                     <label id="new-theme-label">Theme</label>
                     <div style={{ maxHeight: 260, overflowY: 'auto', padding: 2 }}>
-                      <ThemeGallery value={form.theme} onChange={t => setForm(f => ({ ...f, theme: t }))} columns={4} width={100} label="Theme" />
+                      <ThemeGallery value={form.theme} onChange={t => { tickStep('theme'); setForm(f => ({ ...f, theme: t })) }} columns={4} width={100} label="Theme" />
                     </div>
                   </div>
                   <div className="form-group">

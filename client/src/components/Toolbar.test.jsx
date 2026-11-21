@@ -35,7 +35,8 @@ afterEach(() => {
   el.remove()
 })
 
-const titled = title => [...el.querySelectorAll('button')].filter(b => b.title === title)
+// A button by its tooltip, with or without the shortcut it names: "Bold (Ctrl+B)"
+const titled = title => [...el.querySelectorAll('button')].filter(b => b.title === title || b.title.startsWith(`${title} (`))
 const click = async b => act(async () => b.click())
 
 describe('Toolbar', () => {
@@ -121,13 +122,15 @@ describe('Toolbar', () => {
     expect(titled('Strikethrough')).toHaveLength(0)
     await click(titled('More formatting')[0])
     const menu = el.querySelector('[role="menu"]')
-    const items = [...menu.querySelectorAll('button')].map(b => b.textContent.trim())
+    const items = [...menu.querySelectorAll('button')].map(b => b.textContent.replace(/(Ctrl\+|⌘).*$/, '').trim())
     expect(items).toEqual(['Strikethrough', 'Inline code', 'Code block', 'Quote', 'Image in text'])
+    // with the text editor's shortcuts
+    expect(menu.querySelector('button').textContent).toMatch(/Strikethrough(Ctrl\+Shift\+S|⌘⇧S)/)
     expect(menu.textContent).toContain('Weight')
     expect(menu.textContent).toContain('Line spacing')
     // What's on is marked
     expect(menu.querySelector('button [aria-label="on"]')).toBeTruthy()
-    await click([...menu.querySelectorAll('button')].find(b => b.textContent.trim() === 'Code block'))
+    await click([...menu.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Code block')))
     expect(editor.calls).toContain('toggleCodeBlock')
     expect(el.querySelector('[role="menu"]')).toBeNull()
   })
@@ -158,5 +161,17 @@ describe('Toolbar', () => {
     // Escape closes it
     await act(async () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(el.querySelector('.bg-type-tab')).toBeNull()
+  })
+})
+
+describe('tooltips', () => {
+  it('name the shortcut of each formatting tool', async () => {
+    await render({ editor: fakeEditor(), editingElementId: 'e1' })
+    const mac = /Mac/.test(navigator.platform)
+    const title = name => titled(name)[0].title
+    expect(title('Bold')).toBe(mac ? 'Bold (⌘B)' : 'Bold (Ctrl+B)')
+    expect(title('Align center')).toBe(mac ? 'Align center (⌘⇧E)' : 'Align center (Ctrl+Shift+E)')
+    expect(title('Heading 1')).toBe(mac ? 'Heading 1 (⌘⌥1)' : 'Heading 1 (Ctrl+Alt+1)')
+    expect(title('Add link')).toBe(mac ? 'Add link (⌘K)' : 'Add link (Ctrl+K)')
   })
 })

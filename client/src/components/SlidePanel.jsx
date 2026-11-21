@@ -229,7 +229,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black' }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', notice = null }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
@@ -406,6 +406,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
             {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
           </span>
         </div>
+        {notice}
         {newSlideBar(null)}
 
         <div
@@ -506,6 +507,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
           {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
         </span>
       </div>
+      {notice}
       {newSlideBar(currentColNum)}
 
       <div
