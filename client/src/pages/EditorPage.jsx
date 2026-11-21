@@ -16,7 +16,7 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Settings, Check, X, Search, Share2, CloudUpload, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Settings, Check, X, Search, Share2, CloudUpload, Bot, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
@@ -99,6 +99,7 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
+import AiLinkModal from '../components/AiLinkModal'
 import HeaderMenu from '../components/HeaderMenu'
 import { renewSlideIds, renewElementIds, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
@@ -446,6 +447,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [access, setAccess] = useState(null)
   const isEditor = access?.role === 'editor'
   const [showEditorsModal, setShowEditorsModal] = useState(false)
+  const [showAiLinks, setShowAiLinks] = useState(false)
   // Autosave stopped: { kind: 'conflict', version } when someone else saved
   // first, { kind: 'gone' } when the presentation is gone or this user was
   // removed from it
@@ -481,11 +483,12 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
   // The Share button beside Present (components/HeaderMenu.jsx): a share link
-  // for the owner, and who edits it (cloud, not for guests; a template has no
-  // editors)
+  // for the owner, who edits it, and the owner's AI collaborator links (cloud,
+  // not for guests; a template has no editors)
   const shareItems = [
     isCloud && !guest && !isEditor && { label: 'Share link…', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
     isCloud && !guest && !isTemplate && { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+    isCloud && !guest && !isEditor && !isTemplate && { label: 'AI collaborator link…', icon: <Bot size={13} />, title: 'Let an AI chat app such as Claude or ChatGPT read this presentation', action: () => setShowAiLinks(true) },
   ].filter(Boolean)
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
@@ -5637,6 +5640,7 @@ function draw() {
         />
       )}
 
+      {showAiLinks && <AiLinkModal presentationId={presentationId} onClose={() => setShowAiLinks(false)} />}
       {showEditorsModal && access && (
         <EditorsModal
           presentationId={presentationId}

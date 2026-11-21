@@ -261,6 +261,11 @@ export const api = {
   removeCollaborator: (id, userId) => authFetch(`${BASE}/presentations/${id}/collaborators/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
+  // AI collaborator links (cloud only): days is 7, 30 or 90, or null for never
+  getAiLinks: (id) => authFetch(`${BASE}/presentations/${id}/ai-links`).then(r => checked(r, 'Failed')),
+  createAiLink: (id, { name, days }) => authFetch(`${BASE}/presentations/${id}/ai-links`, json('POST', { name, days })).then(r => checked(r, 'Failed')),
+  renewAiLink: (id, linkId, days) => authFetch(`${BASE}/presentations/${id}/ai-links/${linkId}/renew`, json('POST', { days })).then(r => checked(r, 'Failed')),
+  revokeAiLink: (id, linkId) => authFetch(`${BASE}/presentations/${id}/ai-links/${linkId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
   getPresentationDatasetData: (pid, datasetId, params = {}) => {
     const qs = new URLSearchParams(params).toString()

@@ -35,6 +35,8 @@ const {
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
+const aiLinks = require('./services/ai-links')
+const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
 const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
@@ -47,7 +49,7 @@ const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const { deckDataFor } = require('./services/deck-data')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, statsLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, mcpLinkLimiter, mcpMissLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -124,8 +126,9 @@ if (!IS_CLOUD) app.use(localOnly())
 // Library files, uploads, the example decks' files and a live session's slide
 // feed are public, and the pages that use them are sandboxed (sendDeckPage),
 // so their requests come from origin null: those answer any origin, without
-// credentials
-const PUBLIC_CORS = /^\/(vendor|uploads|examples)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+// credentials. So do AI collaborator links, whose secret is in the URL, not a
+// cookie (a browser-based MCP client calls them from its own origin).
+const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp)\/|^\/api\/live\/[^/]+\/(stream|status)$/
 const publicCors = cors()
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
@@ -198,6 +201,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Diagram Editor', link: 'tutorials/diagrams' },
       { text: 'Drawing on Slides', link: 'tutorials/drawing-on-slides' },
       { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
+      { text: 'AI Collaborators', link: 'tutorials/ai-collaborators' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
       { text: 'Feynman Diagrams', link: 'tutorials/feynman-diagrams' },
@@ -2022,7 +2026,8 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
 // every presentation; and at localhost, nobody else can open one anyway.
 if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
-    '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite'],
+    '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
+    '/api/presentations/:id/ai-links', '/mcp'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2135,6 +2140,64 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
+
+// --- AI collaborator links (cloud only; services/ai-links.js, server/mcp) ---
+// The owner makes, renews and revokes them. A link is an MCP server at
+// /mcp/<secret> that an AI chat app adds as a connector.
+
+const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
+const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
+const aiLinkUrl = (req, secret) => `${siteOrigin(req)}/mcp/${secret}`
+
+// GET /api/presentations/:id/ai-links - the presentation's links, without
+// their secrets
+app.get('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+  try {
+    res.json({ links: await aiLinks.listLinks(storage, req.params.id) })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// POST /api/presentations/:id/ai-links { name, days } - a new link, with its
+// URL, which isn't given again; days is 7, 30 or 90, or null for never
+app.post('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+  try {
+    const { secret, ...link } = await aiLinks.createLink(storage, {
+      presentationId: req.params.id, userId: req.userId, name: req.body?.name, days: req.body?.days,
+    })
+    res.status(201).json({ ...link, url: aiLinkUrl(req, secret) })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// POST /api/presentations/:id/ai-links/:linkId/renew { days } - the link
+// lasts `days` from now, with the same URL
+app.post('/api/presentations/:id/ai-links/:linkId/renew', requireValidId(), requireValidId('linkId'), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+  try {
+    const link = await aiLinks.renewLink(storage, req.params.id, req.params.linkId, req.body?.days)
+    if (!link) return res.status(404).json({ error: 'No such AI collaborator link' })
+    res.json(link)
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// DELETE /api/presentations/:id/ai-links/:linkId - the link stops working
+app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireValidId('linkId'), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+  try {
+    if (!(await aiLinks.revokeLink(storage, req.params.id, req.params.linkId))) return res.status(404).json({ error: 'No such AI collaborator link' })
+    res.json({ success: true })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// /mcp/:secret - the link itself: MCP for a connector, a page for a person
+if (IS_CLOUD && storage.query) {
+  app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, createMcpRoute({ storage, origin: siteOrigin }))
+}
 
 app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {

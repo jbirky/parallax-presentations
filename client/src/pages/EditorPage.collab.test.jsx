@@ -96,7 +96,7 @@ describe('the editor, shared', () => {
 
   it('puts the share link and editors under Share, not in the menu bar', async () => {
     await open('owner')
-    expect(await shareMenu()).toEqual(['Share link…', 'Editors…'])
+    expect(await shareMenu()).toEqual(['Share link…', 'Editors…', 'AI collaborator link…'])
     expect(button('Share').getAttribute('aria-expanded')).toBe('true')
     const tools = await menu('Tools')
     expect(tools).not.toContain('Share link…')
@@ -116,9 +116,19 @@ describe('the editor, shared', () => {
     expect(api.getCollaborators).toHaveBeenCalledWith('p1')
   })
 
-  it('gives an editor the editors but not the share link, which is the owner’s', async () => {
+  it('gives an editor the editors but not the share link or AI links, which are the owner’s', async () => {
     await open('editor')
     expect(await shareMenu()).toEqual(['Editors…'])
+  })
+
+  it('opens the AI collaborator links from Share', async () => {
+    api.getAiLinks.mockResolvedValue({ links: [] })
+    await open('owner')
+    await shareMenu()
+    const item = [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'AI collaborator link…')
+    await act(async () => item.click())
+    expect(el.querySelector('[role=dialog][aria-labelledby=ai-links-title]')).toBeTruthy()
+    expect(api.getAiLinks).toHaveBeenCalledWith('p1')
   })
 
   it('has no sharing for a guest', async () => {
