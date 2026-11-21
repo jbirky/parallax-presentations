@@ -67,7 +67,7 @@ const fieldsOf = examples => {
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
 
-const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting']
+const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
 
 // An example, live, with what it shows and a way into the editor
