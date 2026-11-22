@@ -709,6 +709,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-links > .lp-signin { color: var(--lp-text); border: 1px solid var(--lp-line); margin-left: 6px; }
 .lp-links > .lp-signin:hover { border-color: var(--lp-soft); background: transparent; }
 @media (max-width: 720px) { .lp-links .lp-wide { display: none; } }
+@media (max-width: 480px) { .lp-links .lp-mid { display: none; } }
 @media (max-width: 420px) { .lp-links > button, .lp-links > a { padding-inline: 8px; } .lp-links > .lp-signin { margin-left: 2px; } }
 .landing-page .beta-badge { color: var(--accent-light); }
 
@@ -750,6 +751,10 @@ sup[data-cite] { font-weight: 700; }
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 22px; margin-top: 26px; }
 .lp-card { display: grid; grid-template-rows: auto 1fr; text-align: left; text-decoration: none; color: inherit; background: var(--lp-card); border: 1px solid var(--lp-line); border-radius: 12px; overflow: hidden; transition: border-color 0.15s, transform 0.15s; }
 .lp-card:hover { border-color: rgba(143, 146, 250, 0.6); transform: translateY(-2px); }
+/* The Templates tab's cards open the viewer, so they're buttons */
+button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
+.lp-templates { min-height: calc(100vh - 64px); }
+.lp-empty { margin-top: 28px; color: var(--lp-muted); font-size: 15px; }
 .lp-thumb { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #12121f; }
 .lp-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .lp-thumb-title { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; font-family: var(--lp-display); font-size: 20px; font-weight: 600; color: #fff; text-align: center; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); }

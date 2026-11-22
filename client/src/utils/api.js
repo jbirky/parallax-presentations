@@ -395,6 +395,8 @@ export const api = {
   getGuestConfig: () => _fetch(`${BASE}/guest/config`).then(safeJson),
   // The landing page's examples: { hero, examples }, or null
   getLandingExamples: () => _fetch(`${BASE}/examples`).then(r => (r.ok ? r.json() : null)),
+  // A presentation of one's own from a landing page template: { id, title }
+  useTemplate: (slug) => authFetch(`${BASE}/landing-templates/${encodeURIComponent(slug)}/use`, { method: 'POST' }).then(r => checked(r, 'Could not make your copy')),
   // One of the landing page's example decks, or null
   getExample: (slug) => _fetch(`${BASE}/examples/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)),
   // Copies of the datasets an example deck plots, linked to presentation pid

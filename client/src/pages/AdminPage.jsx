@@ -590,7 +590,7 @@ function ExampleFields({ form, set, fields }) {
 function AddExample({ fields, onAdded, onCancel }) {
   const [presentations, setPresentations] = useState(null)
   const [presentationId, setPresentationId] = useState('')
-  const [form, setForm] = useState({ field: '', title: '', description: '', tags: '' })
+  const [form, setForm] = useState({ field: '', title: '', description: '', tags: '', kind: 'example' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
@@ -616,16 +616,24 @@ function AddExample({ fields, onAdded, onCancel }) {
   }
   return (
     <form onSubmit={add} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 10 }}>
-      <Field label="Presentation" hint="its slides are copied as they are now">
-        <select className="select-sm" value={presentationId} onChange={choose} required disabled={!presentations}>
-          <option value="">{presentations ? 'Choose one of your presentations…' : 'Loading…'}</option>
-          {presentations?.map(p => <option key={p.id} value={p.id}>{p.title || 'Untitled'}</option>)}
-        </select>
-      </Field>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        <Field label="Presentation" hint="its slides are copied as they are now">
+          <select className="select-sm" value={presentationId} onChange={choose} required disabled={!presentations}>
+            <option value="">{presentations ? 'Choose one of your presentations…' : 'Loading…'}</option>
+            {presentations?.map(p => <option key={p.id} value={p.id}>{p.title || 'Untitled'}</option>)}
+          </select>
+        </Field>
+        <Field label="Shown as" hint="a template is copied into people’s accounts">
+          <select className="select-sm" value={form.kind} onChange={set('kind')} aria-label="Shown as">
+            <option value="example">An example, on the home tab</option>
+            <option value="template">A template, on the Templates tab</option>
+          </select>
+        </Field>
+      </div>
       <ExampleFields form={form} set={set} fields={fields} />
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="submit" className="btn btn-primary" disabled={saving || !presentationId} style={{ padding: '5px 12px', fontSize: 13 }}>{saving ? 'Adding…' : 'Add example'}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving || !presentationId} style={{ padding: '5px 12px', fontSize: 13 }}>{saving ? 'Adding…' : form.kind === 'template' ? 'Add template' : 'Add example'}</button>
         <button type="button" className="btn btn-secondary" disabled={saving} onClick={onCancel} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
         {saving && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Copying the slides and drawing the thumbnail, a few seconds…</span>}
       </div>
@@ -655,6 +663,7 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
           <strong style={{ fontSize: 14 }}>{e.title}</strong>
           {e.field && <span style={chip}>{e.field}</span>}
           {e.hero && <span style={{ ...chip, background: 'var(--accent)', color: '#fff' }}>At the top</span>}
+          {e.kind === 'template' && <span style={{ ...chip, background: 'rgba(16, 185, 129, 0.18)', color: '#34d399' }}>Template</span>}
           {!e.card && !e.hero && <span style={chip}>Hidden</span>}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {e.sourcePresentationId
@@ -678,7 +687,14 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
             <button className="btn btn-secondary" style={smallBtn} disabled={working || first} onClick={() => onMove(e, -1)} aria-label={`Move ${e.title} up`}>↑</button>
             <button className="btn btn-secondary" style={smallBtn} disabled={working || last} onClick={() => onMove(e, 1)} aria-label={`Move ${e.title} down`}>↓</button>
             {!e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.saveExample(e.slug, { card: !e.card }))}>{e.card ? 'Hide' : 'Show'}</button>}
-            {!e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.saveExample(e.slug, { hero: true }))}>Put at the top</button>}
+            {!e.hero && e.kind !== 'template' && <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.saveExample(e.slug, { hero: true }))}>Put at the top</button>}
+            {!e.hero && (e.kind === 'template' || e.ownDeck || !e.builtin) && (
+              <button className="btn btn-secondary" style={smallBtn} disabled={working}
+                title={e.kind === 'template' ? 'Show it with the examples, to look at' : 'Show it on the Templates tab, for people to copy'}
+                onClick={() => onAct(e, () => api.saveExample(e.slug, { kind: e.kind === 'template' ? 'example' : 'template' }))}>
+                {e.kind === 'template' ? 'Make an example' : 'Make a template'}
+              </button>
+            )}
             {e.sourcePresentationId
               ? <button className="btn btn-secondary" style={smallBtn} disabled={working || !e.sourceTitle} onClick={() => onAct(e, () => api.refreshExample(e.slug))} title="Copy the slides again, as the presentation is now">Update from presentation</button>
               : <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.copyExample(e.slug))} title="Make a presentation of yours from it, to change its slides">Make an editable copy</button>}
@@ -749,14 +765,15 @@ export function ExamplesPanel() {
     <section style={styles.panel} aria-labelledby="admin-examples">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h2 style={styles.h2} id="admin-examples">Landing page examples</h2>
+          <h2 style={styles.h2} id="admin-examples">Landing page examples and templates</h2>
           <p style={styles.sub}>
-            The deck at the top of the landing page and the example cards under it, in this order. An example is a copy
-            of one of your presentations: change the presentation, then use Update from presentation to show it.
+            The deck at the top of the landing page, the example cards under it, and the cards on its Templates tab, in
+            this order. Each is a copy of one of your presentations: change the presentation, then use Update from
+            presentation to show it. People copy a template into their account to start from; its speaker notes stay out.
             {canDraw ? ' The server draws each card’s thumbnail from the first slide.' : ' This server has no Chromium, so it can’t draw thumbnails; new cards show a placeholder.'}
           </p>
         </div>
-        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add an example</button>}
+        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add an example or template</button>}
       </div>
       {adding && <AddExample fields={fields} onCancel={() => setAdding(false)} onAdded={async r => {
         setAdding(false)

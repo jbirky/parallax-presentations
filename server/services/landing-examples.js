@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// The landing page's examples, edited from /admin (landing_examples, migration
-// 017). Each has the card's words, whether it's one of the cards, and whether
-// it plays at the top of the page (one does). A built-in one shows the deck
+// The landing page's examples and templates, edited from /admin
+// (landing_examples, migrations 017 and 025). Each has the card's words,
+// whether it's one of the cards, and whether it plays at the top of the page
+// (one example does). An example is a deck to look at; a template (kind
+// 'template', on the Templates tab) is one people copy into their account to
+// start from (templateToUse). A built-in one shows the deck
 // client/src/examples/decks.js builds until it's given a deck of its own; one
 // added from a presentation keeps a copy of that deck, refreshed only when
 // asked, and remembers which presentation it came from. A thumbnail drawn by
@@ -20,18 +23,24 @@ class ExampleError extends Error {
 
 const TEXT_LIMITS = { field: 40, title: 80, description: 300 }
 const MAX_TAGS = 6, MAX_TAG = 40
-const COLUMNS = `slug, field, title, description, tags, builtin, card, hero, sort_order,
+const KINDS = ['example', 'template']
+// Before migration 025, every row is an example
+const columns = () => `slug, field, title, description, tags, builtin, card, hero, sort_order,
+  ${kindFound ? 'kind' : "'example' AS kind"},
   source_presentation_id, (SELECT p.title FROM presentations p WHERE p.id = source_presentation_id) AS source_title,
   deck IS NOT NULL AS has_deck, thumbnail IS NOT NULL AS has_thumbnail,
   COALESCE(deck->'slides'->0->'background', 'null'::jsonb) AS background, updated_at`
 
 let tableFound = false
+let kindFound = false
 async function hasTable(storage) {
-  if (tableFound) return true
+  if (tableFound && kindFound) return true
   if (!storage || !storage.query) return false
-  const { rows: [{ ok }] } = await storage.query("SELECT to_regclass('landing_examples') IS NOT NULL AS ok")
-  tableFound = ok
-  return ok
+  const { rows: [r] } = await storage.query(`SELECT to_regclass('landing_examples') IS NOT NULL AS ok,
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'landing_examples' AND column_name = 'kind') AS kind`)
+  tableFound = r.ok
+  kindFound = r.kind
+  return r.ok
 }
 
 const builtinBackground = slug => deckHtml.exampleDeck(slug)?.slides?.[0]?.background || null
@@ -46,6 +55,7 @@ function fromRow(r) {
     builtin: r.builtin,
     card: r.card,
     hero: r.hero,
+    kind: r.kind || 'example',
     sortOrder: r.sort_order,
     sourcePresentationId: r.source_presentation_id || null,
     // Its title now, or null once it's deleted
@@ -62,18 +72,18 @@ function fromRow(r) {
 function builtins() {
   const cards = deckHtml.EXAMPLES.map((e, i) => ({
     slug: e.slug, field: e.field, title: e.title, description: e.desc, tags: e.tags,
-    builtin: true, card: true, hero: false, sortOrder: i + 1,
+    builtin: true, card: true, hero: false, kind: 'example', sortOrder: i + 1,
     sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: builtinBackground(e.slug), updatedAt: null,
   }))
   const hero = { slug: deckHtml.HERO_EXAMPLE, field: '', title: 'Parallax', description: 'A galaxy rotation curve, a Feynman diagram and a geometry construction', tags: [],
-    builtin: true, card: false, hero: true, sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, updatedAt: null }
+    builtin: true, card: false, hero: true, kind: 'example', sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, updatedAt: null }
   return [hero, ...cards]
 }
 
 // Every example, cards or not, in order
 async function listExamples(storage) {
   if (!(await hasTable(storage))) return builtins()
-  const { rows } = await storage.query(`SELECT ${COLUMNS} FROM landing_examples ORDER BY sort_order, created_at`)
+  const { rows } = await storage.query(`SELECT ${columns()} FROM landing_examples ORDER BY sort_order, created_at`)
   return rows.map(fromRow)
 }
 
@@ -83,17 +93,28 @@ function thumbnailUrl(e) {
   return e.builtin && !e.ownDeck ? `/examples/thumbs/${e.slug}.jpg` : null
 }
 
-// What the landing page shows: the deck at the top, and the cards
+// What the landing page shows: the deck at the top, the example cards, and
+// the template cards on its Templates tab
 async function landingExamples(storage) {
   const all = await listExamples(storage)
   const hero = all.find(e => e.hero) || all.find(e => e.slug === deckHtml.HERO_EXAMPLE)
+  const card = e => ({
+    slug: e.slug, field: e.field, title: e.title, desc: e.description, tags: e.tags,
+    thumbnail: thumbnailUrl(e), background: e.background,
+  })
   return {
     hero: hero ? hero.slug : null,
-    examples: all.filter(e => e.card).map(e => ({
-      slug: e.slug, field: e.field, title: e.title, desc: e.description, tags: e.tags,
-      thumbnail: thumbnailUrl(e), background: e.background,
-    })),
+    examples: all.filter(e => e.card && e.kind !== 'template').map(card),
+    templates: all.filter(e => e.card && e.kind === 'template').map(card),
   }
+}
+
+// A template people may copy, shown on the landing page: { title, deck }, or
+// null
+async function templateToUse(storage, slug) {
+  if (!(await hasTable(storage)) || !kindFound) return null
+  const { rows: [r] } = await storage.query("SELECT title, deck FROM landing_examples WHERE slug = $1 AND kind = 'template' AND card", [slug])
+  return r && r.deck ? { title: r.title, deck: r.deck } : null
 }
 
 // An example's deck and when it last changed, or null
@@ -133,6 +154,10 @@ function cleanFields(input, { partial = false } = {}) {
     if (value.length > TEXT_LIMITS[key]) throw new ExampleError(`The ${key} can be at most ${TEXT_LIMITS[key]} characters`)
     out[key] = value
   }
+  if (input.kind !== undefined) {
+    if (!KINDS.includes(input.kind)) throw new ExampleError('A card is an example or a template')
+    out.kind = input.kind
+  }
   if (input.tags !== undefined) {
     const tags = (Array.isArray(input.tags) ? input.tags : String(input.tags).split(','))
       .map(t => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean)
@@ -150,33 +175,49 @@ async function needTable(storage) {
 }
 
 async function getRow(storage, slug) {
-  const { rows: [r] } = await storage.query(`SELECT ${COLUMNS} FROM landing_examples WHERE slug = $1`, [slug])
+  await hasTable(storage)
+  const { rows: [r] } = await storage.query(`SELECT ${columns()} FROM landing_examples WHERE slug = $1`, [slug])
   if (!r) throw new ExampleError('No such example', 404)
   return fromRow(r)
 }
 
-// A new example, a copy of `presentation`, last among the cards
+// Before migration 025 there are only examples
+async function needKinds(storage, fields) {
+  if (kindFound) return
+  if (fields.kind === 'template') throw new ExampleError('Templates need the landing_templates migration (025) first', 409)
+  delete fields.kind
+}
+
+// A new example or template, a copy of `presentation`, last among the cards
 async function createExample(storage, presentation, input) {
   await needTable(storage)
-  const fields = { field: '', description: '', tags: [], ...cleanFields(input) }
+  const fields = { field: '', description: '', tags: [], kind: 'example', ...cleanFields(input) }
+  await needKinds(storage, fields)
   const base = slugify(fields.title)
   const { rows: taken } = await storage.query('SELECT slug FROM landing_examples WHERE slug = $1 OR slug LIKE $2', [base, `${base}-%`])
   const used = new Set(taken.map(r => r.slug).concat(['thumbs']))
   let slug = base
   for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`
   await storage.query(
-    `INSERT INTO landing_examples (slug, field, title, description, tags, deck, source_presentation_id, builtin, card, hero, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE, FALSE, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM landing_examples))`,
-    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation)), presentation.id]
+    `INSERT INTO landing_examples (slug, field, title, description, tags, deck, source_presentation_id, builtin, card, hero, sort_order${kindFound ? ', kind' : ''})
+     VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE, FALSE, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM landing_examples)${kindFound ? ', $8' : ''})`,
+    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation)), presentation.id, ...(kindFound ? [fields.kind] : [])]
   )
   return getRow(storage, slug)
 }
 
-// The card's words, whether it's a card, and moving the top of the page to it
+// The card's words, whether it's a card or a template, and moving the top of
+// the page to it (an example's)
 async function updateExample(storage, slug, input) {
   await needTable(storage)
-  await getRow(storage, slug)
+  const before = await getRow(storage, slug)
   const fields = cleanFields(input, { partial: true })
+  await needKinds(storage, fields)
+  const kind = fields.kind || before.kind
+  if (kind === 'template' && (input.hero === true || (before.hero && fields.kind === 'template'))) {
+    throw new ExampleError(before.hero ? 'Move the top of the page to another example first' : 'The deck at the top of the page is an example, not a template')
+  }
+  if (kind === 'template' && before.builtin && !before.ownDeck) throw new ExampleError('Make an editable copy of a built-in example first, then a template of that')
   const sets = [], params = [slug]
   for (const [key, value] of Object.entries(fields)) {
     params.push(key === 'tags' ? JSON.stringify(value) : value)
@@ -227,6 +268,6 @@ async function deleteExample(storage, slug) {
 }
 
 module.exports = {
-  ExampleError, listExamples, landingExamples, getExampleDeck, getThumbnail, publicCopy,
+  ExampleError, listExamples, landingExamples, templateToUse, getExampleDeck, getThumbnail, publicCopy,
   createExample, updateExample, setOrder, refreshExample, setThumbnail, deleteExample, getRow,
 }

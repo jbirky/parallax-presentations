@@ -1719,6 +1719,32 @@ app.post('/api/examples/:slug/datasets', uploadLimiter, async (req, res) => {
   }
 })
 
+// POST /api/landing-templates/:slug/use — a presentation of the caller's made
+// from one of the landing page's templates (services/landing-examples.js),
+// with copies of the datasets it plots: the Templates tab's Use this
+// template, after signing in (client/src/pages/TemplateUsePage.jsx)
+app.post('/api/landing-templates/:slug/use', uploadLimiter, async (req, res) => {
+  try {
+    const template = EXAMPLE_SLUG.test(req.params.slug) && await examples.templateToUse(storage, req.params.slug)
+    if (!template) return res.status(404).json({ error: 'That template isn’t available any more' })
+    if (!(await checkPresentationQuota(req, res))) return
+    const created = await storage.createPresentation({ ...template.deck, id: uuidv4(), title: template.title }, req.userId, null)
+    try {
+      const plan = planOf(req)
+      await exampleData.copyExampleDatasets(storage, template.deck, {
+        userId: req.userId, keyPrefix: req.guestKeyPrefix, presentationId: created.id, localDir: DATA_DIR,
+        checkRoom: bytes => live.checkRoom(storage, req.userId, plan, bytes),
+      })
+    } catch (err) {
+      // The slides are theirs anyway; a graph without its data says so
+      console.warn(`Template ${req.params.slug}: datasets not copied:`, err.message)
+    }
+    res.status(201).json({ id: created.id, title: created.title })
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+
 // --- Custom Fonts ---
 
 // GET /api/fonts - list user's custom fonts
@@ -2035,7 +2061,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
 if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
-    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview'],
+    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 

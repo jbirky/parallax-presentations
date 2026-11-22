@@ -97,6 +97,45 @@ describe('the landing page', () => {
     } finally { server.list = null }
   })
 
+  it('has no Templates tab until there are templates', async () => {
+    await mount()
+    expect(button('Templates')).toBeUndefined()
+  })
+
+  it('lists the templates on their own tab, with a way to copy one into an account', async () => {
+    const template = (slug, title, field) => ({ slug, title, field, desc: `${title}, ready to fill in`, tags: ['Outline'], thumbnail: null, background: { type: 'color', color: '#202040' } })
+    server.list = { hero: 'hero', examples: [], templates: [template('journal-club', 'Journal club', 'Talks'), template('lecture', 'Lecture', 'Teaching')] }
+    try {
+      await mount()
+      await act(async () => button('Templates').click())
+      expect(window.location.hash).toBe('#templates')
+      expect(el.querySelector('#lp-templates').textContent).toBe('Templates')
+      expect(el.querySelector('.lp-hero')).toBeNull()
+      expect(cards()).toEqual(['Journal club', 'Lecture'])
+      await act(async () => button('Teaching').click())
+      expect(cards()).toEqual(['Lecture'])
+      await act(async () => button('All').click())
+
+      await act(async () => el.querySelector('button.lp-card').click())
+      const viewer = el.querySelectorAll('.lp-viewer')[1]
+      expect(viewer.querySelector('iframe').getAttribute('src')).toBe('/examples/journal-club/deck')
+      const links = [...viewer.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href')])
+      expect(links).toContainEqual(['Use this template', '/templates/journal-club/use'])
+      expect(links).toContainEqual(['Try it without an account', '/try?example=journal-club'])
+      expect(links.some(([, href]) => href === '/examples/journal-club'), 'no page of its own').toBe(false)
+      await act(async () => viewer.querySelector('[aria-label="Next template"]').click())
+      expect(viewer.querySelector('h3').textContent).toBe('Lecture')
+      expect(track).toHaveBeenCalledWith('open-template', { template: 'lecture', from: 'viewer' })
+    } finally { server.list = null }
+  })
+
+  it('opens the Templates tab from its link, and says when there are none yet', async () => {
+    window.location.hash = '#templates'
+    await mount()
+    expect(el.querySelector('#lp-templates')).not.toBeNull()
+    expect(el.querySelector('.lp-empty').textContent).toMatch(/No templates yet/)
+  })
+
   it('counts what visitors open and click', async () => {
     track.mockClear()
     await mount()
