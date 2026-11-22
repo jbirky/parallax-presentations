@@ -117,6 +117,40 @@ describe('reading a matplotlib figure', () => {
   })
 })
 
+describe('styles and setups that move or leave out the ticks', () => {
+  // [figure, how close the points must be (share of the axis), what the notes must say]
+  const SETUPS = [
+    ['seaborn-darkgrid', 1e-6], // no tick marks: the grid lines say where the ticks are
+    ['seaborn-white', 1e-4, /no tick marks or grid lines/], // neither: the numbers' places
+    ['frameless-legend', 1e-6],
+    ['classic', 1e-6],
+    ['tick-right', 1e-6],
+    ['ticks-in', 1e-6],
+    ['despine-offset', 1e-6],
+    ['commas', 1e-6],
+    ['log-short', 1e-6],
+    ['twinx', 1e-6, /second/],
+    ['usetex', 1e-6],
+  ].filter(([name]) => truth[name])
+  for (const [name, tol, note] of SETUPS) {
+    for (const ext of ['pdf', 'svg']) {
+      it(`reads ${name}.${ext}`, async () => {
+        const plot = ext === 'pdf' ? await readPdf(name) : readSvg(name)
+        const t = truth[name]
+        const data = plot.layers.find(l => l.name === 'data')
+        expect(data, plot.layers.map(l => `${l.name}:${l.kind}:${l.data.x.length}`).join(' ')).toBeTruthy()
+        expect(plot.axes.y.scale).toBe(t.yscale)
+        const span = t.yscale === 'log' ? Math.log10(t.ylim[1] / t.ylim[0]) : t.ylim[1] - t.ylim[0]
+        expect(worst(data.data.x, t.layers.data.x, t.xlim[1] - t.xlim[0], false)).toBeLessThan(tol)
+        expect(worst(data.data.y, t.layers.data.y, span, t.yscale === 'log')).toBeLessThan(tol)
+        if (note) expect(plot.warnings.join(' ')).toMatch(note)
+        // The legend's sample, tick marks and a twin's line aren't layers
+        expect(plot.layers.filter(l => l.kind === 'points')).toHaveLength(1)
+      })
+    }
+  }
+})
+
 describe('the pieces', () => {
   it('reads tick labels as matplotlib writes them', () => {
     expect(parseTickLabel('0.5')).toEqual({ value: 0.5 })

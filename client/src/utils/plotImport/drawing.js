@@ -106,7 +106,8 @@ function unwrap(text) {
 // { value, power } where it's a power of ten, for a log axis; null for words
 export function parseTickLabel(raw) {
   if (raw == null) return null
-  const s = unwrap(raw).replace(/[\s{}]/g, '').replace(/%$/, '')
+  // Thousands set apart (2,000 or 2 000) read as one number
+  const s = unwrap(raw).replace(/(\d)[,\u2009\u202f\u00a0](?=\d{3}(?:\D|$))/g, '$1').replace(/[\s{}]/g, '').replace(/%$/, '')
   if (!s) return null
   let m = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.exec(s)
   if (m) return { value: Number(s) }
@@ -128,6 +129,18 @@ export function parseAxisOffset(raw) {
   m = /^([-+])((?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)$/i.exec(s)
   if (m) return { shift: Number(m[1] + m[2]) }
   return null
+}
+
+// What matplotlib's fonts measure, for placing a tick from its label alone:
+// a digit's width (in the SVG glyphs' units, 100 to the em) and how far
+// below a y tick a label's baseline sits (in font sizes, va='center_baseline')
+const FONT_METRICS = [
+  [/liberation|arial|helvetica|arimo/i, { digit: 55.62, drop: 0.3623 }],
+  [/dejavu|bitstream/i, { digit: 63.62, drop: 0.38 }],
+]
+export function fontMetrics(name) {
+  for (const [re, m] of FONT_METRICS) if (re.test(name || '')) return m
+  return { digit: 63.62, drop: 0.38 }
 }
 
 // A file name without its type, for the dataset's name

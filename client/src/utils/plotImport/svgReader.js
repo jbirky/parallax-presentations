@@ -9,7 +9,7 @@
 // every mark keeps the element it came from. Parsed with DOMParser and never
 // put on the page, so nothing in the file runs.
 
-import { IDENTITY, multiply, apply, hexColor, markerShape, bboxOf } from './drawing'
+import { IDENTITY, multiply, apply, hexColor, markerShape, bboxOf, fontMetrics } from './drawing'
 
 const SKIP = new Set(['defs', 'clipPath', 'style', 'metadata', 'script', 'title', 'desc', 'mask', 'pattern', 'symbol', 'marker', 'linearGradient', 'radialGradient', 'filter'])
 
@@ -65,11 +65,19 @@ function walk(el, ctm, ctx) {
       if (/^matplotlib\.axis_\d+$/.test(id)) { walk(child, m, { ...ctx, axis: Number(id.split('_').pop()) % 2 === 1 ? 'x' : 'y', role: 'axis' }); continue }
       const role = roleOf(id) || ctx.role
       // A tick: the mark's place, and its label
+      // A tick: the mark's place, else its grid line's (a style without tick
+      // marks), else where its label says it is (matplotlib centers an x
+      // label on its tick, and a y label's line)
       if (role === 'tick-x' || role === 'tick-y') {
         if (role !== ctx.role) {
-          const tick = { pos: null, label: null }
+          const tick = { pos: null, grid: null, label: null, text: null }
           walk(child, m, { ...ctx, role, tick })
-          if (ctx.axes && tick.pos != null) ctx.axes.ticks[role === 'tick-x' ? 'x' : 'y'].push(tick)
+          let pos = tick.pos ?? tick.grid, approx = false
+          if (pos == null && tick.text) {
+            pos = role === 'tick-x' ? tick.text.x + tick.text.w / 2 : tick.text.y + fontMetrics(tick.text.font).drop * tick.text.size
+            approx = true
+          }
+          if (ctx.axes && pos != null) ctx.axes.ticks[role === 'tick-x' ? 'x' : 'y'].push({ pos, label: tick.label, approx })
           continue
         }
       }
@@ -92,20 +100,33 @@ function addText(el, m, ctx) {
   for (const n of el.childNodes) if (n.nodeType === 8) { words = n.nodeValue.trim(); break }
   if (!words && el.localName === 'text') words = el.textContent.trim()
   if (!words) return
-  let at = m, size = 10
+  let at = m, size = 10, w = null, anchor = 'start', font = ''
   const glyphs = [...el.getElementsByTagName('g')].find(g => g.getAttribute('transform'))
   if (glyphs) {
     at = multiply(m, transformOf(glyphs.getAttribute('transform')))
     size = Math.abs(at[3]) * 100 || 10
+    // Its width: the last glyph's place along the line, and a digit's width
+    // after it, in its font (the glyphs are named after it: DejaVuSans-31)
+    const uses = [...glyphs.getElementsByTagName('use')]
+    font = ((uses[0]?.getAttribute('xlink:href') || uses[0]?.getAttribute('href') || '').match(/^#(.+)-[0-9a-f]+$/i) || [])[1] || ''
+    let last = 0
+    for (const u of uses) last = Math.max(last, transformOf(u.getAttribute('transform'))[4])
+    w = (last + fontMetrics(font).digit) * Math.hypot(at[0], at[1])
   } else if (el.localName === 'text') {
     at = multiply(m, [1, 0, 0, 1, parseFloat(el.getAttribute('x')) || 0, parseFloat(el.getAttribute('y')) || 0])
-    size = parseFloat(styleOf(el)['font-size']) || 10
+    const style = styleOf(el)
+    size = parseFloat(style['font-size']) || 10
+    anchor = style['text-anchor'] || el.getAttribute('text-anchor') || 'start'
+    font = style['font-family'] || ''
   }
-  const [x, y] = apply(at, 0, 0)
+  if (w === null) w = size * 0.6 * words.length
+  let [x, y] = apply(at, 0, 0)
+  if (anchor === 'middle') x -= w / 2
+  else if (anchor === 'end') x -= w
   const angle = Math.round(Math.atan2(-at[1], at[0]) * 180 / Math.PI)
-  const text = { s: words, x, y, size, angle, w: size * 0.6 * words.length, group: ctx.group, role: ctx.role }
+  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, role: ctx.role }
   ctx.drawing.texts.push(text)
-  if (ctx.tick) ctx.tick.label = words
+  if (ctx.tick) { ctx.tick.label = words; ctx.tick.text = text }
   else if (ctx.role === 'axis' && ctx.axes) {
     // An axis's own words: its label, or the note that scales its numbers
     const key = ctx.axis === 'x' ? 'x' : 'y'
@@ -129,7 +150,7 @@ function addUse(el, m, ctx) {
   const segs = shape.segs.map(s => s.map(([sx, sy]) => apply(lin, sx, sy)))
   const { shape: name, size } = markerShape(segs, shape.curves)
   const style = { ...styleOf(def), ...styleOf(el) }
-  ctx.drawing.marks.push({ x: px, y: py, shape: name, size, fill: paintOf(style.fill, '#000000'), stroke: paintOf(style.stroke, null), group: ctx.group, role: ctx.role, order: ctx.drawing.drawn++ })
+  ctx.drawing.marks.push({ x: px, y: py, shape: name, size, fill: paintOf(style.fill, '#000000'), stroke: paintOf(style.stroke, null), group: ctx.group, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++ })
 }
 
 function addPath(el, shape, m, ctx) {
@@ -138,12 +159,14 @@ function addPath(el, shape, m, ctx) {
   const style = styleOf(el)
   const scale = Math.hypot(m[0], m[1]) || 1
   const stroke = paintOf(style.stroke, null)
+  // A tick's grid line says where the tick is
+  if (ctx.tick && ctx.tick.grid == null) ctx.tick.grid = ctx.role === 'tick-x' ? segs[0][0][0] : segs[0][0][1]
   const path = {
     segs, closed: shape.closed, curves: shape.curves,
     stroke, fill: paintOf(style.fill, '#000000'),
     width: (parseFloat(style['stroke-width']) || 1) * scale,
     dash: stroke && style['stroke-dasharray'] && style['stroke-dasharray'] !== 'none' ? style['stroke-dasharray'].split(/[\s,]+/).map(Number).filter(isFinite) : null,
-    group: ctx.group, role: ctx.role, order: ctx.drawing.drawn++,
+    group: ctx.group, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++,
   }
   // The axes' background: the first thing its axes draw, a patch
   if (ctx.axes && !ctx.axes.drawn) {
@@ -164,7 +187,7 @@ function paintOf(v, unset) {
 
 function styleOf(el) {
   const out = {}
-  for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'font-size']) { const v = el.getAttribute(a); if (v != null) out[a] = v.trim() }
+  for (const a of ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'font-size', 'text-anchor', 'font-family']) { const v = el.getAttribute(a); if (v != null) out[a] = v.trim() }
   for (const part of (el.getAttribute('style') || '').split(';')) {
     const k = part.indexOf(':')
     if (k > 0) out[part.slice(0, k).trim()] = part.slice(k + 1).trim()

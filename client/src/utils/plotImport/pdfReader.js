@@ -27,10 +27,18 @@ export async function readPdfDrawing(data, pdfjsLib) {
     drawing.height = vy1 - vy0
     drawing.pages = doc.numPages
     drawing.producer = String(meta?.info?.Producer || meta?.info?.Creator || '')
+    // Each font's own name (DejaVuSans, LiberationSans), for its metrics
+    const fonts = {}
+    const fontName = id => {
+      if (!(id in fonts)) {
+        try { fonts[id] = String(page.commonObjs.get(id)?.name || '').replace(/^[A-Z]{6}\+/, '') } catch { fonts[id] = '' }
+      }
+      return fonts[id]
+    }
     drawing.texts = content.items.filter(t => t.str && t.str.trim()).map(t => {
       const [a, b, c, d, e, f] = t.transform
       const size = Math.hypot(c, d) || t.height || 10
-      return { s: t.str.trim(), x: e, y: f, w: t.width || 0, size, angle: Math.round(Math.atan2(b, a) * 180 / Math.PI) }
+      return { s: t.str.trim(), x: e, y: f, w: t.width || 0, size, angle: Math.round(Math.atan2(b, a) * 180 / Math.PI), font: fontName(t.fontName) }
     })
     return drawing
   } finally {

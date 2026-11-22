@@ -7,13 +7,17 @@
 #
 #   python3 scripts/make-plot-fixtures.py
 #
-# Needs matplotlib and numpy. The figures are committed, so the tests don't.
+# Needs matplotlib, numpy and seaborn (and LaTeX for usetex.pdf). The figures
+# are committed, so the tests don't.
 
 import json
 import os
+import shutil
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
+# The same SVG ids each run, so the figures only change when they do
+matplotlib.rcParams['svg.hashsalt'] = 'parallax-plot-fixtures'
 import matplotlib.pyplot as plt
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'client', 'src', 'utils', 'plotImport', 'fixtures')
@@ -87,6 +91,41 @@ save(fig, ax, 'negative', {
     'samples': {'kind': 'points', 'x': r(xs), 'y': r(ys)},
     'sine': {'kind': 'line', 'x': r(xl), 'y': r(np.sin(xl) * 1.5)},
 }, [])
+
+# Styles and setups that move or leave out the ticks a scale is read from:
+# nine points each, named 'data' in a legend, beside a flat 'mean' line
+from matplotlib.ticker import FuncFormatter
+import seaborn as sns
+xv = np.linspace(1, 9, 9)
+yv = 3 + np.sin(xv) + rng.normal(0, 0.1, xv.size)
+
+
+def setup(name, style='default', yv=yv, yscale=None, after=None, rc=None):
+    with plt.style.context(style), matplotlib.rc_context(rc or {}):
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        ax.plot(xv, yv, 'o', label='data')
+        if yscale:
+            ax.set_yscale(yscale)
+        else:
+            ax.plot(xv, yv * 0 + float(np.mean(yv)), '-', label='mean')
+        ax.legend()
+        if after:
+            after(fig, ax)
+        save(fig, ax, name, {'data': {'kind': 'points', 'x': r(xv), 'y': r(yv)}}, ['data'])
+
+
+setup('seaborn-white', 'seaborn-v0_8-white')          # no tick marks, no grid, Liberation Sans
+setup('seaborn-darkgrid', 'seaborn-v0_8-darkgrid')    # no tick marks, a grid
+setup('frameless-legend', 'seaborn-v0_8-ticks')       # a legend without a frame
+setup('classic', 'classic')                           # ticks inward on every side, a point under the legend
+setup('tick-right', after=lambda f, a: a.yaxis.tick_right())
+setup('ticks-in', after=lambda f, a: a.tick_params(direction='in'))
+setup('despine-offset', after=lambda f, a: sns.despine(ax=a, offset=10, trim=True))
+setup('commas', yv=yv * 1000, after=lambda f, a: a.yaxis.set_major_formatter(FuncFormatter(lambda v, p: f'{v:,.0f}')))
+setup('log-short', yv=2 + 6 * np.linspace(0, 1, 9) ** 2, yscale='log')  # labeled minor ticks only
+setup('twinx', after=lambda f, a: a.twinx().plot(xv, xv ** 2, 'r-'))
+if shutil.which('latex'):
+    setup('usetex', rc={'text.usetex': True})          # LaTeX's glyphs, one by one
 
 with open(os.path.join(OUT, 'truth.json'), 'w') as f:
     json.dump(truth, f, indent=1)

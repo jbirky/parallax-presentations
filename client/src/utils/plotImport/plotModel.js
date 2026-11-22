@@ -13,75 +13,76 @@
 // Markers, bars and error bars are where the file puts them, so their data
 // is exact. A line has the points the file draws it through; matplotlib
 // leaves out points that don't change the picture.
+//
+// An axis is calibrated from its numbered ticks: the tick marks (on any
+// side, on the box or on a spine moved out from it), or grid lines where a
+// style draws no ticks, or, with neither, the numbers' own places, which
+// matplotlib centers on their ticks.
 
-import { bboxOf, parseTickLabel, parseAxisOffset, markerShape } from './drawing'
+import { bboxOf, parseTickLabel, parseAxisOffset, markerShape, fontMetrics } from './drawing'
 
 export class PlotError extends Error {}
 
 const EDGE = 0.75 // points: how near an edge counts as on it
 const TICK_MAX = 12 // points: the longest a tick mark is
+const LABEL_GAP = 45 // points: the furthest a tick label sits from its axis
 
 export function plotFromDrawing(drawing) {
   const warnings = [...(drawing.notes || [])]
   if (drawing.pages > 1) warnings.push(`This PDF has ${drawing.pages} pages; the first was read.`)
   if (drawing.producer && !/matplotlib/i.test(drawing.producer)) warnings.push(`This figure was made by ${drawing.producer.split(/[\s,]/)[0]}, not matplotlib, so check what was found.`)
   if (drawing.images) warnings.push('The figure has a picture in it (such as imshow’s), which has no data to read.')
+  drawing = withInlineMarks(drawing)
 
-  // matplotlib stamps a marker only where that's shorter than drawing each
-  // one out: a lone marker (a legend's sample, a one-point series) comes as
-  // a small path, filled and stroked. Those are markers too
-  const inline = new Set()
-  const allMarks = [...(drawing.marks || [])]
-  for (const p of drawing.paths || []) {
-    if (p.group || !p.fill || !p.stroke) continue
-    const pts = p.segs.flat()
-    if (!pts.length) continue
-    const b = bboxOf(pts)
-    const w = b.x1 - b.x0, h = b.y1 - b.y0, big = Math.max(w, h)
-    if (big > 20 || big < 0.5) continue
-    // Square-ish, or a line ('_', '|')
-    if (p.curves === 0 && Math.min(w, h) > 0.01 && Math.abs(w - h) > 0.15 * big) continue
-    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
-    const { shape, size } = markerShape(p.segs.map(s => s.map(([x, y]) => [x - cx, y - cy])), p.curves)
-    if (shape === 'other' || shape === 'polygon') continue
-    allMarks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, role: p.role })
-    inline.add(p)
-  }
-  drawing = { ...drawing, marks: allMarks, paths: (drawing.paths || []).filter(p => !inline.has(p)), allPaths: drawing.paths }
-
-  // The axes: the SVG's, or found from what's drawn
+  // The axes: the SVG's, or found from what's drawn; the largest (the first
+  // drawn, of ones the same size)
   let all = (drawing.axes || []).filter(a => a.box)
   if (!all.length) all = findAxes(drawing)
   if (!all.length) throw new PlotError('No axes were found in this figure.')
   const area = b => (b.x1 - b.x0) * (b.y1 - b.y0)
-  all.sort((p, q) => area(q.box) - area(p.box))
+  all.sort((p, q) => { const d = area(q.box) - area(p.box); return Math.abs(d) > 0.02 * area(p.box) ? d : 0 })
   const axes = all[0]
-  if (all.length > 1) warnings.push(`This figure has ${all.length} sets of axes; the largest was read.`)
+  if (all.length > 1) warnings.push(`This figure has ${all.length} sets of axes; the ${area(all[0].box) > area(all[1].box) * 1.02 ? 'largest' : 'first'} was read.`)
   const box = axes.box
-  const others = all.slice(1).map(a => a.box)
+  // An SVG says which axes drew what: a twin's layers (twinx) are its own
+  const mine = it => !it.axes || !axes.id || it.axes === axes.id
+  const inBox = it => { const [x, y] = centerOf(it); return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1 }
+  const twinDrawn = axes.id && [...(drawing.paths || []), ...(drawing.marks || [])].some(it => !it.role && it.axes && it.axes !== axes.id && inBox(it))
+  if (all.slice(1).some(a => sameBox(a.box, box)) || twinDrawn) warnings.push('A second set of axes shares this plot’s box (twinx or twiny); its layers were left out.')
+  const others = all.slice(1).filter(a => !sameBox(a.box, box)).map(a => a.box)
   const inside = (x, y, b = box, m = 0.5) => x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m
   const inOther = (x, y) => others.some(b => inside(x, y, b, 0) && !inside(x, y, box, -0.5))
 
   // Ticks and their labels
   const texts = mergeTexts(drawing.texts || [])
-  const found = axes.ticks?.x?.length || axes.ticks?.y?.length ? null : ticksOf(drawing, box, texts)
-  const xTicks = axes.ticks?.x?.length ? axes.ticks.x : found?.x || []
-  const yTicks = axes.ticks?.y?.length ? axes.ticks.y : found?.y || []
-  const offsets = axes.ticks?.x?.length ? { x: axes.xOffset, y: axes.yOffset } : offsetsOf(texts, box)
+  const own = axes.ticks && (axes.ticks.x.length || axes.ticks.y.length)
+  const found = own ? null : ticksOf(drawing, box, texts)
+  if (found?.twin) warnings.push(`This plot has a second ${found.twin.split('').join(' and ')} axis on its other side; everything was read against the ${found.twin === 'x' ? 'bottom' : found.twin === 'y' ? 'left' : 'bottom and left'} one.`)
+  const xTicks = own ? axes.ticks.x : found.x
+  const yTicks = own ? axes.ticks.y : found.y
+  const offsets = own ? { x: axes.xOffset, y: axes.yOffset } : offsetsOf(texts, box)
   const X = calibrate(xTicks, offsets.x, 'x', warnings)
   const Y = calibrate(yTicks, offsets.y, 'y', warnings)
-  if (!X || !Y) throw new PlotError(`The ${!X ? 'x' : 'y'} axis doesn’t have two numbered ticks to read its scale from.`)
+  if (!X || !Y) {
+    const which = !X ? 'x' : 'y'
+    const ticks = !X ? xTicks : yTicks
+    const words = ticks.filter(t => t.label != null).map(t => t.label)
+    throw new PlotError(`The ${which} axis doesn’t have two numbered ticks to read its scale from${words.length ? ` (its labels read as: ${words.slice(0, 4).join(', ')})` : ' (no tick labels were found beside it)'}.`)
+  }
   X.range = [X.toData(box.x0), X.toData(box.x1)]
   Y.range = [Y.toData(box.y0), Y.toData(box.y1)]
-  const labels = axes.ticks?.x?.length ? { x: axes.xLabel, y: axes.yLabel } : axisLabels(texts, box)
+  const used = new Set([...(found?.used || [])])
+  const labels = own ? { x: axes.xLabel, y: axes.yLabel } : axisLabels(texts.filter(t => !used.has(t)), box)
 
-  // The legend: its frame, from the SVG's group or a filled box with words in it
-  const legendBox = legendOf(drawing, box, texts)
-  const inLegend = (x, y) => legendBox && inside(x, y, legendBox, 1)
-  const isData = it => !it.role
+  // The legend: its frame (or, without one, its entries), and when it was drawn
+  const legend = legendOf(drawing, box, texts)
+  // Part of the legend: inside it and drawn with it. Data under the legend
+  // was drawn before it
+  const ofLegend = it => legend && it.order >= legend.order && inside(...centerOf(it), legend.box, 1)
+  const isData = it => !it.role && mine(it)
 
   // What's drawn inside the axes
-  const marks = (drawing.marks || []).filter(m => isData(m) && inside(m.x, m.y) && !inLegend(m.x, m.y) && !inOther(m.x, m.y))
+  const marks = (drawing.marks || []).filter(m => isData(m) && inside(m.x, m.y) && !ofLegend(m) && !inOther(m.x, m.y) && !isTickMark(m, box))
   const lines = [], segments = [], rects = [], fills = []
   let grid = false
   for (const p of drawing.paths || []) {
@@ -93,7 +94,7 @@ export function plotFromDrawing(drawing) {
     if (!pts.length) continue
     const b = bboxOf(pts)
     if (!inside(b.x0, b.y0) || !inside(b.x1, b.y1)) continue
-    if (legendBox && inside(b.x0, b.y0, legendBox, 1) && inside(b.x1, b.y1, legendBox, 1)) continue
+    if (ofLegend(p)) continue
     if (sameBox(b, box)) continue
     if (isSpine(p, b, box) || isInnerTick(p, b, box)) continue
     if (p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && spansBox(p, box)) { grid = true; continue }
@@ -169,7 +170,7 @@ export function plotFromDrawing(drawing) {
   layers.sort((p, q) => p.z - q.z)
 
   // Names from the legend, matched by kind, color and marker
-  const entries = legendEntries(drawing, legendBox, texts)
+  const entries = legendEntries(drawing, legend, texts)
   const taken = new Set()
   for (const layer of layers) {
     const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape))
@@ -199,6 +200,38 @@ export function plotFromDrawing(drawing) {
 }
 
 const clean = s => String(s || '').replace(/\$/g, '').replace(/\\mathdefault\{([^{}]*)\}/g, '$1').trim()
+const centerOf = it => (it.segs ? (b => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2])(bboxOf(it.segs.flat())) : [it.x, it.y])
+
+// matplotlib stamps a marker only where that's shorter than drawing each
+// one out: a lone marker (a legend's sample, a one-point series, a few tick
+// marks) comes as a small path, filled and stroked. Those are markers too
+function withInlineMarks(drawing) {
+  const inline = new Set()
+  const marks = [...(drawing.marks || [])]
+  for (const p of drawing.paths || []) {
+    if (p.group || !p.fill || !p.stroke) continue
+    const pts = p.segs.flat()
+    if (!pts.length) continue
+    const b = bboxOf(pts)
+    const w = b.x1 - b.x0, h = b.y1 - b.y0, big = Math.max(w, h)
+    if (big > 20 || big < 0.5) continue
+    // Square-ish, or a line ('_', '|')
+    if (p.curves === 0 && Math.min(w, h) > 0.01 && Math.abs(w - h) > 0.15 * big) continue
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
+    const { shape, size } = markerShape(p.segs.map(s => s.map(([x, y]) => [x - cx, y - cy])), p.curves)
+    if (shape === 'other' || shape === 'polygon') continue
+    marks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, role: p.role, line: shape === 'hline' || shape === 'vline' ? p.segs[0] : null })
+    inline.add(p)
+  }
+  return { ...drawing, marks, paths: (drawing.paths || []).filter(p => !inline.has(p)) }
+}
+
+// A tick mark drawn as a marker, on the box's edge
+function isTickMark(m, box) {
+  if (m.shape === 'vline') return Math.abs(m.y - box.y0) <= m.size / 2 + EDGE || Math.abs(m.y - box.y1) <= m.size / 2 + EDGE
+  if (m.shape === 'hline') return Math.abs(m.x - box.x0) <= m.size / 2 + EDGE || Math.abs(m.x - box.x1) <= m.size / 2 + EDGE
+  return false
+}
 
 // ── Axes, in a drawing that doesn't name them (a PDF) ──
 
@@ -215,12 +248,13 @@ function findAxes(d) {
     if (boxes.some(b => sameBox(b, r))) continue
     boxes.push(r)
   }
-  // Keep the boxes that have ticks on them: a bar or a legend has none
-  const withTicks = boxes.filter(b => {
-    const t = ticksOf(d, b, mergeTexts(d.texts || []))
-    return t.x.length >= 2 && t.y.length >= 2
+  // Keep the boxes numbered along two sides: a bar or a legend isn't
+  const texts = mergeTexts(d.texts || [])
+  const numbered = boxes.filter(b => {
+    const t = ticksOf(d, b, texts)
+    return t.x.filter(k => parseTickLabel(k.label)).length >= 2 && t.y.filter(k => parseTickLabel(k.label)).length >= 2
   })
-  if (withTicks.length) return withTicks.map(box => ({ box }))
+  if (numbered.length) return numbered.map(box => ({ box }))
   // No background: the spines' box
   const spines = (d.paths || []).filter(p => p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && (flat(p.segs[0], 0) || flat(p.segs[0], 1)))
     .filter(p => { const b = bboxOf(p.segs[0]); return Math.max(b.x1 - b.x0, b.y1 - b.y0) > Math.min(d.width, d.height) * 0.3 })
@@ -228,67 +262,117 @@ function findAxes(d) {
     const b = bboxOf(spines.flatMap(p => p.segs[0]))
     if (b.x1 - b.x0 > 20 && b.y1 - b.y0 > 20) return [{ box: b }]
   }
-  return []
+  // A background with words beside it that aren't numbers (categories)
+  return boxes.length ? [{ box: boxes.sort((p, q) => (q.x1 - q.x0) * (q.y1 - q.y0) - (p.x1 - p.x0) * (p.y1 - p.y0))[0] }] : []
 }
 
-// Tick marks on the box's bottom and left edges (short strokes, or tick
-// markers), each with the label beside it
+// Each axis's labeled ticks: [{ pos, label, approx }]. The labels are the
+// row of words under (or over) the box and the column beside it nearest the
+// box; each goes to the nearest tick mark or grid line, or, with none near,
+// stands where its tick would be (approx). used: the words taken as labels
 function ticksOf(d, box, texts) {
-  const xs = [], ys = []
+  // Where ticks are: short strokes (or tick markers) along an edge, in a row
+  // that shares an end on the edge or on a spine moved out from it, and
+  // grid lines across the box
+  const strokes = []
   for (const p of d.paths || []) {
     if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) continue
-    const [[ax, ay], [bx, by]] = p.segs[0]
+    strokes.push(p.segs[0])
+  }
+  for (const m of d.marks || []) if (m.line) strokes.push(m.line)
+    else if (m.shape === 'vline') strokes.push([[m.x, m.y - m.size / 2], [m.x, m.y + m.size / 2]])
+    else if (m.shape === 'hline') strokes.push([[m.x - m.size / 2, m.y], [m.x + m.size / 2, m.y]])
+  const places = { x: [], y: [] }
+  const rows = { x: new Map(), y: new Map() }
+  for (const s of strokes) {
+    const [[ax, ay], [bx, by]] = s
     const len = Math.hypot(bx - ax, by - ay)
-    if (len > TICK_MAX || len < 0.5) continue
-    if (Math.abs(ax - bx) < 0.01 && (Math.abs(ay - box.y0) < EDGE || Math.abs(by - box.y0) < EDGE) && ax >= box.x0 - EDGE && ax <= box.x1 + EDGE) xs.push({ pos: ax, len })
-    else if (Math.abs(ay - by) < 0.01 && (Math.abs(ax - box.x0) < EDGE || Math.abs(bx - box.x0) < EDGE) && ay >= box.y0 - EDGE && ay <= box.y1 + EDGE) ys.push({ pos: ay, len })
-  }
-  for (const m of d.marks || []) {
-    if (m.shape === 'vline' && Math.abs(m.y - box.y0) < m.size && m.x >= box.x0 - EDGE && m.x <= box.x1 + EDGE) xs.push({ pos: m.x, len: m.size })
-    if (m.shape === 'hline' && Math.abs(m.x - box.x0) < m.size && m.y >= box.y0 - EDGE && m.y <= box.y1 + EDGE) ys.push({ pos: m.y, len: m.size })
-  }
-  const labeled = (ticks, axis) => {
-    const used = new Set()
-    const out = []
-    // Longest first: major ticks carry the labels
-    const longest = Math.max(0, ...ticks.map(t => t.len))
-    for (const t of ticks.filter(t => t.len >= longest * 0.75).sort((p, q) => p.pos - q.pos)) {
-      let best = null, bestD = Infinity
-      texts.forEach((tx, i) => {
-        if (used.has(i) || tx.angle) return
-        const cx = tx.x + tx.w / 2, cy = tx.y + tx.size * 0.35
-        const dist = axis === 'x'
-          ? (tx.y + tx.size < box.y0 + 1 && box.y0 - tx.y < 40 ? Math.abs(cx - t.pos) : Infinity)
-          : (tx.x + tx.w < box.x0 + 1 && box.x0 - (tx.x + tx.w) < 30 ? Math.abs(cy - t.pos) : Infinity)
-        if (dist < bestD) { bestD = dist; best = i }
-      })
-      if (best !== null && bestD < (axis === 'x' ? 10 : 6)) { used.add(best); out.push({ pos: t.pos, label: texts[best].s }) }
-      else out.push({ pos: t.pos, label: null })
+    const upright = Math.abs(ax - bx) < 0.01, level = Math.abs(ay - by) < 0.01
+    if (upright && ax >= box.x0 - 1 && ax <= box.x1 + 1) {
+      if (Math.min(ay, by) <= box.y0 + 1 && Math.max(ay, by) >= box.y1 - 1) { places.x.push(ax); continue } // a grid line
+      if (len > TICK_MAX) continue
+      // Grouped by the end nearer the box's edge: at or below the bottom, at or above the top
+      for (const y of [ay, by]) if (y <= box.y0 + EDGE || y >= box.y1 - EDGE) { const k = y.toFixed(1); if (!rows.x.has(k)) rows.x.set(k, []); rows.x.get(k).push(ax) }
+    } else if (level && ay >= box.y0 - 1 && ay <= box.y1 + 1) {
+      if (Math.min(ax, bx) <= box.x0 + 1 && Math.max(ax, bx) >= box.x1 - 1) { places.y.push(ay); continue }
+      if (len > TICK_MAX) continue
+      for (const x of [ax, bx]) if (x <= box.x0 + EDGE || x >= box.x1 - EDGE) { const k = x.toFixed(1); if (!rows.y.has(k)) rows.y.set(k, []); rows.y.get(k).push(ay) }
     }
-    return out
   }
-  return { x: labeled(xs, 'x'), y: labeled(ys, 'y') }
+  // A row of ticks: three or more marks sharing an end
+  for (const k of ['x', 'y']) for (const list of rows[k].values()) if (list.length >= 3) places[k].push(...list)
+
+  // The labels: words beside the box, the row (or column) nearest it, on
+  // whichever side has more
+  const flatText = texts.filter(t => !t.angle)
+  const pick = groups => [...groups.values()].sort((p, q) => p.gap - q.gap)[0]?.items || []
+  const cluster = (list, key, gap) => {
+    const groups = new Map()
+    for (const t of list) {
+      const k = Math.round(key(t) * 2) / 2
+      const g = [...groups.keys()].find(q => Math.abs(q - k) <= 1)
+      const at = g ?? k
+      if (!groups.has(at)) groups.set(at, { gap: gap(t), items: [] })
+      groups.get(at).items.push(t)
+    }
+    return groups
+  }
+  const below = flatText.filter(t => t.y + t.size * 0.75 < box.y0 + 1 && box.y0 - t.y < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20)
+  const above = flatText.filter(t => t.y > box.y1 - 1 && t.y - box.y1 < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20)
+  const left = flatText.filter(t => t.x + t.w < box.x0 + 1 && box.x0 - (t.x + t.w) < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10)
+  const right = flatText.filter(t => t.x > box.x1 - 1 && t.x - box.x1 < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10)
+  // The bottom and left first, where they're numbered; a second axis on the
+  // other side (twinx) is a different scale
+  const numbered = list => list.filter(t => parseTickLabel(t.s)).length
+  const side = (first, other) => (numbered(first) >= 2 || numbered(other) < 2 ? (first.length || !other.length ? first : other) : other)
+  const bottomRow = pick(cluster(below, t => t.y, t => box.y0 - t.y)), topRow = pick(cluster(above, t => t.y, t => t.y - box.y1))
+  const leftCol = pick(cluster(left, t => t.x + t.w, t => box.x0 - (t.x + t.w))), rightCol = pick(cluster(right, t => t.x, t => t.x - box.x1))
+  const xRow = side(bottomRow, topRow), yCol = side(leftCol, rightCol)
+  const twin = (xRow === bottomRow && numbered(topRow) >= 2 ? 'x' : '') + (yCol === leftCol && numbered(rightCol) >= 2 ? 'y' : '')
+
+  const pair = (labels, list, anchor, tol) => labels.map(t => {
+    const a = anchor(t)
+    let best = null
+    for (const p of list) if (Math.abs(p - a) <= tol && (best === null || Math.abs(p - a) < Math.abs(best - a))) best = p
+    return best === null ? { pos: a, label: t.s, approx: true } : { pos: best, label: t.s }
+  }).sort((p, q) => p.pos - q.pos)
+  const x = pair(xRow, places.x, t => t.x + t.w / 2, 6)
+  // matplotlib centers a y label's line on its tick, its baseline a
+  // font's measure below
+  const y = pair(yCol, places.y, t => t.y + fontMetrics(t.font).drop * t.size, 4)
+  return { x, y, used: [...xRow, ...yCol], twin }
 }
 
-// pdf.js gives 10³ as "10" and a raised "3": one label, 10^{3}
+// pdf.js may give a label in pieces: LaTeX's glyphs one by one ("2", ".",
+// "5"), and 10³ as "10" and a raised "3". One label each
 function mergeTexts(texts) {
-  const used = new Set()
-  const out = []
-  texts.forEach((t, i) => {
-    if (used.has(i)) return
-    if (/^×?10$/.test(t.s)) {
-      const j = texts.findIndex((u, k) => k !== i && !used.has(k) && u.x >= t.x + t.w * 0.5 && u.x <= t.x + t.w + 8
-        && u.y > t.y + 1 && u.y < t.y + t.size && /^[-−]?\d+$/.test(u.s))
-      if (j >= 0) {
-        used.add(j)
-        const u = texts[j]
-        out.push({ ...t, s: `${t.s}^{${u.s}}`, w: u.x + u.w - t.x })
-        return
-      }
-    }
-    out.push(t)
+  // Pieces on one baseline, touching: one word
+  const sorted = [...texts].sort((p, q) => (Math.abs(p.y - q.y) > 0.1 * Math.max(p.size, q.size) ? q.y - p.y : p.x - q.x))
+  const runs = []
+  for (const t of sorted) {
+    const last = runs[runs.length - 1]
+    const gap = last ? t.x - (last.x + last.w) : Infinity
+    if (last && !t.angle && !last.angle && Math.abs(t.y - last.y) < 0.1 * t.size && Math.abs(t.size - last.size) < 0.5 && gap > -0.6 && gap < 0.45 * t.size) {
+      last.s += gap > 0.12 * t.size ? ` ${t.s}` : t.s
+      last.w = t.x + t.w - last.x
+    } else runs.push({ ...t })
+  }
+  // 10 (or 3 × 10) with its raised power: 10^{3}. Every pair is found
+  // first: a power, higher up, comes before its 10
+  const power = new Map() // 10's index -> its power's
+  const taken = new Set()
+  runs.forEach((t, i) => {
+    if (!/^(?:[-−]?\d+(?:\.\d+)?\s*×\s*)?10$/.test(t.s)) return
+    const j = runs.findIndex((u, k) => k !== i && !taken.has(k) && u.x >= t.x + t.w - 2 && u.x <= t.x + t.w + 8
+      && u.y > t.y + 1 && u.y < t.y + t.size && /^[-−]?\d+$/.test(u.s))
+    if (j >= 0) { power.set(i, j); taken.add(j) }
   })
-  return out
+  return runs.flatMap((t, i) => {
+    if (taken.has(i)) return []
+    if (!power.has(i)) return [t]
+    const u = runs[power.get(i)]
+    return [{ ...t, s: `${t.s}^{${u.s}}`, w: u.x + u.w - t.x }]
+  })
 }
 
 // The scale note at an axis's end (1e6, ×10^{6}), from a PDF's words
@@ -297,24 +381,24 @@ function offsetsOf(texts, box) {
   for (const t of texts) {
     if (!parseAxisOffset(t.s)) continue
     if (t.x > box.x1 - 60 && t.y < box.y0) out.x = t.s
-    else if (t.y > box.y1 - 2 && t.x < box.x0 + 60) out.y = t.s
+    else if (t.y > box.y1 - 2 && (t.x < box.x0 + 60 || t.x > box.x1 - 60)) out.y = t.s
   }
   return out
 }
 
 // A PDF's axis labels: the words under the x axis's numbers, and the
-// upright words left of the y axis's
+// upright words beside the y axis's
 function axisLabels(texts, box) {
   const words = texts.filter(t => !parseTickLabel(t.s) && !parseAxisOffset(t.s))
   const x = words.filter(t => !t.angle && t.y < box.y0 - 2 && t.x + t.w / 2 > box.x0 && t.x + t.w / 2 < box.x1).sort((p, q) => q.y - p.y)[0]
-  const y = words.filter(t => Math.abs(Math.abs(t.angle) - 90) < 2 && t.x < box.x0).sort((p, q) => q.x - p.x)[0]
+  const y = words.filter(t => Math.abs(Math.abs(t.angle) - 90) < 2 && (t.x < box.x0 || t.x > box.x1)).sort((p, q) => Math.abs(p.x - box.x0) - Math.abs(q.x - box.x0))[0]
   return { x: x ? x.s : '', y: y ? y.s : '' }
 }
 
 // An axis's scale from its labeled ticks: linear or log, whichever puts the
 // ticks where they are; words for labels number the ticks 0, 1, 2…
 function calibrate(ticks, offsetText, axis, warnings) {
-  let pairs = ticks.filter(t => t.pos != null && t.label != null).map(t => ({ pos: t.pos, label: t.label, ...(parseTickLabel(t.label) || {}) }))
+  let pairs = ticks.filter(t => t.pos != null && t.label != null).map(t => ({ pos: t.pos, label: t.label, approx: !!t.approx, ...(parseTickLabel(t.label) || {}) }))
     .sort((p, q) => p.pos - q.pos)
   const numbered = pairs.filter(p => p.value !== undefined && isFinite(p.value))
   let categories = null
@@ -322,7 +406,7 @@ function calibrate(ticks, offsetText, axis, warnings) {
     const named = pairs.filter(p => String(p.label).trim())
     if (named.length < 2) return null
     categories = named.map(p => String(p.label).replace(/\$/g, '').trim())
-    pairs = named.map((p, i) => ({ pos: p.pos, value: i }))
+    pairs = named.map((p, i) => ({ pos: p.pos, value: i, approx: p.approx }))
     warnings.push(`The ${axis} axis is labeled with words (${categories.slice(0, 3).join(', ')}${categories.length > 3 ? '…' : ''}), so the graph numbers them from 0.`)
   } else pairs = numbered
 
@@ -359,45 +443,74 @@ function calibrate(ticks, offsetText, axis, warnings) {
   const useLog = log && (!lin || log.resid < lin.resid * 0.5 || pairs.every(p => p.power !== undefined))
   const F = useLog ? log : lin
   if (!F || !isFinite(F.b) || F.b === 0) return null
-  if (F.resid > 0.5) warnings.push(`The ${axis} axis’s numbered ticks don’t line up evenly (off by up to ${F.resid.toFixed(1)} pt); check its numbers.`)
+  const approx = pairs.some(p => p.approx)
+  if (approx) warnings.push(`The ${axis} axis has no tick marks or grid lines to measure from, so its scale comes from where its numbers are printed: very close (within about 0.01% of the axis), not exact.`)
+  else if (F.resid > 0.5) warnings.push(`The ${axis} axis’s numbered ticks don’t line up evenly (off by up to ${F.resid.toFixed(1)} pt); check its numbers.`)
   const toData = pos => { const u = (pos - F.a) / F.b; return useLog ? 10 ** u : u }
-  return { scale: useLog ? 'log' : 'linear', toData, categories, range: null, fit: F }
+  return { scale: useLog ? 'log' : 'linear', toData, categories, range: null, fit: F, approx }
 }
 
 // ── The legend ──
 
+// { box, order }: where the legend is and when it was drawn (it's drawn
+// after the data), from the SVG's group, a filled frame with words in it,
+// or, without a frame, words inside the axes with a sample just left of them
 function legendOf(d, box, texts) {
-  const own = (d.paths || []).filter(p => p.role === 'legend')
+  const own = [...(d.paths || []), ...(d.marks || [])].filter(p => p.role === 'legend')
   if (own.length) {
-    const frame = own.find(p => p.fill && p.segs.length === 1 && p.segs[0].length >= 4)
-    return frame ? bboxOf(frame.segs[0]) : bboxOf(own.flatMap(p => p.segs.flat()))
+    const frame = own.find(p => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4)
+    // Without a frame: around its samples and its words
+    const words = (d.texts || []).filter(t => t.role === 'legend').flatMap(t => [[t.x, t.y], [t.x + t.w, t.y + t.size]])
+    const b = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap(p => (p.segs ? p.segs.flat() : [[p.x, p.y]])), ...words])
+    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)) }
   }
-  // A filled frame inside the axes with words in it
-  const words = texts.filter(t => !parseTickLabel(t.s))
+  const words = texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.x > box.x0 && t.x < box.x1 && t.y > box.y0 && t.y < box.y1)
   for (const p of d.paths || []) {
     if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue
     const b = bboxOf(p.segs[0])
     if (sameBox(b, box) || b.x0 < box.x0 - 1 || b.x1 > box.x1 + 1 || b.y0 < box.y0 - 1 || b.y1 > box.y1 + 1) continue
-    if (words.some(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)) return b
+    if (words.some(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)) return { box: b, order: p.order ?? 0 }
   }
-  return null
+  // No frame: entries, each a word with a sample just before it on its line
+  const found = []
+  for (const t of words) {
+    const s = sampleBefore(d, t, -Infinity)
+    if (s) found.push({ t, s })
+  }
+  if (!found.length) return null
+  const pts = found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])])
+  const b = bboxOf(pts)
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)) }
+}
+
+// The sample a legend entry's words follow: a marker or a short line on
+// their line, ending just before them, drawn from `after` on
+function sampleBefore(d, t, after) {
+  const mid = t.y + t.size * 0.35
+  const row = y => Math.abs(y - mid) < t.size * 0.6
+  const before = x => x < t.x && x > t.x - 40
+  const mark = (d.marks || []).find(m => (m.order ?? 0) >= after && row(m.y) && before(m.x) && m.shape !== 'hline' && m.shape !== 'vline')
+  if (mark) return mark
+  return (d.paths || []).find(p => {
+    if ((p.order ?? 0) < after) return false
+    const b = bboxOf(p.segs.flat())
+    return row((b.y0 + b.y1) / 2) && b.y1 - b.y0 < t.size && before(b.x1 + 0.01) && t.x - b.x1 < 12 && (b.x1 - b.x0) > 3 && (b.x1 - b.x0) < 40
+  }) || null
 }
 
 // Each legend entry's words, and the kind and color of the sample beside them
-function legendEntries(d, lb, texts) {
-  if (!lb) return []
+function legendEntries(d, legend, texts) {
+  if (!legend) return []
+  const lb = legend.box
   const within = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1
   const words = texts.filter(t => within(t.x, t.y) && !parseTickLabel(t.s)).sort((p, q) => q.y - p.y)
   return words.map(t => {
-    const mid = t.y + t.size * 0.35
-    const row = (y) => Math.abs(y - mid) < t.size * 0.6
-    const left = x => x < t.x
-    const mark = (d.marks || []).find(m => within(m.x, m.y) && row(m.y) && left(m.x) && m.shape !== 'hline' && m.shape !== 'vline')
-    if (mark) return { label: t.s.replace(/\$/g, ''), kind: 'points', color: mark.fill || mark.stroke, shape: mark.shape }
-    const path = (d.paths || []).find(p => { const b = bboxOf(p.segs.flat()); return within(b.x0, b.y0) && within(b.x1, b.y1) && row((b.y0 + b.y1) / 2) && left(b.x1) && (b.x1 - b.x0) > 3 })
-    if (!path) return { label: t.s, kind: null }
-    const r = path.fill && path.segs.length === 1 && rectOf(path.segs[0])
-    return r && !path.stroke ? { label: t.s.replace(/\$/g, ''), kind: 'bars', color: path.fill } : { label: t.s.replace(/\$/g, ''), kind: 'line', color: path.stroke }
+    const label = t.s.replace(/\$/g, '')
+    const s = sampleBefore(d, t, legend.order)
+    if (!s) return { label, kind: null }
+    if (!s.segs) return { label, kind: 'points', color: s.fill || s.stroke, shape: s.shape }
+    const r = s.fill && s.segs.length === 1 && rectOf(s.segs[0])
+    return r && !s.stroke ? { label, kind: 'bars', color: s.fill } : { label, kind: 'line', color: s.stroke }
   })
 }
 
