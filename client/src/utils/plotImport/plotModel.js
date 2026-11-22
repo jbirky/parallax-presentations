@@ -11,6 +11,7 @@
 //     legend: { groups, ops } | null,
 //     panels?: [{ id, name, box, parent, main, calibrated, axes, warnings, groups, ops, layers, legend }],
 //     fileWarnings?: [] (of several panels: what's said of the figure, not of a panel),
+//     figureLegend?: { groups, ops, entries: [{ label, groups, ops, layers: [ids] }] } (fig.legend),
 //     warnings: [] }
 //
 // axes and layers are the panel a graph is made of: the largest whose
@@ -88,17 +89,27 @@ export function plotFromDrawing(drawing) {
   }
   // Layers no legend in their panel names: named from a legend of the
   // figure's own (fig.legend), or one drawn outside every panel
+  // Its entries come and go with the layers they name (one in each panel,
+  // say), each a part of its own; its frame and the rest are its own part
   const outer = figureLegend(drawing, panels.map(p => p.axes.box), texts)
+  let outerLegend = null
   if (outer) {
     const entries = legendEntries(drawing, outer, texts)
+    const named = entries.map(() => [])
+    const like = (e, layer) => e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape)
     for (const p of panels) {
       const taken = new Set()
       for (const layer of p.read.layers) {
-        if (layer.name) continue
-        const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape))
-        if (i >= 0) { taken.add(i); layer.name = entries[i].label }
+        const i = entries.findIndex((e, k) => !taken.has(k) && like(e, layer))
+        if (i < 0) continue
+        taken.add(i)
+        named[i].push(layer)
+        if (!layer.name) layer.name = entries[i].label
       }
     }
+    const sinks = entries.map((e, k) => (named[k].length ? { label: e.label, groups: new Set(), ops: [], layers: named[k] } : null))
+    const rest = legendDrawing(drawing, outer, entries, k => sinks[k], (drawing.axes || []).length ? null : undefined)
+    outerLegend = { rest, entries: sinks.filter(Boolean) }
   }
   // The layers' ids across the figure, in the order drawn; their names
   let n = 0
@@ -127,6 +138,14 @@ export function plotFromDrawing(drawing) {
     // keeping the figure as it is; null without a legend
     legend,
     warnings,
+  }
+  // A legend of the figure's own: its frame (and what no layer has), and
+  // its entries, each with the layers it names
+  if (outerLegend) {
+    plot.figureLegend = {
+      groups: [...outerLegend.rest.groups], ops: outerLegend.rest.ops,
+      entries: outerLegend.entries.map(e => ({ label: e.label, groups: [...e.groups], ops: e.ops, layers: e.layers.map(l => l.id) })),
+    }
   }
   // A figure of several panels: each, for keeping the figure as it is
   if (panels.length > 1) {
@@ -333,7 +352,8 @@ function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
   }
   // Each entry's drawing to its layer, to come and go with it; the frame and
   // the rest to the legend's own part
-  const legendPart = legend ? legendDrawing(drawing, legend, entries, layers, axes.id) : null
+  const byEntry = new Map(layers.filter(l => l.legend != null).map(l => [l.legend, l]))
+  const legendPart = legend ? legendDrawing(drawing, legend, entries, k => byEntry.get(k) || null, axes.id) : null
   return {
     box, X, Y, labels, grid, layers, calibrated,
     legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
@@ -785,11 +805,14 @@ function legendEntries(d, legend, texts) {
 // stay the legend's ({ groups, ops }). An SVG's legend is its group's; a
 // PDF's, what's drawn in its box from its frame on. An entry is a row of
 // the legend: its words, and the sample just before them
-function legendDrawing(d, legend, entries, layers, axesId) {
+// sinkOf(k): where entry k's drawing goes ({ groups, ops }: a layer, or a
+// figure legend's entry), null to leave it the legend's. axesId: an SVG
+// axes' legend; null, an SVG legend of the figure's own (in no axes)
+function legendDrawing(d, legend, entries, sinkOf, axesId) {
   const lb = legend.box
   const out = { groups: new Set(), ops: [] }
   const svg = [...(d.paths || []), ...(d.marks || []), ...(d.texts || [])].some(it => it.role === 'legend')
-  const ours = it => it.role === 'legend' && (!axesId || it.axes === axesId)
+  const ours = it => it.role === 'legend' && (axesId === null ? !it.axes : !axesId || it.axes === axesId)
   const inBox = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1
   const drawn = it => svg ? ours(it) : !it.role && (it.order ?? -Infinity) >= legend.order && inBox(...centerOf(it))
   const items = [
@@ -822,13 +845,13 @@ function legendDrawing(d, legend, entries, layers, axesId) {
     }
     return best
   }
-  const byEntry = new Map(layers.filter(l => l.legend != null).map(l => [l.legend, l]))
   for (const it of items) {
-    const layer = byEntry.get(rowOf(it)?.k)
+    const row = rowOf(it)
+    const sink = row ? sinkOf(row.k) : null
     const key = it.gid || it.group
-    if (layer) {
-      if (key && layer.groups) layer.groups.add(key)
-      if (it.ops && layer.ops) layer.ops.push(it.ops)
+    if (sink) {
+      if (key && sink.groups) sink.groups.add(key)
+      if (it.ops && sink.ops) sink.ops.push(it.ops)
     } else {
       if (it.legendId) out.groups.add(it.legendId)
       if (it.ops) out.ops.push(it.ops)

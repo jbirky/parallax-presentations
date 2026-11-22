@@ -106,19 +106,41 @@ describe('a figure of several panels', () => {
   it('cuts each panel whole, its layers and legend inside it, the same from the SVG as from the PDF', async () => {
     const plans = {
       pair: 'p1 l2 l1 l2 p1 p1-legend l1 l2 p2 l3 l4 p2 p2-legend l3 l4',
-      grid: 'p1 l1 l2 p1 p2 l3 l4 p2 p3 l5 l6 p3 p4 l7 l8 p4',
+      // The figure's own legend, last: its frame, then each entry
+      grid: 'p1 l1 l2 p1 p2 l3 l4 p2 p3 l5 l6 p3 p4 l7 l8 p4 figure-legend figure-legend-1 figure-legend-2',
       inset: 'p1 l1 p1 p2 l2 p2 p1-legend l1',
     }
     for (const [name, want] of Object.entries(plans)) {
       const text = readFileSync(fixture(`${name}.svg`), 'utf8')
       const svg = splitSvg(text, partsOf(await read(name, 'svg'), 'svg'), { Parser: DOMParser, Serializer: XMLSerializer })
       expect(without(svg.plan, 'base'), name).toBe(want)
-      // The figure's own title and legend, last: in the base
-      expect(svg.plan.split(' ').at(-1).split(':')[0], name).toBe(name === 'inset' ? 'l1' : 'base')
+      // The figure's own title, last: in the base
+      expect(svg.plan.split(' ').at(-1).split(':')[0], name).toBe({ inset: 'l1', grid: 'figure-legend-2' }[name] || 'base')
       expect(svg.pieces.reduce((n, p) => n + drawnIn(parse(p.svg)), 0), name).toBe(drawnIn(parse(text)))
       const pdf = planPdf(await operators(name), partsOf(await read(name, 'pdf'), 'pdf'), pdfjs.OPS)
       expect(without(pdf.plan, 'base'), name).toBe(want)
     }
+  })
+
+  it('brings each entry of the figure’s own legend in with the first layer it names, in any panel', async () => {
+    for (const ext of ['svg', 'pdf']) {
+      const grid = await read('grid', ext)
+      const fl = grid.figureLegend
+      expect(fl.entries.map(e => [e.label, e.layers]), ext).toEqual([['signal', ['l1', 'l3', 'l5', 'l7']], ['samples', ['l2', 'l4', 'l6', 'l8']]])
+      expect(fl.entries.every(e => (ext === 'svg' ? e.groups : e.ops).length)).toBe(true)
+      const st = partSteps(grid, defaultChoices(grid, true, { figure: true }))
+      expect(['figure-legend', 'figure-legend-1', 'figure-legend-2'].map(id => st.get(id))).toEqual([{ step: 1, until: 0 }, { step: 1, until: 0 }, { step: 2, until: 0 }])
+    }
+    const grid = await read('grid', 'svg')
+    // The first panels left out: from the next panel's layers on
+    const later = partSteps(grid, { ...defaultChoices(grid, true, { figure: true }), p1: { include: false }, p2: { include: false } })
+    expect(later.get('figure-legend-1')).toEqual({ step: 7, until: 0 })
+    // Every samples layer left out: its entry never shows; while they all
+    // leave, it leaves with the last
+    const none = Object.fromEntries(['l2', 'l4', 'l6', 'l8'].map(id => [id, { include: false }]))
+    expect(partSteps(grid, { ...defaultChoices(grid, true, { figure: true }), ...none }).get('figure-legend-2')).toMatchObject({ never: true })
+    const leaving = Object.fromEntries(['l2', 'l4', 'l6', 'l8'].map((id, i) => [id, { step: 1, until: 3 + i }]))
+    expect(partSteps(grid, leaving).get('figure-legend-2')).toEqual({ step: 1, until: 6 })
   })
 
   it('starts with the first panel, then its layers a step each, then the next panel', async () => {

@@ -60,13 +60,23 @@ export const figureLayers = plot => (plot.panels ? plot.panels.flatMap(p => p.la
 // operators)
 export function partsOf(plot, kind) {
   const has = part => !!part && !!(kind === 'svg' ? part.groups?.length : part.ops?.length)
-  if (!plot.panels) return [...(has(plot.legend) ? [{ id: 'legend', ...plot.legend }] : []), ...plot.layers]
+  // A legend of the figure's own: its frame, then each entry
+  const fl = plot.figureLegend
+  const outer = fl ? [
+    ...(has(fl) ? [{ id: 'figure-legend', groups: fl.groups, ops: fl.ops }] : []),
+    ...fl.entries.map((e, k) => ({ id: `figure-legend-${k + 1}`, groups: e.groups, ops: e.ops })).filter(has),
+  ] : []
+  if (!plot.panels) return [...(has(plot.legend) ? [{ id: 'legend', ...plot.legend }] : []), ...outer, ...plot.layers]
   return [
     ...plot.panels.filter(has).map(p => ({ id: p.id, groups: p.groups, ops: p.ops })),
     ...plot.panels.filter(p => has(p.legend)).map(p => ({ id: `${p.id}-legend`, ...p.legend })),
+    ...outer,
     ...figureLayers(plot),
   ]
 }
+
+// A figure legend's entry: its part's index (figure-legend-2 → 1), else -1
+export const figureLegendEntry = part => { const m = /^figure-legend-(\d+)$/.exec(part); return m ? Number(m[1]) - 1 : -1 }
 // A layer known again: its kind and color (and its panel, of several)
 const sigOf = layer => (layer.panel ? `${layer.panel}|` : '') + `${layer.kind}|${layer.color}`
 
@@ -87,26 +97,40 @@ function meet(a, b) {
   return until && until <= step ? NEVER : { step, until }
 }
 
+// While any of them shows: from the first to come until the last to go (if
+// they all do); null for none
+function anyOf(list) {
+  const own = list.filter(st => !st.never)
+  if (!own.length) return null
+  const step = Math.min(...own.map(st => st.step))
+  const until = own.every(st => st.until) ? Math.max(...own.map(st => st.until)) : 0
+  return { step, until: until > step ? until : 0 }
+}
+
 // Every part's steps: a panel's (within the one an inset is in), a layer's
-// within its panel's, and a legend's frame from the step its first entry
-// comes until its last leaves (if they all do), within its panel's; always
-// there, with no layer of its own
+// within its panel's (never, left out), a legend's frame while its entries
+// show, within its panel's (always there, with no layer of its own), and a
+// figure legend's entry while any layer it names shows
 export function partSteps(plot, choices) {
   const steps = new Map()
   const panels = plot.panels || []
   const byId = new Map(panels.map(p => [p.id, p]))
-  const panelSteps = p => meet(stepsOf(choices[p.id]), p.parent && byId.has(p.parent) ? panelSteps(byId.get(p.parent)) : NONE)
+  const chosen = id => (choices[id]?.include === false ? NEVER : stepsOf(choices[id]))
+  const panelSteps = p => meet(chosen(p.id), p.parent && byId.has(p.parent) ? panelSteps(byId.get(p.parent)) : NONE)
   for (const p of panels) steps.set(p.id, panelSteps(p))
-  for (const l of figureLayers(plot)) steps.set(l.id, meet(stepsOf(choices[l.id]), steps.get(l.panel) || NONE))
+  for (const l of figureLayers(plot)) steps.set(l.id, meet(chosen(l.id), steps.get(l.panel) || NONE))
   const frame = (layers, within) => {
-    const own = layers.filter(l => l.legend != null && choices[l.id]?.include !== false).map(l => steps.get(l.id)).filter(st => !st.never)
-    if (!own.length) return within
-    const step = Math.min(...own.map(st => st.step))
-    const until = own.every(st => st.until) ? Math.max(...own.map(st => st.until)) : 0
-    return meet({ step, until: until > step ? until : 0 }, within)
+    const shown = anyOf(layers.filter(l => l.legend != null).map(l => steps.get(l.id)))
+    return shown ? meet(shown, within) : within
   }
   if (panels.length) for (const p of panels) steps.set(`${p.id}-legend`, frame(p.layers, steps.get(p.id)))
   else steps.set('legend', frame(plot.layers, NONE))
+  const fl = plot.figureLegend
+  if (fl) {
+    const entries = fl.entries.map(e => anyOf(e.layers.map(id => steps.get(id) || NEVER)) || NEVER)
+    entries.forEach((st, k) => steps.set(`figure-legend-${k + 1}`, st))
+    steps.set('figure-legend', fl.entries.length ? anyOf(entries) || NEVER : NONE)
+  }
   return steps
 }
 
@@ -151,10 +175,12 @@ export function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = 
     const layer = layers.get(p.part)
     const panel = panels.get(p.part)
     const legendIn = /-legend$/.test(p.part) ? panels.get(p.part.replace(/-legend$/, '')) || null : null
-    const legend = p.part === 'legend' || !!legendIn
+    const entry = plot.figureLegend?.entries[figureLegendEntry(p.part)]
+    const outer = p.part === 'figure-legend' || !!entry
+    const legend = p.part === 'legend' || !!legendIn || outer
     const own = layer || panel
     const run = p.run || 0
-    const name = own ? nameOf(own) : legend ? 'Legend' : 'Figure'
+    const name = own ? nameOf(own) : entry ? `Figure legend: ${entry.label}` : outer ? 'Figure legend' : legend ? 'Legend' : 'Figure'
     // Of several panels, a layer's and a legend's say whose
     const home = (layer && panels.get(layer.panel)) || legendIn
     const label = (run ? `${name}, part ${run + 1}` : name) + (home ? ` · ${nameOf(home)}` : '')

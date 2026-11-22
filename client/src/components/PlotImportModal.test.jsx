@@ -199,6 +199,22 @@ describe('importing a plot', () => {
     expect(els.find(e => e.figure.part === 'p1').states).toBeUndefined()
   })
 
+  it('leaves out a figure legend’s entry when every layer it names is left out', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/grid.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'grid.svg' })
+    for (const li of items().filter(li => li.querySelector('input[aria-label="Layer name"]').value === 'samples')) {
+      await act(async () => li.querySelector('input[type="checkbox"]').click())
+    }
+    await act(async () => button('Insert figure with 4 layers').click())
+    const [els] = onInsertElements.mock.calls[0]
+    const parts = els.map(e => e.figure.part)
+    expect(parts).toContain('figure-legend')
+    expect(parts).toContain('figure-legend-1')
+    expect(parts).not.toContain('figure-legend-2')
+    expect(els.find(e => e.figure.part === 'figure-legend-1')).toMatchObject({ name: 'Figure legend: signal', initialState: 'hidden', stateSteps: { 1: null } })
+  })
+
   it('makes a graph of the panel chosen, of several', async () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/pair.svg`, 'utf8')
     reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }

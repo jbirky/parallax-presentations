@@ -19,7 +19,7 @@ import { partsOf, figureLayers } from './toFigure'
 export { PlotError, panelPlot, panelNamed } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
-export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure } from './toFigure'
+export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure, partSteps } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024

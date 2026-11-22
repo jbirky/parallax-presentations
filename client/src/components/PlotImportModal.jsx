@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps } from '../utils/plotImport'
 
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
@@ -167,7 +167,11 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
         if (!r?.url) throw new Error('The figure couldn’t be uploaded.')
         return r.url
       }
+      // A figure legend's entry or frame only while it can show: some layer
+      // it names is in the figure
+      const shows = partSteps(plot, Object.fromEntries(Object.entries(choices).map(([id, c]) => [id, panelById.has(id) && !panelOn(id) ? { ...c, include: false } : c])))
       const wanted = p => {
+        if (/^figure-legend/.test(p.part)) return !shows.get(p.part)?.never
         if (panelById.has(p.part)) return panelOn(p.part)
         const legendIn = /^(.+)-legend$/.exec(p.part)
         if (legendIn && panelById.has(legendIn[1])) return panelOn(legendIn[1])
