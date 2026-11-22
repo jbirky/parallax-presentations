@@ -23207,8 +23207,137 @@ function exampleDatasetNames(names) {
   return [...names].filter((name) => Object.prototype.hasOwnProperty.call(EXAMPLE_DATASETS, name));
 }
 
+// client/src/utils/plotImport/toGraph.js
+var IMPORT_WIDTH = 560;
+
+// client/src/utils/plotImport/toFigure.js
+var HIDDEN = { id: "hidden", name: "Hidden", opacity: 0, duration: 300, easing: "ease" };
+var pieceKey = (p) => `${p.part}:${p.run || 0}`;
+var figureLayers = (plot) => plot.panels ? plot.panels.flatMap((p) => p.layers) : plot.layers;
+var figureLegendEntry = (part2) => {
+  const m = /^figure-legend-(\d+)$/.exec(part2);
+  return m ? Number(m[1]) - 1 : -1;
+};
+var sigOf = (layer) => (layer.panel ? `${layer.panel}|` : "") + `${layer.kind}|${layer.color}`;
+var NONE = { step: 0, until: 0 };
+var NEVER = { step: 0, until: 0, never: true };
+function stepsOf(choice = {}) {
+  const step = choice.step > 0 ? choice.step : 0;
+  return { step, until: choice.until > step ? choice.until : 0 };
+}
+function meet(a, b) {
+  if (a.never || b.never) return NEVER;
+  const step = Math.max(a.step, b.step);
+  const until = a.until && b.until ? Math.min(a.until, b.until) : a.until || b.until;
+  return until && until <= step ? NEVER : { step, until };
+}
+function anyOf(list) {
+  const own = list.filter((st) => !st.never);
+  if (!own.length) return null;
+  const step = Math.min(...own.map((st) => st.step));
+  const until = own.every((st) => st.until) ? Math.max(...own.map((st) => st.until)) : 0;
+  return { step, until: until > step ? until : 0 };
+}
+function partSteps(plot, choices) {
+  const steps = /* @__PURE__ */ new Map();
+  const panels = plot.panels || [];
+  const byId = new Map(panels.map((p) => [p.id, p]));
+  const chosen = (id) => choices[id]?.include === false ? NEVER : stepsOf(choices[id]);
+  const panelSteps = (p) => meet(chosen(p.id), p.parent && byId.has(p.parent) ? panelSteps(byId.get(p.parent)) : NONE);
+  for (const p of panels) steps.set(p.id, panelSteps(p));
+  for (const l of figureLayers(plot)) steps.set(l.id, meet(chosen(l.id), steps.get(l.panel) || NONE));
+  const frame = (layers, within) => {
+    const shown = anyOf(layers.filter((l) => l.legend != null).map((l) => steps.get(l.id)));
+    return shown ? meet(shown, within) : within;
+  };
+  if (panels.length) for (const p of panels) steps.set(`${p.id}-legend`, frame(p.layers, steps.get(p.id)));
+  else steps.set("legend", frame(plot.layers, NONE));
+  const fl = plot.figureLegend;
+  if (fl) {
+    const entries = fl.entries.map((e) => anyOf(e.layers.map((id) => steps.get(id) || NEVER)) || NEVER);
+    entries.forEach((st, k) => steps.set(`figure-legend-${k + 1}`, st));
+    steps.set("figure-legend", fl.entries.length ? anyOf(entries) || NEVER : NONE);
+  }
+  return steps;
+}
+function setSteps(el, st) {
+  delete el.states;
+  delete el.stateSteps;
+  delete el.initialState;
+  if (!st.never && !st.step && !st.until) return;
+  el.states = [{ ...HIDDEN }];
+  el.stateSteps = {};
+  if (st.never) {
+    el.initialState = "hidden";
+    return;
+  }
+  if (st.step) {
+    el.initialState = "hidden";
+    el.stateSteps[st.step] = null;
+  }
+  if (st.until) el.stateSteps[st.until] = "hidden";
+}
+function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = /* @__PURE__ */ new Map(), box, groupId, z = 2, width = IMPORT_WIDTH, newId = () => crypto.randomUUID() } = {}) {
+  const b = box || { x: 0, y: 0, width: Math.round(width), height: Math.round(width * (plot.size.height / plot.size.width || 0.7)) };
+  const group = groupId || newId();
+  const figureId = meta.id || newId();
+  const layers = new Map(figureLayers(plot).map((l) => [l.id, l]));
+  const panels = new Map((plot.panels || []).map((p) => [p.id, p]));
+  const steps = partSteps(plot, choices);
+  const nameOf = (it) => choices[it.id]?.name || it.name;
+  return pieces.map((p, k) => {
+    const layer = layers.get(p.part);
+    const panel = panels.get(p.part);
+    const legendIn = /-legend$/.test(p.part) ? panels.get(p.part.replace(/-legend$/, "")) || null : null;
+    const entry = plot.figureLegend?.entries[figureLegendEntry(p.part)];
+    const outer = p.part === "figure-legend" || !!entry;
+    const legend = p.part === "legend" || !!legendIn || outer;
+    const own = layer || panel;
+    const run = p.run || 0;
+    const name = own ? nameOf(own) : entry ? `Figure legend: ${entry.label}` : outer ? "Figure legend" : legend ? "Legend" : "Figure";
+    const home = layer && panels.get(layer.panel) || legendIn;
+    const label = (run ? `${name}, part ${run + 1}` : name) + (home ? ` · ${nameOf(home)}` : "");
+    const shown = steps.get(p.part) || NONE;
+    const fresh = {
+      type: "image",
+      x: Math.round(b.x),
+      y: Math.round(b.y),
+      width: Math.round(b.width),
+      height: Math.round(b.height),
+      zIndex: z + k,
+      src: p.url,
+      objectFit: "contain",
+      groupId: group,
+      name: label,
+      alt: layer ? name : panel ? `The figure’s ${name}` : legend ? "The figure’s legend" : run ? "Part of the figure drawn over its layers" : "The figure, without the layers that come and go",
+      figure: {
+        ...meta,
+        id: figureId,
+        part: p.part,
+        run,
+        ...layer ? { sig: sigOf(layer) } : {},
+        ...own ? { name, label, steps: stepsOf(choices[own.id]), shown } : {}
+      }
+    };
+    const old = reuse.get(pieceKey(p));
+    const el = old ? { ...old, ...fresh } : { id: newId(), ...fresh };
+    if (own || legend) setSteps(el, shown);
+    return el;
+  });
+}
+
 // client/src/examples/decks.js
 var CAFFEINE_SRC = "/examples/caffeine.sdf";
+var FIGURE_LAYERS_DIR = "/examples/figure-layers/";
+var DECAY_PLOT = {
+  size: { width: 432, height: 288 },
+  layers: [
+    { id: "l1", name: "model", kind: "line", color: "#ff7f0e", legend: 0 },
+    { id: "l2", name: "measured", kind: "points", color: "#1f77b4", legend: 1 }
+  ]
+};
+var DECAY_PIECES = [["base", 0], ["l2", 0], ["l1", 0], ["l2", 1], ["base", 1], ["legend", 0], ["l1", 1], ["l2", 2]];
+var DECAY_PLAN = "base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12";
 var W = 960;
 var H = 540;
 var GRAPH_BOX = { w: 560, h: 400 };
@@ -23403,6 +23532,24 @@ var BUILDERS = {
     const b = builder("showcase-code");
     return b.deck("Diffusion", true, [
       { id: b.id(), notes: "", background: { type: "color", color: "#0f1222" }, elements: [{ id: b.id(), type: "html", x: 0, y: 0, width: W, height: H, zIndex: 1, content: DIFFUSION_SKETCH }] }
+    ]);
+  },
+  "showcase-figure"() {
+    const b = builder("showcase-figure");
+    const pieces = DECAY_PIECES.map(([part2, run]) => ({ part: part2, run, url: `${FIGURE_LAYERS_DIR}${part2}${run ? `-${run + 1}` : ""}.svg` }));
+    const figure = figureElements(DECAY_PLOT, pieces, {
+      choices: { l1: { step: 1 }, l2: { step: 2 } },
+      meta: { id: b.id(), src: `${FIGURE_LAYERS_DIR}decay.svg`, file: "decay.svg", plan: DECAY_PLAN },
+      box: { x: 210, y: 104, width: 540, height: 360 },
+      groupId: b.id(),
+      newId: b.id
+    });
+    return b.deck("A figure, a layer at a time", false, [
+      b.slide(false, [
+        b.heading("The model first, then the measurements"),
+        ...figure,
+        b.caption("Click the slide, then press → for each layer", false)
+      ])
     ]);
   },
   hero() {

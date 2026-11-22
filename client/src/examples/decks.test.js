@@ -78,7 +78,17 @@ describe('the example decks', () => {
   })
 
   it('has the decks the landing page’s showcase plays, the code as its panel shows it', () => {
-    expect(SHOWCASE_SLUGS).toEqual(['showcase-ai', 'showcase-cite', 'showcase-code'])
+    expect(SHOWCASE_SLUGS).toEqual(['showcase-ai', 'showcase-cite', 'showcase-code', 'showcase-figure'])
+    // The decay figure kept as matplotlib drew it: its pieces in drawing
+    // order, the model's at step 1 and the measurements' at step 2, its file
+    // there to edit its layers again
+    const figure = exampleDeck('showcase-figure').slides[0].elements.filter(e => e.figure)
+    expect(figure.map(e => e.src)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `/examples/figure-layers/${p}.svg`))
+    expect(new Set(figure.map(e => e.groupId)).size).toBe(1)
+    expect(figure.filter(e => e.figure.part === 'l1').map(e => e.stateSteps)).toEqual([{ 1: null }, { 1: null }])
+    expect(figure.filter(e => e.figure.part === 'l2').map(e => e.stateSteps)).toEqual([{ 2: null }, { 2: null }, { 2: null }])
+    expect(figure.find(e => e.figure.part === 'legend').stateSteps).toEqual({ 1: null })
+    expect(figure[0].figure).toMatchObject({ src: '/examples/figure-layers/decay.svg', file: 'decay.svg', part: 'base' })
     const cite = exampleDeck('showcase-cite')
     expect(cite.bibliography.map(e => e.key)).toEqual(['zwicky1933', 'rubin1970', 'bertone2018'])
     expect(JSON.stringify(cite.slides).match(/data-cite=/g)).toHaveLength(3)

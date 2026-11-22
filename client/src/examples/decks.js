@@ -20,9 +20,26 @@ import { defaultHarmonics } from '../utils/harmonicsView'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { defaultEquation, EQUATION_SIZE } from '../utils/equationTerms'
 import { defaultGraph, defaultGraph3d, GRAPH_COLORS } from '../utils/graphPage'
+import { figureElements } from '../utils/plotImport/toFigure'
 
 // The structure file the chemistry deck's molecule loads, from client/public
 export const CAFFEINE_SRC = '/examples/caffeine.sdf'
+
+// The matplotlib figure the figure-layers showcase keeps as it was drawn
+// (the plot import's decay fixture), and the pieces the plot import cut it
+// into, in client/public: the model line, then the measured points, each
+// with its legend entry. Opened in the editor, Edit figure layers… reads
+// decay.svg again
+export const FIGURE_LAYERS_DIR = '/examples/figure-layers/'
+const DECAY_PLOT = {
+  size: { width: 432, height: 288 },
+  layers: [
+    { id: 'l1', name: 'model', kind: 'line', color: '#ff7f0e', legend: 0 },
+    { id: 'l2', name: 'measured', kind: 'points', color: '#1f77b4', legend: 1 },
+  ],
+}
+const DECAY_PIECES = [['base', 0], ['l2', 0], ['l1', 0], ['l2', 1], ['base', 1], ['legend', 0], ['l1', 1], ['l2', 2]]
+const DECAY_PLAN = 'base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12'
 
 const W = 960, H = 540
 const GRAPH_BOX = { w: 560, h: 400 }
@@ -225,6 +242,22 @@ const BUILDERS = {
     const b = builder('showcase-code')
     return b.deck('Diffusion', true, [
       { id: b.id(), notes: '', background: { type: 'color', color: '#0f1222' }, elements: [{ id: b.id(), type: 'html', x: 0, y: 0, width: W, height: H, zIndex: 1, content: DIFFUSION_SKETCH }] },
+    ])
+  },
+  'showcase-figure'() {
+    const b = builder('showcase-figure')
+    const pieces = DECAY_PIECES.map(([part, run]) => ({ part, run, url: `${FIGURE_LAYERS_DIR}${part}${run ? `-${run + 1}` : ''}.svg` }))
+    const figure = figureElements(DECAY_PLOT, pieces, {
+      choices: { l1: { step: 1 }, l2: { step: 2 } },
+      meta: { id: b.id(), src: `${FIGURE_LAYERS_DIR}decay.svg`, file: 'decay.svg', plan: DECAY_PLAN },
+      box: { x: 210, y: 104, width: 540, height: 360 }, groupId: b.id(), newId: b.id,
+    })
+    return b.deck('A figure, a layer at a time', false, [
+      b.slide(false, [
+        b.heading('The model first, then the measurements'),
+        ...figure,
+        b.caption('Click the slide, then press → for each layer', false),
+      ]),
     ])
   },
   hero() {

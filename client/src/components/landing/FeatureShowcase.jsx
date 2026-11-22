@@ -3,7 +3,7 @@
 
 // The landing page's showcase of what sets Parallax apart: a list of
 // features beside one panel at a time, each a claim and something that shows
-// it. Live data, citations, code and the AI's slide play live decks (the
+// it. Live data, citations, figures, code and the AI's slide play live decks (the
 // exoplanet example and the showcase decks, client/src/examples/decks.js);
 // only the panel showing has its deck. The hero's chips open a panel here
 // (LandingPage).
@@ -14,6 +14,7 @@ import SlideFrame from './SlideFrame'
 export const FEATURES = [
   { key: 'data', name: 'Live data', short: 'Charts that refresh from the source' },
   { key: 'cite', name: 'BibTeX citations', short: 'Numbered for you, references slide built' },
+  { key: 'figures', name: 'matplotlib figures', short: 'Your plots, a layer at a time', isNew: true },
   { key: 'code', name: 'Your own code', short: 'HTML, JavaScript and p5.js on a slide' },
   { key: 'plugins', name: 'Plugins', short: 'Build an element once, use it everywhere' },
   { key: 'git', name: 'GitHub', short: 'Version history and Pages hosting' },
@@ -25,6 +26,17 @@ const EXOPLANET_QUERY = `select pl_name, pl_orbper, pl_bmasse,
 from   pscomppars
 where  pl_orbper is not null
   and  pl_bmasse is not null`
+
+// The figure in the showcase deck (decks.js showcase-figure), as made
+const DECAY_SCRIPT = `fig, ax = plt.subplots(figsize=(6, 4))
+ax.errorbar(t, v, yerr=err, fmt='o',
+            capsize=3, label='measured')
+ax.plot(tm, 2 * np.exp(-tm / 3),
+        label='model')
+ax.set_xlabel('time (s)')
+ax.set_ylabel('signal (V)')
+ax.legend()
+fig.savefig('decay.svg')  # or .pdf`
 
 const BIB_ENTRY = `@article{rubin1970,
   author  = {Rubin, Vera C. and
@@ -134,6 +146,18 @@ function Panel({ feature, guestEnabled }) {
         <Deck slug="showcase-cite" title="Citations numbered on a slide, a live Parallax deck" caption="Live: click the slide, then press → for the references" />
       </div>
       <Links links={[['Citations and bibliography', '#docs/tutorials/citations'], ...(guestEnabled ? [['Open it in the editor', '/try?example=showcase-cite']] : [])]} />
+    </>)
+    case 'figures': return (<>
+      <h3>Your matplotlib figures, a layer at a time</h3>
+      <p className="lp-lede">Drop a figure you saved from matplotlib, as a PDF or an SVG, on a slide. Right-click it and choose Edit figure layers…: Parallax finds each series, its error bars and its legend entry, in every panel, and you choose the step each one comes in at. The figure stays exactly as matplotlib drew it, or becomes a Parallax graph of its data.</p>
+      <div className="lp-proof">
+        <div className="lp-proof-side">
+          <Code name="decay.py" kind="matplotlib">{DECAY_SCRIPT}</Code>
+          <Facts rows={[['1. Drop', 'decay.svg on a slide'], ['2. Right-click', 'Edit figure layers…'], ['3. Steps', 'The model at 1, the measurements at 2']]} />
+        </div>
+        <Deck slug="showcase-figure" title="A matplotlib figure brought in a layer at a time, a live Parallax deck" caption="Live: click the slide, then press → for each layer" />
+      </div>
+      <Links links={[['Importing a matplotlib figure', '#docs/tutorials/graphs'], ...(guestEnabled ? [['Open it in the editor', '/try?example=showcase-figure']] : [])]} />
     </>)
     case 'code': return (<>
       <h3>If you can code it, it can go on a slide</h3>

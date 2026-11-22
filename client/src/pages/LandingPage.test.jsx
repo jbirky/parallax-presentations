@@ -192,8 +192,16 @@ describe('what sets Parallax apart', () => {
     // The JSXGraph plot an AI made, live
     expect(showcaseDecks()).toEqual(['/examples/showcase-ai/deck'])
     expect(el.querySelector('.lp-chat').textContent).toContain('JSXGraph')
-    await act(async () => tabs()[5].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    await act(async () => tabs().at(-1).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
     expect(selected()).toMatch(/^Live data/)
+  })
+
+  it('shows a matplotlib figure brought in a layer at a time', async () => {
+    await mount()
+    await act(async () => tabs().find(t => t.textContent.startsWith('matplotlib figures')).click())
+    expect(showcaseDecks()).toEqual(['/examples/showcase-figure/deck'])
+    expect(el.querySelector('.lp-feature').textContent).toContain('Edit figure layers…')
+    expect(el.querySelector('.lp-feature').textContent).toContain("fig.savefig('decay.svg')")
   })
 
   it('never promises a DOI, while publishing to Zenodo is turned off', async () => {
