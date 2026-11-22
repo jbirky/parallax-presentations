@@ -52,14 +52,6 @@ const COMPARISON = [
 ]
 const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
-const ELEMENTS = [
-  { field: 'Physics', items: [['Feynman diagrams', 'drawn one propagator per step'], ['Free-body diagrams', 'ΣF = ma solved for you'], ['Spherical harmonics', <>any Y<sub>l</sub><sup>m</sup>, in WebGL</>]] },
-  { field: 'Mathematics', items: [['Graphs', '2D, 3D, vector and slope fields, with sliders'], ['Geometry constructions', 'compass and straightedge, step by step'], ['Venn diagrams', 'shade any set expression'], ['Interactive equations', 'click a term to explain it']] },
-  { field: 'Chemistry', items: [['3D molecules', 'from PubChem or the PDB'], ['Periodic table', 'with element details on click'], ['Reactions', 'mhchem: \\ce{2H2 + O2 -> 2H2O}']] },
-  { field: 'Engineering and CS', items: [['Circuits', 'readings from a DC solver'], ['Logic gates', 'click an input, watch it propagate'], ['Timing diagrams', 'WaveDrom, stepped through as you talk'], ['Code', 'with syntax highlighting']] },
-  { field: 'Every subject', items: [['LaTeX math', 'inline and display'], ['Citations', 'a references slide built from them'], ['Scrolling slides', 'for a derivation too long for one screen'], ['Click and hover actions', 'states that morph from one look to another']] },
-]
-
 // The built-in examples, as the server lists them
 const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
 // The filters: the usual fields first, then any others the examples have
@@ -367,19 +359,7 @@ export default function LandingPage({ onSignIn }) {
             </div>
           </section>
 
-          <section className="lp-band alt" id="elements" aria-labelledby="lp-elements">
-            <div className="lp-wrap">
-              <div className="lp-head">
-                <h2 id="lp-elements">Built for the subjects you teach</h2>
-                <p>Each of these is an element you place on a slide and edit in its own panel, not a screenshot.</p>
-              </div>
-              <ul className="lp-elements">
-                {ELEMENTS.flatMap(g => g.items.map(([name, note]) => <li key={name} title={note}>{name}<span>{g.field}</span></li>))}
-              </ul>
-            </div>
-          </section>
-
-          <section className="lp-band" id="start" aria-labelledby="lp-start">
+          <section className="lp-band alt" id="start" aria-labelledby="lp-start">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-start">Start free, or run it yourself</h2>
