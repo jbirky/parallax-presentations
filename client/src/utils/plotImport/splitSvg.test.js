@@ -134,7 +134,10 @@ describe('the figure on the slide', () => {
     // The legend's frame is there with the model's entry, from the start
     expect(els[5].states).toBeUndefined()
     // What it came from, to open it again
-    expect(els[3].figure).toEqual({ ...meta, id: 'id1', part: measured.id, run: 1, sig: `points|${measured.color}` })
+    expect(els[3].figure).toEqual({
+      ...meta, id: 'id1', part: measured.id, run: 1, sig: `points|${measured.color}`,
+      name: 'Raw data', label: 'Raw data, part 2', steps: { step: 1, until: 3 }, shown: { step: 1, until: 3 },
+    })
     expect(els[5].figure).toEqual({ ...meta, id: 'id1', part: 'legend', run: 0 })
   })
 

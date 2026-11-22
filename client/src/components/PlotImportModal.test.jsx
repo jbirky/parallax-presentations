@@ -177,6 +177,38 @@ describe('importing a plot', () => {
     expect(els[0].figure).toMatchObject({ src: '/uploads/decay.pdf', file: 'decay.pdf', part: 'base', run: 0 })
   })
 
+  it('keeps a figure of several panels: each panel comes and goes whole, its layers inside it', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/pair.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'pair.svg' })
+    const groups = [...el.querySelectorAll('[role="group"]')]
+    expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['(a) decay', '(b) scaling'])
+    expect(groups.map(g => [...g.querySelectorAll('[data-panel] select')].map(s => s.value))).toEqual([['0', '0'], ['3', '0']])
+    expect(items().map(li => li.querySelector('select').value)).toEqual(['1', '2', '4', '5'])
+    // The second panel left out: its layers with it
+    await act(async () => groups[1].querySelector('[data-panel] input[type="checkbox"]').click())
+    expect([...groups[1].querySelectorAll('[role="listitem"] select')].every(s => s.disabled)).toBe(true)
+    await act(async () => button('Insert figure with 2 layers in 1 panel').click())
+    const names = api.uploadFile.mock.calls.map(([f]) => f.name)
+    expect(names[0]).toBe('pair.svg')
+    expect(names.some(n => /-(p2|l3|l4)/.test(n))).toBe(false)
+    expect(names).toContain('pair-p1.svg')
+    const [els] = onInsertElements.mock.calls[0]
+    expect(new Set(els.map(e => e.figure.part))).toEqual(new Set(['base', 'p1', 'l1', 'l2', 'p1-legend']))
+    expect(els.find(e => e.figure.part === 'l2')).toMatchObject({ name: 'measured · (a) decay', initialState: 'hidden', stateSteps: { 2: null } })
+    expect(els.find(e => e.figure.part === 'p1').states).toBeUndefined()
+  })
+
+  it('makes a graph of one panel of several', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/pair.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    await mount({ name: 'pair.svg' })
+    await act(async () => el.querySelectorAll('input[type="radio"]')[1].click())
+    expect(el.querySelectorAll('[role="group"]')).toHaveLength(0)
+    expect(items().map(li => [li.querySelector('input[aria-label="Layer name"]').value, li.querySelector('select').value])).toEqual([['model', '1'], ['measured', '2']])
+    expect(el.textContent).toContain('a graph of its data is made of “(a) decay”')
+  })
+
   describe('a figure opened again', () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
     const plot = plotFromDrawing(readSvgDrawing(text))

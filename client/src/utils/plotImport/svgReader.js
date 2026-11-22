@@ -126,7 +126,7 @@ function addText(el, m, ctx, gid) {
   if (anchor === 'middle') x -= w / 2
   else if (anchor === 'end') x -= w
   const angle = Math.round(Math.atan2(-at[1], at[0]) * 180 / Math.PI)
-  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, gid, legendId: ctx.legendId, role: ctx.role }
+  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, gid, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id }
   ctx.drawing.texts.push(text)
   if (ctx.tick) { ctx.tick.label = words; ctx.tick.text = text }
   else if (ctx.role === 'axis' && ctx.axes) {

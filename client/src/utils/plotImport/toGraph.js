@@ -89,9 +89,19 @@ export function plotToGraph(plot, { datasetName, choices = {}, dark = false } = 
 
 // Each layer's steps by default: all with the slide, or one a step, in the
 // legend's order where there is one
-export function defaultChoices(plot, oneByOne = true) {
-  const order = [...plot.layers].sort((a, b) => (a.legend ?? 1e9) - (b.legend ?? 1e9))
+export function defaultChoices(plot, oneByOne = true, { figure = false } = {}) {
+  const byLegend = layers => [...layers].sort((a, b) => (a.legend ?? 1e9) - (b.legend ?? 1e9))
   const out = {}
-  order.forEach((l, i) => { out[l.id] = { include: true, name: l.name, step: oneByOne ? i + 1 : 0, until: 0 } })
+  // A figure of several panels kept as it is: the first panel with the
+  // slide, then its layers a step each, then the next panel, its layers…
+  if (figure && plot.panels) {
+    let step = 0
+    plot.panels.forEach((p, i) => {
+      out[p.id] = { include: true, name: p.name, step: oneByOne && i ? ++step : 0, until: 0 }
+      for (const l of byLegend(p.layers)) out[l.id] = { include: true, name: l.name, step: oneByOne ? ++step : 0, until: 0 }
+    })
+    return out
+  }
+  byLegend(plot.layers).forEach((l, i) => { out[l.id] = { include: true, name: l.name, step: oneByOne ? i + 1 : 0, until: 0 } })
   return out
 }

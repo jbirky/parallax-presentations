@@ -14,12 +14,12 @@ import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { splitSvg } from './splitSvg'
 import { splitPdf } from './splitPdf'
-import { partsOf } from './toFigure'
+import { partsOf, figureLayers } from './toFigure'
 
 export { PlotError } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
-export { figureElements, readFigure, pieceKey } from './toFigure'
+export { figureElements, readFigure, pieceKey, figureLayers } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -69,7 +69,7 @@ export async function readPlotFile(file) {
 // A figure read by readPlotFile that can be kept as it is: every layer of it
 // drawn by groups an SVG names, or by operators a PDF lists
 export function keepable(result) {
-  const layers = result?.plot?.layers
+  const layers = result?.plot && figureLayers(result.plot)
   if (!layers?.length) return false
   if (result.kind === 'svg') return !!result.text && layers.every(l => l.groups?.length)
   return result.kind === 'pdf' && !!result.bytes && layers.every(l => l.ops?.length)

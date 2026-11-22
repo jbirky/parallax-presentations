@@ -127,6 +127,52 @@ setup('twinx', after=lambda f, a: a.twinx().plot(xv, xv ** 2, 'r-'))
 if shutil.which('latex'):
     setup('usetex', rc={'text.usetex': True})          # LaTeX's glyphs, one by one
 
+# Figures of several panels, kept as they are a panel at a time; the truth
+# is the panel a graph is made of: the largest whose numbers read (the first,
+# of ones the same size)
+fig, (a, b) = plt.subplots(1, 2, figsize=(8, 3.5))
+xp = np.linspace(0.5, 9.5, 12)
+yp = 2 * np.exp(-xp / 3) + rng.normal(0, 0.05, xp.size)
+a.errorbar(xp, yp, yerr=0.05, fmt='o', capsize=3, label='measured')
+xq = np.linspace(0, 10, 100)
+a.plot(xq, 2 * np.exp(-xq / 3), label='model')
+a.set_title('(a) decay')
+a.set_xlabel('time (s)')
+a.legend()
+xs2 = 10 ** rng.uniform(0, 2, 20)
+b.loglog(xs2, xs2 ** 1.5, 's', label='stars')
+b.loglog(xs2, 2 * xs2, '^', label='gas')
+b.set_title('(b) scaling')
+b.legend()
+fig.suptitle('Two panels')
+fig.tight_layout()
+save(fig, a, 'pair', {
+    'measured': {'kind': 'points', 'x': r(xp), 'y': r(yp), 'yErr': r(np.full(xp.size, 0.05))},
+    'model': {'kind': 'line', 'x': r(xq), 'y': r(2 * np.exp(-xq / 3))},
+}, ['measured', 'model'])
+
+# Four panels sharing their axes (the top and right ones have no numbers of
+# their own), and a legend for the figure
+fig, axs = plt.subplots(2, 2, figsize=(7, 5), sharex=True, sharey=True)
+tg = np.linspace(0, 6, 60)
+noise = rng.normal(0, 0.1, (4, 10))
+for i, ax in enumerate(axs.flat):
+    ax.plot(tg, np.sin(tg + i), label='signal')
+    ax.plot(tg[::6], np.sin(tg[::6] + i) + noise[i], 'o', label='samples')
+fig.legend(*axs[0, 0].get_legend_handles_labels(), loc='upper center', ncol=2)
+save(fig, axs[1, 0], 'grid', {
+    'samples': {'kind': 'points', 'x': r(tg[::6]), 'y': r(np.sin(tg[::6] + 2) + noise[2])},
+    'signal': {'kind': 'line', 'x': r(tg), 'y': r(np.sin(tg + 2))},
+})
+
+# An inset in a panel
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.plot(tg, np.exp(-tg), label='decay')
+ax.legend(loc='lower left')
+ins = ax.inset_axes([0.55, 0.5, 0.4, 0.4])
+ins.semilogy(tg, np.exp(-tg), 'r-')
+save(fig, ax, 'inset', {'decay': {'kind': 'line', 'x': r(tg), 'y': r(np.exp(-tg))}}, ['decay'])
+
 with open(os.path.join(OUT, 'truth.json'), 'w') as f:
     json.dump(truth, f, indent=1)
 print('wrote', ', '.join(k for k in truth if k != 'matplotlib'), 'with matplotlib', matplotlib.__version__)

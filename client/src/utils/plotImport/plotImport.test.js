@@ -83,6 +83,11 @@ describe('reading a matplotlib figure', () => {
     it(`reads ${name}.pdf exactly`, async () => check(await readPdf(name), name))
     it(`reads ${name}.svg exactly`, () => check(readSvg(name), name))
   }
+  // Of several panels, the one a graph is made of (panels.test.js has the rest)
+  for (const name of ['pair', 'grid', 'inset']) {
+    it(`reads the graph’s panel of ${name}.pdf exactly`, async () => check(await readPdf(name), name))
+    it(`reads the graph’s panel of ${name}.svg exactly`, () => check(readSvg(name), name))
+  }
 
   it('keeps the look: colors, markers, line styles, and the grid', async () => {
     for (const plot of [await readPdf('decay'), readSvg('decay')]) {

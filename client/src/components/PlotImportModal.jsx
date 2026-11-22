@@ -19,9 +19,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers } from '../utils/plotImport'
 
-const STEPS = Array.from({ length: 12 }, (_, i) => i + 1)
+const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
 function describe(layer) {
@@ -77,7 +77,8 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       const prev = reopen ? readFigure(figureEls, r.plot) : null
       setResult(r)
       setPrevious(prev)
-      setChoices(prev ? { ...defaultChoices(r.plot, oneByOne), ...prev.choices } : defaultChoices(r.plot, oneByOne))
+      const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
+      setChoices(prev ? { ...fresh, ...prev.choices } : fresh)
       // A figure matplotlib saved can be kept as it is: start there
       setMode(keepable(r) ? 'figure' : 'graph')
       setBusy('')
@@ -97,20 +98,30 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
     if (next.until && next.step && next.until <= next.step) next.until = 0
     return { ...c, [id]: next }
   })
-  const reveal = one => {
-    setOneByOne(one)
+  // The steps by default (one a step or all at once, for a graph or the
+  // figure kept as it is), keeping what's left out and what's renamed
+  const restep = (one, asFigure) => {
     if (result) setChoices(c => {
-      const fresh = defaultChoices(result.plot, one)
+      const fresh = defaultChoices(result.plot, one, { figure: asFigure })
       const out = {}
       for (const id of Object.keys(fresh)) out[id] = { ...fresh[id], include: c[id]?.include ?? true, name: c[id]?.name ?? fresh[id].name }
       return out
     })
   }
+  const reveal = one => { setOneByOne(one); restep(one, figure) }
+  const changeMode = key => { setMode(key); restep(oneByOne, key === 'figure') }
 
   const plot = result?.plot
-  const included = plot ? plot.layers.filter(l => choices[l.id]?.include !== false) : []
   const canKeep = keepable(result)
   const figure = mode === 'figure' && canKeep
+  // A figure of several panels kept as it is: each panel comes and goes as
+  // a whole, its layers with it
+  const panels = figure && plot?.panels ? plot.panels : null
+  const panelById = new Map((panels || []).map(p => [p.id, p]))
+  const panelOn = id => { const p = panelById.get(id); return !p || (choices[id]?.include !== false && panelOn(p.parent)) }
+  const layerOn = l => choices[l.id]?.include !== false && (!panels || panelOn(l.panel))
+  const listed = plot ? (panels ? figureLayers(plot) : plot.layers) : []
+  const included = listed.filter(layerOn)
 
   async function insert() {
     if (!plot || !included.length) return
@@ -146,7 +157,13 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
         if (!r?.url) throw new Error('The figure couldn’t be uploaded.')
         return r.url
       }
-      const wanted = p => p.part === 'base' || p.part === 'legend' || choices[p.part]?.include !== false
+      const wanted = p => {
+        if (panelById.has(p.part)) return panelOn(p.part)
+        const legendIn = /^(.+)-legend$/.exec(p.part)
+        if (legendIn && panelById.has(legendIn[1])) return panelOn(legendIn[1])
+        const layer = listed.find(l => l.id === p.part)
+        return layer ? layerOn(layer) : true
+      }
       const had = (p, plan) => (previous && previous.plan === plan && previous.reuse.get(pieceKey(p))?.src) || null
       const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan) })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
@@ -169,12 +186,78 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
     }
   }
 
-  const box = plot?.axes.box
-  const overlay = plot && box && {
+  // The axes read, outlined on the figure: each panel's, kept as it is
+  const boxes = plot ? (panels ? panels.map(p => ({ id: p.id, box: p.box, label: String(panels.indexOf(p) + 1) })) : [{ id: 'axes', box: plot.axes.box }]) : []
+  const overlayOf = box => ({
     left: `${(box.x0 / plot.size.width) * 100}%`, width: `${((box.x1 - box.x0) / plot.size.width) * 100}%`,
     top: `${(1 - box.y1 / plot.size.height) * 100}%`, height: `${((box.y1 - box.y0) / plot.size.height) * 100}%`,
-  }
+  })
   const select = { fontSize: 12, padding: '3px 4px', background: 'var(--bg-input, var(--bg-hover))', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }
+  const nameInput = { flex: 1, minWidth: 0, fontSize: 13, padding: '3px 6px', background: 'var(--bg-input, var(--bg-hover))', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }
+
+  // When something comes and goes
+  const steps = (id, c, off) => (<>
+    <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Appears
+      <select value={c.step || 0} disabled={off} onChange={e => setChoice(id, { step: +e.target.value })} style={select}>
+        <option value={0}>With the slide</option>
+        {STEPS.map(n => <option key={n} value={n}>At step {n}</option>)}
+      </select>
+    </label>
+    <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Leaves
+      <select value={c.until || 0} disabled={off} onChange={e => setChoice(id, { until: +e.target.value })} style={select}>
+        <option value={0}>Stays</option>
+        {STEPS.filter(n => n > (c.step || 0)).map(n => <option key={n} value={n}>At step {n}</option>)}
+      </select>
+    </label>
+  </>)
+
+  const layerRow = (layer, { hidden = false } = {}) => {
+    const c = choices[layer.id] || {}
+    const on = c.include !== false
+    return (
+      <div role="listitem" key={layer.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'grid', gap: 6, opacity: on && !hidden ? 1 : 0.55 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={on} disabled={hidden} onChange={e => setChoice(layer.id, { include: e.target.checked })} aria-label={`Import ${c.name || layer.name}`} />
+          <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: layer.kind === 'points' ? '50%' : 3, background: layer.color, flex: 'none', border: '1px solid rgba(0,0,0,0.2)' }} />
+          <input value={c.name ?? layer.name} onChange={e => setChoice(layer.id, { name: e.target.value })} aria-label="Layer name" maxLength={60} style={nameInput} />
+          {!figure && (
+            <span title={layer.fidelity === 'exact' ? 'Where the file puts them' : 'Through the points the file draws it with; matplotlib leaves out points that don’t change the picture'}
+              style={{ fontSize: 10, padding: '2px 6px', borderRadius: 10, background: layer.fidelity === 'exact' ? 'rgba(16,185,129,0.18)' : 'rgba(234,179,8,0.18)', color: layer.fidelity === 'exact' ? '#34d399' : '#facc15', whiteSpace: 'nowrap' }}>
+              {layer.fidelity === 'exact' ? 'Exact' : 'As drawn'}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }}>
+          <span style={{ flex: '1 1 160px' }}>{describe(layer)}</span>
+          {steps(layer.id, c, !on || hidden)}
+        </div>
+      </div>
+    )
+  }
+
+  // A panel: its own steps, its layers under it
+  const panelRow = p => {
+    const c = choices[p.id] || {}
+    const on = c.include !== false
+    const hidden = !panelOn(p.parent)
+    const name = c.name ?? p.name
+    return (
+      <div key={p.id} role="group" aria-label={name} style={{ display: 'grid', gap: 6, marginLeft: p.parent ? 16 : 0 }}>
+        <div data-panel={p.id} style={{ borderRadius: 8, padding: 8, display: 'grid', gap: 6, background: 'var(--bg-hover)', opacity: on && !hidden ? 1 : 0.55 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={on} disabled={hidden} onChange={e => setChoice(p.id, { include: e.target.checked })} aria-label={`Import ${name}`} />
+            <span aria-hidden="true" style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', width: 14, textAlign: 'center' }}>{panels.indexOf(p) + 1}</span>
+            <input value={name} onChange={e => setChoice(p.id, { name: e.target.value })} aria-label="Panel name" maxLength={60} style={{ ...nameInput, fontWeight: 600 }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }}>
+            <span style={{ flex: '1 1 160px' }}>{p.layers.length ? `The panel, and ${p.layers.length} layer${p.layers.length === 1 ? '' : 's'}` : 'The panel'}</span>
+            {steps(p.id, c, !on || hidden)}
+          </div>
+        </div>
+        {p.layers.length > 0 && <div role="list" aria-label={`${name}: layers`} style={{ display: 'grid', gap: 6, marginLeft: 16 }}>{p.layers.map(l => layerRow(l, { hidden: !on || hidden }))}</div>}
+      </div>
+    )
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -211,7 +294,11 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                 {result.preview
                   ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
-                {overlay && <div title="The axes that were read" style={{ position: 'absolute', ...overlay, border: '2px dashed #6366f1', pointerEvents: 'none' }} />}
+                {boxes.map(b => (
+                  <div key={b.id} title="The axes that were read" style={{ position: 'absolute', ...overlayOf(b.box), border: '2px dashed #6366f1', pointerEvents: 'none' }}>
+                    {b.label && <span style={{ position: 'absolute', left: 2, top: 2, fontSize: 11, fontWeight: 700, color: '#fff', background: '#6366f1', borderRadius: 3, padding: '0 4px' }}>{b.label}</span>}
+                  </div>
+                ))}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, display: 'grid', gap: 2 }}>
                 {['x', 'y'].map(k => {
@@ -234,7 +321,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   const on = (key === 'figure') === figure
                   return (
                     <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 8px', borderRadius: 8, border: `1px solid ${on ? 'var(--accent, #6366f1)' : 'var(--border)'}`, opacity: off ? 0.55 : 1, cursor: off ? 'default' : 'pointer' }}>
-                      <input type="radio" name="plot-mode" checked={on} disabled={off} onChange={() => setMode(key)} style={{ marginTop: 3 }} />
+                      <input type="radio" name="plot-mode" checked={on} disabled={off} onChange={() => changeMode(key)} style={{ marginTop: 3 }} />
                       <span style={{ display: 'grid', gap: 1 }}>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{note}</span>
@@ -248,43 +335,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                 <button type="button" className={`btn ${oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={oneByOne} onClick={() => reveal(true)}>One a step</button>
                 <button type="button" className={`btn ${!oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={!oneByOne} onClick={() => reveal(false)}>All at once</button>
               </div>
-              <div role="list" aria-label="Layers" style={{ display: 'grid', gap: 8 }}>
-                {plot.layers.map(layer => {
-                  const c = choices[layer.id] || {}
-                  const on = c.include !== false
-                  return (
-                    <div role="listitem" key={layer.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'grid', gap: 6, opacity: on ? 1 : 0.55 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="checkbox" checked={on} onChange={e => setChoice(layer.id, { include: e.target.checked })} aria-label={`Import ${c.name || layer.name}`} />
-                        <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: layer.kind === 'points' ? '50%' : 3, background: layer.color, flex: 'none', border: '1px solid rgba(0,0,0,0.2)' }} />
-                        <input value={c.name ?? layer.name} onChange={e => setChoice(layer.id, { name: e.target.value })} aria-label="Layer name" maxLength={60}
-                          style={{ flex: 1, minWidth: 0, fontSize: 13, padding: '3px 6px', background: 'var(--bg-input, var(--bg-hover))', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }} />
-                        {!figure && (
-                          <span title={layer.fidelity === 'exact' ? 'Where the file puts them' : 'Through the points the file draws it with; matplotlib leaves out points that don’t change the picture'}
-                            style={{ fontSize: 10, padding: '2px 6px', borderRadius: 10, background: layer.fidelity === 'exact' ? 'rgba(16,185,129,0.18)' : 'rgba(234,179,8,0.18)', color: layer.fidelity === 'exact' ? '#34d399' : '#facc15', whiteSpace: 'nowrap' }}>
-                            {layer.fidelity === 'exact' ? 'Exact' : 'As drawn'}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        <span style={{ flex: '1 1 160px' }}>{describe(layer)}</span>
-                        <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Appears
-                          <select value={c.step || 0} disabled={!on} onChange={e => setChoice(layer.id, { step: +e.target.value })} style={select}>
-                            <option value={0}>With the slide</option>
-                            {STEPS.map(n => <option key={n} value={n}>At step {n}</option>)}
-                          </select>
-                        </label>
-                        <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Leaves
-                          <select value={c.until || 0} disabled={!on} onChange={e => setChoice(layer.id, { until: +e.target.value })} style={select}>
-                            <option value={0}>Stays</option>
-                            {STEPS.filter(n => n > (c.step || 0)).map(n => <option key={n} value={n}>At step {n}</option>)}
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              {panels
+                ? <div aria-label="Panels" style={{ display: 'grid', gap: 10 }}>{panels.map(panelRow)}</div>
+                : <div role="list" aria-label="Layers" style={{ display: 'grid', gap: 8 }}>{listed.map(l => layerRow(l))}</div>}
               {plot.warnings.length > 0 && (
                 <ul aria-label="Notes" style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 3 }}>
                   {plot.warnings.map(w => <li key={w}>{w}</li>)}
@@ -294,7 +347,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                 {reopen
                   ? 'The figure stays where it is on the slide. A layer left out is taken out of it, and can be put back here.'
                   : figure
-                  ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). Each layer’s legend entry comes and goes with it, and the legend’s frame shows while any entry does; a layer left out is taken out of the figure, entry and all.`
+                  ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). ${panels ? 'Each panel comes and goes as a whole, and a layer shows only while its panel does. ' : ''}Each layer’s legend entry comes and goes with it, and the legend’s frame shows while any entry does; a layer left out is taken out of the figure, entry and all.`
                   : `The data goes into a dataset, “${baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.`}
               </p>
               {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
@@ -315,7 +368,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
             {busy === 'saving'
               ? (reopen ? 'Updating the figure…' : figure ? 'Adding the figure…' : 'Adding the graph…')
               : reopen ? 'Update figure'
-                : `Insert ${figure ? 'figure' : 'graph'}${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}`}
+                : `Insert ${figure ? 'figure' : 'graph'}${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}${panels ? ((n => ` in ${n} panel${n === 1 ? '' : 's'}`)(panels.filter(p => panelOn(p.id)).length)) : ''}`}
           </button>
         </div>
       </div>
