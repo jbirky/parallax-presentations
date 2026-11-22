@@ -16,7 +16,9 @@
 // The figure's background and the axes' (backdrop: their patch groups,
 // plotModel.js) can be left out, clear, as savefig(transparent=True) leaves
 // them: the figure is cut the same way, and a piece left with nothing to
-// draw isn't made (keptRuns).
+// draw isn't made (keptRuns). A part can be drawn in another color
+// (recolor, toFigure.js's recolorOf): its pieces' fills and strokes in its
+// color, its markers' too, but not its words.
 
 import { runsOf, planOf, keptRuns } from './toFigure'
 
@@ -30,7 +32,7 @@ export class SplitError extends Error {}
 // { pieces: [{ part, run, svg, backdrop }], plan, width, height, type, ext }
 // (width and height: the viewBox's, for the shape on the slide; backdrop:
 // that a piece has a background in it, clear or not)
-export function splitSvg(text, layers, { backdrop = [], clear = false, Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
+export function splitSvg(text, layers, { backdrop = [], clear = false, recolor = new Map(), Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
   const doc = new Parser().parseFromString(text, 'image/svg+xml')
   const svg = doc.documentElement
   if (!svg || svg.localName !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new SplitError('This file isn’t an SVG that could be read')
@@ -54,6 +56,8 @@ export function splitSvg(text, layers, { backdrop = [], clear = false, Parser = 
     drawn(d.documentElement).forEach((el, i) => { if (i < r.from || i > r.to || (clear && back[i])) el.remove() })
     dropEmpty(d)
     pruneDefs(d)
+    const swap = recolor.get(r.part)
+    if (swap) recolorSvg(d, swap.from, swap.to)
     return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop }
   })
 
@@ -61,16 +65,6 @@ export function splitSvg(text, layers, { backdrop = [], clear = false, Parser = 
   const width = vb.length === 4 && vb[2] > 0 ? vb[2] : parseFloat(svg.getAttribute('width')) || 0
   const height = vb.length === 4 && vb[3] > 0 ? vb[3] : parseFloat(svg.getAttribute('height')) || 0
   return { pieces, plan: planOf(runs), width, height, type: 'image/svg+xml', ext: 'svg' }
-}
-
-// The figure whole, its backgrounds left out (backdrop: their groups)
-export function clearSvg(text, backdrop, { Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
-  const doc = new Parser().parseFromString(text, 'image/svg+xml')
-  const els = drawn(doc.documentElement)
-  const back = backdropOf(els, backdrop)
-  els.forEach((el, i) => { if (back[i]) el.remove() })
-  dropEmpty(doc)
-  return new Serializer().serializeToString(doc)
 }
 
 // Of what's drawn, whether each is in a background's group
@@ -104,6 +98,26 @@ function partOf(el, owner) {
   }
   return 'base'
 }
+
+// A piece's drawing in another color: from → to wherever it fills or
+// strokes (in a style, or as an attribute), in the definitions it uses (its
+// markers) too; not in its words (a legend entry's label), which keep theirs
+function recolorSvg(doc, from, to) {
+  const swap = v => v.replace(/(fill|stroke)(\s*:\s*)(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\b/g, (m, k, sep, c) => (hexColor(c) === from ? `${k}${sep}${to}` : m))
+  for (const el of doc.getElementsByTagName('*')) {
+    if (inWords(el)) continue
+    const style = el.getAttribute('style')
+    if (style) el.setAttribute('style', swap(style))
+    for (const a of ['fill', 'stroke']) if (hexColor(el.getAttribute(a)) === from) el.setAttribute(a, to)
+  }
+}
+// #rgb or #rrggbb as #rrggbb, else null
+function hexColor(v) {
+  const c = String(v || '').trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(c)) return c
+  return /^#[0-9a-f]{3}$/.test(c) ? `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}` : null
+}
+const inWords = el => { for (let e = el; e && e.nodeType === 1; e = e.parentNode) if (/^text_\d+$/.test(e.getAttribute('id') || '')) return true; return false }
 
 // Groups with nothing left in them, gone (the innermost first)
 function dropEmpty(doc) {

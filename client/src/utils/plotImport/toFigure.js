@@ -17,9 +17,10 @@
 // part of its own ('legend'), showing while any entry does.
 //
 // Each element keeps what it came from (figure: { id, src, file, plan,
-// clear, part, run, sig, name, label, steps, shown }), so the figure can be
-// opened again (readFigure): src is the file it was cut from; clear, that
-// it was cut with its backgrounds left out (transparent); part 'base', a
+// clear, part, run, sig, name, label, steps, shown, color }), so the figure
+// can be opened again (readFigure): src is the file it was cut from; clear,
+// that it was cut with its backgrounds left out (transparent); color, a
+// layer's, when it was given one of its own (recolorOf); part 'base', a
 // legend's ('legend', or a panel's 'p2-legend'), a panel's id or a layer's;
 // sig a layer's kind and color, to know it again if the file reads into
 // layers in another order.
@@ -163,6 +164,24 @@ function shownBy(el) {
 }
 const same = (a, b) => !!a && !!b && !!a.never === !!b.never && (!!a.never || (a.step === b.step && a.until === b.until))
 
+// The parts to draw in a color of their own: a layer given one (choices[id].
+// color, other than the figure's), and a figure legend's entry when every
+// layer it names that's in the figure is now drawn in the same one.
+// Map(part → { from, to }), colors as #rrggbb
+export function recolorOf(plot, choices = {}) {
+  const out = new Map()
+  const all = figureLayers(plot)
+  const given = l => { const c = String(choices[l.id]?.color || '').toLowerCase(); return /^#[0-9a-f]{6}$/.test(c) && c !== l.color.toLowerCase() ? c : null }
+  for (const l of all) { const to = given(l); if (to) out.set(l.id, { from: l.color.toLowerCase(), to }) }
+  plot.figureLegend?.entries.forEach((e, k) => {
+    const named = e.layers.map(id => all.find(l => l.id === id)).filter(l => l && choices[l.id]?.include !== false)
+    const now = new Set(named.map(l => given(l) || l.color.toLowerCase()))
+    const to = now.size === 1 ? [...now][0] : null
+    if (to && to !== named[0].color.toLowerCase()) out.set(`figure-legend-${k + 1}`, { from: named[0].color.toLowerCase(), to })
+  })
+  return out
+}
+
 // pieces: [{ part, run, url }], in drawing order, without the parts left
 // out. meta: { id, src, file, plan, clear }. reuse, box, groupId, z: what the
 // figure was before, when it's made again (readFigure). The elements, at box.
@@ -176,6 +195,7 @@ export function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = 
   const layers = new Map(figureLayers(plot).map(l => [l.id, l]))
   const panels = new Map((plot.panels || []).map(p => [p.id, p]))
   const steps = partSteps(plot, choices)
+  const recolor = recolorOf(plot, choices)
   const nameOf = it => choices[it.id]?.name || it.name
   return pieces.map((p, k) => {
     const layer = layers.get(p.part)
@@ -199,6 +219,7 @@ export function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = 
         ...meta, id: figureId, part: p.part, run,
         ...(layer ? { sig: sigOf(layer) } : {}),
         ...(own ? { name, label, steps: stepsOf(choices[own.id]), shown } : {}),
+        ...(layer && recolor.has(layer.id) ? { color: recolor.get(layer.id).to } : {}),
       },
     }
     const old = reuse.get(pieceKey(p))
@@ -267,7 +288,7 @@ export function readFigure(elements, plot) {
     const f = el.figure
     const st = f.steps && same(shownBy(el), f.shown) ? f.steps : shownBy(el)
     const name = f.label != null && el.name === f.label ? f.name : el.name
-    choices[it.id] = { include: true, name: name || it.name, step: st.step, until: st.until > st.step ? st.until : 0 }
+    choices[it.id] = { include: true, name: name || it.name, step: st.step, until: st.until > st.step ? st.until : 0, ...(f.color ? { color: f.color } : {}) }
   }
   const base = reuse.get('base:0') || els[0]
   return {

@@ -25,7 +25,7 @@ function columnBase(name, taken) {
 
 const cell = v => (v === null || v === undefined || !isFinite(v) ? '' : String(v))
 
-// choices: { [layer id]: { include, name, step, until } }. Returns the CSV,
+// choices: { [layer id]: { include, name, step, until, color } }. Returns the CSV,
 // the graph's fields and its size on the slide
 export function plotToGraph(plot, { datasetName, choices = {}, dark = false } = {}) {
   const taken = new Set()
@@ -48,7 +48,7 @@ export function plotToGraph(plot, { datasetName, choices = {}, dark = false } = 
       const r = (layer.size || 6) / 2 * scale
       data.size = POINT_SIZES.reduce((best, s) => (Math.abs(s - r) < Math.abs(best - r) ? s : best), POINT_SIZES[0])
     }
-    const ex = { id: newExpressionId(), color: layer.color, data }
+    const ex = { id: newExpressionId(), color: /^#[0-9a-f]{6}$/i.test(choice.color || '') ? choice.color : layer.color, data }
     if (layer.kind === 'line') {
       ex.width = Math.max(0.5, Math.min(12, Math.round((layer.width || 1.5) * scale * 2) / 2))
       if (layer.style && layer.style !== 'solid') ex.style = layer.style

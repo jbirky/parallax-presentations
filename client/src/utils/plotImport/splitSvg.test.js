@@ -7,8 +7,8 @@ import { readFileSync } from 'fs'
 import { Window } from 'happy-dom'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing } from './plotModel'
-import { splitSvg, clearSvg, SplitError } from './splitSvg'
-import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure, keptRuns } from './toFigure'
+import { splitSvg, SplitError } from './splitSvg'
+import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure, keptRuns, recolorOf } from './toFigure'
 
 const { DOMParser, XMLSerializer } = new Window()
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -116,10 +116,50 @@ describe('keeping a figure as it is', () => {
     expect(ids(first).has('xtick_1')).toBe(true)
     expect(drawnIn(first)).toBe(drawnIn(parse(opaque.pieces[0].svg)) - 2)
     for (let k = 1; k < clear.pieces.length; k++) expect(clear.pieces[k].svg).toBe(opaque.pieces[k].svg)
-    // The figure whole, so
-    const whole = parse(clearSvg(text, plot.backdrop.groups, opts))
-    expect(ids(whole).has('patch_1') || ids(whole).has('patch_2')).toBe(false)
-    expect(drawnIn(whole)).toBe(drawnIn(parse(text)) - 2)
+  })
+
+  it('draws a layer in another color: its markers, error bars, caps and legend entry, but not its words', () => {
+    const { text, plot } = read('decay')
+    const measured = plot.layers.find(l => l.name === 'measured')
+    const recolor = recolorOf(plot, { [measured.id]: { color: '#D62728' } })
+    expect([...recolor]).toEqual([[measured.id, { from: '#1f77b4', to: '#d62728' }]])
+    const plain = splitSvg(text, partsOf(plot, 'svg'), opts)
+    const out = splitSvg(text, partsOf(plot, 'svg'), { ...opts, recolor })
+    expect(out.plan).toBe(plain.plan)
+    out.pieces.forEach((p, k) => {
+      if (p.part !== measured.id) { expect(p.svg).toBe(plain.pieces[k].svg); return }
+      expect(p.svg).not.toMatch(/#1f77b4/i)
+      expect(p.svg).toContain('#d62728')
+    })
+    // Its markers' definition too, and the words of its legend entry as they were
+    const last = parse(out.pieces.at(-1).svg)
+    expect([...last.getElementsByTagName('path')].filter(e => e.getAttribute('id')?.startsWith('m')).every(e => /#d62728/.test(e.getAttribute('style')))).toBe(true)
+    const words = (doc, id = 'text_15') => new XMLSerializer().serializeToString([...doc.getElementsByTagName('*')].find(g => g.getAttribute('id') === id))
+    expect(words(last)).toBe(words(parse(plain.pieces.at(-1).svg)))
+    // A black line beside its black words: the words stay black
+    const black = text.replaceAll('#ff7f0e', '#000000')
+    const model = plot.layers.find(l => l.name === 'model')
+    const cut = splitSvg(black, partsOf(plot, 'svg'), { ...opts, recolor: new Map([[model.id, { from: '#000000', to: '#2ca02c' }]]) })
+    const entry = parse(cut.pieces.find(p => p.part === model.id && p.run === 1).svg)
+    expect(words(entry, 'text_14')).toBe(words(parse(splitSvg(black, partsOf(plot, 'svg'), opts).pieces.find(p => p.part === model.id && p.run === 1).svg), 'text_14'))
+    expect([...entry.getElementsByTagName('path')].filter(e => /stroke:/.test(e.getAttribute('style') || '')).every(e => /stroke: #2ca02c/.test(e.getAttribute('style')))).toBe(true)
+  })
+
+  it('colors a figure legend’s entry as the layers it names, once they’re all one color', () => {
+    const { text, plot } = read('grid')
+    const signal = plot.figureLegend.entries.find(e => e.label === 'signal')
+    const k = plot.figureLegend.entries.indexOf(signal)
+    const [first, ...rest] = signal.layers
+    // One panel's: the entry stays as drawn, as the rest still are
+    expect([...recolorOf(plot, { [first]: { color: '#9467bd' } }).keys()]).toEqual([first])
+    // Every panel's (or every one left in): the entry follows
+    const all = Object.fromEntries(signal.layers.map(id => [id, { color: '#9467bd' }]))
+    expect(recolorOf(plot, all).get(`figure-legend-${k + 1}`)).toEqual({ from: plot.panels[0].layers.find(l => l.id === first).color, to: '#9467bd' })
+    expect(recolorOf(plot, { [first]: { color: '#9467bd' }, ...Object.fromEntries(rest.map(id => [id, { include: false }])) }).has(`figure-legend-${k + 1}`)).toBe(true)
+    const out = splitSvg(text, partsOf(plot, 'svg'), { ...opts, recolor: recolorOf(plot, all) })
+    expect(out.pieces.find(p => p.part === `figure-legend-${k + 1}`).svg).toContain('#9467bd')
+    // The figure's color, given again, is no color of its own
+    expect(recolorOf(plot, { [first]: { color: plot.panels[0].layers.find(l => l.id === first).color.toUpperCase() } }).size).toBe(0)
   })
 
   it('makes no piece of what drew only a background, but keeps each panel', () => {
@@ -223,6 +263,15 @@ describe('the figure on the slide', () => {
     const back = readFigure([{ ...el, groupId: 'g', zIndex: 7 }], plot)
     expect(back).toMatchObject({ whole: true, choices: null, plan: '', meta: { id: 'w1', src: '/u/decay.svg', file: 'decay.svg' }, box: { x: 100, y: 50, width: 560, height: 373 }, groupId: 'g', z: 7, ids: ['w0'] })
     expect(back.reuse.size).toBe(0)
+  })
+
+  it('keeps a layer’s color of its own on its elements, and reads it back', () => {
+    const els = make({ [measured.id]: { step: 1, color: '#d62728' } })
+    expect(els.filter(e => e.figure.part === measured.id).map(e => e.figure.color)).toEqual(['#d62728', '#d62728', '#d62728'])
+    expect(els.filter(e => e.figure.part !== measured.id).some(e => 'color' in e.figure)).toBe(false)
+    const back = readFigure(els, plot)
+    expect(back.choices[measured.id]).toEqual({ include: true, name: 'measured', step: 1, until: 0, color: '#d62728' })
+    expect(back.choices[model.id]).not.toHaveProperty('color')
   })
 
   it('opened again, knows it was cut with a transparent background, and reads a panel whose first piece was only that', () => {

@@ -12,14 +12,14 @@ import { libUrl, localizeLibraries } from '../libraries'
 import { readPdfDrawing } from './pdfReader'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
-import { splitSvg, clearSvg } from './splitSvg'
+import { splitSvg } from './splitSvg'
 import { splitPdf, pdfFigurePng } from './splitPdf'
 import { partsOf, figureLayers } from './toFigure'
 
 export { PlotError, panelPlot, panelNamed } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
-export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure, partSteps } from './toFigure'
+export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure, partSteps, recolorOf } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -80,32 +80,24 @@ export function keepable(result) {
 // ext }, an SVG's pieces as SVG, a PDF's as PNG; a piece's part is 'base',
 // 'legend' or a layer's id. need(piece, plan): whether to make a piece (else
 // its blob is null). clear: the figure's background and the axes' left out,
-// transparent (backdrop: that a piece has one in it, clear or not)
-export async function splitFigure(result, { need = () => true, clear = false } = {}) {
+// transparent (backdrop: that a piece has one in it, clear or not).
+// recolor: the parts to draw in another color (recolorOf). longSide: a PDF's
+// pieces' longer side, in pixels
+export async function splitFigure(result, { need = () => true, clear = false, recolor = new Map(), longSide } = {}) {
   const layers = partsOf(result.plot, result.kind)
   const backdrop = result.plot.backdrop || { groups: [], ops: [] }
   if (result.kind === 'svg') {
-    const { pieces, ...rest } = splitSvg(result.text, layers, { backdrop: backdrop.groups, clear })
+    const { pieces, ...rest } = splitSvg(result.text, layers, { backdrop: backdrop.groups, clear, recolor })
     return { ...rest, pieces: pieces.map(p => ({ part: p.part, run: p.run, backdrop: p.backdrop, blob: need(p, rest.plan) ? new Blob([p.svg], { type: rest.type }) : null })) }
   }
   // pdf.js hands the bytes to its worker, so each read gets a copy
-  return splitPdf(result.bytes.slice(), layers, await loadPdfjs(), { need, backdrop: backdrop.ops, clear })
+  return splitPdf(result.bytes.slice(), layers, await loadPdfjs(), { need, backdrop: backdrop.ops, clear, recolor, ...(longSide ? { longSide } : {}) })
 }
 
 // Whether a figure read by readPlotFile has a background to leave out
 export const hasBackdrop = result => {
   const b = result?.plot?.backdrop
   return !!b && (result.kind === 'svg' ? b.groups.length > 0 : b.ops.length > 0)
-}
-
-// A figure read by readPlotFile with its backgrounds left out, to look at:
-// an object URL (revoke it with URL.revokeObjectURL)
-export async function clearPreview(result) {
-  const backdrop = result.plot.backdrop
-  const blob = result.kind === 'svg'
-    ? new Blob([clearSvg(result.text, backdrop.groups)], { type: 'image/svg+xml' })
-    : await pdfFigurePng(result.bytes.slice(), await loadPdfjs(), { longSide: 1600, backdrop: backdrop.ops })
-  return URL.createObjectURL(blob)
 }
 
 // The PDF's first page as a PNG data URL

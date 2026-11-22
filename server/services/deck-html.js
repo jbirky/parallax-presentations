@@ -23277,6 +23277,25 @@ function setSteps(el, st) {
   }
   if (st.until) el.stateSteps[st.until] = "hidden";
 }
+function recolorOf(plot, choices = {}) {
+  const out = /* @__PURE__ */ new Map();
+  const all = figureLayers(plot);
+  const given = (l) => {
+    const c = String(choices[l.id]?.color || "").toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(c) && c !== l.color.toLowerCase() ? c : null;
+  };
+  for (const l of all) {
+    const to = given(l);
+    if (to) out.set(l.id, { from: l.color.toLowerCase(), to });
+  }
+  plot.figureLegend?.entries.forEach((e, k) => {
+    const named = e.layers.map((id) => all.find((l) => l.id === id)).filter((l) => l && choices[l.id]?.include !== false);
+    const now = new Set(named.map((l) => given(l) || l.color.toLowerCase()));
+    const to = now.size === 1 ? [...now][0] : null;
+    if (to && to !== named[0].color.toLowerCase()) out.set(`figure-legend-${k + 1}`, { from: named[0].color.toLowerCase(), to });
+  });
+  return out;
+}
 function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = /* @__PURE__ */ new Map(), box, groupId, z = 2, width = IMPORT_WIDTH, newId = () => crypto.randomUUID() } = {}) {
   const b = box || { x: 0, y: 0, width: Math.round(width), height: Math.round(width * (plot.size.height / plot.size.width || 0.7)) };
   const group = groupId || newId();
@@ -23284,6 +23303,7 @@ function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = /* @__P
   const layers = new Map(figureLayers(plot).map((l) => [l.id, l]));
   const panels = new Map((plot.panels || []).map((p) => [p.id, p]));
   const steps = partSteps(plot, choices);
+  const recolor2 = recolorOf(plot, choices);
   const nameOf = (it) => choices[it.id]?.name || it.name;
   return pieces.map((p, k) => {
     const layer = layers.get(p.part);
@@ -23316,7 +23336,8 @@ function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = /* @__P
         part: p.part,
         run,
         ...layer ? { sig: sigOf(layer) } : {},
-        ...own ? { name, label, steps: stepsOf(choices[own.id]), shown } : {}
+        ...own ? { name, label, steps: stepsOf(choices[own.id]), shown } : {},
+        ...layer && recolor2.has(layer.id) ? { color: recolor2.get(layer.id).to } : {}
       }
     };
     const old = reuse.get(pieceKey(p));

@@ -12,7 +12,7 @@ import { readSvgDrawing, parsePathData, transformOf } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { parseTickLabel, parseAxisOffset, markerShape } from './drawing'
 import { plotToGraph, defaultChoices } from './toGraph'
-import { planPdf } from './splitPdf'
+import { planPdf, recolorPixels } from './splitPdf'
 import { splitSvg } from './splitSvg'
 import { partsOf } from './toFigure'
 
@@ -293,6 +293,28 @@ describe('keeping a PDF figure as it is', () => {
     const bars = await readPdf('bars')
     const cut = planPdf(await operators('bars'), partsOf(bars, 'pdf'), pdfjs.OPS, { backdrop: bars.backdrop.ops, clear: true })
     expect(cut.runs[0]).toMatchObject({ part: 'base', run: 0, backdrop: true, empty: true })
+  })
+
+  it('knows which operators show words, for a layer drawn in another color to keep its legend entry’s', async () => {
+    const plot = await readPdf('decay')
+    const { runs, words } = planPdf(await operators('decay'), partsOf(plot, 'pdf'), pdfjs.OPS)
+    // Each layer's last run, its legend entry, has its label's words in it
+    for (const l of plot.layers) expect([...runs.filter(r => r.part === l.id).at(-1).ops].some(i => words.has(i)), l.name).toBe(true)
+    expect([...runs.find(r => r.part === 'l2').ops].some(i => words.has(i))).toBe(false)
+  })
+
+  it('makes a color’s pixels another, as opaque as they were, and leaves the rest', () => {
+    const px = [
+      [31, 119, 180, 255], // the color
+      [33, 117, 182, 255], // near it: shaded the same way
+      [0, 0, 0, 255], // black words
+      [255, 255, 255, 255], // white
+      [40, 100, 200, 4], // faint: its color stored roughly
+      [0, 0, 0, 0], // nothing
+    ]
+    const data = new Uint8ClampedArray(px.flat())
+    recolorPixels(data, '#1f77b4', '#d62728')
+    expect([...data]).toEqual([214, 39, 40, 255, 216, 37, 42, 255, 0, 0, 0, 255, 255, 255, 255, 255, 223, 20, 60, 4, 0, 0, 0, 0])
   })
 
   it('cuts the decay figure around its interleaved layers, each legend entry with its layer', async () => {

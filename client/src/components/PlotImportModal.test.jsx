@@ -21,7 +21,6 @@ vi.mock('../utils/plotImport', async importOriginal => {
     ...real,
     readPlotFile: vi.fn(async () => { if (reading.error) throw reading.error; return reading.result }),
     splitFigure: vi.fn((...args) => (splitting.fn ? splitting.fn(...args) : real.splitFigure(...args))),
-    clearPreview: vi.fn(async () => 'blob:clear'),
   }
 })
 vi.mock('../utils/api', () => ({
@@ -63,6 +62,11 @@ async function mount(props = {}) {
   return { onInsert, onClose, onInsertElements }
 }
 const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.startsWith(text))
+// Long enough for the figure as it will look to be made (it waits for a
+// color being dragged to settle)
+const settle = () => act(async () => { await new Promise(r => setTimeout(r, 250)) })
+const look = () => el.querySelector('[data-look]')
+const colorOf = name => items().find(li => li.querySelector('input[aria-label="Layer name"]').value === name).querySelector('input[type="color"]')
 const transparentBox = () => [...el.querySelectorAll('label')].find(l => l.textContent === 'Transparent background')?.querySelector('input')
 const items = () => [...el.querySelectorAll('[role="listitem"]')]
 const set = (input, value) => {
@@ -188,12 +192,14 @@ describe('importing a plot', () => {
     const img = () => el.querySelector('[role="dialog"] img')
     expect(transparentBox().checked).toBe(false)
     expect(img().getAttribute('src')).toBe('blob:x')
+    expect(look()).toBeNull()
     await act(async () => transparentBox().click())
-    await act(async () => {})
-    // Shown so, over a checkerboard
-    expect(img().getAttribute('src')).toBe('blob:clear')
-    expect(img().alt).toBe('decay.svg, with a transparent background')
+    await settle()
+    // Shown as it will look, its pieces stacked over a checkerboard
     expect(el.querySelector('[data-transparent]')).not.toBeNull()
+    expect(look().getAttribute('aria-label')).toBe('decay.svg, as it will look, with a transparent background')
+    expect(look().querySelectorAll('img')).toHaveLength(8)
+    expect(img().style.visibility).toBe('hidden')
     await act(async () => button('Insert figure with 2 layers').click())
     expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay.svg', ...['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `decay-${p}.svg`)])
     const base = await api.uploadFile.mock.calls[1][0].text()
@@ -202,6 +208,44 @@ describe('importing a plot', () => {
     expect(base).toContain('id="xtick_1"')
     const [els] = onInsertElements.mock.calls[0]
     for (const e of els) expect(e.figure).toMatchObject({ clear: true, plan: 'base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12' })
+  })
+
+  it('draws a layer of a figure kept as it is in another color, shown as it will look, and puts its own back', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'decay.svg' })
+    const putBack = () => el.querySelector('button[aria-label="Put back measured’s own color"]')
+    expect(colorOf('measured').value).toBe('#1f77b4')
+    expect(putBack()).toBeNull()
+    await act(async () => set(colorOf('measured'), '#d62728'))
+    await settle()
+    expect(look().getAttribute('aria-label')).toBe('decay.svg, as it will look, in the colors chosen')
+    // Its own color back: as saved
+    await act(async () => putBack().click())
+    expect(colorOf('measured').value).toBe('#1f77b4')
+    expect(look()).toBeNull()
+    await act(async () => set(colorOf('measured'), '#d62728'))
+    await act(async () => button('Insert figure with 2 layers').click())
+    const files = Object.fromEntries(await Promise.all(api.uploadFile.mock.calls.map(async ([f]) => [f.name, await f.text()])))
+    for (const name of ['decay-l2.svg', 'decay-l2-2.svg', 'decay-l2-3.svg']) {
+      expect(files[name]).toContain('#d62728')
+      expect(files[name]).not.toContain('#1f77b4')
+    }
+    expect(files['decay-l1.svg']).toContain('#ff7f0e')
+    const [els] = onInsertElements.mock.calls[0]
+    expect(els.filter(e => e.figure.part === 'l2').map(e => e.figure.color)).toEqual(['#d62728', '#d62728', '#d62728'])
+    expect(els.filter(e => e.figure.part !== 'l2').some(e => 'color' in e.figure)).toBe(false)
+  })
+
+  it('makes a graph in the colors chosen', async () => {
+    const { onInsert } = await mount()
+    await act(async () => set(colorOf('model'), '#2ca02c'))
+    // A graph's preview is the figure as saved
+    await settle()
+    expect(look()).toBeNull()
+    await act(async () => button('Insert graph').click())
+    const [graph] = onInsert.mock.calls[0]
+    expect(graph.expressions.map(e => e.color)).toEqual(['#2ca02c', '#1f77b4'])
   })
 
   it('keeps a figure of several panels: each panel comes and goes whole, its layers inside it', async () => {
@@ -358,16 +402,19 @@ describe('importing a plot', () => {
       })
       const { onInsertElements } = await mount({ file: undefined, source, figure: els })
       expect(transparentBox().checked).toBe(true)
-      expect(el.querySelector('[role="dialog"] img').getAttribute('src')).toBe('blob:clear')
+      await settle()
+      expect(look()).not.toBeNull()
       // Changing nothing changes nothing
       await act(async () => button('Update figure').click())
       expect(api.uploadFile).not.toHaveBeenCalled()
       expect(onInsertElements.mock.calls[0][0].every(e => e.figure.clear === true)).toBe(true)
       act(() => root.unmount()); el.remove()
       const second = await mount({ file: undefined, source, figure: els })
+      await settle()
       await act(async () => transparentBox().click())
       expect(el.querySelector('[data-transparent]')).toBeNull()
-      expect(el.querySelector('[role="dialog"] img').getAttribute('src')).toBe('blob:x')
+      expect(look()).toBeNull()
+      expect(el.querySelector('[role="dialog"] img').style.visibility).toBe('visible')
       await act(async () => button('Update figure').click())
       // The first piece has both backgrounds in it; the rest stand
       expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg'])
@@ -375,6 +422,22 @@ describe('importing a plot', () => {
       const [again] = second.onInsertElements.mock.calls[0]
       expect(again.map(e => e.src)).toEqual(['/uploads/decay-base.svg', ...els.slice(1).map(e => e.src)])
       expect(again.some(e => 'clear' in e.figure)).toBe(false)
+    })
+
+    it('opened again, shows a layer’s color of its own; a new one cuts again only that layer’s pieces', async () => {
+      const els = figureElements(plot, pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+        choices: { l1: { step: 1 }, l2: { step: 2, color: '#d62728' } }, meta: { src: source.url, file: 'decay.svg', plan },
+      })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      expect(colorOf('measured').value).toBe('#d62728')
+      expect(colorOf('model').value).toBe('#ff7f0e')
+      await act(async () => set(colorOf('measured'), '#9467bd'))
+      await act(async () => button('Update figure').click())
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-l2.svg', 'decay-l2-2.svg', 'decay-l2-3.svg'])
+      expect(await api.uploadFile.mock.calls[0][0].text()).toContain('#9467bd')
+      const [again] = onInsertElements.mock.calls[0]
+      expect(again.filter(e => e.figure.part === 'l2').map(e => e.figure.color)).toEqual(['#9467bd', '#9467bd', '#9467bd'])
+      expect(again.filter(e => e.figure.part !== 'l2').map(e => e.src)).toEqual(els.filter(e => e.figure.part !== 'l2').map(e => e.src))
     })
 
     it('says when its file can’t be fetched', async () => {

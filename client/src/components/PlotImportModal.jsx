@@ -12,15 +12,16 @@
 //     SVG's as SVG, a PDF's as PNG), uploaded, the pieces stacked in a
 //     group, each layer's hidden until its step and from the step it leaves
 //     at (onInsertElements). Its background and its axes' can be left out,
-//     transparent, as savefig(transparent=True) leaves them.
+//     transparent, as savefig(transparent=True) leaves them, and a layer
+//     drawn in another color; the figure is shown as it will look.
 // A figure kept as it is opens here again (figure: its elements; source:
 // its file, { url, name }), to change its layers: onInsertElements(elements,
 // { replace: the ids they stand in for }).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, clearPreview } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf } from '../utils/plotImport'
 
 // Behind a figure with a transparent background
 const CHECKERS = 'repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 16px 16px'
@@ -53,7 +54,8 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [graphOf, setGraphOf] = useState(null) // of several panels, the one a graph is made of
   const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
   const [clear, setClear] = useState(false) // kept as it is, with a transparent background
-  const [clearView, setClearView] = useState(null) // the figure so, to look at
+  const [look, setLook] = useState(null) // the figure as it will look: its pieces' image URLs, stacked
+  const pieceUrls = useRef(new Map()) // those images, by piece and look
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(initialFile || source ? 'reading' : '')
   const input = useRef(null)
@@ -113,7 +115,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
     if (result) setChoices(c => {
       const fresh = defaultChoices(asFigure ? result.plot : panelPlot(result.plot, panel) || result.plot, one, { figure: asFigure })
       const out = { ...c }
-      for (const id of Object.keys(fresh)) out[id] = { ...fresh[id], include: c[id]?.include ?? true, name: c[id]?.name ?? fresh[id].name }
+      for (const id of Object.keys(fresh)) out[id] = { ...fresh[id], include: c[id]?.include ?? true, name: c[id]?.name ?? fresh[id].name, ...(c[id]?.color ? { color: c[id].color } : {}) }
       return out
     })
   }
@@ -127,13 +129,36 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const canClear = hasBackdrop(result)
   const transparent = figure && clear && canClear
 
-  // The figure with its backgrounds left out, while that's chosen
+  // The layers drawn in colors of their own
+  const recolor = useMemo(() => (figure ? recolorOf(plot, choices) : new Map()), [figure, plot, choices])
+  // The figure as it will look, when that's not as it was saved: its pieces,
+  // cut as they will be (smaller, for a PDF), stacked. Each piece is made
+  // once for each look it has (a color picked while it's dragged waits)
+  const lookKey = transparent || recolor.size ? JSON.stringify([transparent, [...recolor].map(([part, c]) => [part, c.to])]) : ''
   useEffect(() => {
-    if (!transparent) return undefined
-    let live = true, url = null
-    clearPreview(result).then(u => { url = u; if (live) setClearView(u); else URL.revokeObjectURL(u) }).catch(() => {})
-    return () => { live = false; setClearView(null); if (url) URL.revokeObjectURL(url) }
-  }, [transparent, result])
+    if (!lookKey) { setLook(null); return undefined }
+    let live = true
+    const urls = pieceUrls.current
+    const keyOf = p => `${pieceKey(p)}|${transparent && p.backdrop ? 'clear' : ''}|${recolor.get(p.part)?.to || ''}`
+    const wait = setTimeout(async () => {
+      try {
+        const split = await splitFigure(result, { clear: transparent, recolor, longSide: 1200, need: p => !urls.has(keyOf(p)) })
+        for (const p of split.pieces) if (p.blob && !urls.has(keyOf(p))) urls.set(keyOf(p), URL.createObjectURL(p.blob))
+        if (live) setLook(split.pieces.map(p => urls.get(keyOf(p))))
+      } catch { /* the figure as saved stands for it */ }
+    }, 150)
+    return () => { live = false; clearTimeout(wait) }
+    // (the key says all of what it's made of)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookKey, result])
+  // A new figure, or none: its pieces' images go (and any still being made
+  // go with them, not to the next)
+  useEffect(() => () => {
+    for (const url of pieceUrls.current.values()) URL.revokeObjectURL(url)
+    pieceUrls.current = new Map()
+    setLook(null)
+  }, [result])
+  const looks = lookKey ? look : null
   // A figure of several panels kept as it is: each panel comes and goes as
   // a whole, its layers with it
   const panels = figure && plot?.panels ? plot.panels : null
@@ -195,8 +220,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
         return layer ? layerOn(layer) : true
       }
       // (a piece with a background in it, only if that's as it was: clear, or not)
-      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && previous.reuse.get(pieceKey(p))?.src) || null
-      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent })
+      // (a piece with a background in it only if that's as it was, clear or
+      // not; a piece in a color only if it's the color it was)
+      const was = previous?.choices ? recolorOf(plot, previous.choices) : new Map()
+      const sameColor = p => (was.get(p.part)?.to || null) === (recolor.get(p.part)?.to || null)
+      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && sameColor(p) && previous.reuse.get(pieceKey(p))?.src) || null
+      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent, recolor })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
       const pieces = []
       for (const p of split.pieces) {
@@ -248,11 +277,21 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const layerRow = (layer, { hidden = false } = {}) => {
     const c = choices[layer.id] || {}
     const on = c.include !== false
+    const recolored = /^#[0-9a-f]{6}$/i.test(c.color || '') && c.color.toLowerCase() !== layer.color.toLowerCase()
+    const color = recolored ? c.color.toLowerCase() : layer.color
     return (
       <div role="listitem" key={layer.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'grid', gap: 6, opacity: on && !hidden ? 1 : 0.55 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={on} disabled={hidden} onChange={e => setChoice(layer.id, { include: e.target.checked })} aria-label={`Import ${c.name || layer.name}`} />
-          <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: layer.kind === 'points' ? '50%' : 3, background: layer.color, flex: 'none', border: '1px solid rgba(0,0,0,0.2)' }} />
+          <label title="Change its color" style={{ position: 'relative', width: 16, height: 16, flex: 'none', cursor: on && !hidden ? 'pointer' : 'default' }}>
+            <input type="color" value={color} disabled={!on || hidden} onChange={e => setChoice(layer.id, { color: e.target.value })} aria-label={`Color of ${c.name || layer.name}`}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, padding: 0, border: 0, cursor: 'inherit' }} />
+            <span aria-hidden="true" style={{ position: 'absolute', inset: 1, borderRadius: layer.kind === 'points' ? '50%' : 3, background: color, border: '1px solid rgba(0,0,0,0.2)', pointerEvents: 'none' }} />
+          </label>
+          {recolored && (
+            <button type="button" onClick={() => setChoice(layer.id, { color: undefined })} title={`Back to the figure’s color (${layer.color})`} aria-label={`Put back ${c.name || layer.name}’s own color`}
+              style={{ flex: 'none', fontSize: 12, lineHeight: 1, padding: '2px 4px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}>↺</button>
+          )}
           <input value={c.name ?? layer.name} onChange={e => setChoice(layer.id, { name: e.target.value })} aria-label="Layer name" maxLength={60} style={nameInput} />
           {!figure && (
             <span title={layer.fidelity === 'exact' ? 'Where the file puts them' : 'Through the points the file draws it with; matplotlib leaves out points that don’t change the picture'}
@@ -303,7 +342,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
           <div style={{ fontWeight: 600, fontSize: 14 }}>{reopen ? 'Edit the figure’s layers' : 'Import a plot'}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
             {reopen
-              ? previous?.whole ? 'Choose the steps its layers come and go at: the figure is then cut into a piece for each, stacked where it is.' : 'Rename the layers, choose the steps they come and go at, or put back one left out.'
+              ? previous?.whole ? 'Choose the steps its layers come and go at: the figure is then cut into a piece for each, stacked where it is.' : 'Rename the layers, change their colors, choose the steps they come and go at, or put back one left out.'
               : 'A figure saved from matplotlib as a PDF or an SVG can be kept just as it’s drawn, or made into a graph of its data; either way its layers can come and go a step at a time.'}
           </div>
         </div>
@@ -326,8 +365,13 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
             <div style={{ flex: '1 1 380px', minWidth: 280 }}>
               <div data-transparent={transparent || undefined} style={{ position: 'relative', background: transparent ? CHECKERS : '#fff', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                 {result.preview
-                  ? <img src={(transparent && clearView) || result.preview} alt={`${file?.name || 'The figure'}, ${transparent && clearView ? 'with a transparent background' : 'as saved'}`} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto', visibility: looks ? 'hidden' : 'visible' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
+                {looks && (
+                  <div data-look role="img" aria-label={`${file?.name || 'The figure'}, as it will look${transparent ? ', with a transparent background' : ''}${recolor.size ? ', in the colors chosen' : ''}`} style={{ position: 'absolute', inset: 0 }}>
+                    {looks.map((url, k) => <img key={k} src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />)}
+                  </div>
+                )}
                 {boxes.map(b => (
                   <div key={b.id} title="The axes that were read" style={{ position: 'absolute', ...overlayOf(b.box), border: `2px dashed ${b.faint ? 'rgba(100,116,139,0.6)' : '#6366f1'}`, pointerEvents: 'none' }}>
                     {b.label && <span style={{ position: 'absolute', left: 2, top: 2, fontSize: 11, fontWeight: 700, color: '#fff', background: b.faint ? 'rgba(100,116,139,0.8)' : '#6366f1', borderRadius: 3, padding: '0 4px' }}>{b.label}</span>}
