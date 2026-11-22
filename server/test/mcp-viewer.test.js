@@ -41,6 +41,7 @@ describe('the deck viewer', () => {
     assert.match(html, /protocolVersion: PROTOCOL/)
     assert.match(html, /const PROTOCOL = '2026-01-26'/)
     assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href=|@import/)
-    assert.deepEqual(viewer.viewerMeta('https://x.test'), { ui: { csp: { frameDomains: ['https://x.test'] }, prefersBorder: false } })
+    const x = ['https://x.test']
+    assert.deepEqual(viewer.viewerMeta('https://x.test'), { ui: { csp: { frameDomains: x, resourceDomains: x, connectDomains: x }, prefersBorder: false } })
   })
 })

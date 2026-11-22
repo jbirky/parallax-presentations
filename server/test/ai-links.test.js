@@ -453,7 +453,7 @@ describe('AI collaborator links', { skip }, () => {
     assert.deepEqual(listed.map(r => [r.uri, r.mimeType]), [['ui://parallax/deck-viewer', 'text/html;profile=mcp-app']])
     const read = (await rpc(secret, 'resources/read', { uri: 'ui://parallax/deck-viewer' })).body.result.contents[0]
     assert.equal(read.mimeType, 'text/html;profile=mcp-app')
-    assert.deepEqual(read._meta.ui.csp, { frameDomains: [site] })
+    assert.deepEqual(read._meta.ui.csp, { frameDomains: [site], resourceDomains: [site], connectDomains: [site] })
     assert.match(read.text, /^<!doctype html>/)
     assert.match(read.text, /'ui\/initialize'/)
     assert.match(read.text, /name: 'deck_preview'/)
@@ -470,6 +470,19 @@ describe('AI collaborator links', { skip }, () => {
     assert.deepEqual([p.title, p.width, p.height, p.ai, p.open, p.editorUrl], ['Viewer talk', 960, 540, null, null, `${site}/dashboard/viewer-talk`])
     assert.equal((await callTool(secret, 'deck_preview')).body.result.structuredContent.version, p.version, 'the same deck, the same version')
     assert.equal((await callTool(secret, 'deck_preview', { slide: 2 })).body.result.structuredContent.open, 'slide-cutoff')
+    // What the viewer found it can load in the app: logged once, never shown
+    const logged = []
+    const log = console.log
+    console.log = (...a) => { if (String(a[0]).startsWith('[mcp viewer]')) logged.push(a.join(' ')); else log(...a) }
+    try {
+      const probed = (await callTool(secret, 'deck_preview', { probe: { script: 'ok', blocked: ['frame-src x'] } })).body.result
+      assert.equal(probed.isError, undefined)
+      assert.equal(probed.structuredContent.version, p.version)
+      await callTool(secret, 'deck_preview', { probe: { script: 'failed' } })
+    } finally { console.log = log }
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], /"script":"ok"/)
+    assert.ok((await callTool(secret, 'deck_preview', { probe: 'not an object' })).body.result?.isError || (await callTool(secret, 'deck_preview', { probe: 'x' })).body.error)
 
     // show_deck: the outline and the editor; the AI is now on that slide
     const shown = toolText(await callTool(secret, 'show_deck', { slide: 2 }))

@@ -70,13 +70,23 @@ const SLIDE_INPUT = fromJsonSchema({
   additionalProperties: false,
 })
 
+const SHOW_INPUT_SLIDE = {
+  description: 'A slide to open at: its number as shown (1 is the first) or its id from get_deck. Leave out to open at the first slide.',
+  anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', minLength: 1, maxLength: 100 }],
+}
 const SHOW_INPUT = fromJsonSchema({
   type: 'object',
+  properties: { slide: SHOW_INPUT_SLIDE },
+  additionalProperties: false,
+})
+
+// deck_preview's: show_deck's, and what the viewer found it can load in the
+// app (deck-viewer.html's probe), once, for the server's log
+const PREVIEW_INPUT = fromJsonSchema({
+  type: 'object',
   properties: {
-    slide: {
-      description: 'A slide to open at: its number as shown (1 is the first) or its id from get_deck. Leave out to open at the first slide.',
-      anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', minLength: 1, maxLength: 100 }],
-    },
+    slide: SHOW_INPUT_SLIDE,
+    probe: { type: 'object', description: 'For the viewer: what the app lets it load' },
   },
   additionalProperties: false,
 })
@@ -88,6 +98,17 @@ const GUIDE_INPUT = fromJsonSchema({
 })
 
 const text = s => ({ content: [{ type: 'text', text: s }] })
+
+// What a link's viewer found it can load in the app, logged once a link
+// while the server runs: which way of showing the deck works there
+const probed = new Set()
+function noteProbe(link, probe) {
+  if (probed.has(link.id) || probed.size > 1000) return
+  probed.add(link.id)
+  let found
+  try { found = JSON.stringify(probe).slice(0, 8000) } catch { return }
+  console.log(`[mcp viewer] link ${link.id.slice(0, 8)}: what the app lets the viewer load: ${found}`)
+}
 const failure = s => ({ content: [{ type: 'text', text: s }], isError: true })
 
 // A tool's work, with the server's own errors logged and not shown
@@ -198,10 +219,13 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
   server.registerTool('deck_preview', {
     title: 'Preview for the viewer',
     description: "For the presentation viewer that show_deck opens, not for you: a short-lived link to the presentation as presented, and its version, so the viewer can follow changes.",
-    inputSchema: SHOW_INPUT,
+    inputSchema: PREVIEW_INPUT,
     annotations: READ_ONLY,
     _meta: { ui: { resourceUri: viewer.VIEWER_URI, visibility: ['app'] } },
-  }, guarded('deck_preview', async ({ slide } = {}) => preview(link, site, slide)))
+  }, guarded('deck_preview', async ({ slide, probe } = {}) => {
+    if (probe) noteProbe(link, probe)
+    return preview(link, site, slide)
+  }))
   server.registerResource('deck-viewer', viewer.VIEWER_URI, {
     title: 'Presentation viewer',
     description: 'The presentation as presented, following the changes the AI makes',

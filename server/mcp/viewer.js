@@ -32,8 +32,11 @@ let page = null
 const viewerHtml = () => page || (page = fs.readFileSync(path.join(__dirname, 'deck-viewer.html'), 'utf8'))
 
 // The resource's metadata for the app: the viewer frames pages from this
-// site, and draws its own frame
-const viewerMeta = origin => ({ ui: { csp: { frameDomains: [origin] }, prefersBorder: false } })
+// site, and draws its own frame. It may also load files from the site and
+// ask it for things, for showing the deck where the app won't frame it
+const viewerMeta = origin => ({
+  ui: { csp: { frameDomains: [origin], resourceDomains: [origin], connectDomains: [origin] }, prefersBorder: false },
+})
 
 // Preview tokens: <link id>.<expiry, seconds in base 36>.<HMAC-SHA256>
 const TOKEN = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-z]{1,10})\.([A-Za-z0-9_-]{43})$/
