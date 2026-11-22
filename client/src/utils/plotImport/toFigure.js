@@ -17,8 +17,9 @@
 // part of its own ('legend'), showing while any entry does.
 //
 // Each element keeps what it came from (figure: { id, src, file, plan,
-// part, run, sig, name, label, steps, shown }), so the figure can be opened
-// again (readFigure): src is the file it was cut from; part 'base', a
+// clear, part, run, sig, name, label, steps, shown }), so the figure can be
+// opened again (readFigure): src is the file it was cut from; clear, that
+// it was cut with its backgrounds left out (transparent); part 'base', a
 // legend's ('legend', or a panel's 'p2-legend'), a panel's id or a layer's;
 // sig a layer's kind and color, to know it again if the file reads into
 // layers in another order.
@@ -48,6 +49,11 @@ export function runsOf(parts) {
 export const planOf = runs => runs.map(r => `${r.part}:${r.size}`).join(' ')
 
 export const pieceKey = p => `${p.part}:${p.run || 0}`
+
+// The runs to make pieces of: not one left with nothing to draw (empty: it
+// drew only a background, left clear), unless it's all a panel or a layer
+// has, so the part is still there to come and go
+export const keptRuns = runs => runs.filter(r => !r.empty || (r.part !== 'base' && !runs.some(q => q.part === r.part && !q.empty)))
 
 // A figure's layers: every panel's, in a figure of several
 export const figureLayers = plot => (plot.panels ? plot.panels.flatMap(p => p.layers) : plot.layers)
@@ -158,7 +164,7 @@ function shownBy(el) {
 const same = (a, b) => !!a && !!b && !!a.never === !!b.never && (!!a.never || (a.step === b.step && a.until === b.until))
 
 // pieces: [{ part, run, url }], in drawing order, without the parts left
-// out. meta: { id, src, file, plan }. reuse, box, groupId, z: what the
+// out. meta: { id, src, file, plan, clear }. reuse, box, groupId, z: what the
 // figure was before, when it's made again (readFigure). The elements, at box.
 // A layer's and a panel's elements keep the name and steps chosen (name,
 // steps) and what they were given (label, shown), to read them back as
@@ -229,7 +235,7 @@ export function readFigure(elements, plot) {
   if (whole) {
     return {
       whole: true, choices: null, reuse: new Map(), plan: '',
-      meta: { id: meta.id, src: meta.src, file: meta.file },
+      meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear },
       box: { x: whole.x, y: whole.y, width: whole.width, height: whole.height },
       groupId: whole.groupId || null, z: whole.zIndex ?? 2, ids: els.map(e => e.id),
     }
@@ -252,8 +258,11 @@ export function readFigure(elements, plot) {
     if (part) reuse.set(pieceKey({ part, run: e.figure.run }), e)
   }
   const choices = {}
+  // A part's first piece (a panel's first run may have been only its
+  // background, left clear)
+  const firstOf = id => reuse.get(pieceKey({ part: id, run: 0 })) || els.filter(e => parts.get(e.figure.part) === id).sort((a, b) => a.figure.run - b.figure.run)[0]
   for (const it of [...(plot.panels || []), ...all]) {
-    const el = reuse.get(pieceKey({ part: it.id, run: 0 }))
+    const el = firstOf(it.id)
     if (!el) { choices[it.id] = { include: false, name: it.name, step: 0, until: 0 }; continue }
     const f = el.figure
     const st = f.steps && same(shownBy(el), f.shown) ? f.steps : shownBy(el)
@@ -264,7 +273,7 @@ export function readFigure(elements, plot) {
   return {
     choices, reuse,
     plan: meta.plan || '',
-    meta: { id: meta.id, src: meta.src, file: meta.file },
+    meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear },
     box: { x: base.x, y: base.y, width: base.width, height: base.height },
     groupId: base.groupId || null,
     z: Math.min(...els.map(e => e.zIndex ?? 2)),

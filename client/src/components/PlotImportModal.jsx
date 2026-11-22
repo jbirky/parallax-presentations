@@ -11,7 +11,8 @@
 //   the figure as it is: the file and the pieces it's cut into (images: an
 //     SVG's as SVG, a PDF's as PNG), uploaded, the pieces stacked in a
 //     group, each layer's hidden until its step and from the step it leaves
-//     at (onInsertElements).
+//     at (onInsertElements). Its background and its axes' can be left out,
+//     transparent, as savefig(transparent=True) leaves them.
 // A figure kept as it is opens here again (figure: its elements; source:
 // its file, { url, name }), to change its layers: onInsertElements(elements,
 // { replace: the ids they stand in for }).
@@ -19,8 +20,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, clearPreview } from '../utils/plotImport'
 
+// Behind a figure with a transparent background
+const CHECKERS = 'repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 16px 16px'
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
@@ -49,6 +52,8 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [mode, setMode] = useState('graph') // 'graph', or 'figure': kept as it is
   const [graphOf, setGraphOf] = useState(null) // of several panels, the one a graph is made of
   const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
+  const [clear, setClear] = useState(false) // kept as it is, with a transparent background
+  const [clearView, setClearView] = useState(null) // the figure so, to look at
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(initialFile || source ? 'reading' : '')
   const input = useRef(null)
@@ -78,6 +83,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       const prev = reopen ? readFigure(figureEls, r.plot) : null
       setResult(r)
       setPrevious(prev)
+      setClear(!!prev?.meta.clear)
       const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
       // (a figure not cut yet, dropped on the slide, starts from them)
       setChoices(prev && !prev.whole ? { ...fresh, ...prev.choices } : fresh)
@@ -118,6 +124,16 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const plot = result?.plot
   const canKeep = keepable(result)
   const figure = mode === 'figure' && canKeep
+  const canClear = hasBackdrop(result)
+  const transparent = figure && clear && canClear
+
+  // The figure with its backgrounds left out, while that's chosen
+  useEffect(() => {
+    if (!transparent) return undefined
+    let live = true, url = null
+    clearPreview(result).then(u => { url = u; if (live) setClearView(u); else URL.revokeObjectURL(u) }).catch(() => {})
+    return () => { live = false; setClearView(null); if (url) URL.revokeObjectURL(url) }
+  }, [transparent, result])
   // A figure of several panels kept as it is: each panel comes and goes as
   // a whole, its layers with it
   const panels = figure && plot?.panels ? plot.panels : null
@@ -178,8 +194,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
         const layer = listed.find(l => l.id === p.part)
         return layer ? layerOn(layer) : true
       }
-      const had = (p, plan) => (previous && previous.plan === plan && previous.reuse.get(pieceKey(p))?.src) || null
-      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan) })
+      // (a piece with a background in it, only if that's as it was: clear, or not)
+      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && previous.reuse.get(pieceKey(p))?.src) || null
+      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
       const pieces = []
       for (const p of split.pieces) {
@@ -189,7 +206,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
           : had(p, split.plan)
         pieces.push({ part: p.part, run: p.run, url })
       }
-      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan }
+      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan, ...(transparent ? { clear: true } : {}) }
       const elements = figureElements(plot, pieces, previous
         ? { choices, meta, reuse: previous.reuse, box: previous.box, groupId: previous.groupId, z: previous.z }
         : { choices, meta })
@@ -307,9 +324,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
 
           {plot && (<>
             <div style={{ flex: '1 1 380px', minWidth: 280 }}>
-              <div style={{ position: 'relative', background: '#fff', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <div data-transparent={transparent || undefined} style={{ position: 'relative', background: transparent ? CHECKERS : '#fff', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                 {result.preview
-                  ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto' }} />
+                  ? <img src={(transparent && clearView) || result.preview} alt={`${file?.name || 'The figure'}, ${transparent && clearView ? 'with a transparent background' : 'as saved'}`} style={{ display: 'block', width: '100%', height: 'auto' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
                 {boxes.map(b => (
                   <div key={b.id} title="The axes that were read" style={{ position: 'absolute', ...overlayOf(b.box), border: `2px dashed ${b.faint ? 'rgba(100,116,139,0.6)' : '#6366f1'}`, pointerEvents: 'none' }}>
@@ -348,6 +365,13 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                 })}
               </div>}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                {figure && (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto', opacity: canClear ? 1 : 0.55 }}
+                    title={canClear ? 'Leave out the white behind the figure and its axes, as savefig(transparent=True) does' : 'This figure has no background to leave out'}>
+                    <input type="checkbox" checked={transparent} disabled={!canClear} onChange={e => setClear(e.target.checked)} />
+                    Transparent background
+                  </label>
+                )}
                 {!figure && graphPanel && (
                   <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Make a graph of</span>

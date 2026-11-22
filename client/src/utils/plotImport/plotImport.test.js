@@ -273,6 +273,28 @@ describe('keeping a PDF figure as it is', () => {
     }
   })
 
+  it('finds the figure’s background and the axes’ as the SVG does, and leaves them out, cut the same way', async () => {
+    // The same backgrounds as the SVG of each figure has: the figure's, and
+    // each set of axes' but a twin's
+    for (const name of ['decay', 'bars', 'classic', 'seaborn-darkgrid', 'despine-offset', 'twinx', 'grid', 'inset', 'pair']) {
+      expect((await readPdf(name)).backdrop.ops.length, name).toBe(readSvg(name).backdrop.groups.length)
+    }
+    const plot = await readPdf('decay')
+    const ops = await operators('decay')
+    const opaque = planPdf(ops, partsOf(plot, 'pdf'), pdfjs.OPS, { backdrop: plot.backdrop.ops })
+    const clear = planPdf(ops, partsOf(plot, 'pdf'), pdfjs.OPS, { backdrop: plot.backdrop.ops, clear: true })
+    expect(clear.plan).toBe(opaque.plan)
+    // The figure's is the first thing painted; both are in the first run,
+    // with more
+    expect(plot.backdrop.ops[0][0]).toBe(Math.min(...clear.paints))
+    expect([...clear.back]).toEqual(plot.backdrop.ops.map(([i]) => i))
+    expect(clear.runs.map(r => [r.backdrop, r.empty])).toEqual(clear.runs.map((r, k) => [k === 0, false]))
+    // Bars are painted under the axes: before them, only the backgrounds
+    const bars = await readPdf('bars')
+    const cut = planPdf(await operators('bars'), partsOf(bars, 'pdf'), pdfjs.OPS, { backdrop: bars.backdrop.ops, clear: true })
+    expect(cut.runs[0]).toMatchObject({ part: 'base', run: 0, backdrop: true, empty: true })
+  })
+
   it('cuts the decay figure around its interleaved layers, each legend entry with its layer', async () => {
     const plot = await readPdf('decay')
     // The model's entry: its sample line and its words; the points': their

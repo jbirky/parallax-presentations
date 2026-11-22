@@ -137,6 +137,9 @@ export function plotFromDrawing(drawing) {
     // What draws the legend but no layer's entry (its frame, its title), for
     // keeping the figure as it is; null without a legend
     legend,
+    // What draws the figure's background and the axes', for keeping the
+    // figure as it is with them clear
+    backdrop: backdropOf(drawing, all),
     warnings,
   }
   // A legend of the figure's own: its frame (and what no layer has), and
@@ -156,6 +159,25 @@ export function plotFromDrawing(drawing) {
     warnings.push(`This figure has ${panels.length} panels: a graph is made of one of them: ${panelNamed(plot.panels.find(pn => pn.main))}, unless you choose another.`)
   }
   return plot
+}
+
+// What draws matplotlib's figure patch and its axes patches, the white
+// behind the figure and behind each set of axes, which savefig(transparent=
+// True) leaves out: { groups: an SVG's, ops: a PDF's operators }. The
+// figure's is the first thing drawn, a filled rectangle over the page; a set
+// of axes' is the first thing it draws (svgReader.js marks it; in a PDF,
+// findAxes found the axes by it). A twin draws none
+function backdropOf(d, all) {
+  const page = (d.width || 0) * (d.height || 0)
+  const starts = new Set(all.map(a => a.start).filter(s => s != null))
+  const paths = [...(d.paths || [])].sort((p, q) => (p.order ?? 0) - (q.order ?? 0))
+  const found = paths.filter((p, i) => {
+    if (!p.fill || p.segs.length !== 1) return false
+    if (p.role === 'axes' || (p.ops && starts.has(p.ops[0]))) return true
+    const r = i === 0 && !p.axes && rectOf(p.segs[0])
+    return !!r && area(r) >= page * 0.98
+  })
+  return { groups: [...new Set(found.map(p => p.group).filter(Boolean))], ops: found.filter(p => p.ops).map(p => p.ops) }
 }
 
 // A panel in a sentence: “(a) decay”, the top left panel

@@ -12,8 +12,13 @@
 // matplotlib defines a marker or a glyph once, inside the first group that
 // draws it, and reuses it elsewhere; so every <defs> moves to the top first,
 // and each piece keeps only the definitions it uses.
+//
+// The figure's background and the axes' (backdrop: their patch groups,
+// plotModel.js) can be left out, clear, as savefig(transparent=True) leaves
+// them: the figure is cut the same way, and a piece left with nothing to
+// draw isn't made (keptRuns).
 
-import { runsOf, planOf } from './toFigure'
+import { runsOf, planOf, keptRuns } from './toFigure'
 
 const NS = 'http://www.w3.org/2000/svg'
 // What draws, and what holds what's only drawn where it's used
@@ -22,9 +27,10 @@ const ASIDE = new Set(['defs', 'clipPath', 'marker', 'symbol', 'pattern', 'mask'
 
 export class SplitError extends Error {}
 
-// { pieces: [{ part, run, svg }], plan, width, height, type, ext } (width and
-// height: the viewBox's, for the shape on the slide)
-export function splitSvg(text, layers, { Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
+// { pieces: [{ part, run, svg, backdrop }], plan, width, height, type, ext }
+// (width and height: the viewBox's, for the shape on the slide; backdrop:
+// that a piece has a background in it, clear or not)
+export function splitSvg(text, layers, { backdrop = [], clear = false, Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
   const doc = new Parser().parseFromString(text, 'image/svg+xml')
   const svg = doc.documentElement
   if (!svg || svg.localName !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new SplitError('This file isn’t an SVG that could be read')
@@ -35,20 +41,45 @@ export function splitSvg(text, layers, { Parser = globalThis.DOMParser, Serializ
 
   const owner = new Map()
   for (const l of layers) for (const g of l.groups) owner.set(g, l.id)
-  const runs = runsOf(drawn(svg).map(el => partOf(el, owner)))
+  const els = drawn(svg)
+  const back = backdropOf(els, backdrop)
+  const runs = runsOf(els.map(el => partOf(el, owner))).map(r => {
+    let n = 0
+    for (let i = r.from; i <= r.to; i++) if (back[i]) n++
+    return { ...r, backdrop: n > 0, empty: clear && n === r.size }
+  })
 
-  const pieces = runs.map(r => {
+  const pieces = keptRuns(runs).map(r => {
     const d = fresh()
-    drawn(d.documentElement).forEach((el, i) => { if (i < r.from || i > r.to) el.remove() })
+    drawn(d.documentElement).forEach((el, i) => { if (i < r.from || i > r.to || (clear && back[i])) el.remove() })
     dropEmpty(d)
     pruneDefs(d)
-    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d) }
+    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop }
   })
 
   const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
   const width = vb.length === 4 && vb[2] > 0 ? vb[2] : parseFloat(svg.getAttribute('width')) || 0
   const height = vb.length === 4 && vb[3] > 0 ? vb[3] : parseFloat(svg.getAttribute('height')) || 0
   return { pieces, plan: planOf(runs), width, height, type: 'image/svg+xml', ext: 'svg' }
+}
+
+// The figure whole, its backgrounds left out (backdrop: their groups)
+export function clearSvg(text, backdrop, { Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
+  const doc = new Parser().parseFromString(text, 'image/svg+xml')
+  const els = drawn(doc.documentElement)
+  const back = backdropOf(els, backdrop)
+  els.forEach((el, i) => { if (back[i]) el.remove() })
+  dropEmpty(doc)
+  return new Serializer().serializeToString(doc)
+}
+
+// Of what's drawn, whether each is in a background's group
+function backdropOf(els, groups) {
+  const ids = new Set(groups)
+  return els.map(el => {
+    for (let e = el; e && e.nodeType === 1; e = e.parentNode) if (ids.has(e.getAttribute('id'))) return true
+    return false
+  })
 }
 
 // What's drawn, in the order it's drawn

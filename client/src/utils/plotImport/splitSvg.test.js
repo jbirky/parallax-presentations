@@ -7,8 +7,8 @@ import { readFileSync } from 'fs'
 import { Window } from 'happy-dom'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing } from './plotModel'
-import { splitSvg, SplitError } from './splitSvg'
-import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure } from './toFigure'
+import { splitSvg, clearSvg, SplitError } from './splitSvg'
+import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure, keptRuns } from './toFigure'
 
 const { DOMParser, XMLSerializer } = new Window()
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -100,6 +100,49 @@ describe('keeping a figure as it is', () => {
     expect(read('frameless-legend').plot.legend).toBeNull()
   })
 
+  it('leaves out the figure’s background and the axes’, cut the same way, as savefig(transparent=True) does', () => {
+    const { text, plot } = read('decay')
+    // matplotlib's figure patch, and the axes'
+    expect(plot.backdrop.groups).toEqual(['patch_1', 'patch_2'])
+    const opaque = splitSvg(text, partsOf(plot, 'svg'), { ...opts, backdrop: plot.backdrop.groups })
+    const clear = splitSvg(text, partsOf(plot, 'svg'), { ...opts, backdrop: plot.backdrop.groups, clear: true })
+    expect(clear.plan).toBe(opaque.plan)
+    expect(clear.pieces.map(p => `${p.part}${p.run}`)).toEqual(opaque.pieces.map(p => `${p.part}${p.run}`))
+    // Only the first piece has them; it keeps the rest of what it draws
+    expect(clear.pieces.map(p => p.backdrop)).toEqual([true, false, false, false, false, false, false, false])
+    expect(ids(parse(opaque.pieces[0].svg)).has('patch_2')).toBe(true)
+    const first = parse(clear.pieces[0].svg)
+    expect(ids(first).has('patch_1') || ids(first).has('patch_2')).toBe(false)
+    expect(ids(first).has('xtick_1')).toBe(true)
+    expect(drawnIn(first)).toBe(drawnIn(parse(opaque.pieces[0].svg)) - 2)
+    for (let k = 1; k < clear.pieces.length; k++) expect(clear.pieces[k].svg).toBe(opaque.pieces[k].svg)
+    // The figure whole, so
+    const whole = parse(clearSvg(text, plot.backdrop.groups, opts))
+    expect(ids(whole).has('patch_1') || ids(whole).has('patch_2')).toBe(false)
+    expect(drawnIn(whole)).toBe(drawnIn(parse(text)) - 2)
+  })
+
+  it('makes no piece of what drew only a background, but keeps each panel', () => {
+    // The bars are drawn under the axes: before them, only the backgrounds
+    const { text, plot } = read('bars')
+    const clear = splitSvg(text, partsOf(plot, 'svg'), { ...opts, backdrop: plot.backdrop.groups, clear: true })
+    expect(clear.plan).toBe('base:2 l1:6 base:35')
+    expect(clear.pieces.map(p => `${p.part}${p.run}`)).toEqual(['l10', 'base1'])
+    // Each panel's background is in its panel's first piece; the figure's
+    // alone, before them
+    const grid = read('grid')
+    expect(grid.plot.backdrop.groups).toHaveLength(5)
+    const cut = splitSvg(grid.text, partsOf(grid.plot, 'svg'), { ...opts, backdrop: grid.plot.backdrop.groups, clear: true })
+    expect(cut.plan.startsWith('base:1 p1:')).toBe(true)
+    expect(cut.pieces.some(p => p.part === 'base' && p.run === 0)).toBe(false)
+    expect(cut.pieces.filter(p => p.backdrop).map(p => `${p.part}${p.run}`)).toEqual(['p10', 'p20', 'p30', 'p40'])
+    // A twin draws no background of its own
+    expect(read('twinx').plot.backdrop.groups).toEqual(['patch_1', 'patch_2'])
+    // A run is kept when it's all a part has
+    const runs = [{ part: 'base', empty: true }, { part: 'p1', run: 0, empty: true }, { part: 'p1', run: 1 }, { part: 'p2', run: 0, empty: true }, { part: 'base', run: 1 }]
+    expect(keptRuns(runs)).toEqual([runs[2], runs[3], runs[4]])
+  })
+
   it('refuses what it can’t split', () => {
     expect(() => splitSvg('<html/>', [], opts)).toThrow(SplitError)
     expect(() => splitSvg(fixture('decay.svg'), [{ id: 'l1', groups: [] }], opts)).toThrow(/saved by matplotlib/)
@@ -180,6 +223,20 @@ describe('the figure on the slide', () => {
     const back = readFigure([{ ...el, groupId: 'g', zIndex: 7 }], plot)
     expect(back).toMatchObject({ whole: true, choices: null, plan: '', meta: { id: 'w1', src: '/u/decay.svg', file: 'decay.svg' }, box: { x: 100, y: 50, width: 560, height: 373 }, groupId: 'g', z: 7, ids: ['w0'] })
     expect(back.reuse.size).toBe(0)
+  })
+
+  it('opened again, knows it was cut with a transparent background, and reads a panel whose first piece was only that', () => {
+    const els = make({ [model.id]: { step: 1 } }, { meta: { ...meta, clear: true } })
+    expect(els.every(e => e.figure.clear === true)).toBe(true)
+    expect(readFigure(els, plot).meta.clear).toBe(true)
+    expect(readFigure(make({}), plot).meta.clear).toBe(false)
+    const grid = read('grid').plot
+    const cut = partsOf(grid, 'svg').map(p => p.id)
+    const gridEls = figureElements(grid, ['base', ...cut].flatMap(part => [0, 1].map(run => ({ part, run, url: `/u/${part}-${run}.svg` }))), {
+      choices: { p1: { step: 2, name: 'Left' } }, meta: { src: '/u/grid.svg', plan: 'x', clear: true },
+    })
+    const back = readFigure(gridEls.filter(e => !(e.figure.part === 'p1' && e.figure.run === 0)), grid)
+    expect(back.choices.p1).toEqual({ include: true, name: 'Left', step: 2, until: 0 })
   })
 
   it('knows a layer again by its look when the file reads into layers in another order', () => {

@@ -21,6 +21,7 @@ vi.mock('../utils/plotImport', async importOriginal => {
     ...real,
     readPlotFile: vi.fn(async () => { if (reading.error) throw reading.error; return reading.result }),
     splitFigure: vi.fn((...args) => (splitting.fn ? splitting.fn(...args) : real.splitFigure(...args))),
+    clearPreview: vi.fn(async () => 'blob:clear'),
   }
 })
 vi.mock('../utils/api', () => ({
@@ -62,6 +63,7 @@ async function mount(props = {}) {
   return { onInsert, onClose, onInsertElements }
 }
 const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.startsWith(text))
+const transparentBox = () => [...el.querySelectorAll('label')].find(l => l.textContent === 'Transparent background')?.querySelector('input')
 const items = () => [...el.querySelectorAll('[role="listitem"]')]
 const set = (input, value) => {
   const proto = Object.getPrototypeOf(input)
@@ -166,6 +168,8 @@ describe('importing a plot', () => {
     const { onInsertElements } = await mount()
     expect(el.querySelector('input[type="radio"]').checked).toBe(true)
     expect(el.textContent).toContain('cut into PNG images')
+    // No background was found to leave out
+    expect(transparentBox().disabled).toBe(true)
     await act(async () => button('Insert figure with 2 layers').click())
     expect(splitting.fn.mock.calls[0][0]).toBe(reading.result)
     expect(api.uploadFile.mock.calls.map(([f]) => [f.name, f.type])).toEqual([
@@ -175,6 +179,29 @@ describe('importing a plot', () => {
     const [els] = onInsertElements.mock.calls[0]
     expect(els.map(e => e.name)).toEqual(['Figure', 'measured', 'model', 'measured, part 2', 'Figure, part 2', 'Legend'])
     expect(els[0].figure).toMatchObject({ src: '/uploads/decay.pdf', file: 'decay.pdf', part: 'base', run: 0 })
+  })
+
+  it('keeps a figure with a transparent background: its background and the axes’ left out, and said so', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'decay.svg' })
+    const img = () => el.querySelector('[role="dialog"] img')
+    expect(transparentBox().checked).toBe(false)
+    expect(img().getAttribute('src')).toBe('blob:x')
+    await act(async () => transparentBox().click())
+    await act(async () => {})
+    // Shown so, over a checkerboard
+    expect(img().getAttribute('src')).toBe('blob:clear')
+    expect(img().alt).toBe('decay.svg, with a transparent background')
+    expect(el.querySelector('[data-transparent]')).not.toBeNull()
+    await act(async () => button('Insert figure with 2 layers').click())
+    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay.svg', ...['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `decay-${p}.svg`)])
+    const base = await api.uploadFile.mock.calls[1][0].text()
+    expect(base).not.toContain('id="patch_1"')
+    expect(base).not.toContain('id="patch_2"')
+    expect(base).toContain('id="xtick_1"')
+    const [els] = onInsertElements.mock.calls[0]
+    for (const e of els) expect(e.figure).toMatchObject({ clear: true, plan: 'base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12' })
   })
 
   it('keeps a figure of several panels: each panel comes and goes whole, its layers inside it', async () => {
@@ -322,6 +349,32 @@ describe('importing a plot', () => {
       expect(how).toEqual({ replace: [whole.id] })
       for (const e of pieces) expect(e).toMatchObject({ x: 30, y: 20, width: 560, figure: { id: whole.figure.id, src: source.url, file: 'decay.svg' } })
       expect(pieces.find(e => e.figure.part === 'l2')).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null } })
+    })
+
+    it('opened again with a transparent background, shows it so; made opaque, cuts again only the pieces with a background in them', async () => {
+      const clear = splitSvg(text, partsOf(plot, 'svg'), { backdrop: plot.backdrop.groups, clear: true })
+      const els = figureElements(plot, clear.pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+        choices: { l1: { step: 1 }, l2: { step: 2 } }, meta: { src: source.url, file: 'decay.svg', plan: clear.plan, clear: true },
+      })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      expect(transparentBox().checked).toBe(true)
+      expect(el.querySelector('[role="dialog"] img').getAttribute('src')).toBe('blob:clear')
+      // Changing nothing changes nothing
+      await act(async () => button('Update figure').click())
+      expect(api.uploadFile).not.toHaveBeenCalled()
+      expect(onInsertElements.mock.calls[0][0].every(e => e.figure.clear === true)).toBe(true)
+      act(() => root.unmount()); el.remove()
+      const second = await mount({ file: undefined, source, figure: els })
+      await act(async () => transparentBox().click())
+      expect(el.querySelector('[data-transparent]')).toBeNull()
+      expect(el.querySelector('[role="dialog"] img').getAttribute('src')).toBe('blob:x')
+      await act(async () => button('Update figure').click())
+      // The first piece has both backgrounds in it; the rest stand
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg'])
+      expect(await api.uploadFile.mock.calls[0][0].text()).toContain('id="patch_2"')
+      const [again] = second.onInsertElements.mock.calls[0]
+      expect(again.map(e => e.src)).toEqual(['/uploads/decay-base.svg', ...els.slice(1).map(e => e.src)])
+      expect(again.some(e => 'clear' in e.figure)).toBe(false)
     })
 
     it('says when its file can’t be fetched', async () => {
