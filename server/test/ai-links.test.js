@@ -480,6 +480,12 @@ describe('AI collaborator links', { skip }, () => {
     assert.match(html, /id="s-slide-cutoff"/)
     assert.match(html, /#fs-btn \{ display: none !important; \}<\/style><\/head>/, 'no Fullscreen button of its own')
 
+    // Served before sign-in: a page framed on another site can't follow
+    // Clerk's handshake redirect
+    const stack = require('../index.js').app._router.stack
+    const previewAt = stack.findIndex(layer => layer.route?.path === '/ai-preview/:token')
+    assert.ok(previewAt >= 0 && previewAt < stack.findIndex(layer => layer.handle === t.clerkOptions.handler), 'the preview comes before Clerk')
+
     // A change: a new version
     assert.equal((await callTool(secret, 'update_deck', { title: 'Viewer talk, revised' })).body.result.isError, undefined)
     const after = (await callTool(secret, 'deck_preview')).body.result.structuredContent

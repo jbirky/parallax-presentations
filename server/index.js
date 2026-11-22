@@ -502,6 +502,12 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// The deck viewer's preview of an AI collaborator link's deck
+// (server/mcp/viewer.js), ahead of sign-in: AI chat apps frame it on other
+// sites, where a redirect to Clerk (its handshake) is blocked, and it needs
+// no account. mcpRoute is made further down, before any request comes.
+app.get('/ai-preview/:token', deckPageLimiter, (req, res, next) => (mcpRoute ? mcpRoute.preview(req, res) : next()))
+
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
 // In self-hosted mode, sets req.userId = null (no-op)
 authStack().forEach(mw => app.use(mw))
@@ -2203,8 +2209,6 @@ app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireV
 
 // /mcp/:secret - the link itself: MCP for a connector, a page for a person
 if (mcpRoute) app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, mcpRoute)
-// The deck viewer's preview of a link's deck (server/mcp/viewer.js)
-if (mcpRoute) app.get('/ai-preview/:token', deckPageLimiter, mcpRoute.preview)
 
 app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {
