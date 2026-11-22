@@ -13,8 +13,28 @@
 const crypto = require('crypto')
 
 const PREFIX = 'plx_'
-// plx_ and 32 random bytes in base64url
-const SECRET_PATTERN = /^plx_[A-Za-z0-9_-]{43}$/
+// plx_ and 32 random bytes in lower-case base 32 (a–z, 2–7). The link's path
+// has no capital letters because Claude counts a connector as custom, and
+// lets its MCP App show pages from the site (server/mcp/viewer.js), only
+// when its path is lower case. Links made before took base64url, and still
+// work for everything else.
+const SECRET_PATTERN = /^plx_(?:[a-z2-7]{52}|[A-Za-z0-9_-]{43})$/
+const BASE32 = 'abcdefghijklmnopqrstuvwxyz234567'
+function base32(bytes) {
+  let out = ''
+  let value = 0
+  let bits = 0
+  for (const byte of bytes) {
+    value = ((value << 8) | byte) & 0xfff
+    bits += 8
+    while (bits >= 5) {
+      bits -= 5
+      out += BASE32[(value >> bits) & 31]
+    }
+  }
+  if (bits) out += BASE32[(value << (5 - bits)) & 31]
+  return out
+}
 // How long a link lasts, in days; null never expires
 const LIFETIMES = [7, 30, 90, null]
 const DEFAULT_DAYS = 30
@@ -24,7 +44,7 @@ const NAME_MAX = 40
 const TOUCH_MS = 60 * 1000
 
 const hashOf = secret => crypto.createHash('sha256').update(secret).digest('hex')
-const newSecret = () => PREFIX + crypto.randomBytes(32).toString('base64url')
+const newSecret = () => PREFIX + base32(crypto.randomBytes(32))
 
 function httpError(status, message) {
   return Object.assign(new Error(message), { status, expose: true })
@@ -142,5 +162,5 @@ async function findLinkById(storage, id) {
 
 module.exports = {
   listLinks, createLink, renewLink, revokeLink, findLink, findLinkById,
-  hashOf, SECRET_PATTERN, LIFETIMES, DEFAULT_DAYS, MAX_LINKS, NAME_MAX,
+  hashOf, base32, SECRET_PATTERN, LIFETIMES, DEFAULT_DAYS, MAX_LINKS, NAME_MAX,
 }

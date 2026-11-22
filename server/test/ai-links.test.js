@@ -93,7 +93,8 @@ describe('AI collaborator links', { skip }, () => {
     const made = await makeLink(owner, id, { name: '  Claude   desktop ' })
     assert.equal(made.status, 201, JSON.stringify(made.body))
     assert.equal(made.body.name, 'Claude desktop')
-    assert.match(made.body.url, /^https:\/\/parallax-presentations\.com\/mcp\/plx_[A-Za-z0-9_-]{43}$/)
+    // Lower case, so Claude counts it as a custom connector (ai-links.js)
+    assert.match(made.body.url, /^https:\/\/parallax-presentations\.com\/mcp\/plx_[a-z2-7]{52}$/)
     assert.equal(made.body.hint, made.body.url.slice(-4))
     const days = (new Date(made.body.expiresAt) - Date.now()) / 864e5
     assert.ok(days > 29.9 && days < 30.1, `expires in ${days} days`)
@@ -210,6 +211,18 @@ describe('AI collaborator links', { skip }, () => {
     assert.match(toolText(missing), /from 1 to 2/)
     const bad = await callTool(secret, 'get_slide', {})
     assert.ok(bad.body.error || bad.body.result?.isError, JSON.stringify(bad.body))
+  })
+
+  it('still takes links made before they were lower case', async () => {
+    const owner = t.user('owner-old')
+    const id = await createDeck(owner, 'Old link', { slides: SLIDES })
+    const made = (await makeLink(owner, id)).body
+    const old = 'plx_' + crypto.randomBytes(32).toString('base64url')
+    const { hashOf } = require('../services/ai-links')
+    await pool.query('UPDATE ai_links SET token_hash = $1, token_hint = $2 WHERE id = $3', [hashOf(old), old.slice(-4), made.id])
+    assert.equal((await initialize(old)).status, 200)
+    assert.match(toolText(await callTool(old, 'get_deck')), /^# Old link/)
+    assert.equal((await initialize(secretOf(made.url))).body?.result, undefined)
   })
 
   it('reads the deck as it is now', async () => {

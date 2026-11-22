@@ -34,7 +34,7 @@
   .fixed .stage { flex: 1; min-height: 0; aspect-ratio: auto; }
   .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #111; transition: opacity 0.2s; }
   .stage iframe.loading { opacity: 0; pointer-events: none; }
-  .note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #d4d4d4; }
+  .note { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #d4d4d4; }
   .bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; min-height: 28px; }
   .where { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pv-muted); }
   .where .fresh { color: var(--pv-text); font-weight: 600; }
@@ -66,6 +66,7 @@
   const RETRY = 5000 // after a check fails
   const QUIET = 10 * 60 * 1000
   const GIVE_UP = 3 // checks failing in a row before it stops (a revoked link)
+  const FIRST_LOAD = 12000 // ms for the deck's page to say it's showing, or it didn't load
   const $ = id => document.getElementById(id)
   const viewer = $('viewer'), stage = $('stage'), note = $('note'), where = $('where')
   const follow = $('follow'), editorButton = $('editor'), fullButton = $('full'), retryButton = $('retry')
@@ -178,26 +179,55 @@
 
   const has = id => !!deck && deck.slides.some(s => s.id === id)
 
-  // A new copy of the deck at a slide, behind the one showing until it's ready
+  const say = text => { note.textContent = text; note.hidden = false }
+  const siteOf = url => { try { return new URL(url).host } catch { return 'the site' } }
+
+  // Whether the app said it lets the viewer frame pages from the deck's site.
+  // Apps list the sites they allowed (hostCapabilities.sandbox.csp); Claude
+  // allows them only once the person does, and not for every connector or
+  // in every conversation (claude.com/docs/connectors/building/mcp-apps/
+  // embedded-sites). An app that doesn't say gets the benefit of the doubt.
+  function frameRefused(url) {
+    const allowed = host.capabilities.sandbox && host.capabilities.sandbox.csp && host.capabilities.sandbox.csp.frameDomains
+    if (!Array.isArray(allowed)) return false
+    let at
+    try { at = new URL(url) } catch { return false }
+    return !allowed.some(d => {
+      if (d === at.origin) return true
+      // A subdomain wildcard, scheme://*.example.com
+      const m = typeof d === 'string' && /^([a-z]+:)\/\/\*(\.[^/:]+)$/.exec(d)
+      return !!m && m[1] === at.protocol && at.hostname.endsWith(m[2])
+    })
+  }
+  let refused = false
+
+  // A new copy of the deck at a slide, behind the one showing until it's
+  // ready. The first stays hidden until its page says it's showing; if it
+  // never does, the app most likely kept the viewer from framing it.
   function load(slideId) {
     const frame = document.createElement('iframe')
     frame.title = `${deck.title}, as presented`
     frame.src = deck.url + (slideId ? `#/s-${encodeURIComponent(slideId)}` : '')
     frame.allow = 'fullscreen'
-    if (showing) {
-      frame.className = 'loading'
-      setTimeout(() => { if (frame.isConnected && frame.classList.contains('loading')) reveal(frame) }, 10000)
-    } else {
-      showing = frame
+    frame.className = 'loading'
+    const first = !showing
+    if (first) {
+      for (const other of stage.querySelectorAll('iframe')) other.remove()
+      if (!refused) say('Opening the presentation…')
     }
+    setTimeout(() => {
+      if (!frame.isConnected || !frame.classList.contains('loading')) return
+      if (!first) reveal(frame)
+      else if (!refused) say(`The presentation didn’t load. This app may not let the viewer show pages from ${siteOf(deck.url)}.`)
+    }, first ? FIRST_LOAD : 10000)
     stage.appendChild(frame)
-    note.hidden = true
   }
 
   function reveal(frame) {
     for (const other of stage.querySelectorAll('iframe')) if (other !== frame) other.remove()
     frame.classList.remove('loading')
     showing = frame
+    note.hidden = true
   }
 
   function fromDeck(frame, data) {
@@ -253,6 +283,10 @@
     stage.style.aspectRatio = `${next.width} / ${next.height}`
     editorButton.hidden = !(next.editorUrl && host.capabilities.openLinks)
     if (!before) {
+      // Say so now rather than after a wait, but load it anyway, in case
+      // the app frames it after all
+      refused = frameRefused(next.url)
+      if (refused) say(`This app hasn’t let the viewer show pages from ${siteOf(next.url)}, so the presentation can’t show here. If the app asks you to allow that site, or offers a review of the sites this viewer uses, allow it and open the viewer again.`)
       load(next.open && has(next.open) ? next.open : null)
       describe()
       return
