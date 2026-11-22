@@ -39,7 +39,7 @@ import { readFileSync } from 'fs'
 import { readSvgDrawing } from '../utils/plotImport/svgReader'
 import { plotFromDrawing } from '../utils/plotImport/plotModel'
 import { splitSvg } from '../utils/plotImport/splitSvg'
-import { figureElements } from '../utils/plotImport/toFigure'
+import { figureElements, partsOf } from '../utils/plotImport/toFigure'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root, el
@@ -136,17 +136,21 @@ describe('importing a plot', () => {
     await act(async () => button('Insert figure with 2 layers').click())
     // The file first, to open the figure again; then the pieces in drawing
     // order: the model line comes between the points' error bars and markers
-    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay.svg', 'decay-base.svg', 'decay-l2.svg', 'decay-l1.svg', 'decay-l2-2.svg', 'decay-base-2.svg'])
+    // order: the model line comes between the points' error bars and
+    // markers; the legend's frame, then each entry, last
+    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay.svg', ...['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `decay-${p}.svg`)])
     expect(api.uploadFile.mock.calls[1][0].type).toBe('image/svg+xml')
     expect(api.uploadDataset).not.toHaveBeenCalled()
     expect(onInsert).not.toHaveBeenCalled()
     const [els, how] = onInsertElements.mock.calls[0]
     expect(how).toBeUndefined()
-    expect(els.map(e => e.src)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2'].map(p => `/uploads/decay-${p}.svg`))
+    expect(els.map(e => e.src)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `/uploads/decay-${p}.svg`))
     expect(new Set(els.map(e => e.groupId)).size).toBe(1)
-    for (const e of els) expect(e.figure).toMatchObject({ src: '/uploads/decay.svg', file: 'decay.svg', plan: 'base:53 l2:57 l1:1 l2:19 base:23' })
+    for (const e of els) expect(e.figure).toMatchObject({ src: '/uploads/decay.svg', file: 'decay.svg', plan: 'base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12' })
     for (const e of els.filter(e => e.figure.part === 'l2')) expect(e).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null, 3: 'hidden' } })
-    expect(els.find(e => e.name === 'model')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null } })
+    for (const e of els.filter(e => e.figure.part === 'l1')) expect(e).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null } })
+    // The legend's frame comes with its first entry
+    expect(els.find(e => e.name === 'Legend')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null } })
   })
 
   it('keeps a PDF figure as it is, its pieces as PNG images', async () => {
@@ -156,7 +160,7 @@ describe('importing a plot', () => {
     reading.result = { kind: 'pdf', bytes: new Uint8Array([37, 80, 68, 70]), plot, preview: 'data:image/png;base64,AAAA' }
     const png = new Blob(['png'], { type: 'image/png' })
     splitting.fn = vi.fn(async () => ({
-      pieces: [['base', 0], ['l2', 0], ['l1', 0], ['l2', 1], ['base', 1]].map(([part, run]) => ({ part, run, blob: png })),
+      pieces: [['base', 0], ['l2', 0], ['l1', 0], ['l2', 1], ['base', 1], ['legend', 0]].map(([part, run]) => ({ part, run, blob: png })),
       plan: 'base:9 l2:11 l1:1 l2:11 base:30', width: 432, height: 288, type: 'image/png', ext: 'png',
     }))
     const { onInsertElements } = await mount()
@@ -166,17 +170,17 @@ describe('importing a plot', () => {
     expect(splitting.fn.mock.calls[0][0]).toBe(reading.result)
     expect(api.uploadFile.mock.calls.map(([f]) => [f.name, f.type])).toEqual([
       ['decay.pdf', 'application/pdf'], ['decay-base.png', 'image/png'], ['decay-l2.png', 'image/png'],
-      ['decay-l1.png', 'image/png'], ['decay-l2-2.png', 'image/png'], ['decay-base-2.png', 'image/png'],
+      ['decay-l1.png', 'image/png'], ['decay-l2-2.png', 'image/png'], ['decay-base-2.png', 'image/png'], ['decay-legend.png', 'image/png'],
     ])
     const [els] = onInsertElements.mock.calls[0]
-    expect(els.map(e => e.name)).toEqual(['Figure', 'measured', 'model', 'measured, part 2', 'Figure, part 2'])
+    expect(els.map(e => e.name)).toEqual(['Figure', 'measured', 'model', 'measured, part 2', 'Figure, part 2', 'Legend'])
     expect(els[0].figure).toMatchObject({ src: '/uploads/decay.pdf', file: 'decay.pdf', part: 'base', run: 0 })
   })
 
   describe('a figure opened again', () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
     const plot = plotFromDrawing(readSvgDrawing(text))
-    const { plan, pieces } = splitSvg(text, plot.layers)
+    const { plan, pieces } = splitSvg(text, partsOf(plot, 'svg'))
     const source = { url: '/uploads/decay.svg', name: 'decay.svg' }
     // The figure as it was inserted: the model at step 1, the points at 2 until 3
     const inserted = () => figureElements(plot, pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
@@ -212,7 +216,7 @@ describe('importing a plot', () => {
       expect(again.map(e => e.src)).toEqual(els.map(e => e.src))
       for (const e of again) expect(e).toMatchObject({ x: 210, y: 64, groupId: els[0].groupId })
       expect(again.find(e => e.figure.part === 'l1')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null, 4: 'hidden' } })
-      expect(again.filter(e => e.figure.part === 'l2').map(e => e.name)).toEqual(['Raw data', 'Raw data, part 2'])
+      expect(again.filter(e => e.figure.part === 'l2').map(e => e.name)).toEqual(['Raw data', 'Raw data, part 2', 'Raw data, part 3'])
     })
 
     it('puts back a layer left out, uploading only its pieces', async () => {
@@ -222,9 +226,9 @@ describe('importing a plot', () => {
       expect(row.querySelector('input[type="checkbox"]').checked).toBe(false)
       await act(async () => row.querySelector('input[type="checkbox"]').click())
       await act(async () => button('Update figure').click())
-      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-l2.svg', 'decay-l2-2.svg'])
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-l2.svg', 'decay-l2-2.svg', 'decay-l2-3.svg'])
       const [again] = onInsertElements.mock.calls[0]
-      expect(again.map(e => e.src)).toEqual(['/uploads/old-base-0.svg', '/uploads/decay-l2.svg', '/uploads/old-l1-0.svg', '/uploads/decay-l2-2.svg', '/uploads/old-base-1.svg'])
+      expect(again.map(e => e.src)).toEqual(['old-base-0', 'decay-l2', 'old-l1-0', 'decay-l2-2', 'old-base-1', 'old-legend-0', 'old-l1-1', 'decay-l2-3'].map(p => `/uploads/${p}.svg`))
     })
 
     it('says when its file can’t be fetched', async () => {

@@ -14,6 +14,7 @@ import { parseTickLabel, parseAxisOffset, markerShape } from './drawing'
 import { plotToGraph, defaultChoices } from './toGraph'
 import { planPdf } from './splitPdf'
 import { splitSvg } from './splitSvg'
+import { partsOf } from './toFigure'
 
 const require = createRequire(import.meta.url)
 const fixture = name => new URL(`./fixtures/${name}`, import.meta.url)
@@ -245,10 +246,10 @@ describe('keeping a PDF figure as it is', () => {
   }
 
   it('cuts the page’s painting operators into runs in the order they paint, as the SVG of the figure is cut', async () => {
-    for (const name of ['decay', 'bars', 'loglog', 'negative', 'seaborn-darkgrid']) {
+    for (const name of ['decay', 'bars', 'loglog', 'negative', 'seaborn-darkgrid', 'classic']) {
       const plot = await readPdf(name)
       for (const l of plot.layers) expect(l.ops.length, `${name} ${l.id}`).toBeGreaterThan(0)
-      const { runs, paints, plan } = planPdf(await operators(name), plot.layers, pdfjs.OPS)
+      const { runs, paints, plan } = planPdf(await operators(name), partsOf(plot, 'pdf'), pdfjs.OPS)
       // Each painting operator in one run, in order
       const all = runs.flatMap(r => [...r.ops])
       expect(all, name).toEqual([...paints].sort((a, b) => a - b))
@@ -258,15 +259,19 @@ describe('keeping a PDF figure as it is', () => {
         for (const [a, b] of l.ops) for (let i = a; i <= b; i++) if (paints.has(i)) own.push(i)
         expect(runs.filter(r => r.part === l.id).flatMap(r => [...r.ops]).sort((a, b) => a - b), `${name} ${l.id}`).toEqual([...new Set(own)].sort((a, b) => a - b))
       }
-      // The SVG of the same figure is cut into the same runs
+      // The SVG of the same figure is cut into the same runs of layers and
+      // legend (what's between, the PDF doesn't always draw: an SVG keeps
+      // spines with no line)
       const svg = readFileSync(fixture(`${name}.svg`), 'utf8')
-      const parts = p => p.split(' ').map(r => r.split(':')[0]).join(' ')
-      expect(parts(plan), name).toBe(parts(splitSvg(svg, readSvg(name).layers, { Parser: DOMParser, Serializer: XMLSerializer }).plan))
+      const parts = p => p.split(' ').map(r => r.split(':')[0]).filter(p => p !== 'base').join(' ')
+      expect(parts(plan), name).toBe(parts(splitSvg(svg, partsOf(readSvg(name), 'svg'), { Parser: DOMParser, Serializer: XMLSerializer }).plan))
     }
   })
 
-  it('cuts the decay figure around its interleaved layers', async () => {
+  it('cuts the decay figure around its interleaved layers, each legend entry with its layer', async () => {
     const plot = await readPdf('decay')
-    expect(planPdf(await operators('decay'), plot.layers, pdfjs.OPS).plan).toBe('base:26 l2:57 l1:1 l2:19 base:12')
+    // The model's entry: its sample line and its words; the points': their
+    // marker, error bar, two caps and words
+    expect(planPdf(await operators('decay'), partsOf(plot, 'pdf'), pdfjs.OPS).plan).toBe('base:26 l2:57 l1:1 l2:19 base:4 legend:1 l1:2 l2:5')
   })
 })

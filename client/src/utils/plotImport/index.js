@@ -14,6 +14,7 @@ import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { splitSvg } from './splitSvg'
 import { splitPdf } from './splitPdf'
+import { partsOf } from './toFigure'
 
 export { PlotError } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
@@ -76,9 +77,11 @@ export function keepable(result) {
 
 // A figure read by readPlotFile, cut into the pieces toFigure.js stacks:
 // { pieces: [{ part, run, blob }], plan, width, height, type, ext }, an
-// SVG's pieces as SVG, a PDF's as PNG. need(piece, plan): whether to make a
-// piece (else its blob is null)
-export async function splitFigure(result, layers, { need = () => true } = {}) {
+// SVG's pieces as SVG, a PDF's as PNG; a piece's part is 'base', 'legend' or
+// a layer's id. need(piece, plan): whether to make a piece (else its blob
+// is null)
+export async function splitFigure(result, { need = () => true } = {}) {
+  const layers = partsOf(result.plot, result.kind)
   if (result.kind === 'svg') {
     const { pieces, ...rest } = splitSvg(result.text, layers)
     return { ...rest, pieces: pieces.map(p => ({ part: p.part, run: p.run, blob: need(p, rest.plan) ? new Blob([p.svg], { type: rest.type }) : null })) }

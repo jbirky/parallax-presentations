@@ -9,7 +9,9 @@
 // a minus sign has no text, so plotModel.js puts it back from the labels'
 // order. pdfjsLib is pdf.js, loaded by the caller (index.js, or the tests).
 // Each mark and path keeps the operators that draw it (ops: [first, last],
-// indices into the list), for keeping the figure as it is (splitPdf.js).
+// indices into the list), for keeping the figure as it is (splitPdf.js);
+// so does each run of text drawn (textOps: where it starts and its size),
+// for a legend's words to go with their layers.
 
 import { IDENTITY, multiply, apply, hexColor, markerShape } from './drawing'
 
@@ -53,7 +55,9 @@ export function walk(ops, OPS) {
   const NAME = {}
   for (const [k, v] of Object.entries(OPS)) NAME[v] = k
   let ctm = IDENTITY, stroke = '#000000', fill = '#000000', width = 1, dash = null
-  const stack = [], paths = [], marks = []
+  // Text: its matrix, the place on its line (as pdf.js keeps them), its size
+  let tm = IDENTITY, tx = 0, ty = 0, lineX = 0, lineY = 0, leading = 0, rise = 0, fontSize = 0
+  const stack = [], paths = [], marks = [], textOps = []
   let images = 0
   let order = 0 // what's drawn, in the order it's drawn
   let form = null // the marker being stamped, while its symbol plays back
@@ -85,6 +89,22 @@ export function walk(ops, OPS) {
         break
       }
       case 'paintImageXObject': case 'paintInlineImageXObject': case 'paintImageMaskXObject': images++; break
+      case 'beginText': tm = IDENTITY; tx = lineX = 0; ty = lineY = 0; break
+      case 'setFont': fontSize = a[1] || 0; break
+      case 'setLeading': leading = -a[0]; break
+      case 'setTextRise': rise = a[0] || 0; break
+      case 'moveText': tx = lineX += a[0]; ty = lineY += a[1]; break
+      case 'setLeadingMoveText': leading = a[1]; tx = lineX += a[0]; ty = lineY += a[1]; break
+      case 'setTextMatrix': tm = Array.from(a[0]); tx = lineX = 0; ty = lineY = 0; break
+      case 'nextLine': tx = lineX; ty = lineY += leading; break
+      case 'nextLineShowText': case 'nextLineSetSpacingShowText': tx = lineX; ty = lineY += leading // then shown, as below
+      case 'showText': case 'showSpacedText': {
+        if (form) break
+        const m = multiply(ctm, tm)
+        const [x, y] = apply(m, tx, ty + rise)
+        textOps.push({ x, y, size: fontSize * Math.hypot(m[2], m[3]), order: order++, ops: [i, i] })
+        break
+      }
       case 'constructPath': {
         const paint = NAME[a[0]] || ''
         if (!paint || paint === 'endPath') break
@@ -109,7 +129,7 @@ export function walk(ops, OPS) {
       default: break
     }
   })
-  return { paths, marks, texts: [], images, notes: [] }
+  return { paths, marks, texts: [], textOps, images, notes: [] }
 }
 
 // A path's subpaths, through the matrix (none: as drawn). pdf.js gives a

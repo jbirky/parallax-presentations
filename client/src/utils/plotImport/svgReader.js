@@ -60,7 +60,7 @@ function walk(el, ctm, ctx) {
         walk(child, m, { ...ctx, axes, group: null, role: null })
         continue
       }
-      if (/^text_\d+$/.test(id)) { addText(child, m, ctx); continue }
+      if (/^text_\d+$/.test(id)) { addText(child, m, ctx, id); continue }
       // matplotlib numbers its axes' axis groups across the figure: x, y, x, y…
       if (/^matplotlib\.axis_\d+$/.test(id)) { walk(child, m, { ...ctx, axis: Number(id.split('_').pop()) % 2 === 1 ? 'x' : 'y', role: 'axis' }); continue }
       const role = roleOf(id) || ctx.role
@@ -82,10 +82,12 @@ function walk(el, ctm, ctx) {
         }
       }
       const group = /^(line2d|PathCollection|LineCollection|PolyCollection|patch|Line2D|QuadMesh)_?\d*$/i.test(id) && !ctx.group ? id : ctx.group
-      walk(child, m, { ...ctx, role, group })
+      // A legend's group, for its frame and title to come and go as one
+      const legendId = role === 'legend' && !ctx.legendId ? id : ctx.legendId
+      walk(child, m, { ...ctx, role, group, legendId })
       continue
     }
-    if (tag === 'text') { addText(child, m, ctx); continue }
+    if (tag === 'text') { addText(child, m, ctx, id || null); continue }
     if (tag === 'image') { ctx.drawing.images++; continue }
     if (tag === 'use') { addUse(child, m, ctx); continue }
     const shape = shapeOf(child)
@@ -94,8 +96,8 @@ function walk(el, ctm, ctx) {
 }
 
 // A text group's words (matplotlib's comment, or <text>'s own) at its glyphs'
-// first place
-function addText(el, m, ctx) {
+// first place; gid, the group's id
+function addText(el, m, ctx, gid) {
   let words = ''
   for (const n of el.childNodes) if (n.nodeType === 8) { words = n.nodeValue.trim(); break }
   if (!words && el.localName === 'text') words = el.textContent.trim()
@@ -124,7 +126,7 @@ function addText(el, m, ctx) {
   if (anchor === 'middle') x -= w / 2
   else if (anchor === 'end') x -= w
   const angle = Math.round(Math.atan2(-at[1], at[0]) * 180 / Math.PI)
-  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, role: ctx.role }
+  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, gid, legendId: ctx.legendId, role: ctx.role }
   ctx.drawing.texts.push(text)
   if (ctx.tick) { ctx.tick.label = words; ctx.tick.text = text }
   else if (ctx.role === 'axis' && ctx.axes) {
@@ -150,7 +152,7 @@ function addUse(el, m, ctx) {
   const segs = shape.segs.map(s => s.map(([sx, sy]) => apply(lin, sx, sy)))
   const { shape: name, size } = markerShape(segs, shape.curves)
   const style = { ...styleOf(def), ...styleOf(el) }
-  ctx.drawing.marks.push({ x: px, y: py, shape: name, size, fill: paintOf(style.fill, '#000000'), stroke: paintOf(style.stroke, null), group: ctx.group, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++ })
+  ctx.drawing.marks.push({ x: px, y: py, shape: name, size, fill: paintOf(style.fill, '#000000'), stroke: paintOf(style.stroke, null), group: ctx.group, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++ })
 }
 
 function addPath(el, shape, m, ctx) {
@@ -166,7 +168,7 @@ function addPath(el, shape, m, ctx) {
     stroke, fill: paintOf(style.fill, '#000000'),
     width: (parseFloat(style['stroke-width']) || 1) * scale,
     dash: stroke && style['stroke-dasharray'] && style['stroke-dasharray'] !== 'none' ? style['stroke-dasharray'].split(/[\s,]+/).map(Number).filter(isFinite) : null,
-    group: ctx.group, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++,
+    group: ctx.group, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++,
   }
   // The axes' background: the first thing its axes draw, a patch
   if (ctx.axes && !ctx.axes.drawn) {

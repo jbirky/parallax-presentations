@@ -12,12 +12,15 @@
 // markers. So a figure is cut, in the order it's drawn, into runs: what one
 // layer draws, or what no layer does, until another takes over. Stacked in
 // that order the pieces are the figure as it was drawn, and a layer can be
-// more than one piece, all of them coming and going together.
+// more than one piece, all of them coming and going together. A layer's
+// legend entry is part of it (plotModel.js), and the legend's frame is a
+// part of its own ('legend'), showing while any entry does.
 //
 // Each element keeps what it came from (figure: { id, src, file, plan,
 // part, run, sig }), so the figure can be opened again (readFigure): src is
-// the file it was cut from, part 'base' or a layer's id, sig a layer's kind
-// and color, to know it again if the file reads into layers in another order.
+// the file it was cut from, part 'base', 'legend' or a layer's id, sig a
+// layer's kind and color, to know it again if the file reads into layers in
+// another order.
 
 import { IMPORT_WIDTH } from './toGraph'
 
@@ -41,7 +44,42 @@ export function runsOf(parts) {
 export const planOf = runs => runs.map(r => `${r.part}:${r.size}`).join(' ')
 
 export const pieceKey = p => `${p.part}:${p.run || 0}`
+
+// What a figure is cut by: the legend's own part (its frame, and what else
+// of it no layer has) first, then the layers, whose entries are theirs.
+// kind: 'svg' (cut by groups) or 'pdf' (by operators)
+export function partsOf(plot, kind) {
+  const legend = plot.legend && (kind === 'svg' ? plot.legend.groups?.length : plot.legend.ops?.length) ? [{ id: 'legend', ...plot.legend }] : []
+  return [...legend, ...plot.layers]
+}
 const sigOf = layer => `${layer.kind}|${layer.color}`
+const ALWAYS = new Set(['base', 'legend'])
+
+// A layer's steps, as chosen: { step, until }, 0 for none
+function stepsOf(choice = {}) {
+  const step = choice.step > 0 ? choice.step : 0
+  return { step, until: choice.until > step ? choice.until : 0 }
+}
+
+// The legend's frame: from the step its first entry comes until its last
+// leaves (if they all do); null, always there, when no layer has an entry
+function legendSteps(plot, choices) {
+  const own = plot.layers.filter(l => l.legend != null && choices[l.id]?.include !== false).map(l => stepsOf(choices[l.id]))
+  if (!own.length) return null
+  const step = Math.min(...own.map(s => s.step))
+  const until = own.every(s => s.until) ? Math.max(...own.map(s => s.until)) : 0
+  return { step, until: until > step ? until : 0 }
+}
+
+// A hidden state and the steps it comes and goes at, on an element
+function setSteps(el, { step, until }) {
+  delete el.states; delete el.stateSteps; delete el.initialState
+  if (!step && !until) return
+  el.states = [{ ...HIDDEN }]
+  el.stateSteps = {}
+  if (step) { el.initialState = 'hidden'; el.stateSteps[step] = null }
+  if (until) el.stateSteps[until] = 'hidden'
+}
 
 // pieces: [{ part, run, url }], in drawing order, without the layers left
 // out. meta: { id, src, file, plan }. reuse, box, groupId, z: what the
@@ -51,31 +89,24 @@ export function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = 
   const group = groupId || newId()
   const figureId = meta.id || newId()
   const layers = new Map(plot.layers.map(l => [l.id, l]))
+  const legend = legendSteps(plot, choices)
   return pieces.map((p, k) => {
     const layer = layers.get(p.part)
     const choice = (layer && choices[layer.id]) || {}
-    const name = layer ? (choice.name || layer.name) : 'Figure'
+    const name = layer ? (choice.name || layer.name) : p.part === 'legend' ? 'Legend' : 'Figure'
     const run = p.run || 0
     const fresh = {
       type: 'image', x: Math.round(b.x), y: Math.round(b.y), width: Math.round(b.width), height: Math.round(b.height),
       zIndex: z + k, src: p.url, objectFit: 'contain', groupId: group,
       name: run ? `${name}, part ${run + 1}` : name,
-      alt: layer ? name : run ? 'Part of the figure drawn over its layers' : 'The figure, without the layers that come and go',
+      alt: layer ? name : p.part === 'legend' ? 'The figure’s legend' : run ? 'Part of the figure drawn over its layers' : 'The figure, without the layers that come and go',
       figure: { ...meta, id: figureId, part: p.part, run, ...(layer ? { sig: sigOf(layer) } : {}) },
     }
     const old = reuse.get(pieceKey(p))
     const el = old ? { ...old, ...fresh } : { id: newId(), ...fresh }
-    if (!layer) return el
-    // A layer's states are the figure's to set
-    delete el.states; delete el.stateSteps; delete el.initialState
-    const step = choice.step > 0 ? choice.step : 0
-    const until = choice.until > step ? choice.until : 0
-    if (step || until) {
-      el.states = [{ ...HIDDEN }]
-      el.stateSteps = {}
-      if (step) { el.initialState = 'hidden'; el.stateSteps[step] = null }
-      if (until) el.stateSteps[until] = 'hidden'
-    }
+    // A layer's states, and the legend's, are the figure's to set
+    if (layer) setSteps(el, stepsOf(choice))
+    else if (p.part === 'legend') setSteps(el, legend || { step: 0, until: 0 })
     return el
   })
 }
@@ -91,10 +122,10 @@ export function readFigure(elements, plot) {
   const meta = els[0].figure
   // Each layer's elements, to the layer read again: the same id and look,
   // else the same look
-  const parts = new Map([['base', 'base']])
+  const parts = new Map([...ALWAYS].map(p => [p, p]))
   const taken = new Set()
   for (const part of new Set(els.map(e => e.figure.part))) {
-    if (part === 'base') continue
+    if (ALWAYS.has(part)) continue
     const sig = els.find(e => e.figure.part === part).figure.sig
     const free = l => !taken.has(l.id) && sigOf(l) === sig
     const layer = plot.layers.find(l => l.id === part && free(l)) || plot.layers.find(free)

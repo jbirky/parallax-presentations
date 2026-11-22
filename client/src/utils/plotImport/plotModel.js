@@ -187,6 +187,9 @@ export function plotFromDrawing(drawing) {
     const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape))
     if (i >= 0) { taken.add(i); layer.name = entries[i].label; layer.legend = i }
   }
+  // Each entry's drawing to its layer, to come and go with it; the frame and
+  // the rest to the legend's own part
+  const legendPart = legend ? legendDrawing(drawing, legend, entries, layers) : null
   const counts = {}
   const noun = { points: 'Points', line: 'Line', bars: 'Bars' }
   layers.forEach((l, i) => {
@@ -210,6 +213,9 @@ export function plotFromDrawing(drawing) {
       grid,
     },
     layers,
+    // What draws the legend but no layer's entry (its frame, its title), for
+    // keeping the figure as it is; null without a legend
+    legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
     warnings,
   }
 }
@@ -477,14 +483,14 @@ function legendOf(d, box, texts) {
     // Without a frame: around its samples and its words
     const words = (d.texts || []).filter(t => t.role === 'legend').flatMap(t => [[t.x, t.y], [t.x + t.w, t.y + t.size]])
     const b = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap(p => (p.segs ? p.segs.flat() : [[p.x, p.y]])), ...words])
-    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)) }
+    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)), frame: frame || null }
   }
   const words = texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.x > box.x0 && t.x < box.x1 && t.y > box.y0 && t.y < box.y1)
   for (const p of d.paths || []) {
     if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue
     const b = bboxOf(p.segs[0])
     if (sameBox(b, box) || b.x0 < box.x0 - 1 || b.x1 > box.x1 + 1 || b.y0 < box.y0 - 1 || b.y1 > box.y1 + 1) continue
-    if (words.some(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)) return { box: b, order: p.order ?? 0 }
+    if (words.some(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)) return { box: b, order: p.order ?? 0, frame: p }
   }
   // No frame: entries, each a word with a sample just before it on its line
   const found = []
@@ -495,7 +501,7 @@ function legendOf(d, box, texts) {
   if (!found.length) return null
   const pts = found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])])
   const b = bboxOf(pts)
-  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)) }
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null }
 }
 
 // The sample a legend entry's words follow: a marker or a short line on
@@ -509,7 +515,8 @@ function sampleBefore(d, t, after) {
   return (d.paths || []).find(p => {
     if ((p.order ?? 0) < after) return false
     const b = bboxOf(p.segs.flat())
-    return row((b.y0 + b.y1) / 2) && b.y1 - b.y0 < t.size && before(b.x1 + 0.01) && t.x - b.x1 < 12 && (b.x1 - b.x0) > 3 && (b.x1 - b.x0) < 40
+    // (the gap before the words is handletextpad, 0.8 of their size by default)
+    return row((b.y0 + b.y1) / 2) && b.y1 - b.y0 < t.size && before(b.x1 + 0.01) && t.x - b.x1 < Math.max(12, t.size * 1.6) && (b.x1 - b.x0) > 3 && (b.x1 - b.x0) < 40
   }) || null
 }
 
@@ -522,11 +529,68 @@ function legendEntries(d, legend, texts) {
   return words.map(t => {
     const label = t.s.replace(/\$/g, '')
     const s = sampleBefore(d, t, legend.order)
-    if (!s) return { label, kind: null }
-    if (!s.segs) return { label, kind: 'points', color: s.fill || s.stroke, shape: s.shape }
+    if (!s) return { label, kind: null, t }
+    if (!s.segs) return { label, kind: 'points', color: s.fill || s.stroke, shape: s.shape, t }
     const r = s.fill && s.segs.length === 1 && rectOf(s.segs[0])
-    return r && !s.stroke ? { label, kind: 'bars', color: s.fill } : { label, kind: 'line', color: s.stroke }
+    return r && !s.stroke ? { label, kind: 'bars', color: s.fill, t } : { label, kind: 'line', color: s.stroke, t }
   })
+}
+
+// What the legend draws, shared out: each entry's sample and words go to the
+// layer named from it (its groups, an SVG's; its operators, a PDF's), so
+// they come and go with it; the frame, a title and entries no layer has
+// stay the legend's ({ groups, ops }). An SVG's legend is its group's; a
+// PDF's, what's drawn in its box from its frame on. An entry is a row of
+// the legend: its words, and the sample just before them
+function legendDrawing(d, legend, entries, layers) {
+  const lb = legend.box
+  const out = { groups: new Set(), ops: [] }
+  const svg = [...(d.paths || []), ...(d.marks || []), ...(d.texts || [])].some(it => it.role === 'legend')
+  const inBox = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1
+  const drawn = it => svg ? it.role === 'legend' : !it.role && (it.order ?? -Infinity) >= legend.order && inBox(...centerOf(it))
+  const items = [
+    ...[...(d.paths || []), ...(d.marks || [])].filter(drawn),
+    ...(svg ? (d.texts || []).filter(t => t.role === 'legend') : (d.textOps || []).filter(drawn)),
+  ]
+  const rows = entries.map((e, k) => ({ k, mid: e.t.y + e.t.size * 0.35, x0: e.t.x - 45, x: e.t.x, x1: e.t.x + (e.t.w || 0) + 2, size: e.t.size }))
+  for (const r of rows) {
+    // Half the way to the next row of the same column, or near a line's height
+    const gaps = rows.filter(o => o !== r && o.x1 > r.x0 && o.x0 < r.x1).map(o => Math.abs(o.mid - r.mid)).filter(g => g > 0)
+    r.half = gaps.length ? Math.min(...gaps) / 2 : r.size * 0.9
+  }
+  const wide = (lb.x1 - lb.x0) * 0.85
+  const rowOf = it => {
+    if (it === legend.frame) return null
+    let cx, cy, w = 0
+    if (it.segs) { const b = bboxOf(it.segs.flat()); cx = (b.x0 + b.x1) / 2; cy = (b.y0 + b.y1) / 2; w = b.x1 - b.x0 }
+    else if (it.s != null) { cx = it.x + (it.w || 0) / 2; cy = it.y + it.size * 0.35 }
+    else if (it.ops && it.size != null && it.shape == null) { cx = it.x; cy = it.y + it.size * 0.35 }
+    else { cx = it.x; cy = it.y }
+    // The frame, its shadow: across the legend
+    if (w >= wide) return null
+    let best = null, score = Infinity
+    for (const r of rows) {
+      const dy = Math.abs(cy - r.mid)
+      if (dy > r.half || cx < r.x0 || cx > r.x1) continue
+      // Words before a sample: one column's words can reach the next's sample
+      const sc = dy + (cx >= r.x ? 0 : (r.x - cx) / 100)
+      if (sc < score) { score = sc; best = r }
+    }
+    return best
+  }
+  const byEntry = new Map(layers.filter(l => l.legend != null).map(l => [l.legend, l]))
+  for (const it of items) {
+    const layer = byEntry.get(rowOf(it)?.k)
+    const key = it.gid || it.group
+    if (layer) {
+      if (key && layer.groups) layer.groups.add(key)
+      if (it.ops && layer.ops) layer.ops.push(it.ops)
+    } else {
+      if (it.legendId) out.groups.add(it.legendId)
+      if (it.ops) out.ops.push(it.ops)
+    }
+  }
+  return out
 }
 
 // ── Error bars ──

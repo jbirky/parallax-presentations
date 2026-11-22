@@ -9,7 +9,8 @@
 //   { width, height, producer, pages,
 //     paths: [{ segs: [[[x, y], …], …], closed, curves, stroke, fill, width, dash, group, ops, role }],
 //     marks: [{ x, y, shape, size, fill, stroke, group, ops, role }],   (a marker stamped at a point)
-//     texts: [{ s, x, y, size, angle, group, role }],
+//     texts: [{ s, x, y, size, angle, group, gid, legendId, role }],   (gid: an SVG's text group)
+//     textOps: [{ x, y, size, order, ops }],   (a PDF's runs of text drawn, without their words)
 //     axes: [{ box, ticks: { x: [{ pos, label }], y: […] }, xLabel, yLabel, xOffset, yOffset }] (an SVG's; a PDF's are found from the rest)
 //     images, notes }
 // group names the plot element something came from, where the file says

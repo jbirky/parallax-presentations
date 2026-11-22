@@ -146,9 +146,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
         if (!r?.url) throw new Error('The figure couldn’t be uploaded.')
         return r.url
       }
-      const wanted = p => p.part === 'base' || choices[p.part]?.include !== false
+      const wanted = p => p.part === 'base' || p.part === 'legend' || choices[p.part]?.include !== false
       const had = (p, plan) => (previous && previous.plan === plan && previous.reuse.get(pieceKey(p))?.src) || null
-      const split = await splitFigure(result, plot.layers, { need: (p, plan) => wanted(p) && !had(p, plan) })
+      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan) })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
       const pieces = []
       for (const p of split.pieces) {
@@ -294,7 +294,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                 {reopen
                   ? 'The figure stays where it is on the slide. A layer left out is taken out of it, and can be put back here.'
                   : figure
-                  ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). The legend stays as drawn; a layer left out is taken out of the figure.`
+                  ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). Each layer’s legend entry comes and goes with it, and the legend’s frame shows while any entry does; a layer left out is taken out of the figure, entry and all.`
                   : `The data goes into a dataset, “${baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.`}
               </p>
               {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
