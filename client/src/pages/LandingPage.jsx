@@ -337,7 +337,7 @@ export default function LandingPage({ onSignIn }) {
 
           <section className="lp-band alt" id="compare" aria-labelledby="lp-compare">
             <div className="lp-wrap">
-              <div className="lp-head">
+              <div className="lp-head lp-head-wide">
                 <div className="lp-label">Where it fits</div>
                 <h2 id="lp-compare">A visual editor that knows <em>LaTeX, BibTeX and git</em></h2>
                 <p>Parallax keeps what researchers like about the tools they already use, in one place.</p>

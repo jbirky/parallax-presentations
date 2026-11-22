@@ -740,6 +740,9 @@ sup[data-cite] { font-weight: 700; }
 .lp-band.alt { background: var(--lp-raise); border-block: 1px solid var(--lp-line); }
 .lp-head { display: grid; gap: 12px; max-width: 700px; }
 .lp-head h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; color: #fff; }
+/* A heading that reads best on one line, where there's room: its paragraph keeps the usual measure */
+.lp-head.lp-head-wide { max-width: none; }
+.lp-head.lp-head-wide p { max-width: 700px; }
 .lp-head p { color: var(--lp-muted); font-size: 17px; }
 
 /* Examples */
