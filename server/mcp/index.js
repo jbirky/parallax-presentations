@@ -80,13 +80,13 @@ const SHOW_INPUT = fromJsonSchema({
   additionalProperties: false,
 })
 
-// deck_preview's: show_deck's, and what the viewer found it can load in the
-// app (deck-viewer.html's probe), once, for the server's log
+// deck_preview's: show_deck's, and once, for the server's log, how the
+// viewer showed the deck (deck-viewer.html's report)
 const PREVIEW_INPUT = fromJsonSchema({
   type: 'object',
   properties: {
     slide: SHOW_INPUT_SLIDE,
-    probe: { type: 'object', description: 'For the viewer: what the app lets it load' },
+    probe: { type: 'object', description: 'For the viewer: how it showed the deck, for the server log' },
   },
   additionalProperties: false,
 })
@@ -99,15 +99,16 @@ const GUIDE_INPUT = fromJsonSchema({
 
 const text = s => ({ content: [{ type: 'text', text: s }] })
 
-// What a link's viewer found it can load in the app, logged once a link
-// while the server runs: which way of showing the deck works there
+// How a link's viewer showed the deck in the app, and what the app said it
+// allows (deck-viewer.html's report), logged once a link while the server
+// runs
 const probed = new Set()
 function noteProbe(link, probe) {
   if (probed.has(link.id) || probed.size > 1000) return
   probed.add(link.id)
   let found
   try { found = JSON.stringify(probe).slice(0, 8000) } catch { return }
-  console.log(`[mcp viewer] link ${link.id.slice(0, 8)}: what the app lets the viewer load: ${found}`)
+  console.log(`[mcp viewer] link ${link.id.slice(0, 8)}: how the viewer showed the deck: ${found}`)
 }
 const failure = s => ({ content: [{ type: 'text', text: s }], isError: true })
 
@@ -494,8 +495,10 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       if (!link) return gone()
       const deck = await loadDeck(link)
       if (!deck || !deckPage) return gone()
-      const html = await deckPage(deck, link.ownerId, { bridge: true })
-      res.set('Content-Security-Policy', sandbox).type('html').send(viewer.forViewer(html))
+      // ?inline=1: for the viewer to draw itself (deck-viewer.html)
+      let html = viewer.forViewer(await deckPage(deck, link.ownerId, { bridge: true }))
+      if (req.query.inline === '1') html = viewer.forInline(html, origin(req))
+      res.set('Content-Security-Policy', sandbox).type('html').send(html)
     } catch (err) {
       console.error('AI link preview failed:', err.message)
       if (!res.headersSent) res.status(500).type('text').send('Something went wrong')

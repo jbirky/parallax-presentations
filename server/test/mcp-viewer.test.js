@@ -41,7 +41,31 @@ describe('the deck viewer', () => {
     assert.match(html, /protocolVersion: PROTOCOL/)
     assert.match(html, /const PROTOCOL = '2026-01-26'/)
     assert.doesNotMatch(html, /<script[^>]+src=|<link[^>]+href=|@import/)
-    const x = ['https://x.test']
-    assert.deepEqual(viewer.viewerMeta('https://x.test'), { ui: { csp: { frameDomains: x, resourceDomains: x, connectDomains: x }, prefersBorder: false } })
+    const meta = viewer.viewerMeta('https://x.test')
+    assert.deepEqual(meta.ui.csp.frameDomains, ['https://x.test'])
+    assert.equal(meta.ui.csp.resourceDomains[0], 'https://x.test')
+    assert.ok(meta.ui.csp.resourceDomains.includes('https://fonts.gstatic.com'))
+    assert.ok(meta.ui.csp.connectDomains.includes('https://tikzjax.com'))
+    assert.equal(meta.ui.prefersBorder, false)
+  })
+
+  it('makes the deck page’s links to the site whole, for drawing it elsewhere', () => {
+    const site = 'https://x.test'
+    const page = [
+      '<script src="/vendor/reveal.js@5.1.0/dist/reveal.js"></script>',
+      "<link href='/vendor/katex@0.16.40/dist/katex.min.css' rel=stylesheet>",
+      '<img src="/uploads/a.png" srcset="/uploads/a.png 1x, /uploads/b.png 2x">',
+      '<div style="background: url(/uploads/bg.jpg)"></div><i style="background:url(\'/examples/e.png\')"></i>',
+      '<script>var deck = {"html":"<img src=\\"/uploads/c.png\\">"}</script>',
+      '<iframe srcdoc="<img src=&quot;/uploads/d.png&quot;>"></iframe>',
+      '@font-face { src: url("/api/fonts/file/f.woff2") }',
+      '<a href="#/2">2</a> <a href="//cdn.test/x.js">x</a> <a href="https://x.test/uploads/e.png">e</a> <a href="/dashboard">d</a>',
+    ].join('\n')
+    const out = viewer.forInline(page, site)
+    for (const f of ['vendor/reveal.js@5.1.0/dist/reveal.js', 'vendor/katex@0.16.40/dist/katex.min.css', 'uploads/a.png 1x', 'uploads/b.png 2x', 'uploads/bg.jpg', 'examples/e.png', 'uploads/c.png', 'uploads/d.png', 'api/fonts/file/f.woff2']) {
+      assert.ok(out.includes(`${site}/${f}`), f)
+    }
+    assert.ok(out.includes('href="#/2"') && out.includes('href="//cdn.test/x.js"') && out.includes('href="/dashboard"'), 'leaves other links')
+    assert.ok(out.includes('href="https://x.test/uploads/e.png"') && !out.includes('x.testhttps'), 'leaves whole links')
   })
 })

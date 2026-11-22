@@ -32,10 +32,18 @@ let page = null
 const viewerHtml = () => page || (page = fs.readFileSync(path.join(__dirname, 'deck-viewer.html'), 'utf8'))
 
 // The resource's metadata for the app: the viewer frames pages from this
-// site, and draws its own frame. It may also load files from the site and
-// ask it for things, for showing the deck where the app won't frame it
+// site, and draws its own frame. Where the app won't let it frame the site,
+// it draws the deck's page itself (deck-viewer.html, 'inline'): it fetches
+// the page from the site, and the page loads its files from the site and
+// the few others deck pages use (generateHTML.js: Google Fonts, cdnfonts,
+// TikZJax, and jsDelivr for libraries this server has no copy of)
+const OUTSIDE_FILES = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://fonts.cdnfonts.com', 'https://tikzjax.com', 'https://cdn.jsdelivr.net']
+const OUTSIDE_FETCHES = ['https://tikzjax.com', 'https://cdn.jsdelivr.net']
 const viewerMeta = origin => ({
-  ui: { csp: { frameDomains: [origin], resourceDomains: [origin], connectDomains: [origin] }, prefersBorder: false },
+  ui: {
+    csp: { frameDomains: [origin], resourceDomains: [origin, ...OUTSIDE_FILES], connectDomains: [origin, ...OUTSIDE_FETCHES] },
+    prefersBorder: false,
+  },
 })
 
 // Preview tokens: <link id>.<expiry, seconds in base 36>.<HMAC-SHA256>
@@ -72,6 +80,11 @@ function deckVersion(deck) {
 const FOR_VIEWER = '<style>#fs-btn { display: none !important; }</style>'
 const forViewer = html => html.replace('</head>', `${FOR_VIEWER}</head>`)
 
+// The deck's page for the viewer to draw itself, in a frame whose address
+// is the app's: its links to this site's files, made whole
+const SITE_FILES = /(["'(=\s;,])\/(uploads|vendor|examples|api)\//g
+const forInline = (html, origin) => html.replace(SITE_FILES, (m, before, dir) => `${before}${origin}/${dir}/`)
+
 // The editor, open at a deck, as the app's own address bar has it
 // (client/src/App.jsx): /dashboard/<its title, slugified>
 const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
@@ -79,5 +92,5 @@ const editorUrl = (origin, deck) => `${origin}/dashboard/${slugify(deck.title)}`
 
 module.exports = {
   VIEWER_URI, VIEWER_MIME, PREVIEW_PATH, PREVIEW_TTL_MS,
-  viewerHtml, viewerMeta, previewTokens, deckVersion, forViewer, editorUrl, slugify,
+  viewerHtml, viewerMeta, previewTokens, deckVersion, forViewer, forInline, editorUrl, slugify,
 }

@@ -127,8 +127,10 @@ if (!IS_CLOUD) app.use(localOnly())
 // feed are public, and the pages that use them are sandboxed (sendDeckPage),
 // so their requests come from origin null: those answer any origin, without
 // credentials. So do AI collaborator links, whose secret is in the URL, not a
-// cookie (a browser-based MCP client calls them from its own origin).
-const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+// cookie (a browser-based MCP client calls them from its own origin), and
+// their viewer's preview pages, which it fetches to draw where it can't
+// frame them (server/mcp/viewer.js).
+const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp|ai-preview)\/|^\/api\/live\/[^/]+\/(stream|status)$/
 const publicCors = cors()
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))

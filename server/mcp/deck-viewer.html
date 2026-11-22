@@ -182,50 +182,102 @@
   const say = text => { note.textContent = text; note.hidden = false }
   const siteOf = url => { try { return new URL(url).host } catch { return 'the site' } }
 
-  // Whether the app said it lets the viewer frame pages from the deck's site.
-  // Apps list the sites they allowed (hostCapabilities.sandbox.csp); Claude
-  // allows them only once the person does, and not for every connector or
-  // in every conversation (claude.com/docs/connectors/building/mcp-apps/
-  // embedded-sites). An app that doesn't say gets the benefit of the doubt.
-  function frameRefused(url) {
-    const allowed = host.capabilities.sandbox && host.capabilities.sandbox.csp && host.capabilities.sandbox.csp.frameDomains
-    if (!Array.isArray(allowed)) return false
+  // Whether the app said it lets the viewer use the deck's site, in one of
+  // its lists (hostCapabilities.sandbox.csp: frameDomains, resourceDomains,
+  // connectDomains); null when it didn't say
+  function allows(list, url) {
+    const csp = host.capabilities.sandbox && host.capabilities.sandbox.csp
+    const allowed = csp && csp[list]
+    if (!Array.isArray(allowed)) return null
     let at
-    try { at = new URL(url) } catch { return false }
-    return !allowed.some(d => {
+    try { at = new URL(url) } catch { return null }
+    return allowed.some(d => {
       if (d === at.origin) return true
       // A subdomain wildcard, scheme://*.example.com
       const m = typeof d === 'string' && /^([a-z]+:)\/\/\*(\.[^/:]+)$/.exec(d)
       return !!m && m[1] === at.protocol && at.hostname.endsWith(m[2])
     })
   }
-  let refused = false
 
-  // A new copy of the deck at a slide, behind the one showing until it's
-  // ready. The first stays hidden until its page says it's showing; if it
-  // never does, the app most likely kept the viewer from framing it.
+  // How the viewer shows the deck. 'frame': it frames the deck's page from
+  // the site. 'inline': it draws the page itself, in a frame of its own
+  // (srcdoc), with the page's files from the site, where the app won't let
+  // it frame the site but lets it load files from it. Claude lets a view
+  // frame a site only once the person allows it, and not for every
+  // connector or account (claude.com/docs/connectors/building/mcp-apps/
+  // embedded-sites), but loads the files of the sites it declares. null:
+  // neither. An app that doesn't say gets a frame, and then the page drawn
+  // itself if the frame doesn't load.
+  let mode = 'frame'
+  let fellBack = false
+  const canDraw = url => allows('resourceDomains', url) !== false && allows('connectDomains', url) !== false
+  function chooseMode(url) {
+    if (allows('frameDomains', url) !== false) return 'frame'
+    return canDraw(url) ? 'inline' : null
+  }
+
+  // The deck's page, for drawing itself: its links to the site's files made
+  // whole by the server (viewer.js forInline), opening at a slide, which
+  // Reveal reads from the address
+  const INLINE_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+  async function inlinePage(slideId) {
+    const url = new URL(deck.url)
+    url.searchParams.set('inline', '1')
+    const res = await fetch(url.href, { credentials: 'omit' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const html = await res.text()
+    if (!slideId) return html
+    const hash = JSON.stringify(`#/s-${encodeURIComponent(slideId)}`)
+    const script = `<script>try { history.replaceState(null, '', ${hash}) } catch (e) { location.hash = ${hash} }<\/script>`
+    return html.replace(/<head[^>]*>/i, m => m + script)
+  }
+
+  // A new copy of the deck at a slide, behind the one showing until its page
+  // says it's showing. If the first never does, the app most likely kept
+  // the viewer from framing it: it draws the page itself, where it can
   function load(slideId) {
     const frame = document.createElement('iframe')
     frame.title = `${deck.title}, as presented`
-    frame.src = deck.url + (slideId ? `#/s-${encodeURIComponent(slideId)}` : '')
     frame.allow = 'fullscreen'
     frame.className = 'loading'
     const first = !showing
     if (first) {
       for (const other of stage.querySelectorAll('iframe')) other.remove()
-      if (!refused) say('Opening the presentation…')
+      say('Opening the presentation…')
     }
-    setTimeout(() => {
+    const drawn = mode === 'inline'
+    const notLoaded = () => {
       if (!frame.isConnected || !frame.classList.contains('loading')) return
-      if (!first) reveal(frame)
-      else if (!refused) say(`The presentation didn’t load. This app may not let the viewer show pages from ${siteOf(deck.url)}.`)
-    }, first ? FIRST_LOAD : 10000)
+      if (!first) return reveal(frame)
+      if (!drawn && !fellBack && canDraw(deck.url)) {
+        fellBack = true
+        mode = 'inline'
+        frame.remove()
+        return load(slideId)
+      }
+      say(`The presentation didn’t load. This app may not let the viewer show pages from ${siteOf(deck.url)}.`)
+      report(false)
+    }
+    setTimeout(notLoaded, first ? FIRST_LOAD : 10000)
     stage.appendChild(frame)
+    if (!drawn) {
+      frame.src = deck.url + (slideId ? `#/s-${encodeURIComponent(slideId)}` : '')
+      return
+    }
+    frame.setAttribute('sandbox', INLINE_SANDBOX)
+    inlinePage(slideId).then(html => {
+      if (frame.isConnected) frame.srcdoc = html
+    }, () => {
+      // Keep the copy that's showing; or say it didn't load
+      if (!first) frame.remove()
+      else notLoaded()
+    })
   }
 
   function reveal(frame) {
     for (const other of stage.querySelectorAll('iframe')) if (other !== frame) other.remove()
     frame.classList.remove('loading')
+    if (!showing) report(true)
     showing = frame
     note.hidden = true
   }
@@ -283,15 +335,16 @@
     stage.style.aspectRatio = `${next.width} / ${next.height}`
     editorButton.hidden = !(next.editorUrl && host.capabilities.openLinks)
     if (!before) {
-      // Say so now rather than after a wait, but load it anyway, in case
-      // the app frames it after all
-      refused = frameRefused(next.url)
-      if (refused) say(`This app hasn’t let the viewer show pages from ${siteOf(next.url)}, so the presentation can’t show here. If the app asks you to allow that site, or offers a review of the sites this viewer uses, allow it and open the viewer again.`)
-      load(next.open && has(next.open) ? next.open : null)
+      mode = chooseMode(next.url)
+      if (mode) load(next.open && has(next.open) ? next.open : null)
+      else {
+        say(`This app doesn’t let the viewer show pages or load files from ${siteOf(next.url)}, so the presentation can’t show here.`)
+        report(false)
+      }
       describe()
       return
     }
-    if (next.version === before.version) return
+    if (next.version === before.version || !mode) return
     lastChange = Date.now()
     // The slide the AI is on when following its changes; else the person's
     // slide, or the one now at its place when theirs is gone
@@ -345,7 +398,6 @@
       if (!next || !next.url || !Array.isArray(next.slides)) throw new Error('no preview came back')
       failures = 0
       update(next)
-      try { runProbe(new URL(next.url).origin) } catch {}
     } catch {
       failures++
       if (failures >= GIVE_UP) {
@@ -386,85 +438,32 @@
   if ('IntersectionObserver' in window) new IntersectionObserver(entries => onScreenNow(entries.some(e => e.isIntersecting))).observe(viewer)
   document.addEventListener('visibilitychange', () => { if (!document.hidden && onScreen) poll() })
 
-  // ── What the app lets the viewer load ──
-  // Checked once, and sent with a deck_preview call for the server's log:
-  // which ways of showing the deck would work here when the app won't let
-  // the viewer frame the deck's page. The browser's reports of what the
-  // app's Content Security Policy blocked say why, and carry the policy.
+  // ── What happened, for the server's log ──
+  // Sent once with a deck_preview call: how the viewer showed the deck,
+  // whether it loaded, what the app said it allows, and the browser's
+  // reports of what the app's Content Security Policy blocked
 
   const blocked = []
   let policy = ''
   document.addEventListener('securitypolicyviolation', e => {
     if (!policy) policy = String(e.originalPolicy || '').slice(0, 3000)
-    if (blocked.length < 30) blocked.push(`${e.effectiveDirective || e.violatedDirective} ${String(e.blockedURI || '').slice(0, 80)} ${e.disposition || ''}`.trim())
+    if (blocked.length < 30) blocked.push(`${e.effectiveDirective || e.violatedDirective} ${String(e.blockedURI || '').slice(0, 80)}`.trim())
   })
   let initialized = null
-  let probe = null // what it found, until sent
-  let probed = false
-
-  function runProbe(site) {
-    if (probed) return
-    probed = true
-    const found = {}
-    const asset = p => `${site}${p}${p.includes('?') ? '&' : '?'}probe=${Date.now()}`
-    const within = (ms, work) => Promise.race([work, new Promise(r => setTimeout(() => r('no answer'), ms))])
-    const element = (tag, attrs) => new Promise(resolve => {
-      const el = document.createElement(tag)
-      el.onload = () => { resolve('ok'); el.remove() }
-      el.onerror = () => { resolve('failed'); el.remove() }
-      Object.assign(el, attrs)
-      document.head.appendChild(el)
-    })
-    const image = src => new Promise(resolve => { const im = new Image(); im.onload = () => resolve('ok'); im.onerror = () => resolve('failed'); im.src = src })
-    const font = src => new FontFace('ParallaxProbe', `url(${src})`).load().then(() => 'ok', e => `failed ${e && e.name}`)
-    // A frame from the viewer itself, that answers if its script runs
-    const frames = []
-    const framed = (what, attrs) => within(4000, new Promise(resolve => {
-      const f = document.createElement('iframe')
-      f.setAttribute('sandbox', 'allow-scripts')
-      f.style.cssText = 'position:absolute;left:-9999px;width:10px;height:10px;border:0'
-      const listen = e => {
-        if (e.source !== f.contentWindow || !e.data || e.data.type !== 'parallax-probe') return
-        window.removeEventListener('message', listen)
-        resolve(e.data.result || 'ok')
-      }
-      window.addEventListener('message', listen)
-      Object.assign(f, attrs)
-      frames.push(f)
-      document.body.appendChild(f)
-    }))
-    const answer = 'parent.postMessage({ type: "parallax-probe", result: r }, "*")'
-    const inner = `<script>var r = "ok"; ${answer}<\/script>`
-    const innerScript = `<script>var s = document.createElement("script"); s.onload = function () { var r = "ok"; ${answer} }; s.onerror = function () { var r = "failed"; ${answer} }; s.src = ${JSON.stringify(asset('/vendor/katex@0.16.40/dist/katex.min.js'))}; document.head.appendChild(s)<\/script>`
-    let evalResult
-    try { evalResult = new Function('return 1')() === 1 ? 'ok' : 'odd' } catch (e) { evalResult = `failed ${e.name}` }
-    let storage
-    try { localStorage.getItem('x'); storage = 'ok' } catch (e) { storage = `failed ${e.name}` }
-    let blobUrl = null
-    try { blobUrl = URL.createObjectURL(new Blob([inner], { type: 'text/html' })) } catch {}
-    Promise.all([
-      within(5000, element('script', { src: asset('/vendor/katex@0.16.40/dist/katex.min.js') })).then(r => { found.script = r }),
-      within(5000, element('link', { rel: 'stylesheet', href: asset('/vendor/katex@0.16.40/dist/katex.min.css') })).then(r => { found.style = r }),
-      within(5000, image(asset('/social/parallax.jpg'))).then(r => { found.image = r }),
-      within(5000, image('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')).then(r => { found.dataImage = r }),
-      within(5000, font(asset('/vendor/katex@0.16.40/dist/fonts/KaTeX_Main-Regular.woff2'))).then(r => { found.font = r }),
-      within(5000, font('data:font/woff2;base64,d09GMgABAAAAAA')).then(r => { found.dataFont = r }),
-      within(5000, fetch(asset('/ai-preview/probe'), { mode: 'no-cors' }).then(() => 'ok', e => `failed ${e && e.name}`)).then(r => { found.fetch = r }),
-      framed('srcdoc', { srcdoc: inner }).then(r => { found.srcdocFrame = r }),
-      framed('srcdoc script', { srcdoc: innerScript }).then(r => { found.srcdocFrameScript = r }),
-      (blobUrl ? framed('blob', { src: blobUrl }) : Promise.resolve('no blob')).then(r => { found.blobFrame = r }),
-    ]).then(() => {
-      for (const f of frames) f.remove()
-      const r = initialized || {}
-      probe = {
-        ...found, eval: evalResult, storage,
-        origin: String(window.origin), location: location.protocol === 'blob:' ? 'blob' : location.origin,
-        host: r.hostInfo || null, protocol: r.protocolVersion || null,
-        capabilities: JSON.stringify(host.capabilities).slice(0, 1500),
-        context: Object.keys(host.context || {}).join(','),
-        policy, blocked,
-      }
-    })
+  let probe = null // the report, until sent
+  let reported = false
+  const began = Date.now()
+  function report(loaded) {
+    if (reported) return
+    reported = true
+    const r = initialized || {}
+    probe = {
+      mode, fellBack, loaded, ms: Date.now() - began,
+      host: r.hostInfo || null, protocol: r.protocolVersion || null,
+      capabilities: JSON.stringify(host.capabilities).slice(0, 1500),
+      policy, blocked,
+    }
+    // Sent with the next check
   }
 
   // ── Starting ──

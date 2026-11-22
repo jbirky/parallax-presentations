@@ -453,7 +453,10 @@ describe('AI collaborator links', { skip }, () => {
     assert.deepEqual(listed.map(r => [r.uri, r.mimeType]), [['ui://parallax/deck-viewer', 'text/html;profile=mcp-app']])
     const read = (await rpc(secret, 'resources/read', { uri: 'ui://parallax/deck-viewer' })).body.result.contents[0]
     assert.equal(read.mimeType, 'text/html;profile=mcp-app')
-    assert.deepEqual(read._meta.ui.csp, { frameDomains: [site], resourceDomains: [site], connectDomains: [site] })
+    assert.deepEqual(read._meta.ui.csp.frameDomains, [site])
+    assert.equal(read._meta.ui.csp.resourceDomains[0], site)
+    assert.equal(read._meta.ui.csp.connectDomains[0], site)
+    for (const d of [...read._meta.ui.csp.resourceDomains, ...read._meta.ui.csp.connectDomains]) assert.match(d, /^https:\/\/[a-z0-9.-]+$/, 'origins only')
     assert.match(read.text, /^<!doctype html>/)
     assert.match(read.text, /'ui\/initialize'/)
     assert.match(read.text, /name: 'deck_preview'/)
@@ -470,7 +473,7 @@ describe('AI collaborator links', { skip }, () => {
     assert.deepEqual([p.title, p.width, p.height, p.ai, p.open, p.editorUrl], ['Viewer talk', 960, 540, null, null, `${site}/dashboard/viewer-talk`])
     assert.equal((await callTool(secret, 'deck_preview')).body.result.structuredContent.version, p.version, 'the same deck, the same version')
     assert.equal((await callTool(secret, 'deck_preview', { slide: 2 })).body.result.structuredContent.open, 'slide-cutoff')
-    // What the viewer found it can load in the app: logged once, never shown
+    // How the viewer showed the deck: logged once, never shown
     const logged = []
     const log = console.log
     console.log = (...a) => { if (String(a[0]).startsWith('[mcp viewer]')) logged.push(a.join(' ')); else log(...a) }
@@ -505,6 +508,18 @@ describe('AI collaborator links', { skip }, () => {
     assert.match(html, /parallax-deck-go/)
     assert.match(html, /id="s-slide-cutoff"/)
     assert.match(html, /#fs-btn \{ display: none !important; \}<\/style><\/head>/, 'no Fullscreen button of its own')
+
+    // For the viewer to draw itself where the app won't let it frame the
+    // site: the same page, fetched from the app's origin, its links to the
+    // site's files made whole
+    const inline = await fetch(here(p.url) + '?inline=1', { headers: { Origin: 'https://abc.claudemcpcontent.com' } })
+    assert.equal(inline.status, 200)
+    assert.equal(inline.headers.get('access-control-allow-origin'), '*')
+    const drawn = await inline.text()
+    assert.match(drawn, /Reveal\.initialize/)
+    assert.match(drawn, /id="s-slide-cutoff"/)
+    assert.doesNotMatch(drawn, /["'(=\s]\/(vendor|uploads|examples|api)\//, 'no links to the site left relative')
+    if (/["(]\/vendor\//.test(html)) assert.ok(drawn.includes(`${site}/vendor/`))
 
     // Served before sign-in: a page framed on another site can't follow
     // Clerk's handshake redirect
