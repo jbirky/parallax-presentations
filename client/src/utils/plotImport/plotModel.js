@@ -98,10 +98,10 @@ export function plotFromDrawing(drawing) {
     if (sameBox(b, box)) continue
     if (isSpine(p, b, box) || isInnerTick(p, b, box)) continue
     if (p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && spansBox(p, box)) { grid = true; continue }
-    if (p.fill && (p.closed || isClosed(p)) && p.segs.length === 1 && rectOf(p.segs[0])) { rects.push({ ...rectOf(p.segs[0]), fill: p.fill, group: p.group, order: p.order ?? 0 }); continue }
+    if (p.fill && (p.closed || isClosed(p)) && p.segs.length === 1 && rectOf(p.segs[0])) { rects.push({ ...rectOf(p.segs[0]), fill: p.fill, group: p.group, ops: p.ops, order: p.order ?? 0 }); continue }
     if (p.fill && !p.stroke) { fills.push(p); continue }
     if (!p.stroke) continue
-    if (p.segs.every(s => s.length === 2 && (flat(s, 0) || flat(s, 1)))) { for (const s of p.segs) segments.push({ s, color: p.stroke, group: p.group }); continue }
+    if (p.segs.every(s => s.length === 2 && (flat(s, 0) || flat(s, 1)))) { for (const s of p.segs) segments.push({ s, color: p.stroke, group: p.group, ops: p.ops }); continue }
     lines.push(p)
   }
   if (fills.length) warnings.push(`${fills.length === 1 ? 'A filled area' : `${fills.length} filled areas`} (fill_between, a shaded band) couldn’t be read as data.`)
@@ -128,6 +128,7 @@ export function plotFromDrawing(drawing) {
     layers.push({
       kind: 'points', color, shape: first.shape, size: first.size, z: first.order ?? 0,
       groups: new Set(ms.map(m => m.group).filter(Boolean)),
+      ops: ms.map(m => m.ops).filter(Boolean),
       px: ms.map(m => m.x), py: ms.map(m => m.y),
       data: { x: ms.map(m => X.toData(m.x)), y: ms.map(m => Y.toData(m.y)) },
       fidelity: 'exact',
@@ -137,8 +138,9 @@ export function plotFromDrawing(drawing) {
   attachErrors(layers, levels, 'x', X, Y, warnings)
   // An error bar's caps go with its points
   for (const c of caps) {
-    const layer = c.group && layers.find(l => l.kind === 'points' && l.color === (c.fill || c.stroke))
-    if (layer) layer.groups.add(c.group)
+    const layer = (c.group || c.ops) && layers.find(l => l.kind === 'points' && l.color === (c.fill || c.stroke))
+    if (layer && c.group) layer.groups.add(c.group)
+    if (layer && c.ops) layer.ops.push(c.ops)
   }
 
   for (const p of lines) {
@@ -146,6 +148,7 @@ export function plotFromDrawing(drawing) {
     layers.push({
       kind: 'line', color: p.stroke, width: p.width, style: dashStyle(p.dash, p.width), z: p.order ?? 0,
       groups: new Set(p.group ? [p.group] : []),
+      ops: p.ops ? [p.ops] : [],
       data: { x: pts.map(([x]) => (isFinite(x) ? X.toData(x) : NaN)), y: pts.map(([, y]) => (isFinite(y) ? Y.toData(y) : NaN)) },
       fidelity: 'as drawn',
     })
@@ -169,7 +172,7 @@ export function plotFromDrawing(drawing) {
         else { value = hi; shifted = true }
         data.x.push(left); data.x2.push(right); data.y.push(value)
       }
-      layers.push({ kind: 'bars', color: fill, z: rs[0].order, data, fidelity: 'exact', groups: new Set(rs.map(r => r.group).filter(Boolean)) })
+      layers.push({ kind: 'bars', color: fill, z: rs[0].order, data, fidelity: 'exact', groups: new Set(rs.map(r => r.group).filter(Boolean)), ops: rs.map(r => r.ops).filter(Boolean) })
     }
     if (shifted) warnings.push('Some bars don’t start at zero (stacked bars?); they stand on zero here.')
   }
@@ -190,8 +193,10 @@ export function plotFromDrawing(drawing) {
     l.id = `l${i + 1}`
     counts[l.kind] = (counts[l.kind] || 0) + 1
     if (!l.name) l.name = `${noun[l.kind]} ${counts[l.kind]}`
-    // The SVG groups that draw it, for keeping the figure as it is (splitSvg.js)
+    // What draws it, for keeping the figure as it is: an SVG's groups
+    // (splitSvg.js), a PDF's operators (splitPdf.js)
     l.groups = [...(l.groups || [])]
+    l.ops = l.ops || []
     delete l.z; delete l.px; delete l.py
   })
 
@@ -230,7 +235,7 @@ function withInlineMarks(drawing) {
     const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
     const { shape, size } = markerShape(p.segs.map(s => s.map(([x, y]) => [x - cx, y - cy])), p.curves)
     if (shape === 'other' || shape === 'polygon') continue
-    marks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, role: p.role, line: shape === 'hline' || shape === 'vline' ? p.segs[0] : null })
+    marks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, ops: p.ops, role: p.role, line: shape === 'hline' || shape === 'vline' ? p.segs[0] : null })
     inline.add(p)
   }
   return { ...drawing, marks, paths: (drawing.paths || []).filter(p => !inline.has(p)) }
@@ -547,6 +552,7 @@ function attachErrors(layers, segs, axis, X, Y, warnings) {
     if (!hit) { left.push(g); continue }
     const { layer, i } = hit
     if (g.group && layer.groups) layer.groups.add(g.group)
+    if (g.ops && layer.ops) layer.ops.push(g.ops)
     const A = axis === 'y' ? Y : X
     const lo = A.toData(axis === 'y' ? Math.min(ay, by) : Math.min(ax, bx))
     const hi = A.toData(axis === 'y' ? Math.max(ay, by) : Math.max(ax, bx))

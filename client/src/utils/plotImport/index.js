@@ -3,18 +3,22 @@
 
 // Importing a plot: a figure saved from matplotlib as a PDF or an SVG, read
 // in the browser into its axes and layers (plotModel.js), with a picture of
-// it to check them against (PlotImportModal.jsx). The file isn't uploaded:
-// only the data read from it is, as a dataset (toGraph.js).
+// it to check them against (PlotImportModal.jsx). Then either a graph of its
+// data (toGraph.js: only the data is uploaded, as a dataset), or the figure
+// as it is, cut into pieces each layer can come and go with (splitFigure;
+// toFigure.js: the pieces and the file are uploaded).
 
 import { libUrl, localizeLibraries } from '../libraries'
 import { readPdfDrawing } from './pdfReader'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
+import { splitSvg } from './splitSvg'
+import { splitPdf } from './splitPdf'
 
 export { PlotError } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
-export { figureElements } from './toFigure'
+export { figureElements, readFigure, pieceKey } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -34,9 +38,9 @@ async function loadPdfjs() {
   return pdfjsLib
 }
 
-// { kind, plot, preview, text }: preview is an image URL; revoke it with
-// URL.revokeObjectURL when it's an object URL (an SVG's). text: an SVG's
-// own, for keeping the figure as it is (splitSvg.js)
+// { kind, plot, preview, text, bytes }: preview is an image URL; revoke it
+// with URL.revokeObjectURL when it's an object URL (an SVG's). text, an
+// SVG's, and bytes, a PDF's: for keeping the figure as it is (splitFigure)
 export async function readPlotFile(file) {
   const kind = plotKind(file)
   if (!kind) throw new PlotError('Choose a PDF or an SVG saved from matplotlib.')
@@ -58,7 +62,29 @@ export async function readPlotFile(file) {
     throw new PlotError(`This PDF couldn’t be read (${err.message || 'unknown error'}).`)
   }
   const plot = plotFromDrawing(drawing)
-  return { kind, plot, preview: await pdfPreview(bytes.slice(), pdfjsLib) }
+  return { kind, plot, bytes, preview: await pdfPreview(bytes.slice(), pdfjsLib) }
+}
+
+// A figure read by readPlotFile that can be kept as it is: every layer of it
+// drawn by groups an SVG names, or by operators a PDF lists
+export function keepable(result) {
+  const layers = result?.plot?.layers
+  if (!layers?.length) return false
+  if (result.kind === 'svg') return !!result.text && layers.every(l => l.groups?.length)
+  return result.kind === 'pdf' && !!result.bytes && layers.every(l => l.ops?.length)
+}
+
+// A figure read by readPlotFile, cut into the pieces toFigure.js stacks:
+// { pieces: [{ part, run, blob }], plan, width, height, type, ext }, an
+// SVG's pieces as SVG, a PDF's as PNG. need(piece, plan): whether to make a
+// piece (else its blob is null)
+export async function splitFigure(result, layers, { need = () => true } = {}) {
+  if (result.kind === 'svg') {
+    const { pieces, ...rest } = splitSvg(result.text, layers)
+    return { ...rest, pieces: pieces.map(p => ({ part: p.part, run: p.run, blob: need(p, rest.plan) ? new Blob([p.svg], { type: rest.type }) : null })) }
+  }
+  // pdf.js hands the bytes to its worker, so each read gets a copy
+  return splitPdf(result.bytes.slice(), layers, await loadPdfjs(), { need })
 }
 
 // The PDF's first page as a PNG data URL

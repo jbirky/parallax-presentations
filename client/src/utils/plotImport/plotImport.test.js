@@ -12,11 +12,13 @@ import { readSvgDrawing, parsePathData, transformOf } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { parseTickLabel, parseAxisOffset, markerShape } from './drawing'
 import { plotToGraph, defaultChoices } from './toGraph'
+import { planPdf } from './splitPdf'
+import { splitSvg } from './splitSvg'
 
 const require = createRequire(import.meta.url)
 const fixture = name => new URL(`./fixtures/${name}`, import.meta.url)
 const truth = JSON.parse(readFileSync(fixture('truth.json'), 'utf8'))
-const { DOMParser } = new Window()
+const { DOMParser, XMLSerializer } = new Window()
 let pdfjs
 
 beforeAll(async () => {
@@ -232,5 +234,39 @@ describe('the graph an imported plot becomes', () => {
     expect(bars.graph.expressions[0].data).toMatchObject({ mark: 'bars', x: 'bars_1_x', x2: 'bars_1_x2', y: 'bars_1_y' })
     const neg = plotToGraph(readSvg('negative'), { datasetName: 'n', choices: {} })
     expect(neg.graph.expressions.find(e => e.data.mark === 'line').style).toBe('dashed')
+  })
+})
+
+describe('keeping a PDF figure as it is', () => {
+  // The page's drawing operators, as pdf.js lists them
+  async function operators(name) {
+    const task = pdfjs.getDocument({ data: new Uint8Array(readFileSync(fixture(`${name}.pdf`))), verbosity: 0 })
+    try { return await (await (await task.promise).getPage(1)).getOperatorList() } finally { task.destroy() }
+  }
+
+  it('cuts the page’s painting operators into runs in the order they paint, as the SVG of the figure is cut', async () => {
+    for (const name of ['decay', 'bars', 'loglog', 'negative', 'seaborn-darkgrid']) {
+      const plot = await readPdf(name)
+      for (const l of plot.layers) expect(l.ops.length, `${name} ${l.id}`).toBeGreaterThan(0)
+      const { runs, paints, plan } = planPdf(await operators(name), plot.layers, pdfjs.OPS)
+      // Each painting operator in one run, in order
+      const all = runs.flatMap(r => [...r.ops])
+      expect(all, name).toEqual([...paints].sort((a, b) => a - b))
+      // A layer's runs: the operators that paint it, and only those
+      for (const l of plot.layers) {
+        const own = []
+        for (const [a, b] of l.ops) for (let i = a; i <= b; i++) if (paints.has(i)) own.push(i)
+        expect(runs.filter(r => r.part === l.id).flatMap(r => [...r.ops]).sort((a, b) => a - b), `${name} ${l.id}`).toEqual([...new Set(own)].sort((a, b) => a - b))
+      }
+      // The SVG of the same figure is cut into the same runs
+      const svg = readFileSync(fixture(`${name}.svg`), 'utf8')
+      const parts = p => p.split(' ').map(r => r.split(':')[0]).join(' ')
+      expect(parts(plan), name).toBe(parts(splitSvg(svg, readSvg(name).layers, { Parser: DOMParser, Serializer: XMLSerializer }).plan))
+    }
+  })
+
+  it('cuts the decay figure around its interleaved layers', async () => {
+    const plot = await readPdf('decay')
+    expect(planPdf(await operators('decay'), plot.layers, pdfjs.OPS).plan).toBe('base:26 l2:57 l1:1 l2:19 base:12')
   })
 })

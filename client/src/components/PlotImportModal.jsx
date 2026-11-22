@@ -8,18 +8,20 @@
 // leaves at. Then, either:
 //   a graph of its data: a dataset of the layers' data, linked to the deck,
 //     and a Graph element's fields for the editor (onInsert);
-//   the figure as it is (an SVG): its base and each layer as SVG images,
-//     stacked in a group, each layer hidden until its step and from the step
-//     it leaves at (onInsertElements).
+//   the figure as it is: the file and the pieces it's cut into (images: an
+//     SVG's as SVG, a PDF's as PNG), uploaded, the pieces stacked in a
+//     group, each layer's hidden until its step and from the step it leaves
+//     at (onInsertElements).
+// A figure kept as it is opens here again (figure: its elements; source:
+// its file, { url, name }), to change its layers: onInsertElements(elements,
+// { replace: the ids they stand in for }).
 
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, splitSvg, figureElements } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey } from '../utils/plotImport'
 
 const STEPS = Array.from({ length: 12 }, (_, i) => i + 1)
-// An SVG matplotlib saved, every layer of it drawn by groups the file names
-const keepable = r => !!r && r.kind === 'svg' && !!r.text && r.plot.layers.length > 0 && r.plot.layers.every(l => l.groups?.length)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
 function describe(layer) {
@@ -39,15 +41,28 @@ async function freeName(base) {
   return name
 }
 
-export default function PlotImportModal({ file: initialFile, presentationId, dark, onInsert, onInsertElements, onClose }) {
+export default function PlotImportModal({ file: initialFile, source, figure: figureEls, presentationId, dark, onInsert, onInsertElements, onClose }) {
   const [file, setFile] = useState(initialFile || null)
-  const [result, setResult] = useState(null) // { kind, plot, preview }
+  const [result, setResult] = useState(null) // { kind, plot, preview, text, bytes }
   const [choices, setChoices] = useState({})
   const [oneByOne, setOneByOne] = useState(true)
   const [mode, setMode] = useState('graph') // 'graph', or 'figure': kept as it is
+  const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(initialFile ? 'reading' : '')
+  const [busy, setBusy] = useState(initialFile || source ? 'reading' : '')
   const input = useRef(null)
+  const reopen = !!figureEls?.length
+
+  // A figure opened again: its file, from where it was uploaded
+  useEffect(() => {
+    if (!source?.url || initialFile) return undefined
+    let live = true
+    fetch(source.url)
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.blob() })
+      .then(b => { if (live) setFile(new File([b], source.name || 'figure', { type: b.type })) })
+      .catch(() => { if (live) { setError('The figure’s file couldn’t be fetched.'); setBusy('') } })
+    return () => { live = false }
+  }, [source?.url, source?.name, initialFile])
 
   useEffect(() => {
     if (!file) return undefined
@@ -59,9 +74,11 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
     readPlotFile(file).then(r => {
       preview = r.preview
       if (!live) return
+      const prev = reopen ? readFigure(figureEls, r.plot) : null
       setResult(r)
-      setChoices(defaultChoices(r.plot, oneByOne))
-      // An SVG matplotlib saved can be kept as it is: start there
+      setPrevious(prev)
+      setChoices(prev ? { ...defaultChoices(r.plot, oneByOne), ...prev.choices } : defaultChoices(r.plot, oneByOne))
+      // A figure matplotlib saved can be kept as it is: start there
       setMode(keepable(r) ? 'figure' : 'graph')
       setBusy('')
     }).catch(err => {
@@ -98,6 +115,7 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
   async function insert() {
     if (!plot || !included.length) return
     if (figure) return insertFigure()
+    if (reopen) return
     setBusy('saving')
     setError('')
     try {
@@ -115,24 +133,36 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
     }
   }
 
-  // The figure's base and its layers as SVG images, uploaded, then stacked
+  // The figure cut into pieces, uploaded with its file, then stacked. Opened
+  // again, the pieces it already has stand in for new ones where it's cut
+  // the same way
   async function insertFigure() {
     setBusy('saving')
     setError('')
     try {
-      const split = splitSvg(result.text, plot.layers)
       const name = baseName(file?.name).replace(/[^\w.-]+/g, '-').slice(0, 40) || 'figure'
-      const upload = async (svg, part) => {
-        const r = await api.uploadFile(new File([svg], `${name}-${part}.svg`, { type: 'image/svg+xml' }))
+      const upload = async f => {
+        const r = await api.uploadFile(f)
         if (!r?.url) throw new Error('The figure couldn’t be uploaded.')
         return r.url
       }
-      const urls = { base: await upload(split.base, 'base') }
-      for (const layer of split.layers) {
-        if (choices[layer.id]?.include === false) continue
-        urls[layer.id] = await upload(layer.svg, layer.id)
+      const wanted = p => p.part === 'base' || choices[p.part]?.include !== false
+      const had = (p, plan) => (previous && previous.plan === plan && previous.reuse.get(pieceKey(p))?.src) || null
+      const split = await splitFigure(result, plot.layers, { need: (p, plan) => wanted(p) && !had(p, plan) })
+      const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
+      const pieces = []
+      for (const p of split.pieces) {
+        if (!wanted(p)) continue
+        const url = p.blob
+          ? await upload(new File([p.blob], `${name}-${p.part}${p.run ? `-${p.run + 1}` : ''}.${split.ext}`, { type: split.type }))
+          : had(p, split.plan)
+        pieces.push({ part: p.part, run: p.run, url })
       }
-      onInsertElements(figureElements(plot, urls, { choices }))
+      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan }
+      const elements = figureElements(plot, pieces, previous
+        ? { choices, meta, reuse: previous.reuse, box: previous.box, groupId: previous.groupId, z: previous.z }
+        : { choices, meta })
+      onInsertElements(elements, previous ? { replace: previous.ids } : undefined)
     } catch (err) {
       setError(err.message || 'The figure couldn’t be added.')
       setBusy('')
@@ -150,13 +180,14 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onKeyDown={e => { if (e.key === 'Escape' && busy !== 'saving') onClose() }}
       onDragOver={e => e.preventDefault()}
-      onDrop={e => { e.preventDefault(); choose(e.dataTransfer.files?.[0]) }}>
-      <div role="dialog" aria-label="Import a plot" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '88vw', maxWidth: 1080, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+      onDrop={e => { e.preventDefault(); if (!reopen) choose(e.dataTransfer.files?.[0]) }}>
+      <div role="dialog" aria-label={reopen ? 'Edit the figure’s layers' : 'Import a plot'} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '88vw', maxWidth: 1080, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Import a plot</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{reopen ? 'Edit the figure’s layers' : 'Import a plot'}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            A figure saved from matplotlib as a PDF or an SVG becomes a graph of its data, whose layers can come and go a step at a time.
-            Markers, bars and error bars come in exactly; a line comes through the points the file draws it with.
+            {reopen
+              ? 'Rename the layers, choose the steps they come and go at, or put back one left out.'
+              : 'A figure saved from matplotlib as a PDF or an SVG can be kept just as it’s drawn, or made into a graph of its data; either way its layers can come and go a step at a time.'}
           </div>
         </div>
 
@@ -170,7 +201,7 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
           {error && !plot && (
             <div role="alert" style={{ fontSize: 13, display: 'grid', gap: 6 }}>
               <span>{error}</span>
-              <span style={{ color: 'var(--text-muted)' }}>Plot import reads figures saved from matplotlib as PDF or SVG; a PNG or JPEG has no data to read.</span>
+              {!reopen && <span style={{ color: 'var(--text-muted)' }}>Plot import reads figures saved from matplotlib as PDF or SVG; a PNG or JPEG has no data to read.</span>}
             </div>
           )}
 
@@ -192,11 +223,11 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
             </div>
 
             <div style={{ flex: '1 1 420px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div role="radiogroup" aria-label="What to make of it" style={{ display: 'grid', gap: 6 }}>
+              {!reopen && <div role="radiogroup" aria-label="What to make of it" style={{ display: 'grid', gap: 6 }}>
                 {[
                   ['figure', 'Keep the figure as it is', canKeep
                     ? 'matplotlib’s own drawing, with each layer coming and going a step at a time.'
-                    : 'Only for a figure saved as SVG: plt.savefig("figure.svg").'],
+                    : 'Only for a figure whose every layer could be found in the file.'],
                   ['graph', 'Make a graph of its data', 'A Parallax graph of the data, in the deck’s look, which can be pointed at and changed.'],
                 ].map(([key, label, note]) => {
                   const off = key === 'figure' && !canKeep
@@ -211,7 +242,7 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
                     </label>
                   )
                 })}
-              </div>
+              </div>}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
                 <span style={{ color: 'var(--text-muted)' }}>Show the layers</span>
                 <button type="button" className={`btn ${oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={oneByOne} onClick={() => reveal(true)}>One a step</button>
@@ -260,8 +291,10 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
                 </ul>
               )}
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                {figure
-                  ? 'The figure and each layer are saved as SVG images in this presentation, stacked in a group; the legend stays as drawn. A layer left out is taken out of the figure.'
+                {reopen
+                  ? 'The figure stays where it is on the slide. A layer left out is taken out of it, and can be put back here.'
+                  : figure
+                  ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). The legend stays as drawn; a layer left out is taken out of the figure.`
                   : `The data goes into a dataset, “${baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.`}
               </p>
               {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
@@ -272,12 +305,17 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', flexShrink: 0 }}>
           <input ref={input} type="file" accept=".pdf,.svg,application/pdf,image/svg+xml" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; choose(f) }} />
-          <button className="btn btn-secondary" style={{ fontSize: 12, marginRight: 'auto' }} disabled={busy === 'saving'} onClick={() => input.current?.click()}>
-            {file ? 'Choose another figure…' : 'Choose a figure…'}
-          </button>
+          {reopen ? <span style={{ marginRight: 'auto' }} /> : (
+            <button className="btn btn-secondary" style={{ fontSize: 12, marginRight: 'auto' }} disabled={busy === 'saving'} onClick={() => input.current?.click()}>
+              {file ? 'Choose another figure…' : 'Choose a figure…'}
+            </button>
+          )}
           <button className="btn btn-secondary" style={{ fontSize: 12 }} disabled={busy === 'saving'} onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={!plot || !included.length || !!busy} onClick={insert}>
-            {busy === 'saving' ? (figure ? 'Adding the figure…' : 'Adding the graph…') : `Insert ${figure ? 'figure' : 'graph'}${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}`}
+          <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={!plot || !included.length || !!busy || (reopen && !figure)} onClick={insert}>
+            {busy === 'saving'
+              ? (reopen ? 'Updating the figure…' : figure ? 'Adding the figure…' : 'Adding the graph…')
+              : reopen ? 'Update figure'
+                : `Insert ${figure ? 'figure' : 'graph'}${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}`}
           </button>
         </div>
       </div>

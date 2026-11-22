@@ -8,6 +8,8 @@
 // comes from pdf.js's text content; with matplotlib's default Type 3 fonts
 // a minus sign has no text, so plotModel.js puts it back from the labels'
 // order. pdfjsLib is pdf.js, loaded by the caller (index.js, or the tests).
+// Each mark and path keeps the operators that draw it (ops: [first, last],
+// indices into the list), for keeping the figure as it is (splitPdf.js).
 
 import { IDENTITY, multiply, apply, hexColor, markerShape } from './drawing'
 
@@ -70,7 +72,7 @@ export function walk(ops, OPS) {
       case 'paintFormXObjectBegin': {
         forms.push([ctm, stroke, fill, width, dash, form])
         ctm = multiply(ctm, a[0] || IDENTITY)
-        form = { x: ctm[4], y: ctm[5], segs: [], curves: 0, filled: false, stroked: false, fill, stroke, scale: Math.hypot(ctm[0], ctm[1]) || 1 }
+        form = { x: ctm[4], y: ctm[5], segs: [], curves: 0, filled: false, stroked: false, fill, stroke, scale: Math.hypot(ctm[0], ctm[1]) || 1, begin: i }
         break
       }
       case 'paintFormXObjectEnd': {
@@ -78,7 +80,7 @@ export function walk(ops, OPS) {
         ;[ctm, stroke, fill, width, dash, form] = forms.pop() || [ctm, stroke, fill, width, dash, null]
         if (done && done.segs.length) {
           const { shape, size } = markerShape(done.segs, done.curves)
-          marks.push({ x: done.x, y: done.y, shape, size, fill: done.filled ? done.fill : null, stroke: done.stroked ? done.stroke : null, order: order++ })
+          marks.push({ x: done.x, y: done.y, shape, size, fill: done.filled ? done.fill : null, stroke: done.stroked ? done.stroke : null, order: order++, ops: [done.begin, i] })
         }
         break
       }
@@ -100,7 +102,7 @@ export function walk(ops, OPS) {
           form.stroke = stroke
         } else {
           const scale = Math.hypot(ctm[0], ctm[1]) || 1
-          paths.push({ segs, closed, curves, stroke: stroked ? stroke : null, fill: filled ? fill : null, width: width * scale, dash: stroked ? dash : null, order: order++ })
+          paths.push({ segs, closed, curves, stroke: stroked ? stroke : null, fill: filled ? fill : null, width: width * scale, dash: stroked ? dash : null, order: order++, ops: [i, i] })
         }
         break
       }

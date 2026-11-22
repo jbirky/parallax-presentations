@@ -1373,6 +1373,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             canOpen && { label: editLabel, action: () => openElement(el) },
             el.type === 'image' && { label: 'Crop', action: () => startCrop(id) },
             el.type === 'image' && el.imageW != null && { label: 'Reset crop', action: resetCrop },
+            el.type === 'image' && el.figure?.src && { label: 'Edit figure layers\u2026', action: command('edit-figure') },
             el.type === 'image' && { label: 'Replace image\u2026', action: command('replace-image') },
             (el.type === 'image' || el.type === 'video') && el.src && { label: 'Copy URL', action: copyUrl },
             '-',

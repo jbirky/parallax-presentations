@@ -7,13 +7,14 @@
 // A drawing is what a figure's file draws, in points with y going up, as
 // a PDF has it:
 //   { width, height, producer, pages,
-//     paths: [{ segs: [[[x, y], …], …], closed, curves, stroke, fill, width, dash, group, role }],
-//     marks: [{ x, y, shape, size, fill, stroke, group, role }],   (a marker stamped at a point)
+//     paths: [{ segs: [[[x, y], …], …], closed, curves, stroke, fill, width, dash, group, ops, role }],
+//     marks: [{ x, y, shape, size, fill, stroke, group, ops, role }],   (a marker stamped at a point)
 //     texts: [{ s, x, y, size, angle, group, role }],
 //     axes: [{ box, ticks: { x: [{ pos, label }], y: […] }, xLabel, yLabel, xOffset, yOffset }] (an SVG's; a PDF's are found from the rest)
 //     images, notes }
 // group names the plot element something came from, where the file says
-// (an SVG's line2d_3); role marks what isn't data (a tick, a spine, the
+// (an SVG's line2d_3); ops, the operators that draw it (a PDF's: [first,
+// last] in pdf.js's list); role marks what isn't data (a tick, a spine, the
 // legend, a label). plotModel.js reads a plot out of it.
 
 export const IDENTITY = [1, 0, 0, 1, 0, 0]

@@ -14,9 +14,14 @@ const PLOT = {
   warnings: ['Some y error bars reach further one way than the other; they’re shown the same both ways.'],
 }
 const reading = { result: null, error: null }
+const splitting = { fn: null } // in place of splitFigure (a PDF's needs pdf.js and a canvas)
 vi.mock('../utils/plotImport', async importOriginal => {
   const real = await importOriginal()
-  return { ...real, readPlotFile: vi.fn(async () => { if (reading.error) throw reading.error; return reading.result }) }
+  return {
+    ...real,
+    readPlotFile: vi.fn(async () => { if (reading.error) throw reading.error; return reading.result }),
+    splitFigure: vi.fn((...args) => (splitting.fn ? splitting.fn(...args) : real.splitFigure(...args))),
+  }
 })
 vi.mock('../utils/api', () => ({
   api: {
@@ -33,12 +38,15 @@ import PlotImportModal from './PlotImportModal'
 import { readFileSync } from 'fs'
 import { readSvgDrawing } from '../utils/plotImport/svgReader'
 import { plotFromDrawing } from '../utils/plotImport/plotModel'
+import { splitSvg } from '../utils/plotImport/splitSvg'
+import { figureElements } from '../utils/plotImport/toFigure'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root, el
 beforeEach(() => {
   reading.result = { kind: 'pdf', plot: structuredClone(PLOT), preview: 'data:image/png;base64,AAAA' }
   reading.error = null
+  splitting.fn = null
   vi.clearAllMocks()
 })
 afterEach(() => { act(() => root.unmount()); el.remove() })
@@ -109,14 +117,14 @@ describe('importing a plot', () => {
     expect(graph.expressions[0].step).toBeUndefined()
   })
 
-  it('makes a graph of a PDF’s data: a PDF can’t be kept as it is', async () => {
+  it('makes only a graph of a figure whose layers weren’t all found in the file', async () => {
     await mount()
     const radios = [...el.querySelectorAll('input[type="radio"]')]
     expect(radios.map(r => [r.checked, r.disabled])).toEqual([[false, true], [true, false]])
-    expect(el.textContent).toContain('Only for a figure saved as SVG')
+    expect(el.textContent).toContain('Only for a figure whose every layer could be found in the file')
   })
 
-  it('keeps an SVG figure as it is: its base and each layer as images, stacked, each at its steps', async () => {
+  it('keeps an SVG figure as it is: the file, and its pieces as images, stacked, each layer’s at its steps', async () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
     reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
     const { onInsertElements, onInsert } = await mount({ name: 'decay.svg' })
@@ -126,16 +134,105 @@ describe('importing a plot', () => {
     const points = items().find(li => li.querySelector('input[aria-label="Layer name"]').value === 'measured')
     await act(async () => set(points.querySelectorAll('select')[1], '3'))
     await act(async () => button('Insert figure with 2 layers').click())
-    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg', 'decay-l1.svg', 'decay-l2.svg'])
-    expect(api.uploadFile.mock.calls[0][0].type).toBe('image/svg+xml')
+    // The file first, to open the figure again; then the pieces in drawing
+    // order: the model line comes between the points' error bars and markers
+    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay.svg', 'decay-base.svg', 'decay-l2.svg', 'decay-l1.svg', 'decay-l2-2.svg', 'decay-base-2.svg'])
+    expect(api.uploadFile.mock.calls[1][0].type).toBe('image/svg+xml')
     expect(api.uploadDataset).not.toHaveBeenCalled()
     expect(onInsert).not.toHaveBeenCalled()
-    const [els] = onInsertElements.mock.calls[0]
-    expect(els.map(e => e.src)).toEqual(['/uploads/decay-base.svg', '/uploads/decay-l1.svg', '/uploads/decay-l2.svg'])
+    const [els, how] = onInsertElements.mock.calls[0]
+    expect(how).toBeUndefined()
+    expect(els.map(e => e.src)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2'].map(p => `/uploads/decay-${p}.svg`))
     expect(new Set(els.map(e => e.groupId)).size).toBe(1)
-    const measured = els.find(e => e.name === 'measured')
-    expect(measured).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null, 3: 'hidden' } })
+    for (const e of els) expect(e.figure).toMatchObject({ src: '/uploads/decay.svg', file: 'decay.svg', plan: 'base:53 l2:57 l1:1 l2:19 base:23' })
+    for (const e of els.filter(e => e.figure.part === 'l2')) expect(e).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null, 3: 'hidden' } })
     expect(els.find(e => e.name === 'model')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null } })
+  })
+
+  it('keeps a PDF figure as it is, its pieces as PNG images', async () => {
+    const plot = structuredClone(PLOT)
+    plot.layers[0].ops = [[40, 40]]
+    plot.layers[1].ops = [[20, 30], [50, 60]]
+    reading.result = { kind: 'pdf', bytes: new Uint8Array([37, 80, 68, 70]), plot, preview: 'data:image/png;base64,AAAA' }
+    const png = new Blob(['png'], { type: 'image/png' })
+    splitting.fn = vi.fn(async () => ({
+      pieces: [['base', 0], ['l2', 0], ['l1', 0], ['l2', 1], ['base', 1]].map(([part, run]) => ({ part, run, blob: png })),
+      plan: 'base:9 l2:11 l1:1 l2:11 base:30', width: 432, height: 288, type: 'image/png', ext: 'png',
+    }))
+    const { onInsertElements } = await mount()
+    expect(el.querySelector('input[type="radio"]').checked).toBe(true)
+    expect(el.textContent).toContain('cut into PNG images')
+    await act(async () => button('Insert figure with 2 layers').click())
+    expect(splitting.fn.mock.calls[0][0]).toBe(reading.result)
+    expect(api.uploadFile.mock.calls.map(([f]) => [f.name, f.type])).toEqual([
+      ['decay.pdf', 'application/pdf'], ['decay-base.png', 'image/png'], ['decay-l2.png', 'image/png'],
+      ['decay-l1.png', 'image/png'], ['decay-l2-2.png', 'image/png'], ['decay-base-2.png', 'image/png'],
+    ])
+    const [els] = onInsertElements.mock.calls[0]
+    expect(els.map(e => e.name)).toEqual(['Figure', 'measured', 'model', 'measured, part 2', 'Figure, part 2'])
+    expect(els[0].figure).toMatchObject({ src: '/uploads/decay.pdf', file: 'decay.pdf', part: 'base', run: 0 })
+  })
+
+  describe('a figure opened again', () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    const plot = plotFromDrawing(readSvgDrawing(text))
+    const { plan, pieces } = splitSvg(text, plot.layers)
+    const source = { url: '/uploads/decay.svg', name: 'decay.svg' }
+    // The figure as it was inserted: the model at step 1, the points at 2 until 3
+    const inserted = () => figureElements(plot, pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+      choices: { l1: { step: 1 }, l2: { step: 2, until: 3, name: 'Raw data' } },
+      meta: { src: source.url, file: 'decay.svg', plan },
+    }).map(e => ({ ...e, x: 210, y: 64 }))
+    let realFetch
+    beforeEach(() => {
+      reading.result = { kind: 'svg', text, plot: structuredClone(plot), preview: 'blob:x' }
+      realFetch = globalThis.fetch
+      globalThis.fetch = vi.fn(async () => ({ ok: true, blob: async () => new Blob([text], { type: 'image/svg+xml' }) }))
+    })
+    afterEach(() => { globalThis.fetch = realFetch })
+
+    it('fetches its file and shows its layers as they are, to change and update in place', async () => {
+      const els = inserted()
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      expect(globalThis.fetch).toHaveBeenCalledWith('/uploads/decay.svg')
+      expect(el.querySelector('[role="dialog"]').getAttribute('aria-label')).toBe('Edit the figure’s layers')
+      expect(el.querySelectorAll('input[type="radio"]')).toHaveLength(0)
+      expect(button('Choose another figure')).toBeUndefined()
+      const row = name => items().find(li => li.querySelector('input[aria-label="Layer name"]').value === name)
+      expect([...row('Raw data').querySelectorAll('select')].map(s => s.value)).toEqual(['2', '3'])
+      expect([...row('model').querySelectorAll('select')].map(s => s.value)).toEqual(['1', '0'])
+      // The model now leaves at step 4
+      await act(async () => set(row('model').querySelectorAll('select')[1], '4'))
+      await act(async () => button('Update figure').click())
+      // Cut the same way: its images stand, nothing's uploaded
+      expect(api.uploadFile).not.toHaveBeenCalled()
+      const [again, how] = onInsertElements.mock.calls[0]
+      expect(how).toEqual({ replace: els.map(e => e.id) })
+      expect(again.map(e => e.id)).toEqual(els.map(e => e.id))
+      expect(again.map(e => e.src)).toEqual(els.map(e => e.src))
+      for (const e of again) expect(e).toMatchObject({ x: 210, y: 64, groupId: els[0].groupId })
+      expect(again.find(e => e.figure.part === 'l1')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null, 4: 'hidden' } })
+      expect(again.filter(e => e.figure.part === 'l2').map(e => e.name)).toEqual(['Raw data', 'Raw data, part 2'])
+    })
+
+    it('puts back a layer left out, uploading only its pieces', async () => {
+      const els = inserted().filter(e => e.figure.part !== 'l2')
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      const row = items().find(li => li.querySelector('input[aria-label="Layer name"]').value === 'measured')
+      expect(row.querySelector('input[type="checkbox"]').checked).toBe(false)
+      await act(async () => row.querySelector('input[type="checkbox"]').click())
+      await act(async () => button('Update figure').click())
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-l2.svg', 'decay-l2-2.svg'])
+      const [again] = onInsertElements.mock.calls[0]
+      expect(again.map(e => e.src)).toEqual(['/uploads/old-base-0.svg', '/uploads/decay-l2.svg', '/uploads/old-l1-0.svg', '/uploads/decay-l2-2.svg', '/uploads/old-base-1.svg'])
+    })
+
+    it('says when its file can’t be fetched', async () => {
+      globalThis.fetch = vi.fn(async () => ({ ok: false, status: 404 }))
+      await mount({ file: undefined, source, figure: inserted() })
+      expect(el.querySelector('[role="alert"]').textContent).toContain('The figure’s file couldn’t be fetched.')
+      expect(button('Update figure').disabled).toBe(true)
+    })
   })
 
   it('says why a figure couldn’t be read', async () => {

@@ -271,7 +271,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [notesRequest, setNotesRequest] = useState(0)
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
-  const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import as a graph
+  const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import; { source, figure }: one kept as it is, opened again
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
@@ -1424,10 +1424,30 @@ function draw() {
     setPlotImport(null)
   }, [slideW, slideH])
 
-  // A figure kept as it is (PlotImportModal): its base and layers, stacked
-  // in one group in the middle of the slide
-  const insertKeptFigure = useCallback((elements) => {
+  // A figure kept as it is (PlotImportModal): its pieces, stacked in one
+  // group in the middle of the slide; or, opened again, in place of the
+  // pieces it had, wherever they are
+  const insertKeptFigure = useCallback((elements, { replace } = {}) => {
     if (!elements?.length) return
+    if (replace?.length) {
+      const gone = new Set(replace)
+      setPresentation(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          slides: prev.slides.map(s => {
+            const els = s.elements || []
+            const at = els.findIndex(e => gone.has(e.id))
+            if (at < 0) return s
+            const before = els.slice(0, at).filter(e => !gone.has(e.id))
+            return { ...s, elements: [...before, ...elements, ...els.slice(at).filter(e => !gone.has(e.id))] }
+          }),
+        }
+      })
+      setSelectedElementIds(elements.map(el => el.id))
+      setPlotImport(null)
+      return
+    }
     const { width: w, height: h } = elements[0]
     const dx = Math.round((slideW - w) / 2), dy = Math.round((slideH - h) / 2)
     const placed = elements.map(el => ({ ...el, x: el.x + dx, y: el.y + dy }))
@@ -2708,6 +2728,17 @@ function draw() {
     else if (command === 'ungroup') ungroupElements()
     else if (command === 'lock' || command === 'unlock') updateElements(selectedOnSlide().map(el => ({ id: el.id, locked: command === 'lock' })))
     else if (command === 'replace-image') replaceImage(id)
+    else if (command === 'edit-figure') editFigure(id)
+  }
+
+  // A figure kept as it is, opened again in the plot import: its elements on
+  // this slide (those still grouped with the one right-clicked), and its file
+  const editFigure = (id) => {
+    const els = currentSlide?.elements || []
+    const el = els.find(e => e.id === id)
+    if (!el?.figure?.src) return
+    const figure = els.filter(e => e.figure?.id === el.figure.id && (!el.groupId || e.groupId === el.groupId))
+    setPlotImport({ source: { url: el.figure.src, name: el.figure.file }, figure })
   }
 
   // The empty slide's right-click menu
@@ -3066,7 +3097,7 @@ function draw() {
     try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addModelElement(result.url, file.name) }
     catch (err) { showNotice(`The model couldn’t be uploaded: ${err.message}`) }
   })
-  // A matplotlib figure as a graph whose layers come and go by step (PlotImportModal)
+  // A matplotlib figure, kept as drawn or as a graph, its layers coming and going by step (PlotImportModal)
   const importPlot = () => pickFile('.pdf,.svg,application/pdf,image/svg+xml', file => setPlotImport({ file }))
   const importPdfPages = () => pickFile('application/pdf,.pdf', async file => {
     showNotice('Reading the PDF…')
@@ -3139,7 +3170,7 @@ function draw() {
   const scienceItems = [
     { label: 'Graph', icon: <ChartSpline size={14} />, title: 'Functions, curves, regions and fields', keywords: 'plot chart function', action: addGraph },
     { label: '3D graph', icon: <ChartSpline size={14} />, title: 'Surfaces, curves and points in 3D, to turn while presenting', keywords: 'surface plot', action: addGraph3d },
-    { label: 'Plot from a figure…', icon: <ChartSpline size={14} />, title: 'A matplotlib figure saved as PDF or SVG, as a graph of its data whose layers come and go by step', keywords: 'matplotlib import pdf svg data layers', action: importPlot },
+    { label: 'Plot from a figure…', icon: <ChartSpline size={14} />, title: 'A matplotlib figure saved as PDF or SVG, kept as drawn or made a graph of its data, its layers coming and going by step', keywords: 'matplotlib import pdf svg data layers figure', action: importPlot },
     { label: 'Diagram', icon: glyph('▦'), title: 'Boxes and arrows', keywords: 'flowchart', action: () => setShowDiagramModal(true) },
     { label: 'TikZ diagram', icon: glyph('⬡'), keywords: 'latex', action: () => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() }) },
     { label: 'Feynman diagram', icon: <Atom size={14} />, title: 'Particle physics diagrams that build up line by line', keywords: 'particle physics', action: addFeynman },
@@ -3269,7 +3300,7 @@ function draw() {
       { label: 'Import', items: [
         !guest && { label: 'PowerPoint (.pptx)…', action: importPptx },
         { label: 'PDF pages…', action: importPdfPages },
-        { label: 'Plot from a PDF or SVG figure…', title: 'A matplotlib figure, as a graph of its data', action: importPlot },
+        { label: 'Plot from a PDF or SVG figure…', title: 'A matplotlib figure, kept as drawn or made a graph of its data', action: importPlot },
         { label: 'LaTeX Beamer…', action: () => setShowBeamerModal(true) },
         { label: 'Slides from another presentation…', action: () => setShowImportSlideModal(true) },
       ] },
@@ -5612,7 +5643,7 @@ function draw() {
       {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
       {showMenuSearch && <MenuSearch menus={menus} onClose={() => setShowMenuSearch(false)} />}
       {plotImport && (
-        <PlotImportModal file={plotImport.file} presentationId={presentationId} dark={slideIsDark()}
+        <PlotImportModal file={plotImport.file} source={plotImport.source} figure={plotImport.figure} presentationId={presentationId} dark={slideIsDark()}
           onInsert={insertImportedPlot} onInsertElements={insertKeptFigure} onClose={() => setPlotImport(null)} />
       )}
       {pdfPages && (
