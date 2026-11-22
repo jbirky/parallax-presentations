@@ -7237,7 +7237,8 @@ function graphRuntime(P, G2, G3, config) {
   function visible(it) {
     const e = exprOf(it);
     if (e.hidden) return false;
-    return !(e.step > 0) || e.step <= step;
+    if (C2.showAll) return true;
+    return (!(e.step > 0) || e.step <= step) && !(e.until > 0 && e.until <= step);
   }
   function niceStep(raw) {
     const p = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -7780,13 +7781,13 @@ function graphRuntime(P, G2, G3, config) {
       E[key] = u;
       return f(E);
     };
-    const place = (u, val) => horiz ? [sx(u), clampPx(sy(val))] : [clampPx(sx(val)), sy(u)];
+    const place = (u, val2) => horiz ? [sx(u), clampPx(sy(val2))] : [clampPx(sx(val2)), sy(u)];
     const runs = [];
     let run = [], pu = 0, pv = NaN;
     for (let i = 0; i <= n; i++) {
       const u = toWorld(i);
-      const val = at(u);
-      if (!isFinite(val)) {
+      const val2 = at(u);
+      if (!isFinite(val2)) {
         if (run.length) {
           runs.push(run);
           run = [];
@@ -7794,8 +7795,8 @@ function graphRuntime(P, G2, G3, config) {
         pv = NaN;
         continue;
       }
-      if (isFinite(pv) && Math.abs(toPx(val) - toPx(pv)) > 24) {
-        let a = pu, b = u, fa = pv, fb = val, broken = false;
+      if (isFinite(pv) && Math.abs(toPx(val2) - toPx(pv)) > 24) {
+        let a = pu, b = u, fa = pv, fb = val2, broken = false;
         const left = [], right = [];
         for (let k2 = 0; k2 < 30; k2++) {
           const m = (a + b) / 2;
@@ -7820,8 +7821,8 @@ function graphRuntime(P, G2, G3, config) {
           run = right.reverse();
         }
       }
-      run.push(place(u, val));
-      pv = val;
+      run.push(place(u, val2));
+      pv = val2;
       pu = u;
     }
     if (run.length) runs.push(run);
@@ -8093,6 +8094,7 @@ function graphRuntime(P, G2, G3, config) {
   let dataStyles = /* @__PURE__ */ new Map();
   let dataHits = [];
   const isNum = (v) => typeof v === "number" && isFinite(v);
+  const val = (v) => v === null || v === void 0 || v === "" ? NaN : +v;
   function extent(values2) {
     let lo = Infinity, hi = -Infinity;
     for (const v of values2) {
@@ -8155,19 +8157,19 @@ function graphRuntime(P, G2, G3, config) {
     const radius = radiusOf(spec, d);
     const alpha2 = clamp4(num9(spec.opacity, mark === "bars" ? 0.85 : 0.85), 0.05, 1);
     const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style };
-    const pxOf = (i) => sx(+d.x[i]), pyOf = (i) => sy(+d.y[i]);
+    const pxOf = (i) => sx(val(d.x[i])), pyOf = (i) => sy(val(d.y[i]));
     const onCanvas = (px, py, m) => px >= -m && px <= W2 + m && py >= -m && py <= H2 + m;
     if (Array.isArray(d.xErr) || Array.isArray(d.yErr)) {
       ctx.lineWidth = 1;
       ctx.globalAlpha = alpha2 * 0.6;
       const byColor = /* @__PURE__ */ new Map();
       for (let i = 0; i < n; i++) {
-        const x = +d.x[i], y = +d.y[i];
+        const x = val(d.x[i]), y = val(d.y[i]);
         if (!isFinite(x) || !isFinite(y)) continue;
         const c = color2(i);
         if (!byColor.has(c)) byColor.set(c, new Path2D());
         const path = byColor.get(c);
-        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0;
+        const ex = Array.isArray(d.xErr) ? Math.abs(val(d.xErr[i])) || 0 : 0, ey = Array.isArray(d.yErr) ? Math.abs(val(d.yErr[i])) || 0 : 0;
         const px = sx(x), py = sy(y);
         if (ex > 0) {
           const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex));
@@ -8192,15 +8194,15 @@ function graphRuntime(P, G2, G3, config) {
     }
     if (mark === "bars") {
       const base3 = logY ? H2 : clamp4(sy(0), 0, H2);
-      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b]);
+      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(val(d.x[i])) && isFinite(val(d.y[i]))).sort((a, b) => d.x[a] - d.x[b]);
       ctx.globalAlpha = alpha2;
       order.forEach((i, k) => {
         const top = pyOf(i);
         if (!isFinite(top)) return;
         let left, right;
-        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) {
+        if (Array.isArray(d.x2) && isFinite(val(d.x2[i]))) {
           left = pxOf(i);
-          right = sx(+d.x2[i]);
+          right = sx(val(d.x2[i]));
         } else {
           const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null;
           const here = pxOf(i);
@@ -9309,11 +9311,11 @@ function graphRuntime(P, G2, G3, config) {
       const horiz = (it.axis || "y") === "y";
       const u = horiz ? wx(px) : wy(py);
       E[horiz ? "x" : "y"] = u;
-      const val = it.f(E);
-      if (!isFinite(val)) continue;
-      const d = horiz ? Math.abs(sy(val) - py) : Math.abs(sx(val) - px);
+      const val2 = it.f(E);
+      if (!isFinite(val2)) continue;
+      const d = horiz ? Math.abs(sy(val2) - py) : Math.abs(sx(val2) - px);
       if (d < 10 && (!best || d < best.d)) {
-        best = horiz ? { d, px, py: sy(val), x: u, y: val, color: e.color } : { d, px: sx(val), py, x: val, y: u, color: e.color };
+        best = horiz ? { d, px, py: sy(val2), x: u, y: val2, color: e.color } : { d, px: sx(val2), py, x: val2, y: u, color: e.color };
       }
     }
     if (!best && dataHits.length) best = dataNear(px, py);
@@ -10498,7 +10500,7 @@ function graphSteps(el) {
   const steps = /* @__PURE__ */ new Set();
   for (const e of el?.expressions || []) {
     if (e?.hidden) continue;
-    const at = [e?.step].concat(e?.field?.steps ? Object.values(e.field.steps) : []);
+    const at = [e?.step, e?.until].concat(e?.field?.steps ? Object.values(e.field.steps) : []);
     for (const v of at) {
       const n = Number(v);
       if (Number.isInteger(n) && n >= 1 && n <= 1e3) steps.add(n);

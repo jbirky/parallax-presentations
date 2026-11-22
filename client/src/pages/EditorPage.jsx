@@ -37,6 +37,7 @@ import Toolbar, { ALIGN_COMMANDS } from '../components/Toolbar'
 import MenuBar, { MenuSearch } from '../components/MenuBar'
 import NotesStrip from '../components/NotesStrip'
 import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
+import PlotImportModal from '../components/PlotImportModal'
 import LayoutPicker from '../components/LayoutPicker'
 import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
@@ -270,6 +271,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [notesRequest, setNotesRequest] = useState(0)
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
+  const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import as a graph
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
@@ -1406,6 +1408,21 @@ function draw() {
     }
     setGraphEditor(null)
   }, [graphEditor, updateElement, slideW, slideH])
+
+  // An imported figure's graph (PlotImportModal), in the middle of the slide
+  const insertImportedPlot = useCallback((graph, size) => {
+    const w = Math.round(size?.w || GRAPH_SIZE.w), h = Math.round(size?.h || GRAPH_SIZE.h)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'graph', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...graph,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+    setPlotImport(null)
+  }, [slideW, slideH])
 
   const addEquation = useCallback(() => {
     setEquationEditor({ elementId: null, equation: defaultEquation(slideIsDark()), size: EQUATION_SIZE, slideBg: slideBackdrop(), dark: slideIsDark() })
@@ -3034,6 +3051,8 @@ function draw() {
     try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addModelElement(result.url, file.name) }
     catch (err) { showNotice(`The model couldn’t be uploaded: ${err.message}`) }
   })
+  // A matplotlib figure as a graph whose layers come and go by step (PlotImportModal)
+  const importPlot = () => pickFile('.pdf,.svg,application/pdf,image/svg+xml', file => setPlotImport({ file }))
   const importPdfPages = () => pickFile('application/pdf,.pdf', async file => {
     showNotice('Reading the PDF…')
     try { setPdfPages(await loadPdfPages(file)) }
@@ -3105,6 +3124,7 @@ function draw() {
   const scienceItems = [
     { label: 'Graph', icon: <ChartSpline size={14} />, title: 'Functions, curves, regions and fields', keywords: 'plot chart function', action: addGraph },
     { label: '3D graph', icon: <ChartSpline size={14} />, title: 'Surfaces, curves and points in 3D, to turn while presenting', keywords: 'surface plot', action: addGraph3d },
+    { label: 'Plot from a figure…', icon: <ChartSpline size={14} />, title: 'A matplotlib figure saved as PDF or SVG, as a graph of its data whose layers come and go by step', keywords: 'matplotlib import pdf svg data layers', action: importPlot },
     { label: 'Diagram', icon: glyph('▦'), title: 'Boxes and arrows', keywords: 'flowchart', action: () => setShowDiagramModal(true) },
     { label: 'TikZ diagram', icon: glyph('⬡'), keywords: 'latex', action: () => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() }) },
     { label: 'Feynman diagram', icon: <Atom size={14} />, title: 'Particle physics diagrams that build up line by line', keywords: 'particle physics', action: addFeynman },
@@ -3234,6 +3254,7 @@ function draw() {
       { label: 'Import', items: [
         !guest && { label: 'PowerPoint (.pptx)…', action: importPptx },
         { label: 'PDF pages…', action: importPdfPages },
+        { label: 'Plot from a PDF or SVG figure…', title: 'A matplotlib figure, as a graph of its data', action: importPlot },
         { label: 'LaTeX Beamer…', action: () => setShowBeamerModal(true) },
         { label: 'Slides from another presentation…', action: () => setShowImportSlideModal(true) },
       ] },
@@ -5575,6 +5596,10 @@ function draw() {
 
       {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
       {showMenuSearch && <MenuSearch menus={menus} onClose={() => setShowMenuSearch(false)} />}
+      {plotImport && (
+        <PlotImportModal file={plotImport.file} presentationId={presentationId} dark={slideIsDark()}
+          onInsert={insertImportedPlot} onClose={() => setPlotImport(null)} />
+      )}
       {pdfPages && (
         <PdfPagesModal pages={pdfPages} onClose={() => setPdfPages(null)}
           onInsert={async files => {

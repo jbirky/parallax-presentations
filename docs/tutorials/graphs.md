@@ -53,7 +53,7 @@ A point made of sliders, like `(p, q)`, can be dragged while presenting, and its
 
 ## Step by step
 
-Under a line's options, **Appears** sets the step it's added at. The graph then builds up as you advance, one step at a time, alongside the slide's other animations.
+Under a line's options, **Appears** sets the step it's added at, and **Leaves** the step it goes at. The graph then builds up as you advance, one step at a time, alongside the slide's other animations: raw data first, then a fit over it, then the raw data gone. In the editor every line shows, whatever its steps.
 
 ## Vector fields and phase portraits
 
@@ -181,6 +181,17 @@ Under each data line, the graph says how many rows it has, or why it has none. I
 For an exoplanet plot, use the dataset from [Live Datasets](./live-datasets.md): `pl_orbper` across, `pl_bmasse` up, both scales **Log**, colored by `discoverymethod` and labeled by `pl_name`. Then add a curve such as `y = 0.5 x^(2/3)` over the points.
 
 Graphs show their data everywhere the deck goes: the editor, Present, share links, live sessions, exported HTML files and PDFs, and decks published to GitHub or Zenodo. The deck carries the columns its graphs plot, so it works offline and never waits on a source (see [Live Datasets](./live-datasets.md#data-in-presented-decks)).
+
+## Importing a matplotlib figure
+
+A figure you saved from matplotlib as a PDF or an SVG can become a graph of its data: **Insert › Science › Plot from a figure…** (or **File › Import › Plot from a PDF or SVG figure…**). Parallax reads the figure in your browser and shows what it found beside it: the axes, with their scales (linear or log), ranges and labels, and each layer, named from the legend.
+
+- **Markers, bars and error bars** come in exactly: the file says where each one is, so their numbers are the ones you plotted.
+- **Lines** come through the points the file draws them with. matplotlib leaves out points that don't change the picture, so a line has fewer points than you gave it; save with `plt.rcParams['path.simplify'] = False` to keep them all.
+
+Each layer can be renamed, left out, and given the step it appears at and the step it leaves at; **One a step** brings them in in the legend's order. **Insert graph** saves the layers' data as a dataset ("*figure* data") linked to the deck, and adds a graph that plots it, in the figure's colors. The figure itself isn't uploaded.
+
+It reads one set of axes (the largest, when a figure has several), with numbered ticks; a PNG or JPEG has no data to read. Filled areas such as `fill_between`, and pictures such as `imshow`'s, are left out, and the dialog says so.
 
 ## Styling
 
