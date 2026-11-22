@@ -177,6 +177,18 @@ export function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = 
   })
 }
 
+// A figure put on a slide whole (dropped there), not yet cut: one image of
+// it (url), with the file it can be cut from (meta: { src, file }), its
+// part 'whole'. Opened again, it's cut as chosen (readFigure: whole)
+export function wholeFigure(plot, { url, meta = {}, x = 0, y = 0, width = IMPORT_WIDTH, zIndex = 2, newId = () => crypto.randomUUID() } = {}) {
+  const height = Math.round(width * (plot.size.height / plot.size.width || 0.7))
+  return {
+    id: newId(), type: 'image', x: Math.round(x), y: Math.round(y), width: Math.round(width), height, zIndex,
+    src: url, objectFit: 'contain', name: 'Figure', alt: 'A figure, whose layers can be made to come and go (right-click it)',
+    figure: { ...meta, id: newId(), plan: '', part: 'whole', run: 0 },
+  }
+}
+
 // What a figure's elements say of it, against its plot read again from its
 // file: the choices it was made with (as chosen, or as its elements show
 // them if they've been changed since), its elements by piece key (to keep
@@ -186,6 +198,16 @@ export function readFigure(elements, plot) {
   const els = (elements || []).filter(e => e.figure)
   if (!els.length) return null
   const meta = els[0].figure
+  // Not cut yet: nothing chosen, its place its one image's
+  const whole = els.find(e => e.figure.part === 'whole')
+  if (whole) {
+    return {
+      whole: true, choices: null, reuse: new Map(), plan: '',
+      meta: { id: meta.id, src: meta.src, file: meta.file },
+      box: { x: whole.x, y: whole.y, width: whole.width, height: whole.height },
+      groupId: whole.groupId || null, z: whole.zIndex ?? 2, ids: els.map(e => e.id),
+    }
+  }
   const all = figureLayers(plot)
   // Each layer's elements, to the layer read again: the same id and look,
   // else the same look; the rest (the base, panels, legends) as they were

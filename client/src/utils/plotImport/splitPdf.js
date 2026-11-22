@@ -53,20 +53,12 @@ export async function splitPdf(data, layers, pdfjsLib, { need = () => true, long
     const { runs, paints, plan } = planPdf(await page.getOperatorList(), layers, pdfjsLib.OPS)
     const [x0, y0, x1, y1] = page.view
     const width = x1 - x0, height = y1 - y0
-    const long = Math.max(width, height) || 1
-    const viewport = page.getViewport({ scale: Math.min(Math.max(longSide / long, 2), 6, 4096 / long) })
+    const viewport = viewportOf(page, longSide)
     const pieces = []
     for (const r of runs) {
       const piece = { part: r.part, run: r.run, blob: null }
       if (need(piece, plan)) {
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.ceil(viewport.width)
-        canvas.height = Math.ceil(viewport.height)
-        // A context of its own, made first: pdf.js would make one with no
-        // alpha, and the piece needs to be clear where it draws nothing
-        const canvasContext = canvas.getContext('2d')
-        await page.render({ canvasContext, viewport, background: 'rgba(0,0,0,0)', operationsFilter: i => !paints.has(i) || r.ops.has(i) }).promise
-        piece.blob = await new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('The figure couldn’t be drawn.'))), 'image/png'))
+        piece.blob = await draw(page, viewport, i => !paints.has(i) || r.ops.has(i))
       }
       pieces.push(piece)
     }
@@ -74,4 +66,36 @@ export async function splitPdf(data, layers, pdfjsLib, { need = () => true, long
   } finally {
     task.destroy()
   }
+}
+
+// The page whole, as a PNG the size of the pieces: a figure put on a slide
+// before it's cut
+export async function pdfFigurePng(data, pdfjsLib, { longSide = 2400 } = {}) {
+  const task = pdfjsLib.getDocument({ data, verbosity: 0, isEvalSupported: false })
+  try {
+    const page = await (await task.promise).getPage(1)
+    return await draw(page, viewportOf(page, longSide))
+  } finally {
+    task.destroy()
+  }
+}
+
+// The scale the pieces are drawn at: longSide pixels, between 2 and 6 to the
+// point, and no more than a canvas holds
+function viewportOf(page, longSide) {
+  const [x0, y0, x1, y1] = page.view
+  const long = Math.max(x1 - x0, y1 - y0) || 1
+  return page.getViewport({ scale: Math.min(Math.max(longSide / long, 2), 6, 4096 / long) })
+}
+
+// The page drawn (only the operators filter lets through) as a PNG, clear
+// where nothing's drawn
+async function draw(page, viewport, operationsFilter) {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  // A context of its own, made first: pdf.js would make one with no alpha
+  const canvasContext = canvas.getContext('2d')
+  await page.render({ canvasContext, viewport, background: 'rgba(0,0,0,0)', ...(operationsFilter ? { operationsFilter } : {}) }).promise
+  return new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('The figure couldn’t be drawn.'))), 'image/png'))
 }

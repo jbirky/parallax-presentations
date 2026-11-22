@@ -13,13 +13,13 @@ import { readPdfDrawing } from './pdfReader'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { splitSvg } from './splitSvg'
-import { splitPdf } from './splitPdf'
+import { splitPdf, pdfFigurePng } from './splitPdf'
 import { partsOf, figureLayers } from './toFigure'
 
 export { PlotError, panelPlot, panelNamed } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
-export { figureElements, readFigure, pieceKey, figureLayers } from './toFigure'
+export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -107,3 +107,19 @@ async function pdfPreview(bytes, pdfjsLib) {
     task.destroy()
   }
 }
+
+// A file dropped on a slide, if it's a figure matplotlib saved that can be
+// kept as it is: { result (readPlotFile's), image: the figure whole (an
+// SVG as itself, a PDF drawn as a PNG), type, ext }. null for anything else
+export async function figureFromFile(file) {
+  if (!plotKind(file)) return null
+  let result
+  try { result = await readPlotFile(file) } catch { return null }
+  if (result.preview?.startsWith('blob:')) URL.revokeObjectURL(result.preview)
+  if (!keepable(result)) return null
+  if (result.kind === 'svg') return { result, image: new Blob([result.text], { type: 'image/svg+xml' }), type: 'image/svg+xml', ext: 'svg' }
+  // A PDF of several pages is a document, not a figure
+  if (result.plot.warnings.some(w => /pages; the first was read/.test(w))) return null
+  return { result, image: await pdfFigurePng(result.bytes.slice(), await loadPdfjs()), type: 'image/png', ext: 'png' }
+}
+

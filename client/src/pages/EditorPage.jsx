@@ -38,6 +38,7 @@ import MenuBar, { MenuSearch } from '../components/MenuBar'
 import NotesStrip from '../components/NotesStrip'
 import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
 import PlotImportModal from '../components/PlotImportModal'
+import { figureFromFile, wholeFigure, plotKind, baseName } from '../utils/plotImport'
 import LayoutPicker from '../components/LayoutPicker'
 import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
@@ -1423,6 +1424,45 @@ function draw() {
     setSelectedElementIds([newEl.id])
     setPlotImport(null)
   }, [slideW, slideH])
+
+  // A PDF or SVG dropped on the slide: a figure matplotlib saved goes in
+  // whole, as one image, with its file, to be cut into pieces that come and
+  // go when it's opened again (right-click › Edit figure layers…); anything
+  // else, as before: an SVG as an image, a PDF's pages to choose from
+  const addDroppedFigure = useCallback(async (file, dropX, dropY) => {
+    const made = await figureFromFile(file).catch(() => null)
+    if (!made) {
+      if (plotKind(file) === 'svg') {
+        try { const r = await api.uploadFile(file); if (r.url) addImageElement(r.url, dropX, dropY) }
+        catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+        return
+      }
+      showNotice('Reading the PDF…')
+      try { setPdfPages(await loadPdfPages(file)) }
+      catch (err) { showNotice(`The PDF couldn’t be read: ${err.message}`) }
+      return
+    }
+    try {
+      const upload = async f => { const r = await api.uploadFile(f); if (!r?.url) throw new Error('nothing came back'); return r.url }
+      const kind = made.result.kind
+      const src = await upload(file.type ? file : new File([file], file.name, { type: kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
+      const name = baseName(file.name).replace(/[^\w.-]+/g, '-').slice(0, 40) || 'figure'
+      const url = kind === 'svg' ? src : await upload(new File([made.image], `${name}.png`, { type: made.type }))
+      const el = wholeFigure(made.result.plot, { url, meta: { src, file: file.name } })
+      // Centered where it was dropped, on the slide
+      el.x = Math.max(0, Math.min(slideW - el.width, Math.round(dropX - el.width / 2)))
+      el.y = Math.max(0, Math.min(slideH - el.height, Math.round(dropY - el.height / 2)))
+      // Over what's on the slide
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), { ...el, zIndex: Math.max(1, ...(s.elements || []).map(e => e.zIndex || 0)) + 1 }] } : s) }
+      })
+      setSelectedElementIds([el.id])
+      showNotice('Figure added: right-click it and choose Edit figure layers… to make its layers come and go.')
+    } catch (err) {
+      showNotice(`The figure couldn’t be added: ${err.message}`)
+    }
+  }, [addImageElement, showNotice, slideW, slideH])
 
   // A figure kept as it is (PlotImportModal): its pieces, stacked in one
   // group in the middle of the slide; or, opened again, in place of the
@@ -5017,6 +5057,7 @@ function draw() {
                   if (result.url) addImageElement(result.url, dropX, dropY)
                 } catch (err) { alert('Upload failed: ' + err.message) }
               }}
+              onAddFigure={addDroppedFigure}
               slideW={slideW}
               slideH={slideH}
               drawTool={drawTool}

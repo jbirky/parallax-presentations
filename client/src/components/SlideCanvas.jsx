@@ -261,7 +261,7 @@ export function editLabelFor(type) {
   return EDIT_LABELS[type] || null
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black' }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black' }) {
   // The slide's colors: its background, or the theme's (utils/themes.js)
   const palette = slidePalette(slide, theme)
   const SLIDE_W = slideW
@@ -833,8 +833,14 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   const onDrop = async (e) => {
     e.preventDefault()
     setDragOver(false)
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/'))
-    if (!files.length || !onAddImage) return
+    // A PDF or an SVG may be a matplotlib figure (onAddFigure says, and adds
+    // it, or else an image or the PDF's pages)
+    const figureFile = f => !!onAddFigure && (/\.(pdf|svg)$/i.test(f.name) || f.type === 'application/pdf' || f.type === 'image/svg+xml')
+    const all = Array.from(e.dataTransfer.files)
+    const figures = all.filter(figureFile)
+    const files = all.filter(f => !figures.includes(f) && (f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/')))
+    if (!files.length && !figures.length) return
+    if (files.length && !onAddImage) return
     // Get drop position in slide coordinates
     let dropX = 130, dropY = 100
     if (canvasRef.current) {
@@ -842,6 +848,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       dropX = Math.round((e.clientX - rect.left) / scale)
       dropY = Math.round((e.clientY - rect.top) / scale)
     }
+    for (const file of figures) await onAddFigure(file, dropX, dropY)
     for (const file of files) {
       await onAddImage(file, dropX, dropY)
     }
@@ -1338,7 +1345,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         {/* Drop hint */}
         {dragOver && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 999, background: 'rgba(99,102,241,0.08)', fontSize: '16px', color: 'rgba(255,255,255,0.7)', fontFamily: 'sans-serif' }}>
-            Drop image here
+            Drop an image or a figure here
           </div>
         )}
       </div>

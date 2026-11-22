@@ -86,6 +86,20 @@ export function plotFromDrawing(drawing) {
     // measured in points (and no graph is made of it)
     if (p !== main) { p.said = []; p.read = readAxes(drawing, p.axes, all, wordsOf(p), p.said, { loose: true }) }
   }
+  // Layers no legend in their panel names: named from a legend of the
+  // figure's own (fig.legend), or one drawn outside every panel
+  const outer = figureLegend(drawing, panels.map(p => p.axes.box), texts)
+  if (outer) {
+    const entries = legendEntries(drawing, outer, texts)
+    for (const p of panels) {
+      const taken = new Set()
+      for (const layer of p.read.layers) {
+        if (layer.name) continue
+        const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape))
+        if (i >= 0) { taken.add(i); layer.name = entries[i].label }
+      }
+    }
+  }
   // The layers' ids across the figure, in the order drawn; their names
   let n = 0
   const noun = { points: 'Points', line: 'Line', bars: 'Bars' }
@@ -697,6 +711,39 @@ function legendOf(d, box, texts, axesId) {
   if (!found.length) return null
   const pts = found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])])
   const b = bboxOf(pts)
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null }
+}
+
+// A legend outside every panel: the figure's own (fig.legend), or one an
+// axes draws outside its box. { box, order, frame } as legendOf has it: an
+// SVG's, from a legend group no axes holds; a PDF's, a filled frame outside
+// the panels with words and samples in it, or, without one, words outside
+// the panels with a sample just before them. null without one
+function figureLegend(d, boxes, texts) {
+  const outside = (x, y) => boxes.every(b => x < b.x0 - 1 || x > b.x1 + 1 || y < b.y0 - 1 || y > b.y1 + 1)
+  const items = [...(d.paths || []), ...(d.marks || [])]
+  if (items.some(it => it.role === 'legend') || (d.texts || []).some(t => t.role === 'legend')) {
+    const own = items.filter(it => it.role === 'legend' && !it.axes)
+    if (!own.length) return null
+    const frame = own.find(p => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4) || null
+    const words = (d.texts || []).filter(t => t.role === 'legend' && !t.axes).flatMap(t => [[t.x, t.y], [t.x + t.w, t.y + t.size]])
+    const b = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap(p => (p.segs ? p.segs.flat() : [[p.x, p.y]])), ...words])
+    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)), frame }
+  }
+  const page = (d.width || 0) * (d.height || 0)
+  const words = texts.filter(t => !t.angle && !parseTickLabel(t.s) && outside(t.x, t.y))
+  for (const p of d.paths || []) {
+    if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue
+    const b = bboxOf(p.segs[0])
+    // Not the figure's background
+    if (page && area(b) > page * 0.5) continue
+    if (!outside((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2)) continue
+    const inFrame = words.filter(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)
+    if (inFrame.some(t => sampleBefore(d, t, p.order ?? 0))) return { box: b, order: p.order ?? 0, frame: p }
+  }
+  const found = words.map(t => ({ t, s: sampleBefore(d, t, -Infinity) })).filter(f => f.s && outside(...centerOf(f.s)))
+  if (!found.length) return null
+  const b = bboxOf(found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])]))
   return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null }
 }
 

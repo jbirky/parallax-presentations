@@ -39,7 +39,7 @@ import { readFileSync } from 'fs'
 import { readSvgDrawing } from '../utils/plotImport/svgReader'
 import { plotFromDrawing } from '../utils/plotImport/plotModel'
 import { splitSvg } from '../utils/plotImport/splitSvg'
-import { figureElements, partsOf } from '../utils/plotImport/toFigure'
+import { figureElements, partsOf, wholeFigure } from '../utils/plotImport/toFigure'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root, el
@@ -290,6 +290,22 @@ describe('importing a plot', () => {
       expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-l2.svg', 'decay-l2-2.svg', 'decay-l2-3.svg'])
       const [again] = onInsertElements.mock.calls[0]
       expect(again.map(e => e.src)).toEqual(['old-base-0', 'decay-l2', 'old-l1-0', 'decay-l2-2', 'old-base-1', 'old-legend-0', 'old-l1-1', 'decay-l2-3'].map(p => `/uploads/${p}.svg`))
+    })
+
+    it('cuts a figure dropped on the slide when it’s opened, uploading its pieces but not its file', async () => {
+      const whole = wholeFigure(plot, { url: '/uploads/decay.svg', meta: { src: source.url, file: 'decay.svg' }, x: 30, y: 20 })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: [whole] })
+      expect(el.textContent).toContain('the figure is then cut into a piece for each')
+      // Nothing chosen yet: one a step
+      const row = name => items().find(li => li.querySelector('input[aria-label="Layer name"]').value === name)
+      expect([...row('model').querySelectorAll('select')].map(s => s.value)).toEqual(['1', '0'])
+      expect([...row('measured').querySelectorAll('select')].map(s => s.value)).toEqual(['2', '0'])
+      await act(async () => button('Update figure').click())
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `decay-${p}.svg`))
+      const [pieces, how] = onInsertElements.mock.calls[0]
+      expect(how).toEqual({ replace: [whole.id] })
+      for (const e of pieces) expect(e).toMatchObject({ x: 30, y: 20, width: 560, figure: { id: whole.figure.id, src: source.url, file: 'decay.svg' } })
+      expect(pieces.find(e => e.figure.part === 'l2')).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null } })
     })
 
     it('says when its file can’t be fetched', async () => {

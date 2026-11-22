@@ -8,7 +8,7 @@ import { Window } from 'happy-dom'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing } from './plotModel'
 import { splitSvg, SplitError } from './splitSvg'
-import { figureElements, readFigure, runsOf, planOf, partsOf } from './toFigure'
+import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure } from './toFigure'
 
 const { DOMParser, XMLSerializer } = new Window()
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -168,6 +168,18 @@ describe('the figure on the slide', () => {
     const without = readFigure(els.filter(e => e.figure.part !== model.id), plot)
     expect(without.choices[model.id]).toEqual({ include: false, name: 'model', step: 0, until: 0 })
     expect(readFigure([{ id: 'x', type: 'image' }], plot)).toBeNull()
+  })
+
+  it('puts a figure dropped on the slide in whole, and opened again, cuts it where it is', () => {
+    let n = 0
+    const el = wholeFigure(plot, { url: '/u/decay.svg', meta: { src: '/u/decay.svg', file: 'decay.svg' }, x: 100, y: 50, newId: () => `w${n++}` })
+    expect(el).toMatchObject({
+      id: 'w0', type: 'image', x: 100, y: 50, width: 560, height: 373, src: '/u/decay.svg', objectFit: 'contain', name: 'Figure',
+      figure: { id: 'w1', src: '/u/decay.svg', file: 'decay.svg', part: 'whole', run: 0, plan: '' },
+    })
+    const back = readFigure([{ ...el, groupId: 'g', zIndex: 7 }], plot)
+    expect(back).toMatchObject({ whole: true, choices: null, plan: '', meta: { id: 'w1', src: '/u/decay.svg', file: 'decay.svg' }, box: { x: 100, y: 50, width: 560, height: 373 }, groupId: 'g', z: 7, ids: ['w0'] })
+    expect(back.reuse.size).toBe(0)
   })
 
   it('knows a layer again by its look when the file reads into layers in another order', () => {

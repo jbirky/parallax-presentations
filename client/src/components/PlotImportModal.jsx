@@ -79,7 +79,8 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       setResult(r)
       setPrevious(prev)
       const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
-      setChoices(prev ? { ...fresh, ...prev.choices } : fresh)
+      // (a figure not cut yet, dropped on the slide, starts from them)
+      setChoices(prev && !prev.whole ? { ...fresh, ...prev.choices } : fresh)
       // A figure matplotlib saved can be kept as it is: start there
       setMode(keepable(r) ? 'figure' : 'graph')
       setGraphOf(r.plot.panels?.find(p => p.main)?.id || null)
@@ -281,7 +282,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
           <div style={{ fontWeight: 600, fontSize: 14 }}>{reopen ? 'Edit the figure’s layers' : 'Import a plot'}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
             {reopen
-              ? 'Rename the layers, choose the steps they come and go at, or put back one left out.'
+              ? previous?.whole ? 'Choose the steps its layers come and go at: the figure is then cut into a piece for each, stacked where it is.' : 'Rename the layers, choose the steps they come and go at, or put back one left out.'
               : 'A figure saved from matplotlib as a PDF or an SVG can be kept just as it’s drawn, or made into a graph of its data; either way its layers can come and go a step at a time.'}
           </div>
         </div>

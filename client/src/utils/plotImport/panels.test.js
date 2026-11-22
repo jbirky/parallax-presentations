@@ -57,6 +57,8 @@ describe('a figure of several panels', () => {
         ['Top left panel', false, false, 2], ['Top right panel', false, false, 2], ['Bottom left panel', true, true, 2], ['Bottom right panel', false, false, 2],
       ])
       expect(grid.layers).toBe(grid.panels[2].layers)
+      // Named from the figure's own legend (fig.legend), in every panel
+      expect(grid.panels.map(p => p.layers.map(l => l.name).join(' '))).toEqual(Array(4).fill('signal samples'))
       expect(grid.warnings.join(' ')).toContain('a graph is made of one of them: the bottom left panel, unless you choose another')
 
       const inset = await read('inset', ext)
