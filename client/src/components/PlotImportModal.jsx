@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot } from '../utils/plotImport'
 
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
@@ -47,6 +47,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [choices, setChoices] = useState({})
   const [oneByOne, setOneByOne] = useState(true)
   const [mode, setMode] = useState('graph') // 'graph', or 'figure': kept as it is
+  const [graphOf, setGraphOf] = useState(null) // of several panels, the one a graph is made of
   const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(initialFile || source ? 'reading' : '')
@@ -81,6 +82,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       setChoices(prev ? { ...fresh, ...prev.choices } : fresh)
       // A figure matplotlib saved can be kept as it is: start there
       setMode(keepable(r) ? 'figure' : 'graph')
+      setGraphOf(r.plot.panels?.find(p => p.main)?.id || null)
       setBusy('')
     }).catch(err => {
       if (!live) return
@@ -100,16 +102,17 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   })
   // The steps by default (one a step or all at once, for a graph or the
   // figure kept as it is), keeping what's left out and what's renamed
-  const restep = (one, asFigure) => {
+  const restep = (one, asFigure, panel = graphOf) => {
     if (result) setChoices(c => {
-      const fresh = defaultChoices(result.plot, one, { figure: asFigure })
-      const out = {}
+      const fresh = defaultChoices(asFigure ? result.plot : panelPlot(result.plot, panel) || result.plot, one, { figure: asFigure })
+      const out = { ...c }
       for (const id of Object.keys(fresh)) out[id] = { ...fresh[id], include: c[id]?.include ?? true, name: c[id]?.name ?? fresh[id].name }
       return out
     })
   }
   const reveal = one => { setOneByOne(one); restep(one, figure) }
   const changeMode = key => { setMode(key); restep(oneByOne, key === 'figure') }
+  const pickPanel = id => { setGraphOf(id); restep(oneByOne, false, id) }
 
   const plot = result?.plot
   const canKeep = keepable(result)
@@ -120,8 +123,14 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const panelById = new Map((panels || []).map(p => [p.id, p]))
   const panelOn = id => { const p = panelById.get(id); return !p || (choices[id]?.include !== false && panelOn(p.parent)) }
   const layerOn = l => choices[l.id]?.include !== false && (!panels || panelOn(l.panel))
-  const listed = plot ? (panels ? figureLayers(plot) : plot.layers) : []
+  // Of several panels, the one a graph is made of, and the plot as it sees it
+  const graphPanel = plot?.panels ? plot.panels.find(p => p.id === graphOf) || plot.panels.find(p => p.main) : null
+  const gplot = plot && graphPanel ? panelPlot(plot, graphPanel.id) || plot : plot
+  const panelWord = p => (/ panel$|^Inset( \d+)?$/.test(p.name) ? p.name.toLowerCase() : p.name)
+  const datasetBase = `${baseName(file?.name)}${graphPanel ? ` ${panelWord(graphPanel)}` : ''} data`
+  const listed = plot ? (panels ? figureLayers(plot) : gplot.layers) : []
   const included = listed.filter(layerOn)
+  const notes = !plot ? [] : figure ? (plot.panels ? [...(plot.fileWarnings || []), `This figure has ${plot.panels.length} panels; each comes and goes with its layers.`] : plot.warnings) : gplot.warnings
 
   async function insert() {
     if (!plot || !included.length) return
@@ -130,12 +139,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
     setBusy('saving')
     setError('')
     try {
-      const name = await freeName(`${baseName(file?.name)} data`)
-      const first = plotToGraph(plot, { datasetName: name, choices, dark })
+      const name = await freeName(datasetBase)
+      const first = plotToGraph(gplot, { datasetName: name, choices, dark })
       const ds = await api.uploadDataset(new File([first.csv], `${name}.csv`, { type: 'text/csv' }), name)
       if (presentationId) await api.linkDataset(presentationId, ds.id)
       // The graph plots the dataset under the name the server gave it
-      const { graph, size } = ds.name && ds.name !== name ? plotToGraph(plot, { datasetName: ds.name, choices, dark }) : first
+      const { graph, size } = ds.name && ds.name !== name ? plotToGraph(gplot, { datasetName: ds.name, choices, dark }) : first
       refreshGraphData()
       onInsert(graph, size)
     } catch (err) {
@@ -187,7 +196,10 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   }
 
   // The axes read, outlined on the figure: each panel's, kept as it is
-  const boxes = plot ? (panels ? panels.map(p => ({ id: p.id, box: p.box, label: String(panels.indexOf(p) + 1) })) : [{ id: 'axes', box: plot.axes.box }]) : []
+  // (every panel, numbered; for a graph, its panel picked out)
+  const boxes = !plot ? [] : plot.panels && (panels || graphPanel)
+    ? plot.panels.map((p, i) => ({ id: p.id, box: p.box, label: String(i + 1), faint: !panels && p !== graphPanel }))
+    : [{ id: 'axes', box: plot.axes.box }]
   const overlayOf = box => ({
     left: `${(box.x0 / plot.size.width) * 100}%`, width: `${((box.x1 - box.x0) / plot.size.width) * 100}%`,
     top: `${(1 - box.y1 / plot.size.height) * 100}%`, height: `${((box.y1 - box.y0) / plot.size.height) * 100}%`,
@@ -295,14 +307,14 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
                 {boxes.map(b => (
-                  <div key={b.id} title="The axes that were read" style={{ position: 'absolute', ...overlayOf(b.box), border: '2px dashed #6366f1', pointerEvents: 'none' }}>
-                    {b.label && <span style={{ position: 'absolute', left: 2, top: 2, fontSize: 11, fontWeight: 700, color: '#fff', background: '#6366f1', borderRadius: 3, padding: '0 4px' }}>{b.label}</span>}
+                  <div key={b.id} title="The axes that were read" style={{ position: 'absolute', ...overlayOf(b.box), border: `2px dashed ${b.faint ? 'rgba(100,116,139,0.6)' : '#6366f1'}`, pointerEvents: 'none' }}>
+                    {b.label && <span style={{ position: 'absolute', left: 2, top: 2, fontSize: 11, fontWeight: 700, color: '#fff', background: b.faint ? 'rgba(100,116,139,0.8)' : '#6366f1', borderRadius: 3, padding: '0 4px' }}>{b.label}</span>}
                   </div>
                 ))}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, display: 'grid', gap: 2 }}>
-                {['x', 'y'].map(k => {
-                  const a = plot.axes[k]
+                {!panels && ['x', 'y'].map(k => {
+                  const a = gplot.axes[k]
                   return <span key={k}><b>{k}</b>: {a.scale}, {fmt(a.range[0])} to {fmt(a.range[1])}{a.label ? ` · ${a.label}` : ''}{a.categories ? ` · ${a.categories.length} named ticks` : ''}</span>
                 })}
                 {plot.producer && <span style={{ color: 'var(--text-muted)' }}>Made by {plot.producer}</span>}
@@ -330,7 +342,18 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   )
                 })}
               </div>}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                {!figure && graphPanel && (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Make a graph of</span>
+                    <select aria-label="Panel to graph" value={graphPanel.id} onChange={e => pickPanel(e.target.value)} style={select}>
+                      {plot.panels.map((p, i) => {
+                        const why = !p.axes ? ' (its numbers can’t be read)' : !p.layers.length ? ' (nothing to graph)' : ''
+                        return <option key={p.id} value={p.id} disabled={!!why}>{i + 1}. {p.name}{why}</option>
+                      })}
+                    </select>
+                  </label>
+                )}
                 <span style={{ color: 'var(--text-muted)' }}>Show the layers</span>
                 <button type="button" className={`btn ${oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={oneByOne} onClick={() => reveal(true)}>One a step</button>
                 <button type="button" className={`btn ${!oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={!oneByOne} onClick={() => reveal(false)}>All at once</button>
@@ -338,9 +361,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
               {panels
                 ? <div aria-label="Panels" style={{ display: 'grid', gap: 10 }}>{panels.map(panelRow)}</div>
                 : <div role="list" aria-label="Layers" style={{ display: 'grid', gap: 8 }}>{listed.map(l => layerRow(l))}</div>}
-              {plot.warnings.length > 0 && (
+              {notes.length > 0 && (
                 <ul aria-label="Notes" style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 3 }}>
-                  {plot.warnings.map(w => <li key={w}>{w}</li>)}
+                  {notes.map(w => <li key={w}>{w}</li>)}
                 </ul>
               )}
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
@@ -348,7 +371,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   ? 'The figure stays where it is on the slide. A layer left out is taken out of it, and can be put back here.'
                   : figure
                   ? `The figure is cut into ${result.kind === 'pdf' ? 'PNG' : 'SVG'} images, stacked in a group, and the file is saved with them so the layers can be changed later (right-click the figure). ${panels ? 'Each panel comes and goes as a whole, and a layer shows only while its panel does. ' : ''}Each layer’s legend entry comes and goes with it, and the legend’s frame shows while any entry does; a layer left out is taken out of the figure, entry and all.`
-                  : `The data goes into a dataset, “${baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.`}
+                  : `The data goes into a dataset, “${datasetBase}”, linked to this presentation; the figure itself isn’t uploaded.`}
               </p>
               {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
             </div>

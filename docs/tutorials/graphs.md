@@ -191,7 +191,7 @@ A figure you saved from matplotlib can come into a slide with its layers coming 
 
 A figure of several panels (`plt.subplots`, an inset) kept as it is lists each panel with its layers under it. A panel comes and goes as a whole (its axes, labels and title), and its layers show only while it does; **One a step** brings in the first panel with the slide, then its layers, then the next panel and its layers. Panels are named from their titles, or by where they are (top left, inset). A figure's own title and a legend for the whole figure (`fig.legend`) stay as drawn.
 
-A graph of its data is made of one set of axes, with numbered ticks: the largest whose numbers can be read, when a figure has several. A PNG or JPEG has no data to read. Filled areas such as `fill_between`, and pictures such as `imshow`'s, are left out, and the dialog says so.
+A graph of its data is made of one set of axes, with numbered ticks. Of a figure with several panels, choose which under **Make a graph of**: any panel whose numbers can be read (shared axes leave some panels without), starting with the largest; the dataset is named after the figure and the panel. A PNG or JPEG has no data to read. Filled areas such as `fill_between`, and pictures such as `imshow`'s, are left out, and the dialog says so.
 
 ## Styling
 

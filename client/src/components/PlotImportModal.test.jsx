@@ -199,14 +199,43 @@ describe('importing a plot', () => {
     expect(els.find(e => e.figure.part === 'p1').states).toBeUndefined()
   })
 
-  it('makes a graph of one panel of several', async () => {
+  it('makes a graph of the panel chosen, of several', async () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/pair.svg`, 'utf8')
     reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
-    await mount({ name: 'pair.svg' })
+    const { onInsert } = await mount({ name: 'pair.svg' })
     await act(async () => el.querySelectorAll('input[type="radio"]')[1].click())
     expect(el.querySelectorAll('[role="group"]')).toHaveLength(0)
-    expect(items().map(li => [li.querySelector('input[aria-label="Layer name"]').value, li.querySelector('select').value])).toEqual([['model', '1'], ['measured', '2']])
-    expect(el.textContent).toContain('a graph of its data is made of “(a) decay”')
+    const row = () => items().map(li => [li.querySelector('input[aria-label="Layer name"]').value, li.querySelector('select').value])
+    // The first, to begin with
+    const pick = el.querySelector('select[aria-label="Panel to graph"]')
+    expect(pick.value).toBe('p1')
+    expect(row()).toEqual([['model', '1'], ['measured', '2']])
+    expect(el.textContent).toContain('a graph is made of one of them: “(a) decay”, unless you choose another')
+    expect(el.textContent).toContain('x: linear')
+    // The other: its layers, its log scales, its notes, its dataset
+    await act(async () => set(pick, 'p2'))
+    expect(row()).toEqual([['stars', '1'], ['gas', '2']])
+    expect(el.textContent).toContain('x: log')
+    expect(el.textContent).toContain('A graph of “(b) scaling”, one of this figure’s 2 panels.')
+    expect(el.textContent).toContain('“pair (b) scaling data”')
+    await act(async () => button('Insert graph with 2 layers').click())
+    const [file, name] = api.uploadDataset.mock.calls[0]
+    expect(name).toBe('pair (b) scaling data')
+    expect((await file.text()).split('\n')[0]).toBe('stars_x,stars_y,gas_x,gas_y')
+    const [graph] = onInsert.mock.calls[0]
+    expect(graph.expressions.map(e => [e.data.y, e.step])).toEqual([['stars_y', 1], ['gas_y', 2]])
+  })
+
+  it('offers a graph only of panels whose numbers read', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/grid.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    await mount({ name: 'grid.svg' })
+    await act(async () => el.querySelectorAll('input[type="radio"]')[1].click())
+    const options = [...el.querySelector('select[aria-label="Panel to graph"]').options]
+    expect(options.map(o => [o.value, o.disabled])).toEqual([['p1', true], ['p2', true], ['p3', false], ['p4', true]])
+    expect(options[0].textContent).toBe('1. Top left panel (its numbers can’t be read)')
+    expect(el.querySelector('select[aria-label="Panel to graph"]').value).toBe('p3')
+    expect(el.textContent).toContain('“grid bottom left panel data”')
   })
 
   describe('a figure opened again', () => {

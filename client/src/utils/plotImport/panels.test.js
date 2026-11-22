@@ -10,7 +10,7 @@ import { pathToFileURL } from 'url'
 import { Window } from 'happy-dom'
 import { readPdfDrawing } from './pdfReader'
 import { readSvgDrawing } from './svgReader'
-import { plotFromDrawing } from './plotModel'
+import { plotFromDrawing, panelPlot } from './plotModel'
 import { splitSvg } from './splitSvg'
 import { planPdf } from './splitPdf'
 import { partsOf, partSteps, figureElements, readFigure, figureLayers } from './toFigure'
@@ -57,13 +57,34 @@ describe('a figure of several panels', () => {
         ['Top left panel', false, false, 2], ['Top right panel', false, false, 2], ['Bottom left panel', true, true, 2], ['Bottom right panel', false, false, 2],
       ])
       expect(grid.layers).toBe(grid.panels[2].layers)
-      expect(grid.warnings.join(' ')).toContain('a graph of its data is made of the bottom left panel')
+      expect(grid.warnings.join(' ')).toContain('a graph is made of one of them: the bottom left panel, unless you choose another')
 
       const inset = await read('inset', ext)
       expect(inset.panels.map(p => [p.id, p.name, p.main, p.parent]), ext).toEqual([['p1', 'Main panel', true, null], ['p2', 'Inset', false, 'p1']])
       // The inset's line, numbers and their minus signs aren't the panel's
       expect(inset.panels.map(p => p.layers.map(l => l.kind))).toEqual([['line'], ['line']])
       expect(inset.warnings.join(' ')).not.toMatch(/twinx/)
+    }
+  })
+
+  it('makes a graph of any panel whose numbers read, exactly', async () => {
+    for (const ext of ['svg', 'pdf']) {
+      const pair = await read('pair', ext)
+      expect(panelPlot(pair, 'p1')).toBe(pair)
+      const b = panelPlot(pair, 'p2')
+      expect(b.axes.x.scale, ext).toBe('log')
+      expect(b.axes.y.scale).toBe('log')
+      expect(b.layers.map(l => l.name)).toEqual(['stars', 'gas'])
+      // The script plots stars at y = x^1.5 and gas at y = 2x
+      const [stars, gas] = b.layers
+      expect(Math.max(...stars.data.x.map((x, i) => Math.abs(Math.log10(stars.data.y[i]) - 1.5 * Math.log10(x))))).toBeLessThan(1e-6)
+      expect(Math.max(...gas.data.x.map((x, i) => Math.abs(gas.data.y[i] / (2 * x) - 1)))).toBeLessThan(1e-6)
+      expect(b.warnings.at(-1)).toBe('A graph of “(b) scaling”, one of this figure’s 2 panels.')
+      expect(b.warnings.join(' ')).not.toMatch(/error bars/)
+      // No graph of a panel whose numbers don't read
+      const grid = await read('grid', ext)
+      expect(['p1', 'p2', 'p4'].map(id => panelPlot(grid, id))).toEqual([null, null, null])
+      expect(panelPlot(grid, 'p3')).toBe(grid)
     }
   })
 

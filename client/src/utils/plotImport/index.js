@@ -16,7 +16,7 @@ import { splitSvg } from './splitSvg'
 import { splitPdf } from './splitPdf'
 import { partsOf, figureLayers } from './toFigure'
 
-export { PlotError } from './plotModel'
+export { PlotError, panelPlot, panelNamed } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
 export { figureElements, readFigure, pieceKey, figureLayers } from './toFigure'

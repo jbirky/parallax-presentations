@@ -9,7 +9,8 @@
 //     layers: [{ id, name, kind: 'points' | 'line' | 'bars', color, shape, size, width, style,
 //                data: { x, y, xErr?, yErr?, x2? }, fidelity: 'exact' | 'as drawn', legend, groups, ops }],
 //     legend: { groups, ops } | null,
-//     panels?: [{ id, name, box, parent, main, calibrated, groups, ops, layers, legend }],
+//     panels?: [{ id, name, box, parent, main, calibrated, axes, warnings, groups, ops, layers, legend }],
+//     fileWarnings?: [] (of several panels: what's said of the figure, not of a panel),
 //     warnings: [] }
 //
 // axes and layers are the panel a graph is made of: the largest whose
@@ -73,14 +74,17 @@ export function plotFromDrawing(drawing) {
       continue
     }
     main = p
-    warnings.push(...said)
+    p.said = said
     break
   }
   if (!main) throw failed
+  // What's said of the file, before what's said of a panel
+  const fileWarnings = [...warnings]
+  warnings.push(...main.said)
   for (const p of panels) {
     // Another panel's scale may not read: its layers are found all the same,
-    // measured in points
-    if (p !== main) p.read = readAxes(drawing, p.axes, all, wordsOf(p), [], { loose: true })
+    // measured in points (and no graph is made of it)
+    if (p !== main) { p.said = []; p.read = readAxes(drawing, p.axes, all, wordsOf(p), p.said, { loose: true }) }
   }
   // The layers' ids across the figure, in the order drawn; their names
   let n = 0
@@ -99,16 +103,11 @@ export function plotFromDrawing(drawing) {
     }
   }
 
-  const { box, X, Y, labels, grid, layers, legend } = main.read
+  const { layers, legend } = main.read
   const plot = {
     size: { width: drawing.width, height: drawing.height },
     producer: drawing.producer || '',
-    axes: {
-      box,
-      x: { scale: X.scale, range: X.range, label: clean(labels.x), categories: X.categories || null },
-      y: { scale: Y.scale, range: Y.range, label: clean(labels.y), categories: Y.categories || null },
-      grid,
-    },
+    axes: axesOf(main.read),
     layers,
     // What draws the legend but no layer's entry (its frame, its title), for
     // keeping the figure as it is; null without a legend
@@ -119,10 +118,38 @@ export function plotFromDrawing(drawing) {
   if (panels.length > 1) {
     plot.panels = panelsOf(drawing, panels, main, texts)
     for (const pn of plot.panels) for (const l of pn.layers) l.panel = pn.id
-    const named = plot.panels.find(pn => pn.main).name
-    warnings.push(`This figure has ${panels.length} panels. Kept as it is, each comes and goes with its layers; a graph of its data is made of ${/ panel$/.test(named) ? `the ${named.toLowerCase()}` : `“${named}”`}.`)
+    // Kept as it is, the figure's notes are the file's, not a panel's
+    plot.fileWarnings = fileWarnings
+    warnings.push(`This figure has ${panels.length} panels: a graph is made of one of them: ${panelNamed(plot.panels.find(pn => pn.main))}, unless you choose another.`)
   }
   return plot
+}
+
+// A panel in a sentence: “(a) decay”, the top left panel
+export const panelNamed = p => (/ panel$|^Inset( \d+)?$/.test(p.name) ? `the ${p.name.toLowerCase()}` : `“${p.name}”`)
+
+// What a graph needs of a set of axes read: its box, scales, ranges, labels
+// and grid
+function axesOf({ box, X, Y, labels, grid }) {
+  return {
+    box,
+    x: { scale: X.scale, range: X.range, label: clean(labels.x), categories: X.categories || null },
+    y: { scale: Y.scale, range: Y.range, label: clean(labels.y), categories: Y.categories || null },
+    grid,
+  }
+}
+
+// A figure of several panels as a graph of one of them sees it: that
+// panel's axes, layers and notes. null for a panel no graph can be made of
+// (its numbers don't read, or it has no layers)
+export function panelPlot(plot, id) {
+  const p = plot.panels?.find(q => q.id === id)
+  if (!p || p.main) return plot
+  if (!p.axes || !p.layers.length) return null
+  return {
+    ...plot, axes: p.axes, layers: p.layers, legend: p.legend,
+    warnings: [...(plot.fileWarnings || []), ...p.warnings, `A graph of ${panelNamed(p)}, one of this figure’s ${plot.panels.length} panels.`],
+  }
 }
 
 const area = b => (b.x1 - b.x0) * (b.y1 - b.y0)
@@ -312,6 +339,9 @@ function panelsOf(d, panels, main, texts) {
     id: `p${i + 1}`, name: '', box: p.axes.box, parent: null, main: p === main, calibrated: p.read.calibrated,
     groups: [p.axes, ...p.twins].map(a => a.id).filter(Boolean), ops: [],
     layers: p.read.layers, legend: p.read.legend,
+    // For a graph of it: its axes (null when its numbers don't read), and
+    // what was said of it
+    axes: p.read.calibrated ? axesOf(p.read) : null, warnings: p.said || [],
     title: clean(p.axes.title || ''),
   }))
   for (const p of out) {
