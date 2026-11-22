@@ -36,9 +36,11 @@ const viewerHtml = () => page || (page = fs.readFileSync(path.join(__dirname, 'd
 // it draws the deck's page itself (deck-viewer.html, 'inline'): it fetches
 // the page from the site, and the page loads its files from the site and
 // the few others deck pages use (generateHTML.js: Google Fonts, cdnfonts,
-// TikZJax, and jsDelivr for libraries this server has no copy of)
-const OUTSIDE_FILES = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://fonts.cdnfonts.com', 'https://tikzjax.com', 'https://cdn.jsdelivr.net']
-const OUTSIDE_FETCHES = ['https://tikzjax.com', 'https://cdn.jsdelivr.net']
+// TikZJax, and jsDelivr for libraries this server has no copy of), and the
+// libraries' sites HTML embeds pasted from elsewhere often load from
+const LIBRARIES = ['https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com', 'https://unpkg.com']
+const OUTSIDE_FILES = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://fonts.cdnfonts.com', 'https://tikzjax.com', ...LIBRARIES]
+const OUTSIDE_FETCHES = ['https://tikzjax.com', ...LIBRARIES]
 const viewerMeta = origin => ({
   ui: {
     csp: { frameDomains: [origin], resourceDomains: [origin, ...OUTSIDE_FILES], connectDomains: [origin, ...OUTSIDE_FETCHES] },
