@@ -87,6 +87,7 @@ const PREVIEW_INPUT = fromJsonSchema({
   properties: {
     slide: SHOW_INPUT_SLIDE,
     probe: { type: 'object', description: 'For the viewer: how it showed the deck, for the server log' },
+    viewer: { type: 'string', maxLength: 40, description: "For the viewer: its version, for the server log" },
   },
   additionalProperties: false,
 })
@@ -102,6 +103,16 @@ const text = s => ({ content: [{ type: 'text', text: s }] })
 // How a link's viewer showed the deck in the app, and what the app said it
 // allows (deck-viewer.html's report), logged once a link while the server
 // runs
+// What a link's viewer does, now and then: at most a line a minute a link
+const noted = new Map()
+function note(link, what) {
+  const key = `${link.id} ${what}`
+  if (Date.now() - (noted.get(key) || 0) < 60 * 1000) return
+  if (noted.size > 2000) noted.clear()
+  noted.set(key, Date.now())
+  console.log(`[mcp viewer] link ${link.id.slice(0, 8)}: ${what}`)
+}
+
 const probed = new Set()
 function noteProbe(link, probe) {
   if (probed.has(link.id) || probed.size > 1000) return
@@ -210,6 +221,7 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
     const found = slide != null ? format.findSlide(deck, slide) : null
     if (slide != null && !found) return noSlide(deck, slide)
     touch(link, found ? { slide: found.slide.id } : {})
+    note(link, 'show_deck')
     return text([
       `If this app shows MCP Apps, the presentation is showing for the person in a live viewer${found ? `, at slide ${found.number}` : ''}: it updates as you change the presentation.`,
       `Otherwise, they can open it in the Parallax editor: ${viewer.editorUrl(site, deck)}`,
@@ -223,7 +235,8 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
     inputSchema: PREVIEW_INPUT,
     annotations: READ_ONLY,
     _meta: { ui: { resourceUri: viewer.VIEWER_URI, visibility: ['app'] } },
-  }, guarded('deck_preview', async ({ slide, probe } = {}) => {
+  }, guarded('deck_preview', async ({ slide, probe, viewer: version } = {}) => {
+    if (version) note(link, `viewer ${version} opened (the server has ${viewer.VIEWER_VERSION})`)
     if (probe) noteProbe(link, probe)
     return preview(link, site, slide)
   }))
@@ -234,6 +247,15 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
     _meta: viewer.viewerMeta(site),
   }, async () => ({
     contents: [{ uri: viewer.VIEWER_URI, mimeType: viewer.VIEWER_MIME, text: viewer.viewerHtml(), _meta: viewer.viewerMeta(site) }],
+  }))
+  // The address tools had before it named the viewer's version
+  server.registerResource('deck-viewer-legacy', viewer.LEGACY_VIEWER_URI, {
+    title: 'Presentation viewer',
+    description: 'The presentation as presented, following the changes the AI makes',
+    mimeType: viewer.VIEWER_MIME,
+    _meta: viewer.viewerMeta(site),
+  }, async () => ({
+    contents: [{ uri: viewer.LEGACY_VIEWER_URI, mimeType: viewer.VIEWER_MIME, text: viewer.viewerHtml(), _meta: viewer.viewerMeta(site) }],
   }))
   server.registerTool('get_element_guide', {
     title: 'Read how to add an element',

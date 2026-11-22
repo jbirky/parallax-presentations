@@ -444,14 +444,20 @@ describe('AI collaborator links', { skip }, () => {
 
     // show_deck names the viewer; deck_preview is the viewer's alone
     const tools = Object.fromEntries((await rpc(secret, 'tools/list')).body.result.tools.map(tool => [tool.name, tool]))
-    assert.deepEqual(tools.show_deck._meta.ui, { resourceUri: 'ui://parallax/deck-viewer' })
-    assert.deepEqual(tools.deck_preview._meta.ui, { resourceUri: 'ui://parallax/deck-viewer', visibility: ['app'] })
+    // Its address names the viewer's version, so apps don't keep showing an old page
+    const uri = require('../mcp/viewer').VIEWER_URI
+    assert.match(uri, /^ui:\/\/parallax\/deck-viewer-[0-9a-f]{10}$/)
+    assert.deepEqual(tools.show_deck._meta.ui, { resourceUri: uri })
+    assert.deepEqual(tools.deck_preview._meta.ui, { resourceUri: uri, visibility: ['app'] })
     assert.equal(tools.show_deck.inputSchema.required, undefined)
 
     // The viewer's page, framing pages from this site
     const listed = (await rpc(secret, 'resources/list')).body.result.resources
-    assert.deepEqual(listed.map(r => [r.uri, r.mimeType]), [['ui://parallax/deck-viewer', 'text/html;profile=mcp-app']])
-    const read = (await rpc(secret, 'resources/read', { uri: 'ui://parallax/deck-viewer' })).body.result.contents[0]
+    assert.deepEqual(listed.map(r => [r.uri, r.mimeType]), [[uri, 'text/html;profile=mcp-app'], ['ui://parallax/deck-viewer', 'text/html;profile=mcp-app']])
+    const read = (await rpc(secret, 'resources/read', { uri })).body.result.contents[0]
+    const legacy = (await rpc(secret, 'resources/read', { uri: 'ui://parallax/deck-viewer' })).body.result.contents[0]
+    assert.equal(legacy.text, read.text, 'the old address gives the current page')
+    assert.ok(read.text.includes(`const VERSION = '${uri.slice(-10)}'`))
     assert.equal(read.mimeType, 'text/html;profile=mcp-app')
     assert.deepEqual(read._meta.ui.csp.frameDomains, [site])
     assert.equal(read._meta.ui.csp.resourceDomains[0], site)

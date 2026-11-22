@@ -61,6 +61,7 @@
 (() => {
   'use strict'
   const PROTOCOL = '2026-01-26'
+  const VERSION = '%VIEWER_VERSION%' // the server's name for this page (viewer.js)
   const FAST = 3000 // ms between checks while the deck is changing
   const SLOW = 15000 // and after it's been quiet a while
   const RETRY = 5000 // after a check fails
@@ -387,6 +388,7 @@
     polling = true
     try {
       const args = !deck && toolInput && toolInput.slide != null ? { slide: toolInput.slide } : {}
+      if (!deck && !sentVersion) { args.viewer = VERSION; sentVersion = true }
       if (probe) { args.probe = probe; probe = null }
       const result = await request('tools/call', { name: 'deck_preview', arguments: args })
       if (result && result.isError) {
@@ -450,6 +452,7 @@
     if (blocked.length < 30) blocked.push(`${e.effectiveDirective || e.violatedDirective} ${String(e.blockedURI || '').slice(0, 80)}`.trim())
   })
   let initialized = null
+  let sentVersion = false
   let probe = null // the report, until sent
   let reported = false
   const began = Date.now()

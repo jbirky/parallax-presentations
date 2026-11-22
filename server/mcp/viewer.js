@@ -23,13 +23,20 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
-const VIEWER_URI = 'ui://parallax/deck-viewer'
 const VIEWER_MIME = 'text/html;profile=mcp-app'
 const PREVIEW_PATH = '/ai-preview/'
 const PREVIEW_TTL_MS = 30 * 60 * 1000
 
-let page = null
-const viewerHtml = () => page || (page = fs.readFileSync(path.join(__dirname, 'deck-viewer.html'), 'utf8'))
+// The viewer's page, and its address, which names its version: apps keep a
+// view's page by its address (claude.ai went on showing an old one), so a
+// new page has a new address. The old address still answers, with the
+// current page, for tools an app listed before.
+const source = fs.readFileSync(path.join(__dirname, 'deck-viewer.html'), 'utf8')
+const VIEWER_VERSION = crypto.createHash('sha256').update(source).digest('hex').slice(0, 10)
+const VIEWER_URI = `ui://parallax/deck-viewer-${VIEWER_VERSION}`
+const LEGACY_VIEWER_URI = 'ui://parallax/deck-viewer'
+const page = source.replace('%VIEWER_VERSION%', VIEWER_VERSION)
+const viewerHtml = () => page
 
 // The resource's metadata for the app: the viewer frames pages from this
 // site, and draws its own frame. Where the app won't let it frame the site,
@@ -93,6 +100,6 @@ const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').r
 const editorUrl = (origin, deck) => `${origin}/dashboard/${slugify(deck.title)}`
 
 module.exports = {
-  VIEWER_URI, VIEWER_MIME, PREVIEW_PATH, PREVIEW_TTL_MS,
+  VIEWER_URI, LEGACY_VIEWER_URI, VIEWER_VERSION, VIEWER_MIME, PREVIEW_PATH, PREVIEW_TTL_MS,
   viewerHtml, viewerMeta, previewTokens, deckVersion, forViewer, forInline, editorUrl, slugify,
 }
