@@ -13,6 +13,8 @@ import { plotFromDrawing, PlotError } from './plotModel'
 
 export { PlotError } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
+export { splitSvg } from './splitSvg'
+export { figureElements } from './toFigure'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -32,8 +34,9 @@ async function loadPdfjs() {
   return pdfjsLib
 }
 
-// { kind, plot, preview }: preview is an image URL; revoke it with
-// URL.revokeObjectURL when it's an object URL (an SVG's)
+// { kind, plot, preview, text }: preview is an image URL; revoke it with
+// URL.revokeObjectURL when it's an object URL (an SVG's). text: an SVG's
+// own, for keeping the figure as it is (splitSvg.js)
 export async function readPlotFile(file) {
   const kind = plotKind(file)
   if (!kind) throw new PlotError('Choose a PDF or an SVG saved from matplotlib.')
@@ -42,7 +45,7 @@ export async function readPlotFile(file) {
     const text = await file.text()
     const plot = plotFromDrawing(readSvgDrawing(text))
     // Shown as an image, so nothing in it runs
-    return { kind, plot, preview: URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' })) }
+    return { kind, plot, text, preview: URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' })) }
   }
   const bytes = new Uint8Array(await file.arrayBuffer())
   const pdfjsLib = await loadPdfjs()

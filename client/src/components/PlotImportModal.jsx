@@ -5,15 +5,21 @@
 // SVG figure: a matplotlib figure, read in the browser (utils/plotImport),
 // shown beside what was found in it, its axes and its layers. Each layer can
 // be renamed, left out, and given the step it appears at and the step it
-// leaves at. Insert makes a dataset of the layers' data, links it to the
-// deck, and hands a Graph element's fields to the editor (onInsert).
+// leaves at. Then, either:
+//   a graph of its data: a dataset of the layers' data, linked to the deck,
+//     and a Graph element's fields for the editor (onInsert);
+//   the figure as it is (an SVG): its base and each layer as SVG images,
+//     stacked in a group, each layer hidden until its step and from the step
+//     it leaves at (onInsertElements).
 
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, splitSvg, figureElements } from '../utils/plotImport'
 
 const STEPS = Array.from({ length: 12 }, (_, i) => i + 1)
+// An SVG matplotlib saved, every layer of it drawn by groups the file names
+const keepable = r => !!r && r.kind === 'svg' && !!r.text && r.plot.layers.length > 0 && r.plot.layers.every(l => l.groups?.length)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
 function describe(layer) {
@@ -33,11 +39,12 @@ async function freeName(base) {
   return name
 }
 
-export default function PlotImportModal({ file: initialFile, presentationId, dark, onInsert, onClose }) {
+export default function PlotImportModal({ file: initialFile, presentationId, dark, onInsert, onInsertElements, onClose }) {
   const [file, setFile] = useState(initialFile || null)
   const [result, setResult] = useState(null) // { kind, plot, preview }
   const [choices, setChoices] = useState({})
   const [oneByOne, setOneByOne] = useState(true)
+  const [mode, setMode] = useState('graph') // 'graph', or 'figure': kept as it is
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(initialFile ? 'reading' : '')
   const input = useRef(null)
@@ -54,6 +61,8 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
       if (!live) return
       setResult(r)
       setChoices(defaultChoices(r.plot, oneByOne))
+      // An SVG matplotlib saved can be kept as it is: start there
+      setMode(keepable(r) ? 'figure' : 'graph')
       setBusy('')
     }).catch(err => {
       if (!live) return
@@ -83,9 +92,12 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
 
   const plot = result?.plot
   const included = plot ? plot.layers.filter(l => choices[l.id]?.include !== false) : []
+  const canKeep = keepable(result)
+  const figure = mode === 'figure' && canKeep
 
   async function insert() {
     if (!plot || !included.length) return
+    if (figure) return insertFigure()
     setBusy('saving')
     setError('')
     try {
@@ -99,6 +111,30 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
       onInsert(graph, size)
     } catch (err) {
       setError(err.message || 'The plot couldn’t be added.')
+      setBusy('')
+    }
+  }
+
+  // The figure's base and its layers as SVG images, uploaded, then stacked
+  async function insertFigure() {
+    setBusy('saving')
+    setError('')
+    try {
+      const split = splitSvg(result.text, plot.layers)
+      const name = baseName(file?.name).replace(/[^\w.-]+/g, '-').slice(0, 40) || 'figure'
+      const upload = async (svg, part) => {
+        const r = await api.uploadFile(new File([svg], `${name}-${part}.svg`, { type: 'image/svg+xml' }))
+        if (!r?.url) throw new Error('The figure couldn’t be uploaded.')
+        return r.url
+      }
+      const urls = { base: await upload(split.base, 'base') }
+      for (const layer of split.layers) {
+        if (choices[layer.id]?.include === false) continue
+        urls[layer.id] = await upload(layer.svg, layer.id)
+      }
+      onInsertElements(figureElements(plot, urls, { choices }))
+    } catch (err) {
+      setError(err.message || 'The figure couldn’t be added.')
       setBusy('')
     }
   }
@@ -156,6 +192,26 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
             </div>
 
             <div style={{ flex: '1 1 420px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div role="radiogroup" aria-label="What to make of it" style={{ display: 'grid', gap: 6 }}>
+                {[
+                  ['figure', 'Keep the figure as it is', canKeep
+                    ? 'matplotlib’s own drawing, with each layer coming and going a step at a time.'
+                    : 'Only for a figure saved as SVG: plt.savefig("figure.svg").'],
+                  ['graph', 'Make a graph of its data', 'A Parallax graph of the data, in the deck’s look, which can be pointed at and changed.'],
+                ].map(([key, label, note]) => {
+                  const off = key === 'figure' && !canKeep
+                  const on = (key === 'figure') === figure
+                  return (
+                    <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 8px', borderRadius: 8, border: `1px solid ${on ? 'var(--accent, #6366f1)' : 'var(--border)'}`, opacity: off ? 0.55 : 1, cursor: off ? 'default' : 'pointer' }}>
+                      <input type="radio" name="plot-mode" checked={on} disabled={off} onChange={() => setMode(key)} style={{ marginTop: 3 }} />
+                      <span style={{ display: 'grid', gap: 1 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{note}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
                 <span style={{ color: 'var(--text-muted)' }}>Show the layers</span>
                 <button type="button" className={`btn ${oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={oneByOne} onClick={() => reveal(true)}>One a step</button>
@@ -172,10 +228,12 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
                         <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: layer.kind === 'points' ? '50%' : 3, background: layer.color, flex: 'none', border: '1px solid rgba(0,0,0,0.2)' }} />
                         <input value={c.name ?? layer.name} onChange={e => setChoice(layer.id, { name: e.target.value })} aria-label="Layer name" maxLength={60}
                           style={{ flex: 1, minWidth: 0, fontSize: 13, padding: '3px 6px', background: 'var(--bg-input, var(--bg-hover))', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }} />
-                        <span title={layer.fidelity === 'exact' ? 'Where the file puts them' : 'Through the points the file draws it with; matplotlib leaves out points that don’t change the picture'}
-                          style={{ fontSize: 10, padding: '2px 6px', borderRadius: 10, background: layer.fidelity === 'exact' ? 'rgba(16,185,129,0.18)' : 'rgba(234,179,8,0.18)', color: layer.fidelity === 'exact' ? '#34d399' : '#facc15', whiteSpace: 'nowrap' }}>
-                          {layer.fidelity === 'exact' ? 'Exact' : 'As drawn'}
-                        </span>
+                        {!figure && (
+                          <span title={layer.fidelity === 'exact' ? 'Where the file puts them' : 'Through the points the file draws it with; matplotlib leaves out points that don’t change the picture'}
+                            style={{ fontSize: 10, padding: '2px 6px', borderRadius: 10, background: layer.fidelity === 'exact' ? 'rgba(16,185,129,0.18)' : 'rgba(234,179,8,0.18)', color: layer.fidelity === 'exact' ? '#34d399' : '#facc15', whiteSpace: 'nowrap' }}>
+                            {layer.fidelity === 'exact' ? 'Exact' : 'As drawn'}
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }}>
                         <span style={{ flex: '1 1 160px' }}>{describe(layer)}</span>
@@ -202,7 +260,9 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
                 </ul>
               )}
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-                The data goes into a dataset, “{baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.
+                {figure
+                  ? 'The figure and each layer are saved as SVG images in this presentation, stacked in a group; the legend stays as drawn. A layer left out is taken out of the figure.'
+                  : `The data goes into a dataset, “${baseName(file?.name)} data”, linked to this presentation; the figure itself isn’t uploaded.`}
               </p>
               {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
             </div>
@@ -217,7 +277,7 @@ export default function PlotImportModal({ file: initialFile, presentationId, dar
           </button>
           <button className="btn btn-secondary" style={{ fontSize: 12 }} disabled={busy === 'saving'} onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={!plot || !included.length || !!busy} onClick={insert}>
-            {busy === 'saving' ? 'Adding the graph…' : `Insert graph${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}`}
+            {busy === 'saving' ? (figure ? 'Adding the figure…' : 'Adding the graph…') : `Insert ${figure ? 'figure' : 'graph'}${included.length && plot ? ` with ${included.length} layer${included.length === 1 ? '' : 's'}` : ''}`}
           </button>
         </div>
       </div>

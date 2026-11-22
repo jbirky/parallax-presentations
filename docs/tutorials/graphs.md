@@ -184,12 +184,10 @@ Graphs show their data everywhere the deck goes: the editor, Present, share link
 
 ## Importing a matplotlib figure
 
-A figure you saved from matplotlib as a PDF or an SVG can become a graph of its data: **Insert › Science › Plot from a figure…** (or **File › Import › Plot from a PDF or SVG figure…**). Parallax reads the figure in your browser and shows what it found beside it: the axes, with their scales (linear or log), ranges and labels, and each layer, named from the legend.
+A figure you saved from matplotlib can come into a slide with its layers coming and going a step at a time: **Insert › Science › Plot from a figure…** (or **File › Import › Plot from a PDF or SVG figure…**). Parallax reads the figure in your browser and shows what it found beside it: the axes, with their scales (linear or log), ranges and labels, and each layer, named from the legend. Each layer can be renamed, left out, and given the step it appears at and the step it leaves at; **One a step** brings them in in the legend's order. Then choose what to make of it:
 
-- **Markers, bars and error bars** come in exactly: the file says where each one is, so their numbers are the ones you plotted.
-- **Lines** come through the points the file draws them with. matplotlib leaves out points that don't change the picture, so a line has fewer points than you gave it; save with `plt.rcParams['path.simplify'] = False` to keep them all.
-
-Each layer can be renamed, left out, and given the step it appears at and the step it leaves at; **One a step** brings them in in the legend's order. **Insert graph** saves the layers' data as a dataset ("*figure* data") linked to the deck, and adds a graph that plots it, in the figure's colors. The figure itself isn't uploaded.
+- **Keep the figure as it is** (an SVG only): the figure stays exactly as matplotlib drew it. Its axes, labels and legend, and each layer, are saved as SVG images in the presentation and stacked in one group; each layer is hidden until its step, and again from the step it leaves at, with an ordinary state and state steps you can change later. A layer left out is taken out of the figure. Save with `plt.savefig("figure.svg")`.
+- **Make a graph of its data** (a PDF or an SVG): the layers' data goes into a dataset ("*figure* data") linked to the deck, plotted by a Parallax graph in the figure's colors, which can be pointed at, restyled and changed like any graph. Markers, bars and error bars come in exactly; lines come through the points the file draws them with (matplotlib leaves out points that don't change the picture; save with `plt.rcParams['path.simplify'] = False` to keep them all).
 
 It reads one set of axes (the largest, when a figure has several), with numbered ticks; a PNG or JPEG has no data to read. Filled areas such as `fill_between`, and pictures such as `imshow`'s, are left out, and the dialog says so.
 

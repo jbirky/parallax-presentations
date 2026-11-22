@@ -112,6 +112,7 @@ export function plotFromDrawing(drawing) {
   const ends = segments.flatMap(g => g.s)
   const isCap = m => (m.shape === 'hline' || m.shape === 'vline') && ends.some(([x, y]) => Math.abs(x - m.x) < 0.05 && Math.abs(y - m.y) < 0.05)
   const points = marks.filter(m => !isCap(m))
+  const caps = marks.filter(isCap)
 
   // Layers: markers by the element they came from (an SVG says), or by look
   const layers = []
@@ -126,6 +127,7 @@ export function plotFromDrawing(drawing) {
     const color = first.fill || first.stroke || '#000000'
     layers.push({
       kind: 'points', color, shape: first.shape, size: first.size, z: first.order ?? 0,
+      groups: new Set(ms.map(m => m.group).filter(Boolean)),
       px: ms.map(m => m.x), py: ms.map(m => m.y),
       data: { x: ms.map(m => X.toData(m.x)), y: ms.map(m => Y.toData(m.y)) },
       fidelity: 'exact',
@@ -133,11 +135,17 @@ export function plotFromDrawing(drawing) {
   }
   attachErrors(layers, ups, 'y', X, Y, warnings)
   attachErrors(layers, levels, 'x', X, Y, warnings)
+  // An error bar's caps go with its points
+  for (const c of caps) {
+    const layer = c.group && layers.find(l => l.kind === 'points' && l.color === (c.fill || c.stroke))
+    if (layer) layer.groups.add(c.group)
+  }
 
   for (const p of lines) {
     const pts = p.segs.length === 1 ? p.segs[0] : p.segs.flatMap((s, i) => (i ? [[NaN, NaN], ...s] : s))
     layers.push({
       kind: 'line', color: p.stroke, width: p.width, style: dashStyle(p.dash, p.width), z: p.order ?? 0,
+      groups: new Set(p.group ? [p.group] : []),
       data: { x: pts.map(([x]) => (isFinite(x) ? X.toData(x) : NaN)), y: pts.map(([, y]) => (isFinite(y) ? Y.toData(y) : NaN)) },
       fidelity: 'as drawn',
     })
@@ -161,7 +169,7 @@ export function plotFromDrawing(drawing) {
         else { value = hi; shifted = true }
         data.x.push(left); data.x2.push(right); data.y.push(value)
       }
-      layers.push({ kind: 'bars', color: fill, z: rs[0].order, data, fidelity: 'exact' })
+      layers.push({ kind: 'bars', color: fill, z: rs[0].order, data, fidelity: 'exact', groups: new Set(rs.map(r => r.group).filter(Boolean)) })
     }
     if (shifted) warnings.push('Some bars don’t start at zero (stacked bars?); they stand on zero here.')
   }
@@ -182,6 +190,8 @@ export function plotFromDrawing(drawing) {
     l.id = `l${i + 1}`
     counts[l.kind] = (counts[l.kind] || 0) + 1
     if (!l.name) l.name = `${noun[l.kind]} ${counts[l.kind]}`
+    // The SVG groups that draw it, for keeping the figure as it is (splitSvg.js)
+    l.groups = [...(l.groups || [])]
     delete l.z; delete l.px; delete l.py
   })
 
@@ -536,6 +546,7 @@ function attachErrors(layers, segs, axis, X, Y, warnings) {
     }
     if (!hit) { left.push(g); continue }
     const { layer, i } = hit
+    if (g.group && layer.groups) layer.groups.add(g.group)
     const A = axis === 'y' ? Y : X
     const lo = A.toData(axis === 'y' ? Math.min(ay, by) : Math.min(ax, bx))
     const hi = A.toData(axis === 'y' ? Math.max(ay, by) : Math.max(ax, bx))

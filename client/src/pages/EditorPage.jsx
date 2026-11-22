@@ -1424,6 +1424,21 @@ function draw() {
     setPlotImport(null)
   }, [slideW, slideH])
 
+  // A figure kept as it is (PlotImportModal): its base and layers, stacked
+  // in one group in the middle of the slide
+  const insertKeptFigure = useCallback((elements) => {
+    if (!elements?.length) return
+    const { width: w, height: h } = elements[0]
+    const dx = Math.round((slideW - w) / 2), dy = Math.round((slideH - h) / 2)
+    const placed = elements.map(el => ({ ...el, x: el.x + dx, y: el.y + dy }))
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...placed] } : s) }
+    })
+    setSelectedElementIds(placed.map(el => el.id))
+    setPlotImport(null)
+  }, [slideW, slideH])
+
   const addEquation = useCallback(() => {
     setEquationEditor({ elementId: null, equation: defaultEquation(slideIsDark()), size: EQUATION_SIZE, slideBg: slideBackdrop(), dark: slideIsDark() })
   }, [slideIsDark, slideBackdrop])
@@ -5598,7 +5613,7 @@ function draw() {
       {showMenuSearch && <MenuSearch menus={menus} onClose={() => setShowMenuSearch(false)} />}
       {plotImport && (
         <PlotImportModal file={plotImport.file} presentationId={presentationId} dark={slideIsDark()}
-          onInsert={insertImportedPlot} onClose={() => setPlotImport(null)} />
+          onInsert={insertImportedPlot} onInsertElements={insertKeptFigure} onClose={() => setPlotImport(null)} />
       )}
       {pdfPages && (
         <PdfPagesModal pages={pdfPages} onClose={() => setPdfPages(null)}

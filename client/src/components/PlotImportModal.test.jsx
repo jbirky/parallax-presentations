@@ -23,12 +23,16 @@ vi.mock('../utils/api', () => ({
     getDatasets: vi.fn(async () => [{ id: 'd0', name: 'decay data' }]),
     uploadDataset: vi.fn(async (file, name) => ({ id: 'd9', name })),
     linkDataset: vi.fn(async () => ({})),
+    uploadFile: vi.fn(async file => ({ url: `/uploads/${file.name}` })),
   },
 }))
 vi.mock('../utils/graphData', () => ({ refreshGraphData: vi.fn() }))
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
 import PlotImportModal from './PlotImportModal'
+import { readFileSync } from 'fs'
+import { readSvgDrawing } from '../utils/plotImport/svgReader'
+import { plotFromDrawing } from '../utils/plotImport/plotModel'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root, el
@@ -43,11 +47,11 @@ async function mount(props = {}) {
   el = document.createElement('div')
   document.body.appendChild(el)
   root = createRoot(el)
-  const onInsert = vi.fn(), onClose = vi.fn()
-  const file = new File(['%PDF'], 'decay.pdf', { type: 'application/pdf' })
-  await act(async () => root.render(<PlotImportModal file={file} presentationId="p1" dark={false} onInsert={onInsert} onClose={onClose} {...props} />))
+  const onInsert = vi.fn(), onClose = vi.fn(), onInsertElements = vi.fn()
+  const file = new File(['%PDF'], props.name || 'decay.pdf', { type: 'application/pdf' })
+  await act(async () => root.render(<PlotImportModal file={file} presentationId="p1" dark={false} onInsert={onInsert} onInsertElements={onInsertElements} onClose={onClose} {...props} />))
   await act(async () => {})
-  return { onInsert, onClose }
+  return { onInsert, onClose, onInsertElements }
 }
 const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.startsWith(text))
 const items = () => [...el.querySelectorAll('[role="listitem"]')]
@@ -103,6 +107,35 @@ describe('importing a plot', () => {
     const [graph] = onInsert.mock.calls[0]
     expect(graph.expressions).toHaveLength(1)
     expect(graph.expressions[0].step).toBeUndefined()
+  })
+
+  it('makes a graph of a PDF’s data: a PDF can’t be kept as it is', async () => {
+    await mount()
+    const radios = [...el.querySelectorAll('input[type="radio"]')]
+    expect(radios.map(r => [r.checked, r.disabled])).toEqual([[false, true], [true, false]])
+    expect(el.textContent).toContain('Only for a figure saved as SVG')
+  })
+
+  it('keeps an SVG figure as it is: its base and each layer as images, stacked, each at its steps', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements, onInsert } = await mount({ name: 'decay.svg' })
+    expect(el.querySelector('input[type="radio"]').checked).toBe(true)
+    expect(el.textContent).not.toContain('As drawn')
+    // Points leave at step 3
+    const points = items().find(li => li.querySelector('input[aria-label="Layer name"]').value === 'measured')
+    await act(async () => set(points.querySelectorAll('select')[1], '3'))
+    await act(async () => button('Insert figure with 2 layers').click())
+    expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg', 'decay-l1.svg', 'decay-l2.svg'])
+    expect(api.uploadFile.mock.calls[0][0].type).toBe('image/svg+xml')
+    expect(api.uploadDataset).not.toHaveBeenCalled()
+    expect(onInsert).not.toHaveBeenCalled()
+    const [els] = onInsertElements.mock.calls[0]
+    expect(els.map(e => e.src)).toEqual(['/uploads/decay-base.svg', '/uploads/decay-l1.svg', '/uploads/decay-l2.svg'])
+    expect(new Set(els.map(e => e.groupId)).size).toBe(1)
+    const measured = els.find(e => e.name === 'measured')
+    expect(measured).toMatchObject({ initialState: 'hidden', stateSteps: { 2: null, 3: 'hidden' } })
+    expect(els.find(e => e.name === 'model')).toMatchObject({ initialState: 'hidden', stateSteps: { 1: null } })
   })
 
   it('says why a figure couldn’t be read', async () => {
