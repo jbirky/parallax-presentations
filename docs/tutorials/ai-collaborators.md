@@ -36,6 +36,7 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 | `get_deck` | Reads the outline: each slide's number, title, layout, minutes, what's on it, and its outline and speaker notes in short |
 | `get_slide` | Reads one slide in full: every element with its position and size, its text, what clicking on it does, and warnings for anything past the slide's edges or overlapping |
 | `render_slide` | Sees a slide as a picture, as it looks when presenting with all its steps shown, to check how its changes came out |
+| `show_deck` | Shows you the presentation in the chat, live, in apps that can (below); elsewhere, gives you a link to open it in the editor |
 | `list_datasets` | Reads the datasets linked to the presentation (**Tools › Datasets…**): their columns, sizes and first rows |
 | `add_slide`, `update_slide` | Adds a slide in a layout, or changes one: its layout, title, subtitle and body text, speaker notes, minutes and background |
 | `move_slide`, `delete_slide` | Moves or deletes a slide |
@@ -57,6 +58,8 @@ An HTML embed the AI writes runs kept apart from the rest of the presentation, a
 While the AI works, it appears in the avatars at the top of the editor, under the link's name with a bot icon, on the slide it's working on. Click it to go to that slide. The elements it just changed are outlined with its name. It leaves the avatars two minutes after it stops.
 
 Its changes reach every open copy of the presentation at once, as other editors' do.
+
+You can also watch in the chat. In apps that show MCP Apps, claude.ai and ChatGPT among them, the AI's `show_deck` opens the presentation in a viewer under its message. A few seconds after each change, the viewer reloads at the slide the AI changed. Clear **Follow changes** to stay on the slide you're on. The AI is told which slide you're looking at, so "shorten this title" means that slide. **Open in editor** opens the presentation in Parallax, and **Full screen** fills the chat window, where the app allows it. The viewer shows the presentation as presented, from a link that stops working after half an hour; it gets a new one by itself. It stops following changes if the link is revoked.
 
 - **Undoing a session.** Before the AI's first change after half an hour without any, a version named "Before Claude's edits" (with the link's name) is saved. To undo the session, restore that version in **History**. Each presentation keeps the five latest of these versions.
 - **What you're typing in is yours.** The AI can't change a text box you're typing in, or an element whose editor you have open. It's told who has it, so it can wait or work on something else.

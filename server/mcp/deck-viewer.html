@@ -1,0 +1,379 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (c) 2026 Jessica Birky -->
+<!--
+  The deck viewer (server/mcp/viewer.js): an MCP App that shows an AI
+  collaborator link's presentation in the chat and follows the AI's changes.
+  It talks to the app around it in JSON-RPC over postMessage (MCP Apps,
+  2026-01-26): ui/initialize, then deck_preview through tools/call for the
+  deck's version and a preview link, every few seconds while it's on screen.
+  The deck's own page tells it which slide shows (generateHTML.js's bridge),
+  and it passes that on to the AI with ui/update-model-context.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parallax presentation</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --pv-text: var(--color-text-primary, CanvasText);
+    --pv-muted: var(--color-text-secondary, GrayText);
+    --pv-line: var(--color-border-primary, rgba(128, 128, 128, 0.4));
+    --pv-font: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+    --pv-radius: var(--border-radius-md, 8px);
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; color: var(--pv-text); font: 13px/1.4 var(--pv-font); }
+  .viewer { display: flex; flex-direction: column; gap: 8px; }
+  .fixed .viewer { height: 100vh; padding: 8px; }
+  .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--pv-radius); overflow: hidden; background: #111; }
+  .fixed .stage { flex: 1; min-height: 0; aspect-ratio: auto; }
+  .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #111; transition: opacity 0.2s; }
+  .stage iframe.loading { opacity: 0; pointer-events: none; }
+  .note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #d4d4d4; }
+  .bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; min-height: 28px; }
+  .where { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pv-muted); }
+  .where .fresh { color: var(--pv-text); font-weight: 600; }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--pv-muted); cursor: pointer; user-select: none; }
+  input { margin: 0; accent-color: var(--pv-text); }
+  button { font: inherit; color: var(--pv-text); background: transparent; border: 1px solid var(--pv-line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  button:hover { border-color: var(--pv-muted); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--pv-text); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="viewer" id="viewer">
+  <div class="stage" id="stage"><div class="note" id="note">Opening the presentation…</div></div>
+  <div class="bar">
+    <span class="where" id="where" aria-live="polite"></span>
+    <label title="When the AI changes the presentation, show the slide it changed"><input type="checkbox" id="follow" checked> Follow changes</label>
+    <button type="button" id="retry" hidden>Try again</button>
+    <button type="button" id="editor" hidden>Open in editor</button>
+    <button type="button" id="full" hidden>Full screen</button>
+  </div>
+</main>
+<script>
+(() => {
+  'use strict'
+  const PROTOCOL = '2026-01-26'
+  const FAST = 3000 // ms between checks while the deck is changing
+  const SLOW = 15000 // and after it's been quiet a while
+  const RETRY = 5000 // after a check fails
+  const QUIET = 10 * 60 * 1000
+  const GIVE_UP = 3 // checks failing in a row before it stops (a revoked link)
+  const $ = id => document.getElementById(id)
+  const viewer = $('viewer'), stage = $('stage'), note = $('note'), where = $('where')
+  const follow = $('follow'), editorButton = $('editor'), fullButton = $('full'), retryButton = $('retry')
+  const root = document.documentElement
+
+  // ── The app around the viewer: JSON-RPC 2.0 over postMessage ──
+
+  let nextId = 1
+  const waiting = new Map()
+  const send = message => window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*')
+  const notify = (method, params = {}) => send({ method, params })
+  const request = (method, params = {}, ms = 30000) => new Promise((resolve, reject) => {
+    const id = nextId++
+    const timer = setTimeout(() => { waiting.delete(id); reject(new Error('No answer')) }, ms)
+    waiting.set(id, { resolve, reject, timer })
+    send({ id, method, params })
+  })
+
+  const host = { context: {}, capabilities: {} }
+  let toolInput = null
+  let inputArrived = null
+
+  window.addEventListener('message', event => {
+    const data = event.data
+    if (!data || typeof data !== 'object') return
+    // A copy of the deck saying which slide it shows
+    const frame = [...stage.querySelectorAll('iframe')].find(f => f.contentWindow === event.source)
+    if (frame) {
+      if (data.type === 'parallax-deck') fromDeck(frame, data)
+      return
+    }
+    if (event.source !== window.parent || data.jsonrpc !== '2.0') return
+    if (data.method === undefined && data.id != null) {
+      const w = waiting.get(data.id)
+      if (!w) return
+      waiting.delete(data.id)
+      clearTimeout(w.timer)
+      if (data.error) w.reject(new Error(data.error.message || 'Request failed'))
+      else w.resolve(data.result)
+      return
+    }
+    if (data.id != null) {
+      if (data.method === 'ui/resource-teardown') stop()
+      if (data.method === 'ui/resource-teardown' || data.method === 'ping') send({ id: data.id, result: {} })
+      else send({ id: data.id, error: { code: -32601, message: 'Method not found' } })
+      return
+    }
+    if (data.method === 'ui/notifications/tool-input') {
+      toolInput = (data.params && data.params.arguments) || {}
+      if (inputArrived) inputArrived()
+    } else if (data.method === 'ui/notifications/tool-result') {
+      if (deck) poll()
+    } else if (data.method === 'ui/notifications/host-context-changed') {
+      Object.assign(host.context, data.params || {})
+      applyHost()
+    }
+  })
+
+  // ── Looks and size, from the app ──
+
+  let fontStyle = null
+  function applyHost() {
+    const c = host.context
+    if (c.theme === 'light' || c.theme === 'dark') root.dataset.theme = c.theme
+    const vars = c.styles && c.styles.variables
+    if (vars) for (const [name, value] of Object.entries(vars)) if (name.startsWith('--') && value) root.style.setProperty(name, value)
+    const fonts = c.styles && c.styles.css && c.styles.css.fonts
+    if (fonts && !fontStyle) {
+      fontStyle = document.createElement('style')
+      fontStyle.textContent = fonts
+      document.head.appendChild(fontStyle)
+    }
+    const full = c.displayMode === 'fullscreen'
+    root.classList.toggle('fixed', full || typeof (c.containerDimensions || {}).height === 'number')
+    fullButton.hidden = !(c.availableDisplayModes || []).includes('fullscreen')
+    fullButton.textContent = full ? 'Exit full screen' : 'Full screen'
+    reportSize()
+  }
+
+  let lastSize = ''
+  function reportSize() {
+    if (root.classList.contains('fixed')) return
+    const box = viewer.getBoundingClientRect()
+    const size = { width: Math.ceil(box.width), height: Math.ceil(box.height) }
+    const key = `${size.width}x${size.height}`
+    if (key === lastSize || !size.height) return
+    lastSize = key
+    notify('ui/notifications/size-changed', size)
+  }
+  new ResizeObserver(reportSize).observe(viewer)
+
+  fullButton.addEventListener('click', async () => {
+    const mode = host.context.displayMode === 'fullscreen' ? 'inline' : 'fullscreen'
+    try {
+      const result = await request('ui/request-display-mode', { mode })
+      host.context.displayMode = (result && result.mode) || host.context.displayMode
+      applyHost()
+    } catch {}
+  })
+  editorButton.addEventListener('click', () => {
+    if (deck && deck.editorUrl) request('ui/open-link', { url: deck.editorUrl }).catch(() => {})
+  })
+
+  // ── The deck ──
+
+  let deck = null // the latest preview: { url, version, title, width, height, slides, editorUrl, ai, open }
+  let showing = null // the copy of the deck on screen
+  let shown = { id: null } // the slide it shows
+  let freshUntil = 0
+
+  const has = id => !!deck && deck.slides.some(s => s.id === id)
+
+  // A new copy of the deck at a slide, behind the one showing until it's ready
+  function load(slideId) {
+    const frame = document.createElement('iframe')
+    frame.title = `${deck.title}, as presented`
+    frame.src = deck.url + (slideId ? `#/s-${encodeURIComponent(slideId)}` : '')
+    frame.allow = 'fullscreen'
+    if (showing) {
+      frame.className = 'loading'
+      setTimeout(() => { if (frame.isConnected && frame.classList.contains('loading')) reveal(frame) }, 10000)
+    } else {
+      showing = frame
+    }
+    stage.appendChild(frame)
+    note.hidden = true
+  }
+
+  function reveal(frame) {
+    for (const other of stage.querySelectorAll('iframe')) if (other !== frame) other.remove()
+    frame.classList.remove('loading')
+    showing = frame
+  }
+
+  function fromDeck(frame, data) {
+    const arrived = frame.classList.contains('loading')
+    if (arrived) reveal(frame)
+    if (frame !== showing) return
+    const id = typeof data.id === 'string' ? data.id : null
+    // The person went to another slide: it's not the one that changed
+    if (!arrived && id !== shown.id) freshUntil = 0
+    shown = { id }
+    describe()
+  }
+
+  // "Slide 3 of 12 · Why galaxies spin too fast", and the same for the AI
+  function describe() {
+    if (!deck || stopped) return
+    const count = deck.slides.length
+    const at = deck.slides.find(s => s.id === shown.id)
+    const text = at ? `Slide ${at.number} of ${count}${at.title ? ` · ${at.title}` : ''}`
+      : shown.id === 'references' ? `References, after slide ${count}`
+        : `${count} slide${count === 1 ? '' : 's'}`
+    where.textContent = ''
+    if (Date.now() < freshUntil) {
+      const fresh = document.createElement('span')
+      fresh.className = 'fresh'
+      fresh.textContent = 'Updated · '
+      where.appendChild(fresh)
+    }
+    where.appendChild(document.createTextNode(text))
+    where.title = text
+    tellModel(at)
+  }
+
+  let told = ''
+  let tellTimer = 0
+  function tellModel(at) {
+    if (!at) return
+    const text = `In the Parallax viewer, the person is looking at slide ${at.number} of ${deck.slides.length}${at.title ? `, "${at.title}"` : ''} (id ${at.id}).`
+    if (text === told) return
+    told = text
+    clearTimeout(tellTimer)
+    tellTimer = setTimeout(() => {
+      request('ui/update-model-context', {
+        content: [{ type: 'text', text }],
+        structuredContent: { slide: at.number, slideId: at.id, title: at.title || '' },
+      }).catch(() => {})
+    }, 400)
+  }
+
+  function update(next) {
+    const before = deck
+    deck = next
+    stage.style.aspectRatio = `${next.width} / ${next.height}`
+    editorButton.hidden = !(next.editorUrl && host.capabilities.openLinks)
+    if (!before) {
+      load(next.open && has(next.open) ? next.open : null)
+      describe()
+      return
+    }
+    if (next.version === before.version) return
+    lastChange = Date.now()
+    // The slide the AI is on when following its changes; else the person's
+    // slide, or the one now at its place when theirs is gone
+    let target = follow.checked && next.ai && has(next.ai) ? next.ai : null
+    if (!target && shown.id && has(shown.id)) target = shown.id
+    if (!target && shown.id) {
+      const was = shown.id === 'references' ? before.slides.length : (before.slides.find(s => s.id === shown.id) || {}).number
+      const now = was && next.slides[Math.min(was, next.slides.length) - 1]
+      if (now) target = now.id
+    }
+    load(target)
+    freshUntil = Date.now() + 4000
+    describe()
+    setTimeout(describe, 4100)
+  }
+
+  function problem(message) {
+    note.textContent = message
+    note.hidden = false
+    for (const frame of stage.querySelectorAll('iframe')) frame.remove()
+    showing = null
+    where.textContent = ''
+  }
+
+  // ── Checking for changes, while the viewer is on screen ──
+
+  let timer = 0
+  let polling = false
+  let stopped = false
+  let failures = 0
+  let lastChange = Date.now()
+  let onScreen = true
+  const visible = () => onScreen && !document.hidden
+  const textOf = result => (result.content || []).filter(c => c && c.type === 'text').map(c => c.text).join(' ')
+
+  async function poll() {
+    clearTimeout(timer)
+    if (stopped || polling) return
+    if (deck && !visible()) return // starts again when it's back on screen
+    polling = true
+    try {
+      const args = !deck && toolInput && toolInput.slide != null ? { slide: toolInput.slide } : {}
+      const result = await request('tools/call', { name: 'deck_preview', arguments: args })
+      if (result && result.isError) {
+        problem(textOf(result) || 'The presentation can’t be shown.')
+        stop()
+        return
+      }
+      const next = result && result.structuredContent
+      if (!next || !next.url || !Array.isArray(next.slides)) throw new Error('no preview came back')
+      failures = 0
+      update(next)
+    } catch {
+      failures++
+      if (failures >= GIVE_UP) {
+        stop()
+        if (deck) {
+          where.textContent = 'Not following changes: the link may have been revoked, or the app lost its connection.'
+          where.title = where.textContent
+        } else {
+          problem('The presentation can’t be shown here. Open it in the Parallax editor instead.')
+        }
+        retryButton.hidden = false
+      }
+    } finally {
+      polling = false
+      if (!stopped) timer = setTimeout(poll, failures ? RETRY : Date.now() - lastChange > QUIET ? SLOW : FAST)
+    }
+  }
+
+  retryButton.addEventListener('click', () => {
+    retryButton.hidden = true
+    stopped = false
+    failures = 0
+    if (!deck) { note.textContent = 'Opening the presentation…'; note.hidden = false }
+    describe()
+    poll()
+  })
+
+  function stop() {
+    stopped = true
+    clearTimeout(timer)
+  }
+
+  function onScreenNow(now) {
+    const was = visible()
+    onScreen = now
+    if (!was && visible()) poll()
+  }
+  if ('IntersectionObserver' in window) new IntersectionObserver(entries => onScreenNow(entries.some(e => e.isIntersecting))).observe(viewer)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && onScreen) poll() })
+
+  // ── Starting ──
+
+  async function start() {
+    try {
+      const result = await request('ui/initialize', {
+        protocolVersion: PROTOCOL,
+        appInfo: { name: 'Parallax viewer', version: '1.0.0' },
+        appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
+      }, 10000)
+      host.context = (result && result.hostContext) || {}
+      host.capabilities = (result && result.hostCapabilities) || {}
+    } catch {
+      problem('This app can’t show the presentation here. Open it in the Parallax editor instead.')
+      return
+    }
+    notify('ui/notifications/initialized')
+    applyHost()
+    // show_deck's arguments (a slide to open at) come next; wait a moment for them
+    await new Promise(resolve => { inputArrived = resolve; setTimeout(resolve, 600) })
+    inputArrived = null
+    poll()
+  }
+  start()
+})()
+</script>
+</body>
+</html>

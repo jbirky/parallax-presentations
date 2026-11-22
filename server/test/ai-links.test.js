@@ -179,9 +179,9 @@ describe('AI collaborator links', { skip }, () => {
     const list = await rpc(secret, 'tools/list')
     assert.equal(list.status, 200, JSON.stringify(list.body))
     const tools = Object.fromEntries(list.body.result.tools.map(tool => [tool.name, tool]))
-    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
-      'get_slide', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
-    for (const name of ['get_deck', 'get_slide', 'render_slide', 'list_datasets', 'get_element_guide']) assert.equal(tools[name].annotations.readOnlyHint, true)
+    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'deck_preview', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
+      'get_slide', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'show_deck', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'list_datasets', 'get_element_guide', 'show_deck', 'deck_preview']) assert.equal(tools[name].annotations.readOnlyHint, true)
     assert.ok(tools.add_element.inputSchema.properties.type.enum.includes('circuit'))
     assert.match(toolText(await callTool(secret, 'get_element_guide')), /- \*\*graph\*\* \(Graph\)/)
     assert.match(toolText(await callTool(secret, 'get_element_guide', { type: 'circuit' })), /^# Circuit diagram \(type "circuit"\)[\s\S]*Templates \("template": key, with spec to change it\): lamp \(Switch and lamp\)/)
@@ -418,6 +418,80 @@ describe('AI collaborator links', { skip }, () => {
     const wrong = await callTool(secret, 'add_element', { slide: 2, type: 'graph', spec: { expressions: [{ data: { dataset: 'planets', x: 'found', y: 'radius' } }] } })
     assert.equal(wrong.body.result.isError, true)
     assert.match(toolText(wrong), /no column "radius" \(for y\)\. Its columns: planet, mass, found/)
+  })
+
+  it('shows the deck in a viewer that follows its changes, from a preview link', async () => {
+    const owner = t.user('owner10')
+    const id = await createDeck(owner, 'Viewer talk', { slides: SLIDES })
+    const link = (await makeLink(owner, id)).body
+    const secret = secretOf(link.url)
+    // Links name the site's public origin; previews are fetched from this server
+    const site = new URL(link.url).origin
+    const here = url => t.base + new URL(url).pathname
+
+    // show_deck names the viewer; deck_preview is the viewer's alone
+    const tools = Object.fromEntries((await rpc(secret, 'tools/list')).body.result.tools.map(tool => [tool.name, tool]))
+    assert.deepEqual(tools.show_deck._meta.ui, { resourceUri: 'ui://parallax/deck-viewer' })
+    assert.deepEqual(tools.deck_preview._meta.ui, { resourceUri: 'ui://parallax/deck-viewer', visibility: ['app'] })
+    assert.equal(tools.show_deck.inputSchema.required, undefined)
+
+    // The viewer's page, framing pages from this site
+    const listed = (await rpc(secret, 'resources/list')).body.result.resources
+    assert.deepEqual(listed.map(r => [r.uri, r.mimeType]), [['ui://parallax/deck-viewer', 'text/html;profile=mcp-app']])
+    const read = (await rpc(secret, 'resources/read', { uri: 'ui://parallax/deck-viewer' })).body.result.contents[0]
+    assert.equal(read.mimeType, 'text/html;profile=mcp-app')
+    assert.deepEqual(read._meta.ui.csp, { frameDomains: [site] })
+    assert.match(read.text, /^<!doctype html>/)
+    assert.match(read.text, /'ui\/initialize'/)
+    assert.match(read.text, /name: 'deck_preview'/)
+    assert.match(read.text, /'ui\/update-model-context'/)
+    assert.doesNotMatch(read.text, /https?:\/\//, 'the viewer loads nothing from elsewhere')
+
+    // Before the AI has done anything, the preview says it's nowhere, and
+    // asking doesn't put it in the avatars
+    const first = (await callTool(secret, 'deck_preview')).body.result
+    assert.equal(first.isError, undefined)
+    const p = first.structuredContent
+    assert.ok(p.url.startsWith(`${site}/ai-preview/${link.id}.`), p.url)
+    assert.deepEqual(p.slides, [{ id: 'slide-title', number: 1, title: 'RC filters' }, { id: 'slide-cutoff', number: 2, title: 'The cutoff' }])
+    assert.deepEqual([p.title, p.width, p.height, p.ai, p.open, p.editorUrl], ['Viewer talk', 960, 540, null, null, `${site}/dashboard/viewer-talk`])
+    assert.equal((await callTool(secret, 'deck_preview')).body.result.structuredContent.version, p.version, 'the same deck, the same version')
+    assert.equal((await callTool(secret, 'deck_preview', { slide: 2 })).body.result.structuredContent.open, 'slide-cutoff')
+
+    // show_deck: the outline and the editor; the AI is now on that slide
+    const shown = toolText(await callTool(secret, 'show_deck', { slide: 2 }))
+    assert.match(shown, /live viewer, at slide 2/)
+    assert.ok(shown.includes(`Parallax editor: ${site}/dashboard/viewer-talk`))
+    assert.match(shown, /# Viewer talk/)
+    assert.equal((await callTool(secret, 'show_deck', { slide: 9 })).body.result.isError, true)
+    assert.equal((await callTool(secret, 'deck_preview')).body.result.structuredContent.ai, 'slide-cutoff')
+
+    // The preview: the deck as presented, telling the viewer which slide
+    // shows, in a sandbox, and free to be framed
+    const page = await fetch(here(p.url))
+    assert.equal(page.status, 200)
+    assert.match(page.headers.get('content-type'), /text\/html/)
+    assert.match(page.headers.get('content-security-policy'), /^sandbox allow-scripts /)
+    assert.equal(page.headers.get('x-frame-options'), null)
+    assert.equal(page.headers.get('cache-control'), 'no-store')
+    const html = await page.text()
+    assert.match(html, /Reveal\.initialize/)
+    assert.match(html, /parallax-deck-go/)
+    assert.match(html, /id="s-slide-cutoff"/)
+    assert.match(html, /#fs-btn \{ display: none !important; \}<\/style><\/head>/, 'no Fullscreen button of its own')
+
+    // A change: a new version
+    assert.equal((await callTool(secret, 'update_deck', { title: 'Viewer talk, revised' })).body.result.isError, undefined)
+    const after = (await callTool(secret, 'deck_preview')).body.result.structuredContent
+    assert.notEqual(after.version, p.version)
+    assert.equal(after.title, 'Viewer talk, revised')
+
+    // Wrong, changed and old tokens, and a revoked link's, open nothing
+    for (const bad of ['nonsense', `${link.id}.zzzzzz.${'A'.repeat(43)}`, p.url.slice(p.url.lastIndexOf('/') + 1).replace(/.$/, c => (c === 'A' ? 'B' : 'A'))]) {
+      assert.equal((await fetch(`${t.base}/ai-preview/${bad}`)).status, 404, bad)
+    }
+    assert.equal((await call(owner, 'DELETE', `/api/presentations/${id}/ai-links/${link.id}`)).status, 200)
+    assert.equal((await fetch(here(p.url))).status, 404)
   })
 
   it('refuses MCP requests that are not JSON', async () => {

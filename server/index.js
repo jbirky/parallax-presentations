@@ -2027,7 +2027,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
 if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
-    '/api/presentations/:id/ai-links', '/mcp'],
+    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2148,8 +2148,8 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
 // The link's MCP server and page, made here so revoking a link can take it
 // out of the avatars
 // An AI link's slides are drawn from the page a share link has
-const mcpDeckPage = async (deck, ownerId) => localizeLibraries(await generateRevealHTML(deck, { notes: false, deckData: await deckData(deck, ownerId) }))
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, localDir: DATA_DIR }) : null
+const mcpDeckPage = async (deck, ownerId, opts = {}) => localizeLibraries(await generateRevealHTML(deck, { notes: false, deckData: await deckData(deck, ownerId), ...opts }))
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
@@ -2203,6 +2203,8 @@ app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireV
 
 // /mcp/:secret - the link itself: MCP for a connector, a page for a person
 if (mcpRoute) app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, mcpRoute)
+// The deck viewer's preview of a link's deck (server/mcp/viewer.js)
+if (mcpRoute) app.get('/ai-preview/:token', deckPageLimiter, mcpRoute.preview)
 
 app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {

@@ -100,24 +100,25 @@ async function revokeLink(storage, presentationId, linkId) {
   return rowCount > 0
 }
 
+// A link that still works, with its presentation: { id, name, deckId,
+// ownerId, ownerPlan, lastUsedAt }, by the condition `where` on ai_links (l)
+const LINK_SELECT = `SELECT l.id, l.name, l.presentation_id AS "deckId", l.last_used_at AS "lastUsedAt",
+            p.user_id AS "ownerId", u.plan AS "ownerPlan"
+       FROM ai_links l
+       JOIN presentations p ON p.id = l.presentation_id
+       LEFT JOIN users u ON u.id = p.user_id
+      WHERE %WHERE% AND l.revoked_at IS NULL
+        AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        AND p.is_template = false
+        AND (p.expires_at IS NULL OR p.expires_at > NOW())`
+
 // The link a secret is for, and its presentation: { id, name, deckId,
 // ownerId, ownerPlan }, or null when no link that still works has it (an
 // unknown, revoked or expired secret, or an expired presentation all look
 // the same). Notes when it was used.
 async function findLink(storage, secret) {
   if (typeof secret !== 'string' || !SECRET_PATTERN.test(secret)) return null
-  const { rows } = await storage.query(
-    `SELECT l.id, l.name, l.presentation_id AS "deckId", l.last_used_at AS "lastUsedAt",
-            p.user_id AS "ownerId", u.plan AS "ownerPlan"
-       FROM ai_links l
-       JOIN presentations p ON p.id = l.presentation_id
-       LEFT JOIN users u ON u.id = p.user_id
-      WHERE l.token_hash = $1 AND l.revoked_at IS NULL
-        AND (l.expires_at IS NULL OR l.expires_at > NOW())
-        AND p.is_template = false
-        AND (p.expires_at IS NULL OR p.expires_at > NOW())`,
-    [hashOf(secret)]
-  )
+  const { rows } = await storage.query(LINK_SELECT.replace('%WHERE%', 'l.token_hash = $1'), [hashOf(secret)])
   const link = rows[0]
   if (!link) return null
   if (!link.lastUsedAt || Date.now() - new Date(link.lastUsedAt).getTime() > TOUCH_MS) {
@@ -128,7 +129,18 @@ async function findLink(storage, secret) {
   return rest
 }
 
+// The same, by the link's id, for the deck viewer's previews
+// (server/mcp/viewer.js), which aren't the link being used
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+async function findLinkById(storage, id) {
+  if (typeof id !== 'string' || !UUID.test(id)) return null
+  const { rows } = await storage.query(LINK_SELECT.replace('%WHERE%', 'l.id = $1'), [id])
+  if (!rows[0]) return null
+  const { lastUsedAt, ...rest } = rows[0]
+  return rest
+}
+
 module.exports = {
-  listLinks, createLink, renewLink, revokeLink, findLink,
+  listLinks, createLink, renewLink, revokeLink, findLink, findLinkById,
   hashOf, SECRET_PATTERN, LIFETIMES, DEFAULT_DAYS, MAX_LINKS, NAME_MAX,
 }

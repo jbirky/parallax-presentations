@@ -20,11 +20,13 @@
 // avatars (presence.js). A version is saved before the first edit after a
 // quiet spell, so the person can undo a session from History, and an
 // element someone has open is never changed under them.
+//
+// In apps that show MCP Apps, show_deck opens the deck viewer (viewer.js)
+// in the chat, which follows the AI's changes from /ai-preview/<token>.
 
-const crypto = require('crypto')
 const { Readable } = require('stream')
 const { McpServer, createMcpHandler, fromJsonSchema } = require('@modelcontextprotocol/server')
-const { findLink } = require('../services/ai-links')
+const { findLink, findLinkById } = require('../services/ai-links')
 const { deepEqual } = require('../services/deck-doc')
 const format = require('./format')
 const markdown = require('./markdown')
@@ -34,6 +36,7 @@ const { linkPageHtml, linkPageMarkdown, PAGE_HEADERS } = require('./link-page')
 const thumbnails = require('../services/slide-thumbnail')
 const { datasetList } = require('./datasets')
 const guides = require('./guides')
+const viewer = require('./viewer')
 
 const GONE = "This AI collaborator link was revoked or has expired, or its presentation is gone. Ask the presentation's owner for a new link."
 const INSTRUCTIONS = [
@@ -41,6 +44,7 @@ const INSTRUCTIONS = [
   'Start with get_deck for its outline, and read a slide with get_slide before changing it. Slides are 960×540 pixels. render_slide shows you a slide as presented, to check how it looks after changing it.',
   'Fill slides through their layouts: add_slide takes a layout with its title, subtitle and body, and update_slide changes them. Text in a layout\'s placeholders shrinks to fit, so it needs no positions. add_element and update_element are for anything else.',
   'Text is Markdown, with $…$ for math and [@key] for citations. apply_edits makes several changes at once, all or nothing. import_beamer turns LaTeX Beamer source into slides.',
+  'show_deck shows the presentation to the person in the chat, live, in apps that show MCP Apps (claude.ai and ChatGPT among them): call it once when you start changing it, so they can watch your changes land, and it tells you which slide they\'re looking at.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
   'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
 ].join(' ')
@@ -63,6 +67,17 @@ const SLIDE_INPUT = fromJsonSchema({
     },
   },
   required: ['slide'],
+  additionalProperties: false,
+})
+
+const SHOW_INPUT = fromJsonSchema({
+  type: 'object',
+  properties: {
+    slide: {
+      description: 'A slide to open at: its number as shown (1 is the first) or its id from get_deck. Leave out to open at the first slide.',
+      anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', minLength: 1, maxLength: 100 }],
+    },
+  },
   additionalProperties: false,
 })
 
@@ -126,10 +141,10 @@ const noSlide = (deck, slide) => {
 }
 
 // The server for one request: the link's tools for its presentation.
-// loadDeck(link), write(link, edits) and render(link, slide, local) do the
-// work (createMcpRoute); local is this server's address for its own
-// renderer.
-function buildServer(link, { loadDeck, write, touch, render, datasets }, local) {
+// loadDeck(link), write(link, edits), render(link, slide, local) and
+// preview(link, site, slide) do the work (createMcpRoute); local is this
+// server's address for its own renderer, and site the site's public origin.
+function buildServer(link, { loadDeck, write, touch, render, datasets, preview }, { local, site } = {}) {
   const server = new McpServer({ name: 'parallax', title: 'Parallax', version: '1.0.0' }, { instructions: INSTRUCTIONS })
   server.registerTool('get_deck', {
     title: 'Read the presentation outline',
@@ -161,6 +176,40 @@ function buildServer(link, { loadDeck, write, touch, render, datasets }, local) 
     inputSchema: SLIDE_INPUT,
     annotations: READ_ONLY,
   }, guarded('render_slide', async ({ slide }) => render(link, slide, local)))
+  server.registerTool('show_deck', {
+    title: 'Show the presentation',
+    description: "Show the presentation to the person, live: in apps that show MCP Apps (claude.ai and ChatGPT among them), a viewer in the chat that follows your changes as you make them and tells you which slide they're looking at. Elsewhere, the person gets a link to open it in the Parallax editor. Returns the outline, as get_deck does. Call it once when you start changing the presentation, or with a slide to show them one.",
+    inputSchema: SHOW_INPUT,
+    annotations: READ_ONLY,
+    _meta: { ui: { resourceUri: viewer.VIEWER_URI }, 'ui/resourceUri': viewer.VIEWER_URI },
+  }, guarded('show_deck', async ({ slide } = {}) => {
+    const deck = await loadDeck(link)
+    if (!deck) return failure(GONE)
+    const found = slide != null ? format.findSlide(deck, slide) : null
+    if (slide != null && !found) return noSlide(deck, slide)
+    touch(link, found ? { slide: found.slide.id } : {})
+    return text([
+      `If this app shows MCP Apps, the presentation is showing for the person in a live viewer${found ? `, at slide ${found.number}` : ''}: it updates as you change the presentation.`,
+      `Otherwise, they can open it in the Parallax editor: ${viewer.editorUrl(site, deck)}`,
+      '',
+      format.deckOutline(deck),
+    ].join('\n'))
+  }))
+  server.registerTool('deck_preview', {
+    title: 'Preview for the viewer',
+    description: "For the presentation viewer that show_deck opens, not for you: a short-lived link to the presentation as presented, and its version, so the viewer can follow changes.",
+    inputSchema: SHOW_INPUT,
+    annotations: READ_ONLY,
+    _meta: { ui: { resourceUri: viewer.VIEWER_URI, visibility: ['app'] } },
+  }, guarded('deck_preview', async ({ slide } = {}) => preview(link, site, slide)))
+  server.registerResource('deck-viewer', viewer.VIEWER_URI, {
+    title: 'Presentation viewer',
+    description: 'The presentation as presented, following the changes the AI makes',
+    mimeType: viewer.VIEWER_MIME,
+    _meta: viewer.viewerMeta(site),
+  }, async () => ({
+    contents: [{ uri: viewer.VIEWER_URI, mimeType: viewer.VIEWER_MIME, text: viewer.viewerHtml(), _meta: viewer.viewerMeta(site) }],
+  }))
   server.registerTool('get_element_guide', {
     title: 'Read how to add an element',
     description: `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline, HTML embed or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
@@ -221,7 +270,7 @@ function heldChanges(prev, next, held) {
 const SKIP_HEADERS = new Set(['host', 'content-length', 'connection', 'transfer-encoding', 'cookie', 'keep-alive', 'upgrade'])
 
 // Serves one request through the SDK's fetch-shaped handler
-async function serve(handler, req, res, link) {
+async function serve(handler, req, res, link, site) {
   const controller = new AbortController()
   res.on('close', () => { if (!res.writableEnded) controller.abort() })
   const headers = new Headers()
@@ -236,7 +285,7 @@ async function serve(handler, req, res, link) {
     signal: controller.signal,
   })
   const response = await handler.fetch(request, {
-    authInfo: { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link, local: `http://127.0.0.1:${req.socket.localPort}` } },
+    authInfo: { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link, site, local: `http://127.0.0.1:${req.socket.localPort}` } },
     ...(post && { parsedBody: req.body }),
   })
   res.status(response.status)
@@ -254,10 +303,13 @@ const wantsMarkdown = req => req.query.format === 'md'
 // The /mcp/:secret route. origin(req): the site's origin, for the link
 // written on its page. collab: live editing (services/collab.js), which
 // edits go through. deckPage(deck, ownerId): the deck's presented page, as
-// share links have it, for render_slide. localDir: where datasets' files
-// are kept without R2. The route's leave(linkId) takes a
-// revoked link out of the avatars.
-function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer = thumbnails }) {
+// share links have it, for render_slide; with { bridge: true }, for the
+// deck viewer, telling the page around it which slide shows. sandbox: the
+// Content-Security-Policy a deck's page is served with. localDir: where
+// datasets' files are kept without R2. The route's leave(linkId) takes a
+// revoked link out of the avatars, and its preview serves the viewer's
+// /ai-preview/:token.
+function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens() }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -344,8 +396,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer 
     touch(link, { slide: found.slide.id })
     const sw = Number(deck.slideWidth) || 960, sh = Number(deck.slideHeight) || 540
     const width = 960, height = Math.min(1440, Math.max(270, Math.round(960 * sh / sw)))
-    const { version, createdAt, updatedAt, expiresAt, ...content } = deck
-    const key = `${crypto.createHash('sha256').update(JSON.stringify(content)).digest('hex')}|${found.slide.id}`
+    const key = `${viewer.deckVersion(deck)}|${found.slide.id}`
     const says = `Slide ${found.number} of ${format.shownSlides(deck).length}, as presented, with all its steps shown.`
     const picture = image => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' }] })
     if (renders.has(key)) {
@@ -380,8 +431,55 @@ function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer 
     return text(await datasetList(storage, link.deckId, { ownerId: link.ownerId, localDir }))
   }
 
-  const tools = { loadDeck, write, touch, render, datasets }
-  const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra?.local), {
+  // For the viewer (deck_preview): a preview link, the deck's version, its
+  // slides, and the slide the AI is on while it's working. Not the AI's own
+  // request, so the link's avatar isn't touched.
+  async function preview(link, site, slide) {
+    const deck = await loadDeck(link)
+    if (!deck) return failure(GONE)
+    const shown = format.shownSlides(deck)
+    const ids = new Set(shown.map(s => String(s.slide.id)))
+    const aiSlide = presence?.entries.get(link.id)?.state?.slide
+    const data = {
+      url: `${site}${viewer.PREVIEW_PATH}${previews.make(link.id)}`,
+      version: viewer.deckVersion(deck),
+      title: deck.title || 'Untitled',
+      width: Number(deck.slideWidth) || 960,
+      height: Number(deck.slideHeight) || 540,
+      slides: shown.map(s => ({ id: String(s.slide.id), number: s.number, title: format.titleOf(s.slide) })),
+      editorUrl: viewer.editorUrl(site, deck),
+      ai: aiSlide != null && ids.has(String(aiSlide)) ? String(aiSlide) : null,
+      open: slide != null ? String(format.findSlide(deck, slide)?.slide.id ?? '') || null : null,
+    }
+    return { content: [{ type: 'text', text: `A preview of "${data.title}" for the viewer, ${shown.length} slide${shown.length === 1 ? '' : 's'}.` }], structuredContent: data }
+  }
+
+  // GET /ai-preview/:token: the deck as presented, for the viewer to frame.
+  // Read only, for the link's deck, while the token and the link last. It
+  // can be framed anywhere: the app draws the viewer in frames of its own,
+  // on origins it picks, and the page changes nothing and shows only what
+  // whoever holds the token can open anyway. In its sandbox, as share links'
+  // pages are.
+  async function previewPage(req, res) {
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' })
+    res.removeHeader('X-Frame-Options')
+    const gone = () => res.status(404).type('text').send('This preview has expired. The viewer gets a new one by itself.')
+    try {
+      const linkId = previews.check(req.params.token)
+      const link = linkId && await findLinkById(storage, linkId)
+      if (!link) return gone()
+      const deck = await loadDeck(link)
+      if (!deck || !deckPage) return gone()
+      const html = await deckPage(deck, link.ownerId, { bridge: true })
+      res.set('Content-Security-Policy', sandbox).type('html').send(viewer.forViewer(html))
+    } catch (err) {
+      console.error('AI link preview failed:', err.message)
+      if (!res.headersSent) res.status(500).type('text').send('Something went wrong')
+    }
+  }
+
+  const tools = { loadDeck, write, touch, render, datasets, preview }
+  const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })
 
@@ -408,7 +506,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer 
       if (req.method === 'POST' && !req.is('application/json')) {
         return res.status(415).json({ error: 'MCP requests are JSON (Content-Type: application/json)' })
       }
-      await serve(handler, req, res, link)
+      await serve(handler, req, res, link, origin(req))
     } catch (err) {
       console.error('AI link request failed:', err.message)
       if (!res.headersSent) res.status(500).json({ error: 'Something went wrong' })
@@ -416,6 +514,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, localDir, renderer 
     }
   }
   mcpRoute.leave = linkId => presence?.leave(linkId)
+  mcpRoute.preview = previewPage
   mcpRoute.presence = presence
   return mcpRoute
 }
