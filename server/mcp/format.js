@@ -9,6 +9,9 @@
 // Text boxes come out as Markdown with $…$ for math and [@key] for
 // citations, the form the AI will write them in.
 
+const shared = require('./shared')
+const { THEMES, deckTheme, cleanThemeColors, deckTextFont } = require('../services/themes')
+
 const SLIDE_W = 960
 const SLIDE_H = 540
 const MAX_TEXT = 4000      // characters of one text box in get_slide
@@ -293,6 +296,75 @@ function typeCounts(slide) {
   return [...counts].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t)).join(', ')
 }
 
+// The deck's text styles in short (client/src/utils/textStyles.js): every
+// size once it has any, and the headings' font and weight; '' without them
+function textStylesFacts(styles) {
+  const clean = shared.cleanTextStyles(styles)
+  if (!clean) return ''
+  const s = shared.textSizes(clean)
+  const px = n => `${Math.round(n * 10) / 10}px`
+  return [
+    `text H1 ${px(s.h1Size)}, H2 (slide titles) ${px(s.h2Size)}, H3 ${px(s.h3Size)}, body ${px(s.bodySize)}`,
+    clean.headingFont && `heading font ${clean.headingFont.split(',')[0].replace(/['"]/g, '').trim()}`,
+    clean.headingWeight && `heading weight ${clean.headingWeight}`,
+  ].filter(Boolean).join(' · ')
+}
+
+// The deck's own colors and stylesheet in short; '' without them
+function themeFacts(deck) {
+  const colors = cleanThemeColors(deck.themeColors)
+  const css = typeof deck.themeCss === 'string' && deck.themeCss.trim() ? deck.themeCss.length : 0
+  return [
+    colors && `own colors ${Object.entries(colors).map(([key, value]) => `${key} ${value}`).join(', ')}`,
+    css && `stylesheet ${css < 1000 ? `${css} characters` : `${Math.round(css / 100) / 10} KB`} (get_theme)`,
+  ].filter(Boolean).join(' · ')
+}
+
+// The theme in full, for get_theme: what slides show, the deck's own colors,
+// fonts and text styles, its stylesheet and what was left out of it, and
+// what a stylesheet's rules can target. layouts are the layouts' keys.
+function themeText(deck, layouts = []) {
+  const id = THEMES[deck.theme] ? deck.theme : 'black'
+  const base = THEMES[id]
+  const own = cleanThemeColors(deck.themeColors)
+  const t = deckTheme(id, own)
+  const font = deckTextFont(deck.globalFont, id)
+  const lines = [
+    '# Theme',
+    '',
+    `Base theme: ${base.label} (${id}), ${t.dark ? 'dark' : 'light'}${base.note ? `. ${base.note}` : ''}.`,
+    own ? `The deck's own colors: ${Object.entries(own).map(([key, value]) => `${key} ${value}`).join(', ')}.` : "No colors of the deck's own (themeColors).",
+    `Slides without a background of their own show: page ${t.background}, text ${t.text}, headings ${t.heading}, links ${t.link}, accent ${t.accent}. A slide with its own background keeps colors that show on it.`,
+    `Font: ${font ? font.split(',')[0].replace(/['"]/g, '').trim() : 'Arial (default)'}. ${textStylesFacts(deck.textStyles) || 'Text sizes: the defaults (H1 105px, H2 67.2px, H3 54.6px, body 42px).'}`,
+    '',
+    '## Stylesheet (themeCss)',
+    '',
+  ]
+  const source = typeof deck.themeCss === 'string' ? deck.themeCss : ''
+  if (source.trim()) {
+    lines.push('```css', source.trimEnd(), '```')
+    const { dropped } = shared.scopeThemeCss(source)
+    if (dropped.length) lines.push('', `Left out when drawn: ${dropped.slice(0, 20).map(d => `${d.line ? `line ${d.line}: ` : ''}${d.reason}`).join('; ')}.`)
+  } else {
+    lines.push('None yet. update_deck\'s themeCss sets one.')
+  }
+  lines.push(
+    '',
+    '## What a stylesheet can target',
+    '',
+    'Every rule is scoped to a slide, written as if .px-slide were in front of it: `h2 { … }` styles headings on slides only, and :root, html and body mean the slide.',
+    '',
+    '- `.px-slide`: every slide; `.px-slide[data-layout=…]`: slides in one layout' + (layouts.length ? ` (${layouts.join(', ')})` : ''),
+    '- `.px-text`: every text box; `[data-placeholder=title]`, `subtitle`, `body`: a layout\'s placeholders',
+    '- Slide titles are h2 in most layouts and h1 in section-header and big-number; body text is p, and lists ul or ol with li',
+    '- `var(--px-bg)`, `var(--px-text)`, `var(--px-heading)`, `var(--px-link)`, `var(--px-accent)`: the slide\'s colors, as above',
+    '- `var(--ts-body)`, `var(--ts-h1)`…`var(--ts-h3)`, `var(--ts-heading-font)`: the text styles, when set',
+    '',
+    'Allowed: rules, @media, @supports, @font-face, @keyframes, and nested rules written with & (`& h2 { … }`). url() and @import only for uploads, data: URLs and the font hosts decks load (Google Fonts, cdnfonts, jsDelivr). Left out: position: fixed, other at-rules, selectors that reach outside a slide (+ or ~ after .px-slide), and \\ escapes outside strings. Text a person colored or sized by hand keeps it unless a rule uses !important.',
+  )
+  return lines.join('\n')
+}
+
 function deckFacts(deck) {
   const w = Number(deck.slideWidth) || SLIDE_W
   const h = Number(deck.slideHeight) || SLIDE_H
@@ -300,6 +372,8 @@ function deckFacts(deck) {
     `${w}×${h}`,
     `theme ${deck.theme || 'black'}`,
     `font ${deck.globalFont ? String(deck.globalFont).split(',')[0].replace(/['"]/g, '') : 'Arial (default)'}`,
+    textStylesFacts(deck.textStyles),
+    themeFacts(deck),
     deck.transition && `transition ${deck.transition}`,
   ].filter(Boolean).join(' · ')
 }
@@ -560,5 +634,5 @@ function deckMarkdown(deck) {
 
 module.exports = {
   parseHtml, htmlToMarkdown, textOf, titleOf, slideOrder, shownSlides, findSlide, elementsInOrder,
-  deckOutline, slideDetail, deckMarkdown,
+  deckOutline, slideDetail, deckMarkdown, textStylesFacts, themeText,
 }

@@ -30,7 +30,7 @@ const { findLink, findLinkById } = require('../services/ai-links')
 const { deepEqual } = require('../services/deck-doc')
 const format = require('./format')
 const markdown = require('./markdown')
-const { SCHEMAS, DESTRUCTIVE, LAYOUT_LIST, MAX_EDITS, runEdits, EditError } = require('./edits')
+const { SCHEMAS, DESTRUCTIVE, LAYOUTS, LAYOUT_LIST, MAX_EDITS, runEdits, EditError } = require('./edits')
 const { createPresence } = require('./presence')
 const { linkPageHtml, linkPageMarkdown, PAGE_HEADERS } = require('./link-page')
 const thumbnails = require('../services/slide-thumbnail')
@@ -44,6 +44,7 @@ const INSTRUCTIONS = [
   'Start with get_deck for its outline, and read a slide with get_slide before changing it. Slides are 960×540 pixels. render_slide shows you a slide as presented, to check how it looks after changing it.',
   'Fill slides through their layouts: add_slide takes a layout with its title, subtitle and body, and update_slide changes them. Text in a layout\'s placeholders shrinks to fit, so it needs no positions. add_element and update_element are for anything else.',
   'Text is Markdown, with $…$ for math and [@key] for citations. apply_edits makes several changes at once, all or nothing. import_beamer turns LaTeX Beamer source into slides.',
+  'get_theme shows the presentation\'s theme, and what its stylesheet can target; update_deck gives it a theme, text styles, colors of its own (themeColors) and a stylesheet (themeCss), scoped to its slides.',
   'show_deck shows the presentation to the person in the chat, live, in apps that show MCP Apps (claude.ai and ChatGPT among them): call it once when you start changing it, so they can watch your changes land, and it tells you which slide they\'re looking at.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
   'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
@@ -136,7 +137,7 @@ const guarded = (name, work) => async (...args) => {
 // The write tools: one per operation in edits.js, and apply_edits for
 // several at once
 const WRITE_TOOLS = [
-  ['update_deck', 'Change the presentation', "Change the presentation's title, theme, font, default transition or planned talk length."],
+  ['update_deck', 'Change the presentation', "Change the presentation's title, theme, font, text styles (the size of every slide's titles, headings and body text, and the headings' font and weight), its own colors over the theme's (themeColors), its stylesheet (themeCss, scoped to its slides: read get_theme first), default transition or planned talk length."],
   ['add_slide', 'Add a slide', `Add a slide in a layout, with its placeholders filled: title, subtitle and body as Markdown. It goes after the slide you name (0 for first), or at the end. Layouts and their placeholders: ${LAYOUT_LIST}.`],
   ['update_slide', 'Change a slide', "Change a slide: its layout (its title and text move into the new layout's placeholders), its title, subtitle and body placeholders (Markdown, replacing what's there), its speaker notes, planned minutes or background color."],
   ['move_slide', 'Move a slide', 'Move a slide to after another slide, or to the start with after: 0.'],
@@ -189,6 +190,17 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
     if (!deck) return failure(GONE)
     touch(link, {})
     return text(format.deckOutline(deck))
+  }))
+  server.registerTool('get_theme', {
+    title: "Read the presentation's theme",
+    description: "The presentation's theme: its base theme, the colors slides show and the deck's own colors, its font and text styles, its stylesheet (themeCss) with any rules left out when it's drawn, and what a stylesheet's rules can target (slides, layouts, text boxes, placeholders and color variables). Read it before setting themeColors or themeCss with update_deck.",
+    inputSchema: NO_INPUT,
+    annotations: READ_ONLY,
+  }, guarded('get_theme', async () => {
+    const deck = await loadDeck(link)
+    if (!deck) return failure(GONE)
+    touch(link, {})
+    return text(format.themeText(deck, LAYOUTS))
   }))
   server.registerTool('get_slide', {
     title: 'Read a slide',

@@ -181,8 +181,8 @@ describe('AI collaborator links', { skip }, () => {
     assert.equal(list.status, 200, JSON.stringify(list.body))
     const tools = Object.fromEntries(list.body.result.tools.map(tool => [tool.name, tool]))
     assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'deck_preview', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
-      'get_slide', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'show_deck', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
-    for (const name of ['get_deck', 'get_slide', 'render_slide', 'list_datasets', 'get_element_guide', 'show_deck', 'deck_preview']) assert.equal(tools[name].annotations.readOnlyHint, true)
+      'get_slide', 'get_theme', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'show_deck', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
+    for (const name of ['get_deck', 'get_slide', 'get_theme', 'render_slide', 'list_datasets', 'get_element_guide', 'show_deck', 'deck_preview']) assert.equal(tools[name].annotations.readOnlyHint, true)
     assert.ok(tools.add_element.inputSchema.properties.type.enum.includes('circuit'))
     assert.match(toolText(await callTool(secret, 'get_element_guide')), /- \*\*graph\*\* \(Graph\)/)
     assert.match(toolText(await callTool(secret, 'get_element_guide', { type: 'circuit' })), /^# Circuit diagram \(type "circuit"\)[\s\S]*Templates \("template": key, with spec to change it\): lamp \(Switch and lamp\)/)

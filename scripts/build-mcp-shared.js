@@ -3,6 +3,8 @@
 // runs without a page:
 // - the LaTeX Beamer converter (utils/beamer.js, utils/beamerSlides.js) and
 //   the BibTeX reader, for import_beamer
+// - the deck's text styles (utils/textStyles.js) and the checker for its
+//   stylesheet (utils/scopeCss.js), for update_deck and get_theme
 // - the elements' defaults, templates and models, and the readers that
 //   check what an AI writes for them (Graph's math parser, equations'
 //   terms, set expressions, WaveJSON, geometry scripts), for guides.js
@@ -41,6 +43,8 @@ const SOURCES = {
   'client/src/utils/periodicTable.js': ['PT', 'PERIODIC_FIELDS', 'periodicBox', 'defaultPeriodic'],
   'client/src/utils/harmonicsView.js': ['HV', 'HARMONICS_FIELDS', 'HARMONICS_TEMPLATES', 'defaultHarmonics', 'applyHarmonicsTemplate'],
   'client/src/utils/sphericalHarmonics.js': ['SH'],
+  'client/src/utils/textStyles.js': ['SIZE_KEYS', 'MIN_SIZE', 'MAX_SIZE', 'HEADING_WEIGHTS', 'DEFAULT_SIZES', 'textSizes', 'withTextStyles', 'cleanTextStyles'],
+  'client/src/utils/scopeCss.js': ['scopeThemeCss', 'MAX_THEME_CSS'],
 }
 
 // WaveDrom's renderer, as client/vite.config.js names it (timing diagrams)

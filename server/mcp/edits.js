@@ -16,13 +16,13 @@
 const { randomUUID } = require('crypto')
 const { SLIDE_TEMPLATES, layoutElements } = require('../services/slide-layouts')
 const { fillPlaceholder, changeLayout, titleOf: titleBoxOf } = require('../services/placeholders')
-const { THEMES, newSlideBackground, isLegacyBackground, slidePalette } = require('../services/themes')
+const { THEMES, newSlideBackground, isLegacyBackground, slidePalette, cleanThemeColors, THEME_COLOR_KEYS } = require('../services/themes')
 const { CLOSED_SHAPES } = require('../services/shape-geometry')
 const format = require('./format')
 const { toHtml, MarkdownError, MAX_MARKDOWN } = require('./markdown')
 const shared = require('./shared')
 const guides = require('./guides')
-const { EditError, fail, num, str, color, oneOf } = require('./checks')
+const { EditError, fail, num, str, color, oneOf, object: objectValue, only } = require('./checks')
 
 
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
@@ -45,6 +45,50 @@ function markdown(value, name) {
   if (typeof value !== 'string') fail(`${name} must be Markdown text.`)
   try { return toHtml(value) } catch (err) { if (err instanceof MarkdownError) fail(`${name}: ${err.message}`); throw err }
 }
+
+// A CSS font family list, as deck fonts are (they go into the deck's CSS)
+const FONT_LIST = { pattern: /^[\w\s,'"-]+$/, hint: 'must be a CSS font family list, such as "Georgia, serif".' }
+
+// update_deck's textStyles: the styles to change, each null (or "" for the
+// heading font) to go back to its default; null for all of them
+const TEXT_STYLE_KEYS = [...shared.SIZE_KEYS, 'headingFont', 'headingWeight']
+function textStylesPatch(value) {
+  if (value === undefined || value === null) return value
+  objectValue(value, 'textStyles')
+  only(value, 'textStyles', TEXT_STYLE_KEYS)
+  if (!Object.keys(value).length) fail(`textStyles needs at least one of ${TEXT_STYLE_KEYS.join(', ')}; or null for the defaults.`)
+  const patch = {}
+  for (const key of shared.SIZE_KEYS) {
+    if (value[key] === null) patch[key] = null
+    else if (value[key] !== undefined) patch[key] = num(value[key], `textStyles.${key}`, shared.MIN_SIZE, shared.MAX_SIZE)
+  }
+  if (value.headingFont !== undefined) patch.headingFont = value.headingFont === null ? null : str(value.headingFont, 'textStyles.headingFont', 100, FONT_LIST)
+  if (value.headingWeight !== undefined) {
+    const weight = typeof value.headingWeight === 'string' && value.headingWeight.trim() ? Number(value.headingWeight) : value.headingWeight
+    patch.headingWeight = weight === null ? null : oneOf(weight, 'textStyles.headingWeight', shared.HEADING_WEIGHTS)
+  }
+  return patch
+}
+
+// update_deck's themeColors: the deck's own colors to change, over its
+// theme's (client/src/utils/themes.js), each null to go back to the theme's;
+// null for all of them
+const THEME_COLOR = { min: 1, pattern: /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\))$/i, hint: 'must be a hex or rgb() color, such as "#d62828".' }
+function themeColorsPatch(value) {
+  if (value === undefined || value === null) return value
+  objectValue(value, 'themeColors')
+  only(value, 'themeColors', THEME_COLOR_KEYS)
+  if (!Object.keys(value).length) fail(`themeColors needs at least one of ${THEME_COLOR_KEYS.join(', ')}; or null for the theme's.`)
+  const patch = {}
+  for (const key of THEME_COLOR_KEYS) {
+    if (value[key] === null || value[key] === '') patch[key] = null
+    else if (value[key] !== undefined) patch[key] = str(value[key], `themeColors.${key}`, 40, THEME_COLOR)
+  }
+  return patch
+}
+
+// What scopeThemeCss left out, in short
+const droppedList = dropped => dropped.slice(0, 10).map(d => `${d.line ? `line ${d.line}: ` : ''}${d.reason}`).join('; ') + (dropped.length > 10 ? `; and ${dropped.length - 10} more` : '')
 
 const textList = (value, name) => (Array.isArray(value) ? value : [value]).map((v, i) => {
   if (typeof v !== 'string') fail(`${name}${Array.isArray(value) ? ` item ${i + 1}` : ''} must be Markdown text.`)
@@ -296,18 +340,59 @@ const OPS = {
       // default take the theme's page
       for (const slide of deck.slides || []) if (slide && isLegacyBackground(slide.background)) delete slide.background
       done.push(`theme to ${theme}`)
+      // A new theme brings its own colors, as the theme gallery does,
+      // unless this change gives the deck some
+      if (input.themeColors === undefined && deck.themeColors) {
+        delete deck.themeColors
+        done.push("own colors back to the theme's")
+      }
     }
-    const font = str(input.font, 'font', 100, { pattern: /^[\w\s,'"-]+$/, hint: 'must be a CSS font family list, such as "Georgia, serif".' })
+    // The deck's own colors over its theme's (the Themes panel's Customize)
+    const colors = themeColorsPatch(input.themeColors)
+    if (colors !== undefined) {
+      const merged = colors ? { ...(deck.themeColors || {}) } : null
+      if (merged) for (const [key, value] of Object.entries(colors)) { if (value === null) delete merged[key]; else merged[key] = value }
+      const next = merged && cleanThemeColors(merged)
+      if (next) deck.themeColors = next
+      else delete deck.themeColors
+      done.push(next ? `own colors to ${Object.entries(next).map(([key, value]) => `${key} ${value}`).join(', ')}` : "own colors back to the theme's")
+    }
+    // The deck's stylesheet (the Themes panel's CSS tab), kept as written and
+    // checked, as every page that draws it checks it (client/src/utils/scopeCss.js)
+    if (input.themeCss !== undefined) {
+      if (input.themeCss !== null && typeof input.themeCss !== 'string') fail('themeCss must be CSS text, or "" for none.')
+      const source = input.themeCss || ''
+      if (source.length > shared.MAX_THEME_CSS) fail(`themeCss can be up to ${shared.MAX_THEME_CSS} characters.`)
+      if (!source.trim()) {
+        delete deck.themeCss
+        done.push('stylesheet removed')
+      } else {
+        const { css, dropped } = shared.scopeThemeCss(source)
+        if (!css) fail(`Nothing in themeCss can be used${dropped.length ? `: ${droppedList(dropped)}` : ''}. get_theme lists what rules can target.`)
+        deck.themeCss = source
+        done.push(`stylesheet (${source.length} characters${dropped.length ? `; left out when drawn: ${droppedList(dropped)}` : ''})`)
+      }
+    }
+    const font = str(input.font, 'font', 100, FONT_LIST)
     if (font !== undefined) {
       if (font) deck.globalFont = font
       else delete deck.globalFont
       done.push(font ? `font to ${font}` : 'font back to Arial')
     }
+    // The size and font of every slide's text, as the Themes panel's Text
+    // tab sets them (client/src/utils/textStyles.js)
+    const styles = textStylesPatch(input.textStyles)
+    if (styles !== undefined) {
+      const next = styles && shared.withTextStyles(deck.textStyles, styles)
+      if (next) deck.textStyles = next
+      else delete deck.textStyles
+      done.push(next ? `text styles to ${format.textStylesFacts(next).replace(/^text /, '')}` : 'text styles back to the defaults')
+    }
     const transition = oneOf(input.transition, 'transition', TRANSITIONS)
     if (transition !== undefined) { deck.transition = transition; done.push(`transition to ${transition}`) }
     const minutes = num(input.talkMinutes, 'talkMinutes', 1, 600)
     if (minutes !== undefined) { deck.timerDuration = minutes; done.push(`talk length to ${minutes} minutes`) }
-    if (!done.length) fail('update_deck needs at least one of title, theme, font, transition or talkMinutes.')
+    if (!done.length) fail('update_deck needs at least one of title, theme, font, textStyles, themeColors, themeCss, transition or talkMinutes.')
     ctx.deckChanged = true
     return `Changed the presentation's ${done.join(', ')}.`
   },
@@ -535,7 +620,7 @@ const OPS = {
 
 // What each operation takes, for checking the edits apply_edits is given
 const FIELDS = {
-  update_deck: ['title', 'theme', 'font', 'transition', 'talkMinutes'],
+  update_deck: ['title', 'theme', 'font', 'textStyles', 'themeColors', 'themeCss', 'transition', 'talkMinutes'],
   add_slide: ['layout', 'after', 'title', 'subtitle', 'body', 'notes', 'minutes'],
   update_slide: ['slide', 'layout', 'title', 'subtitle', 'body', 'notes', 'minutes', 'background'],
   move_slide: ['slide', 'after'],
@@ -594,6 +679,7 @@ const ELEMENT = ref('The element: its id from get_slide, or its number in get_sl
 const md = (description, max = MAX_MARKDOWN) => ({ type: 'string', maxLength: max, description })
 const mdParts = description => ({ description, anyOf: [{ type: 'string', maxLength: MAX_MARKDOWN }, { type: 'array', items: { type: 'string', maxLength: MAX_MARKDOWN }, minItems: 1, maxItems: 6 }] })
 const number = (description, minimum, maximum) => ({ type: 'number', minimum, maximum, description })
+const sizeOrNull = description => ({ anyOf: [{ type: 'number', minimum: shared.MIN_SIZE, maximum: shared.MAX_SIZE }, { type: 'null' }], description })
 const colorField = description => ({ type: 'string', maxLength: 40, description })
 const LAYOUT_LIST = LAYOUTS.map(layoutSummary).join('; ')
 
@@ -626,8 +712,35 @@ const SPEC_FIELDS = {
 const SCHEMAS = {
   update_deck: object({
     title: { type: 'string', minLength: 1, maxLength: 200, description: 'The presentation\'s title' },
-    theme: { type: 'string', enum: Object.keys(THEMES), description: 'Its theme: page, text and heading colors when presenting' },
-    font: { type: 'string', maxLength: 100, description: 'Its font, as a CSS font family list such as "Georgia, serif"; "" for the default, Arial' },
+    theme: { type: 'string', enum: Object.keys(THEMES), description: 'Its theme: page, text and heading colors when presenting. A new theme clears themeColors unless they are given too.' },
+    font: { type: 'string', maxLength: 100, description: 'Its font, as a CSS font family list such as "Georgia, serif"; "" for the default, Arial. It is body text\'s font, and the headings\' unless textStyles gives them one.' },
+    textStyles: {
+      description: 'The size and font of every slide\'s text, as the Themes panel\'s Text tab sets them. Only the fields given change; null puts one back to its default, and textStyles: null puts them all back. Text given a size or font of its own keeps it, and layout placeholders still shrink their text to fit. get_deck shows the current sizes.',
+      anyOf: [{
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          h1Size: sizeOrNull('Heading 1 (section headers, the section-header layout\'s title), in pixels; default 105'),
+          h2Size: sizeOrNull('Heading 2: the slide titles in every other layout, in pixels; default 67.2'),
+          h3Size: sizeOrNull('Heading 3 (the comparison layout\'s column headings), in pixels; default 54.6'),
+          bodySize: sizeOrNull('Body text: paragraphs, lists and subtitles, in pixels; default 42. Headings keep their sizes when it changes.'),
+          headingFont: { anyOf: [{ type: 'string', maxLength: 100 }, { type: 'null' }], description: 'The headings\' font, as a CSS font family list such as "\'Computer Modern Serif\', serif"; "" or null for the same as body text' },
+          headingWeight: { anyOf: [{ type: 'integer', enum: shared.HEADING_WEIGHTS }, { type: 'null' }], description: 'The headings\' weight, 400 (regular) to 900 (black); default 700 (bold)' },
+        },
+      }, { type: 'null' }],
+    },
+    themeColors: {
+      description: 'The deck\'s own colors over its theme\'s, as the Themes panel\'s Customize sets them: background (the page), text, heading, link, and accent (for themeCss, as var(--px-accent)). Hex or rgb() colors. Only the fields given change; null puts one back to the theme\'s, and themeColors: null puts them all back. Slides with a background of their own keep colors that show on it.',
+      anyOf: [{
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.fromEntries(THEME_COLOR_KEYS.map(key => [key, { anyOf: [{ type: 'string', maxLength: 40 }, { type: 'null' }] }])),
+      }, { type: 'null' }],
+    },
+    themeCss: {
+      anyOf: [{ type: 'string', maxLength: shared.MAX_THEME_CSS }, { type: 'null' }],
+      description: 'The deck\'s stylesheet, as the Themes panel\'s CSS tab holds it, replacing what is there; "" or null for none. It shows in the editor and when presenting. Every rule is scoped to a slide (.px-slide), so it styles slides only; read get_theme first for what rules can target. The reply lists rules left out, with their lines. Check the result with render_slide.',
+    },
     transition: { type: 'string', enum: TRANSITIONS, description: 'How slides change when presenting' },
     talkMinutes: number('How long the talk is meant to run, in minutes', 1, 600),
   }),
