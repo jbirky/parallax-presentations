@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { THEME_LIST, themeOf, revealTheme, deckTextFont, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
+import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
 
 describe('themes', () => {
-  it('has reveal’s eleven and Bauhaus, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus'])
+  it('has reveal’s eleven, Bauhaus and Pixel, light and dark', () => {
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel'])
     expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
@@ -22,6 +22,17 @@ describe('themes', () => {
     expect(deckTextFont('Georgia, serif', 'bauhaus')).toBe('Georgia, serif')
     expect(deckTextFont('', 'black')).toBe('')
     expect(deckTextFont('  ', 'nope')).toBe('')
+    expect(deckTextFont('', 'pixel')).toBe("'Pixelify Sans', sans-serif")
+  })
+
+  it('gives headings the theme’s font and weight until the deck sets its own', () => {
+    expect(deckTextStyles(null, 'pixel')).toEqual({ bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 })
+    expect(deckTextStyles({ bodySize: 36, headingFont: 'Georgia, serif', h1Size: null }, 'pixel')).toMatchObject({ bodySize: 36, h1Size: 56, headingFont: 'Georgia, serif', headingWeight: 400 })
+    expect(deckTextStyles({ headingWeight: 800 }, 'pixel').headingWeight).toBe(800)
+    expect(deckTextStyles(null, 'black')).toBeNull()
+    const own = { bodySize: 30 }
+    expect(deckTextStyles(own, 'bauhaus')).toBe(own)
+    expect(revealTheme('pixel')).toBe('black')
   })
 
   it('tells dark colors from light ones', () => {

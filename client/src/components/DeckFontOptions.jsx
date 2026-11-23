@@ -58,6 +58,7 @@ export default function DeckFontOptions() {
         <option value="Inconsolata, monospace">Inconsolata</option>
         <option value="'Roboto Mono', monospace">Roboto Mono</option>
         <option value="'Space Mono', monospace">Space Mono</option>
+        <option value="VT323, monospace">VT323</option>
       </optgroup>
       <optgroup label="Display">
         <option value="Impact, sans-serif">Impact</option>
@@ -66,6 +67,8 @@ export default function DeckFontOptions() {
         <option value="'National Park', sans-serif">National Park</option>
         <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
         <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+        <option value="'Press Start 2P', monospace">Press Start 2P</option>
+        <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
       </optgroup>
     </>
   )

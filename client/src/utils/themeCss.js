@@ -7,8 +7,9 @@
 // container carries. The editor loads the same files with the app (main.jsx).
 
 import bauhaus from '../themes/bauhaus.css?raw'
+import pixel from '../themes/pixel.css?raw'
 
-const SHEETS = { bauhaus }
+const SHEETS = { bauhaus, pixel }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

@@ -646,10 +646,23 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain('dist/theme/white.css')
     expect(html).not.toContain('dist/theme/bauhaus.css')
     expect(html).toContain('<div class="reveal deck-theme-bauhaus">')
+    expect(html).toContain(':root { --r-background-color: #f7f6f2; }')
     const sheet = html.indexOf('.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6)')
     expect(sheet).toBeGreaterThan(html.indexOf('.reveal h1 { font-size'))
     expect(sheet).toBeLessThan(html.indexOf('.mine { color: red }'))
     expect(html).toContain('family=Jost')
+  })
+
+  it('sets Pixel’s headings in its heading font, on reveal’s black', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'pixel' }))
+    expect(html).toContain('dist/theme/black.css')
+    expect(html).toContain(':root { --r-background-color: #14112e; }')
+    expect(html).toContain('.reveal .slides section h2 { font-size: 1.125em; }')
+    expect(html).toContain("font-family: 'Press Start 2P', monospace; font-weight: 400;")
+    expect(html).toContain("font-family:'Pixelify Sans', sans-serif;")
+    expect(html).toContain('family=Press+Start+2P')
+    const own = generateRevealHTML(makePresentation({ theme: 'pixel', textStyles: { headingFont: 'Georgia, serif' } }))
+    expect(own).toContain('font-family: Georgia, serif; font-weight: 400;')
   })
 
   it('sets text in the theme’s font until the deck has one of its own', () => {
@@ -660,6 +673,7 @@ describe('what a deck writes into its page', () => {
     const plain = generateRevealHTML(makePresentation())
     expect(plain).toContain('<div class="reveal deck-theme-black">')
     expect(plain).not.toContain('.deck-theme-bauhaus')
+    expect(plain).not.toContain('--r-background-color: #')
   })
 
   it('keeps a deck’s own CSS inside its <style>, @import and all', () => {

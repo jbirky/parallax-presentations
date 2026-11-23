@@ -7,18 +7,19 @@ describe('the themes’ stylesheets', () => {
     expect(deckThemeClass('bauhaus')).toBe('deck-theme-bauhaus')
     expect(deckThemeClass('x" onload="y')).toBe('')
     expect(deckThemeClass(undefined)).toBe('')
-    const css = themeCss('bauhaus')
-    expect(css).toContain('.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6)')
-    expect(css).toContain('text-transform: lowercase')
-    // every rule is inside the theme's class, so the editor can load it for every deck
-    const selectors = css.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim())
-    expect(selectors.length).toBeGreaterThan(4)
-    for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(/^\.deck-theme-bauhaus\b/)
+    expect(themeCss('bauhaus')).toContain('text-transform: lowercase')
+    expect(themeCss('pixel')).toContain('text-transform: uppercase')
+    // every rule is inside the theme's class, so the editor can load them all for every deck
+    for (const id of ['bauhaus', 'pixel']) {
+      const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim())
+      expect(selectors.length).toBeGreaterThan(4)
+      for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(new RegExp(`^\\.deck-theme-${id}\\b`))
+    }
   })
 
   it('is empty for themes without one', () => {
     expect(themeCss('black')).toBe('')
     expect(themeCss('constructor')).toBe('')
-    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus'])
+    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel'])
   })
 })

@@ -15,7 +15,7 @@ import TextStylesEditor from './TextStylesEditor'
 export function ThemeSwatch({ theme, font, title = 'Presentation title', width = 168 }) {
   return (
     <div className={['theme-swatch', deckThemeClass(theme.id)].filter(Boolean).join(' ')} style={{ width, height: Math.round(width * 9 / 16), ...themeBackgroundStyle(theme.id), fontFamily: deckFont(font || theme.font) }}>
-      <span className="theme-swatch-title" style={{ color: theme.heading, fontSize: Math.round(width / 11), fontWeight: 700, lineHeight: 1.15 }}>{title}</span>
+      <span className="theme-swatch-title" style={{ color: theme.heading, fontFamily: theme.textStyles?.headingFont, fontSize: Math.round(width / (theme.textStyles?.headingFont ? 17 : 11)), fontWeight: theme.textStyles?.headingWeight || 700, lineHeight: theme.textStyles?.headingFont ? 1.4 : 1.15 }}>{title}</span>
       <span style={{ color: theme.text, fontSize: Math.round(width / 19), marginTop: Math.round(width / 40) }}>Subtitle</span>
       <span style={{ display: 'block', width: '24%', height: 2, marginTop: Math.round(width / 24), background: theme.link, borderRadius: 1 }} />
     </div>
@@ -72,7 +72,7 @@ export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onT
         ) : (
           <>
             <p className="prop-hint" style={{ padding: '0 12px', margin: '0 0 8px' }}>
-              The page, text and heading colors of every slide without a background of its own. Bauhaus also sets headings in lowercase, puts a red rule under slide titles, and sets text in Jost unless Settings › Font has a font.
+              The page, text and heading colors of every slide without a background of its own. Bauhaus and Pixel also bring fonts and a look of their own: hover over one to see what it adds. A font you pick in Settings › Font or the Text tab wins.
             </p>
             <div style={{ padding: '0 12px 16px' }}>
               <ThemeGallery value={value} onChange={onChange} font={font} columns={1} width={204} />

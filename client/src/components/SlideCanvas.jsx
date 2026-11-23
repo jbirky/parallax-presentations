@@ -64,7 +64,7 @@ import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
-import { slidePalette } from '../utils/themes'
+import { slidePalette, deckTextStyles } from '../utils/themes'
 import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
@@ -268,7 +268,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   const palette = slidePalette(slide, theme)
   // The deck's text styles, as variables index.css reads; their text, for
   // shrinking text to fit again when they change
-  const textVars = useMemo(() => textStyleVars(textStyles), [textStyles])
+  const textVars = useMemo(() => textStyleVars(deckTextStyles(textStyles, theme)), [textStyles, theme])
   const textStylesKey = JSON.stringify(textVars)
   const SLIDE_W = slideW
   const SLIDE_H = slideH

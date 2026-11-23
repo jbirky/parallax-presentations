@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import DeckFontOptions from './DeckFontOptions'
 import { deckFont, deckFontName } from '../utils/deckFont'
-import { themeOf, themeBackgroundStyle, deckTextFont } from '../utils/themes'
+import { themeOf, themeBackgroundStyle, deckTextFont, deckTextStyles } from '../utils/themes'
 import { textSizes, withTextStyles, cleanTextStyles, MIN_SIZE, MAX_SIZE, HEADING_WEIGHTS } from '../utils/textStyles'
 
 const SIZES = [
@@ -66,12 +66,17 @@ function Specimen({ theme, sizes, bodyFont, headingFont, weight }) {
 
 export default function TextStylesEditor({ textStyles, font, theme, onChange, onFont }) {
   const clean = cleanTextStyles(textStyles) || {}
-  const sizes = textSizes(clean)
+  // What's shown: the deck's own styles, or else its theme's
+  const sizes = textSizes(deckTextStyles(clean, theme))
   const set = patch => onChange(withTextStyles(clean, patch))
   // The deck's font, or its theme's (utils/themes.js)
   const bodyFont = deckFont(deckTextFont(font, theme))
-  const headingFont = clean.headingFont || bodyFont
-  const weight = clean.headingWeight || 700
+  // The theme's heading font and weight, until the deck has its own
+  const t = themeOf(theme)
+  const defaultWeight = t.textStyles?.headingWeight || 700
+  const themeHeadingFont = t.textStyles?.headingFont
+  const headingFont = clean.headingFont || themeHeadingFont || bodyFont
+  const weight = clean.headingWeight || defaultWeight
   const anyCustom = Object.keys(clean).length > 0
 
   return (
@@ -104,14 +109,14 @@ export default function TextStylesEditor({ textStyles, font, theme, onChange, on
       <label className="text-style-field">
         <span>Headings</span>
         <select className="prop-input" value={clean.headingFont || ''} onChange={e => set({ headingFont: e.target.value || null })}>
-          <option value="">Same as body text</option>
+          <option value="">{themeHeadingFont ? `Default (${deckFontName(themeHeadingFont)})` : 'Same as body text'}</option>
           <DeckFontOptions />
         </select>
       </label>
       <label className="text-style-field">
         <span>Heading weight</span>
         <select className="prop-input" value={weight} onChange={e => set({ headingWeight: Number(e.target.value) })}>
-          {HEADING_WEIGHTS.map(w => <option key={w} value={w}>{WEIGHT_NAMES[w]}{w === 700 ? ' (default)' : ''}</option>)}
+          {HEADING_WEIGHTS.map(w => <option key={w} value={w}>{WEIGHT_NAMES[w]}{w === defaultWeight ? ' (default)' : ''}</option>)}
         </select>
       </label>
 

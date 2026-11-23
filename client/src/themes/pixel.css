@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Pixel theme's stylesheet: an 8-bit look on top of its colors and
+   fonts (utils/themes.js: Pixelify Sans for text, Press Start 2P for
+   headings at one weight, which the Themes panel's Text tab can change).
+   It's scoped to .deck-theme-pixel, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages, so a slide
+   looks the same in all of them. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme. */
+
+/* reveal.js: links, the arrows and the progress bar in mint */
+.deck-theme-pixel {
+  --r-background-color: #14112e;
+  --r-main-color: #f3eedf;
+  --r-heading-color: #ffcc33;
+  --r-link-color: #39e5c0;
+  --r-link-color-dark: #2bb89a;
+  --r-link-color-hover: #ffcc33;
+  --r-selection-background-color: #8a6cff;
+  --r-selection-color: #f3eedf;
+}
+
+/* Headings in capitals, with a hard purple drop shadow and no smoothing.
+   (!important: presented decks reset headings' case, spacing and shadow
+   with it.) */
+.deck-theme-pixel :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+  line-height: 1.3;
+  text-shadow: 0.125em 0.125em 0 #8a6cff !important;
+  -webkit-font-smoothing: none;
+}
+
+/* Arrow bullets in gold */
+.deck-theme-pixel ul { list-style-type: "▸  "; }
+.deck-theme-pixel li::marker { color: #ffcc33; }
+
+/* Quotes behind a mint bar */
+.deck-theme-pixel blockquote {
+  border-left: 0.15em solid #39e5c0 !important;
+  opacity: 1 !important;
+}
+
+/* Inline code in VT323, mint on the panel color */
+.deck-theme-pixel :not(pre) > code {
+  font-family: VT323, monospace !important;
+  font-size: 1.2em;
+  color: #39e5c0;
+  background: #231e52 !important;
+  border-radius: 0 !important;
+  padding: 0 0.25em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-pixel .theme-swatch-title {
+  text-transform: uppercase;
+  text-shadow: 0.125em 0.125em 0 #8a6cff;
+}

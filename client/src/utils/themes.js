@@ -2,10 +2,13 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The presentation themes: reveal.js 5's, whose page color, heading color and
-// link color show when presenting, and Parallax's own (Bauhaus), which name
-// the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
+// link color show when presenting, and Parallax's own (Bauhaus, Pixel), which
+// name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
-// until Settings › Font picks one (deckTextFont), and a stylesheet,
+// until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
+// as deck.textStyles has them: sizes, and the headings' font and weight),
+// which hold until the Themes panel's Text tab sets its own (deckTextStyles),
+// and a stylesheet,
 // client/src/themes/<id>.css (utils/themeCss.js).
 //
 // What a slide shows (slidePalette): a slide without a background of its own
@@ -27,6 +30,7 @@ export const THEME_LIST = [
   { id: 'moon', label: 'Moon', background: '#002b36', text: '#93a1a1', heading: '#eee8d5', link: '#268bd2', dark: true },
   { id: 'dracula', label: 'Dracula', background: '#282a36', text: '#f8f8f2', heading: '#bd93f9', link: '#ff79c6', dark: true },
   { id: 'bauhaus', label: 'Bauhaus', background: '#f7f6f2', text: '#151515', heading: '#151515', link: '#d52b1e', dark: false, reveal: 'white', font: 'Jost, sans-serif', note: 'Lowercase headings, a red rule under slide titles, square bullets, in Jost' },
+  { id: 'pixel', label: 'Pixel', background: '#14112e', text: '#f3eedf', heading: '#ffcc33', link: '#39e5c0', dark: true, reveal: 'black', font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: '8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))
@@ -45,6 +49,17 @@ export function revealTheme(id) {
 // theme's, or '' for the default (deckFont.js)
 export function deckTextFont(globalFont, themeId) {
   return (typeof globalFont === 'string' && globalFont.trim()) || THEMES[themeId]?.font || ''
+}
+
+// A deck's text styles (deck.textStyles, utils/textStyles.js), with its
+// theme's where it has none of its own
+export function deckTextStyles(textStyles, themeId) {
+  const theirs = THEMES[themeId]?.textStyles
+  if (!theirs) return textStyles || null
+  const own = textStyles && typeof textStyles === 'object' ? textStyles : {}
+  const out = { ...theirs }
+  for (const [key, value] of Object.entries(own)) if (value != null && value !== '') out[key] = value
+  return out
 }
 
 // The background every slide had before themes showed in the editor; a new

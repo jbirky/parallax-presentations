@@ -5572,7 +5572,8 @@ var THEME_LIST = [
   { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
   { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
   { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
-  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" }
+  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" },
+  { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -5583,6 +5584,14 @@ function revealTheme(id) {
 }
 function deckTextFont(globalFont, themeId) {
   return typeof globalFont === "string" && globalFont.trim() || THEMES[themeId]?.font || "";
+}
+function deckTextStyles(textStyles, themeId) {
+  const theirs = THEMES[themeId]?.textStyles;
+  if (!theirs) return textStyles || null;
+  const own = textStyles && typeof textStyles === "object" ? textStyles : {};
+  const out = { ...theirs };
+  for (const [key, value] of Object.entries(own)) if (value != null && value !== "") out[key] = value;
+  return out;
 }
 function parseColor(value) {
   const s = String(value || "").trim();
@@ -21448,8 +21457,71 @@ var bauhaus_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:/home/jbirky/docker_server/parallax-presentations/client/src/themes/pixel.css
+var pixel_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Pixel theme's stylesheet: an 8-bit look on top of its colors and
+   fonts (utils/themes.js: Pixelify Sans for text, Press Start 2P for
+   headings at one weight, which the Themes panel's Text tab can change).
+   It's scoped to .deck-theme-pixel, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages, so a slide
+   looks the same in all of them. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme. */
+
+/* reveal.js: links, the arrows and the progress bar in mint */
+.deck-theme-pixel {
+  --r-background-color: #14112e;
+  --r-main-color: #f3eedf;
+  --r-heading-color: #ffcc33;
+  --r-link-color: #39e5c0;
+  --r-link-color-dark: #2bb89a;
+  --r-link-color-hover: #ffcc33;
+  --r-selection-background-color: #8a6cff;
+  --r-selection-color: #f3eedf;
+}
+
+/* Headings in capitals, with a hard purple drop shadow and no smoothing.
+   (!important: presented decks reset headings' case, spacing and shadow
+   with it.) */
+.deck-theme-pixel :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+  line-height: 1.3;
+  text-shadow: 0.125em 0.125em 0 #8a6cff !important;
+  -webkit-font-smoothing: none;
+}
+
+/* Arrow bullets in gold */
+.deck-theme-pixel ul { list-style-type: "▸  "; }
+.deck-theme-pixel li::marker { color: #ffcc33; }
+
+/* Quotes behind a mint bar */
+.deck-theme-pixel blockquote {
+  border-left: 0.15em solid #39e5c0 !important;
+  opacity: 1 !important;
+}
+
+/* Inline code in VT323, mint on the panel color */
+.deck-theme-pixel :not(pre) > code {
+  font-family: VT323, monospace !important;
+  font-size: 1.2em;
+  color: #39e5c0;
+  background: #231e52 !important;
+  border-radius: 0 !important;
+  padding: 0 0.25em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-pixel .theme-swatch-title {
+  text-transform: uppercase;
+  text-shadow: 0.125em 0.125em 0 #8a6cff;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -22169,7 +22241,10 @@ function getSlideColumns(slides, presentation = {}) {
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
 function themeStyleTag(themeId) {
-  const css = themeCss(themeId);
+  const t = themeOf(themeId);
+  const page = t.id === themeId && t.reveal ? `:root { --r-background-color: ${t.background}; }
+` : "";
+  const css = page + themeCss(themeId);
   return css ? `
   <style>
 ${css.replace(/<\/style/gi, "<\\/style")}
@@ -22206,7 +22281,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const slideH = Number(presentation.slideHeight) || 540;
   const globalFont = cssValue(deckTextFont(presentation.globalFont, presentation.theme));
   const bodySize = bodySizeStyle(presentation.textStyles);
-  const headingCss = textStyleCss(presentation.textStyles, ".reveal .slides section");
+  const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), ".reveal .slides section");
   const showFooter = presentation.showFooter || false;
   const showPageNumbers = presentation.showPageNumbers || false;
   const footerTimeMode = presentation.footerTimeMode || "none";
@@ -22703,7 +22778,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">

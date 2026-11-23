@@ -643,6 +643,9 @@ export default function Toolbar({
               <option value="Geist, sans-serif">Geist</option>
               <option value="Figtree, sans-serif">Figtree</option>
               <option value="Jost, sans-serif">Jost</option>
+              <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
+              <option value="'Press Start 2P', monospace">Press Start 2P</option>
+              <option value="VT323, monospace">VT323</option>
               <option value="Ubuntu, sans-serif">Ubuntu</option>
               <option value="Rubik, sans-serif">Rubik</option>
               <option value="'PT Sans', sans-serif">PT Sans</option>

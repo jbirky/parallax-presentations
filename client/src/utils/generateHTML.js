@@ -29,7 +29,7 @@ import { text3dHtml, text3dShadowFilter } from './text3d'
 import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont } from './themes'
+import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles } from './themes'
 import { themeCss, deckThemeClass } from './themeCss'
 import { isEmptyPlaceholder } from './placeholders'
 import { SHRINK_FIT_SCRIPT } from './shrinkFit'
@@ -215,9 +215,13 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // store, graphData.js, otherwise)
 
 // A theme's stylesheet (utils/themeCss.js) as a <style> for a page's head,
-// after the page's own styles and before the deck's custom CSS, or ''
+// after the page's own styles and before the deck's custom CSS, or ''. A
+// theme of Parallax's own also gets its page color, which reveal.js would
+// otherwise paint from the theme it's drawn on.
 function themeStyleTag(themeId) {
-  const css = themeCss(themeId)
+  const t = themeOf(themeId)
+  const page = t.id === themeId && t.reveal ? `:root { --r-background-color: ${t.background}; }\n` : ''
+  const css = page + themeCss(themeId)
   return css ? `\n  <style>\n${css.replace(/<\/style/gi, '<\\/style')}\n  </style>` : ''
 }
 
@@ -264,7 +268,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   // The deck's text styles (utils/textStyles.js): text boxes' body size, and
   // rules for the headings after the page's own
   const bodySize = bodySizeStyle(presentation.textStyles)
-  const headingCss = textStyleCss(presentation.textStyles, '.reveal .slides section')
+  const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.reveal .slides section')
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
   const footerTimeMode = presentation.footerTimeMode || 'none'
@@ -792,7 +796,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
@@ -1408,7 +1412,7 @@ function generatePrintHTML(presentation) {
   const slideH = Number(presentation.slideHeight) || 540
   const globalFont = deckTextFont(presentation.globalFont, presentation.theme)
   const bodySize = bodySizeStyle(presentation.textStyles)
-  const headingCss = textStyleCss(presentation.textStyles, '.slide-page')
+  const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.slide-page')
   const pageClass = ['slide-page', deckThemeClass(presentation.theme)].filter(Boolean).join(' ')
   const theme = presentation.theme || 'black'
   const showFooter = presentation.showFooter || false
@@ -1747,7 +1751,7 @@ function generatePrintHTML(presentation) {
 <head>
   <meta charset="utf-8">
   <title>${title} — PDF</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">

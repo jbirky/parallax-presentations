@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore
 import ContextMenu from './ContextMenu'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
 import { keyLabel } from '../utils/shortcuts'
-import { slidePalette } from '../utils/themes'
+import { slidePalette, deckTextStyles } from '../utils/themes'
 import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
@@ -63,7 +63,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
   const scale = THUMB_W / slideW
   const palette = slidePalette(slide, theme)
   // The deck's text styles (utils/textStyles.js)
-  const textVars = textStyleVars(textStyles)
+  const textVars = textStyleVars(deckTextStyles(textStyles, theme))
   const textStylesKey = JSON.stringify(textVars)
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has

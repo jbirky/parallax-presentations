@@ -47,11 +47,13 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
 Bauhaus does a little more than set colors. It sets headings in lowercase, puts a short red rule under slide titles (Heading 2), and gives lists square red bullets. Its text is set in Jost until you pick a font in **Settings › Font**.
+
+Pixel is an 8-bit theme: headings in capitals in Press Start 2P with a purple drop shadow, text in Pixelify Sans, gold arrow bullets, and code in VT323. The Text tab's heading font and weight take precedence over its heading font.
 
 ## Footer & page numbers
 
