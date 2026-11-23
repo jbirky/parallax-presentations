@@ -665,6 +665,10 @@ describe('what a deck writes into its page', () => {
     expect(own).toContain('font-family: Georgia, serif; font-weight: 400;')
   })
 
+  it('lets embeds and videos fill their boxes, past reveal’s 95% cap', () => {
+    expect(generateRevealHTML(makePresentation())).toContain('.reveal iframe, .reveal video { max-width: none !important; max-height: none !important; }')
+  })
+
   it('sets text in the theme’s font until the deck has one of its own', () => {
     expect(generateRevealHTML(makePresentation({ theme: 'bauhaus' }))).toContain('font-family:Jost, sans-serif;')
     const own = generateRevealHTML(makePresentation({ theme: 'bauhaus', globalFont: 'Georgia, serif' }))

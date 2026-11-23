@@ -22809,6 +22809,8 @@ ${sections}
     .reveal span { line-height: inherit; }
     .reveal a { text-decoration: underline; }
     .reveal img { margin: 0 !important; border: none !important; background: none !important; box-shadow: none !important; max-width: none !important; max-height: none !important; }
+    /* Embeds and videos fill their boxes, as in the editor: reveal.js themes cap them at 95% */
+    .reveal iframe, .reveal video { max-width: none !important; max-height: none !important; }
     .reveal code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-family: monospace; }
     .reveal pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 6px; margin: 0 0 0.4em !important; overflow: auto; width: auto !important; box-shadow: none !important; }
     .reveal pre code { background: none; padding: 0; }
