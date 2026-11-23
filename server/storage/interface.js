@@ -48,6 +48,15 @@ class StorageInterface {
   async setPluginStorage(userId, pluginId, key, value) { throw new Error('Not implemented') }
   async deletePluginStorage(userId, pluginId, key) { throw new Error('Not implemented') }
 
+  // The theme library (migration 026): saved theme documents
+  // (client/src/utils/customTheme.js), each { id, version, name, base, …,
+  // createdAt, updatedAt }
+  async listThemes(userId) { throw new Error('Not implemented') }
+  async getTheme(id, userId) { throw new Error('Not implemented') }
+  async createTheme(doc, userId) { throw new Error('Not implemented') }
+  async updateTheme(id, doc, userId) { throw new Error('Not implemented') }
+  async deleteTheme(id, userId) { throw new Error('Not implemented') }
+
   async createDataset(data, userId) { throw new Error('Not implemented') }
   async listDatasets(userId) { throw new Error('Not implemented') }
   async getDataset(id, userId) { throw new Error('Not implemented') }

@@ -13,6 +13,7 @@ import { deckThemeClass } from '../utils/themeCss'
 import TextStylesEditor from './TextStylesEditor'
 import ThemeColorsEditor from './ThemeColorsEditor'
 import ThemeCssEditor from './ThemeCssEditor'
+import ThemeLibrary from './ThemeLibrary'
 
 // One theme's title slide, small
 export function ThemeSwatch({ theme, font, title = 'Presentation title', width = 168 }) {
@@ -50,7 +51,7 @@ export default function ThemeGallery({ value, onChange, font, columns = 2, width
 // Customize sets the deck's own colors over it (ThemeColorsEditor). The Text
 // tab sets the size and font of the deck's text (TextStylesEditor), and the
 // CSS tab the deck's own stylesheet (ThemeCssEditor).
-export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onTab, textStyles, onTextStyles, onFont, themeColors = null, onThemeColors, themeCss = '', onThemeCss }) {
+export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onTab, textStyles, onTextStyles, onFont, themeColors = null, onThemeColors, themeCss = '', onThemeCss, deck = null, onApplyThemeDoc, onThemeSource }) {
   const tabs = [['colors', 'Colors'], onTextStyles && ['text', 'Text'], onThemeCss && ['css', 'CSS']].filter(Boolean)
   const shown = tabs.some(([id]) => id === tab) ? tab : 'colors'
   // Customize starts open on a deck with colors of its own
@@ -85,6 +86,11 @@ export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onT
             <p className="prop-hint" style={{ padding: '0 12px', margin: '0 0 8px' }}>
               The page, text and heading colors of every slide without a background of its own. Bauhaus and Pixel also bring fonts and a look of their own: hover over one to see what it adds. A font you pick in Settings › Font or the Text tab wins.
             </p>
+            {onApplyThemeDoc && deck && (
+              <div style={{ padding: '0 12px' }}>
+                <ThemeLibrary deck={deck} onApply={onApplyThemeDoc} onSource={onThemeSource} />
+              </div>
+            )}
             {onThemeColors && (
               <details className="theme-customize" open={customizing} onToggle={e => setCustomizing(e.currentTarget.open)}>
                 <summary>Customize colors</summary>

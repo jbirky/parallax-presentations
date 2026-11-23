@@ -1871,6 +1871,62 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// --- Theme library ---
+// Each person's saved themes (client/src/utils/customTheme.js, checked by
+// cleanThemeDoc from the client's bundle). A deck keeps its own copy of the
+// theme it used, so changing a saved theme never changes a deck until its
+// owner takes the update in the Themes panel.
+
+const themeDocs = require('./mcp/shared')
+
+// The document a request body describes, or a 400 saying what's wrong
+function themeDocFrom(req, res) {
+  try {
+    return themeDocs.cleanThemeDoc(req.body)
+  } catch (err) {
+    if (err instanceof themeDocs.ThemeDocError) { res.status(400).json({ error: err.message }); return null }
+    throw err
+  }
+}
+
+// GET /api/themes - the person's saved themes, by name
+app.get('/api/themes', async (req, res) => {
+  try {
+    res.json(await storage.listThemes(req.userId))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/themes - save a theme (Save as theme, Import)
+app.post('/api/themes', async (req, res) => {
+  try {
+    const doc = themeDocFrom(req, res)
+    if (!doc) return
+    if ((await storage.listThemes(req.userId)).length >= themeDocs.MAX_LIBRARY_THEMES) {
+      return res.status(400).json({ error: `You can save up to ${themeDocs.MAX_LIBRARY_THEMES} themes. Delete one to save another.` })
+    }
+    res.status(201).json(await storage.createTheme(doc, req.userId))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// PUT /api/themes/:id - replace a saved theme (Save changes), a new version
+app.put('/api/themes/:id', requireValidId(), async (req, res) => {
+  try {
+    const doc = themeDocFrom(req, res)
+    if (!doc) return
+    const theme = await storage.updateTheme(req.params.id, doc, req.userId)
+    if (!theme) return res.status(404).json({ error: 'Theme not found' })
+    res.json(theme)
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// DELETE /api/themes/:id - decks that used it keep their copy
+app.delete('/api/themes/:id', requireValidId(), async (req, res) => {
+  try {
+    if (!(await storage.deleteTheme(req.params.id, req.userId))) return res.status(404).json({ error: 'Theme not found' })
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
 // DELETE /api/presentations/:id
 app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
   try {

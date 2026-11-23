@@ -16,6 +16,8 @@ class FileStorage extends StorageInterface {
     this.shareFile = path.join(dataDir, 'share-tokens.json')
     this.githubConfigFile = path.join(dataDir, 'github-config.json')
     this.historyDir = path.join(dataDir, 'history')
+    // The theme library: one person's, as self-hosted has one
+    this.themesFile = path.join(dataDir, 'themes.json')
 
     fs.ensureDirSync(dataDir)
     fs.ensureDirSync(this.historyDir)
@@ -75,6 +77,45 @@ class FileStorage extends StorageInterface {
     all.push(copy)
     await this._writeAll(all)
     return copy
+  }
+
+  // --- Theme library ---
+
+  async _readThemes() { return fs.existsSync(this.themesFile) ? fs.readJson(this.themesFile) : [] }
+  async _writeThemes(themes) { return fs.writeJson(this.themesFile, themes, { spaces: 2 }) }
+
+  async listThemes() {
+    return (await this._readThemes()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  }
+
+  async getTheme(id) {
+    return (await this._readThemes()).find(t => t.id === id) || null
+  }
+
+  async createTheme(doc) {
+    const now = new Date().toISOString()
+    const theme = { ...doc, id: uuidv4(), version: 1, createdAt: now, updatedAt: now }
+    const all = await this._readThemes()
+    all.push(theme)
+    await this._writeThemes(all)
+    return theme
+  }
+
+  async updateTheme(id, doc) {
+    const all = await this._readThemes()
+    const i = all.findIndex(t => t.id === id)
+    if (i === -1) return null
+    all[i] = { ...doc, id, version: (all[i].version || 1) + 1, createdAt: all[i].createdAt, updatedAt: new Date().toISOString() }
+    await this._writeThemes(all)
+    return all[i]
+  }
+
+  async deleteTheme(id) {
+    const all = await this._readThemes()
+    const next = all.filter(t => t.id !== id)
+    if (next.length === all.length) return false
+    await this._writeThemes(next)
+    return true
   }
 
   async listTemplates() {

@@ -334,12 +334,13 @@ function themeText(deck, layouts = []) {
     '',
     `Base theme: ${base.label} (${id}), ${t.dark ? 'dark' : 'light'}${base.note ? `. ${base.note}` : ''}.`,
     own ? `The deck's own colors: ${Object.entries(own).map(([key, value]) => `${key} ${value}`).join(', ')}.` : "No colors of the deck's own (themeColors).",
+    deck.themeSource?.name ? `Applied from the owner's saved theme "${String(deck.themeSource.name).slice(0, 80)}" (version ${Number(deck.themeSource.version) || 1}); changes here don't change the saved theme.` : null,
     `Slides without a background of their own show: page ${t.background}, text ${t.text}, headings ${t.heading}, links ${t.link}, accent ${t.accent}. A slide with its own background keeps colors that show on it.`,
     `Font: ${font ? font.split(',')[0].replace(/['"]/g, '').trim() : 'Arial (default)'}. ${textStylesFacts(deck.textStyles) || 'Text sizes: the defaults (H1 105px, H2 67.2px, H3 54.6px, body 42px).'}`,
     '',
     '## Stylesheet (themeCss)',
     '',
-  ]
+  ].filter(line => line !== null)
   const source = typeof deck.themeCss === 'string' ? deck.themeCss : ''
   if (source.trim()) {
     lines.push('```css', source.trimEnd(), '```')

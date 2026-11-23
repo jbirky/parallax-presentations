@@ -80,6 +80,16 @@ The **CSS** tab holds a stylesheet for this deck's slides. It shows on the slide
 
 Some things are left out, and the CSS tab lists each one with its line: rules that reach outside the slide, `position: fixed`, at-rules other than `@media`, `@supports`, `@font-face` and `@keyframes`, and `url()` or `@import` from anywhere except your uploads, `data:` URLs and the font hosts decks already load (Google Fonts, cdnfonts, jsDelivr).
 
+### Saving themes
+
+**My themes**, at the top of the Colors tab, keeps the looks you save, to use in your other decks:
+
+- **Save as theme** (**+**) saves this deck's theme, own colors, fonts, text styles and CSS under a name.
+- Click a saved theme to use it in this deck. The deck keeps its own copy, so changing or deleting the saved theme never changes the deck by itself.
+- After you change a deck's look, **Save changes to "…"** updates the saved theme it came from.
+- When a saved theme has changed since a deck used it, the panel offers an **Update**, which replaces that deck's colors, fonts, text styles and CSS.
+- **Export** downloads a theme as a `.parallax-theme.json` file, and **Import** saves one and applies it, for sharing themes between accounts.
+
 ## Footer & page numbers
 
 1. Choose **Slide › Footer and page numbers…**.

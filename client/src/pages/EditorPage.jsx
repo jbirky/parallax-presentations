@@ -44,6 +44,7 @@ import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
 import { setDocumentThemeCss } from '../utils/scopeCss'
+import { applyThemeDoc } from '../utils/customTheme'
 import DeckFontOptions from '../components/DeckFontOptions'
 import { deckFontName } from '../utils/deckFont'
 import { slidePalette, ownBackground, themeOf, deckTheme, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
@@ -2879,8 +2880,9 @@ function draw() {
   // old dark default takes the theme's page instead (one undo step)
   const applyTheme = (id) => {
     tickStep('theme')
-    setPresentation(({ themeColors, ...prev }) => ({
-      // A new theme brings its own colors: the deck's Customize ones go
+    setPresentation(({ themeColors, themeSource, ...prev }) => ({
+      // A new theme brings its own colors: the deck's Customize ones go, and
+      // the deck no longer has the saved theme it came from
       ...prev,
       theme: id,
       slides: prev.slides.map(slide => {
@@ -2907,6 +2909,25 @@ function draw() {
   }
   const applyThemeCss = (css) => {
     setPresentation(({ themeCss, ...rest }) => (css && css.trim() ? { ...rest, themeCss: css } : rest))
+  }
+
+  // A saved theme (Themes panel › My themes, utils/customTheme.js): its base,
+  // colors, font, text styles and stylesheet replace the deck's, and the deck
+  // remembers which theme and version it has. Slides with the old dark
+  // default take the theme's page, as applyTheme does.
+  const applySavedTheme = (doc, source) => {
+    tickStep('theme')
+    setPresentation(prev => {
+      const next = applyThemeDoc(prev, doc, source)
+      return { ...next, slides: next.slides.map(slide => {
+        if (!isLegacyBackground(slide.background)) return slide
+        const { background, ...rest } = slide
+        return rest
+      }) }
+    })
+  }
+  const setThemeSource = (source) => {
+    setPresentation(({ themeSource, ...rest }) => (source ? { ...rest, themeSource: source } : rest))
   }
 
   // The deck's stylesheet on the editor's own page, where the canvas and
@@ -5058,7 +5079,8 @@ function draw() {
             textStyles={presentation.textStyles || null} onTextStyles={applyTextStyles}
             onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))}
             themeColors={presentation.themeColors || null} onThemeColors={applyThemeColors}
-            themeCss={presentation.themeCss || ''} onThemeCss={applyThemeCss} />
+            themeCss={presentation.themeCss || ''} onThemeCss={applyThemeCss}
+            deck={presentation} onApplyThemeDoc={applySavedTheme} onThemeSource={setThemeSource} />
         ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}

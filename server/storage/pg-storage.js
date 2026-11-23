@@ -142,6 +142,40 @@ class PgStorage extends StorageInterface {
 
   // --- Templates ---
 
+  // --- Theme library (migration 026) ---
+
+  _theme(r) {
+    return r ? { ...r.doc, id: r.id, name: r.name, version: r.version, createdAt: r.created_at, updatedAt: r.updated_at } : null
+  }
+
+  async listThemes(userId) {
+    const { rows } = await this.query('SELECT * FROM themes WHERE user_id = $1 ORDER BY lower(name), created_at', [userId])
+    return rows.map(r => this._theme(r))
+  }
+
+  async getTheme(id, userId) {
+    const { rows } = await this.query('SELECT * FROM themes WHERE id = $1 AND user_id = $2', [id, userId])
+    return this._theme(rows[0])
+  }
+
+  async createTheme(doc, userId) {
+    const { rows } = await this.query('INSERT INTO themes (user_id, name, doc) VALUES ($1, $2, $3) RETURNING *', [userId, doc.name, doc])
+    return this._theme(rows[0])
+  }
+
+  // Replaces a theme's document; its version counts the saves
+  async updateTheme(id, doc, userId) {
+    const { rows } = await this.query(
+      'UPDATE themes SET name = $3, doc = $4, version = version + 1, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, userId, doc.name, doc])
+    return this._theme(rows[0])
+  }
+
+  async deleteTheme(id, userId) {
+    const { rowCount } = await this.query('DELETE FROM themes WHERE id = $1 AND user_id = $2', [id, userId])
+    return rowCount > 0
+  }
+
   async listTemplates(userId) {
     const conditions = ['is_template = true']
     const params = []

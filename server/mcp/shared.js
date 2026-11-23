@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// Written by scripts/build-mcp-shared.js from client/src/utils/beamer.js, client/src/utils/beamerSlides.js, client/src/utils/bibtexParser.js, client/src/utils/graphParser.js, client/src/utils/graphPage.js, client/src/utils/equationTerms.js, client/src/utils/circuitParts.js, client/src/utils/circuitDiagram.js, client/src/utils/circuitSolve.js, client/src/utils/feynmanDiagram.js, client/src/utils/logicParts.js, client/src/utils/logicDiagram.js, client/src/utils/freebodySolve.js, client/src/utils/freebodyDiagram.js, client/src/utils/vennDiagram.js, client/src/utils/timingDiagram.js, client/src/utils/geometryDiagram.js, client/src/utils/geometryEngine.js, client/src/utils/periodicTable.js, client/src/utils/harmonicsView.js, client/src/utils/sphericalHarmonics.js, client/src/utils/textStyles.js, client/src/utils/scopeCss.js
+// Written by scripts/build-mcp-shared.js from client/src/utils/beamer.js, client/src/utils/beamerSlides.js, client/src/utils/bibtexParser.js, client/src/utils/graphParser.js, client/src/utils/graphPage.js, client/src/utils/equationTerms.js, client/src/utils/circuitParts.js, client/src/utils/circuitDiagram.js, client/src/utils/circuitSolve.js, client/src/utils/feynmanDiagram.js, client/src/utils/logicParts.js, client/src/utils/logicDiagram.js, client/src/utils/freebodySolve.js, client/src/utils/freebodyDiagram.js, client/src/utils/vennDiagram.js, client/src/utils/timingDiagram.js, client/src/utils/geometryDiagram.js, client/src/utils/geometryEngine.js, client/src/utils/periodicTable.js, client/src/utils/harmonicsView.js, client/src/utils/sphericalHarmonics.js, client/src/utils/textStyles.js, client/src/utils/scopeCss.js, client/src/utils/customTheme.js
 // and what they import; edit those, then run the script.
 
 var __create = Object.create;
@@ -5825,6 +5825,7 @@ __export(shared_exports, {
   LOGIC_FIELDS: () => LOGIC_FIELDS,
   LOGIC_PARTS: () => LOGIC_PARTS,
   LOGIC_TEMPLATES: () => LOGIC_TEMPLATES,
+  MAX_LIBRARY_THEMES: () => MAX_LIBRARY_THEMES,
   MAX_SIZE: () => MAX_SIZE,
   MAX_TERMS: () => MAX_TERMS,
   MAX_THEME_CSS: () => MAX_THEME_CSS,
@@ -5836,6 +5837,7 @@ __export(shared_exports, {
   TERM_ID: () => TERM_ID,
   TIMING_FIELDS: () => TIMING_FIELDS,
   TIMING_TEMPLATES: () => TIMING_TEMPLATES,
+  ThemeDocError: () => ThemeDocError,
   VENN_FIELDS: () => VENN_FIELDS,
   VENN_TEMPLATES: () => VENN_TEMPLATES,
   analyzeVenn: () => analyzeVenn,
@@ -5848,6 +5850,7 @@ __export(shared_exports, {
   citeKeyFinder: () => citeKeyFinder,
   citedKeys: () => citedKeys,
   cleanTextStyles: () => cleanTextStyles,
+  cleanThemeDoc: () => cleanThemeDoc,
   createMathParser: () => createMathParser,
   defaultEquation: () => defaultEquation,
   defaultGraph: () => defaultGraph,
@@ -9048,7 +9051,7 @@ function createMathParser() {
     "η": "eta"
   };
   const CMP = ["=", "<", ">", "<=", ">="];
-  function fail2(message) {
+  function fail3(message) {
     const e = new Error(message);
     e.graphError = true;
     throw e;
@@ -9090,15 +9093,15 @@ function createMathParser() {
           if (s[j] === "_") {
             if (s[j + 1] === "{") {
               const end = s.indexOf("}", j + 2);
-              if (end < 0) fail2("A subscript _{ needs its }");
+              if (end < 0) fail3("A subscript _{ needs its }");
               const sub2 = s.slice(j + 2, end).trim();
-              if (!sub2 || ![...sub2].every(isWord)) fail2("Subscripts are letters and digits, like a_1");
+              if (!sub2 || ![...sub2].every(isWord)) fail3("Subscripts are letters and digits, like a_1");
               name50 += "_" + sub2;
               j = end + 1;
             } else {
               let k = j + 1;
               while (k < s.length && isWord(s[k])) k++;
-              if (k === j + 1) fail2("Put a letter or digit after _, like a_1");
+              if (k === j + 1) fail3("Put a letter or digit after _, like a_1");
               name50 += "_" + s.slice(j + 1, k);
               j = k;
             }
@@ -9124,7 +9127,7 @@ function createMathParser() {
         i++;
         continue;
       }
-      fail2("“" + c + "” isn’t something a graph can read");
+      fail3("“" + c + "” isn’t something a graph can read");
     }
     return tokens;
   }
@@ -9134,7 +9137,7 @@ function createMathParser() {
     const peek = () => tokens[pos];
     const isOp = (v) => pos < tokens.length && tokens[pos].t === "op" && tokens[pos].v === v;
     function expect(v, what) {
-      if (!isOp(v)) fail2(pos < tokens.length ? "Expected " + (what || v) + " before “" + tokens[pos].v + "”" : "Expected " + (what || v) + " at the end");
+      if (!isOp(v)) fail3(pos < tokens.length ? "Expected " + (what || v) + " before “" + tokens[pos].v + "”" : "Expected " + (what || v) + " at the end");
       pos++;
     }
     function startsFactor(tok) {
@@ -9216,7 +9219,7 @@ function createMathParser() {
         const c = chain2();
         if (!c.ops.length) {
           otherwise = c.parts[0];
-          if (!isOp("}")) fail2("In { }, the value for “otherwise” goes last");
+          if (!isOp("}")) fail3("In { }, the value for “otherwise” goes last");
           break;
         }
         let value = null;
@@ -9247,21 +9250,21 @@ function createMathParser() {
         pos++;
         list = args();
       } else {
-        if (!startsFactor(peek())) fail2(name50 + " needs something to work on, like " + name50 + "(x)");
+        if (!startsFactor(peek())) fail3(name50 + " needs something to work on, like " + name50 + "(x)");
         let a = power();
         while (startsFactor(peek()) && peek().t !== "fn") a = { k: "bin", op: "*", a, b: power() };
         list = [a];
       }
       const [least, most] = ARITY[name50] || [1, 1];
       if (list.length < least || list.length > most) {
-        fail2(name50 + " takes " + (least === most ? least : least + " or " + most) + " value" + (most === 1 ? "" : "s"));
+        fail3(name50 + " takes " + (least === most ? least : least + " or " + most) + " value" + (most === 1 ? "" : "s"));
       }
       const call = { k: "call", f: name50, args: list };
       return pow ? { k: "bin", op: "^", a: call, b: pow } : call;
     }
     function primary() {
       const tok = peek();
-      if (!tok) fail2("Something’s missing at the end");
+      if (!tok) fail3("Something’s missing at the end");
       if (tok.t === "num") {
         pos++;
         return { k: "num", v: tok.v };
@@ -9295,12 +9298,12 @@ function createMathParser() {
         pos++;
         return piecewise();
       }
-      fail2("“" + tok.v + "” is out of place");
+      fail3("“" + tok.v + "” is out of place");
     }
     return {
       statement() {
         const c = chain2();
-        if (pos < tokens.length) fail2("“" + tokens[pos].v + "” is out of place");
+        if (pos < tokens.length) fail3("“" + tokens[pos].v + "” is out of place");
         return c;
       }
     };
@@ -9382,7 +9385,7 @@ function createMathParser() {
         }
         const i = formals ? formals.indexOf(node.n) : -1;
         if (i >= 0) return (env, a) => a[i];
-        if (fns[node.n]) fail2(node.n + " is a function: write " + node.n + "(x)");
+        if (fns[node.n]) fail3(node.n + " is a function: write " + node.n + "(x)");
         const name50 = node.n;
         return (env) => {
           const v = env[name50];
@@ -9423,8 +9426,8 @@ function createMathParser() {
       }
       case "ucall": {
         const def = fns[node.f];
-        if (!def) fail2(node.f + "(…) has an error");
-        if (def.formals.length !== node.args.length) fail2(node.f + " takes " + def.formals.length + " value" + (def.formals.length === 1 ? "" : "s"));
+        if (!def) fail3(node.f + "(…) has an error");
+        if (def.formals.length !== node.args.length) fail3(node.f + " takes " + def.formals.length + " value" + (def.formals.length === 1 ? "" : "s"));
         const list = node.args.map(c);
         return (env, x) => def.call(env, list.map((g) => g(env, x)));
       }
@@ -9437,9 +9440,9 @@ function createMathParser() {
         };
       }
       case "tuple":
-        fail2("A point ( , ) can’t be used inside a calculation");
+        fail3("A point ( , ) can’t be used inside a calculation");
     }
-    fail2("Couldn’t read this");
+    fail3("Couldn’t read this");
   }
   function condition(ch, formals, fns) {
     const parts = ch.parts.map((p) => compile(p, formals, fns));
@@ -9520,13 +9523,13 @@ function createMathParser() {
     const fnNames = new Set(Object.keys(callable));
     const compiled = (item, text, own) => {
       const st = parseStatement(text, fnNames);
-      if (st.ops.length) fail2("One expression here, without =, < or >");
+      if (st.ops.length) fail3("One expression here, without =, < or >");
       const node = st.parts[0];
-      if (node.k === "tuple") fail2("A component is one number, not a point");
+      if (node.k === "tuple") fail3("A component is one number, not a point");
       const vars = freeVars(node);
       for (const v of vars) {
         if (own.includes(v) || params.has(v) || fnNames.has(v)) continue;
-        if (RESERVED.includes(v)) fail2(!own.length ? "A starting point is numbers or sliders" : v === "t" ? "A field here doesn’t change with t: use x, y and sliders" : "Use " + own.map((o) => o === "theta" ? "θ" : o).join(" and ") + " and sliders here");
+        if (RESERVED.includes(v)) fail3(!own.length ? "A starting point is numbers or sliders" : v === "t" ? "A field here doesn’t change with t: use x, y and sliders" : "Use " + own.map((o) => o === "theta" ? "θ" : o).join(" and ") + " and sliders here");
       }
       note(vars, item);
       return { f: compile(node, own.length ? own : null, callable), node };
@@ -9552,14 +9555,14 @@ function createMathParser() {
     for (const it of rates) {
       guard(it, () => {
         const v = it.field.v, name50 = v === "theta" ? "θ" : v;
-        if (byVar[v].length > 1) fail2(name50 + "′ is defined twice");
+        if (byVar[v].length > 1) fail3(name50 + "′ is defined twice");
         const mate = (byVar[{ x: "y", y: "x", r: "theta", theta: "r" }[v]] || [])[0];
         if (!mate) {
           if (v === "y") {
             it.field = { type: "slope", rhs: it.field.rhs };
             return;
           }
-          fail2(v === "x" ? "x′ = … needs a y′ = … line too" : v === "r" ? "r′ = … needs a θ′ = … line too" : "θ′ = … needs an r′ = … line too");
+          fail3(v === "x" ? "x′ = … needs a y′ = … line too" : v === "r" ? "r′ = … needs a θ′ = … line too" : "θ′ = … needs an r′ = … line too");
         }
         if (items.indexOf(mate) < items.indexOf(it)) {
           Object.assign(it, { kind: "partner", partnerOf: mate.id });
@@ -9592,14 +9595,14 @@ function createMathParser() {
       if (it.kind) continue;
       guard(it, () => {
         const d = it.field;
-        if (d.type === "bad") fail2(d.error);
+        if (d.type === "bad") fail3(d.error);
         if (d.type === "system" || d.type === "vector") {
           const fx = compiled(it, d.comps[0], ["x", "y"]).f, fy = compiled(it, d.comps[1], ["x", "y"]).f;
           Object.assign(it, { kind: d.type, F: xy(fx, fy), name: d.name || null });
         } else if (d.type === "grad") {
           const def = callable[d.f];
-          if (!def) fail2(d.f + "(x, y) = … isn’t defined");
-          if (def.formals.length !== 2) fail2("∇" + d.f + " needs " + d.f + "(x, y), with two variables");
+          if (!def) fail3(d.f + "(x, y) = … isn’t defined");
+          if (def.formals.length !== 2) fail3("∇" + d.f + " needs " + d.f + "(x, y), with two variables");
           Object.assign(it, {
             kind: "vector",
             gradOf: d.f,
@@ -9685,7 +9688,7 @@ function createMathParser() {
       try {
         if (item.kind === "function") {
           const st = parseStatement(item.bodyText, userFns);
-          if (st.ops.length) fail2("A function is one expression after =");
+          if (st.ops.length) fail3("A function is one expression after =");
           item.body = st.parts[0];
         } else {
           item.stmt = parseStatement(item.text, userFns);
@@ -9817,10 +9820,10 @@ function createMathParser() {
     const list = (names) => names.map((n) => said[n] || n).join(", ");
     const extra = (item, text, allowed, what) => {
       const st = parseStatement(text, userFns);
-      if (st.ops.length) fail2(what + " is one expression, without =");
+      if (st.ops.length) fail3(what + " is one expression, without =");
       const vars = freeVars(st.parts[0]);
       note(vars, item);
-      if (!onlyRes(vars, allowed)) fail2(what + (allowed.length ? " can use " + list(allowed) + " and sliders" : " is a number, or uses sliders"));
+      if (!onlyRes(vars, allowed)) fail3(what + (allowed.length ? " can use " + list(allowed) + " and sliders" : " is a number, or uses sliders"));
       return cf(st.parts[0]);
     };
     for (const [item, { colorBy, at }] of extras) {
@@ -9860,13 +9863,13 @@ function createMathParser() {
           node = node.a;
         }
         if (node.k === "tuple") {
-          if (node.items.length !== 2) fail2("A point has two coordinates, like (1, 2)");
+          if (node.items.length !== 2) fail3("A point has two coordinates, like (1, 2)");
           const [nx, ny] = restrict ? node.items.map((n) => ({ k: "bin", op: "*", a: n, b: restrict })) : node.items;
           if (vars.has("t")) {
-            if (!only(vars, ["t"])) fail2("A curve (x(t), y(t)) can use only t and sliders");
+            if (!only(vars, ["t"])) fail3("A curve (x(t), y(t)) can use only t and sliders");
             item.kind = "parametric";
           } else {
-            if (has3(vars, RESERVED)) fail2("A point’s coordinates are numbers or sliders; for a curve use t, for a vector field write F(x, y) = (…)");
+            if (has3(vars, RESERVED)) fail3("A point’s coordinates are numbers or sliders; for a curve use t, for a vector field write F(x, y) = (…)");
             item.kind = "point";
             item.dragX = node.items[0].k === "var" && params.has(node.items[0].n) ? node.items[0].n : null;
             item.dragY = node.items[1].k === "var" && params.has(node.items[1].n) ? node.items[1].n : null;
@@ -9875,14 +9878,14 @@ function createMathParser() {
           item.fy = cf(ny);
           return;
         }
-        if (has3(vars, ["y", "t", "theta", "r"])) fail2("Write it as an equation, like y = …");
+        if (has3(vars, ["y", "t", "theta", "r"])) fail3("Write it as an equation, like y = …");
         item.f = cf(node);
         item.kind = vars.has("x") ? "explicit" : "value";
         item.axis = "y";
         return;
       }
       if (ops.every((op) => op === "=")) {
-        if (ops.length > 1) fail2("Only one = per line");
+        if (ops.length > 1) fail3("Only one = per line");
         const [l, r] = parts;
         for (const [side, other] of [[l, r], [r, l]]) {
           const ov = freeVars(other);
@@ -9904,17 +9907,17 @@ function createMathParser() {
             return;
           }
         }
-        if (isVar(l, "t") || isVar(l, "theta")) fail2(l.n + " is what curves are drawn over; call this something else");
-        if (!only(vars, ["x", "y"])) fail2("An equation uses x, y and sliders; for curves over t or θ, see the examples");
-        if (!has3(vars, ["x", "y"])) fail2("There’s no x or y to draw");
+        if (isVar(l, "t") || isVar(l, "theta")) fail3(l.n + " is what curves are drawn over; call this something else");
+        if (!only(vars, ["x", "y"])) fail3("An equation uses x, y and sliders; for curves over t or θ, see the examples");
+        if (!has3(vars, ["x", "y"])) fail3("There’s no x or y to draw");
         const lf = cf(l), rf = cf(r);
         item.kind = "implicit";
         item.F = (env) => lf(env) - rf(env);
         return;
       }
-      if (ops.includes("=")) fail2("Use either = or <, >, ≤, ≥ in one line");
-      if (!only(vars, ["x", "y"])) fail2("An inequality uses x, y and sliders");
-      if (!has3(vars, ["x", "y"])) fail2("There’s no x or y to shade");
+      if (ops.includes("=")) fail3("Use either = or <, >, ≤, ≥ in one line");
+      if (!only(vars, ["x", "y"])) fail3("An inequality uses x, y and sliders");
+      if (!has3(vars, ["x", "y"])) fail3("There’s no x or y to shade");
       if (ops.length === 1) {
         const [l, r] = parts;
         const op = ops[0];
@@ -9952,16 +9955,16 @@ function createMathParser() {
           node = node.a;
         }
         if (node.k === "tuple") {
-          if (node.items.length !== 3) fail2("In 3D, a point has three coordinates, like (1, 2, 3)");
+          if (node.items.length !== 3) fail3("In 3D, a point has three coordinates, like (1, 2, 3)");
           const [nx, ny, nz] = restrict ? node.items.map((n) => ({ k: "bin", op: "*", a: n, b: restrict })) : node.items;
           if (uses(["u", "v"])) {
-            if (!onlyRes(vars, ["u", "v"])) fail2("A surface (x(u, v), y(u, v), z(u, v)) can use only u, v and sliders");
+            if (!onlyRes(vars, ["u", "v"])) fail3("A surface (x(u, v), y(u, v), z(u, v)) can use only u, v and sliders");
             item.kind = "psurface";
           } else if (vars.has("t")) {
-            if (!onlyRes(vars, ["t"])) fail2("A curve (x(t), y(t), z(t)) can use only t and sliders");
+            if (!onlyRes(vars, ["t"])) fail3("A curve (x(t), y(t), z(t)) can use only t and sliders");
             item.kind = "curve3";
           } else {
-            if (has3(vars, RES)) fail2("A point’s coordinates are numbers or sliders; for a curve use t, for a surface u and v");
+            if (has3(vars, RES)) fail3("A point’s coordinates are numbers or sliders; for a curve use t, for a surface u and v");
             item.kind = "point3";
           }
           item.fx = cf(nx);
@@ -9969,19 +9972,19 @@ function createMathParser() {
           item.fz = cf(nz);
           return;
         }
-        if (vars.has("z") || vars.has("w")) fail2("Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9, or as a value in space, like w = x y z");
-        if (!onlyRes(vars, ["x", "y", "r", "theta"])) fail2("A surface z = f(x, y) uses x, y (or r and θ) and sliders");
+        if (vars.has("z") || vars.has("w")) fail3("Write it as an equation, like z = … or x^2 + y^2 + z^2 = 9, or as a value in space, like w = x y z");
+        if (!onlyRes(vars, ["x", "y", "r", "theta"])) fail3("A surface z = f(x, y) uses x, y (or r and θ) and sliders");
         item.f = cf(node);
         item.kind = uses(["x", "y", "r", "theta"]) ? "surface" : "value";
         item.axis = "z";
         return;
       }
-      if (!ops.every((op) => op === "=")) fail2("Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}");
-      if (ops.length > 1) fail2("Only one = per line");
+      if (!ops.every((op) => op === "=")) fail3("Shaded regions are 2D only: in 3D, restrict a surface with braces, like z = x^2 {x > 0}");
+      if (ops.length > 1) fail3("Only one = per line");
       const [l, r] = parts;
       if (isVar(l, "w") || isVar(r, "w")) {
         const other = isVar(l, "w") ? r : l, ov = freeVars(other);
-        if (!onlyRes(ov, ["x", "y", "z", "r", "theta"])) fail2("A value in space, w = …, uses x, y, z (or r and θ) and sliders");
+        if (!onlyRes(ov, ["x", "y", "z", "r", "theta"])) fail3("A value in space, w = …, uses x, y, z (or r and θ) and sliders");
         Object.assign(item, { kind: "field3", name: "w", f: cf(other) });
         return;
       }
@@ -10000,9 +10003,9 @@ function createMathParser() {
           return;
         }
       }
-      if (vars.has("w")) fail2("w is a value in space: give it a line of its own, like w = x y z");
-      if (uses(["t", "u", "v"])) fail2("An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples");
-      if (!uses(["x", "y", "z", "r", "theta"])) fail2("There’s no x, y or z to draw");
+      if (vars.has("w")) fail3("w is a value in space: give it a line of its own, like w = x y z");
+      if (uses(["t", "u", "v"])) fail3("An equation uses x, y, z (or r and θ) and sliders; for curves over t or surfaces over u and v, see the examples");
+      if (!uses(["x", "y", "z", "r", "theta"])) fail3("There’s no x, y or z to draw");
       const lf = cf(l), rf = cf(r);
       item.kind = "implicit3";
       item.F = (env) => lf(env) - rf(env);
@@ -15462,7 +15465,7 @@ function geometryRuntime() {
     var m = /^([A-Za-zα-ωΑ-Ω]+'*)_?(\d+)('*)$/.exec(name50);
     return m ? m[1] + "_{" + m[2] + "}" + m[3] : name50.replace(/_(\w+)/, "_{$1}");
   }
-  var THEMES = {
+  var THEMES2 = {
     dark: { ink: "#e7ebf3", soft: "#8d96aa", grid: "#3a4152", axis: "#7d8698", blue: "#5aa2ff", red: "#ff6f61", yellow: "#ffcc4d", green: "#52c78d", purple: "#b58cff", accent: "#ffcc4d", halo: "#1e1e2e", fillOp: 0.2 },
     light: { ink: "#1b2230", soft: "#7a8396", grid: "#e1e5ec", axis: "#8790a2", blue: "#1f62c4", red: "#cc2f24", yellow: "#e3a400", green: "#2a8a57", purple: "#7a42c8", accent: "#cc2f24", halo: "#ffffff", fillOp: 0.26 }
   };
@@ -15507,7 +15510,7 @@ function geometryRuntime() {
     return raw <= p ? p : raw <= 2 * p ? 2 * p : raw <= 5 * p ? 5 * p : 10 * p;
   }
   function render(objs, vals, o) {
-    var th = THEMES[o.dark ? "dark" : "light"], F3 = frame(o), W = F3.W, H = F3.H;
+    var th = THEMES2[o.dark ? "dark" : "light"], F3 = frame(o), W = F3.W, H = F3.H;
     var S = function(p) {
       return toScreen(F3, p);
     };
@@ -15811,7 +15814,7 @@ function geometryRuntime() {
   }
   return {
     CMDS: CMDS2,
-    THEMES,
+    THEMES: THEMES2,
     parse: parse51,
     serialize,
     compute,
@@ -16268,7 +16271,7 @@ function periodicRuntime(ROWS) {
     year: { label: "Year discovered", unit: "", key: "year", dp: 0 }
   };
   var RAMP = ["#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b"];
-  var THEMES = {
+  var THEMES2 = {
     light: { dark: false, fg: "#16202a", muted: "#56636f", faint: "#87929c", line: "#d6dce1", surface: "#ffffff", accent: "#1d5fa6", onAccent: "#ffffff", code: "#e8ecef", pos: "#cf5a1f", neg: "#2470cc", tileS: 72, tileL: 89, strongS: 58, strongL: 44, edge: 0.09 },
     dark: { dark: true, fg: "#e3e8ed", muted: "#9ba7b3", faint: "#7a8692", line: "#3a4652", surface: "#151c22", accent: "#7db0ff", onAccent: "#0e1317", code: "#1f2a33", pos: "#ff9759", neg: "#63a6f7", tileS: 32, tileL: 23, strongS: 62, strongL: 64, edge: 0.08 }
   };
@@ -16967,7 +16970,7 @@ function periodicRuntime(ROWS) {
   }
   function render(s, o) {
     o = o || {};
-    var v = o.view || viewAt(s, 0), th = THEMES[s.theme], L = layout(s);
+    var v = o.view || viewAt(s, 0), th = THEMES2[s.theme], L = layout(s);
     var pinned = o.pinned !== void 0 ? o.pinned : v.pin;
     var shown = o.shown !== void 0 ? o.shown : pinned || s.restingElement;
     var mode = o.mode || "static", ro = { mode, key: o.key == null ? null : o.key, sub: o.sub, pinned, animate: o.animate, tab: shown || L.tiles[0] && L.tiles[0].z };
@@ -17001,7 +17004,7 @@ function periodicRuntime(ROWS) {
   var live = [], escOn = false;
   function attach(root, el, opts) {
     opts = opts || {};
-    var s = normalize(el), L = layout(s), th = THEMES[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
+    var s = normalize(el), L = layout(s), th = THEMES2[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
     var st = { view: viewAt(s, 0), hover: null, pin: null, sub: null, key: null };
     var raf = 0, canvas = null, gone = false;
     var win = root.ownerDocument.defaultView || window;
@@ -18315,7 +18318,7 @@ function harmonicsRuntime(SH2) {
     var x = p[0], y = p[1], z = p[2];
     return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[3] * x + M[7] * y + M[11] * z + M[15]];
   }
-  var THEMES = {
+  var THEMES2 = {
     light: { pos: "#cf5a1f", neg: "#2470cc", mid: "#e7e5e0", node: "#1f2328", zero: "#34363d", axis: "#8a939d", fg: "#16202a", muted: "#56636f", hue0: 42 * DEG, L: 0.69, C: 0.12 },
     dark: { pos: "#ff9759", neg: "#63a6f7", mid: "#d8d5cf", node: "#15181b", zero: "#26282e", axis: "#8f9aa6", fg: "#e3e8ed", muted: "#9ba7b3", hue0: 42 * DEG, L: 0.74, C: 0.115 }
   };
@@ -18562,7 +18565,7 @@ function harmonicsRuntime(SH2) {
       ctx.clearRect(0, 0, W, H);
       return true;
     }
-    var s = pic.s, th = THEMES[s.theme] || THEMES.dark, t = o.t || 0;
+    var s = pic.s, th = THEMES2[s.theme] || THEMES2.dark, t = o.t || 0;
     var turn = (o.turn != null ? o.turn : s.turn) + (s.motion === "spin" ? t * 24 * s.speed : 0);
     var tilt = o.tilt != null ? o.tilt : s.tilt;
     var wt = s.motion === "wave" ? t * 2.2 * s.speed : 0;
@@ -18893,7 +18896,7 @@ function harmonicsRuntime(SH2) {
       node.textContent = src.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\^/g, "").replace(/_/g, "");
     }
     function sized2() {
-      var h = root.clientHeight || 0, th = THEMES[s.theme] || THEMES.dark;
+      var h = root.clientHeight || 0, th = THEMES2[s.theme] || THEMES2.dark;
       var fs = Math.max(10, Math.min(48, h * 0.06));
       label.style.fontSize = fs + "px";
       label.style.color = th.fg;
@@ -19055,7 +19058,7 @@ function harmonicsRuntime(SH2) {
   }
   function still(el, w, h, dpr, n) {
     var s = normalize(el), state = stepState(s, n || 0), pic = picture(state);
-    var c = document.createElement("canvas"), th = THEMES[s.theme] || THEMES.dark;
+    var c = document.createElement("canvas"), th = THEMES2[s.theme] || THEMES2.dark;
     var capH = state.caption ? Math.max(10, h * 0.055) * 1.4 : 0;
     if (!draw(c, pic, { w, h: h - capH, dpr })) {
       freePicture(pic);
@@ -19087,7 +19090,7 @@ function harmonicsRuntime(SH2) {
     return out.toDataURL("image/png");
   }
   return {
-    THEMES,
+    THEMES: THEMES2,
     DEFAULTS: DEFAULTS2,
     PICTURE_FIELDS,
     SOURCES,
@@ -24858,6 +24861,77 @@ function scopeThemeCss(source) {
   const css = generator_default2(ast).replace(/</g, "\\3c ");
   return { css, dropped };
 }
+
+// client/src/utils/themes.js
+var THEME_LIST = [
+  { id: "black", label: "Black", background: "#191919", text: "#ffffff", heading: "#ffffff", link: "#42affa", dark: true },
+  { id: "white", label: "White", background: "#ffffff", text: "#222222", heading: "#222222", link: "#2a76dd", dark: false },
+  { id: "league", label: "League", background: "#2b2b2b", text: "#eeeeee", heading: "#eeeeee", link: "#13daec", dark: true },
+  { id: "beige", label: "Beige", background: "#f7f3de", text: "#333333", heading: "#333333", link: "#8b743d", dark: false },
+  { id: "sky", label: "Sky", background: "#f7fbfc", backgroundCss: "radial-gradient(circle farthest-corner at center, #f7fbfc 0%, #add9e4 100%)", text: "#333333", heading: "#333333", link: "#3b759e", dark: false },
+  { id: "night", label: "Night", background: "#111111", text: "#eeeeee", heading: "#eeeeee", link: "#e7ad52", dark: true },
+  { id: "serif", label: "Serif", background: "#f0f1eb", text: "#000000", heading: "#383d3d", link: "#51483d", dark: false },
+  { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
+  { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
+  { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
+  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
+  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" },
+  { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" },
+  { id: "mission", label: "Mission", background: "#f4f6f8", backgroundCss: "linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8", text: "#0d1b2e", heading: "#0d1b2e", link: "#1d6fd1", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: "Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono" }
+];
+var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
+var THEME_COLOR_KEYS = ["background", "text", "heading", "link", "accent"];
+var COLOR_VALUE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\))$/i;
+function cleanThemeColors(colors) {
+  if (!colors || typeof colors !== "object") return null;
+  const out = {};
+  for (const key of THEME_COLOR_KEYS) {
+    const value = typeof colors[key] === "string" ? colors[key].trim() : "";
+    if (value && COLOR_VALUE.test(value)) out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// client/src/utils/customTheme.js
+var MAX_THEME_NAME = 80;
+var MAX_LIBRARY_THEMES = 100;
+var FONT2 = /^[\w\s,'"-]{1,200}$/;
+var ThemeDocError = class extends Error {
+};
+var fail2 = (message) => {
+  throw new ThemeDocError(message);
+};
+function cleanThemeDoc(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) fail2("A theme must be an object.");
+  const name50 = typeof input.name === "string" ? input.name.replace(/\s+/g, " ").trim() : "";
+  if (!name50) fail2("A theme needs a name.");
+  if (name50.length > MAX_THEME_NAME) fail2(`A theme's name can be up to ${MAX_THEME_NAME} characters.`);
+  const base3 = typeof input.base === "string" && Object.prototype.hasOwnProperty.call(THEMES, input.base) ? input.base : null;
+  if (!base3) fail2(`A theme's base must be one of: ${Object.keys(THEMES).join(", ")}.`);
+  const doc = { name: name50, base: base3 };
+  if (input.colors != null) {
+    const colors = cleanThemeColors(input.colors);
+    const given = typeof input.colors === "object" ? Object.keys(input.colors).filter((k) => input.colors[k] != null && input.colors[k] !== "") : [];
+    if (given.length && (!colors || Object.keys(colors).length !== given.length)) fail2("A theme's colors must be background, text, heading, link and accent, each a hex or rgb() color.");
+    if (colors) doc.colors = colors;
+  }
+  if (input.font != null && input.font !== "") {
+    if (typeof input.font !== "string" || !FONT2.test(input.font.trim())) fail2(`A theme's font must be a CSS font family list, such as "Georgia, serif".`);
+    doc.font = input.font.trim();
+  }
+  if (input.textStyles != null) {
+    const styles = cleanTextStyles(input.textStyles);
+    const given = typeof input.textStyles === "object" ? Object.keys(input.textStyles).filter((k) => input.textStyles[k] != null && input.textStyles[k] !== "") : [];
+    if (given.length && (!styles || Object.keys(styles).length !== given.length)) fail2("A theme's text styles must be sizes from 8 to 300 px, a heading font and a weight from 400 to 900.");
+    if (styles) doc.textStyles = styles;
+  }
+  if (input.css != null && input.css !== "") {
+    if (typeof input.css !== "string") fail2("A theme's css must be text.");
+    if (input.css.length > MAX_THEME_CSS) fail2(`A theme's stylesheet can be up to ${MAX_THEME_CSS} characters.`);
+    if (input.css.trim()) doc.css = input.css;
+  }
+  return doc;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CIRCUIT_FIELDS,
@@ -24891,6 +24965,7 @@ function scopeThemeCss(source) {
   LOGIC_FIELDS,
   LOGIC_PARTS,
   LOGIC_TEMPLATES,
+  MAX_LIBRARY_THEMES,
   MAX_SIZE,
   MAX_TERMS,
   MAX_THEME_CSS,
@@ -24902,6 +24977,7 @@ function scopeThemeCss(source) {
   TERM_ID,
   TIMING_FIELDS,
   TIMING_TEMPLATES,
+  ThemeDocError,
   VENN_FIELDS,
   VENN_TEMPLATES,
   analyzeVenn,
@@ -24914,6 +24990,7 @@ function scopeThemeCss(source) {
   citeKeyFinder,
   citedKeys,
   cleanTextStyles,
+  cleanThemeDoc,
   createMathParser,
   defaultEquation,
   defaultGraph,
