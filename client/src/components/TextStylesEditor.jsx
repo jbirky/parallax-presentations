@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import DeckFontOptions from './DeckFontOptions'
-import { deckFont } from '../utils/deckFont'
-import { themeOf, themeBackgroundStyle } from '../utils/themes'
+import { deckFont, deckFontName } from '../utils/deckFont'
+import { themeOf, themeBackgroundStyle, deckTextFont } from '../utils/themes'
 import { textSizes, withTextStyles, cleanTextStyles, MIN_SIZE, MAX_SIZE, HEADING_WEIGHTS } from '../utils/textStyles'
 
 const SIZES = [
@@ -68,7 +68,8 @@ export default function TextStylesEditor({ textStyles, font, theme, onChange, on
   const clean = cleanTextStyles(textStyles) || {}
   const sizes = textSizes(clean)
   const set = patch => onChange(withTextStyles(clean, patch))
-  const bodyFont = deckFont(font)
+  // The deck's font, or its theme's (utils/themes.js)
+  const bodyFont = deckFont(deckTextFont(font, theme))
   const headingFont = clean.headingFont || bodyFont
   const weight = clean.headingWeight || 700
   const anyCustom = Object.keys(clean).length > 0
@@ -96,7 +97,7 @@ export default function TextStylesEditor({ textStyles, font, theme, onChange, on
       <label className="text-style-field">
         <span>Body text</span>
         <select className="prop-input" value={font || ''} onChange={e => onFont(e.target.value || null)}>
-          <option value="">Default (Arial)</option>
+          <option value="">Default ({deckFontName(deckTextFont('', theme))})</option>
           <DeckFontOptions />
         </select>
       </label>

@@ -26,6 +26,7 @@ import PeriodicProperties from './PeriodicProperties'
 import HarmonicsProperties from './HarmonicsProperties'
 import BackgroundEditor from './BackgroundEditor'
 import { deckFont } from '../utils/deckFont'
+import { deckTextFont } from '../utils/themes'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -249,6 +250,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="Manrope, sans-serif">Manrope</option>
         <option value="Geist, sans-serif">Geist</option>
         <option value="Figtree, sans-serif">Figtree</option>
+        <option value="Jost, sans-serif">Jost</option>
         <option value="Ubuntu, sans-serif">Ubuntu</option>
         <option value="Rubik, sans-serif">Rubik</option>
         <option value="'PT Sans', sans-serif">PT Sans</option>
@@ -883,7 +885,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
-                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={deckTextFont(presentation?.globalFont, presentation?.theme)} />
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Color</div>
@@ -1089,7 +1091,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               )}
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
-                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={deckTextFont(presentation?.globalFont, presentation?.theme)} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
                 <div>

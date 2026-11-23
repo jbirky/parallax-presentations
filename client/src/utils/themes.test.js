@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { THEME_LIST, themeOf, revealTheme, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
+import { THEME_LIST, themeOf, revealTheme, deckTextFont, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
 
 describe('themes', () => {
   it('has reveal’s eleven and Bauhaus, light and dark', () => {
@@ -14,6 +14,14 @@ describe('themes', () => {
     expect(revealTheme('bauhaus')).toBe('white')
     expect(revealTheme('moon')).toBe('moon')
     expect(slidePalette({}, 'bauhaus')).toMatchObject({ background: { backgroundColor: '#f7f6f2' }, text: '#151515', link: '#d52b1e', dark: false })
+  })
+
+  it('sets text in the deck’s font, or else the theme’s', () => {
+    expect(deckTextFont('', 'bauhaus')).toBe('Jost, sans-serif')
+    expect(deckTextFont(null, 'bauhaus')).toBe('Jost, sans-serif')
+    expect(deckTextFont('Georgia, serif', 'bauhaus')).toBe('Georgia, serif')
+    expect(deckTextFont('', 'black')).toBe('')
+    expect(deckTextFont('  ', 'nope')).toBe('')
   })
 
   it('tells dark colors from light ones', () => {

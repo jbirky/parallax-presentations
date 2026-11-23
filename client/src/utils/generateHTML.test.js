@@ -641,10 +641,25 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain(`var _globalTransition = "slide';x();'";`)
   })
 
-  it('links the reveal.js theme Bauhaus is drawn on', () => {
-    const html = generateRevealHTML(makePresentation({ theme: 'bauhaus' }))
+  it('links the reveal.js theme Bauhaus is drawn on, and writes in its stylesheet', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'bauhaus', customCSS: '.mine { color: red }' }))
     expect(html).toContain('dist/theme/white.css')
     expect(html).not.toContain('dist/theme/bauhaus.css')
+    expect(html).toContain('<div class="reveal deck-theme-bauhaus">')
+    const sheet = html.indexOf('.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6)')
+    expect(sheet).toBeGreaterThan(html.indexOf('.reveal h1 { font-size'))
+    expect(sheet).toBeLessThan(html.indexOf('.mine { color: red }'))
+    expect(html).toContain('family=Jost')
+  })
+
+  it('sets text in the theme’s font until the deck has one of its own', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'bauhaus' }))).toContain('font-family:Jost, sans-serif;')
+    const own = generateRevealHTML(makePresentation({ theme: 'bauhaus', globalFont: 'Georgia, serif' }))
+    expect(own).toContain('font-family:Georgia, serif;')
+    expect(own).not.toContain('font-family:Jost, sans-serif;')
+    const plain = generateRevealHTML(makePresentation())
+    expect(plain).toContain('<div class="reveal deck-theme-black">')
+    expect(plain).not.toContain('.deck-theme-bauhaus')
   })
 
   it('keeps a deck’s own CSS inside its <style>, @import and all', () => {

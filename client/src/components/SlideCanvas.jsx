@@ -65,6 +65,7 @@ import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { slidePalette } from '../utils/themes'
+import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
@@ -930,7 +931,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       )}
       <div
         ref={canvasRef}
-        className="slide-canvas"
+        className={['slide-canvas', deckThemeClass(theme)].filter(Boolean).join(' ')}
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',

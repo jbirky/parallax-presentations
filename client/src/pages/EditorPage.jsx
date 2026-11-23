@@ -44,7 +44,8 @@ import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
 import DeckFontOptions from '../components/DeckFontOptions'
-import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
+import { deckFontName } from '../utils/deckFont'
+import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
@@ -3742,7 +3743,7 @@ function draw() {
                 <select className="prop-input" value={presentation.globalFont || ''}
                   onChange={e => setPresentation(prev => ({ ...prev, globalFont: e.target.value || null }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
-                  <option value="">Default (Arial)</option>
+                  <option value="">Default ({deckFontName(deckTextFont('', presentation.theme))})</option>
                   <DeckFontOptions />
                 </select>
               </div>
@@ -4774,7 +4775,7 @@ function draw() {
         <SlidePanel
           viewSwitch={<PanelViewSwitch view="slides" onChange={chooseLeftView} />}
           slides={presentation.slides}
-          globalFont={presentation.globalFont || ''}
+          globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
           textStyles={presentation.textStyles || null}
           citationLabels={citationIndex.labelByKey}
           presence={presenceBySlide}
@@ -5021,7 +5022,7 @@ function draw() {
               slideH={slideH}
               drawTool={drawTool}
               onAddDrawingStroke={addDrawingStroke}
-              globalFont={presentation.globalFont || ''}
+              globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
               textStyles={presentation.textStyles || null}
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
             />}
@@ -5713,7 +5714,7 @@ function draw() {
           slideW={presentation.slideWidth || 960}
           slideH={presentation.slideHeight || 540}
           bibliography={presentation.bibliography || []}
-          globalFont={presentation.globalFont || ''}
+          globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
           dark={slidePalette(currentSlide, presentation.theme).dark}
           onInsert={insertBeamerSlides}
           onClose={() => setShowBeamerModal(false)}

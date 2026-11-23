@@ -51,6 +51,8 @@ Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the the
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
+Bauhaus does a little more than set colors. It sets headings in lowercase, puts a short red rule under slide titles (Heading 2), and gives lists square red bullets. Its text is set in Jost until you pick a font in **Settings › Font**.
+
 ## Footer & page numbers
 
 1. Choose **Slide › Footer and page numbers…**.

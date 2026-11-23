@@ -46,6 +46,10 @@ const serverSide = {
     // WaveDrom's renderer, as client/vite.config.js names it
     build.onResolve({ filter: /^wavedrom-render-any$/ }, () => ({ path: path.join(path.dirname(require.resolve('wavedrom/package.json')), 'lib/render-any.js') }))
     build.onResolve({ filter: /\/PluginRegistry$/ }, () => ({ path: 'plugin-registry', namespace: 'server' }))
+    // A file imported as text (`./x.css?raw`), as Vite has it: the themes'
+    // stylesheets (utils/themeCss.js)
+    build.onResolve({ filter: /\?raw$/ }, args => ({ path: path.join(args.resolveDir, args.path.replace(/\?raw$/, '')), namespace: 'raw' }))
+    build.onLoad({ filter: /.*/, namespace: 'raw' }, args => ({ contents: fs.readFileSync(args.path, 'utf8'), loader: 'text' }))
     build.onLoad({ filter: /.*/, namespace: 'server' }, () => ({
       contents: 'export default { getSandboxHtml: () => null, sandboxFor: () => null }', loader: 'js',
     }))

@@ -1,0 +1,65 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Bauhaus theme's stylesheet: what it adds to its colors and its font
+   (utils/themes.js). It's scoped to .deck-theme-bauhaus, a class on the
+   editor's canvas and thumbnails, the presented deck's .reveal and the PDF's
+   pages, so a slide looks the same in all of them. The editor loads it with
+   the app (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js), after their own styles and before the deck's custom
+   CSS. Presented decks are drawn on reveal.js's white theme. */
+
+/* reveal.js: links, the arrows and the progress bar in red */
+.deck-theme-bauhaus {
+  --r-background-color: #f7f6f2;
+  --r-main-color: #151515;
+  --r-heading-color: #151515;
+  --r-link-color: #d52b1e;
+  --r-link-color-dark: #a51f15;
+  --r-link-color-hover: #a51f15;
+  --r-selection-background-color: #d52b1e;
+  --r-selection-color: #f7f6f2;
+}
+
+/* Headings in lowercase, after Herbert Bayer's universal alphabet (1925),
+   set a little tight. (!important: presented decks reset headings' case and
+   spacing with it.) */
+.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: lowercase !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* A short red rule under slide titles (Heading 2), on the side the title is
+   aligned to */
+.deck-theme-bauhaus h2::after {
+  content: "";
+  display: block;
+  width: 1.1em;
+  height: 0.12em;
+  margin-top: 0.22em;
+  background: #d52b1e;
+}
+.deck-theme-bauhaus h2[style*="text-align: center"]::after { margin-left: auto; margin-right: auto; }
+.deck-theme-bauhaus h2[style*="text-align: right"]::after { margin-left: auto; }
+
+/* Square red bullets */
+.deck-theme-bauhaus ul { list-style-type: square; }
+.deck-theme-bauhaus li::marker { color: #d52b1e; }
+
+/* Quotes behind a thick red bar */
+.deck-theme-bauhaus blockquote {
+  border-left: 0.2em solid #d52b1e !important;
+  opacity: 1 !important;
+}
+
+/* Inline code as a square gray block on the white page */
+.deck-theme-bauhaus :not(pre) > code {
+  background: rgba(21, 21, 21, 0.08) !important;
+  border-radius: 0 !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-bauhaus .theme-swatch-title {
+  text-transform: lowercase;
+  letter-spacing: -0.02em;
+}

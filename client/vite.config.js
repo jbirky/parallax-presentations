@@ -92,5 +92,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{js,jsx}'],
+    // The themes' stylesheets, which decks write into their page as text
+    // (utils/themeCss.js); vitest empties other CSS
+    css: { include: [/src\/themes\/.+\.css/] },
   }
 })

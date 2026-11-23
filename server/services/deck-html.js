@@ -5572,7 +5572,7 @@ var THEME_LIST = [
   { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
   { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
   { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
-  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white" }
+  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -5580,6 +5580,9 @@ function themeOf(id) {
 }
 function revealTheme(id) {
   return THEMES[id]?.reveal || id;
+}
+function deckTextFont(globalFont, themeId) {
+  return typeof globalFont === "string" && globalFont.trim() || THEMES[themeId]?.font || "";
 }
 function parseColor(value) {
   const s = String(value || "").trim();
@@ -21377,6 +21380,83 @@ var SCROLLING_SCRIPT = `
 // client/src/utils/annotations.js
 var ANNOTATION_MESSAGE = "parallax-annotations";
 
+// raw:/home/jbirky/docker_server/parallax-presentations/client/src/themes/bauhaus.css
+var bauhaus_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Bauhaus theme's stylesheet: what it adds to its colors and its font
+   (utils/themes.js). It's scoped to .deck-theme-bauhaus, a class on the
+   editor's canvas and thumbnails, the presented deck's .reveal and the PDF's
+   pages, so a slide looks the same in all of them. The editor loads it with
+   the app (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js), after their own styles and before the deck's custom
+   CSS. Presented decks are drawn on reveal.js's white theme. */
+
+/* reveal.js: links, the arrows and the progress bar in red */
+.deck-theme-bauhaus {
+  --r-background-color: #f7f6f2;
+  --r-main-color: #151515;
+  --r-heading-color: #151515;
+  --r-link-color: #d52b1e;
+  --r-link-color-dark: #a51f15;
+  --r-link-color-hover: #a51f15;
+  --r-selection-background-color: #d52b1e;
+  --r-selection-color: #f7f6f2;
+}
+
+/* Headings in lowercase, after Herbert Bayer's universal alphabet (1925),
+   set a little tight. (!important: presented decks reset headings' case and
+   spacing with it.) */
+.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: lowercase !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* A short red rule under slide titles (Heading 2), on the side the title is
+   aligned to */
+.deck-theme-bauhaus h2::after {
+  content: "";
+  display: block;
+  width: 1.1em;
+  height: 0.12em;
+  margin-top: 0.22em;
+  background: #d52b1e;
+}
+.deck-theme-bauhaus h2[style*="text-align: center"]::after { margin-left: auto; margin-right: auto; }
+.deck-theme-bauhaus h2[style*="text-align: right"]::after { margin-left: auto; }
+
+/* Square red bullets */
+.deck-theme-bauhaus ul { list-style-type: square; }
+.deck-theme-bauhaus li::marker { color: #d52b1e; }
+
+/* Quotes behind a thick red bar */
+.deck-theme-bauhaus blockquote {
+  border-left: 0.2em solid #d52b1e !important;
+  opacity: 1 !important;
+}
+
+/* Inline code as a square gray block on the white page */
+.deck-theme-bauhaus :not(pre) > code {
+  background: rgba(21, 21, 21, 0.08) !important;
+  border-radius: 0 !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-bauhaus .theme-swatch-title {
+  text-transform: lowercase;
+  letter-spacing: -0.02em;
+}
+`;
+
+// client/src/utils/themeCss.js
+var SHEETS = { bauhaus: bauhaus_default };
+function deckThemeClass(themeId) {
+  return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
+}
+function themeCss(themeId) {
+  return Object.prototype.hasOwnProperty.call(SHEETS, themeId) ? SHEETS[themeId] : "";
+}
+
 // client/src/utils/placeholders.js
 function isEmptyHtml(html) {
   const s = String(html || "");
@@ -22088,6 +22168,13 @@ function getSlideColumns(slides, presentation = {}) {
   return slides.map((s) => [s]);
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
+function themeStyleTag(themeId) {
+  const css = themeCss(themeId);
+  return css ? `
+  <style>
+${css.replace(/<\/style/gi, "<\\/style")}
+  </style>` : "";
+}
 function referencesHtml(citations, markerColor, light = false) {
   const ink2 = (alpha2) => light ? `rgba(0,0,0,${alpha2})` : `rgba(255,255,255,${alpha2})`;
   const items = citations.entries.map((entry) => {
@@ -22117,7 +22204,7 @@ var hasCitationMarkers = (presentation) => (presentation.slides || []).some((sli
 function generateRevealHTML(presentation, opts = {}) {
   const slideW = Number(presentation.slideWidth) || 960;
   const slideH = Number(presentation.slideHeight) || 540;
-  const globalFont = cssValue(presentation.globalFont);
+  const globalFont = cssValue(deckTextFont(presentation.globalFont, presentation.theme));
   const bodySize = bodySizeStyle(presentation.textStyles);
   const headingCss = textStyleCss(presentation.textStyles, ".reveal .slides section");
   const showFooter = presentation.showFooter || false;
@@ -22616,7 +22703,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
@@ -22711,14 +22798,14 @@ ${sections}
     #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
-  </style>${presentation.customCSS ? `
+  </style>${themeStyleTag(theme)}${presentation.customCSS ? `
   <style>
 ${sanitizeCustomCSS(presentation.customCSS)}
   </style>` : ""}
 ${offersData ? deckDatasetsScript(deckData.datasets) : ""}
 </head>
 <body>
-  <div class="reveal">
+  <div class="${["reveal", deckThemeClass(theme)].filter(Boolean).join(" ")}">
     <div class="slides">
 ${slidesHtml}
     </div>

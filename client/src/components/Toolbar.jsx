@@ -642,6 +642,7 @@ export default function Toolbar({
               <option value="Manrope, sans-serif">Manrope</option>
               <option value="Geist, sans-serif">Geist</option>
               <option value="Figtree, sans-serif">Figtree</option>
+              <option value="Jost, sans-serif">Jost</option>
               <option value="Ubuntu, sans-serif">Ubuntu</option>
               <option value="Rubik, sans-serif">Rubik</option>
               <option value="'PT Sans', sans-serif">PT Sans</option>

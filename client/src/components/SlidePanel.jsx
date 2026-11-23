@@ -6,6 +6,7 @@ import ContextMenu from './ContextMenu'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
 import { keyLabel } from '../utils/shortcuts'
 import { slidePalette } from '../utils/themes'
+import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
 import { shapeSvgString } from '../utils/shapeUtils'
@@ -82,7 +83,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
         '--slide-heading': palette.heading,
         '--slide-link': palette.link,
         ...textVars,
-      }} className="slide-thumb-canvas">
+      }} className={['slide-thumb-canvas', deckThemeClass(theme)].filter(Boolean).join(' ')}>
         {(slide.elements || [])
           .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
