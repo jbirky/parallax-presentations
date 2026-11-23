@@ -1,13 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { THEME_LIST, themeOf, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
+import { THEME_LIST, themeOf, revealTheme, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
 
 describe('themes', () => {
-  it('has reveal’s eleven, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized'])
+  it('has reveal’s eleven and Bauhaus, light and dark', () => {
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
+  })
+
+  it('draws Bauhaus on reveal’s white, and reveal’s themes on their own', () => {
+    expect(revealTheme('bauhaus')).toBe('white')
+    expect(revealTheme('moon')).toBe('moon')
+    expect(slidePalette({}, 'bauhaus')).toMatchObject({ background: { backgroundColor: '#f7f6f2' }, text: '#151515', link: '#d52b1e', dark: false })
   })
 
   it('tells dark colors from light ones', () => {

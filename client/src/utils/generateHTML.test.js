@@ -641,6 +641,12 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain(`var _globalTransition = "slide';x();'";`)
   })
 
+  it('links the reveal.js theme Bauhaus is drawn on', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'bauhaus' }))
+    expect(html).toContain('dist/theme/white.css')
+    expect(html).not.toContain('dist/theme/bauhaus.css')
+  })
+
   it('keeps a deck’s own CSS inside its <style>, @import and all', () => {
     const html = generateRevealHTML(makePresentation({ customCSS: "@import url('https://fonts.example/x.css');\n.a{color:red}</style><script>x()</script>" }))
     expect(html).toContain("@import url('https://fonts.example/x.css');")

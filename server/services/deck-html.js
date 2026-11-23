@@ -5571,11 +5571,15 @@ var THEME_LIST = [
   { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
   { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
   { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
-  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true }
+  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
+  { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
   return THEMES[id] || THEMES.black;
+}
+function revealTheme(id) {
+  return THEMES[id]?.reveal || id;
 }
 function parseColor(value) {
   const s = String(value || "").trim();
@@ -22084,7 +22088,6 @@ function getSlideColumns(slides, presentation = {}) {
   return slides.map((s) => [s]);
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
-var LIGHT_THEMES = /* @__PURE__ */ new Set(["white", "beige", "serif", "simple", "solarized", "sky"]);
 function referencesHtml(citations, markerColor, light = false) {
   const ink2 = (alpha2) => light ? `rgba(0,0,0,${alpha2})` : `rgba(255,255,255,${alpha2})`;
   const items = citations.entries.map((entry) => {
@@ -22597,7 +22600,7 @@ ${sections}
     slidesHtml += `
     <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, LIGHT_THEMES.has(theme))}
+        ${referencesHtml(citations, footerColor, !themeOf(theme).dark)}
       </div>
     </section>`;
   }
@@ -22609,7 +22612,7 @@ ${sections}
   <title>${escapeHtml(presentation.title || "Presentation")}</title>
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reset.css")}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reveal.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", `dist/theme/${revealTheme(theme)}.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">

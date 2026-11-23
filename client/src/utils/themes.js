@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The presentation themes: reveal.js 5's, whose page color, heading color and
-// link color show when presenting. Parallax sets its own fonts (the deck's
-// font), so a theme here is its colors.
+// link color show when presenting, and Parallax's own (Bauhaus), which name
+// the reveal.js theme they're drawn on (`reveal`). Parallax sets its own fonts
+// (the deck's font), so a theme here is its colors.
 //
 // What a slide shows (slidePalette): a slide without a background of its own
 // shows the theme's page, text and headings, in the editor as when
@@ -23,12 +24,19 @@ export const THEME_LIST = [
   { id: 'solarized', label: 'Solarized', background: '#fdf6e3', text: '#657b83', heading: '#586e75', link: '#268bd2', dark: false },
   { id: 'moon', label: 'Moon', background: '#002b36', text: '#93a1a1', heading: '#eee8d5', link: '#268bd2', dark: true },
   { id: 'dracula', label: 'Dracula', background: '#282a36', text: '#f8f8f2', heading: '#bd93f9', link: '#ff79c6', dark: true },
+  { id: 'bauhaus', label: 'Bauhaus', background: '#f7f6f2', text: '#151515', heading: '#151515', link: '#d52b1e', dark: false, reveal: 'white' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))
 
 export function themeOf(id) {
   return THEMES[id] || THEMES.black
+}
+
+// The reveal.js theme stylesheet (dist/theme/<name>.css) a theme is drawn on:
+// its own for reveal's themes, the one it names for Parallax's
+export function revealTheme(id) {
+  return THEMES[id]?.reveal || id
 }
 
 // The background every slide had before themes showed in the editor; a new

@@ -29,7 +29,7 @@ import { text3dHtml, text3dShadowFilter } from './text3d'
 import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { slidePalette, cssText, themeBackgroundStyle } from './themes'
+import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme } from './themes'
 import { isEmptyPlaceholder } from './placeholders'
 import { SHRINK_FIT_SCRIPT } from './shrinkFit'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
@@ -212,8 +212,6 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // read ({ graphs: { element id: rows by line id }, datasets: { list, data } },
 // deckData.js), which the server reads for the decks it builds (the editor's
 // store, graphData.js, otherwise)
-// Reveal's light themes, whose page shows behind the references slide
-const LIGHT_THEMES = new Set(['white', 'beige', 'serif', 'simple', 'solarized', 'sky'])
 
 // The references slide's heading and list: the entries the deck cites, in the
 // order and with the numbers the citation index gives them. light: dark text,
@@ -768,7 +766,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     // clips the list, so the slide showed empty
     slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, LIGHT_THEMES.has(theme))}
+        ${referencesHtml(citations, footerColor, !themeOf(theme).dark)}
       </div>
     </section>`
   }
@@ -781,7 +779,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <title>${escapeHtml(presentation.title || 'Presentation')}</title>
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${revealTheme(theme)}.css`)}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">

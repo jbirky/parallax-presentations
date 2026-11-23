@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { X, Play, RotateCcw } from 'lucide-react'
 import { libUrl, localizeLibraries } from '../utils/libraries'
+import { revealTheme } from '../utils/themes'
 
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 
@@ -39,7 +40,7 @@ export default function TransitionPreview({ presentation, fromIndex, onClose, sl
 <meta charset="utf-8">
 <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
 <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-<link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${presentation.theme || 'black'}.css`)}">
+<link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${revealTheme(presentation.theme || 'black')}.css`)}">
 <style>
   html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;}
   .reveal .slides section{padding:0!important;text-align:left!important;font-family:-apple-system,sans-serif;}
