@@ -10,8 +10,9 @@
 // order. pdfjsLib is pdf.js, loaded by the caller (index.js, or the tests).
 // Each mark and path keeps the operators that draw it (ops: [first, last],
 // indices into the list), for keeping the figure as it is (splitPdf.js);
-// so does each run of text drawn (textOps: where it starts and its size),
-// for a legend's words to go with their layers.
+// so does each run of text drawn (textOps: where it starts, its size and
+// its color), for a legend's words to go with their layers, and a title's
+// to be drawn again when it's changed.
 
 import { IDENTITY, multiply, apply, hexColor, markerShape } from './drawing'
 
@@ -102,7 +103,7 @@ export function walk(ops, OPS) {
         if (form) break
         const m = multiply(ctm, tm)
         const [x, y] = apply(m, tx, ty + rise)
-        textOps.push({ x, y, size: fontSize * Math.hypot(m[2], m[3]), order: order++, ops: [i, i] })
+        textOps.push({ x, y, size: fontSize * Math.hypot(m[2], m[3]), fill, order: order++, ops: [i, i] })
         break
       }
       case 'constructPath': {

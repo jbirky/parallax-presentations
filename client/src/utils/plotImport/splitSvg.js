@@ -22,9 +22,13 @@
 // markers' too, but not its words. And the figure can be made for a dark
 // slide (dark): every gray turned over, black text and lines white and white
 // backgrounds black, but for what the data parts draw (data: the layers, a
-// figure legend's entries: dataParts), of which only the words are.
+// figure legend's entries: dataParts), of which only the words are. A
+// title's or an axis label's words can be changed (labels: plotModel.js's,
+// with text, the new words, and face, the font they're drawn in): they're
+// drawn again as matplotlib draws text (glyphs.js), lined up as before.
 
 import { runsOf, planOf, keptRuns } from './toFigure'
+import { textOutline, advanceOf, shiftFor } from './glyphs'
 
 const NS = 'http://www.w3.org/2000/svg'
 // What draws, and what holds what's only drawn where it's used
@@ -33,11 +37,12 @@ const ASIDE = new Set(['defs', 'clipPath', 'marker', 'symbol', 'pattern', 'mask'
 
 export class SplitError extends Error {}
 
-// { pieces: [{ part, run, svg, backdrop, inked }], plan, width, height,
-// type, ext } (width and height: the viewBox's, for the shape on the slide;
-// backdrop: that a piece has a background or a legend's box in it, clear or
-// not; inked: that it's drawn differently for a dark slide)
-export function splitSvg(text, layers, { backdrop = [], frames = [], clear = false, recolor = new Map(), dark = false, dataParts = new Set(), Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
+// { pieces: [{ part, run, svg, backdrop, inked, labels }], plan, width,
+// height, type, ext } (width and height: the viewBox's, for the shape on the
+// slide; backdrop: that a piece has a background or a legend's box in it,
+// clear or not; inked: that it's drawn differently for a dark slide; labels:
+// the ids of the titles and labels in it)
+export function splitSvg(text, layers, { backdrop = [], frames = [], clear = false, recolor = new Map(), dark = false, dataParts = new Set(), labels = [], Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
   const doc = new Parser().parseFromString(text, 'image/svg+xml')
   const svg = doc.documentElement
   if (!svg || svg.localName !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new SplitError('This file isn’t an SVG that could be read')
@@ -52,11 +57,15 @@ export function splitSvg(text, layers, { backdrop = [], frames = [], clear = fal
   const back = within(els, backdrop)
   const frame = within(els, frames)
   const words = els.map(inWords)
+  const labelOf = new Map(labels.filter(l => l.gid).map(l => [l.gid, l]))
+  const label = els.map(el => { for (let e = el; e && e.nodeType === 1; e = e.parentNode) { const l = labelOf.get(e.getAttribute('id')); if (l) return l } return null })
   const runs = runsOf(els.map(el => partOf(el, owner))).map(r => {
     let n = 0, framed = false, worded = false
-    for (let i = r.from; i <= r.to; i++) { if (back[i]) n++; if (frame[i]) framed = true; if (words[i]) worded = true }
-    return { ...r, backdrop: n > 0 || framed, inked: !dataParts.has(r.part) || worded, empty: clear && n === r.size }
+    const named = new Set()
+    for (let i = r.from; i <= r.to; i++) { if (back[i]) n++; if (frame[i]) framed = true; if (words[i]) worded = true; if (label[i]) named.add(label[i]) }
+    return { ...r, backdrop: n > 0 || framed, inked: !dataParts.has(r.part) || worded, labels: [...named], empty: clear && n === r.size }
   })
+  const height = viewBoxOf(svg)[1]
 
   const pieces = keptRuns(runs).map(r => {
     const d = fresh()
@@ -64,19 +73,69 @@ export function splitSvg(text, layers, { backdrop = [], frames = [], clear = fal
       if (i < r.from || i > r.to || (clear && back[i])) el.remove()
       else if (clear && frame[i]) setPaint(el, 'fill', 'none')
     })
+    for (const l of r.labels) if (l.text !== undefined) relabelSvg(d, l, height)
     dropEmpty(d)
     pruneDefs(d)
     const swap = recolor.get(r.part)
     if (swap) recolorSvg(d, swap.from, swap.to)
     if (dark) darkSvg(d, dataParts.has(r.part))
-    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop, inked: r.inked }
+    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop, inked: r.inked, labels: r.labels.map(l => l.id) }
   })
 
-  const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
-  const width = vb.length === 4 && vb[2] > 0 ? vb[2] : parseFloat(svg.getAttribute('width')) || 0
-  const height = vb.length === 4 && vb[3] > 0 ? vb[3] : parseFloat(svg.getAttribute('height')) || 0
+  const [width] = viewBoxOf(svg)
   return { pieces, plan: planOf(runs), width, height, type: 'image/svg+xml', ext: 'svg' }
 }
+
+// An SVG's width and height: its viewBox's, else its own
+function viewBoxOf(svg) {
+  const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
+  return [vb.length === 4 && vb[2] > 0 ? vb[2] : parseFloat(svg.getAttribute('width')) || 0,
+    vb.length === 4 && vb[3] > 0 ? vb[3] : parseFloat(svg.getAttribute('height')) || 0]
+}
+
+// A title's or axis label's words drawn again: label.text, in label.face.
+// matplotlib draws words as their glyphs, in a group placed at their start
+// (translate, rotate, then scale to their size from 100 points), each glyph
+// at its place along the line; so where they started, how long they were and
+// how they're turned is read from there (else, words set another way, such as
+// math, from where the reading found them). The new ones start where they keep
+// the same point lined up with the axes (label.align), in the old ones' color
+function relabelSvg(doc, label, height) {
+  const g = [...doc.getElementsByTagName('g')].find(e => e.getAttribute('id') === label.gid)
+  if (!g) return
+  const inner = [...g.children].find(c => c.localName === 'g' && /translate\(/.test(c.getAttribute('transform') || ''))
+  const m = inner && /^\s*translate\(\s*([-\d.e]+)[\s,]+([-\d.e]+)\s*\)(?:\s*rotate\(\s*([-\d.e]+)\s*\))?\s*scale\(\s*([-\d.e]+)/.exec(inner.getAttribute('transform'))
+  let x, y, turn, size, width
+  if (m) {
+    x = +m[1]; y = +m[2]; turn = +(m[3] || 0); size = +m[4] * 100
+    let end = 0
+    for (const u of inner.getElementsByTagName('use')) {
+      const code = /-([0-9a-f]+)$/i.exec(u.getAttribute('xlink:href') || u.getAttribute('href') || '')
+      const at = +(/translate\(\s*([-\d.e]+)/.exec(u.getAttribute('transform') || '')?.[1] || 0)
+      end = Math.max(end, at + (code ? advanceOf(label.face, String.fromCodePoint(parseInt(code[1], 16))) : 60))
+    }
+    width = end * size / 100
+  } else {
+    x = label.x; y = height - label.y; turn = -label.angle; size = label.size; width = label.w
+  }
+  const style = inner?.getAttribute('style') || null
+  for (const c of [...g.childNodes]) {
+    if (c.nodeType === 8) c.nodeValue = ` ${String(label.text).replace(/--/g, '- -')} `
+    else c.remove()
+  }
+  if (!String(label.text).trim()) return
+  const out = textOutline(label.face, label.text, size)
+  const a = turn * Math.PI / 180, shift = shiftFor(label.align, width, out.width)
+  const NS_ = g.namespaceURI || NS
+  const words = doc.createElementNS(NS_, 'g')
+  words.setAttribute('transform', `translate(${num(x + Math.cos(a) * shift)} ${num(y + Math.sin(a) * shift)})${turn ? ` rotate(${num(turn)})` : ''}`)
+  if (style) words.setAttribute('style', style)
+  const path = doc.createElementNS(NS_, 'path')
+  path.setAttribute('d', out.d)
+  words.appendChild(path)
+  g.appendChild(words)
+}
+const num = v => String(Math.round(v * 1e6) / 1e6)
 
 // Of what's drawn, whether each is in one of these groups
 function within(els, groups) {

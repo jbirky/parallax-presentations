@@ -47,6 +47,14 @@ module.exports = {
     '3dmol': { files: ['build/3Dmol-min.js'] },
     // Records canvas drawing as SVG, for the TikZ diagram editor's export
     svgcanvas: { files: ['dist/svgcanvas.esm.js'] },
+    // A kept matplotlib figure's edited titles and labels, drawn as
+    // matplotlib draws text (plotImport/glyphs.js): glyph outlines, in
+    // matplotlib's own fonts
+    'opentype.js': { files: ['dist/opentype.min.mjs'] },
+    'dejavu-fonts-ttf': {
+      files: ['LICENSE', 'ttf/DejaVuSans.ttf', 'ttf/DejaVuSans-Bold.ttf', 'ttf/DejaVuSans-Oblique.ttf', 'ttf/DejaVuSans-BoldOblique.ttf',
+        'ttf/DejaVuSerif.ttf', 'ttf/DejaVuSerif-Bold.ttf', 'ttf/DejaVuSerif-Italic.ttf', 'ttf/DejaVuSerif-BoldItalic.ttf', 'ttf/DejaVuSansMono.ttf'],
+    },
   },
   cdnjs: {
     'pdf.js': { package: 'pdfjs-dist', dir: 'build' },

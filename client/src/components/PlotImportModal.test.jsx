@@ -15,12 +15,24 @@ const PLOT = {
 }
 const reading = { result: null, error: null }
 const splitting = { fn: null } // in place of splitFigure (a PDF's needs pdf.js and a canvas)
+// The fonts a changed title is drawn in, from the installed package (the app
+// fetches its copy at /vendor/)
+async function diskFaces(names) {
+  const { readFileSync } = await import('fs')
+  const { createRequire } = await import('module')
+  const opentype = await import('opentype.js')
+  const require = createRequire(import.meta.url)
+  return new Map(names.map(name => {
+    const buf = readFileSync(require.resolve(`dejavu-fonts-ttf/ttf/${name}.ttf`))
+    return [name, opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))]
+  }))
+}
 vi.mock('../utils/plotImport', async importOriginal => {
   const real = await importOriginal()
   return {
     ...real,
     readPlotFile: vi.fn(async () => { if (reading.error) throw reading.error; return reading.result }),
-    splitFigure: vi.fn((...args) => (splitting.fn ? splitting.fn(...args) : real.splitFigure(...args))),
+    splitFigure: vi.fn((result, opts = {}) => (splitting.fn ? splitting.fn(result, opts) : real.splitFigure(result, { ...opts, loadFaces: diskFaces }))),
   }
 })
 vi.mock('../utils/api', () => ({
@@ -256,12 +268,40 @@ describe('importing a plot', () => {
     for (const e of els) expect(e.figure.dark).toBe(true)
   })
 
+  it('changes a title’s or axis label’s words in a figure kept as it is, shown as it will look', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'decay.svg' })
+    const field = name => el.querySelector(`[role="group"][aria-label="Titles and labels"] input[aria-label="${name}"]`)
+    expect(field('x-axis label').value).toBe('time (s)')
+    expect(field('y-axis label').value).toBe('signal (V)')
+    await act(async () => set(field('x-axis label'), 'elapsed time (s)'))
+    for (let i = 0; i < 40 && !look(); i++) await settle()
+    expect(look().getAttribute('aria-label')).toBe('decay.svg, as it will look, with its words changed')
+    // Put back, and changed again
+    const putBack = () => el.querySelector('button[aria-label="Put back the x-axis label’s own words"]')
+    await act(async () => putBack().click())
+    expect(field('x-axis label').value).toBe('time (s)')
+    expect(look()).toBeNull()
+    await act(async () => set(field('x-axis label'), 'elapsed time (s)'))
+    await act(async () => button('Insert figure with 2 layers').click())
+    // (once the font's loaded)
+    await act(async () => { await vi.waitFor(() => expect(onInsertElements).toHaveBeenCalled(), { timeout: 5000 }) })
+    const base = await api.uploadFile.mock.calls[1][0].text()
+    expect(base).toContain('<!-- elapsed time (s) -->')
+    expect(base).not.toContain('<!-- time (s) -->')
+    expect(base).toContain('<!-- signal (V) -->')
+    const [els] = onInsertElements.mock.calls[0]
+    for (const e of els) expect(e.figure.labels).toEqual({ xlabel: 'elapsed time (s)' })
+  })
+
   it('makes a graph in the colors chosen', async () => {
     const { onInsert } = await mount()
     await act(async () => set(colorOf('model'), '#2ca02c'))
-    // A graph's preview is the figure as saved
+    // A graph's preview is the figure as saved; its words are the graph's own
     await settle()
     expect(look()).toBeNull()
+    expect(el.querySelector('[aria-label="Titles and labels"]')).toBeNull()
     await act(async () => button('Insert graph').click())
     const [graph] = onInsert.mock.calls[0]
     expect(graph.expressions.map(e => e.color)).toEqual(['#2ca02c', '#1f77b4'])
@@ -475,6 +515,22 @@ describe('importing a plot', () => {
       const [again] = onInsertElements.mock.calls[0]
       expect(again.filter(e => ['l2:0', 'l1:0', 'l2:1'].includes(`${e.figure.part}:${e.figure.run}`)).map(e => e.src)).toEqual(['/uploads/old-l2-0.svg', '/uploads/old-l1-0.svg', '/uploads/old-l2-1.svg'])
       expect(again.some(e => 'dark' in e.figure)).toBe(false)
+    })
+
+    it('opened again, shows the words changed; put back, cuts again only the piece they’re in', async () => {
+      const els = figureElements(plot, pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+        choices: { l1: { step: 1 }, l2: { step: 2 } }, meta: { src: source.url, file: 'decay.svg', plan, labels: { ylabel: 'voltage (mV)' } },
+      })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      const field = el.querySelector('[role="group"][aria-label="Titles and labels"] input[aria-label="y-axis label"]')
+      expect(field.value).toBe('voltage (mV)')
+      await act(async () => el.querySelector('button[aria-label="Put back the y-axis label’s own words"]').click())
+      await act(async () => button('Update figure').click())
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg'])
+      expect(await api.uploadFile.mock.calls[0][0].text()).toContain('<!-- signal (V) -->')
+      const [again] = onInsertElements.mock.calls[0]
+      expect(again.some(e => 'labels' in e.figure)).toBe(false)
+      expect(again.slice(1).map(e => e.src)).toEqual(els.slice(1).map(e => e.src))
     })
 
     it('says when its file can’t be fetched', async () => {

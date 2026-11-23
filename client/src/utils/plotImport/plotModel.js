@@ -151,6 +151,7 @@ export function plotFromDrawing(drawing) {
     }
   }
   // A figure of several panels: each, for keeping the figure as it is
+  plot.labels = labelsOf(drawing, panels, panels.length > 1 ? panels.map((p, i) => `p${i + 1}`) : null, { texts, outer })
   if (panels.length > 1) {
     plot.panels = panelsOf(drawing, panels, main, texts)
     for (const pn of plot.panels) for (const l of pn.layers) l.panel = pn.id
@@ -179,6 +180,77 @@ function backdropOf(d, all) {
     return !!r && area(r) >= page * 0.98
   })
   return { groups: [...new Set(found.map(p => p.group).filter(Boolean))], ops: found.filter(p => p.ops).map(p => p.ops) }
+}
+
+// The titles and axis labels a figure's words can be changed in, kept as it
+// is: [{ id, kind ('title', 'xlabel', 'ylabel', 'ylabel2' a twin's or one
+// on the right, 'xlabel2' a twin's), panel, s (the words, math's $ and all),
+// math, font, size, angle, x, y (where they start, in points up from the
+// bottom left), w (how long they are), align (which of their start, middle
+// and end lines up with the axes, to stay there when they change: 'start',
+// 'center', 'end'), and what draws them: gid (an SVG's text group) or ops
+// and fill (a PDF's operators, and their color) }]
+function labelsOf(drawing, panels, ids, { texts = [], outer = null } = {}) {
+  const out = []
+  const textOps = drawing.textOps || []
+  // The figure's title (suptitle): words over every panel, across the
+  // middle of the figure, not a legend's (an SVG's, in no axes)
+  const tops = panels.map(p => p.axes.box).filter(b => !panels.some(q => q.axes.box !== b && nestedIn(b, q.axes.box)))
+  const highest = Math.max(...tops.map(b => b.y1))
+  const svg = (drawing.axes || []).length > 0
+  const sup = (svg ? drawing.texts || [] : texts).filter(t => !t.angle && t.s && !parseTickLabel(t.s) && t.y > highest
+    && (svg ? !t.axes && t.role !== 'legend' : !(outer && t.x >= outer.box.x0 - 1 && t.x <= outer.box.x1 + 1 && t.y >= outer.box.y0 - 1 && t.y <= outer.box.y1 + 1))
+    && Math.abs(t.x + (t.w || 0) / 2 - (drawing.width || 0) / 2) < 0.15 * (drawing.width || 0)
+    && !panels.some(p => p.read.words?.title === t))
+    .sort((a, b) => b.y - a.y)[0]
+  panels.forEach((p, i) => {
+    const box = p.axes.box
+    const w = p.read.words || {}
+    const twin = (p.twins || [])[0] || null
+    const found = [
+      ['title', w.title], ['xlabel', w.x], ['ylabel', w.y],
+      ['ylabel2', twin ? twin.yLabelText : w.y2], ['xlabel2', twin ? twin.xLabelText : null],
+    ]
+    for (const [kind, t] of found) add(kind, t, box, ids ? ids[i] : null)
+  })
+  if (sup) add('suptitle', sup, { x0: 0, y0: 0, x1: drawing.width || 0, y1: drawing.height || 0 }, null)
+  return out.map(({ t, ...rest }) => rest)
+
+  function add(kind, t, box, panel) {
+      if (!t || !t.s || out.some(o => o.t === t)) return
+      const entry = {
+        t, id: panel && kind !== 'suptitle' ? `${panel}:${kind}` : kind, kind, panel,
+        s: t.s, math: t.s.includes('$'), font: t.font || '', size: t.size, angle: t.angle || 0, x: t.x, y: t.y, w: t.w || 0,
+        align: alignOf(t, box),
+      }
+      if (t.gid) entry.gid = t.gid
+      else {
+        // A PDF's: the runs of text drawn along it
+        const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a)
+        const along = textOps.filter(o => {
+          const ox = o.x - t.x, oy = o.y - t.y
+          const s = ox * dx + oy * dy, n = -ox * dy + oy * dx
+          return Math.abs(n) < 0.3 * t.size && s > -0.5 && s < (t.w || 0) + 0.5
+        })
+        if (!along.length) return
+        entry.ops = along.map(o => o.ops)
+        entry.fill = along[0].fill || '#000000'
+      }
+      out.push(entry)
+  }
+}
+
+// Which of a label's start, middle and end lines up with its axes: along
+// its line, the nearest of the box's near edge, middle and far edge
+function alignOf(t, box) {
+  const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a)
+  const along = (x, y) => x * dx + y * dy
+  const start = along(t.x, t.y), len = t.w || 0
+  const ends = [along(box.x0, box.y0), along(box.x1, box.y1)].sort((p, q) => p - q)
+  const marks = { start: [start, ends[0]], center: [start + len / 2, (ends[0] + ends[1]) / 2], end: [start + len, ends[1]] }
+  let best = 'center', gap = Math.abs(marks.center[0] - marks.center[1]) - 1
+  for (const k of ['start', 'end']) { const g = Math.abs(marks[k][0] - marks[k][1]); if (g < gap) { best = k; gap = g } }
+  return best
 }
 
 // A panel in a sentence: “(a) decay”, the top left panel
@@ -257,7 +329,8 @@ function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
   X.range = [X.toData(box.x0), X.toData(box.x1)]
   Y.range = [Y.toData(box.y0), Y.toData(box.y1)]
   const used = new Set([...(found?.used || [])])
-  const labels = own ? { x: axes.xLabel, y: axes.yLabel } : axisLabels(texts.filter(t => !used.has(t)), box)
+  const words = own ? { x: axes.xLabelText || null, y: axes.yLabelText || null } : axisLabels(texts.filter(t => !used.has(t)), box)
+  const labels = own ? { x: axes.xLabel, y: axes.yLabel } : { x: words.x?.s || '', y: words.y?.s || '' }
 
   // The legend: its frame (or, without one, its entries), and when it was drawn
   const legend = legendOf(drawing, box, texts, axes.id)
@@ -381,6 +454,8 @@ function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
     box, X, Y, labels, grid, layers, calibrated,
     legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
     frame: legend?.frame || null,
+    // Its title's and axis labels' words, for changing them (labelsOf)
+    words: { ...words, title: own ? axes.titleText || null : titleOver(texts, box) },
   }
 }
 
@@ -445,12 +520,10 @@ function panelsOf(d, panels, main, texts) {
   const xs = spots('x'), ys = spots('y')
   const word = (list, i, n, other) => n === 1 ? '' : n <= 3 ? list[n === 2 && i === 1 ? 2 : i] : `${other} ${i + 1}`
   for (const p of out) {
-    if (!p.title) {
+    if (!p.title && !p.groups.length) {
       // A PDF's: words centered over the box, just above it
-      const cx = (p.box.x0 + p.box.x1) / 2
-      const over = texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.y > p.box.y1 && t.y < p.box.y1 + 3 * t.size && Math.abs(t.x + (t.w || 0) / 2 - cx) < (p.box.x1 - p.box.x0) / 4)
-        .sort((a, b) => a.y - b.y)[0]
-      if (over && !p.groups.length) p.title = clean(over.s)
+      const over = titleOver(texts, p.box)
+      if (over) p.title = clean(over.s)
     }
     if (p.parent) { const k = out.filter(q => q.parent).indexOf(p); p.name = p.title || (k ? `Inset ${k + 1}` : 'Inset'); continue }
     const xi = xs.findIndex(v => Math.abs(v - (p.box.x0 + p.box.x1) / 2) < 10)
@@ -659,11 +732,25 @@ function offsetsOf(texts, box) {
 
 // A PDF's axis labels: the words under the x axis's numbers, and the
 // upright words beside the y axis's
+// A set of axes' labels in a drawing that doesn't name them (a PDF): the
+// words under the box, the words turned on their side beside it (the left
+// one's the y label; one on the right, a twin's or one moved there, y2)
 function axisLabels(texts, box) {
   const words = texts.filter(t => !parseTickLabel(t.s) && !parseAxisOffset(t.s))
   const x = words.filter(t => !t.angle && t.y < box.y0 - 2 && t.x + t.w / 2 > box.x0 && t.x + t.w / 2 < box.x1).sort((p, q) => q.y - p.y)[0]
-  const y = words.filter(t => Math.abs(Math.abs(t.angle) - 90) < 2 && (t.x < box.x0 || t.x > box.x1)).sort((p, q) => Math.abs(p.x - box.x0) - Math.abs(q.x - box.x0))[0]
-  return { x: x ? x.s : '', y: y ? y.s : '' }
+  const side = words.filter(t => Math.abs(Math.abs(t.angle) - 90) < 2 && (t.x < box.x0 || t.x > box.x1))
+  const y = side.sort((p, q) => Math.abs(p.x - box.x0) - Math.abs(q.x - box.x0))[0]
+  const y2 = side.filter(t => t !== y && t.x > box.x1).sort((p, q) => p.x - q.x)[0]
+  return { x: x || null, y: y || null, y2: y2 || null }
+}
+
+// A set of axes' title in a drawing that doesn't name it (a PDF): words over
+// the box, just above it, centered on it (or at one end, a title placed so)
+function titleOver(texts, box) {
+  const cx = (box.x0 + box.x1) / 2, span = box.x1 - box.x0
+  return texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.y > box.y1 && t.y < box.y1 + 3 * t.size
+    && (Math.abs(t.x + (t.w || 0) / 2 - cx) < span / 4 || Math.abs(t.x - box.x0) < 2 || Math.abs(t.x + (t.w || 0) - box.x1) < 2))
+    .sort((a, b) => a.y - b.y)[0] || null
 }
 
 // An axis's scale from its labeled ticks: linear or log, whichever puts the

@@ -30,6 +30,8 @@ updates:
       - dependency-name: jsxgraph
       - dependency-name: svgcanvas
       - dependency-name: "3dmol"
+      - dependency-name: opentype.js
+      - dependency-name: dejavu-fonts-ttf
     groups:
       bundled-libraries:
         patterns: ["*"]

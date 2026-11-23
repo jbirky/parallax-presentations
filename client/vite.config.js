@@ -12,7 +12,7 @@ const vendorLibraries = createRequire(import.meta.url)('../server/vendor-librari
 // its exports don't list the file, so it's named here
 const wavedromRenderer = path.join(path.dirname(createRequire(import.meta.url).resolve('wavedrom/package.json')), 'lib/render-any.js')
 
-const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' }
+const MIME = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.json': 'application/json' }
 
 function globToRegExp(glob) {
   const escape = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')

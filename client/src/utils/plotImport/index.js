@@ -15,11 +15,13 @@ import { plotFromDrawing, PlotError } from './plotModel'
 import { splitSvg } from './splitSvg'
 import { splitPdf, pdfFigurePng } from './splitPdf'
 import { partsOf, figureLayers, dataPartsOf } from './toFigure'
+import { fontFor } from './glyphs'
 
 export { PlotError, panelPlot, panelNamed } from './plotModel'
 export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
 export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure, partSteps, recolorOf } from './toFigure'
+export { fontFor } from './glyphs'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024
@@ -33,6 +35,23 @@ export function plotKind(file) {
 
 // pdf.js, from this app's copy, as the PDF pages import loads it
 // (PdfPagesModal.jsx): its legacy build, for older browsers and Electron
+// opentype.js and the DejaVu fonts, from this app's copies, for drawing a
+// figure's changed titles and labels (glyphs.js); each font loaded once
+let opentype = null
+const faces = new Map()
+async function loadDejaVu(names) {
+  opentype = opentype || await import(/* @vite-ignore */ localizeLibraries(libUrl('opentype.js', 'dist/opentype.min.mjs')))
+  for (const name of names) {
+    if (faces.has(name)) continue
+    const loading = fetch(localizeLibraries(libUrl('dejavu-fonts-ttf', `ttf/${name}.ttf`)))
+      .then(r => { if (!r.ok) throw new Error(`The font ${name} couldn’t be loaded.`); return r.arrayBuffer() })
+      .then(buf => opentype.parse(buf))
+    loading.catch(() => faces.delete(name))
+    faces.set(name, loading)
+  }
+  return new Map(await Promise.all(names.map(async name => [name, await faces.get(name)])))
+}
+
 async function loadPdfjs() {
   const pdfjsLib = await import(/* @vite-ignore */ localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.min.mjs')))
   pdfjsLib.GlobalWorkerOptions.workerSrc = localizeLibraries(libUrl('pdfjs-dist', 'legacy/build/pdf.worker.min.mjs'))
@@ -83,16 +102,25 @@ export function keepable(result) {
 // transparent, the legends' boxes too (backdrop: that a piece has one in
 // it, clear or not). recolor: the parts to draw in another color
 // (recolorOf). dark: made for a dark slide, its text and lines white
-// (inked: that a piece is drawn differently so). longSide: a PDF's pieces'
-// longer side, in pixels
-export async function splitFigure(result, { need = () => true, clear = false, recolor = new Map(), dark = false, longSide } = {}) {
+// (inked: that a piece is drawn differently so). labels: { [id]: words }, a
+// title's or axis label's new words (plot.labels; a piece's labels: the ids
+// of those in it). longSide: a PDF's pieces' longer side, in pixels.
+// loadFaces(names): Map(name → opentype.js font), the fonts' loader
+export async function splitFigure(result, { need = () => true, clear = false, recolor = new Map(), dark = false, labels = {}, longSide, loadFaces = loadDejaVu } = {}) {
   const layers = partsOf(result.plot, result.kind)
   const backdrop = result.plot.backdrop || { groups: [], ops: [], frames: [] }
   const frames = backdrop.frames || []
-  const look = { clear, recolor, dark, dataParts: dataPartsOf(result.plot) }
+  // Every title and label, those changed with their new words and font
+  const named = (result.plot.labels || []).map(l => ({ ...l, text: Object.hasOwn(labels, l.id) && labels[l.id] !== l.s ? String(labels[l.id]) : undefined }))
+  const changed = named.filter(l => l.text !== undefined)
+  if (changed.length) {
+    const got = await loadFaces([...new Set(changed.map(l => fontFor(l.font)))])
+    for (const l of changed) l.face = got.get(fontFor(l.font))
+  }
+  const look = { clear, recolor, dark, dataParts: dataPartsOf(result.plot), labels: named }
   if (result.kind === 'svg') {
     const { pieces, ...rest } = splitSvg(result.text, layers, { ...look, backdrop: backdrop.groups, frames: frames.map(f => f.group).filter(Boolean) })
-    return { ...rest, pieces: pieces.map(p => ({ part: p.part, run: p.run, backdrop: p.backdrop, inked: p.inked, blob: need(p, rest.plan) ? new Blob([p.svg], { type: rest.type }) : null })) }
+    return { ...rest, pieces: pieces.map(p => ({ part: p.part, run: p.run, backdrop: p.backdrop, inked: p.inked, labels: p.labels, blob: need(p, rest.plan) ? new Blob([p.svg], { type: rest.type }) : null })) }
   }
   // pdf.js hands the bytes to its worker, so each read gets a copy
   return splitPdf(result.bytes.slice(), layers, await loadPdfjs(), { ...look, need, backdrop: backdrop.ops, frames: frames.filter(f => f.ops), ...(longSide ? { longSide } : {}) })

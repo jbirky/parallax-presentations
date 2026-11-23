@@ -17,10 +17,11 @@
 // part of its own ('legend'), showing while any entry does.
 //
 // Each element keeps what it came from (figure: { id, src, file, plan,
-// clear, dark, part, run, sig, name, label, steps, shown, color }), so the
-// figure can be opened again (readFigure): src is the file it was cut from;
-// clear, that it was cut with its backgrounds left out (transparent); dark,
-// that it was made for a dark slide (white text and lines); color, a
+// clear, dark, labels, part, run, sig, name, label, steps, shown, color }),
+// so the figure can be opened again (readFigure): src is the file it was cut
+// from; clear, that it was cut with its backgrounds left out (transparent);
+// dark, that it was made for a dark slide (white text and lines); labels, the
+// titles' and axis labels' words changed ({ [id]: words }); color, a
 // layer's, when it was given one of its own (recolorOf); part 'base', a
 // legend's ('legend', or a panel's 'p2-legend'), a panel's id or a layer's;
 // sig a layer's kind and color, to know it again if the file reads into
@@ -188,7 +189,7 @@ export function recolorOf(plot, choices = {}) {
 }
 
 // pieces: [{ part, run, url }], in drawing order, without the parts left
-// out. meta: { id, src, file, plan, clear, dark }. reuse, box, groupId, z: what the
+// out. meta: { id, src, file, plan, clear, dark, labels }. reuse, box, groupId, z: what the
 // figure was before, when it's made again (readFigure). The elements, at box.
 // A layer's and a panel's elements keep the name and steps chosen (name,
 // steps) and what they were given (label, shown), to read them back as
@@ -261,7 +262,7 @@ export function readFigure(elements, plot) {
   if (whole) {
     return {
       whole: true, choices: null, reuse: new Map(), plan: '',
-      meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear, dark: !!meta.dark },
+      meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear, dark: !!meta.dark, labels: { ...(meta.labels || {}) } },
       box: { x: whole.x, y: whole.y, width: whole.width, height: whole.height },
       groupId: whole.groupId || null, z: whole.zIndex ?? 2, ids: els.map(e => e.id),
     }
@@ -299,7 +300,7 @@ export function readFigure(elements, plot) {
   return {
     choices, reuse,
     plan: meta.plan || '',
-    meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear, dark: !!meta.dark },
+    meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear, dark: !!meta.dark, labels: { ...(meta.labels || {}) } },
     box: { x: base.x, y: base.y, width: base.width, height: base.height },
     groupId: base.groupId || null,
     z: Math.min(...els.map(e => e.zIndex ?? 2)),

@@ -13,20 +13,23 @@
 //     group, each layer's hidden until its step and from the step it leaves
 //     at (onInsertElements). Its background and its axes' can be left out,
 //     transparent, as savefig(transparent=True) leaves them (the legends'
-//     boxes too), its text and lines made white for a dark slide, and a
-//     layer drawn in another color; the figure is shown as it will look.
+//     boxes too), its text and lines made white for a dark slide, a layer
+//     drawn in another color, and its titles' and axis labels' words
+//     changed; the figure is shown as it will look.
 // A figure kept as it is opens here again (figure: its elements; source:
 // its file, { url, name }), to change its layers: onInsertElements(elements,
 // { replace: the ids they stand in for }).
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf, fontFor } from '../utils/plotImport'
 
 // Behind a figure with a transparent background, light or dark
 const CHECKERS = 'repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 16px 16px'
 const DARK_CHECKERS = 'repeating-conic-gradient(#3f3f46 0% 25%, #18181b 0% 50%) 50% / 16px 16px'
+// What a title or label is, said in a list of them
+const LABEL_KINDS = { title: 'Title', xlabel: 'x-axis label', ylabel: 'y-axis label', ylabel2: 'Right y-axis label', xlabel2: 'Top x-axis label', suptitle: 'Figure title' }
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
@@ -57,6 +60,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
   const [clear, setClear] = useState(false) // kept as it is, with a transparent background
   const [forDark, setForDark] = useState(false) // kept as it is, its text and lines white, for a dark slide
+  const [words, setWords] = useState({}) // kept as it is, its titles' and labels' words: { [label id]: words }
   const [look, setLook] = useState(null) // the figure as it will look: its pieces' image URLs, stacked
   const pieceUrls = useRef(new Map()) // those images, by piece and look
   const [error, setError] = useState('')
@@ -90,6 +94,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       setPrevious(prev)
       setClear(!!prev?.meta.clear)
       setForDark(!!prev?.meta.dark)
+      setWords({ ...(prev?.meta.labels || {}) })
       const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
       // (a figure not cut yet, dropped on the slide, starts from them)
       setChoices(prev && !prev.whole ? { ...fresh, ...prev.choices } : fresh)
@@ -133,21 +138,29 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const canClear = hasBackdrop(result)
   const transparent = figure && clear && canClear
   const inkDark = figure && forDark
+  // The titles and labels whose words are changed
+  const relabeled = useMemo(() => {
+    if (!figure) return {}
+    const out = {}
+    for (const l of plot.labels || []) if (Object.hasOwn(words, l.id) && words[l.id] !== l.s) out[l.id] = words[l.id]
+    return out
+  }, [figure, plot, words])
 
   // The layers drawn in colors of their own
   const recolor = useMemo(() => (figure ? recolorOf(plot, choices) : new Map()), [figure, plot, choices])
   // The figure as it will look, when that's not as it was saved: its pieces,
   // cut as they will be (smaller, for a PDF), stacked. Each piece is made
   // once for each look it has (a color picked while it's dragged waits)
-  const lookKey = transparent || inkDark || recolor.size ? JSON.stringify([transparent, inkDark, [...recolor].map(([part, c]) => [part, c.to])]) : ''
+  const lookKey = transparent || inkDark || recolor.size || Object.keys(relabeled).length
+    ? JSON.stringify([transparent, inkDark, [...recolor].map(([part, c]) => [part, c.to]), relabeled]) : ''
   useEffect(() => {
     if (!lookKey) { setLook(null); return undefined }
     let live = true
     const urls = pieceUrls.current
-    const keyOf = p => `${pieceKey(p)}|${transparent && p.backdrop ? 'clear' : ''}|${recolor.get(p.part)?.to || ''}|${inkDark && p.inked ? 'dark' : ''}`
+    const keyOf = p => `${pieceKey(p)}|${transparent && p.backdrop ? 'clear' : ''}|${recolor.get(p.part)?.to || ''}|${inkDark && p.inked ? 'dark' : ''}|${JSON.stringify((p.labels || []).map(id => relabeled[id] ?? null))}`
     const wait = setTimeout(async () => {
       try {
-        const split = await splitFigure(result, { clear: transparent, recolor, dark: inkDark, longSide: 1200, need: p => !urls.has(keyOf(p)) })
+        const split = await splitFigure(result, { clear: transparent, recolor, dark: inkDark, labels: relabeled, longSide: 1200, need: p => !urls.has(keyOf(p)) })
         for (const p of split.pieces) if (p.blob && !urls.has(keyOf(p))) urls.set(keyOf(p), URL.createObjectURL(p.blob))
         if (live) setLook(split.pieces.map(p => urls.get(keyOf(p))))
       } catch { /* the figure as saved stands for it */ }
@@ -227,11 +240,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       // (a piece with a background in it, only if that's as it was: clear, or not)
       // (a piece with a background in it only if that's as it was, clear or
       // not; a piece in a color only if it's the color it was; a piece a
-      // dark slide changes only if it's for the slide it was)
+      // dark slide changes only if it's for the slide it was; a piece with
+      // a title or label in it only if its words are as they were)
       const was = previous?.choices ? recolorOf(plot, previous.choices) : new Map()
       const sameColor = p => (was.get(p.part)?.to || null) === (recolor.get(p.part)?.to || null)
-      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && (!p.inked || previous.meta.dark === inkDark) && sameColor(p) && previous.reuse.get(pieceKey(p))?.src) || null
-      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent, recolor, dark: inkDark })
+      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && (!p.inked || previous.meta.dark === inkDark) && sameColor(p) && (p.labels || []).every(id => (previous.meta.labels?.[id] ?? null) === (relabeled[id] ?? null)) && previous.reuse.get(pieceKey(p))?.src) || null
+      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent, recolor, dark: inkDark, labels: relabeled })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
       const pieces = []
       for (const p of split.pieces) {
@@ -241,7 +255,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
           : had(p, split.plan)
         pieces.push({ part: p.part, run: p.run, url })
       }
-      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan, ...(transparent ? { clear: true } : {}), ...(inkDark ? { dark: true } : {}) }
+      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan, ...(transparent ? { clear: true } : {}), ...(inkDark ? { dark: true } : {}), ...(Object.keys(relabeled).length ? { labels: relabeled } : {}) }
       const elements = figureElements(plot, pieces, previous
         ? { choices, meta, reuse: previous.reuse, box: previous.box, groupId: previous.groupId, z: previous.z }
         : { choices, meta })
@@ -374,7 +388,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto', visibility: looks ? 'hidden' : 'visible' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
                 {looks && (
-                  <div data-look role="img" aria-label={`${file?.name || 'The figure'}, as it will look${transparent ? ', with a transparent background' : ''}${inkDark ? ', for a dark slide' : ''}${recolor.size ? ', in the colors chosen' : ''}`} style={{ position: 'absolute', inset: 0 }}>
+                  <div data-look role="img" aria-label={`${file?.name || 'The figure'}, as it will look${transparent ? ', with a transparent background' : ''}${inkDark ? ', for a dark slide' : ''}${recolor.size ? ', in the colors chosen' : ''}${Object.keys(relabeled).length ? ', with its words changed' : ''}`} style={{ position: 'absolute', inset: 0 }}>
                     {looks.map((url, k) => <img key={k} src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />)}
                   </div>
                 )}
@@ -447,6 +461,34 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
               {panels
                 ? <div aria-label="Panels" style={{ display: 'grid', gap: 10 }}>{panels.map(panelRow)}</div>
                 : <div role="list" aria-label="Layers" style={{ display: 'grid', gap: 8 }}>{listed.map(l => layerRow(l))}</div>}
+              {figure && plot.labels?.length > 0 && (
+                <div role="group" aria-label="Titles and labels" style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr) auto', columnGap: 8, rowGap: 6, alignItems: 'center', fontSize: 12 }}>
+                  <div style={{ gridColumn: '1 / -1', fontWeight: 600, color: 'var(--text-secondary)' }}>Titles and labels</div>
+                  {plot.labels.map(l => {
+                    const value = Object.hasOwn(words, l.id) ? words[l.id] : l.s
+                    const changed = value !== l.s
+                    const what = LABEL_KINDS[l.kind] || 'Text'
+                    const panel = l.panel ? panelById.get(l.panel) : null
+                    const caption = panel ? `${choices[panel.id]?.name ?? panel.name} · ${what.toLowerCase()}` : what
+                    const font = fontFor(l.font)
+                    return (
+                      <Fragment key={l.id}>
+                        <label htmlFor={`plot-label-${l.id}`} style={{ color: 'var(--text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={caption}>{caption}</label>
+                        <input id={`plot-label-${l.id}`} value={value} onChange={e => setWords(w => ({ ...w, [l.id]: e.target.value }))} aria-label={caption} maxLength={200} style={nameInput} />
+                        {changed ? (
+                          <button type="button" onClick={() => setWords(w => { const out = { ...w }; delete out[l.id]; return out })} title={`Back to “${l.s}”`} aria-label={`Put back the ${caption.toLowerCase()}’s own words`}
+                            style={{ fontSize: 12, lineHeight: 1, padding: '2px 4px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}>↺</button>
+                        ) : <span />}
+                        {changed && (l.math || font !== l.font) && (
+                          <span style={{ gridColumn: '2 / -1', fontSize: 11, color: 'var(--text-muted)', marginTop: -4 }}>
+                            {[l.math && 'Math ($…$) is drawn as plain text.', font !== l.font && `Drawn in DejaVu Sans${l.font ? `, not ${l.font}` : ''}.`].filter(Boolean).join(' ')}
+                          </span>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </div>
+              )}
               {notes.length > 0 && (
                 <ul aria-label="Notes" style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 3 }}>
                   {notes.map(w => <li key={w}>{w}</li>)}

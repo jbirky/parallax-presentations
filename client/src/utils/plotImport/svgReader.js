@@ -106,7 +106,7 @@ function addText(el, m, ctx, gid) {
   const glyphs = [...el.getElementsByTagName('g')].find(g => g.getAttribute('transform'))
   if (glyphs) {
     at = multiply(m, transformOf(glyphs.getAttribute('transform')))
-    size = Math.abs(at[3]) * 100 || 10
+    size = Math.hypot(at[2], at[3]) * 100 || 10
     // Its width: the last glyph's place along the line, and a digit's width
     // after it, in its font (the glyphs are named after it: DejaVuSans-31)
     const uses = [...glyphs.getElementsByTagName('use')]
@@ -125,16 +125,18 @@ function addText(el, m, ctx, gid) {
   let [x, y] = apply(at, 0, 0)
   if (anchor === 'middle') x -= w / 2
   else if (anchor === 'end') x -= w
-  const angle = Math.round(Math.atan2(-at[1], at[0]) * 180 / Math.PI)
+  // Counterclockwise, as the page's points go up: a y label reads up at 90
+  const angle = Math.round(Math.atan2(at[1], at[0]) * 180 / Math.PI)
   const text = { s: words, x, y, size, angle, w, font, group: ctx.group, gid, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id }
   ctx.drawing.texts.push(text)
   if (ctx.tick) { ctx.tick.label = words; ctx.tick.text = text }
   else if (ctx.role === 'axis' && ctx.axes) {
     // An axis's own words: its label, or the note that scales its numbers
     const key = ctx.axis === 'x' ? 'x' : 'y'
-    if (!ctx.axes[`${key}Label`] && !/^\$?[−\-+×\\\d]/.test(words)) ctx.axes[`${key}Label`] = words.replace(/\$/g, '')
+    // (the words themselves too, for changing them: plotModel.js's labelsOf)
+    if (!ctx.axes[`${key}Label`] && !/^\$?[−\-+×\\\d]/.test(words)) { ctx.axes[`${key}Label`] = words.replace(/\$/g, ''); ctx.axes[`${key}LabelText`] = text }
     else ctx.axes[`${key}Offset`] = words
-  } else if (ctx.axes && !ctx.role && !ctx.group && !ctx.axes.title) ctx.axes.title = words.replace(/\$/g, '')
+  } else if (ctx.axes && !ctx.role && !ctx.group && !ctx.axes.title) { ctx.axes.title = words.replace(/\$/g, ''); ctx.axes.titleText = text }
 }
 
 function addUse(el, m, ctx) {

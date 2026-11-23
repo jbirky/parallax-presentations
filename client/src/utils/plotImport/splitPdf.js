@@ -17,9 +17,12 @@
 // a data part draws (dataParts: the layers, a figure legend's entries) other
 // than its words, and for pictures. A piece is drawn in stretches, of what
 // paints one way, and each stretch's pixels changed as it needs before the
-// next is drawn over it.
+// next is drawn over it. A title's or axis label's words can be changed
+// (labels): their own operators are left out, and the new words drawn in
+// their place, as matplotlib draws text (glyphs.js).
 
 import { runsOf, planOf, keptRuns } from './toFigure'
+import { textOutline, shiftFor } from './glyphs'
 import { SplitError } from './splitSvg'
 
 // The operators that put something on the page; a path's painting operator
@@ -39,9 +42,10 @@ const PICTURES = new Set([...PAINTS].filter(n => /Image/.test(n)))
 // stroke }),
 // words: Set (the operators that show text), pictures: Set (that paint
 // images), plan }. backdrop: that a run paints a background or a legend's
-// box; inked: that it's drawn differently for a dark slide; empty: that it
-// paints nothing but backgrounds, and they're left clear
-export function planPdf(ops, layers, OPS, { backdrop = [], frames = [], clear = false, dataParts = new Set() } = {}) {
+// box; inked: that it's drawn differently for a dark slide; labels: the
+// titles and labels (plotModel.js's, with their ops) it draws; empty: that
+// it paints nothing but backgrounds, and they're left clear
+export function planPdf(ops, layers, OPS, { backdrop = [], frames = [], clear = false, dataParts = new Set(), labels = [] } = {}) {
   const NAME = {}
   for (const [k, v] of Object.entries(OPS)) NAME[v] = k
   const paints = [], words = new Set(), pictures = new Set()
@@ -58,6 +62,8 @@ export function planPdf(ops, layers, OPS, { backdrop = [], frames = [], clear = 
   const back = new Set(), boxes = new Map()
   for (const [a, b] of backdrop) for (let i = a; i <= b; i++) if (all.has(i)) back.add(i)
   for (const f of frames) for (const [a, b] of f.ops ? [f.ops] : []) for (let i = a; i <= b; i++) if (all.has(i)) boxes.set(i, { fill: f.fill, stroke: f.stroke || null })
+  const named = new Map() // operator -> the label it draws
+  for (const l of labels) for (const [a, b] of l.ops || []) for (let i = a; i <= b; i++) if (all.has(i)) named.set(i, l)
   return {
     runs: runs.map(r => {
       const own = paints.slice(r.from, r.to + 1)
@@ -66,36 +72,39 @@ export function planPdf(ops, layers, OPS, { backdrop = [], frames = [], clear = 
         part: r.part, run: r.run, ops: new Set(own),
         backdrop: n > 0 || own.some(i => boxes.has(i)),
         inked: !dataParts.has(r.part) || own.some(i => words.has(i)),
+        labels: [...new Set(own.filter(i => named.has(i)).map(i => named.get(i)))],
         empty: clear && n === own.length,
       }
     }),
     paints: all,
     back,
     frames: boxes,
+    named,
     words,
     pictures,
     plan: planOf(runs),
   }
 }
 
-// { pieces: [{ part, run, blob, backdrop, inked }], plan, width, height,
-// type, ext }: a piece is drawn only where need(piece, plan) says (else its
-// blob is null), as the others are already on hand. longSide: the PNGs'
-// longer side, in pixels; backdrop, frames, clear, dataParts: as planPdf has
-// them; recolor: Map(part → { from, to }); dark: for a dark slide
-export async function splitPdf(data, layers, pdfjsLib, { need = () => true, longSide = 2400, backdrop = [], frames = [], clear = false, recolor = new Map(), dark = false, dataParts = new Set() } = {}) {
+// { pieces: [{ part, run, blob, backdrop, inked, labels }], plan, width,
+// height, type, ext }: a piece is drawn only where need(piece, plan) says
+// (else its blob is null), as the others are already on hand. longSide: the
+// PNGs' longer side, in pixels; backdrop, frames, clear, dataParts, labels:
+// as planPdf has them (a label with text has new words, drawn in its face);
+// recolor: Map(part → { from, to }); dark: for a dark slide
+export async function splitPdf(data, layers, pdfjsLib, { need = () => true, longSide = 2400, backdrop = [], frames = [], clear = false, recolor = new Map(), dark = false, dataParts = new Set(), labels = [] } = {}) {
   if (!layers.length || layers.some(l => !l.ops || !l.ops.length)) throw new SplitError('Only a figure saved by matplotlib can be kept as it is')
   const task = pdfjsLib.getDocument({ data, verbosity: 0, isEvalSupported: false })
   try {
     const page = await (await task.promise).getPage(1)
-    const plan = planPdf(await page.getOperatorList(), layers, pdfjsLib.OPS, { backdrop, frames, clear, dataParts })
+    const plan = planPdf(await page.getOperatorList(), layers, pdfjsLib.OPS, { backdrop, frames, clear, dataParts, labels })
     const { runs, paints, back, words, pictures } = plan
     const [x0, y0, x1, y1] = page.view
     const width = x1 - x0, height = y1 - y0
     const viewport = viewportOf(page, longSide)
     const pieces = []
     for (const r of keptRuns(runs)) {
-      const piece = { part: r.part, run: r.run, blob: null, backdrop: r.backdrop, inked: r.inked }
+      const piece = { part: r.part, run: r.run, blob: null, backdrop: r.backdrop, inked: r.inked, labels: r.labels.map(l => l.id) }
       if (need(piece, plan.plan)) {
         // What's done to each operator's pixels: a data part's drawing in
         // its color, its words (a legend entry's) for the slide; the rest
@@ -114,9 +123,17 @@ export async function splitPdf(data, layers, pdfjsLib, { need = () => true, long
           if (last && last.how === how) last.ops.add(i)
           else stretches.push({ how, ops: new Set([i]) })
         }
+        // The words of a label changed: not drawn, but drawn again
+        const redrawn = i => plan.named.get(i)?.text !== undefined
         let canvas = null
+        const relabeled = new Set()
         for (const st of stretches.length ? stretches : [{ how: '', ops: new Set() }]) {
-          const drawn = await draw(page, viewport, i => !paints.has(i) || st.ops.has(i))
+          const drawn = await draw(page, viewport, i => !paints.has(i) || (st.ops.has(i) && !redrawn(i)))
+          for (const l of r.labels) {
+            if (l.text === undefined || relabeled.has(l) || !(l.ops || []).some(([a]) => st.ops.has(a))) continue
+            drawLabel(drawn, viewport, l)
+            relabeled.add(l)
+          }
           if (st.how) changePixels(drawn, st.how, swap)
           if (canvas) canvas.getContext('2d').drawImage(drawn, 0, 0)
           else canvas = drawn
@@ -161,6 +178,25 @@ async function draw(page, viewport, operationsFilter) {
   const canvasContext = canvas.getContext('2d')
   await page.render({ canvasContext, viewport, background: 'rgba(0,0,0,0)', ...(operationsFilter ? { operationsFilter } : {}) }).promise
   return canvas
+}
+
+// A label's new words on a canvas the page is drawn on: from where the old
+// ones started, along their line, as far as keeps the same point lined up
+// with the axes, in their color
+function drawLabel(canvas, viewport, label) {
+  if (!String(label.text).trim()) return
+  const out = textOutline(label.face, label.text, label.size)
+  const a = (label.angle || 0) * Math.PI / 180, shift = shiftFor(label.align, label.w, out.width)
+  const ctx = canvas.getContext('2d')
+  ctx.save()
+  ctx.setTransform(...viewport.transform)
+  ctx.translate(label.x + Math.cos(a) * shift, label.y + Math.sin(a) * shift)
+  ctx.rotate(a)
+  // (the page's points go up; the glyphs' outlines, down)
+  ctx.scale(1, -1)
+  ctx.fillStyle = label.fill || '#000000'
+  ctx.fill(new Path2D(out.d))
+  ctx.restore()
 }
 
 const pngOf = canvas => new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('The figure couldn’t be drawn.'))), 'image/png'))
