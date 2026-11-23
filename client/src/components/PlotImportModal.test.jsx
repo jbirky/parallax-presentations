@@ -52,6 +52,7 @@ import { readSvgDrawing } from '../utils/plotImport/svgReader'
 import { plotFromDrawing } from '../utils/plotImport/plotModel'
 import { splitSvg } from '../utils/plotImport/splitSvg'
 import { figureElements, partsOf, wholeFigure } from '../utils/plotImport/toFigure'
+import { noteElements, axesFor, toPage } from '../utils/plotImport/notes'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root, el
@@ -295,6 +296,40 @@ describe('importing a plot', () => {
     for (const e of els) expect(e.figure.labels).toEqual({ xlabel: 'elapsed time (s)' })
   })
 
+  it('annotates a figure kept as it is: a callout at the data point clicked, its words and steps chosen', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'decay.svg' })
+    const group = () => el.querySelector('[role="group"][aria-label="Annotations"]')
+    const kind = label => [...group().querySelectorAll('button')].find(b => b.textContent === `+ ${label}`)
+    await act(async () => kind('Arrow').click())
+    expect(kind('Arrow').getAttribute('aria-pressed')).toBe('true')
+    expect(group().querySelector('[role="status"]').textContent).toContain('snaps to the nearest data point')
+    // A click on the fifth measured point, the preview at the figure's own size
+    const sketch = el.querySelector('svg[data-notes]')
+    sketch.getBoundingClientRect = () => ({ left: 0, top: 0, width: 432, height: 288, right: 432, bottom: 288, x: 0, y: 0 })
+    const plot = reading.result.plot
+    const measured = plot.layers.find(l => l.name === 'measured')
+    const [px, py] = toPage(axesFor(plot, null), [measured.data.x[4], measured.data.y[4]])
+    const Pointer = globalThis.PointerEvent || MouseEvent
+    await act(async () => sketch.dispatchEvent(new Pointer('pointerdown', { clientX: px, clientY: 288 - py, bubbles: true })))
+    expect(kind('Arrow').getAttribute('aria-pressed')).toBe('false')
+    const rows = () => [...group().querySelectorAll('[data-note]')]
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0].querySelector('input').value).toMatch(/^2\.5, 0\.\d+$/)
+    // After the layers, at step 3, at first; then at 4, with words of its own
+    expect(rows()[0].querySelector('select').value).toBe('3')
+    await act(async () => set(rows()[0].querySelector('input'), 'peak'))
+    await act(async () => set(rows()[0].querySelector('select'), '4'))
+    expect(sketch.querySelector('text').textContent).toBe('peak')
+    await act(async () => button('Insert figure with 2 layers').click())
+    const [els] = onInsertElements.mock.calls[0]
+    const noted = els.filter(e => e.figure.part === 'note')
+    expect(noted.map(e => e.figure.role)).toEqual(['text', 'arrow'])
+    for (const e of noted) expect(e).toMatchObject({ groupId: els[0].groupId, stateSteps: { 4: null }, figure: { id: els[0].figure.id, src: '/uploads/decay.svg', note: { kind: 'arrow', text: 'peak', at: [measured.data.x[4], measured.data.y[4]] } } })
+    expect(Math.min(...noted.map(e => e.zIndex))).toBeGreaterThan(Math.max(...els.filter(e => e.figure.part !== 'note').map(e => e.zIndex)))
+  })
+
   it('makes a graph in the colors chosen', async () => {
     const { onInsert } = await mount()
     await act(async () => set(colorOf('model'), '#2ca02c'))
@@ -531,6 +566,25 @@ describe('importing a plot', () => {
       const [again] = onInsertElements.mock.calls[0]
       expect(again.some(e => 'labels' in e.figure)).toBe(false)
       expect(again.slice(1).map(e => e.src)).toEqual(els.slice(1).map(e => e.src))
+    })
+
+    it('opened again, lists its annotations; one removed is taken off the slide', async () => {
+      const base = figureElements(plot, pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+        choices: { l1: { step: 1 }, l2: { step: 2 } }, meta: { src: source.url, file: 'decay.svg', plan },
+      })
+      const meta = { ...base[0].figure }
+      const opts = { box: { x: base[0].x, y: base[0].y, width: base[0].width, height: base[0].height }, groupId: base[0].groupId, meta, z: 20 }
+      const a = noteElements(plot, { id: 'a', kind: 'arrow', panel: null, at: [1.5, 1.2], text: 'steep start', step: 3, until: 0 }, opts)
+      const r = noteElements(plot, { id: 'r', kind: 'ring', panel: null, at: [6, 0.29], text: 'here', step: 4, until: 0 }, { ...opts, z: 30 })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: [...base, ...a, ...r] })
+      const rows = () => [...el.querySelectorAll('[role="group"][aria-label="Annotations"] [data-note]')]
+      expect(rows().map(row => row.querySelector('input').value)).toEqual(['steep start', 'here'])
+      await act(async () => rows()[1].querySelector('button[aria-label="Remove the annotation"]').click())
+      await act(async () => button('Update figure').click())
+      const [again, how] = onInsertElements.mock.calls[0]
+      expect(how.replace).toEqual([...base, ...a, ...r].map(e => e.id))
+      expect(again.filter(e => e.figure.part === 'note').map(e => e.id)).toEqual(a.map(e => e.id))
+      expect(api.uploadFile).not.toHaveBeenCalled()
     })
 
     it('says when its file can’t be fetched', async () => {

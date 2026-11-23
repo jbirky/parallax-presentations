@@ -15,7 +15,9 @@
 //     transparent, as savefig(transparent=True) leaves them (the legends'
 //     boxes too), its text and lines made white for a dark slide, a layer
 //     drawn in another color, and its titles' and axis labels' words
-//     changed; the figure is shown as it will look.
+//     changed; the figure is shown as it will look. And it can be
+//     annotated: callouts, rings and boxes pinned to points in its data,
+//     made of the slide's own elements in its group (utils/plotImport/notes.js).
 // A figure kept as it is opens here again (figure: its elements; source:
 // its file, { url, name }), to change its layers: onInsertElements(elements,
 // { replace: the ids they stand in for }).
@@ -23,12 +25,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
-import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf, fontFor } from '../utils/plotImport'
+import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf, fontFor,
+  notesOnFigure, readNotes, placeOf, snapTo, pageOf, toData, defaultOffset, noteSize, arrowEnds, wordsBox, insetWords, IMPORT_WIDTH } from '../utils/plotImport'
 
 // Behind a figure with a transparent background, light or dark
 const CHECKERS = 'repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 16px 16px'
 const DARK_CHECKERS = 'repeating-conic-gradient(#3f3f46 0% 25%, #18181b 0% 50%) 50% / 16px 16px'
 // What a title or label is, said in a list of them
+// What an annotation is
+const NOTE_KINDS = { arrow: 'Arrow', ring: 'Ring', box: 'Box' }
 const LABEL_KINDS = { title: 'Title', xlabel: 'x-axis label', ylabel: 'y-axis label', ylabel2: 'Right y-axis label', xlabel2: 'Top x-axis label', suptitle: 'Figure title' }
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
@@ -61,6 +66,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [clear, setClear] = useState(false) // kept as it is, with a transparent background
   const [forDark, setForDark] = useState(false) // kept as it is, its text and lines white, for a dark slide
   const [words, setWords] = useState({}) // kept as it is, its titles' and labels' words: { [label id]: words }
+  const [notes, setNotes] = useState([]) // kept as it is, its annotations (notes.js)
+  const [placing, setPlacing] = useState(null) // an annotation being put on the figure: 'arrow', 'ring' or 'box'
+  const [band, setBand] = useState(null) // a box being dragged out over the figure: [from, to], in its points
+  const readBack = useRef(new Map()) // the annotations as the figure had them (readNotes), by id
+  const sketch = useRef(null) // the drawing of them over the figure
+  const moving = useRef(null) // an annotation's words being dragged: { id, x, y, offset }
   const [look, setLook] = useState(null) // the figure as it will look: its pieces' image URLs, stacked
   const pieceUrls = useRef(new Map()) // those images, by piece and look
   const [error, setError] = useState('')
@@ -95,6 +106,9 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       setClear(!!prev?.meta.clear)
       setForDark(!!prev?.meta.dark)
       setWords({ ...(prev?.meta.labels || {}) })
+      const read = prev ? readNotes(figureEls, r.plot, prev.box) : []
+      readBack.current = new Map(read.map(n => [n.note.id, n]))
+      setNotes(read.map(n => n.note))
       const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
       // (a figure not cut yet, dropped on the slide, starts from them)
       setChoices(prev && !prev.whole ? { ...fresh, ...prev.choices } : fresh)
@@ -190,7 +204,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const datasetBase = `${baseName(file?.name)}${graphPanel ? ` ${panelWord(graphPanel)}` : ''} data`
   const listed = plot ? (panels ? figureLayers(plot) : gplot.layers) : []
   const included = listed.filter(layerOn)
-  const notes = !plot ? [] : figure ? (plot.panels ? [...(plot.fileWarnings || []), `This figure has ${plot.panels.length} panels; each comes and goes with its layers.`] : plot.warnings) : gplot.warnings
+  const remarks = !plot ? [] : figure ? (plot.panels ? [...(plot.fileWarnings || []), `This figure has ${plot.panels.length} panels; each comes and goes with its layers.`] : plot.warnings) : gplot.warnings
 
   async function insert() {
     if (!plot || !included.length) return
@@ -259,7 +273,14 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       const elements = figureElements(plot, pieces, previous
         ? { choices, meta, reuse: previous.reuse, box: previous.box, groupId: previous.groupId, z: previous.z }
         : { choices, meta })
-      onInsertElements(elements, previous ? { replace: previous.ids } : undefined)
+      // Its annotations, over it, in its group
+      const first = elements[0]
+      const noted = notesOnFigure(plot, notes, {
+        box: { x: first.x, y: first.y, width: first.width, height: first.height }, groupId: first.groupId,
+        meta: { ...meta, id: first.figure.id }, z: Math.max(...elements.map(e => e.zIndex ?? 0)) + 1, dark: inkDark,
+        read: readBack.current, restyle: !!previous && !!previous.meta.dark !== inkDark,
+      })
+      onInsertElements([...elements, ...noted], previous ? { replace: previous.ids } : undefined)
     } catch (err) {
       setError(err.message || 'The figure couldn’t be added.')
       setBusy('')
@@ -279,20 +300,119 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const nameInput = { flex: 1, minWidth: 0, fontSize: 13, padding: '3px 6px', background: 'var(--bg-input, var(--bg-hover))', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4 }
 
   // When something comes and goes
-  const steps = (id, c, off) => (<>
+  const steps = (id, c, off, set = patch => setChoice(id, patch)) => (<>
     <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Appears
-      <select value={c.step || 0} disabled={off} onChange={e => setChoice(id, { step: +e.target.value })} style={select}>
+      <select value={c.step || 0} disabled={off} onChange={e => set({ step: +e.target.value })} style={select}>
         <option value={0}>With the slide</option>
         {STEPS.map(n => <option key={n} value={n}>At step {n}</option>)}
       </select>
     </label>
     <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}>Leaves
-      <select value={c.until || 0} disabled={off} onChange={e => setChoice(id, { until: +e.target.value })} style={select}>
+      <select value={c.until || 0} disabled={off} onChange={e => set({ until: +e.target.value })} style={select}>
         <option value={0}>Stays</option>
         {STEPS.filter(n => n > (c.step || 0)).map(n => <option key={n} value={n}>At step {n}</option>)}
       </select>
     </label>
   </>)
+
+  // Annotations: the figure they're drawn on in the preview (as it'll be on
+  // the slide, at its place there or as it's first put), changed, made, and
+  // sketched over the figure
+  const noteBox = plot ? previous?.box || { x: 0, y: 0, width: IMPORT_WIDTH, height: Math.round(IMPORT_WIDTH * (plot.size.height / plot.size.width || 0.7)) } : null
+  const setNote = (id, patch) => setNotes(ns => ns.map(n => {
+    if (n.id !== id) return n
+    const next = { ...n, ...patch }
+    if (next.until && next.step && next.until <= next.step) next.until = 0
+    return next
+  }))
+  // The step after every other's
+  const nextStep = () => 1 + Math.max(0, ...Object.values(choices).map(c => (c.include === false ? 0 : c.step || 0)), ...notes.map(n => n.step || 0))
+  // A pointer's place on the figure, in its points up from the bottom left
+  const figurePoint = e => {
+    const r = sketch.current.getBoundingClientRect()
+    return [((e.clientX - r.left) / r.width) * plot.size.width, (1 - (e.clientY - r.top) / r.height) * plot.size.height]
+  }
+  const addNote = (kind, from, to) => {
+    const place = placeOf(plot, from)
+    let at = place.at, text = ''
+    if (kind !== 'box') {
+      // At the data point nearest, near enough (12 of the preview's pixels)
+      const near = snapTo(plot, place.panel, place.axes, from, (12 * plot.size.width) / sketch.current.getBoundingClientRect().width)
+      if (near) { at = near.at; if (kind === 'arrow') text = `${fmt(at[0])}, ${fmt(at[1])}` }
+      if (kind === 'arrow' && !text) text = 'Note'
+    }
+    const note = { id: crypto.randomUUID(), kind, panel: place.panel, at, ...(place.frac ? { frac: true } : {}), text, step: nextStep(), until: 0 }
+    if (to) note.to = place.frac ? [to[0] / plot.size.width, to[1] / plot.size.height] : toData(place.axes, to)
+    setNotes(ns => [...ns, note])
+    setPlacing(null)
+  }
+  const placeDown = e => {
+    if (!placing) return
+    const at = figurePoint(e)
+    if (placing === 'box') { e.currentTarget.setPointerCapture?.(e.pointerId); setBand([at, at]) } else addNote(placing, at)
+  }
+  const placeMove = e => {
+    if (band) setBand([band[0], figurePoint(e)])
+    else if (moving.current) {
+      const m = moving.current, r = sketch.current.getBoundingClientRect()
+      setNote(m.id, { offset: [m.offset[0] + (e.clientX - m.x) / r.width, m.offset[1] + (e.clientY - m.y) / r.height] })
+    }
+  }
+  const placeUp = () => {
+    if (band) {
+      const [[x0, y0], [x1, y1]] = band
+      // (a click, not a drag: no box)
+      if (Math.abs(x1 - x0) > 2 && Math.abs(y1 - y0) > 2) addNote('box', band[0], band[1])
+      setBand(null)
+    }
+    moving.current = null
+  }
+  const describeNote = n => {
+    const where = n.panel && plot.panels?.length ? ` in ${choices[n.panel]?.name ?? panelById.get(n.panel)?.name ?? n.panel}` : ''
+    if (n.frac) return `On the figure${where}`
+    if (n.kind === 'box') { const to = n.to || n.at; return `${fmt(Math.min(n.at[0], to[0]))} to ${fmt(Math.max(n.at[0], to[0]))} by ${fmt(Math.min(n.at[1], to[1]))} to ${fmt(Math.max(n.at[1], to[1]))}${where}` }
+    return `At ${fmt(n.at[0])}, ${fmt(n.at[1])}${where}`
+  }
+  // An annotation drawn over the preview, as on the slide: in the figure's
+  // points, down from its top left (the SVG's); its words dragged to move them
+  const noteSketch = n => {
+    const W = plot.size.width, H = plot.size.height, per = noteBox.width / W
+    const fs = noteSize(plot, noteBox)
+    const ink = inkDark ? '#ffffff' : '#000000'
+    const down = ([px, py]) => [px, H - py]
+    const a = down(pageOf(plot, n))
+    let corner = a, boxed = null
+    if (n.kind === 'box') {
+      const b = down(pageOf(plot, n, n.to || n.at))
+      boxed = { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), width: Math.abs(b[0] - a[0]), height: Math.abs(b[1] - a[1]) }
+      corner = [boxed.x, boxed.y]
+    }
+    const [dx, dy] = n.offset || defaultOffset(plot, n, noteBox)
+    const [tw, th] = wordsBox(n.text, fs).map(v => v / per)
+    const c = [corner[0] + dx * W, corner[1] + dy * H]
+    // (the text box, and its words inside its padding, in the figure's points)
+    const box = { x: c[0] - tw / 2, y: c[1] - th / 2, width: tw, height: th }
+    const inner = insetWords({ x: box.x * per, y: box.y * per, width: box.width * per, height: box.height * per })
+    const ends = n.kind === 'arrow' && n.text ? arrowEnds({ x: inner.x / per, y: inner.y / per, width: inner.width / per, height: inner.height / per }, a) : null
+    const lw = Math.max(2, Math.round(fs / 8)) / per
+    return (
+      <g key={n.id} data-note={n.id}>
+        {n.kind === 'ring' && <circle cx={a[0]} cy={a[1]} r={(fs * 0.9) / per} fill="none" stroke={ink} strokeWidth={lw} />}
+        {boxed && <rect {...boxed} fill={inkDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'} stroke={ink} strokeWidth={Math.max(1, lw * per - 1) / per} />}
+        {ends && (() => {
+          const [[sx, sy], [ex, ey]] = ends.map(([x, y]) => [x, y])
+          const t = Math.atan2(ey - sy, ex - sx), hs = Math.max(lw * 3, 4 / per)
+          const head = [[ex - hs * Math.cos(t - 0.6), ey - hs * Math.sin(t - 0.6)], [ex, ey], [ex - hs * Math.cos(t + 0.6), ey - hs * Math.sin(t + 0.6)]]
+          return <><line x1={sx} y1={sy} x2={ex} y2={ey} stroke={ink} strokeWidth={lw} /><polyline points={head.map(p => p.join(',')).join(' ')} fill="none" stroke={ink} strokeWidth={lw} strokeLinecap="round" strokeLinejoin="round" /></>
+        })()}
+        {n.text && (
+          <text x={c[0]} y={c[1]} textAnchor="middle" dominantBaseline="central" fontSize={fs / per} fill={ink} fontFamily="Arial, sans-serif"
+            style={{ pointerEvents: placing ? 'none' : 'all', cursor: 'move', userSelect: 'none' }}
+            onPointerDown={e => { e.stopPropagation(); sketch.current.setPointerCapture?.(e.pointerId); moving.current = { id: n.id, x: e.clientX, y: e.clientY, offset: [dx, dy] } }}>{n.text}</text>
+        )}
+      </g>
+    )
+  }
 
   const layerRow = (layer, { hidden = false } = {}) => {
     const c = choices[layer.id] || {}
@@ -397,6 +517,15 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                     {b.label && <span style={{ position: 'absolute', left: 2, top: 2, fontSize: 11, fontWeight: 700, color: '#fff', background: b.faint ? 'rgba(100,116,139,0.8)' : '#6366f1', borderRadius: 3, padding: '0 4px' }}>{b.label}</span>}
                   </div>
                 ))}
+                {figure && (
+                  <svg ref={sketch} data-notes viewBox={`0 0 ${plot.size.width} ${plot.size.height}`} preserveAspectRatio="none"
+                    aria-label={placing ? (placing === 'box' ? 'Drag over the figure to box a stretch of it' : 'Click a point on the figure to annotate it') : undefined}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', cursor: placing ? 'crosshair' : 'default', pointerEvents: placing || moving.current ? 'all' : 'none', touchAction: 'none' }}
+                    onPointerDown={placeDown} onPointerMove={placeMove} onPointerUp={placeUp} onPointerCancel={placeUp}>
+                    {notes.map(noteSketch)}
+                    {band && <rect x={Math.min(band[0][0], band[1][0])} y={plot.size.height - Math.max(band[0][1], band[1][1])} width={Math.abs(band[1][0] - band[0][0])} height={Math.abs(band[1][1] - band[0][1])} fill="rgba(99,102,241,0.15)" stroke="#6366f1" strokeWidth={1} strokeDasharray="3 2" />}
+                  </svg>
+                )}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, display: 'grid', gap: 2 }}>
                 {!panels && ['x', 'y'].map(k => {
@@ -489,9 +618,41 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   })}
                 </div>
               )}
-              {notes.length > 0 && (
+              {figure && (
+                <div role="group" aria-label="Annotations" style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)', marginRight: 'auto' }}>Annotations</span>
+                    {Object.entries(NOTE_KINDS).map(([kind, label]) => (
+                      <button key={kind} type="button" className={`btn ${placing === kind ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={placing === kind}
+                        title={kind === 'box' ? 'Drag over the figure to box a stretch of it' : `Click a point on the figure: ${kind === 'arrow' ? 'words with an arrow to it' : 'a ring round it'}`}
+                        onClick={() => setPlacing(p => (p === kind ? null : kind))}>+ {label}</button>
+                    ))}
+                  </div>
+                  {placing && (
+                    <div role="status" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {placing === 'box' ? 'Drag over the figure to box a stretch of it.' : 'Click a point on the figure; it snaps to the nearest data point.'}
+                    </div>
+                  )}
+                  {notes.map(n => (
+                    <div key={n.id} data-note={n.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', minWidth: 36 }}>{NOTE_KINDS[n.kind]}</span>
+                        <input value={n.text} placeholder={n.kind === 'arrow' ? 'Its words' : 'Its words (or none)'} onChange={e => setNote(n.id, { text: e.target.value })} aria-label={`${NOTE_KINDS[n.kind]}: words`} maxLength={120} style={nameInput} />
+                        <button type="button" onClick={() => setNotes(ns => ns.filter(o => o.id !== n.id))} aria-label="Remove the annotation" title="Remove it"
+                          style={{ flex: 'none', fontSize: 12, lineHeight: 1, padding: '3px 6px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}>✕</button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-secondary)' }}>
+                        <span style={{ flex: '1 1 140px' }}>{describeNote(n)}</span>
+                        {steps(n.id, n, false, patch => setNote(n.id, patch))}
+                      </div>
+                    </div>
+                  ))}
+                  {notes.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Drag an annotation’s words over the figure to move them. On the slide they’re text, arrows and shapes in the figure’s group.</div>}
+                </div>
+              )}
+              {remarks.length > 0 && (
                 <ul aria-label="Notes" style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)', display: 'grid', gap: 3 }}>
-                  {notes.map(w => <li key={w}>{w}</li>)}
+                  {remarks.map(w => <li key={w}>{w}</li>)}
                 </ul>
               )}
               <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>

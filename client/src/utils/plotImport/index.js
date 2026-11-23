@@ -22,6 +22,7 @@ export { plotToGraph, defaultChoices, IMPORT_WIDTH } from './toGraph'
 export { splitSvg } from './splitSvg'
 export { figureElements, readFigure, pieceKey, figureLayers, wholeFigure, partSteps, recolorOf } from './toFigure'
 export { fontFor } from './glyphs'
+export { noteElements, notesOnFigure, readNotes, placeOf, snapTo, pageOf, toData, cornerOf, pointOf, defaultOffset, noteSize, arrowEnds, arrowBetween, wordsBox, insetWords } from './notes'
 export { baseName } from './drawing'
 
 export const MAX_PLOT_BYTES = 20 * 1024 * 1024

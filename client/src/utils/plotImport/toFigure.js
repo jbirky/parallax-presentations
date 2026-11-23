@@ -96,8 +96,9 @@ const sigOf = layer => (layer.panel ? `${layer.panel}|` : '') + `${layer.kind}|$
 const NONE = { step: 0, until: 0 }
 const NEVER = { step: 0, until: 0, never: true }
 
-// A layer's or a panel's steps, as chosen: { step, until }, 0 for none
-function stepsOf(choice = {}) {
+// A layer's or a panel's steps, as chosen (an annotation's too): { step,
+// until }, 0 for none
+export function stepsOf(choice = {}) {
   const step = choice.step > 0 ? choice.step : 0
   return { step, until: choice.until > step ? choice.until : 0 }
 }
@@ -148,7 +149,7 @@ export function partSteps(plot, choices) {
 }
 
 // A hidden state and the steps it comes and goes at, on an element
-function setSteps(el, st) {
+export function setSteps(el, st) {
   delete el.states; delete el.stateSteps; delete el.initialState
   if (!st.never && !st.step && !st.until) return
   el.states = [{ ...HIDDEN }]
@@ -254,7 +255,9 @@ export function wholeFigure(plot, { url, meta = {}, x = 0, y = 0, width = IMPORT
 // their ids, and their images where the figure is cut the same way), and its
 // place. null for elements that aren't a figure's
 export function readFigure(elements, plot) {
-  const els = (elements || []).filter(e => e.figure)
+  const every = (elements || []).filter(e => e.figure)
+  // (its annotations are read by notes.js's readNotes)
+  const els = every.filter(e => e.figure.part !== 'note')
   if (!els.length) return null
   const meta = els[0].figure
   // Not cut yet: nothing chosen, its place its one image's
@@ -264,7 +267,7 @@ export function readFigure(elements, plot) {
       whole: true, choices: null, reuse: new Map(), plan: '',
       meta: { id: meta.id, src: meta.src, file: meta.file, clear: !!meta.clear, dark: !!meta.dark, labels: { ...(meta.labels || {}) } },
       box: { x: whole.x, y: whole.y, width: whole.width, height: whole.height },
-      groupId: whole.groupId || null, z: whole.zIndex ?? 2, ids: els.map(e => e.id),
+      groupId: whole.groupId || null, z: whole.zIndex ?? 2, ids: every.map(e => e.id),
     }
   }
   const all = figureLayers(plot)
@@ -304,6 +307,6 @@ export function readFigure(elements, plot) {
     box: { x: base.x, y: base.y, width: base.width, height: base.height },
     groupId: base.groupId || null,
     z: Math.min(...els.map(e => e.zIndex ?? 2)),
-    ids: els.map(e => e.id),
+    ids: every.map(e => e.id),
   }
 }
