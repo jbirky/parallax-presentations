@@ -161,7 +161,7 @@ describe('generateRevealHTML', () => {
       }],
     })
     const html = generateRevealHTML(pres)
-    expect(html).toContain('class="fragment fade-up"')
+    expect(html).toContain('class="fragment fade-up px-text"')
     expect(html).toContain('data-fragment-index="0"')
   })
 

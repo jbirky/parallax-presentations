@@ -43,9 +43,10 @@ import LayoutPicker from '../components/LayoutPicker'
 import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
+import { setDocumentThemeCss } from '../utils/scopeCss'
 import DeckFontOptions from '../components/DeckFontOptions'
 import { deckFontName } from '../utils/deckFont'
-import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
+import { slidePalette, ownBackground, themeOf, deckTheme, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
@@ -1363,7 +1364,7 @@ function draw() {
   // so the diagram looks there as it will on the slide
   const slideIsDark = useCallback(() => {
     // The slide's own background, or the theme's (utils/themes.js)
-    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme).dark
+    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme, presentation?.themeColors).dark
   }, [presentation])
 
   const openTikzEditor = useCallback((elementId) => {
@@ -1377,7 +1378,7 @@ function draw() {
     const slide = presentation?.slides[currentSlideIndexRef.current]
     const bg = slide?.background
     if (bg?.type === 'color' && bg.color) return bg.color
-    if (!ownBackground(bg)) return themeOf(presentation?.theme).background
+    if (!ownBackground(bg)) return deckTheme(presentation?.theme, presentation?.themeColors).background
     return slideIsDark() ? '#1e1e2e' : '#ffffff'
   }, [presentation, slideIsDark])
 
@@ -2878,7 +2879,8 @@ function draw() {
   // old dark default takes the theme's page instead (one undo step)
   const applyTheme = (id) => {
     tickStep('theme')
-    setPresentation(prev => ({
+    setPresentation(({ themeColors, ...prev }) => ({
+      // A new theme brings its own colors: the deck's Customize ones go
       ...prev,
       theme: id,
       slides: prev.slides.map(slide => {
@@ -2897,6 +2899,20 @@ function draw() {
       return styles ? { ...rest, textStyles: styles } : rest
     })
   }
+
+  // The deck's own colors over its theme's (Themes panel › Customize) and its
+  // stylesheet (the CSS tab, utils/scopeCss.js); none when cleared
+  const applyThemeColors = (colors) => {
+    setPresentation(({ themeColors, ...rest }) => (colors ? { ...rest, themeColors: colors } : rest))
+  }
+  const applyThemeCss = (css) => {
+    setPresentation(({ themeCss, ...rest }) => (css && css.trim() ? { ...rest, themeCss: css } : rest))
+  }
+
+  // The deck's stylesheet on the editor's own page, where the canvas and
+  // thumbnails read it; gone when the editor closes
+  useEffect(() => { setDocumentThemeCss(presentation?.themeCss || '') }, [presentation?.themeCss])
+  useEffect(() => () => setDocumentThemeCss(''), [])
 
   const addColumn = () => {
     const slides = presentation?.slides || []
@@ -4792,6 +4808,7 @@ function draw() {
           onBackground={openBackground}
           onChangeLayout={index => setLayoutChangeIndex(index)}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
           notice={!isTemplate && showChecklist(checklist, { guest: !!guest }) ? <GettingStarted onStep={checklistStep} /> : null}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
@@ -4836,6 +4853,7 @@ function draw() {
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
             theme={presentation.theme || 'black'}
+            themeColors={presentation.themeColors || null}
             onTheme={() => setShowThemes(v => !v)}
             themesOpen={showThemes}
           />
@@ -4992,6 +5010,7 @@ function draw() {
               onCanvasCommand={canvasCommand}
               request={canvasRequest}
               theme={presentation.theme || 'black'}
+              themeColors={presentation.themeColors || null}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -5037,7 +5056,9 @@ function draw() {
           <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)}
             tab={themeTab} onTab={setThemeTab}
             textStyles={presentation.textStyles || null} onTextStyles={applyTextStyles}
-            onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))} />
+            onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))}
+            themeColors={presentation.themeColors || null} onThemeColors={applyThemeColors}
+            themeCss={presentation.themeCss || ''} onThemeCss={applyThemeCss} />
         ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
@@ -5086,6 +5107,7 @@ function draw() {
           tab={inspectorTab}
           onTabChange={setInspectorTab}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
         />}
 
       {/* HTML / D3 Code Editor Modal */}
@@ -5665,6 +5687,7 @@ function draw() {
         <LayoutPicker
           layouts={SLIDE_TEMPLATES}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
           slideW={slideW}
           slideH={slideH}
           title={layoutChangeIndex !== null ? 'Change layout' : 'New slide'}
@@ -5715,7 +5738,7 @@ function draw() {
           slideH={presentation.slideHeight || 540}
           bibliography={presentation.bibliography || []}
           globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
-          dark={slidePalette(currentSlide, presentation.theme).dark}
+          dark={slidePalette(currentSlide, presentation.theme, presentation.themeColors).dark}
           onInsert={insertBeamerSlides}
           onClose={() => setShowBeamerModal(false)}
         />

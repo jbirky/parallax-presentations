@@ -29,7 +29,9 @@ import { text3dHtml, text3dShadowFilter } from './text3d'
 import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles } from './themes'
+import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles, deckTheme, cleanThemeColors, paletteVars } from './themes'
+import { SLIDE_CLASS, TEXT_CLASS, slideLayoutAttr, placeholderAttr } from './slideHooks'
+import { themeCssTag } from './scopeCss'
 import { themeCss, deckThemeClass } from './themeCss'
 import { isEmptyPlaceholder } from './placeholders'
 import { SHRINK_FIT_SCRIPT } from './shrinkFit'
@@ -218,9 +220,17 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // after the page's own styles and before the deck's custom CSS, or ''. A
 // theme of Parallax's own also gets its page color, which reveal.js would
 // otherwise paint from the theme it's drawn on.
-function themeStyleTag(themeId) {
+function themeStyleTag(themeId, colors = null) {
   const t = themeOf(themeId)
-  const page = t.id === themeId && t.reveal ? `:root { --r-background-color: ${t.background}; }\n` : ''
+  const own = cleanThemeColors(colors)
+  let page = t.id === themeId && t.reveal ? `:root { --r-background-color: ${t.background}; }\n` : ''
+  // The deck's own colors (deck.themeColors) for what reveal.js paints: its
+  // page (over a theme's gradient too), and text outside text boxes
+  if (own) {
+    const d = deckTheme(themeId, own)
+    page += `:root { --r-background-color: ${d.background}; --r-main-color: ${d.text}; --r-heading-color: ${d.heading}; --r-link-color: ${d.link}; }\n`
+    if (own.background) page += `.reveal-viewport { background: ${d.background}; }\n`
+  }
   const css = page + themeCss(themeId)
   return css ? `\n  <style>\n${css.replace(/<\/style/gi, '<\\/style')}\n  </style>` : ''
 }
@@ -315,7 +325,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const bgAttrs = getBackgroundAttrs(slide.background)
     // Its text and heading colors: the theme's, or for a background of its
     // own, ones that show on it (utils/themes.js)
-    const palette = slidePalette(slide, theme)
+    const palette = slidePalette(slide, theme, presentation.themeColors)
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
@@ -351,15 +361,17 @@ export function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
+          // .px-text, with its placeholder, for themes' stylesheets (slideHooks.js)
+          const textHook = (fragClass ? fragClass.replace(/"$/, ` ${TEXT_CLASS}"`) : ` class="${TEXT_CLASS}"`) + placeholderAttr(el)
           // Text that shrinks to fit its box (utils/shrinkFit.js)
           if (el.sizeMode === 'shrink') {
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+            return `<div${dataId}${textHook}${fragIdx}${gsapAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
           }
           // Auto-sized text grows with what it holds, as on the canvas
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
+          return `<div${dataId}${textHook}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -759,7 +771,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}>\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
 
@@ -779,7 +791,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     // clips the list, so the slide showed empty
     slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, !themeOf(theme).dark)}
+        ${referencesHtml(citations, footerColor, !deckTheme(theme, presentation.themeColors).dark)}
       </div>
     </section>`
   }
@@ -892,7 +904,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
-  </style>${themeStyleTag(theme)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
+  </style>${themeStyleTag(theme, presentation.themeColors)}${themeCssTag(presentation.themeCss)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 ${offersData ? deckDatasetsScript(deckData.datasets) : ''}
 </head>
 <body>
@@ -1396,8 +1408,8 @@ export function previewSlideInWindow(presentation, slideIndex) {
 // ─── PDF export (print-ready HTML, one page per fragment state) ───────────────
 
 // A page's background: the slide's own, or the theme's
-function getBgPrintStyle(bg, theme) {
-  const themed = cssText(themeBackgroundStyle(theme))
+function getBgPrintStyle(bg, theme, colors = null) {
+  const themed = cssText(themeBackgroundStyle(theme, colors))
   if (!bg || bg.type === 'none') return themed
   if (bg.type === 'color') return bg.color ? `background-color:${bg.color};` : themed
   if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
@@ -1415,7 +1427,7 @@ function generatePrintHTML(presentation) {
   const globalFont = deckTextFont(presentation.globalFont, presentation.theme)
   const bodySize = bodySizeStyle(presentation.textStyles)
   const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.slide-page')
-  const pageClass = ['slide-page', deckThemeClass(presentation.theme)].filter(Boolean).join(' ')
+  const pageClass = ['slide-page', SLIDE_CLASS, deckThemeClass(presentation.theme)].filter(Boolean).join(' ')
   const theme = presentation.theme || 'black'
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -1479,8 +1491,8 @@ function generatePrintHTML(presentation) {
     const axis = scrollAxis(slide, slideW, slideH)
     const scrolling = axis !== null
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
-    const bgStyle = canvasBg ? getBgPrintStyle(null, theme) : getBgPrintStyle(slide.background, theme)
-    const palette = slidePalette(slide, theme)
+    const bgStyle = canvasBg ? getBgPrintStyle(null, theme, presentation.themeColors) : getBgPrintStyle(slide.background, theme, presentation.themeColors)
+    const palette = slidePalette(slide, theme, presentation.themeColors)
 
     const sortedElements = (slide.elements || [])
       .filter(el => !isEmptyPlaceholder(el))
@@ -1496,8 +1508,9 @@ function generatePrintHTML(presentation) {
         if (el.type === 'text') {
           const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
-          if (el.sizeMode === 'shrink') return `<div data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
-          return `<div style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
+          const textHook = ` class="${TEXT_CLASS}"${placeholderAttr(el)}`
+          if (el.sizeMode === 'shrink') return `<div${textHook} data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+          return `<div${textHook} style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(el.src)
@@ -1737,7 +1750,7 @@ function generatePrintHTML(presentation) {
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })
     }
-    return `<div class="${pageClass}"${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};">\n${bodyHtml}\n${footerHtml}\n</div>`
+    return `<div class="${pageClass}"${slideLayoutAttr(slide)}${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};${cssText(paletteVars(palette))}">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n') + (citations.entries.length > 0
     // The references, last, as the presented deck has them
     ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
@@ -1791,7 +1804,7 @@ function generatePrintHTML(presentation) {
     #print-bar button:hover { background: #5254cc; }
     #print-bar .hint { color: rgba(255,255,255,0.5); font-size: 12px; }
     @media print { #print-bar { display: none; } body { margin-top: 0; } }${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
-  </style>${themeStyleTag(presentation.theme)}${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
+  </style>${themeStyleTag(presentation.theme, presentation.themeColors)}${themeCssTag(presentation.themeCss)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 </head>
 <body>
   <div id="print-bar">
@@ -1989,7 +2002,7 @@ export function generatePresenterHTML(presentation) {
     // Escaped: this page has this site's origin
     const bgStyle = escapeHtml((() => {
       const bg = slide.background
-      const themed = cssText(themeBackgroundStyle(presentation.theme))
+      const themed = cssText(themeBackgroundStyle(presentation.theme, presentation.themeColors))
       if (!bg) return themed
       if (bg.type === 'color') return bg.color ? `background:${bg.color};` : themed
       if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
@@ -2002,7 +2015,7 @@ export function generatePresenterHTML(presentation) {
       .slice(0, 3)
       .map(el => {
         const plain = (el.content || '').replace(/<[^>]*>/g, '').trim()
-        return plain ? `<div style="font-size:7px;color:${slidePalette(slide, presentation.theme).text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
+        return plain ? `<div style="font-size:7px;color:${slidePalette(slide, presentation.theme, presentation.themeColors).text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
       }).join('')
     return `<div class="pv-thumb" data-idx="${i}" style="width:140px;height:${thumbH}px;${bgStyle}">${textEls}<span class="pv-thumb-num">${i + 1}</span></div>`
   }).join('\n          ')

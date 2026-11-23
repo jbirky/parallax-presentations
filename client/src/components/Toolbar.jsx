@@ -202,7 +202,7 @@ export default function Toolbar({
   drawTool, onSetDrawTool,
   customFonts = [], onManageFonts,
   request = null,
-  theme = 'black', onTheme, themesOpen = false,
+  theme = 'black', themeColors = null, onTheme, themesOpen = false,
 }) {
   // The insert tools' dropdown that's open: 'image', 'shape', 'table',
   // 'insert', 'science', 'align' or 'background'
@@ -553,9 +553,9 @@ export default function Toolbar({
         )}
         {/* The slide's background */}
         {slide && onUpdateSlide && (
-          <ToolMenu id="background" minor open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} />} label="Background" title="The slide's background" width={260}>
+          <ToolMenu id="background" minor open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} colors={themeColors} />} label="Background" title="The slide's background" width={260}>
             <div style={{ padding: 8 }}>
-              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
             </div>
           </ToolMenu>
         )}

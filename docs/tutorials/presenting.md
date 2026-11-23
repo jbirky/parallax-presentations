@@ -55,6 +55,29 @@ Bauhaus does a little more than set colors. It sets headings in lowercase, puts 
 
 Pixel is an 8-bit theme: headings in capitals in Press Start 2P with a purple drop shadow, text in Pixelify Sans, gold arrow bullets, and code in VT323. The Text tab's heading font and weight take precedence over its heading font.
 
+### Your own colors
+
+Open **Customize colors** at the top of the Colors tab to set the page, text, heading, link and accent colors over the theme's. The arrow next to a color puts it back to the theme's. Picking another theme clears them, since a theme brings its own colors.
+
+### Theme CSS
+
+The **CSS** tab holds a stylesheet for this deck's slides. It shows on the slide as you type, and carries through to the presented deck, shared links and PDF exports. Rules apply inside slides only, and can target:
+
+| Target | What it is |
+| --- | --- |
+| `.px-slide` | every slide |
+| `.px-slide[data-layout=section-header]` | slides in one layout (`title`, `title-content`, `two-column`, …) |
+| `.px-text` | every text box |
+| `[data-placeholder=title]` | a layout's title, subtitle or body |
+| `var(--px-accent)` | the slide's colors: `--px-bg`, `--px-text`, `--px-heading`, `--px-link`, `--px-accent` |
+
+```css
+[data-placeholder=title] h2 { border-bottom: 6px solid var(--px-accent); }
+.px-slide[data-layout=section-header] { background: var(--px-accent); }
+```
+
+Some things are left out, and the CSS tab lists each one with its line: rules that reach outside the slide, `position: fixed`, at-rules other than `@media`, `@supports`, `@font-face` and `@keyframes`, and `url()` or `@import` from anywhere except your uploads, `data:` URLs and the font hosts decks already load (Google Fonts, cdnfonts, jsDelivr).
+
 ## Footer & page numbers
 
 1. Choose **Slide › Footer and page numbers…**.

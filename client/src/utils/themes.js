@@ -103,38 +103,87 @@ function firstColor(gradient) {
   return m ? m[1] : null
 }
 
-// A slide's own background as CSS (camelCase), with whether it's dark; null
-// when it has none and shows the theme's
+// A slide's own background as CSS (camelCase), with whether it's dark and
+// a color for it (the first of a gradient's; black for an image); null when
+// it has none and shows the theme's
 export function ownBackground(bg) {
   if (!bg) return null
-  if (bg.type === 'color' && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark(bg.color) }
-  if (bg.type === 'gradient' && bg.gradient) return { style: { background: bg.gradient }, dark: isDark(firstColor(bg.gradient)) }
-  if (bg.type === 'image' && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }, dark: true }
+  if (bg.type === 'color' && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark(bg.color), color: bg.color }
+  if (bg.type === 'gradient' && bg.gradient) {
+    const first = firstColor(bg.gradient)
+    const dark = isDark(first)
+    return { style: { background: bg.gradient }, dark, color: first || (dark ? '#000000' : '#ffffff') }
+  }
+  if (bg.type === 'image' && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }, dark: true, color: '#000000' }
   return null
 }
 
-// The theme's page as CSS (camelCase)
-export function themeBackgroundStyle(themeId) {
+// A deck's own colors (deck.themeColors, from the Themes panel's Customize),
+// over its theme's: any of these, each a hex or rgb() color
+export const THEME_COLOR_KEYS = ['background', 'text', 'heading', 'link', 'accent']
+const COLOR_VALUE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\))$/i
+
+// The colors a deck has that can be used, or null when it has none
+export function cleanThemeColors(colors) {
+  if (!colors || typeof colors !== 'object') return null
+  const out = {}
+  for (const key of THEME_COLOR_KEYS) {
+    const value = typeof colors[key] === 'string' ? colors[key].trim() : ''
+    if (value && COLOR_VALUE.test(value)) out[key] = value
+  }
+  return Object.keys(out).length ? out : null
+}
+
+// A deck's theme with its own colors: its page, text, heading and link
+// colors, its accent (the link color unless the theme or deck has one), and
+// whether it's dark, from the page color when the deck gave it one
+export function deckTheme(themeId, colors) {
   const t = themeOf(themeId)
+  const own = cleanThemeColors(colors)
+  const out = { ...t, accent: t.accent || t.link }
+  if (!own) return out
+  Object.assign(out, own)
+  if (own.link && !own.accent && !t.accent) out.accent = own.link
+  if (own.background) {
+    delete out.backgroundCss
+    out.dark = isDark(own.background, t.dark)
+  }
+  return out
+}
+
+// The theme's page as CSS (camelCase), with the deck's own colors
+export function themeBackgroundStyle(themeId, colors = null) {
+  const t = deckTheme(themeId, colors)
   return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background }
 }
 
-// What a slide shows: its background (CSS, camelCase), text, heading and link
-// colors, and whether it's dark
-export function slidePalette(slide, themeId) {
-  const t = themeOf(themeId)
+// What a slide shows: its background (CSS, camelCase) and a color for it
+// (bg), its text, heading, link and accent colors, and whether it's dark.
+// colors are the deck's own (deck.themeColors).
+export function slidePalette(slide, themeId, colors = null) {
+  const t = deckTheme(themeId, colors)
   const own = ownBackground(slide?.background)
-  if (!own) return { background: themeBackgroundStyle(themeId), text: t.text, heading: t.heading, link: t.link, dark: t.dark, own: false }
+  if (!own) return { background: themeBackgroundStyle(themeId, colors), bg: t.background, text: t.text, heading: t.heading, link: t.link, accent: t.accent, dark: t.dark, own: false }
   const match = own.dark === t.dark
   const plain = own.dark ? '#ffffff' : '#222222'
+  const link = match ? t.link : (own.dark ? '#42affa' : '#2a76dd')
   return {
     background: own.style,
+    bg: own.color,
     text: own.dark ? '#ffffff' : (match ? t.text : plain),
     heading: match ? t.heading : plain,
-    link: match ? t.link : (own.dark ? '#42affa' : '#2a76dd'),
+    link,
+    accent: match ? t.accent : link,
     dark: own.dark,
     own: true,
   }
+}
+
+// A slide's colors as the CSS variables theme stylesheets read, which every
+// slide's root (.px-slide, utils/slideHooks.js) carries in the editor, its
+// thumbnails, the presented deck and the PDF
+export function paletteVars(palette) {
+  return { '--px-bg': palette.bg, '--px-text': palette.text, '--px-heading': palette.heading, '--px-link': palette.link, '--px-accent': palette.accent }
 }
 
 // camelCase CSS as a style attribute's text

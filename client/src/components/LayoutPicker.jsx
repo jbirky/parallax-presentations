@@ -15,9 +15,9 @@ import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 const PREVIEW_W = 184
 
 // A layout at a glance: its placeholders' hints and its shapes, on the theme's page
-export function LayoutPreview({ layout, theme, slideW = 960, slideH = 540, width = PREVIEW_W }) {
+export function LayoutPreview({ layout, theme, themeColors = null, slideW = 960, slideH = 540, width = PREVIEW_W }) {
   const scale = width / slideW
-  const palette = slidePalette({}, theme)
+  const palette = slidePalette({}, theme, themeColors)
   return (
     <div style={{ width, height: Math.round(width * slideH / slideW), overflow: 'hidden', position: 'relative', borderRadius: 4 }}>
       <div className="slide-thumb-canvas" style={{
@@ -48,7 +48,7 @@ export function LayoutPreview({ layout, theme, slideW = 960, slideH = 540, width
   )
 }
 
-export default function LayoutPicker({ layouts, theme, slideW, slideH, title, current = null, onPick, onClose }) {
+export default function LayoutPicker({ layouts, theme, themeColors = null, slideW, slideH, title, current = null, onPick, onClose }) {
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() } }
     window.addEventListener('keydown', onKey, true)
@@ -62,7 +62,7 @@ export default function LayoutPicker({ layouts, theme, slideW, slideH, title, cu
         {entries.map(([key, layout]) => (
           <button key={key} type="button" className={`layout-choice ${current === key ? 'current' : ''}`}
             aria-current={current === key ? 'true' : undefined} onClick={() => onPick(key)}>
-            <LayoutPreview layout={layout} theme={theme} slideW={slideW} slideH={slideH} />
+            <LayoutPreview layout={layout} theme={theme} themeColors={themeColors} slideW={slideW} slideH={slideH} />
             <span>{layout.label}</span>
           </button>
         ))}

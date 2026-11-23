@@ -318,7 +318,7 @@ export function elementName(el) {
   return ELEMENT_NAMES[el?.type] || (el?.type ? el.type.charAt(0).toUpperCase() + el.type.slice(1) : 'Element')
 }
 
-export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black' }) {
+export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black', themeColors = null }) {
   // The inspector's tab, Format, Animate or Slide, as in Keynote; the editor
   // can choose it (Slide › Transition… opens Animate)
   const [ownTab, setOwnTab] = useState('format')
@@ -2159,7 +2159,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           <h3>Slide {(currentSlideIndex ?? 0) + 1}</h3>
           <p className="prop-hint">Select something on the slide to format it.</p>
           <h4 className="prop-subhead">Background</h4>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
         </div>
       )}
 
@@ -2732,7 +2732,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
       {tab === 'slide' && (<>
         <div className="prop-section">
           <h3>Background</h3>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
         </div>
         {/* Slide Section + Footer Style */}
         <div className="prop-section">

@@ -64,7 +64,8 @@ import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
-import { slidePalette, deckTextStyles } from '../utils/themes'
+import { slidePalette, deckTextStyles, paletteVars } from '../utils/themes'
+import { SLIDE_CLASS, TEXT_CLASS, slideLayout, textPlaceholder } from '../utils/slideHooks'
 import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
@@ -263,9 +264,9 @@ export function editLabelFor(type) {
   return EDIT_LABELS[type] || null
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black', textStyles = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black', textStyles = null, themeColors = null }) {
   // The slide's colors: its background, or the theme's (utils/themes.js)
-  const palette = slidePalette(slide, theme)
+  const palette = slidePalette(slide, theme, themeColors)
   // The deck's text styles, as variables index.css reads; their text, for
   // shrinking text to fit again when they change
   const textVars = useMemo(() => textStyleVars(deckTextStyles(textStyles, theme)), [textStyles, theme])
@@ -931,7 +932,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       )}
       <div
         ref={canvasRef}
-        className={['slide-canvas', deckThemeClass(theme)].filter(Boolean).join(' ')}
+        className={['slide-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')}
+        data-layout={slideLayout(slide) || undefined}
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
@@ -942,6 +944,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           '--slide-text': palette.text,
           '--slide-heading': palette.heading,
           '--slide-link': palette.link,
+          ...paletteVars(palette),
           ...textVars,
         }}
         onMouseDown={(e) => {
@@ -1517,6 +1520,8 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
     <div
       ref={outerRef}
       data-element-id={element.id}
+      className={element.type === 'text' ? TEXT_CLASS : undefined}
+      data-placeholder={textPlaceholder(element) || undefined}
       data-tilting={isTilting || undefined}
       style={{
         position: 'absolute',

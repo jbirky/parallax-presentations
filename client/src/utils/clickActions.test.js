@@ -991,7 +991,7 @@ describe('PDF export', () => {
         { id: 's2', elements: [text('later', { fragment: true, fragmentIndex: 1, clickAction: { type: 'prev' } })] },
       ] })
       const html = deckIn(await blob.text())
-      expect(html).toContain('<div class="slide-page" id="s-s1"')
+      expect(html).toContain('<div class="slide-page px-slide" id="s-s1"')
       expect(html.match(/id="s-s2"/g)).toHaveLength(1) // only the slide's first page
       expect(html).toContain('<a href="#s-s2" style="position:absolute;left:10px;top:20px;width:30px;height:40px;')
       expect(html).toContain('<a href="#s-s2" target="_blank">two</a>')

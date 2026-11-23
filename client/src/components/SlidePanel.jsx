@@ -5,7 +5,8 @@ import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore
 import ContextMenu from './ContextMenu'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
 import { keyLabel } from '../utils/shortcuts'
-import { slidePalette, deckTextStyles } from '../utils/themes'
+import { slidePalette, deckTextStyles, paletteVars } from '../utils/themes'
+import { SLIDE_CLASS, TEXT_CLASS, slideLayout, textPlaceholder } from '../utils/slideHooks'
 import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
@@ -59,9 +60,9 @@ function ThumbText({ el, globalFont, textStylesKey = '', citationLabels }) {
   return <div className="slide-text-content" style={{ ...style, width: '100%', height: '100%', overflow: 'hidden' }} dangerouslySetInnerHTML={html} />
 }
 
-function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, theme, textStyles }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, theme, textStyles, themeColors }) {
   const scale = THUMB_W / slideW
-  const palette = slidePalette(slide, theme)
+  const palette = slidePalette(slide, theme, themeColors)
   // The deck's text styles (utils/textStyles.js)
   const textVars = textStyleVars(deckTextStyles(textStyles, theme))
   const textStylesKey = JSON.stringify(textVars)
@@ -82,13 +83,14 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
         '--slide-text': palette.text,
         '--slide-heading': palette.heading,
         '--slide-link': palette.link,
+        ...paletteVars(palette),
         ...textVars,
-      }} className={['slide-thumb-canvas', deckThemeClass(theme)].filter(Boolean).join(' ')}>
+      }} className={['slide-thumb-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')} data-layout={slideLayout(slide) || undefined}>
         {(slide.elements || [])
           .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
           .map(el => (
-            <div key={el.id} style={{
+            <div key={el.id} className={el.type === 'text' ? TEXT_CLASS : undefined} data-placeholder={textPlaceholder(el) || undefined} style={{
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
@@ -236,7 +238,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', textStyles = null, notice = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', textStyles = null, themeColors = null, notice = null }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
@@ -455,7 +457,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} themeColors={themeColors} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -593,7 +595,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onContextMenu={e => openMenu(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} themeColors={themeColors} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>

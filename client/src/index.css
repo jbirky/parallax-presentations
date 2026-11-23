@@ -1135,6 +1135,23 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 .text-style-size .btn-icon { padding: 3px; }
 .text-style-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
 .text-style-field select { width: 100%; padding: 5px 6px; }
+/* Its Colors tab's Customize and its CSS tab (ThemeColorsEditor.jsx, ThemeCssEditor.jsx) */
+.theme-customize { margin: 0 12px 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
+.theme-customize > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.theme-customize[open] > summary { margin-bottom: 10px; }
+.theme-color-input { width: 40px; height: 26px; padding: 1px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); cursor: pointer; }
+.theme-css-text { width: 100%; min-height: 260px; box-sizing: border-box; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font: 11.5px/1.5 'JetBrains Mono', 'Fira Code', monospace; tab-size: 2; outline: none; }
+.theme-css-text:focus { border-color: var(--accent); }
+.theme-css-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: 11px; color: var(--text-muted); }
+.theme-css-link { background: none; border: none; padding: 0; color: var(--accent); font-size: 11px; cursor: pointer; }
+.theme-css-dropped { margin-bottom: 10px; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.08); font-size: 11.5px; color: var(--text-secondary); }
+.theme-css-dropped strong { display: block; margin-bottom: 4px; color: var(--text-primary); font-size: 12px; }
+.theme-css-dropped ul { margin: 0; padding-left: 16px; }
+.theme-css-hooks { font-size: 11.5px; color: var(--text-secondary); }
+.theme-css-hooks > summary { cursor: pointer; font-size: 12px; color: var(--text-primary); margin-bottom: 6px; }
+.theme-css-hooks dl { margin: 0; display: grid; gap: 6px; }
+.theme-css-hooks dt code { font-size: 11px; color: var(--accent-light); overflow-wrap: anywhere; }
+.theme-css-hooks dd { margin: 0 0 0 8px; color: var(--text-muted); }
 .text-styles-reset { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; font-size: 12px; }
 
 /* The getting-started checklist, above the slide list (components/GettingStarted.jsx) */
