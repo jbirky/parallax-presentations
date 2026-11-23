@@ -3749,6 +3749,7 @@ function draw() {
                     <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
                     <option value="Questrial, sans-serif">Questrial</option>
                     <option value="Barlow, sans-serif">Barlow</option>
+                    <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
                   </optgroup>
                   <optgroup label="Rounded">
                     <option value="Comfortaa, sans-serif">Comfortaa</option>
@@ -3769,6 +3770,7 @@ function draw() {
                     <option value="'Times New Roman', serif">Times New Roman</option>
                     <option value="'Playfair Display', serif">Playfair Display</option>
                     <option value="Merriweather, serif">Merriweather</option>
+                    <option value="'Computer Modern Serif', serif">Computer Modern</option>
                   </optgroup>
                   <optgroup label="Monospace">
                     <option value="'Courier New', monospace">Courier New</option>
