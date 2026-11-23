@@ -35,6 +35,7 @@ import { SHRINK_FIT_SCRIPT } from './shrinkFit'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 import { latinModernFaces } from './latinModern'
+import { bodySizeStyle, textStyleCss } from './textStyles'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -253,6 +254,10 @@ export function generateRevealHTML(presentation, opts = {}) {
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
   const globalFont = cssValue(presentation.globalFont)
+  // The deck's text styles (utils/textStyles.js): text boxes' body size, and
+  // rules for the headings after the page's own
+  const bodySize = bodySizeStyle(presentation.textStyles)
+  const headingCss = textStyleCss(presentation.textStyles, '.reveal .slides section')
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
   const footerTimeMode = presentation.footerTimeMode || 'none'
@@ -333,7 +338,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           : ''
         const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
+          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
           // Text that shrinks to fit its box (utils/shrinkFit.js)
           if (el.sizeMode === 'shrink') {
@@ -804,7 +809,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; }
     .reveal h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; }
     .reveal h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; }
-    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }
+    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }${headingCss ? `\n    ${headingCss.replace(/\n/g, '\n    ')}` : ''}
     .reveal ul, .reveal ol { padding-left: 1.5em; margin: 0 0 0.4em; }
     .reveal li { margin-bottom: 0.2em; line-height: inherit; }
     .reveal span { line-height: inherit; }
@@ -1395,6 +1400,8 @@ function generatePrintHTML(presentation) {
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
   const globalFont = presentation.globalFont || ''
+  const bodySize = bodySizeStyle(presentation.textStyles)
+  const headingCss = textStyleCss(presentation.textStyles, '.slide-page')
   const theme = presentation.theme || 'black'
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -1473,7 +1480,7 @@ function generatePrintHTML(presentation) {
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
         const vis = isHidden ? 'visibility:hidden;' : ''
         if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
+          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
           if (el.sizeMode === 'shrink') return `<div data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
           return `<div style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
@@ -1753,7 +1760,7 @@ function generatePrintHTML(presentation) {
     .slide-page h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
-    .slide-page h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
+    .slide-page h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }${headingCss ? `\n    ${headingCss.replace(/\n/g, '\n    ')}` : ''}
     .slide-page p  { margin: 0 0 0.4em; }
     .slide-page ul, .slide-page ol { padding-left: 1.5em; margin: 0 0 0.4em; }
     .slide-page li { margin-bottom: 0.2em; }

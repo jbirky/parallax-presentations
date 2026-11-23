@@ -8,6 +8,7 @@
 import { X, Check } from 'lucide-react'
 import { THEME_LIST, themeBackgroundStyle } from '../utils/themes'
 import { deckFont } from '../utils/deckFont'
+import TextStylesEditor from './TextStylesEditor'
 
 // One theme's title slide, small
 export function ThemeSwatch({ theme, font, title = 'Presentation title', width = 168 }) {
@@ -41,19 +42,42 @@ export default function ThemeGallery({ value, onChange, font, columns = 2, width
   )
 }
 
-// Themes, beside the slide: picking one applies it to the deck at once
-export function ThemePanel({ value, font, onChange, onClose }) {
+// Themes, beside the slide: picking one applies it to the deck at once. Its
+// Text tab sets the size and font of the deck's text (TextStylesEditor).
+export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onTab, textStyles, onTextStyles, onFont }) {
+  const tabs = onTextStyles ? [['colors', 'Colors'], ['text', 'Text']] : [['colors', 'Colors']]
+  const shown = tabs.some(([id]) => id === tab) ? tab : 'colors'
   return (
     <aside className="properties-panel theme-panel" aria-label="Themes">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 12px 4px' }}>
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Themes</h3>
         <button className="btn-icon" onClick={onClose} title="Close themes" aria-label="Close themes"><X size={15} /></button>
       </div>
-      <p className="prop-hint" style={{ padding: '0 12px', margin: '0 0 8px' }}>
-        The page, text and heading colors of every slide without a background of its own.
-      </p>
-      <div style={{ padding: '0 12px 16px' }}>
-        <ThemeGallery value={value} onChange={onChange} font={font} columns={1} width={204} />
+      {tabs.length > 1 && (
+        <div className="inspector-tabs" role="tablist" aria-label="Theme" style={{ margin: '4px 12px 10px' }}>
+          {tabs.map(([id, label]) => (
+            <button key={id} type="button" role="tab" id={`theme-tab-${id}`} aria-selected={shown === id} aria-controls="theme-tab-panel"
+              className={shown === id ? 'active' : undefined} onClick={() => onTab?.(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div id="theme-tab-panel" role={tabs.length > 1 ? 'tabpanel' : undefined} aria-labelledby={tabs.length > 1 ? `theme-tab-${shown}` : undefined}>
+        {shown === 'text' ? (
+          <div style={{ padding: '0 12px 16px' }}>
+            <TextStylesEditor textStyles={textStyles} font={font} theme={value} onChange={onTextStyles} onFont={onFont} />
+          </div>
+        ) : (
+          <>
+            <p className="prop-hint" style={{ padding: '0 12px', margin: '0 0 8px' }}>
+              The page, text and heading colors of every slide without a background of its own.
+            </p>
+            <div style={{ padding: '0 12px 16px' }}>
+              <ThemeGallery value={value} onChange={onChange} font={font} columns={1} width={204} />
+            </div>
+          </>
+        )}
       </div>
     </aside>
   )

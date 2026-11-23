@@ -1822,7 +1822,7 @@ var require_render2 = __commonJS({
   "node_modules/bit-field/lib/render.js"(exports2, module2) {
     "use strict";
     var tspan = require_lib();
-    var round3 = Math.round;
+    var round4 = Math.round;
     var getSVG = (w, h) => ["svg", {
       xmlns: "http://www.w3.org/2000/svg",
       // TODO link ns?
@@ -1869,7 +1869,7 @@ var require_render2 = __commonJS({
         return text2;
       var end = text2.length - (textWidth - availableSpace) / charWidth - 3;
       if (end > 0)
-        return text2.substring(0, round3(end)) + "...";
+        return text2.substring(0, round4(end)) + "...";
       return text2.substring(0, 1) + "...";
     };
     var text = (body, x, y, rotate) => {
@@ -1877,7 +1877,7 @@ var require_render2 = __commonJS({
       if (rotate !== void 0) {
         props.transform = "rotate(" + rotate + ")";
       }
-      return ["g", tt(round3(x), round3(y)), ["text", props].concat(tspan.parse(body))];
+      return ["g", tt(round4(x), round4(y)), ["text", props].concat(tspan.parse(body))];
     };
     var hline = (len2, x, y) => ["line", norm({ x1: x, x2: x + len2, y1: y, y2: y })];
     var vline = (len2, x, y) => ["line", norm({ x1: x, x2: x, y1: y, y2: y + len2 })];
@@ -1911,9 +1911,9 @@ var require_render2 = __commonJS({
       const height = vspace - margin.top - margin.bottom;
       const step = width / mod;
       const blanks = ["g"];
-      const bits = ["g", tt(round3(step / 2), -round3(0.5 * fontsize + 4))];
-      const names = ["g", tt(round3(step / 2), round3(0.5 * height + 0.4 * fontsize - 6))];
-      const attrs = ["g", tt(round3(step / 2), round3(height + 0.7 * fontsize - 2))];
+      const bits = ["g", tt(round4(step / 2), -round4(0.5 * fontsize + 4))];
+      const names = ["g", tt(round4(step / 2), round4(0.5 * height + 0.4 * fontsize - 6))];
+      const attrs = ["g", tt(round4(step / 2), round4(height + 0.7 * fontsize - 2))];
       desc.map((e) => {
         let lsbm = 0;
         let msbm = mod - 1;
@@ -2120,9 +2120,9 @@ var require_render2 = __commonJS({
       const width = hspace - margin.left - margin.right - 1;
       let tx = margin.left;
       const idx = hflip ? index : lanes - index - 1;
-      let ty = round3(idx * vspace + margin.top);
+      let ty = round4(idx * vspace + margin.top);
       if (compact) {
-        ty = round3(idx * height + margin.top);
+        ty = round4(idx * height + margin.top);
       }
       const res = [
         "g",
@@ -2143,7 +2143,7 @@ var require_render2 = __commonJS({
         res.push([
           "g",
           { "text-anchor": "end" },
-          text(txt, -4, round3(height / 2))
+          text(txt, -4, round4(height / 2))
         ]);
       }
       if (label && label.right !== void 0) {
@@ -2159,7 +2159,7 @@ var require_render2 = __commonJS({
         res.push([
           "g",
           { "text-anchor": "start" },
-          text(txt, width + 4, round3(height / 2))
+          text(txt, width + 4, round4(height / 2))
         ]);
       }
       return res;
@@ -2206,14 +2206,14 @@ var require_render2 = __commonJS({
       const { hspace, vspace, lanes, margin, compact, fontsize, bits, label, legend } = opt;
       if (margin.right === void 0) {
         if (label && label.right !== void 0) {
-          margin.right = round3(0.1 * hspace);
+          margin.right = round4(0.1 * hspace);
         } else {
           margin.right = 4;
         }
       }
       if (margin.left === void 0) {
         if (label && label.left !== void 0) {
-          margin.left = round3(0.1 * hspace);
+          margin.left = round4(0.1 * hspace);
         } else {
           margin.left = 4;
         }
@@ -7155,7 +7155,7 @@ function graphRuntime(P, G2, G3, config) {
       path: "rgba(255,255,255,0.9)"
     }
   };
-  const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+  const FONT2 = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
   const MATH_FONT2 = '"Cambria Math", "Latin Modern Math", "STIX Two Math", "Times New Roman", serif';
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;left:0;top:0;display:block;touch-action:none;";
@@ -7528,7 +7528,7 @@ function graphRuntime(P, G2, G3, config) {
     const camera = G3.camera(box, cam.turn + spinAngle, cam.tilt, W2, H2);
     const out = r3.draw(camera, box, W2, H2, density(), g.surfaces, g.lines, g.dots);
     if (!out) {
-      haloText("3D graphs need WebGL 2, which this browser has turned off.", W2 / 2, H2 / 2, "center", "middle", "14px " + FONT);
+      haloText("3D graphs need WebGL 2, which this browser has turned off.", W2 / 2, H2 / 2, "center", "middle", "14px " + FONT2);
       return;
     }
     ctx.save();
@@ -7565,11 +7565,11 @@ function graphRuntime(P, G2, G3, config) {
       }
       const mid = sc.kind === "diverging" && sc.min < 0 && sc.max > 0 ? 0 : (sc.min + sc.max) / 2;
       let widest = 0;
-      ctx.font = "11px " + FONT;
+      ctx.font = "11px " + FONT2;
       for (const v of [sc.max, mid, sc.min]) {
         const t = label(v);
         widest = Math.max(widest, ctx.measureText(t).width);
-        haloText(t, x - 5, yOf(v), "right", "middle", "11px " + FONT);
+        haloText(t, x - 5, yOf(v), "right", "middle", "11px " + FONT2);
       }
       const title = String(b.title || "").trim(), name = title.length > 16 ? title.slice(0, 15) + "…" : title;
       haloText(name, right, top - 17, "right", "middle", "italic 14px " + MATH_FONT2);
@@ -7578,7 +7578,7 @@ function graphRuntime(P, G2, G3, config) {
     }
   }
   function labels3(camera, box, g) {
-    const font = "12px " + FONT, nameFont = "italic 16px " + MATH_FONT2;
+    const font = "12px " + FONT2, nameFont = "italic 16px " + MATH_FONT2;
     const ox = Math.min(Math.max(0, box.xMin), box.xMax), oy = Math.min(Math.max(0, box.yMin), box.yMax), oz = g.floor;
     const taken = [];
     const fits = (text, x, y, align, size) => {
@@ -7618,7 +7618,7 @@ function graphRuntime(P, G2, G3, config) {
       ctx.strokeStyle = theme.halo;
       ctx.stroke();
       const label = e.label ? e.label : e.showCoords ? "(" + fmt(p[0]) + ", " + fmt(p[1]) + ", " + fmt(p[2]) + ")" : "";
-      if (label) haloText(label, q[0] + 9, q[1] - 7, "left", "bottom", "13px " + FONT, color2);
+      if (label) haloText(label, q[0] + 9, q[1] - 7, "left", "bottom", "13px " + FONT2, color2);
     }
   }
   function zoom3(factor) {
@@ -7728,7 +7728,7 @@ function graphRuntime(P, G2, G3, config) {
   }
   function axisNumbers({ xt, yt }) {
     if (C2.axisNumbers === false || C2.axes === false) return;
-    const font = "12px " + FONT;
+    const font = "12px " + FONT2;
     const ay = Math.min(Math.max(sy(0), 2), H2 - 18);
     const ax = Math.min(Math.max(sx(0), 30), W2 - 4);
     const originShown = X0 <= 0 && X1 >= 0 && Y0 <= 0 && Y1 >= 0;
@@ -8054,7 +8054,7 @@ function graphRuntime(P, G2, G3, config) {
       ctx.globalAlpha = 1;
     }
     const label = e.label ? e.label : e.showCoords ? "(" + fmt(p.x) + ", " + fmt(p.y) + ")" : "";
-    if (label) haloText(label, p.px + 9, p.py - 7, "left", "bottom", "13px " + FONT, e.color);
+    if (label) haloText(label, p.px + 9, p.py - 7, "left", "bottom", "13px " + FONT2, e.color);
   }
   function drawHover() {
     const { px, py, x, y, color: color2 } = hover;
@@ -8066,7 +8066,7 @@ function graphRuntime(P, G2, G3, config) {
     ctx.strokeStyle = theme.halo;
     ctx.stroke();
     const lines = hover.lines || ["(" + fmt(x) + ", " + fmt(y) + ")"];
-    ctx.font = "12px " + FONT;
+    ctx.font = "12px " + FONT2;
     const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 12;
     const h = 8 + lines.length * 15;
     const bx = Math.min(Math.max(px + 10, 2), W2 - w - 2);
@@ -8082,7 +8082,7 @@ function graphRuntime(P, G2, G3, config) {
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     lines.forEach((t, k) => {
-      ctx.font = (k === 0 && hover.titled ? "600 " : "") + "12px " + FONT;
+      ctx.font = (k === 0 && hover.titled ? "600 " : "") + "12px " + FONT2;
       ctx.fillText(t, bx + 6, by + 11.5 + k * 15);
     });
   }
@@ -8307,8 +8307,8 @@ function graphRuntime(P, G2, G3, config) {
       if (style.kind === "one") continue;
       top = style.kind === "cats" ? catKey(style, top) : scaleKey(style, top);
     }
-    notes.forEach((text, k) => haloText(text, W2 / 2, H2 / 2 + (k - (notes.length - 1) / 2) * 20, "center", "middle", "14px " + FONT, theme.text));
-    cut.forEach((text, k) => haloText(text, W2 - 8, H2 - 44 - k * 16, "right", "bottom", "12px " + FONT, theme.text));
+    notes.forEach((text, k) => haloText(text, W2 / 2, H2 / 2 + (k - (notes.length - 1) / 2) * 20, "center", "middle", "14px " + FONT2, theme.text));
+    cut.forEach((text, k) => haloText(text, W2 - 8, H2 - 44 - k * 16, "right", "bottom", "12px " + FONT2, theme.text));
   }
   function keyBox(x, y, w, h) {
     ctx.fillStyle = theme.panel;
@@ -8321,7 +8321,7 @@ function graphRuntime(P, G2, G3, config) {
   }
   function catKey(style, top) {
     const rows2 = style.cats.map((c) => [c.name, c.color]).concat(style.other ? [["Other", OTHER_COLOR]] : []);
-    ctx.font = "12px " + FONT;
+    ctx.font = "12px " + FONT2;
     const title = style.title || "";
     const w = Math.min(W2 * 0.45, Math.max(ctx.measureText(title).width, ...rows2.map((r) => ctx.measureText(r[0]).width + 18)) + 16);
     const h = 10 + (title ? 16 : 0) + rows2.length * 16;
@@ -8332,10 +8332,10 @@ function graphRuntime(P, G2, G3, config) {
     ctx.textBaseline = "top";
     if (title) {
       ctx.fillStyle = theme.panelText;
-      ctx.font = "600 12px " + FONT;
+      ctx.font = "600 12px " + FONT2;
       ctx.fillText(title, x + 8, y, w - 16);
       y += 16;
-      ctx.font = "12px " + FONT;
+      ctx.font = "12px " + FONT2;
     }
     for (const [name, c] of rows2) {
       ctx.fillStyle = c;
@@ -8355,13 +8355,13 @@ function graphRuntime(P, G2, G3, config) {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillStyle = theme.panelText;
-    ctx.font = "600 12px " + FONT;
+    ctx.font = "600 12px " + FONT2;
     ctx.fillText(style.title || "", x + 8, top + 6, w - 16);
     const grad = ctx.createLinearGradient(x + 8, 0, x + w - 8, 0);
     for (let k = 0; k <= 10; k++) grad.addColorStop(k / 10, rgb(G3.colormap(k / 10, "viridis")));
     ctx.fillStyle = grad;
     ctx.fillRect(x + 8, top + 22, w - 16, 8);
-    ctx.font = "11px " + FONT;
+    ctx.font = "11px " + FONT2;
     ctx.fillStyle = theme.panelText;
     ctx.fillText(fmt(style.min), x + 8, top + 32);
     ctx.textAlign = "right";
@@ -8746,7 +8746,7 @@ function graphRuntime(P, G2, G3, config) {
   }
   function shadeKey(y, what) {
     const x = 10, w = 110;
-    haloText(what === "divergence" ? "divergence" : "curl", x, y + 6, "left", "middle", "12px " + FONT);
+    haloText(what === "divergence" ? "divergence" : "curl", x, y + 6, "left", "middle", "12px " + FONT2);
     const grad = ctx.createLinearGradient(x, 0, x + w, 0);
     grad.addColorStop(0, theme.neg);
     grad.addColorStop(0.5, theme.mid);
@@ -8756,9 +8756,9 @@ function graphRuntime(P, G2, G3, config) {
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y + 16, w, 7);
-    haloText("−", x, y + 26, "left", "top", "11px " + FONT);
-    haloText("0", x + w / 2, y + 26, "center", "top", "11px " + FONT);
-    haloText("+", x + w, y + 26, "right", "top", "11px " + FONT);
+    haloText("−", x, y + 26, "left", "top", "11px " + FONT2);
+    haloText("0", x + w / 2, y + 26, "center", "top", "11px " + FONT2);
+    haloText("+", x + w, y + 26, "right", "top", "11px " + FONT2);
     return y + 46;
   }
   function traceDet(f) {
@@ -8799,7 +8799,7 @@ function graphRuntime(P, G2, G3, config) {
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.font = "9.5px " + FONT;
+    ctx.font = "9.5px " + FONT2;
     ctx.fillStyle = theme.text;
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
@@ -8837,7 +8837,7 @@ function graphRuntime(P, G2, G3, config) {
       "λ = " + (q.eig[0][1] ? fmt(q.eig[0][0]) + " ± " + fmt(Math.abs(q.eig[0][1])) + "i" : fmt(q.eig[0][0]) + ", " + fmt(q.eig[1][0])),
       "τ = " + fmt(q.trace) + ",  Δ = " + fmt(q.det)
     ];
-    ctx.font = "12.5px " + FONT;
+    ctx.font = "12.5px " + FONT2;
     const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12;
     const bx = x + 14 + w > W2 ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H2 - h - 4, y - h / 2));
     ctx.fillStyle = theme.panel;
@@ -8851,7 +8851,7 @@ function graphRuntime(P, G2, G3, config) {
     ctx.textBaseline = "top";
     lines.forEach((l, i) => {
       ctx.fillStyle = theme.panelText;
-      ctx.font = (i ? "" : "600 ") + "12.5px " + FONT;
+      ctx.font = (i ? "" : "600 ") + "12.5px " + FONT2;
       ctx.fillText(l, bx + 10, by + 8 + i * 18);
     });
   }
@@ -8994,7 +8994,7 @@ function graphRuntime(P, G2, G3, config) {
     rows = [];
     const params = analysis.items.filter((it) => it.kind === "param" && it.slider && !exprOf(it).hidden);
     const show = C2.showSliders !== false && !C2.print && params.length > 0;
-    panel.style.cssText = "position:absolute;left:8px;bottom:8px;display:" + (show ? "flex" : "none") + ";flex-direction:column;gap:4px;padding:6px 10px;border-radius:8px;max-height:45%;overflow:auto;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";font:13px " + FONT + ";box-shadow:0 2px 10px rgba(0,0,0,0.15);";
+    panel.style.cssText = "position:absolute;left:8px;bottom:8px;display:" + (show ? "flex" : "none") + ";flex-direction:column;gap:4px;padding:6px 10px;border-radius:8px;max-height:45%;overflow:auto;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";font:13px " + FONT2 + ";box-shadow:0 2px 10px rgba(0,0,0,0.15);";
     for (const it of params) {
       const s = sliderOf(it.name);
       const row = document.createElement("div");
@@ -9074,7 +9074,7 @@ function graphRuntime(P, G2, G3, config) {
   document.body.appendChild(clear);
   function styleClear() {
     const right = reset.style.display === "block" ? 42 : 8;
-    clear.style.cssText = "position:absolute;top:8px;right:" + right + "px;height:28px;border-radius:6px;cursor:pointer;font:12px " + FONT + ";padding:0 10px;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (clicks.length && !C2.print ? "block" : "none") + ";";
+    clear.style.cssText = "position:absolute;top:8px;right:" + right + "px;height:28px;border-radius:6px;cursor:pointer;font:12px " + FONT2 + ";padding:0 10px;background:" + theme.panel + ";border:1px solid " + theme.border + ";color:" + theme.panelText + ";display:" + (clicks.length && !C2.print ? "block" : "none") + ";";
   }
   clear.addEventListener("click", () => {
     clicks = [];
@@ -13210,7 +13210,7 @@ function simulateLogic(m, upto, override = null) {
       relax(false);
     };
     relax();
-    for (let round3 = 0; round3 < 10; round3++) {
+    for (let round4 = 0; round4 < 10; round4++) {
       const fired = [];
       for (const p of parts) {
         if (p.kind !== "dff") continue;
@@ -20848,8 +20848,8 @@ function installAnnotations(config) {
   }
   function toSlide(e, section) {
     const r = surfaceOf(section).getBoundingClientRect();
-    const round3 = (v) => Math.round(v * 10) / 10;
-    return [round3((e.clientX - r.left) * widthOf(section) / r.width), round3((e.clientY - r.top) * heightOf(section) / r.height)];
+    const round4 = (v) => Math.round(v * 10) / 10;
+    return [round4((e.clientX - r.left) * widthOf(section) / r.width), round4((e.clientY - r.top) * heightOf(section) / r.height)];
   }
   function simplify(points, tolerance) {
     if (points.length < 3) return points;
@@ -21914,6 +21914,63 @@ function latinModernFaces(url = import_libraries4.libUrl) {
   return FACES.map(([style, weight, file]) => `@font-face { font-family: 'Latin Modern Roman'; font-style: ${style}; font-weight: ${weight}; src: url('${url("latex.js", `dist/fonts/Serif/${file}.woff`)}') format('woff'); }`).join("\n");
 }
 
+// client/src/utils/textStyles.js
+var BODY_SIZE = 42;
+var HEADING_SCALE = { h1: 2.5, h2: 1.6, h3: 1.3 };
+var SIZE_KEYS = ["bodySize", "h1Size", "h2Size", "h3Size"];
+var MIN_SIZE = 8;
+var MAX_SIZE = 300;
+var HEADING_WEIGHTS = [400, 500, 600, 700, 800, 900];
+var DEFAULT_SIZES = {
+  bodySize: BODY_SIZE,
+  h1Size: BODY_SIZE * HEADING_SCALE.h1,
+  h2Size: BODY_SIZE * HEADING_SCALE.h2,
+  h3Size: BODY_SIZE * HEADING_SCALE.h3
+};
+var FONT = /^[\w\s,'"-]{1,200}$/;
+function cleanTextStyles(styles) {
+  if (!styles || typeof styles !== "object") return null;
+  const out = {};
+  for (const key of SIZE_KEYS) {
+    const n = Number(styles[key]);
+    if (styles[key] != null && styles[key] !== "" && Number.isFinite(n) && n >= MIN_SIZE && n <= MAX_SIZE) out[key] = Math.round(n * 10) / 10;
+  }
+  const font = typeof styles.headingFont === "string" ? styles.headingFont.trim() : "";
+  if (font && FONT.test(font)) out.headingFont = font;
+  const weight = Number(styles.headingWeight);
+  if (HEADING_WEIGHTS.includes(weight)) out.headingWeight = weight;
+  return Object.keys(out).length ? out : null;
+}
+function textSizes(styles) {
+  const clean = cleanTextStyles(styles) || {};
+  return Object.fromEntries(SIZE_KEYS.map((key) => [key, clean[key] ?? DEFAULT_SIZES[key]]));
+}
+var round3 = (n) => Math.round(n * 1e4) / 1e4;
+function headingEms(styles) {
+  const s = textSizes(styles);
+  return { h1: round3(s.h1Size / s.bodySize), h2: round3(s.h2Size / s.bodySize), h3: round3(s.h3Size / s.bodySize) };
+}
+function bodySizeStyle(styles) {
+  const clean = cleanTextStyles(styles);
+  return clean?.bodySize != null ? `font-size:${clean.bodySize}px;` : "";
+}
+function textStyleCss(styles, scope) {
+  const clean = cleanTextStyles(styles);
+  if (!clean) return "";
+  const em = headingEms(clean);
+  const rules = [
+    `${scope} h1 { font-size: ${em.h1}em; }`,
+    `${scope} h2 { font-size: ${em.h2}em; }`,
+    `${scope} h3 { font-size: ${em.h3}em; }`
+  ];
+  const heading = [
+    clean.headingFont && `font-family: ${clean.headingFont};`,
+    clean.headingWeight && `font-weight: ${clean.headingWeight};`
+  ].filter(Boolean).join(" ");
+  if (heading) rules.push(`${scope} :is(h1, h2, h3, h4, h5, h6) { ${heading} }`);
+  return rules.join("\n");
+}
+
 // client/src/utils/generateHTML.js
 var EMBED_RESIZE_LISTENER = "window.addEventListener('message',function(e){if(e.source===window.parent&&e.data==='parallax-resize')window.dispatchEvent(new Event('resize'))});";
 var EMBED_SCALE_SCRIPT = `
@@ -22058,6 +22115,8 @@ function generateRevealHTML(presentation, opts = {}) {
   const slideW = Number(presentation.slideWidth) || 960;
   const slideH = Number(presentation.slideHeight) || 540;
   const globalFont = cssValue(presentation.globalFont);
+  const bodySize = bodySizeStyle(presentation.textStyles);
+  const headingCss = textStyleCss(presentation.textStyles, ".reveal .slides section");
   const showFooter = presentation.showFooter || false;
   const showPageNumbers = presentation.showPageNumbers || false;
   const footerTimeMode = presentation.footerTimeMode || "none";
@@ -22115,7 +22174,7 @@ function generateRevealHTML(presentation, opts = {}) {
       const gsapAttrs2 = el.animationEnter && el.animationEnter !== "none" ? ` data-gsap-enter="${sanitizeAttr(el.animationEnter)}" data-gsap-delay="${Number(el.animationDelay) || 0}" data-gsap-duration="${Number(el.animationDuration) || 600}"` : "";
       const actionAttrs2 = clickActionAttrs(el, clickTargets);
       if (el.type === "text") {
-        const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ""}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ""}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ""}`;
+        const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ""}${bodySize}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ""}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ""}`;
         const content = resolveCitationsInHtml(el.content || "", citations.labelByKey);
         if (el.sizeMode === "shrink") {
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`;
@@ -22578,7 +22637,8 @@ ${sections}
     .reveal h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; }
     .reveal h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; }
     .reveal h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; }
-    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }
+    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }${headingCss ? `
+    ${headingCss.replace(/\n/g, "\n    ")}` : ""}
     .reveal ul, .reveal ol { padding-left: 1.5em; margin: 0 0 0.4em; }
     .reveal li { margin-bottom: 0.2em; line-height: inherit; }
     .reveal span { line-height: inherit; }

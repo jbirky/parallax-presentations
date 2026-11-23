@@ -24,6 +24,16 @@ While you edit a text box, the toolbar shows its formatting tools in place of th
 You can mix fonts, sizes, and colors within the same text box by selecting individual words and applying different styles.
 :::
 
+## Text styles for the whole deck
+
+To change every slide's text at once, open **Theme** in the toolbar (or **Slide › Text styles…**) and choose the **Text** tab. The slide beside it shows each change as you make it.
+
+- **Sizes**: Heading 1 (section headers), Heading 2 (the slide titles in every layout), Heading 3, and body text, in pixels on the 960 × 540 slide. Headings keep their size when you change body text. The arrow next to a size puts it back to the default.
+- **Fonts**: body text's font (the same setting as **Settings › Font**), and a font of their own for headings.
+- **Heading weight**: from Regular to Black.
+
+Text you've given a size or font of its own in the toolbar keeps it. Title and body placeholders still shrink their text to fit their boxes. The styles carry through to the presented deck, shared links, and PDF exports. **Reset sizes and heading font** goes back to the defaults: 42 px body text, with headings at 105, 67, and 55 px.
+
 ## Inline math
 
 You can insert LaTeX math expressions directly inside running text.

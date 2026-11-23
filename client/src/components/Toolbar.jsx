@@ -547,7 +547,7 @@ export default function Toolbar({
         <span className="toolbar-divider" />
         {/* The deck's theme, in a panel beside the slide */}
         {onTheme && (
-          <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
+          <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors and text styles" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
             <Palette size={14} /> <span className="tl-text tl-minor">Theme</span>
           </button>
         )}

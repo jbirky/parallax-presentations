@@ -43,6 +43,7 @@ import LayoutPicker from '../components/LayoutPicker'
 import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
+import DeckFontOptions from '../components/DeckFontOptions'
 import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
@@ -264,6 +265,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [inspectorTab, setInspectorTab] = useState('format')
   // The themes panel, in the inspector's place (components/ThemeGallery.jsx)
   const [showThemes, setShowThemes] = useState(false)
+  // The Themes panel's tab: its colors, or the deck's text styles
+  const [themeTab, setThemeTab] = useState('colors')
   // The slide whose layout is being changed (Slide › Change layout…)
   const [layoutChangeIndex, setLayoutChangeIndex] = useState(null)
   // The getting-started checklist (utils/gettingStarted.js), and asking the
@@ -2885,6 +2888,15 @@ function draw() {
     }))
   }
 
+  // The deck's text styles (utils/textStyles.js), from the Themes panel's
+  // Text tab; none when they're back at the defaults
+  const applyTextStyles = (styles) => {
+    setPresentation(prev => {
+      const { textStyles, ...rest } = prev
+      return styles ? { ...rest, textStyles: styles } : rest
+    })
+  }
+
   const addColumn = () => {
     const slides = presentation?.slides || []
     const is2D = slides.some(s => s.column !== undefined)
@@ -3444,7 +3456,8 @@ function draw() {
       { label: 'Change layout', title: 'Move this slide’s title and text into another layout', disabled: isViewingReferences, items: Object.entries(SLIDE_TEMPLATES).map(([key, layout]) => ({ label: layout.label, radio: true, checked: currentSlide?.layout === key, action: () => changeSlideLayout(currentSlideIndex, key) })) },
       { label: 'Background…', action: () => openBackground(), disabled: isViewingReferences },
       { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => { setShowThemes(false); setInspectorTab('animate') } },
-      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => setShowThemes(true) },
+      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => { setThemeTab('colors'); setShowThemes(true) } },
+      { label: 'Text styles…', title: 'The size and font of every slide’s titles, headings and body text', action: () => { setThemeTab('text'); setShowThemes(true) } },
       { label: 'Footer and page numbers…', action: () => setShowDefaultSettings(true) },
       '-',
       { label: 'New vertical section', title: 'A column of slides reached with ↓ when presenting', action: addColumn },
@@ -3730,64 +3743,7 @@ function draw() {
                   onChange={e => setPresentation(prev => ({ ...prev, globalFont: e.target.value || null }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
                   <option value="">Default (Arial)</option>
-                  <optgroup label="Sans-serif">
-                    <option value="Arial, sans-serif">Arial</option>
-                    <option value="'Helvetica Neue', sans-serif">Helvetica</option>
-                    <option value="Inter, sans-serif">Inter</option>
-                    <option value="'Inter Tight', sans-serif">Inter Tight</option>
-                    <option value="Roboto, sans-serif">Roboto</option>
-                    <option value="'Open Sans', sans-serif">Open Sans</option>
-                    <option value="'Source Sans 3', sans-serif">Source Sans 3</option>
-                    <option value="'Fira Sans', sans-serif">Fira Sans</option>
-                    <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
-                    <option value="Manrope, sans-serif">Manrope</option>
-                    <option value="Geist, sans-serif">Geist</option>
-                    <option value="Figtree, sans-serif">Figtree</option>
-                    <option value="Ubuntu, sans-serif">Ubuntu</option>
-                    <option value="Rubik, sans-serif">Rubik</option>
-                    <option value="'PT Sans', sans-serif">PT Sans</option>
-                    <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
-                    <option value="Questrial, sans-serif">Questrial</option>
-                    <option value="Barlow, sans-serif">Barlow</option>
-                    <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
-                  </optgroup>
-                  <optgroup label="Rounded">
-                    <option value="Comfortaa, sans-serif">Comfortaa</option>
-                    <option value="Nunito, sans-serif">Nunito</option>
-                    <option value="'Nunito Sans', sans-serif">Nunito Sans</option>
-                    <option value="Quicksand, sans-serif">Quicksand</option>
-                    <option value="Dosis, sans-serif">Dosis</option>
-                    <option value="'M PLUS Rounded 1c', sans-serif">M PLUS Rounded 1c</option>
-                    <option value="Jura, sans-serif">Jura</option>
-                  </optgroup>
-                  <optgroup label="Condensed">
-                    <option value="'Barlow Condensed', sans-serif">Barlow Condensed</option>
-                    <option value="'Asap Condensed', sans-serif">Asap Condensed</option>
-                    <option value="'Roboto Condensed', sans-serif">Roboto Condensed</option>
-                  </optgroup>
-                  <optgroup label="Serif">
-                    <option value="Georgia, serif">Georgia</option>
-                    <option value="'Times New Roman', serif">Times New Roman</option>
-                    <option value="'Playfair Display', serif">Playfair Display</option>
-                    <option value="Merriweather, serif">Merriweather</option>
-                    <option value="'Computer Modern Serif', serif">Computer Modern</option>
-                  </optgroup>
-                  <optgroup label="Monospace">
-                    <option value="'Courier New', monospace">Courier New</option>
-                    <option value="'Fira Code', monospace">Fira Code</option>
-                    <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                    <option value="Inconsolata, monospace">Inconsolata</option>
-                    <option value="'Roboto Mono', monospace">Roboto Mono</option>
-                    <option value="'Space Mono', monospace">Space Mono</option>
-                  </optgroup>
-                  <optgroup label="Display">
-                    <option value="Impact, sans-serif">Impact</option>
-                    <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
-                    <option value="Codystar, sans-serif">Codystar</option>
-                    <option value="'National Park', sans-serif">National Park</option>
-                    <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
-                    <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
-                  </optgroup>
+                  <DeckFontOptions />
                 </select>
               </div>
 
@@ -4819,6 +4775,7 @@ function draw() {
           viewSwitch={<PanelViewSwitch view="slides" onChange={chooseLeftView} />}
           slides={presentation.slides}
           globalFont={presentation.globalFont || ''}
+          textStyles={presentation.textStyles || null}
           citationLabels={citationIndex.labelByKey}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
@@ -5065,6 +5022,7 @@ function draw() {
               drawTool={drawTool}
               onAddDrawingStroke={addDrawingStroke}
               globalFont={presentation.globalFont || ''}
+              textStyles={presentation.textStyles || null}
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
             />}
           </div>
@@ -5075,7 +5033,10 @@ function draw() {
         </div>
 
         {showThemes ? (
-          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)} />
+          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)}
+            tab={themeTab} onTab={setThemeTab}
+            textStyles={presentation.textStyles || null} onTextStyles={applyTextStyles}
+            onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))} />
         ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}

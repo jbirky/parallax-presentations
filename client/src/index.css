@@ -355,9 +355,14 @@ sup[data-cite] { font-weight: 700; }
    slide's own background (utils/themes.js) */
 :is(.slide-canvas, .slide-thumb-canvas) .slide-text-content :is(h1, h2, h3, h4, h5, h6), .slide-canvas .ProseMirror :is(h1, h2, h3, h4, h5, h6) { color: var(--slide-heading, inherit); }
 :is(.slide-canvas, .slide-thumb-canvas) .slide-text-content a, .slide-canvas .ProseMirror a { color: var(--slide-link, inherit); }
-.ProseMirror h1 { font-size: 2.5em; margin-bottom: 0.4em; line-height: 1.2; }
-.ProseMirror h2 { font-size: 1.6em; margin-bottom: 0.4em; line-height: 1.2; }
-.ProseMirror h3 { font-size: 1.3em; margin-bottom: 0.4em; line-height: 1.2; }
+/* The deck's text styles (utils/textStyles.js), set as variables on the
+   slide: body text's size, the headings' sizes in em of it, and their font
+   and weight. Without them, the defaults. */
+:is(.slide-canvas, .slide-thumb-canvas) .slide-text-content, .slide-canvas .ProseMirror { font-size: var(--ts-body, 1em); }
+:is(.slide-canvas, .slide-thumb-canvas) .slide-text-content :is(h1, h2, h3, h4, h5, h6), .slide-canvas .ProseMirror :is(h1, h2, h3, h4, h5, h6) { font-family: var(--ts-heading-font, inherit); font-weight: var(--ts-heading-weight, bold); }
+.ProseMirror h1 { font-size: var(--ts-h1, 2.5em); margin-bottom: 0.4em; line-height: 1.2; }
+.ProseMirror h2 { font-size: var(--ts-h2, 1.6em); margin-bottom: 0.4em; line-height: 1.2; }
+.ProseMirror h3 { font-size: var(--ts-h3, 1.3em); margin-bottom: 0.4em; line-height: 1.2; }
 .ProseMirror h4 { margin-bottom: 0.4em; line-height: 1.2; }
 .ProseMirror p { margin-bottom: 0.4em; }
 .ProseMirror ul, .ProseMirror ol { padding-left: 1.5em; margin-bottom: 0.4em; }
@@ -438,9 +443,9 @@ sup[data-cite] { font-weight: 700; }
 .tikz-diagram-math .katex-display { margin: 0; display: inline; }
 
 /* Slide text content preview — must match present-mode CSS exactly */
-.slide-text-content h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
-.slide-text-content h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
-.slide-text-content h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
+.slide-text-content h1 { font-size: var(--ts-h1, 2.5em); font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
+.slide-text-content h2 { font-size: var(--ts-h2, 1.6em); font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
+.slide-text-content h3 { font-size: var(--ts-h3, 1.3em); font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
 .slide-text-content h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
 .slide-text-content p  { margin: 0 0 0.4em; }
 .slide-text-content ul, .slide-text-content ol { padding-left: 1.5em; margin: 0 0 0.4em; }
@@ -1118,6 +1123,19 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 .theme-choice-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 0 2px; }
 .theme-swatch { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-radius: 5px; border: 1px solid rgba(128,128,128,0.35); box-sizing: border-box; padding: 6px; overflow: hidden; }
 .theme-panel { width: 240px; }
+/* Its Text tab (components/TextStylesEditor.jsx) */
+.text-style-specimen { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(128,128,128,0.35); margin-bottom: 4px; overflow: hidden; }
+.text-styles-heading { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 14px 0 8px; }
+.text-style-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.text-style-row label { display: flex; flex-direction: column; min-width: 0; font-size: 12px; color: var(--text-primary); }
+.text-style-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.text-style-size { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.text-style-size input { width: 64px; padding: 4px 4px 4px 8px; font-variant-numeric: tabular-nums; }
+.text-style-unit { font-size: 11px; color: var(--text-muted); }
+.text-style-size .btn-icon { padding: 3px; }
+.text-style-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+.text-style-field select { width: 100%; padding: 5px 6px; }
+.text-styles-reset { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; font-size: 12px; }
 
 /* The getting-started checklist, above the slide list (components/GettingStarted.jsx) */
 .getting-started { margin: 8px 8px 0; padding: 8px 8px 6px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-card); }
