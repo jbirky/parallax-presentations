@@ -12,8 +12,9 @@
 //     SVG's as SVG, a PDF's as PNG), uploaded, the pieces stacked in a
 //     group, each layer's hidden until its step and from the step it leaves
 //     at (onInsertElements). Its background and its axes' can be left out,
-//     transparent, as savefig(transparent=True) leaves them, and a layer
-//     drawn in another color; the figure is shown as it will look.
+//     transparent, as savefig(transparent=True) leaves them (the legends'
+//     boxes too), its text and lines made white for a dark slide, and a
+//     layer drawn in another color; the figure is shown as it will look.
 // A figure kept as it is opens here again (figure: its elements; source:
 // its file, { url, name }), to change its layers: onInsertElements(elements,
 // { replace: the ids they stand in for }).
@@ -23,8 +24,9 @@ import { api } from '../utils/api'
 import { refreshGraphData } from '../utils/graphData'
 import { readPlotFile, plotToGraph, defaultChoices, baseName, keepable, splitFigure, figureElements, readFigure, pieceKey, figureLayers, panelPlot, partSteps, hasBackdrop, recolorOf } from '../utils/plotImport'
 
-// Behind a figure with a transparent background
+// Behind a figure with a transparent background, light or dark
 const CHECKERS = 'repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 16px 16px'
+const DARK_CHECKERS = 'repeating-conic-gradient(#3f3f46 0% 25%, #18181b 0% 50%) 50% / 16px 16px'
 const STEPS = Array.from({ length: 20 }, (_, i) => i + 1)
 const fmt = v => (!isFinite(v) ? '—' : Math.abs(v) >= 1e5 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(2).replace('-', '−') : String(+v.toPrecision(4)).replace('-', '−'))
 
@@ -54,6 +56,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const [graphOf, setGraphOf] = useState(null) // of several panels, the one a graph is made of
   const [previous, setPrevious] = useState(null) // the figure opened again, read (readFigure)
   const [clear, setClear] = useState(false) // kept as it is, with a transparent background
+  const [forDark, setForDark] = useState(false) // kept as it is, its text and lines white, for a dark slide
   const [look, setLook] = useState(null) // the figure as it will look: its pieces' image URLs, stacked
   const pieceUrls = useRef(new Map()) // those images, by piece and look
   const [error, setError] = useState('')
@@ -86,6 +89,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       setResult(r)
       setPrevious(prev)
       setClear(!!prev?.meta.clear)
+      setForDark(!!prev?.meta.dark)
       const fresh = defaultChoices(r.plot, oneByOne, { figure: keepable(r) })
       // (a figure not cut yet, dropped on the slide, starts from them)
       setChoices(prev && !prev.whole ? { ...fresh, ...prev.choices } : fresh)
@@ -128,21 +132,22 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
   const figure = mode === 'figure' && canKeep
   const canClear = hasBackdrop(result)
   const transparent = figure && clear && canClear
+  const inkDark = figure && forDark
 
   // The layers drawn in colors of their own
   const recolor = useMemo(() => (figure ? recolorOf(plot, choices) : new Map()), [figure, plot, choices])
   // The figure as it will look, when that's not as it was saved: its pieces,
   // cut as they will be (smaller, for a PDF), stacked. Each piece is made
   // once for each look it has (a color picked while it's dragged waits)
-  const lookKey = transparent || recolor.size ? JSON.stringify([transparent, [...recolor].map(([part, c]) => [part, c.to])]) : ''
+  const lookKey = transparent || inkDark || recolor.size ? JSON.stringify([transparent, inkDark, [...recolor].map(([part, c]) => [part, c.to])]) : ''
   useEffect(() => {
     if (!lookKey) { setLook(null); return undefined }
     let live = true
     const urls = pieceUrls.current
-    const keyOf = p => `${pieceKey(p)}|${transparent && p.backdrop ? 'clear' : ''}|${recolor.get(p.part)?.to || ''}`
+    const keyOf = p => `${pieceKey(p)}|${transparent && p.backdrop ? 'clear' : ''}|${recolor.get(p.part)?.to || ''}|${inkDark && p.inked ? 'dark' : ''}`
     const wait = setTimeout(async () => {
       try {
-        const split = await splitFigure(result, { clear: transparent, recolor, longSide: 1200, need: p => !urls.has(keyOf(p)) })
+        const split = await splitFigure(result, { clear: transparent, recolor, dark: inkDark, longSide: 1200, need: p => !urls.has(keyOf(p)) })
         for (const p of split.pieces) if (p.blob && !urls.has(keyOf(p))) urls.set(keyOf(p), URL.createObjectURL(p.blob))
         if (live) setLook(split.pieces.map(p => urls.get(keyOf(p))))
       } catch { /* the figure as saved stands for it */ }
@@ -221,11 +226,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
       }
       // (a piece with a background in it, only if that's as it was: clear, or not)
       // (a piece with a background in it only if that's as it was, clear or
-      // not; a piece in a color only if it's the color it was)
+      // not; a piece in a color only if it's the color it was; a piece a
+      // dark slide changes only if it's for the slide it was)
       const was = previous?.choices ? recolorOf(plot, previous.choices) : new Map()
       const sameColor = p => (was.get(p.part)?.to || null) === (recolor.get(p.part)?.to || null)
-      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && sameColor(p) && previous.reuse.get(pieceKey(p))?.src) || null
-      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent, recolor })
+      const had = (p, plan) => (previous && previous.plan === plan && (!p.backdrop || previous.meta.clear === transparent) && (!p.inked || previous.meta.dark === inkDark) && sameColor(p) && previous.reuse.get(pieceKey(p))?.src) || null
+      const split = await splitFigure(result, { need: (p, plan) => wanted(p) && !had(p, plan), clear: transparent, recolor, dark: inkDark })
       const src = previous?.meta.src || await upload(file.type ? file : new File([file], file.name, { type: result.kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
       const pieces = []
       for (const p of split.pieces) {
@@ -235,7 +241,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
           : had(p, split.plan)
         pieces.push({ part: p.part, run: p.run, url })
       }
-      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan, ...(transparent ? { clear: true } : {}) }
+      const meta = { id: previous?.meta.id, src, file: previous?.meta.file || file.name, plan: split.plan, ...(transparent ? { clear: true } : {}), ...(inkDark ? { dark: true } : {}) }
       const elements = figureElements(plot, pieces, previous
         ? { choices, meta, reuse: previous.reuse, box: previous.box, groupId: previous.groupId, z: previous.z }
         : { choices, meta })
@@ -363,12 +369,12 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
 
           {plot && (<>
             <div style={{ flex: '1 1 380px', minWidth: 280 }}>
-              <div data-transparent={transparent || undefined} style={{ position: 'relative', background: transparent ? CHECKERS : '#fff', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+              <div data-transparent={transparent || undefined} data-dark={inkDark || undefined} style={{ position: 'relative', background: transparent ? (inkDark ? DARK_CHECKERS : CHECKERS) : inkDark ? '#000' : '#fff', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                 {result.preview
                   ? <img src={result.preview} alt={`${file?.name || 'The figure'}, as saved`} style={{ display: 'block', width: '100%', height: 'auto', visibility: looks ? 'hidden' : 'visible' }} />
                   : <div style={{ aspectRatio: `${plot.size.width} / ${plot.size.height}` }} />}
                 {looks && (
-                  <div data-look role="img" aria-label={`${file?.name || 'The figure'}, as it will look${transparent ? ', with a transparent background' : ''}${recolor.size ? ', in the colors chosen' : ''}`} style={{ position: 'absolute', inset: 0 }}>
+                  <div data-look role="img" aria-label={`${file?.name || 'The figure'}, as it will look${transparent ? ', with a transparent background' : ''}${inkDark ? ', for a dark slide' : ''}${recolor.size ? ', in the colors chosen' : ''}`} style={{ position: 'absolute', inset: 0 }}>
                     {looks.map((url, k) => <img key={k} src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />)}
                   </div>
                 )}
@@ -408,14 +414,21 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                   )
                 })}
               </div>}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
-                {figure && (
+              {figure && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
                   <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto', opacity: canClear ? 1 : 0.55 }}
-                    title={canClear ? 'Leave out the white behind the figure and its axes, as savefig(transparent=True) does' : 'This figure has no background to leave out'}>
+                    title={canClear ? 'Leave out the white behind the figure, its axes and its legend, as savefig(transparent=True) does (the legend keeps its outline)' : 'This figure has no background to leave out'}>
                     <input type="checkbox" checked={transparent} disabled={!canClear} onChange={e => setClear(e.target.checked)} />
                     Transparent background
                   </label>
-                )}
+                  <span role="group" aria-label="Axes and text" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Axes and text</span>
+                    <button type="button" className={`btn ${!forDark ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={!forDark} title="Black text and lines, for a light slide" onClick={() => setForDark(false)}>Light</button>
+                    <button type="button" className={`btn ${forDark ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={forDark} title="White text and lines, for a dark slide (the layers keep their colors)" onClick={() => setForDark(true)}>Dark</button>
+                  </span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
                 {!figure && graphPanel && (
                   <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginRight: 'auto' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Make a graph of</span>
@@ -427,7 +440,7 @@ export default function PlotImportModal({ file: initialFile, source, figure: fig
                     </select>
                   </label>
                 )}
-                <span style={{ color: 'var(--text-muted)' }}>Show the layers</span>
+                <span style={{ color: 'var(--text-muted)', marginLeft: figure ? 'auto' : undefined }}>Show the layers</span>
                 <button type="button" className={`btn ${oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={oneByOne} onClick={() => reveal(true)}>One a step</button>
                 <button type="button" className={`btn ${!oneByOne ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: 12, padding: '3px 10px' }} aria-pressed={!oneByOne} onClick={() => reveal(false)}>All at once</button>
               </div>

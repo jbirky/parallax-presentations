@@ -137,9 +137,9 @@ export function plotFromDrawing(drawing) {
     // What draws the legend but no layer's entry (its frame, its title), for
     // keeping the figure as it is; null without a legend
     legend,
-    // What draws the figure's background and the axes', for keeping the
-    // figure as it is with them clear
-    backdrop: backdropOf(drawing, all),
+    // What draws the figure's background and the axes', and the legends'
+    // boxes, for keeping the figure as it is with them clear
+    backdrop: { ...backdropOf(drawing, all), frames: [...panels.map(p => p.read.frame), outer?.frame].filter(Boolean).map(f => ({ group: f.group || null, ops: f.ops || null, fill: f.fill, stroke: f.stroke || null })) },
     warnings,
   }
   // A legend of the figure's own: its frame (and what no layer has), and
@@ -163,7 +163,8 @@ export function plotFromDrawing(drawing) {
 
 // What draws matplotlib's figure patch and its axes patches, the white
 // behind the figure and behind each set of axes, which savefig(transparent=
-// True) leaves out: { groups: an SVG's, ops: a PDF's operators }. The
+// True) leaves out: { groups: an SVG's, ops: a PDF's operators }. (A
+// legend's box, its frame, is kept apart: its outline stays when it's clear.) The
 // figure's is the first thing drawn, a filled rectangle over the page; a set
 // of axes' is the first thing it draws (svgReader.js marks it; in a PDF,
 // findAxes found the axes by it). A twin draws none
@@ -379,6 +380,7 @@ function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
   return {
     box, X, Y, labels, grid, layers, calibrated,
     legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
+    frame: legend?.frame || null,
   }
 }
 

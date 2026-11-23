@@ -15,10 +15,14 @@
 //
 // The figure's background and the axes' (backdrop: their patch groups,
 // plotModel.js) can be left out, clear, as savefig(transparent=True) leaves
-// them: the figure is cut the same way, and a piece left with nothing to
-// draw isn't made (keptRuns). A part can be drawn in another color
-// (recolor, toFigure.js's recolorOf): its pieces' fills and strokes in its
-// color, its markers' too, but not its words.
+// them, and the legends' boxes (frames) left with only their outlines: the
+// figure is cut the same way, and a piece left with nothing to draw isn't
+// made (keptRuns). A part can be drawn in another color (recolor,
+// toFigure.js's recolorOf): its pieces' fills and strokes in its color, its
+// markers' too, but not its words. And the figure can be made for a dark
+// slide (dark): every gray turned over, black text and lines white and white
+// backgrounds black, but for what the data parts draw (data: the layers, a
+// figure legend's entries: dataParts), of which only the words are.
 
 import { runsOf, planOf, keptRuns } from './toFigure'
 
@@ -29,10 +33,11 @@ const ASIDE = new Set(['defs', 'clipPath', 'marker', 'symbol', 'pattern', 'mask'
 
 export class SplitError extends Error {}
 
-// { pieces: [{ part, run, svg, backdrop }], plan, width, height, type, ext }
-// (width and height: the viewBox's, for the shape on the slide; backdrop:
-// that a piece has a background in it, clear or not)
-export function splitSvg(text, layers, { backdrop = [], clear = false, recolor = new Map(), Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
+// { pieces: [{ part, run, svg, backdrop, inked }], plan, width, height,
+// type, ext } (width and height: the viewBox's, for the shape on the slide;
+// backdrop: that a piece has a background or a legend's box in it, clear or
+// not; inked: that it's drawn differently for a dark slide)
+export function splitSvg(text, layers, { backdrop = [], frames = [], clear = false, recolor = new Map(), dark = false, dataParts = new Set(), Parser = globalThis.DOMParser, Serializer = globalThis.XMLSerializer } = {}) {
   const doc = new Parser().parseFromString(text, 'image/svg+xml')
   const svg = doc.documentElement
   if (!svg || svg.localName !== 'svg' || doc.getElementsByTagName('parsererror').length) throw new SplitError('This file isn’t an SVG that could be read')
@@ -44,21 +49,27 @@ export function splitSvg(text, layers, { backdrop = [], clear = false, recolor =
   const owner = new Map()
   for (const l of layers) for (const g of l.groups) owner.set(g, l.id)
   const els = drawn(svg)
-  const back = backdropOf(els, backdrop)
+  const back = within(els, backdrop)
+  const frame = within(els, frames)
+  const words = els.map(inWords)
   const runs = runsOf(els.map(el => partOf(el, owner))).map(r => {
-    let n = 0
-    for (let i = r.from; i <= r.to; i++) if (back[i]) n++
-    return { ...r, backdrop: n > 0, empty: clear && n === r.size }
+    let n = 0, framed = false, worded = false
+    for (let i = r.from; i <= r.to; i++) { if (back[i]) n++; if (frame[i]) framed = true; if (words[i]) worded = true }
+    return { ...r, backdrop: n > 0 || framed, inked: !dataParts.has(r.part) || worded, empty: clear && n === r.size }
   })
 
   const pieces = keptRuns(runs).map(r => {
     const d = fresh()
-    drawn(d.documentElement).forEach((el, i) => { if (i < r.from || i > r.to || (clear && back[i])) el.remove() })
+    drawn(d.documentElement).forEach((el, i) => {
+      if (i < r.from || i > r.to || (clear && back[i])) el.remove()
+      else if (clear && frame[i]) setPaint(el, 'fill', 'none')
+    })
     dropEmpty(d)
     pruneDefs(d)
     const swap = recolor.get(r.part)
     if (swap) recolorSvg(d, swap.from, swap.to)
-    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop }
+    if (dark) darkSvg(d, dataParts.has(r.part))
+    return { part: r.part, run: r.run, svg: new Serializer().serializeToString(d), backdrop: r.backdrop, inked: r.inked }
   })
 
   const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number)
@@ -67,8 +78,8 @@ export function splitSvg(text, layers, { backdrop = [], clear = false, recolor =
   return { pieces, plan: planOf(runs), width, height, type: 'image/svg+xml', ext: 'svg' }
 }
 
-// Of what's drawn, whether each is in a background's group
-function backdropOf(els, groups) {
+// Of what's drawn, whether each is in one of these groups
+function within(els, groups) {
   const ids = new Set(groups)
   return els.map(el => {
     for (let e = el; e && e.nodeType === 1; e = e.parentNode) if (ids.has(e.getAttribute('id'))) return true
@@ -118,6 +129,52 @@ function hexColor(v) {
   return /^#[0-9a-f]{3}$/.test(c) ? `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}` : null
 }
 const inWords = el => { for (let e = el; e && e.nodeType === 1; e = e.parentNode) if (/^text_\d+$/.test(e.getAttribute('id') || '')) return true; return false }
+
+// A piece made for a dark slide: every gray it draws with (black words,
+// spines and ticks, white backgrounds, a legend's box and its light gray
+// outline) turned over, light for dark; colors as they were. wordsOnly: a
+// data part's, whose words only are (its markers, its definitions, stay)
+function darkSvg(doc, wordsOnly) {
+  const svg = doc.documentElement
+  for (const el of drawn(svg)) {
+    if (el.localName === 'image' || (wordsOnly && !inWords(el))) continue
+    for (const prop of ['fill', 'stroke']) { const turned = turnGray(paintOf(el, prop)); if (turned) setPaint(el, prop, turned) }
+  }
+  if (wordsOnly) return
+  // The definitions what's drawn uses (a tick's marker) have their own
+  const defs = [...svg.children].find(n => n.localName === 'defs')
+  for (const el of defs ? [...defs.getElementsByTagName('*')] : []) {
+    for (const prop of ['fill', 'stroke']) { const turned = turnGray(ownPaint(el, prop)); if (turned) setPaint(el, prop, turned) }
+  }
+}
+// A gray (near enough: its channels within GRAY of each other) turned over;
+// null for a color, or no paint
+const GRAY = 16
+function turnGray(paint) {
+  const hex = hexColor({ black: '#000000', white: '#ffffff' }[paint] || paint)
+  if (!hex) return null
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+  if (Math.max(...rgb) - Math.min(...rgb) > GRAY) return null
+  return `#${rgb.map(c => (255 - c).toString(16).padStart(2, '0')).join('')}`
+}
+// A fill or a stroke as drawn: its own, else what it's in has, else SVG's
+// own (a black fill, no stroke)
+function paintOf(el, prop) {
+  for (let e = el; e && e.nodeType === 1; e = e.parentNode) { const own = ownPaint(e, prop); if (own && own !== 'inherit') return own }
+  return prop === 'fill' ? '#000000' : 'none'
+}
+// An element's own fill or stroke, in its style or as an attribute
+function ownPaint(el, prop) {
+  const m = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(el.getAttribute('style') || '')
+  return ((m ? m[1] : el.getAttribute(prop)) || '').trim().toLowerCase() || null
+}
+function setPaint(el, prop, value) {
+  const style = el.getAttribute('style') || ''
+  const re = new RegExp(`((?:^|;)\\s*${prop}\\s*:\\s*)[^;]+`)
+  const base = style.trim().replace(/;\s*$/, '')
+  el.setAttribute('style', re.test(style) ? style.replace(re, `$1${value}`) : base ? `${base}; ${prop}: ${value}` : `${prop}: ${value}`)
+  el.removeAttribute(prop)
+}
 
 // Groups with nothing left in them, gone (the innermost first)
 function dropEmpty(doc) {

@@ -237,6 +237,25 @@ describe('importing a plot', () => {
     expect(els.filter(e => e.figure.part !== 'l2').some(e => 'color' in e.figure)).toBe(false)
   })
 
+  it('makes a figure kept as it is for a dark slide: its text and lines white, the layers in their colors', async () => {
+    const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/decay.svg`, 'utf8')
+    reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
+    const { onInsertElements } = await mount({ name: 'decay.svg' })
+    expect(button('Light').getAttribute('aria-pressed')).toBe('true')
+    await act(async () => button('Dark').click())
+    await settle()
+    expect(button('Dark').getAttribute('aria-pressed')).toBe('true')
+    expect(el.querySelector('[data-dark]')).not.toBeNull()
+    expect(look().getAttribute('aria-label')).toBe('decay.svg, as it will look, for a dark slide')
+    await act(async () => button('Insert figure with 2 layers').click())
+    const files = Object.fromEntries(await Promise.all(api.uploadFile.mock.calls.map(async ([f]) => [f.name, await f.text()])))
+    expect(files['decay-base.svg']).toContain('fill: #000000')
+    expect(files['decay-base.svg']).toMatch(/stroke: #ffffff/)
+    expect(files['decay-l1.svg']).toContain('stroke: #ff7f0e')
+    const [els] = onInsertElements.mock.calls[0]
+    for (const e of els) expect(e.figure.dark).toBe(true)
+  })
+
   it('makes a graph in the colors chosen', async () => {
     const { onInsert } = await mount()
     await act(async () => set(colorOf('model'), '#2ca02c'))
@@ -252,7 +271,7 @@ describe('importing a plot', () => {
     const text = readFileSync(`${process.cwd()}/src/utils/plotImport/fixtures/pair.svg`, 'utf8')
     reading.result = { kind: 'svg', text, plot: plotFromDrawing(readSvgDrawing(text)), preview: 'blob:x' }
     const { onInsertElements } = await mount({ name: 'pair.svg' })
-    const groups = [...el.querySelectorAll('[role="group"]')]
+    const groups = [...el.querySelectorAll('[aria-label="Panels"] [role="group"]')]
     expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['(a) decay', '(b) scaling'])
     expect(groups.map(g => [...g.querySelectorAll('[data-panel] select')].map(s => s.value))).toEqual([['0', '0'], ['3', '0']])
     expect(items().map(li => li.querySelector('select').value)).toEqual(['1', '2', '4', '5'])
@@ -416,11 +435,13 @@ describe('importing a plot', () => {
       expect(look()).toBeNull()
       expect(el.querySelector('[role="dialog"] img').style.visibility).toBe('visible')
       await act(async () => button('Update figure').click())
-      // The first piece has both backgrounds in it; the rest stand
-      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg'])
+      // The first piece has both backgrounds in it, the legend's its box;
+      // the rest stand
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg', 'decay-legend.svg'])
       expect(await api.uploadFile.mock.calls[0][0].text()).toContain('id="patch_2"')
+      expect(await api.uploadFile.mock.calls[1][0].text()).toMatch(/fill: #ffffff/)
       const [again] = second.onInsertElements.mock.calls[0]
-      expect(again.map(e => e.src)).toEqual(['/uploads/decay-base.svg', ...els.slice(1).map(e => e.src)])
+      expect(again.map(e => e.src)).toEqual(els.map(e => (['base', 'legend'].includes(e.figure.part) && e.figure.run === 0 ? `/uploads/decay-${e.figure.part}.svg` : e.src)))
       expect(again.some(e => 'clear' in e.figure)).toBe(false)
     })
 
@@ -438,6 +459,22 @@ describe('importing a plot', () => {
       const [again] = onInsertElements.mock.calls[0]
       expect(again.filter(e => e.figure.part === 'l2').map(e => e.figure.color)).toEqual(['#9467bd', '#9467bd', '#9467bd'])
       expect(again.filter(e => e.figure.part !== 'l2').map(e => e.src)).toEqual(els.filter(e => e.figure.part !== 'l2').map(e => e.src))
+    })
+
+    it('opened again for a dark slide, shows it so; made for a light one, cuts again only what a dark slide changes', async () => {
+      const dark = splitSvg(text, partsOf(plot, 'svg'), { dark: true, dataParts: new Set(['l1', 'l2']) })
+      const els = figureElements(plot, dark.pieces.map(p => ({ part: p.part, run: p.run, url: `/uploads/old-${p.part}-${p.run}.svg` })), {
+        choices: { l1: { step: 1 }, l2: { step: 2 } }, meta: { src: source.url, file: 'decay.svg', plan: dark.plan, dark: true },
+      })
+      const { onInsertElements } = await mount({ file: undefined, source, figure: els })
+      expect(button('Dark').getAttribute('aria-pressed')).toBe('true')
+      await act(async () => button('Light').click())
+      await act(async () => button('Update figure').click())
+      // The base, the legend's box, and the layers' legend entries (their words)
+      expect(api.uploadFile.mock.calls.map(([f]) => f.name)).toEqual(['decay-base.svg', 'decay-base-2.svg', 'decay-legend.svg', 'decay-l1-2.svg', 'decay-l2-3.svg'])
+      const [again] = onInsertElements.mock.calls[0]
+      expect(again.filter(e => ['l2:0', 'l1:0', 'l2:1'].includes(`${e.figure.part}:${e.figure.run}`)).map(e => e.src)).toEqual(['/uploads/old-l2-0.svg', '/uploads/old-l1-0.svg', '/uploads/old-l2-1.svg'])
+      expect(again.some(e => 'dark' in e.figure)).toBe(false)
     })
 
     it('says when its file can’t be fetched', async () => {

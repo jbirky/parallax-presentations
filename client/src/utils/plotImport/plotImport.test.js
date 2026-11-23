@@ -12,9 +12,9 @@ import { readSvgDrawing, parsePathData, transformOf } from './svgReader'
 import { plotFromDrawing, PlotError } from './plotModel'
 import { parseTickLabel, parseAxisOffset, markerShape } from './drawing'
 import { plotToGraph, defaultChoices } from './toGraph'
-import { planPdf, recolorPixels } from './splitPdf'
+import { planPdf, recolorPixels, turnGrays, clearPixels } from './splitPdf'
 import { splitSvg } from './splitSvg'
-import { partsOf } from './toFigure'
+import { partsOf, dataPartsOf } from './toFigure'
 
 const require = createRequire(import.meta.url)
 const fixture = name => new URL(`./fixtures/${name}`, import.meta.url)
@@ -293,6 +293,38 @@ describe('keeping a PDF figure as it is', () => {
     const bars = await readPdf('bars')
     const cut = planPdf(await operators('bars'), partsOf(bars, 'pdf'), pdfjs.OPS, { backdrop: bars.backdrop.ops, clear: true })
     expect(cut.runs[0]).toMatchObject({ part: 'base', run: 0, backdrop: true, empty: true })
+  })
+
+  it('finds the legends’ boxes as the SVG does, and knows which runs a dark slide changes', async () => {
+    for (const name of ['decay', 'bars', 'frameless-legend', 'grid', 'inset', 'pair', 'seaborn-darkgrid', 'classic']) {
+      expect((await readPdf(name)).backdrop.frames.length, name).toBe(readSvg(name).backdrop.frames.length)
+    }
+    const plot = await readPdf('decay')
+    const frame = plot.backdrop.frames[0]
+    expect(frame.fill).toBe('#ffffff')
+    const { runs, frames } = planPdf(await operators('decay'), partsOf(plot, 'pdf'), pdfjs.OPS, { backdrop: plot.backdrop.ops, frames: plot.backdrop.frames, dataParts: dataPartsOf(plot) })
+    expect([...frames]).toEqual([[frame.ops[0], { fill: '#ffffff', stroke: '#cccccc' }]])
+    const legend = runs.find(r => r.part === 'legend')
+    expect(legend.ops.has(frame.ops[0]) && legend.backdrop).toBe(true)
+    // The base, the legend's box and each layer's legend entry (its words) change on a dark slide
+    expect(runs.map(r => `${r.part}:${r.inked}`)).toEqual(['base:true', 'l2:false', 'l1:false', 'l2:false', 'base:true', 'legend:true', 'l1:true', 'l2:true'])
+  })
+
+  it('turns grays over and clears a box’s fill, pixel by pixel', () => {
+    const turned = new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255, 204, 204, 204, 128, 31, 119, 180, 255, 0, 0, 0, 0])
+    turnGrays(turned)
+    expect([...turned]).toEqual([255, 255, 255, 255, 0, 0, 0, 255, 51, 51, 51, 128, 31, 119, 180, 255, 0, 0, 0, 0])
+    // A box's white fill (at 0.8) clear; its gray outline (at 0.8) as if
+    // drawn alone, where it's over nothing and where it's over the fill
+    const box = new Uint8ClampedArray([255, 255, 255, 204, 204, 204, 204, 204, 212, 212, 212, 245])
+    clearPixels(box, '#ffffff', '#cccccc')
+    expect([...box].slice(0, 11)).toEqual([204, 204, 204, 0, 204, 204, 204, 204, 204, 204, 204])
+    // (its color over the fill stored to the nearest level)
+    expect(Math.abs(box[11] - 204)).toBeLessThanOrEqual(4)
+    // With no outline, all of it
+    const bare = new Uint8ClampedArray([255, 255, 255, 204, 250, 250, 250, 30])
+    clearPixels(bare, '#ffffff', null)
+    expect([...bare].filter((v, i) => i % 4 === 3)).toEqual([0, 0])
   })
 
   it('knows which operators show words, for a layer drawn in another color to keep its legend entry’s', async () => {

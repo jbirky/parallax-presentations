@@ -8,7 +8,7 @@ import { Window } from 'happy-dom'
 import { readSvgDrawing } from './svgReader'
 import { plotFromDrawing } from './plotModel'
 import { splitSvg, SplitError } from './splitSvg'
-import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure, keptRuns, recolorOf } from './toFigure'
+import { figureElements, readFigure, runsOf, planOf, partsOf, wholeFigure, keptRuns, recolorOf, dataPartsOf } from './toFigure'
 
 const { DOMParser, XMLSerializer } = new Window()
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -116,6 +116,48 @@ describe('keeping a figure as it is', () => {
     expect(ids(first).has('xtick_1')).toBe(true)
     expect(drawnIn(first)).toBe(drawnIn(parse(opaque.pieces[0].svg)) - 2)
     for (let k = 1; k < clear.pieces.length; k++) expect(clear.pieces[k].svg).toBe(opaque.pieces[k].svg)
+  })
+
+  it('clears a legend’s box with the background, keeping its outline', () => {
+    const { text, plot } = read('decay')
+    expect(plot.backdrop.frames).toEqual([{ group: 'patch_7', ops: null, fill: '#ffffff', stroke: '#cccccc' }])
+    const out = splitSvg(text, partsOf(plot, 'svg'), { ...opts, backdrop: plot.backdrop.groups, frames: ['patch_7'], clear: true })
+    const legend = out.pieces.find(p => p.part === 'legend')
+    expect(legend.backdrop).toBe(true)
+    const box = [...parse(legend.svg).getElementsByTagName('path')].find(e => e.parentNode.getAttribute('id') === 'patch_7')
+    expect(box.getAttribute('style')).toMatch(/^fill: none; opacity: 0\.8; stroke: #cccccc/)
+    // A legend for the whole figure has one too
+    expect(read('grid').plot.backdrop.frames).toHaveLength(1)
+  })
+
+  it('makes the figure for a dark slide: its grays turned over, the layers as they were but for their words', () => {
+    const { text, plot } = read('decay')
+    const parts = partsOf(plot, 'svg')
+    const plain = splitSvg(text, parts, opts)
+    const out = splitSvg(text, parts, { ...opts, dark: true, dataParts: dataPartsOf(plot) })
+    expect(out.plan).toBe(plain.plan)
+    expect(out.pieces.map(p => p.inked)).toEqual([true, false, false, false, true, true, true, true])
+    const byId = (doc, id) => [...doc.getElementsByTagName('*')].find(e => e.getAttribute('id') === id)
+    const base = parse(out.pieces[0].svg)
+    // The white backgrounds black; a tick's marker, and its words, white
+    expect(byId(base, 'patch_1').firstElementChild.getAttribute('style')).toBe('fill: #000000')
+    expect([...base.getElementsByTagName('path')].filter(e => e.getAttribute('id')?.startsWith('m')).every(e => /stroke: #ffffff/.test(e.getAttribute('style')))).toBe(true)
+    expect([...byId(base, 'text_1').getElementsByTagName('use')].every(u => /fill: #ffffff/.test(u.getAttribute('style')))).toBe(true)
+    expect(out.pieces[0].svg).not.toMatch(/#000000; stroke-width/)
+    // The legend's box dark, its outline darker gray
+    expect(out.pieces.find(p => p.part === 'legend').svg).toMatch(/fill: #000000; opacity: 0\.8; stroke: #333333/)
+    // A layer's drawing as it was; its legend entry's words white
+    expect(out.pieces[1].svg).toBe(plain.pieces[1].svg)
+    const entry = parse(out.pieces[6].svg)
+    expect([...byId(entry, 'text_14').getElementsByTagName('use')].every(u => /fill: #ffffff/.test(u.getAttribute('style')))).toBe(true)
+    expect(out.pieces[6].svg).toContain('stroke: #ff7f0e')
+    // A black layer stays black: only its words are turned
+    const black = text.replaceAll('#ff7f0e', '#000000')
+    const dark = splitSvg(black, parts, { ...opts, dark: true, dataParts: dataPartsOf(plot) })
+    expect(dark.pieces[2].svg).toBe(splitSvg(black, parts, opts).pieces[2].svg)
+    // Transparent and dark: no background, the legend's box clear, its outline dark
+    const both = splitSvg(text, parts, { ...opts, backdrop: plot.backdrop.groups, frames: ['patch_7'], clear: true, dark: true, dataParts: dataPartsOf(plot) })
+    expect(both.pieces.find(p => p.part === 'legend').svg).toMatch(/fill: none; opacity: 0\.8; stroke: #333333/)
   })
 
   it('draws a layer in another color: its markers, error bars, caps and legend entry, but not its words', () => {
