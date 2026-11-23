@@ -2,7 +2,9 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { exampleDeck, EXAMPLE_SLUGS, CAFFEINE_SRC } from './decks'
+import { createRequire } from 'module'
+import { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS, CAFFEINE_SRC, JSXGRAPH_PLOT } from './decks'
+import { SKETCH } from '../components/landing/FeatureShowcase'
 import { EXAMPLES, EXAMPLE_FIELDS, HERO_EXAMPLE } from './catalog'
 import { generateRevealHTML } from '../utils/generateHTML'
 import { graphNeeds, dataGraphs, embedDatasetNames } from '../utils/deckData'
@@ -73,6 +75,35 @@ describe('the example decks', () => {
       const html = generateRevealHTML(exampleDeck(slug), { notes: false })
       expect(html, slug).toContain('Reveal.initialize')
     }
+  })
+
+  it('has the decks the landing page’s showcase plays, the code as its panel shows it', () => {
+    expect(SHOWCASE_SLUGS).toEqual(['showcase-ai', 'showcase-cite', 'showcase-code', 'showcase-figure'])
+    // The decay figure kept as matplotlib drew it: its pieces in drawing
+    // order, the model's at step 1 and the measurements' at step 2, its file
+    // there to edit its layers again
+    const figure = exampleDeck('showcase-figure').slides[0].elements.filter(e => e.figure)
+    expect(figure.map(e => e.src)).toEqual(['base', 'l2', 'l1', 'l2-2', 'base-2', 'legend', 'l1-2', 'l2-3'].map(p => `/examples/figure-layers/${p}.svg`))
+    expect(new Set(figure.map(e => e.groupId)).size).toBe(1)
+    expect(figure.filter(e => e.figure.part === 'l1').map(e => e.stateSteps)).toEqual([{ 1: null }, { 1: null }])
+    expect(figure.filter(e => e.figure.part === 'l2').map(e => e.stateSteps)).toEqual([{ 2: null }, { 2: null }, { 2: null }])
+    expect(figure.find(e => e.figure.part === 'legend').stateSteps).toEqual({ 1: null })
+    expect(figure[0].figure).toMatchObject({ src: '/examples/figure-layers/decay.svg', file: 'decay.svg', part: 'base' })
+    const cite = exampleDeck('showcase-cite')
+    expect(cite.bibliography.map(e => e.key)).toEqual(['zwicky1933', 'rubin1970', 'bertone2018'])
+    expect(JSON.stringify(cite.slides).match(/data-cite=/g)).toHaveLength(3)
+    expect(generateRevealHTML(cite, { notes: false })).toContain('data-slide-id="references"')
+    const code = exampleDeck('showcase-code').slides[0].elements[0]
+    expect(code.type).toBe('html')
+    expect(code.content).toContain(SKETCH)
+    // The AI's slide: the HTML its guide shows an AI collaborator, with
+    // JSXGraph at the version Parallax bundles, so it loads from Parallax
+    const guide = createRequire(import.meta.url)('../../../server/mcp/guides.js').guideText('html')
+    const example = guide.slice(guide.indexOf('{ "op"'))
+    expect(JSON.parse(example.slice(0, example.indexOf('\n'))).spec.content).toBe(JSXGRAPH_PLOT)
+    expect(exampleDeck('showcase-ai').slides[0].elements.find(e => e.type === 'html').content).toBe(JSXGRAPH_PLOT)
+    const { devDependencies } = createRequire(import.meta.url)('../../../package.json')
+    expect(JSXGRAPH_PLOT).toContain(`cdn.jsdelivr.net/npm/jsxgraph@${devDependencies.jsxgraph}/`)
   })
 
   it('makes a fresh deck each time, and nothing for a name it doesn’t have', () => {

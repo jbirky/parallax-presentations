@@ -84,6 +84,18 @@ describe('graphs in decks', () => {
     expect(html).toContain('<span class="fragment" data-fragment-index="3" data-graph-step="g1" data-graph-step-at="3"')
   })
 
+  it('leave at their steps, which the deck steps through too', () => {
+    const el = graph([
+      { id: 'a', text: 'y = x', step: 1, until: 3 },
+      { id: 'b', text: 'y = x^2', until: 2 },
+      { id: 'c', text: 'y = x^3', until: 4, hidden: true },
+    ])
+    expect(graphSteps(el)).toEqual([1, 2, 3])
+    const html = generateRevealHTML(deck([el]))
+    expect(html).toContain('data-graph-step="g1" data-graph-step-at="2"')
+    expect(html).toContain('data-graph-step="g1" data-graph-step-at="3"')
+  })
+
   it('are told how much the deck enlarges them, to draw sharp', () => {
     const html = generateRevealHTML(deck([graph([{ id: 'a', text: 'y = x' }])]))
     expect(html).toMatch(/<iframe srcdoc="[^"]*" data-graph-id="g1" data-deck-scale /)

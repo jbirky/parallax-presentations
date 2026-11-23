@@ -124,6 +124,32 @@ const deckPageLimiter = rateLimit({
   message: 'Too many requests, please try again later',
 })
 
+// AI collaborator links (server/mcp), counted per link, not per address:
+// every Claude user's requests come from Anthropic's few addresses
+const crypto = require('crypto')
+const mcpLinkLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: IS_CLOUD ? 240 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req => 'mcp:' + crypto.createHash('sha256').update(String(req.params.secret || '')).digest('hex').slice(0, 32),
+  skip: () => !IS_CLOUD,
+  message: { error: 'Too many requests through this link, please slow down' },
+})
+// Requests with a secret that isn't a working link, per address: generous,
+// since a revoked link an app keeps trying comes from those shared addresses
+// too. The secrets are 256 random bits, so this is for the database's sake.
+const mcpMissLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: IS_CLOUD ? 300 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+  skipSuccessfulRequests: true,
+  skip: () => !IS_CLOUD,
+  message: { error: 'Too many requests, please try again later' },
+})
+
 // --- Self-hosted: this machine only ---
 // With no sign-in, whoever reaches the server can read and change every
 // presentation and use the stored GitHub and Zotero tokens. So it only
@@ -264,6 +290,8 @@ module.exports = {
   sourceFetchLimiter,
   pluginImportLimiter,
   deckPageLimiter,
+  mcpLinkLimiter,
+  mcpMissLimiter,
   statsLimiter,
   localOnly,
   listenHost,

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useRef, useMemo } from 'react'
+import { SNAP_REF_OPTIONS } from '../utils/snapRef'
 import katex from 'katex'
 import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
@@ -23,6 +24,8 @@ import { MODEL_DEFAULTS, MODEL_VIEWS, isModelFile } from '../utils/modelViewer'
 import MoleculeProperties, { CitePubChem } from './MoleculeProperties'
 import PeriodicProperties from './PeriodicProperties'
 import HarmonicsProperties from './HarmonicsProperties'
+import BackgroundEditor from './BackgroundEditor'
+import { deckFont } from '../utils/deckFont'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -229,7 +232,7 @@ function CopyTikzButton({ tikz, label = 'Copy TikZ' }) {
 function FontFamilySelect({ value, onChange, globalFont }) {
   return (
     <select className="prop-input" value={value || ''} onChange={e => onChange(e.target.value || null)}>
-      <option value="">↺ Use Global{globalFont ? ` (${globalFont.split(',')[0].replace(/'/g, '')})` : ''}</option>
+      <option value="">↺ Use Global ({deckFont(globalFont).split(',')[0].replace(/'/g, '')})</option>
       <option value="sans-serif">Default Sans</option>
       <optgroup label="Sans-serif">
         <option value="Arial, sans-serif">Arial</option>
@@ -295,9 +298,29 @@ function FontFamilySelect({ value, onChange, globalFont }) {
   )
 }
 
-export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState }) {
+// What the inspector calls an element, at the top of its tabs
+const ELEMENT_NAMES = {
+  text: 'Text box', textpath: 'Text path', text3d: '3D text', kinetic: 'Kinetic text', image: 'Image', shape: 'Shape',
+  table: 'Table', video: 'Video', audio: 'Audio', model: '3D model', icon: 'Icon', callout: 'Callout', drawing: 'Drawing',
+  html: 'HTML embed', d3: 'D3 embed', p5: 'p5.js sketch', code: 'Code', latex: 'LaTeX', markdown: 'Markdown',
+  equation: 'Interactive equation', timeline: 'Timeline', graph: 'Graph', tikz: 'TikZ diagram', diagram: 'Diagram',
+  feynman: 'Feynman diagram', circuit: 'Circuit diagram', logic: 'Logic diagram', freebody: 'Free-body diagram',
+  venn: 'Venn diagram', timing: 'Timing diagram', geometry: 'Geometry construction', molecule: 'Molecule',
+  periodic: 'Periodic table', harmonics: 'Spherical harmonics',
+}
+export function elementName(el) {
+  if (el?.type === 'graph' && el.dims === 3) return '3D graph'
+  return ELEMENT_NAMES[el?.type] || (el?.type ? el.type.charAt(0).toUpperCase() + el.type.slice(1) : 'Element')
+}
+
+export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black' }) {
+  // The inspector's tab, Format, Animate or Slide, as in Keynote; the editor
+  // can choose it (Slide › Transition… opens Animate)
+  const [ownTab, setOwnTab] = useState('format')
+  const tab = tabProp || ownTab
+  const chooseTab = t => { setOwnTab(t); onTabChange?.(t) }
   const [videoUploading, setVideoUploading] = useState(false)
-  const [collapsed, setCollapsed] = useState({ element: false, slideGroup: true, transition: true, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: true, notes: true, customCss: true })
+  const [collapsed, setCollapsed] = useState({ advanced: true, slideGroup: true, transition: false, scroll: true, presentGrid: true, layoutGrid: true, axisLines: true, footer: false, customCss: true })
   const SectionHead = ({ k, children }) => (
     <h3 onClick={() => setCollapsed(p => ({ ...p, [k]: !p[k] }))} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
       {children} <span style={{ fontSize: 10, opacity: 0.5 }}>{collapsed[k] ? '▸' : '▾'}</span>
@@ -450,11 +473,21 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
         </div>
       )}
 
-      {/* Element Section */}
-      {selectedElement && (
+      {/* Format, Animate and Slide, as in Keynote */}
+      <div className="inspector-tabs" role="tablist" aria-label="Inspector">
+        {[['format', 'Format'], ['animate', 'Animate'], ['slide', 'Slide']].map(([id, label]) => (
+          <button key={id} type="button" role="tab" id={`inspector-tab-${id}`} aria-selected={tab === id} aria-controls="inspector-panel"
+            className={tab === id ? 'active' : undefined} onClick={() => chooseTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div id="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${tab}`}>
+
+      {/* Format: what's selected. Text, Box, then Arrange */}
+      {tab === 'format' && selectedElement && (
         <div className="prop-section">
-          <SectionHead k="element">Element</SectionHead>
-          {!collapsed.element && (<>
+          <h3>{elementName(selectedElement)}</h3>
 
           {selectedElementIds && selectedElementIds.length > 1 && (
             <div style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -463,55 +496,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
             </div>
           )}
 
-          {/* Position */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>X</div>
-              <input className="prop-input" type="number" value={Math.round(selectedElement.x)} onChange={e => onUpdateElement({ x: Number(e.target.value) })} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Y</div>
-              <input className="prop-input" type="number" value={Math.round(selectedElement.y)} onChange={e => onUpdateElement({ y: Number(e.target.value) })} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Rot</div>
-              <input className="prop-input" type="number" step="1" value={Math.round(selectedElement.rotation || 0)} onChange={e => onUpdateElement({ rotation: Number(e.target.value) % 360 })} title="Rotation angle in degrees" />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>W</div>
-              <input className="prop-input" type="number" value={Math.round(selectedElement.width)} onChange={e => onUpdateElement({ width: Number(e.target.value) })} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>H</div>
-              <input className="prop-input" type="number"
-                value={Math.round(selectedElement.height)}
-                onChange={e => onUpdateElement({ height: Number(e.target.value) })}
-                disabled={selectedElement.type === 'text' && selectedElement.sizeMode === 'auto'}
-                style={{ opacity: selectedElement.type === 'text' && selectedElement.sizeMode === 'auto' ? 0.4 : 1 }}
-              />
-            </div>
-          </div>
-
-          {/* Text box sizing mode */}
-          {selectedElement.type === 'text' && (
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              {[['fixed', 'Fixed Box'], ['auto', 'Auto Fit']].map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => onUpdateElement({ sizeMode: mode })}
-                  style={{
-                    flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, cursor: 'pointer',
-                    border: '1px solid var(--border)',
-                    background: (selectedElement.sizeMode || 'fixed') === mode ? 'var(--accent)' : 'var(--bg-hover)',
-                    color: (selectedElement.sizeMode || 'fixed') === mode ? 'white' : 'var(--text-secondary)',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
+          {selectedElement.type === 'text' && <h4 className="prop-subhead">Text</h4>}
           {/* Text spacing controls */}
           {selectedElement.type === 'text' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
@@ -538,13 +523,6 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               </div>
             </div>
           )}
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-            <input type="checkbox" checked={selectedElement.locked || false}
-              onChange={e => onUpdateElement({ locked: e.target.checked })}
-              style={{ accentColor: 'var(--accent)' }} />
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedElement.locked ? '🔒' : '🔓'} Lock element</span>
-          </label>
 
           {/* HTML embed options */}
           {selectedElement.type === 'html' && (
@@ -1977,6 +1955,155 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
             </div>
           )}
 
+          {/* Drawing element options */}
+          {selectedElement.type === 'drawing' && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Drawing</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <input type="checkbox"
+                    checked={selectedElement.smooth !== false}
+                    onChange={e => onUpdateElement({ smooth: e.target.checked })}
+                    style={{ accentColor: 'var(--accent)' }}
+                  />
+                  Auto-smooth
+                </label>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {(selectedElement.paths || []).length} stroke{(selectedElement.paths || []).length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '4px 8px', color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
+                onClick={() => onUpdateElement({ paths: [] })}
+              >
+                Clear all strokes
+              </button>
+            </div>
+          )}
+
+          {/* A community plugin's element: which plugin, at which version, and a newer one when there is */}
+          {pluginInfo && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{pluginInfo.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: pluginInfo.update ? 6 : 0 }}>
+                Version {pluginInfo.version}
+                {pluginInfo.slug && <>{' · '}<a href={`/plugins/${encodeURIComponent(pluginInfo.slug)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Its page</a></>}
+              </div>
+              {pluginInfo.update && (
+                <>
+                  {pluginInfo.update.unavailable && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>This version isn’t available any more.</div>}
+                  <button className="btn btn-secondary" onClick={() => onUpdatePlugin?.(pluginInfo.update)} style={{ fontSize: 12, padding: '4px 10px' }}>
+                    {pluginInfo.update.unavailable ? `Use ${pluginInfo.update.to} in this deck` : `Update this deck to ${pluginInfo.update.to}`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {(selectedElement.type === 'text' || (selectedElement.type !== 'html' && selectedElement.type !== 'code')) && <h4 className="prop-subhead">Box</h4>}
+          {/* Text box sizing mode */}
+          {selectedElement.type === 'text' && (
+            <div role="radiogroup" aria-label="Fit" style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {[['fixed', 'Fixed size'], ['shrink', 'Shrink text'], ['auto', 'Grow box']].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  role="radio"
+                  aria-checked={(selectedElement.sizeMode || 'fixed') === mode}
+                  title={{ auto: 'The box grows to fit its text', shrink: 'The text gets smaller to fit the box', fixed: 'The box and its text keep their size' }[mode]}
+                  onClick={() => onUpdateElement({ sizeMode: mode })}
+                  style={{
+                    flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                    background: (selectedElement.sizeMode || 'fixed') === mode ? 'var(--accent)' : 'var(--bg-hover)',
+                    color: (selectedElement.sizeMode || 'fixed') === mode ? 'white' : 'var(--text-secondary)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Drop Shadow */}
+          {selectedElement.type !== 'html' && selectedElement.type !== 'code' && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Drop Shadow</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 28px', gap: 6, alignItems: 'end' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>X</div>
+                  <input className="prop-input" type="number" value={selectedElement.shadowX ?? 0} onChange={e => onUpdateElement({ shadowX: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Y</div>
+                  <input className="prop-input" type="number" value={selectedElement.shadowY ?? 0} onChange={e => onUpdateElement({ shadowY: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Blur</div>
+                  <input className="prop-input" type="number" min="0" value={selectedElement.shadowBlur ?? 0} onChange={e => onUpdateElement({ shadowBlur: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}></div>
+                  <input type="color" style={{ width: 28, height: 28, padding: 2, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+                    value={selectedElement.shadowColor || '#000000'}
+                    onChange={e => onUpdateElement({ shadowColor: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <h4 className="prop-subhead">Arrange</h4>
+          {/* Position */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>X</div>
+              <input className="prop-input" type="number" value={Math.round(selectedElement.x)} onChange={e => onUpdateElement({ x: Number(e.target.value) })} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Y</div>
+              <input className="prop-input" type="number" value={Math.round(selectedElement.y)} onChange={e => onUpdateElement({ y: Number(e.target.value) })} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Rot</div>
+              <input className="prop-input" type="number" step="1" value={Math.round(selectedElement.rotation || 0)} onChange={e => onUpdateElement({ rotation: Number(e.target.value) % 360 })} title="Rotation angle in degrees" />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>W</div>
+              <input className="prop-input" type="number" value={Math.round(selectedElement.width)} onChange={e => onUpdateElement({ width: Number(e.target.value) })} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>H</div>
+              <input className="prop-input" type="number"
+                value={Math.round(selectedElement.height)}
+                onChange={e => onUpdateElement({ height: Number(e.target.value) })}
+                disabled={selectedElement.type === 'text' && selectedElement.sizeMode === 'auto'}
+                style={{ opacity: selectedElement.type === 'text' && selectedElement.sizeMode === 'auto' ? 0.4 : 1 }}
+              />
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
+            <input type="checkbox" checked={selectedElement.locked || false}
+              onChange={e => onUpdateElement({ locked: e.target.checked })}
+              style={{ accentColor: 'var(--accent)' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedElement.locked ? '🔒' : '🔓'} Lock element</span>
+          </label>
+
+          {/* The point of the element that snaps to the grid and guides */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="The point of the element that snaps to the grid and guides">Anchor point</span>
+            <div role="radiogroup" aria-label="Anchor point" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 16px)', gap: 2 }}>
+              {SNAP_REF_OPTIONS.map(opt => {
+                const on = (selectedElement.snapRef || 'ul') === opt.id
+                return (
+                  <button key={opt.id} type="button" role="radio" aria-checked={on} aria-label={opt.label} title={opt.label}
+                    onClick={() => onUpdateElement({ snapRef: opt.id })}
+                    style={{ width: 16, height: 16, padding: 0, borderRadius: 3, border: '1px solid var(--border)', background: on ? 'var(--accent)' : 'var(--bg-hover)', cursor: 'pointer' }} />
+                )
+              })}
+            </div>
+          </div>
+
           {/* Pinned on a scrolling slide */}
           {(() => {
             const vw = presentation?.slideWidth || 960
@@ -2006,9 +2133,39 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
             )
           })()}
 
+          {/* Layer buttons, not while recording a state */}
+          {!recordingState && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onBringForward}>↑ Forward</button>
+            <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onSendBackward}>↓ Backward</button>
+          </div>
+          )}
+
+          {/* Delete */}
+          <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={onDeleteElement}>
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Format with nothing selected: the slide */}
+      {tab === 'format' && !selectedElement && (
+        <div className="prop-section">
+          <h3>Slide {(currentSlideIndex ?? 0) + 1}</h3>
+          <p className="prop-hint">Select something on the slide to format it.</p>
+          <h4 className="prop-subhead">Background</h4>
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+        </div>
+      )}
+
+      {/* Animate: how what's selected comes in and responds, and how the
+          slide comes in */}
+      {tab === 'animate' && selectedElement && (
+        <div className="prop-section">
+          <h3>{elementName(selectedElement)}</h3>
           {/* Slide entry animation (GSAP) */}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Slide Entry Animation</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Entry animation, as the slide opens</div>
             <select
               className="prop-input"
               style={{ padding: '4px 6px', marginBottom: 6, width: '100%' }}
@@ -2075,7 +2232,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
                 onChange={e => onUpdateElement({ fragment: e.target.checked, fragmentIndex: selectedElement.fragmentIndex ?? 1 })}
                 style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
               />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Fragment (animate in)</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Appear on click</span>
             </label>
             {selectedElement.fragment && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -2132,79 +2289,6 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               </div>
             )}
           </div>
-
-          {/* Drawing element options */}
-          {selectedElement.type === 'drawing' && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Drawing</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
-                  <input type="checkbox"
-                    checked={selectedElement.smooth !== false}
-                    onChange={e => onUpdateElement({ smooth: e.target.checked })}
-                    style={{ accentColor: 'var(--accent)' }}
-                  />
-                  Auto-smooth
-                </label>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {(selectedElement.paths || []).length} stroke{(selectedElement.paths || []).length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '4px 8px', color: '#f87171', borderColor: 'rgba(248,113,113,0.4)' }}
-                onClick={() => onUpdateElement({ paths: [] })}
-              >
-                Clear all strokes
-              </button>
-            </div>
-          )}
-
-          {/* Drop Shadow */}
-          {selectedElement.type !== 'html' && selectedElement.type !== 'code' && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Drop Shadow</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 28px', gap: 6, alignItems: 'end' }}>
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>X</div>
-                  <input className="prop-input" type="number" value={selectedElement.shadowX ?? 0} onChange={e => onUpdateElement({ shadowX: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Y</div>
-                  <input className="prop-input" type="number" value={selectedElement.shadowY ?? 0} onChange={e => onUpdateElement({ shadowY: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Blur</div>
-                  <input className="prop-input" type="number" min="0" value={selectedElement.shadowBlur ?? 0} onChange={e => onUpdateElement({ shadowBlur: Number(e.target.value) })} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}></div>
-                  <input type="color" style={{ width: 28, height: 28, padding: 2, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                    value={selectedElement.shadowColor || '#000000'}
-                    onChange={e => onUpdateElement({ shadowColor: e.target.value })} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* A community plugin's element: which plugin, at which version, and a newer one when there is */}
-          {pluginInfo && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{pluginInfo.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: pluginInfo.update ? 6 : 0 }}>
-                Version {pluginInfo.version}
-                {pluginInfo.slug && <>{' · '}<a href={`/plugins/${encodeURIComponent(pluginInfo.slug)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Its page</a></>}
-              </div>
-              {pluginInfo.update && (
-                <>
-                  {pluginInfo.update.unavailable && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>This version isn’t available any more.</div>}
-                  <button className="btn btn-secondary" onClick={() => onUpdatePlugin?.(pluginInfo.update)} style={{ fontSize: 12, padding: '4px 10px' }}>
-                    {pluginInfo.update.unavailable ? `Use ${pluginInfo.update.to} in this deck` : `Update this deck to ${pluginInfo.update.to}`}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
 
           {/* Interactions when presented: what a click or hover on it does, and being shown or hidden by one */}
           {onUpdateWithGroup && (() => {
@@ -2560,557 +2644,549 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               </div>
             )
           })()}
-
-          {/* Layer buttons, not while recording a state */}
-          {!recordingState && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onBringForward}>↑ Forward</button>
-            <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '5px 8px', justifyContent: 'center' }} onClick={onSendBackward}>↓ Backward</button>
-          </div>
-          )}
-
-          {/* Delete */}
-          <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center', fontSize: 12 }} onClick={onDeleteElement}>
-            Delete Element
-          </button>
-          </>)}
         </div>
       )}
-
-      {/* Slide Grouping */}
-      <div className="prop-section">
-        <SectionHead k="slideGroup">Slide Group</SectionHead>
-        {!collapsed.slideGroup && (<>
-        {(() => {
-          const slides = presentation?.slides || []
-          const idx = slides.indexOf(slide)
-          const groupId = slide.slideGroup
-          const groupSlides = groupId ? slides.map((s, i) => ({ s, i })).filter(({ s }) => s.slideGroup === groupId) : []
-          const isGrouped = !!groupId && groupSlides.length > 1
-          const isFirst = isGrouped && groupSlides[0].i === idx
-          const posLabel = isGrouped ? `${groupSlides.findIndex(g => g.i === idx) + 1} of ${groupSlides.length}` : null
-          const prevSlide = idx > 0 ? slides[idx - 1] : null
-          const nextSlide = idx < slides.length - 1 ? slides[idx + 1] : null
-          const canGroupPrev = idx > 0
-          const canGroupNext = idx < slides.length - 1
-
-          const groupWith = (otherIdx) => {
-            const other = slides[otherIdx]
-            const gid = slide.slideGroup || other.slideGroup || crypto.randomUUID()
-            const patch = {}
-            slides.forEach((s, i) => {
-              if (i === idx || i === otherIdx || (s.slideGroup && (s.slideGroup === slide.slideGroup || s.slideGroup === other.slideGroup))) {
-                patch[i] = gid
-              }
-            })
-            const updated = slides.map((s, i) => patch[i] !== undefined ? { ...s, slideGroup: patch[i] } : s)
-            onUpdateSlide({ __replaceAllSlides: updated })
-          }
-
-          const ungroup = () => {
-            const updated = slides.map(s => s.slideGroup === groupId ? { ...s, slideGroup: null } : s)
-            onUpdateSlide({ __replaceAllSlides: updated })
-          }
-
-          const ungroupThis = () => {
-            onUpdateSlide({ slideGroup: null })
-          }
-
-          return (
-            <div>
-              {isGrouped ? (
-                <div>
-                  <div style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    Slide {posLabel} in group ({groupSlides.length} slides share page number)
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={ungroupThis}>Remove from group</button>
-                    <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={ungroup}>Ungroup all</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Group with adjacent slides to share the same page number.</div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {canGroupPrev && (
-                      <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={() => groupWith(idx - 1)}>
-                        Group with prev
-                      </button>
-                    )}
-                    {canGroupNext && (
-                      <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={() => groupWith(idx + 1)}>
-                        Group with next
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-        </>)}
-      </div>
-
-      {/* Auto-Animate & Transition */}
-      <div className="prop-section">
-        <SectionHead k="transition">Transition</SectionHead>
-        {!collapsed.transition && (<>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-          <input type="checkbox" checked={slide.autoAnimate || false}
-            onChange={e => onUpdateSlide({ autoAnimate: e.target.checked })}
-            style={{ accentColor: 'var(--accent)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Auto-animate from previous slide</span>
-        </label>
-        {slide.autoAnimate && (
-          <div style={{ marginBottom: 10, padding: '6px 8px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
-              Elements with the same ID on adjacent slides will morph between positions. Duplicate a slide, rearrange elements, and enable this to see morphing transitions.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Duration (s)</div>
-                <input className="prop-input" type="number" min="0.1" max="5" step="0.1"
-                  value={slide.autoAnimateDuration || 1}
-                  onChange={e => onUpdateSlide({ autoAnimateDuration: Math.max(0.1, Math.min(5, Number(e.target.value) || 1)) })}
-                />
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Easing</div>
-                <select className="prop-input" value={slide.autoAnimateEasing || 'ease'}
-                  onChange={e => onUpdateSlide({ autoAnimateEasing: e.target.value })}
-                >
-                  <option value="ease">Ease</option>
-                  <option value="ease-in">Ease In</option>
-                  <option value="ease-out">Ease Out</option>
-                  <option value="ease-in-out">Ease In-Out</option>
-                  <option value="linear">Linear</option>
-                  <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">Smooth</option>
-                  <option value="cubic-bezier(0.68, -0.55, 0.27, 1.55)">Spring</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Slide transition</div>
-            <select className="prop-input" value={slide.transition || ''}
-              onChange={e => onUpdateSlide({ transition: e.target.value || null })}
-            >
-              <option value="">Default</option>
-              <option value="none">None</option>
-              <option value="fade">Fade</option>
-              <option value="slide">Slide</option>
-              <option value="convex">Convex</option>
-              <option value="concave">Concave</option>
-              <option value="zoom">Zoom</option>
-              <option value="differential-rotation">Differential Rotation</option>
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Speed</div>
-            <select className="prop-input" value={slide.transitionSpeed || ''}
-              onChange={e => onUpdateSlide({ transitionSpeed: e.target.value || null })}
-            >
-              <option value="">Default</option>
-              <option value="fast">Fast</option>
-              <option value="slow">Slow</option>
-            </select>
-          </div>
+      {tab === 'animate' && !selectedElement && (
+        <div className="prop-section">
+          <p className="prop-hint" style={{ margin: 0 }}>Select something on the slide to animate it. How the slide itself comes in is below.</p>
         </div>
-        </>)}
-      </div>
-
-      {/* Scrolling: a canvas taller or wider than the screen */}
-      <div className="prop-section">
-        <SectionHead k="scroll">Scrolling</SectionHead>
-        {!collapsed.scroll && (() => {
-          const vw = presentation?.slideWidth || 960
-          const vh = presentation?.slideHeight || 540
-          const axis = scrollAxis(slide, vw, vh)
-          const canvasW = getCanvasWidth(slide, vw, vh)
-          const canvasH = getCanvasHeight(slide, vh)
-          const screen = axis === 'x' ? vw : vh
-          const length = axis === 'x' ? canvasW : canvasH
-          const screens = length / screen
-          // A slide scrolls one way, so a length for one clears the other's
-          const setScroll = (to, px) => onUpdateSlide(to === 'x'
-            ? { scrollWidth: px > vw ? Math.min(Math.round(px), vw * MAX_SCREENS) : undefined, scrollHeight: undefined }
-            : { scrollHeight: px > vh ? Math.min(Math.round(px), vh * MAX_SCREENS) : undefined, scrollWidth: undefined })
-          const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && ((el.x ?? 0) >= canvasW || (el.y ?? 0) >= canvasH)).length
-          return (<>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Scroll</div>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              {[[null, 'Off'], ['y', '\u2193 Down'], ['x', '\u2192 Sideways']].map(([to, label]) => (
-                <button
-                  key={label}
-                  className={`btn ${axis === to ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
-                  // Turning the other way keeps how many screens the canvas is
-                  onClick={() => to ? setScroll(to, (axis ? screens : 2) * (to === 'x' ? vw : vh)) : setScroll('y', 0)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {axis && (<>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas {axis === 'x' ? 'width' : 'height'}</div>
-              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                {[1.5, 2, 3].map(k => (
-                  <button
-                    key={k}
-                    className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
-                    onClick={() => setScroll(axis, screen * k)}
-                  >
-                    {`${k}\u00d7`}
-                  </button>
-                ))}
+      )}
+      {tab === 'animate' && (<>
+        {/* Auto-Animate & Transition */}
+        <div className="prop-section">
+          <SectionHead k="transition">Transition</SectionHead>
+          {!collapsed.transition && (<>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
+            <input type="checkbox" checked={slide.autoAnimate || false}
+              onChange={e => onUpdateSlide({ autoAnimate: e.target.checked })}
+              style={{ accentColor: 'var(--accent)' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Auto-animate from previous slide</span>
+          </label>
+          {slide.autoAnimate && (
+            <div style={{ marginBottom: 10, padding: '6px 8px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
+                Elements with the same ID on adjacent slides will morph between positions. Duplicate a slide, rearrange elements, and enable this to see morphing transitions.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{axis === 'x' ? 'Width' : 'Height'} (px)</div>
-                  {/* Set on Enter or leaving the field: a length typed a digit at a
-                      time would turn scrolling off and on as it went */}
-                  <input className="prop-input" type="number" min={screen} max={screen * MAX_SCREENS} step={20}
-                    key={`${slide?.id}:${axis}:${length}`}
-                    defaultValue={length}
-                    onBlur={e => setScroll(axis, Number(e.target.value) || 0)}
-                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Duration (s)</div>
+                  <input className="prop-input" type="number" min="0.1" max="5" step="0.1"
+                    value={slide.autoAnimateDuration || 1}
+                    onChange={e => onUpdateSlide({ autoAnimateDuration: Math.max(0.1, Math.min(5, Number(e.target.value) || 1)) })}
                   />
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
-                  <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Easing</div>
+                  <select className="prop-input" value={slide.autoAnimateEasing || 'ease'}
+                    onChange={e => onUpdateSlide({ autoAnimateEasing: e.target.value })}
+                  >
+                    <option value="ease">Ease</option>
+                    <option value="ease-in">Ease In</option>
+                    <option value="ease-out">Ease Out</option>
+                    <option value="ease-in-out">Ease In-Out</option>
+                    <option value="linear">Linear</option>
+                    <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">Smooth</option>
+                    <option value="cubic-bezier(0.68, -0.55, 0.27, 1.55)">Spring</option>
+                  </select>
                 </div>
               </div>
-            </>)}
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              {axis === 'y'
-                ? 'Presenting shows one screen at a time. Scroll down with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
-                : axis === 'x'
-                  ? 'Presenting shows one screen at a time. Scroll across with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
-                  : 'Make the canvas taller or wider than the screen to scroll through this slide while presenting.'}
             </div>
-            {offCanvas > 0 && (
-              <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>
-                {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} off the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
-              </div>
-            )}
-          </>)
-        })()}
-      </div>
-
-      {/* Present Grid per-slide override */}
-      <div className="prop-section">
-        <SectionHead k="presentGrid">Present Grid</SectionHead>
-        {!collapsed.presentGrid && (<>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-          {[['default', 'Default'], ['show', 'Show'], ['hide', 'Hide']].map(([val, label]) => {
-            const current = slide.showPresentGrid == null ? 'default' : (slide.showPresentGrid ? 'show' : 'hide')
-            return (
-              <button
-                key={val}
-                className={`bg-type-tab ${current === val ? 'active' : ''}`}
-                onClick={() => {
-                  const newVal = val === 'default' ? null : val === 'show'
-                  onUpdateSlide({ showPresentGrid: newVal })
-                }}
-                style={{ flex: 1 }}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          Default: grid {presentation?.showPresentGrid ? 'on' : 'off'} (controlled by top bar)
-        </div>
-        </>)}
-      </div>
-
-      {/* Layout Grid */}
-      <div className="prop-section">
-        <SectionHead k="layoutGrid">Layout Grid</SectionHead>
-        {!collapsed.layoutGrid && (<>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-          <input type="checkbox" checked={slide.layoutGrid?.enabled || false}
-            onChange={e => onUpdateSlide({ layoutGrid: { columns: 3, rows: 0, gutter: 20, marginX: 40, marginY: 40, snap: true, ...(slide.layoutGrid || {}), enabled: e.target.checked } })}
-            style={{ accentColor: 'var(--accent)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show layout grid</span>
-        </label>
-        {slide.layoutGrid?.enabled && (
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Columns</div>
-              <input className="prop-input" type="number" min="1" max="12"
-                value={slide.layoutGrid?.columns ?? 3}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, columns: Math.max(1, Math.min(12, Number(e.target.value) || 3)) } })}
-              />
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Slide transition</div>
+              <select className="prop-input" value={slide.transition || ''}
+                onChange={e => onUpdateSlide({ transition: e.target.value || null })}
+              >
+                <option value="">Default</option>
+                <option value="none">None</option>
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
+                <option value="convex">Convex</option>
+                <option value="concave">Concave</option>
+                <option value="zoom">Zoom</option>
+                <option value="differential-rotation">Differential Rotation</option>
+              </select>
             </div>
             <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Rows</div>
-              <input className="prop-input" type="number" min="0" max="12"
-                value={slide.layoutGrid?.rows ?? 0}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, rows: Math.max(0, Math.min(12, Number(e.target.value) || 0)) } })}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Gutter (px)</div>
-              <input className="prop-input" type="number" min="0" max="100"
-                value={slide.layoutGrid?.gutter ?? 20}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, gutter: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } })}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Margin X (px)</div>
-              <input className="prop-input" type="number" min="0" max="200"
-                value={slide.layoutGrid?.marginX ?? 40}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, marginX: Math.max(0, Number(e.target.value) || 0) } })}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Margin Y (px)</div>
-              <input className="prop-input" type="number" min="0" max="200"
-                value={slide.layoutGrid?.marginY ?? 40}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, marginY: Math.max(0, Number(e.target.value) || 0) } })}
-              />
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', gridColumn: 'span 2' }}>
-              <input type="checkbox" checked={slide.layoutGrid?.snap !== false}
-                onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, snap: e.target.checked } })}
-                style={{ accentColor: 'var(--accent)' }} />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Snap to columns/rows</span>
-            </label>
-            {/* Ratio presets */}
-            <div style={{ gridColumn: 'span 2' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Presets</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {[
-                  { label: '2-col', columns: 2, gutter: 20 },
-                  { label: '3-col', columns: 3, gutter: 20 },
-                  { label: '4-col', columns: 4, gutter: 16 },
-                  { label: '6-col', columns: 6, gutter: 12 },
-                  { label: '3x3', columns: 3, rows: 3, gutter: 16 },
-                  { label: '4x3', columns: 4, rows: 3, gutter: 12 },
-                ].map(preset => (
-                  <button key={preset.label}
-                    onClick={() => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, columns: preset.columns, rows: preset.rows ?? 0, gutter: preset.gutter } })}
-                    style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}
-                  >{preset.label}</button>
-                ))}
-              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Speed</div>
+              <select className="prop-input" value={slide.transitionSpeed || ''}
+                onChange={e => onUpdateSlide({ transitionSpeed: e.target.value || null })}
+              >
+                <option value="">Default</option>
+                <option value="fast">Fast</option>
+                <option value="slow">Slow</option>
+              </select>
             </div>
           </div>
-        )}
-        </>)}
-      </div>
-
-      {/* Axis Lines */}
-      <div className="prop-section">
-        <SectionHead k="axisLines">Axis Lines</SectionHead>
-        {!collapsed.axisLines && (<>
-        {(slide.axisLines || []).map((al, i) => (
-          <div key={al.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-            <select className="prop-input" value={al.axis}
-              onChange={e => {
-                const updated = [...(slide.axisLines || [])]
-                updated[i] = { ...al, axis: e.target.value, position: e.target.value === 'x' ? Math.round(960 / 3) : 270 }
-                onUpdateSlide({ axisLines: updated })
-              }}
-              style={{ width: 40, padding: '2px 4px', fontSize: 11 }}
-            >
-              <option value="x">V</option>
-              <option value="y">H</option>
-            </select>
-            <input className="prop-input" type="number" min="0" max={al.axis === 'x' ? 960 : 540}
-              value={al.position}
-              onChange={e => {
-                const updated = [...(slide.axisLines || [])]
-                updated[i] = { ...al, position: Math.max(0, Math.min(al.axis === 'x' ? 960 : 540, Number(e.target.value) || 0)) }
-                onUpdateSlide({ axisLines: updated })
-              }}
-              style={{ width: 48, fontSize: 11, textAlign: 'center' }}
-            />
-            {/* Position ratio presets */}
-            <div style={{ display: 'flex', gap: 2 }}>
-              {[
-                { label: '⅓', frac: 1/3 },
-                { label: '½', frac: 1/2 },
-                { label: '⅔', frac: 2/3 },
-              ].map(({ label, frac }) => (
-                <button key={label}
-                  onClick={() => {
-                    const updated = [...(slide.axisLines || [])]
-                    updated[i] = { ...al, position: Math.round((al.axis === 'x' ? 960 : 540) * frac) }
-                    onUpdateSlide({ axisLines: updated })
-                  }}
-                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', lineHeight: 1.2 }}
-                  title={`${Math.round(frac * 100)}%`}
-                >{label}</button>
-              ))}
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-              <input type="checkbox" checked={al.snap !== false}
-                onChange={e => {
-                  const updated = [...(slide.axisLines || [])]
-                  updated[i] = { ...al, snap: e.target.checked }
-                  onUpdateSlide({ axisLines: updated })
-                }}
-                style={{ accentColor: 'var(--accent)', width: 12, height: 12 }}
-              />
-              <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Snap</span>
-            </label>
-            <button
-              onClick={() => {
-                const updated = (slide.axisLines || []).filter((_, j) => j !== i)
-                onUpdateSlide({ axisLines: updated })
-              }}
-              title="Remove axis line"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
-            >&times;</button>
-          </div>
-        ))}
-        <button
-          className="btn btn-secondary"
-          style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '3px 8px', marginTop: 4 }}
-          onClick={() => {
-            const existing = slide.axisLines || []
-            const axis = existing.length % 2 === 0 ? 'x' : 'y'
-            onUpdateSlide({ axisLines: [...existing, { id: crypto.randomUUID(), axis, position: axis === 'x' ? Math.round(960 / 3) : 270, visible: true, snap: true }] })
-          }}
-        >+ Add Axis Line</button>
-        </>)}
-      </div>
-
-      {/* Slide Section + Footer Style */}
-      <div className="prop-section">
-        <SectionHead k="footer">Slide Footer</SectionHead>
-        {!collapsed.footer && (<>
-
-        {/* Show footer on this slide */}
-        {(presentation?.showFooter || presentation?.showPageNumbers) && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-            <input type="checkbox" checked={slide.showSlideFooter !== false}
-              onChange={e => onUpdateSlide({ showSlideFooter: e.target.checked })}
-              style={{ accentColor: 'var(--accent)' }} />
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show footer on this slide</span>
-          </label>
-        )}
-
-        {/* Per-slide page number toggle */}
-        {presentation?.showPageNumbers && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
-            <input type="checkbox" checked={slide.showPageNumber !== false}
-              onChange={e => onUpdateSlide({ showPageNumber: e.target.checked })}
-              style={{ accentColor: 'var(--accent)' }} />
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show page number on this slide</span>
-          </label>
-        )}
-
-        {/* Basic mode: section name input */}
-        {(presentation?.footerMode || 'basic') === 'basic' && (
-          <input
-            className="prop-input"
-            type="text"
-            value={slide.section || ''}
-            onChange={e => onUpdateSlide({ section: e.target.value })}
-            placeholder="Section name (shown in footer)"
-            style={{ marginBottom: 10 }}
-          />
-        )}
-
-        {/* Sequence mode: pick active section for this slide */}
-        {presentation?.footerMode === 'sequence' && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Active Section</div>
-            {(presentation.sequenceSections || []).length === 0 ? (
-              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>No sections defined. Add them in Footer Style below.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <button
-                  style={{
-                    padding: '4px 8px', fontSize: 11, textAlign: 'left', cursor: 'pointer',
-                    background: slide.activeSection == null ? 'var(--accent)' : 'var(--bg-hover)',
-                    border: '1px solid var(--border)', borderRadius: 4,
-                    color: slide.activeSection == null ? 'white' : 'var(--text-secondary)',
-                  }}
-                  onClick={() => onUpdateSlide({ activeSection: null })}
-                >
-                  None
-                </button>
-                {(presentation.sequenceSections || []).map((sec, i) => {
-                  const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-                  return (
-                    <button
-                      key={i}
-                      style={{
-                        padding: '4px 8px', fontSize: 11, textAlign: 'left', cursor: 'pointer',
-                        background: slide.activeSection === i ? 'var(--accent)' : 'var(--bg-hover)',
-                        border: '1px solid var(--border)', borderRadius: 4,
-                        color: slide.activeSection === i ? 'white' : 'var(--text-secondary)',
-                      }}
-                      onClick={() => onUpdateSlide({ activeSection: i })}
-                    >
-                      {secLabel || `Section ${i + 1}`}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        </>)}
-      </div>
-
-      {/* Speaker Notes */}
-      <div className="prop-section">
-        <SectionHead k="notes">Speaker Notes</SectionHead>
-        {!collapsed.notes && (<>
-        <textarea
-          className="notes-textarea"
-          value={slide.notes || ''}
-          onChange={e => onUpdateSlide({ notes: e.target.value })}
-          placeholder="Add speaker notes here..."
-        />
-        </>)}
-      </div>
-
-      {/* Custom CSS — template editor only */}
-      {isTemplate && presentation && onUpdatePresentation && (
-        <div className="prop-section">
-          <SectionHead k="customCss">Custom CSS</SectionHead>
-          {!collapsed.customCss && (<>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-            CSS applied to all slides in presentations created from this template, when they're presented or exported.
-          </p>
-          <textarea
-            value={presentation.customCSS || ''}
-            onChange={e => onUpdatePresentation({ customCSS: e.target.value })}
-            placeholder={`/* Example */\n.reveal .slides section h1 {\n  color: #6366f1;\n  text-transform: uppercase;\n}`}
-            spellCheck={false}
-            style={{
-              width: '100%', minHeight: 140, background: '#0d0d1a', color: '#e2e8f0',
-              fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 11,
-              padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6,
-              outline: 'none', resize: 'vertical', lineHeight: 1.5, tabSize: 2,
-              boxSizing: 'border-box',
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Tab') {
-                e.preventDefault()
-                const { selectionStart: s, selectionEnd: end, value } = e.target
-                const next = value.substring(0, s) + '  ' + value.substring(end)
-                e.target.value = next
-                onUpdatePresentation({ customCSS: next })
-                requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
-              }
-            }}
-          />
           </>)}
         </div>
-      )}
+      </>)}
+
+      {/* Slide: its background and footer, then the rest folded away */}
+      {tab === 'slide' && (<>
+        <div className="prop-section">
+          <h3>Background</h3>
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+        </div>
+        {/* Slide Section + Footer Style */}
+        <div className="prop-section">
+          <SectionHead k="footer">Footer</SectionHead>
+          {!collapsed.footer && (<>
+
+          {/* Show footer on this slide */}
+          {(presentation?.showFooter || presentation?.showPageNumbers) && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
+              <input type="checkbox" checked={slide.showSlideFooter !== false}
+                onChange={e => onUpdateSlide({ showSlideFooter: e.target.checked })}
+                style={{ accentColor: 'var(--accent)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show footer on this slide</span>
+            </label>
+          )}
+
+          {/* Per-slide page number toggle */}
+          {presentation?.showPageNumbers && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
+              <input type="checkbox" checked={slide.showPageNumber !== false}
+                onChange={e => onUpdateSlide({ showPageNumber: e.target.checked })}
+                style={{ accentColor: 'var(--accent)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show page number on this slide</span>
+            </label>
+          )}
+
+          {/* Basic mode: section name input */}
+          {(presentation?.footerMode || 'basic') === 'basic' && (
+            <input
+              className="prop-input"
+              type="text"
+              value={slide.section || ''}
+              onChange={e => onUpdateSlide({ section: e.target.value })}
+              placeholder="Section name (shown in footer)"
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {/* Sequence mode: pick active section for this slide */}
+          {presentation?.footerMode === 'sequence' && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Active Section</div>
+              {(presentation.sequenceSections || []).length === 0 ? (
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>No sections defined. Add them in Footer Style below.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <button
+                    style={{
+                      padding: '4px 8px', fontSize: 11, textAlign: 'left', cursor: 'pointer',
+                      background: slide.activeSection == null ? 'var(--accent)' : 'var(--bg-hover)',
+                      border: '1px solid var(--border)', borderRadius: 4,
+                      color: slide.activeSection == null ? 'white' : 'var(--text-secondary)',
+                    }}
+                    onClick={() => onUpdateSlide({ activeSection: null })}
+                  >
+                    None
+                  </button>
+                  {(presentation.sequenceSections || []).map((sec, i) => {
+                    const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
+                    return (
+                      <button
+                        key={i}
+                        style={{
+                          padding: '4px 8px', fontSize: 11, textAlign: 'left', cursor: 'pointer',
+                          background: slide.activeSection === i ? 'var(--accent)' : 'var(--bg-hover)',
+                          border: '1px solid var(--border)', borderRadius: 4,
+                          color: slide.activeSection === i ? 'white' : 'var(--text-secondary)',
+                        }}
+                        onClick={() => onUpdateSlide({ activeSection: i })}
+                      >
+                        {secLabel || `Section ${i + 1}`}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          </>)}
+        </div>
+        <div className="prop-section">
+          <SectionHead k="advanced">Advanced</SectionHead>
+          {collapsed.advanced && <p className="prop-hint" style={{ margin: 0 }}>Slide group, scrolling, present grid, layout grid and axis lines.</p>}
+        </div>
+        {!collapsed.advanced && (<>
+          {/* Slide Grouping */}
+          <div className="prop-section">
+            <SectionHead k="slideGroup">Slide Group</SectionHead>
+            {!collapsed.slideGroup && (<>
+            {(() => {
+              const slides = presentation?.slides || []
+              const idx = slides.indexOf(slide)
+              const groupId = slide.slideGroup
+              const groupSlides = groupId ? slides.map((s, i) => ({ s, i })).filter(({ s }) => s.slideGroup === groupId) : []
+              const isGrouped = !!groupId && groupSlides.length > 1
+              const isFirst = isGrouped && groupSlides[0].i === idx
+              const posLabel = isGrouped ? `${groupSlides.findIndex(g => g.i === idx) + 1} of ${groupSlides.length}` : null
+              const prevSlide = idx > 0 ? slides[idx - 1] : null
+              const nextSlide = idx < slides.length - 1 ? slides[idx + 1] : null
+              const canGroupPrev = idx > 0
+              const canGroupNext = idx < slides.length - 1
+
+              const groupWith = (otherIdx) => {
+                const other = slides[otherIdx]
+                const gid = slide.slideGroup || other.slideGroup || crypto.randomUUID()
+                const patch = {}
+                slides.forEach((s, i) => {
+                  if (i === idx || i === otherIdx || (s.slideGroup && (s.slideGroup === slide.slideGroup || s.slideGroup === other.slideGroup))) {
+                    patch[i] = gid
+                  }
+                })
+                const updated = slides.map((s, i) => patch[i] !== undefined ? { ...s, slideGroup: patch[i] } : s)
+                onUpdateSlide({ __replaceAllSlides: updated })
+              }
+
+              const ungroup = () => {
+                const updated = slides.map(s => s.slideGroup === groupId ? { ...s, slideGroup: null } : s)
+                onUpdateSlide({ __replaceAllSlides: updated })
+              }
+
+              const ungroupThis = () => {
+                onUpdateSlide({ slideGroup: null })
+              }
+
+              return (
+                <div>
+                  {isGrouped ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 6 }}>
+                        Slide {posLabel} in group ({groupSlides.length} slides share page number)
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={ungroupThis}>Remove from group</button>
+                        <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={ungroup}>Ungroup all</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Group with adjacent slides to share the same page number.</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {canGroupPrev && (
+                          <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={() => groupWith(idx - 1)}>
+                            Group with prev
+                          </button>
+                        )}
+                        {canGroupNext && (
+                          <button className="btn btn-secondary" style={{ flex: 1, fontSize: 11, padding: '4px 8px', justifyContent: 'center' }} onClick={() => groupWith(idx + 1)}>
+                            Group with next
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            </>)}
+          </div>
+
+          {/* Scrolling: a canvas taller or wider than the screen */}
+          <div className="prop-section">
+            <SectionHead k="scroll">Scrolling</SectionHead>
+            {!collapsed.scroll && (() => {
+              const vw = presentation?.slideWidth || 960
+              const vh = presentation?.slideHeight || 540
+              const axis = scrollAxis(slide, vw, vh)
+              const canvasW = getCanvasWidth(slide, vw, vh)
+              const canvasH = getCanvasHeight(slide, vh)
+              const screen = axis === 'x' ? vw : vh
+              const length = axis === 'x' ? canvasW : canvasH
+              const screens = length / screen
+              // A slide scrolls one way, so a length for one clears the other's
+              const setScroll = (to, px) => onUpdateSlide(to === 'x'
+                ? { scrollWidth: px > vw ? Math.min(Math.round(px), vw * MAX_SCREENS) : undefined, scrollHeight: undefined }
+                : { scrollHeight: px > vh ? Math.min(Math.round(px), vh * MAX_SCREENS) : undefined, scrollWidth: undefined })
+              const offCanvas = (slide?.elements || []).filter(el => !isPinned(el) && ((el.x ?? 0) >= canvasW || (el.y ?? 0) >= canvasH)).length
+              return (<>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Scroll</div>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                  {[[null, 'Off'], ['y', '\u2193 Down'], ['x', '\u2192 Sideways']].map(([to, label]) => (
+                    <button
+                      key={label}
+                      className={`btn ${axis === to ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                      // Turning the other way keeps how many screens the canvas is
+                      onClick={() => to ? setScroll(to, (axis ? screens : 2) * (to === 'x' ? vw : vh)) : setScroll('y', 0)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {axis && (<>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Canvas {axis === 'x' ? 'width' : 'height'}</div>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                    {[1.5, 2, 3].map(k => (
+                      <button
+                        key={k}
+                        className={`btn ${Math.abs(screens - k) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ flex: 1, fontSize: 11, padding: '4px 0' }}
+                        onClick={() => setScroll(axis, screen * k)}
+                      >
+                        {`${k}\u00d7`}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>{axis === 'x' ? 'Width' : 'Height'} (px)</div>
+                      {/* Set on Enter or leaving the field: a length typed a digit at a
+                          time would turn scrolling off and on as it went */}
+                      <input className="prop-input" type="number" min={screen} max={screen * MAX_SCREENS} step={20}
+                        key={`${slide?.id}:${axis}:${length}`}
+                        defaultValue={length}
+                        onBlur={e => setScroll(axis, Number(e.target.value) || 0)}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Screens</div>
+                      <input className="prop-input" type="text" readOnly value={+screens.toFixed(2)} />
+                    </div>
+                  </div>
+                </>)}
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {axis === 'y'
+                    ? 'Presenting shows one screen at a time. Scroll down with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
+                    : axis === 'x'
+                      ? 'Presenting shows one screen at a time. Scroll across with the mouse wheel, trackpad or a finger; the arrow keys change slides as usual. PDF and PowerPoint export give a page per screen.'
+                      : 'Make the canvas taller or wider than the screen to scroll through this slide while presenting.'}
+                </div>
+                {offCanvas > 0 && (
+                  <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6 }}>
+                    {offCanvas === 1 ? '1 element is' : `${offCanvas} elements are`} off the canvas, so {offCanvas === 1 ? 'it doesn\u2019t' : 'they don\u2019t'} show.
+                  </div>
+                )}
+              </>)
+            })()}
+          </div>
+
+          {/* Present Grid per-slide override */}
+          <div className="prop-section">
+            <SectionHead k="presentGrid">Present Grid</SectionHead>
+            {!collapsed.presentGrid && (<>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+              {[['default', 'Default'], ['show', 'Show'], ['hide', 'Hide']].map(([val, label]) => {
+                const current = slide.showPresentGrid == null ? 'default' : (slide.showPresentGrid ? 'show' : 'hide')
+                return (
+                  <button
+                    key={val}
+                    className={`bg-type-tab ${current === val ? 'active' : ''}`}
+                    onClick={() => {
+                      const newVal = val === 'default' ? null : val === 'show'
+                      onUpdateSlide({ showPresentGrid: newVal })
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              Default: grid {presentation?.showPresentGrid ? 'on' : 'off'} (controlled by top bar)
+            </div>
+            </>)}
+          </div>
+
+          {/* Layout Grid */}
+          <div className="prop-section">
+            <SectionHead k="layoutGrid">Layout Grid</SectionHead>
+            {!collapsed.layoutGrid && (<>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: 8, userSelect: 'none' }}>
+              <input type="checkbox" checked={slide.layoutGrid?.enabled || false}
+                onChange={e => onUpdateSlide({ layoutGrid: { columns: 3, rows: 0, gutter: 20, marginX: 40, marginY: 40, snap: true, ...(slide.layoutGrid || {}), enabled: e.target.checked } })}
+                style={{ accentColor: 'var(--accent)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Show layout grid</span>
+            </label>
+            {slide.layoutGrid?.enabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Columns</div>
+                  <input className="prop-input" type="number" min="1" max="12"
+                    value={slide.layoutGrid?.columns ?? 3}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, columns: Math.max(1, Math.min(12, Number(e.target.value) || 3)) } })}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Rows</div>
+                  <input className="prop-input" type="number" min="0" max="12"
+                    value={slide.layoutGrid?.rows ?? 0}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, rows: Math.max(0, Math.min(12, Number(e.target.value) || 0)) } })}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Gutter (px)</div>
+                  <input className="prop-input" type="number" min="0" max="100"
+                    value={slide.layoutGrid?.gutter ?? 20}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, gutter: Math.max(0, Math.min(100, Number(e.target.value) || 0)) } })}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Margin X (px)</div>
+                  <input className="prop-input" type="number" min="0" max="200"
+                    value={slide.layoutGrid?.marginX ?? 40}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, marginX: Math.max(0, Number(e.target.value) || 0) } })}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 2 }}>Margin Y (px)</div>
+                  <input className="prop-input" type="number" min="0" max="200"
+                    value={slide.layoutGrid?.marginY ?? 40}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, marginY: Math.max(0, Number(e.target.value) || 0) } })}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', gridColumn: 'span 2' }}>
+                  <input type="checkbox" checked={slide.layoutGrid?.snap !== false}
+                    onChange={e => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, snap: e.target.checked } })}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Snap to columns/rows</span>
+                </label>
+                {/* Ratio presets */}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Presets</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {[
+                      { label: '2-col', columns: 2, gutter: 20 },
+                      { label: '3-col', columns: 3, gutter: 20 },
+                      { label: '4-col', columns: 4, gutter: 16 },
+                      { label: '6-col', columns: 6, gutter: 12 },
+                      { label: '3x3', columns: 3, rows: 3, gutter: 16 },
+                      { label: '4x3', columns: 4, rows: 3, gutter: 12 },
+                    ].map(preset => (
+                      <button key={preset.label}
+                        onClick={() => onUpdateSlide({ layoutGrid: { ...slide.layoutGrid, columns: preset.columns, rows: preset.rows ?? 0, gutter: preset.gutter } })}
+                        style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}
+                      >{preset.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            </>)}
+          </div>
+
+          {/* Axis Lines */}
+          <div className="prop-section">
+            <SectionHead k="axisLines">Axis Lines</SectionHead>
+            {!collapsed.axisLines && (<>
+            {(slide.axisLines || []).map((al, i) => (
+              <div key={al.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                <select className="prop-input" value={al.axis}
+                  onChange={e => {
+                    const updated = [...(slide.axisLines || [])]
+                    updated[i] = { ...al, axis: e.target.value, position: e.target.value === 'x' ? Math.round(960 / 3) : 270 }
+                    onUpdateSlide({ axisLines: updated })
+                  }}
+                  style={{ width: 40, padding: '2px 4px', fontSize: 11 }}
+                >
+                  <option value="x">V</option>
+                  <option value="y">H</option>
+                </select>
+                <input className="prop-input" type="number" min="0" max={al.axis === 'x' ? 960 : 540}
+                  value={al.position}
+                  onChange={e => {
+                    const updated = [...(slide.axisLines || [])]
+                    updated[i] = { ...al, position: Math.max(0, Math.min(al.axis === 'x' ? 960 : 540, Number(e.target.value) || 0)) }
+                    onUpdateSlide({ axisLines: updated })
+                  }}
+                  style={{ width: 48, fontSize: 11, textAlign: 'center' }}
+                />
+                {/* Position ratio presets */}
+                <div style={{ display: 'flex', gap: 2 }}>
+                  {[
+                    { label: '⅓', frac: 1/3 },
+                    { label: '½', frac: 1/2 },
+                    { label: '⅔', frac: 2/3 },
+                  ].map(({ label, frac }) => (
+                    <button key={label}
+                      onClick={() => {
+                        const updated = [...(slide.axisLines || [])]
+                        updated[i] = { ...al, position: Math.round((al.axis === 'x' ? 960 : 540) * frac) }
+                        onUpdateSlide({ axisLines: updated })
+                      }}
+                      style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-muted)', borderRadius: 3, padding: '1px 4px', fontSize: 10, cursor: 'pointer', lineHeight: 1.2 }}
+                      title={`${Math.round(frac * 100)}%`}
+                    >{label}</button>
+                  ))}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={al.snap !== false}
+                    onChange={e => {
+                      const updated = [...(slide.axisLines || [])]
+                      updated[i] = { ...al, snap: e.target.checked }
+                      onUpdateSlide({ axisLines: updated })
+                    }}
+                    style={{ accentColor: 'var(--accent)', width: 12, height: 12 }}
+                  />
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Snap</span>
+                </label>
+                <button
+                  onClick={() => {
+                    const updated = (slide.axisLines || []).filter((_, j) => j !== i)
+                    onUpdateSlide({ axisLines: updated })
+                  }}
+                  title="Remove axis line"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
+                >&times;</button>
+              </div>
+            ))}
+            <button
+              className="btn btn-secondary"
+              style={{ width: '100%', justifyContent: 'center', fontSize: 11, padding: '3px 8px', marginTop: 4 }}
+              onClick={() => {
+                const existing = slide.axisLines || []
+                const axis = existing.length % 2 === 0 ? 'x' : 'y'
+                onUpdateSlide({ axisLines: [...existing, { id: crypto.randomUUID(), axis, position: axis === 'x' ? Math.round(960 / 3) : 270, visible: true, snap: true }] })
+              }}
+            >+ Add Axis Line</button>
+            </>)}
+          </div>
+
+          {/* Custom CSS — template editor only */}
+          {isTemplate && presentation && onUpdatePresentation && (
+            <div className="prop-section">
+              <SectionHead k="customCss">Custom CSS</SectionHead>
+              {!collapsed.customCss && (<>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                CSS applied to all slides in presentations created from this template, when they're presented or exported.
+              </p>
+              <textarea
+                value={presentation.customCSS || ''}
+                onChange={e => onUpdatePresentation({ customCSS: e.target.value })}
+                placeholder={`/* Example */\n.reveal .slides section h1 {\n  color: #6366f1;\n  text-transform: uppercase;\n}`}
+                spellCheck={false}
+                style={{
+                  width: '100%', minHeight: 140, background: '#0d0d1a', color: '#e2e8f0',
+                  fontFamily: "'Fira Code','JetBrains Mono',monospace", fontSize: 11,
+                  padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6,
+                  outline: 'none', resize: 'vertical', lineHeight: 1.5, tabSize: 2,
+                  boxSizing: 'border-box',
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Tab') {
+                    e.preventDefault()
+                    const { selectionStart: s, selectionEnd: end, value } = e.target
+                    const next = value.substring(0, s) + '  ' + value.substring(end)
+                    e.target.value = next
+                    onUpdatePresentation({ customCSS: next })
+                    requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
+                  }
+                }}
+              />
+              </>)}
+            </div>
+          )}
+        </>)}
+      </>)}
+      </div>
     </div>
   )
 }

@@ -4923,6 +4923,7 @@ __export(deck_html_exports, {
   EXAMPLE_SOURCES: () => EXAMPLE_SOURCES,
   HERO_EXAMPLE: () => HERO_EXAMPLE,
   MAX_ROWS: () => MAX_ROWS,
+  SHOWCASE_SLUGS: () => SHOWCASE_SLUGS,
   buildStaticPluginSrcdoc: () => buildStaticPluginSrcdoc,
   carriedData: () => carriedData,
   dataGraphs: () => dataGraphs,
@@ -5084,6 +5085,7 @@ function pointsToPath(points, smooth = true) {
 }
 
 // client/src/utils/bibtexParser.js
+var texDashes = (str7) => str7.replace(/---/g, "—").replace(/--/g, "–");
 function splitNames(str7) {
   const names = [];
   let depth = 0, from = 0;
@@ -5136,6 +5138,9 @@ function webLink(url) {
   } catch {
     return null;
   }
+}
+function pageRange(pages) {
+  return texDashes(String(pages || "").trim()).replace(/(\d)\s*[-\u2013]\s*(\d)/g, "$1–$2");
 }
 
 // client/src/utils/citationIndex.js
@@ -5549,10 +5554,89 @@ function buildStaticPluginSrcdoc(sandboxHtml, { data, width, height, datasets = 
 }
 
 // client/src/utils/generateHTML.js
-var import_libraries4 = require("./libraries");
+var import_libraries5 = require("./libraries");
+
+// client/src/utils/latexRenderer.js
+var import_libraries = require("./libraries");
+
+// client/src/utils/themes.js
+var THEME_LIST = [
+  { id: "black", label: "Black", background: "#191919", text: "#ffffff", heading: "#ffffff", link: "#42affa", dark: true },
+  { id: "white", label: "White", background: "#ffffff", text: "#222222", heading: "#222222", link: "#2a76dd", dark: false },
+  { id: "league", label: "League", background: "#2b2b2b", text: "#eeeeee", heading: "#eeeeee", link: "#13daec", dark: true },
+  { id: "beige", label: "Beige", background: "#f7f3de", text: "#333333", heading: "#333333", link: "#8b743d", dark: false },
+  { id: "sky", label: "Sky", background: "#f7fbfc", backgroundCss: "radial-gradient(circle farthest-corner at center, #f7fbfc 0%, #add9e4 100%)", text: "#333333", heading: "#333333", link: "#3b759e", dark: false },
+  { id: "night", label: "Night", background: "#111111", text: "#eeeeee", heading: "#eeeeee", link: "#e7ad52", dark: true },
+  { id: "serif", label: "Serif", background: "#f0f1eb", text: "#000000", heading: "#383d3d", link: "#51483d", dark: false },
+  { id: "simple", label: "Simple", background: "#ffffff", text: "#000000", heading: "#000000", link: "#00008b", dark: false },
+  { id: "solarized", label: "Solarized", background: "#fdf6e3", text: "#657b83", heading: "#586e75", link: "#268bd2", dark: false },
+  { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
+  { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true }
+];
+var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
+function themeOf(id) {
+  return THEMES[id] || THEMES.black;
+}
+function parseColor(value) {
+  const s = String(value || "").trim();
+  let m = /^#([0-9a-f]{3})$/i.exec(s);
+  if (m) return m[1].split("").map((c) => parseInt(c + c, 16));
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s);
+  if (m) return [m[1], m[2], m[3]].map(Number);
+  if (s.toLowerCase() === "white") return [255, 255, 255];
+  if (s.toLowerCase() === "black") return [0, 0, 0];
+  return null;
+}
+function isDark(value, fallback = true) {
+  const rgb = parseColor(value);
+  if (!rgb) return fallback;
+  const [r, g, b] = rgb;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+}
+function firstColor(gradient) {
+  const m = /(#[0-9a-f]{3,8}\b|rgba?\([^)]*\))/i.exec(String(gradient || ""));
+  return m ? m[1] : null;
+}
+function ownBackground(bg) {
+  if (!bg) return null;
+  if (bg.type === "color" && bg.color) return { style: { backgroundColor: bg.color }, dark: isDark(bg.color) };
+  if (bg.type === "gradient" && bg.gradient) return { style: { background: bg.gradient }, dark: isDark(firstColor(bg.gradient)) };
+  if (bg.type === "image" && bg.image) return { style: { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || "cover", backgroundPosition: bg.position || "center" }, dark: true };
+  return null;
+}
+function themeBackgroundStyle(themeId) {
+  const t = themeOf(themeId);
+  return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background };
+}
+function slidePalette(slide, themeId) {
+  const t = themeOf(themeId);
+  const own = ownBackground(slide?.background);
+  if (!own) return { background: themeBackgroundStyle(themeId), text: t.text, heading: t.heading, link: t.link, dark: t.dark, own: false };
+  const match = own.dark === t.dark;
+  const plain2 = own.dark ? "#ffffff" : "#222222";
+  return {
+    background: own.style,
+    text: own.dark ? "#ffffff" : match ? t.text : plain2,
+    heading: match ? t.heading : plain2,
+    link: match ? t.link : own.dark ? "#42affa" : "#2a76dd",
+    dark: own.dark,
+    own: true
+  };
+}
+
+// client/src/utils/latexRenderer.js
+function tikzInk(content, colors) {
+  const rgb = colors.map(parseColor).find(Boolean);
+  if (!rgb) return content;
+  const hex = rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("").toUpperCase();
+  return `\\definecolor{parallaxink}{HTML}{${hex}}\\color{parallaxink}
+${content}`;
+}
 
 // client/src/utils/modelViewer.js
-var import_libraries = require("./libraries");
+var import_libraries2 = require("./libraries");
 var MODEL_DEFAULTS = {
   color: "#b8c2cc",
   background: "transparent",
@@ -5578,7 +5662,7 @@ function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false }
     print
   };
   const imports = {
-    three: (0, import_libraries.libUrl)("three", "build/three.module.js")
+    three: (0, import_libraries2.libUrl)("three", "build/three.module.js")
   };
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}canvas{display:block;outline:none}#status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;text-align:center;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:rgba(128,128,128,0.9);pointer-events:none}#status.error{color:#e5484d}</style>
@@ -5586,10 +5670,10 @@ function modelViewerHtml(el, { src = el.src, snapshotKey = null, print = false }
 </head><body><div id="status">Loading model…</div>
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from '${(0, import_libraries.libUrl)("three", "examples/jsm/controls/OrbitControls.js")}';
-import { GLTFLoader } from '${(0, import_libraries.libUrl)("three", "examples/jsm/loaders/GLTFLoader.js")}';
-import { STLLoader } from '${(0, import_libraries.libUrl)("three", "examples/jsm/loaders/STLLoader.js")}';
-import { RoomEnvironment } from '${(0, import_libraries.libUrl)("three", "examples/jsm/environments/RoomEnvironment.js")}';
+import { OrbitControls } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/controls/OrbitControls.js")}';
+import { GLTFLoader } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/loaders/GLTFLoader.js")}';
+import { STLLoader } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/loaders/STLLoader.js")}';
+import { RoomEnvironment } from '${(0, import_libraries2.libUrl)("three", "examples/jsm/environments/RoomEnvironment.js")}';
 
 const O = ${scriptJson(options)};
 const status = document.getElementById('status');
@@ -5751,7 +5835,7 @@ if (!O.src) {
 }
 
 // client/src/utils/moleculeViewer.js
-var import_libraries2 = require("./libraries");
+var import_libraries3 = require("./libraries");
 var MOLECULE_FORMATS = {
   ".pdb": "pdb",
   ".ent": "pdb",
@@ -5818,7 +5902,7 @@ function moleculeViewerHtml(el, { src = el.src, snapshotKey = null, viewKey = nu
   };
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}#stage{position:absolute;inset:0}canvas{display:block;outline:none}#status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;text-align:center;font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:rgba(128,128,128,0.9);pointer-events:none}#status.error{color:#e5484d}</style>
-<script src="${(0, import_libraries2.libUrl)("3dmol", "build/3Dmol-min.js")}"></script>
+<script src="${(0, import_libraries3.libUrl)("3dmol", "build/3Dmol-min.js")}"></script>
 </head><body><div id="stage"></div><div id="status">Loading molecule…</div>
 <script>
 (function () {
@@ -7033,7 +7117,7 @@ function createMathParser() {
 // client/src/utils/graphRuntime.js
 function graphRuntime(P, G2, G3, config) {
   let C2 = config;
-  const THEMES = {
+  const THEMES2 = {
     light: {
       axis: "#2b2b2b",
       major: "rgba(0,0,0,0.14)",
@@ -7078,7 +7162,7 @@ function graphRuntime(P, G2, G3, config) {
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d");
   let W2 = 0, H2 = 0;
-  let theme = THEMES.light;
+  let theme = THEMES2.light;
   let analysis = null;
   let values = {};
   let view = null;
@@ -7107,7 +7191,7 @@ function graphRuntime(P, G2, G3, config) {
   const copyCam = (c) => ({ turn: c && isFinite(+c.turn) ? +c.turn : 35, tilt: c && isFinite(+c.tilt) ? +c.tilt : 25 });
   function setConfig(next, keepState) {
     C2 = next;
-    theme = THEMES[C2.theme] || THEMES.light;
+    theme = THEMES2[C2.theme] || THEMES2.light;
     logX = C2.xScale === "log" && C2.dims !== 3;
     logY = C2.yScale === "log" && C2.dims !== 3;
     dataStyles = /* @__PURE__ */ new Map();
@@ -7153,7 +7237,8 @@ function graphRuntime(P, G2, G3, config) {
   function visible(it) {
     const e = exprOf(it);
     if (e.hidden) return false;
-    return !(e.step > 0) || e.step <= step;
+    if (C2.showAll) return true;
+    return (!(e.step > 0) || e.step <= step) && !(e.until > 0 && e.until <= step);
   }
   function niceStep(raw) {
     const p = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -7696,13 +7781,13 @@ function graphRuntime(P, G2, G3, config) {
       E[key] = u;
       return f(E);
     };
-    const place = (u, val) => horiz ? [sx(u), clampPx(sy(val))] : [clampPx(sx(val)), sy(u)];
+    const place = (u, val2) => horiz ? [sx(u), clampPx(sy(val2))] : [clampPx(sx(val2)), sy(u)];
     const runs = [];
     let run = [], pu = 0, pv = NaN;
     for (let i = 0; i <= n; i++) {
       const u = toWorld(i);
-      const val = at(u);
-      if (!isFinite(val)) {
+      const val2 = at(u);
+      if (!isFinite(val2)) {
         if (run.length) {
           runs.push(run);
           run = [];
@@ -7710,8 +7795,8 @@ function graphRuntime(P, G2, G3, config) {
         pv = NaN;
         continue;
       }
-      if (isFinite(pv) && Math.abs(toPx(val) - toPx(pv)) > 24) {
-        let a = pu, b = u, fa = pv, fb = val, broken = false;
+      if (isFinite(pv) && Math.abs(toPx(val2) - toPx(pv)) > 24) {
+        let a = pu, b = u, fa = pv, fb = val2, broken = false;
         const left = [], right = [];
         for (let k2 = 0; k2 < 30; k2++) {
           const m = (a + b) / 2;
@@ -7736,8 +7821,8 @@ function graphRuntime(P, G2, G3, config) {
           run = right.reverse();
         }
       }
-      run.push(place(u, val));
-      pv = val;
+      run.push(place(u, val2));
+      pv = val2;
       pu = u;
     }
     if (run.length) runs.push(run);
@@ -8009,6 +8094,7 @@ function graphRuntime(P, G2, G3, config) {
   let dataStyles = /* @__PURE__ */ new Map();
   let dataHits = [];
   const isNum = (v) => typeof v === "number" && isFinite(v);
+  const val = (v) => v === null || v === void 0 || v === "" ? NaN : +v;
   function extent(values2) {
     let lo = Infinity, hi = -Infinity;
     for (const v of values2) {
@@ -8071,19 +8157,19 @@ function graphRuntime(P, G2, G3, config) {
     const radius = radiusOf(spec, d);
     const alpha2 = clamp4(num9(spec.opacity, mark === "bars" ? 0.85 : 0.85), 0.05, 1);
     const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style };
-    const pxOf = (i) => sx(+d.x[i]), pyOf = (i) => sy(+d.y[i]);
+    const pxOf = (i) => sx(val(d.x[i])), pyOf = (i) => sy(val(d.y[i]));
     const onCanvas = (px, py, m) => px >= -m && px <= W2 + m && py >= -m && py <= H2 + m;
     if (Array.isArray(d.xErr) || Array.isArray(d.yErr)) {
       ctx.lineWidth = 1;
       ctx.globalAlpha = alpha2 * 0.6;
       const byColor = /* @__PURE__ */ new Map();
       for (let i = 0; i < n; i++) {
-        const x = +d.x[i], y = +d.y[i];
+        const x = val(d.x[i]), y = val(d.y[i]);
         if (!isFinite(x) || !isFinite(y)) continue;
         const c = color2(i);
         if (!byColor.has(c)) byColor.set(c, new Path2D());
         const path = byColor.get(c);
-        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0;
+        const ex = Array.isArray(d.xErr) ? Math.abs(val(d.xErr[i])) || 0 : 0, ey = Array.isArray(d.yErr) ? Math.abs(val(d.yErr[i])) || 0 : 0;
         const px = sx(x), py = sy(y);
         if (ex > 0) {
           const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex));
@@ -8108,15 +8194,15 @@ function graphRuntime(P, G2, G3, config) {
     }
     if (mark === "bars") {
       const base3 = logY ? H2 : clamp4(sy(0), 0, H2);
-      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b]);
+      const order = Array.from({ length: n }, (_, i) => i).filter((i) => isFinite(val(d.x[i])) && isFinite(val(d.y[i]))).sort((a, b) => d.x[a] - d.x[b]);
       ctx.globalAlpha = alpha2;
       order.forEach((i, k) => {
         const top = pyOf(i);
         if (!isFinite(top)) return;
         let left, right;
-        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) {
+        if (Array.isArray(d.x2) && isFinite(val(d.x2[i]))) {
           left = pxOf(i);
-          right = sx(+d.x2[i]);
+          right = sx(val(d.x2[i]));
         } else {
           const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null;
           const here = pxOf(i);
@@ -9225,11 +9311,11 @@ function graphRuntime(P, G2, G3, config) {
       const horiz = (it.axis || "y") === "y";
       const u = horiz ? wx(px) : wy(py);
       E[horiz ? "x" : "y"] = u;
-      const val = it.f(E);
-      if (!isFinite(val)) continue;
-      const d = horiz ? Math.abs(sy(val) - py) : Math.abs(sx(val) - px);
+      const val2 = it.f(E);
+      if (!isFinite(val2)) continue;
+      const d = horiz ? Math.abs(sy(val2) - py) : Math.abs(sx(val2) - px);
       if (d < 10 && (!best || d < best.d)) {
-        best = horiz ? { d, px, py: sy(val), x: u, y: val, color: e.color } : { d, px: sx(val), py, x: val, y: u, color: e.color };
+        best = horiz ? { d, px, py: sy(val2), x: u, y: val2, color: e.color } : { d, px: sx(val2), py, x: val2, y: u, color: e.color };
       }
     }
     if (!best && dataHits.length) best = dataNear(px, py);
@@ -10414,7 +10500,7 @@ function graphSteps(el) {
   const steps = /* @__PURE__ */ new Set();
   for (const e of el?.expressions || []) {
     if (e?.hidden) continue;
-    const at = [e?.step].concat(e?.field?.steps ? Object.values(e.field.steps) : []);
+    const at = [e?.step, e?.until].concat(e?.field?.steps ? Object.values(e.field.steps) : []);
     for (const v of at) {
       const n = Number(v);
       if (Number.isInteger(n) && n >= 1 && n <= 1e3) steps.add(n);
@@ -11308,7 +11394,7 @@ function termIdsIn(latex) {
 var int = (v, min, max, dflt) => Number.isInteger(+v) && +v >= min && +v <= max ? +v : dflt;
 var num2 = (v, min, max, dflt) => typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : dflt;
 var str = (v, max) => typeof v === "string" ? v.slice(0, max) : "";
-var isDark = (hex) => {
+var isDark2 = (hex) => {
   const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d) => d + d) : hex;
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   return 0.299 * r + 0.587 * g + 0.114 * b < 140;
@@ -11317,7 +11403,7 @@ function equationConfig(el) {
   const latex = str(el?.latex, 2e4);
   const ids = termIdsIn(latex);
   const textColor = typeof el?.textColor === "string" && COLOR.test(el.textColor) ? el.textColor : null;
-  const palette = EQUATION_COLORS[textColor && isDark(textColor) ? "light" : "dark"];
+  const palette = EQUATION_COLORS[textColor && isDark2(textColor) ? "light" : "dark"];
   const given = Array.isArray(el?.terms) ? el.terms : [];
   const terms = [];
   for (const t of given) {
@@ -16606,7 +16692,7 @@ function geometryRuntime() {
     var m = /^([A-Za-zα-ωΑ-Ω]+'*)_?(\d+)('*)$/.exec(name);
     return m ? m[1] + "_{" + m[2] + "}" + m[3] : name.replace(/_(\w+)/, "_{$1}");
   }
-  var THEMES = {
+  var THEMES2 = {
     dark: { ink: "#e7ebf3", soft: "#8d96aa", grid: "#3a4152", axis: "#7d8698", blue: "#5aa2ff", red: "#ff6f61", yellow: "#ffcc4d", green: "#52c78d", purple: "#b58cff", accent: "#ffcc4d", halo: "#1e1e2e", fillOp: 0.2 },
     light: { ink: "#1b2230", soft: "#7a8396", grid: "#e1e5ec", axis: "#8790a2", blue: "#1f62c4", red: "#cc2f24", yellow: "#e3a400", green: "#2a8a57", purple: "#7a42c8", accent: "#cc2f24", halo: "#ffffff", fillOp: 0.26 }
   };
@@ -16651,7 +16737,7 @@ function geometryRuntime() {
     return raw <= p ? p : raw <= 2 * p ? 2 * p : raw <= 5 * p ? 5 * p : 10 * p;
   }
   function render(objs, vals, o) {
-    var th = THEMES[o.dark ? "dark" : "light"], F2 = frame(o), W2 = F2.W, H2 = F2.H;
+    var th = THEMES2[o.dark ? "dark" : "light"], F2 = frame(o), W2 = F2.W, H2 = F2.H;
     var S = function(p) {
       return toScreen(F2, p);
     };
@@ -16955,7 +17041,7 @@ function geometryRuntime() {
   }
   return {
     CMDS: CMDS2,
-    THEMES,
+    THEMES: THEMES2,
     parse: parse2,
     serialize,
     compute,
@@ -17552,7 +17638,7 @@ function periodicRuntime(ROWS) {
     year: { label: "Year discovered", unit: "", key: "year", dp: 0 }
   };
   var RAMP = ["#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b"];
-  var THEMES = {
+  var THEMES2 = {
     light: { dark: false, fg: "#16202a", muted: "#56636f", faint: "#87929c", line: "#d6dce1", surface: "#ffffff", accent: "#1d5fa6", onAccent: "#ffffff", code: "#e8ecef", pos: "#cf5a1f", neg: "#2470cc", tileS: 72, tileL: 89, strongS: 58, strongL: 44, edge: 0.09 },
     dark: { dark: true, fg: "#e3e8ed", muted: "#9ba7b3", faint: "#7a8692", line: "#3a4652", surface: "#151c22", accent: "#7db0ff", onAccent: "#0e1317", code: "#1f2a33", pos: "#ff9759", neg: "#63a6f7", tileS: 32, tileL: 23, strongS: 62, strongL: 64, edge: 0.08 }
   };
@@ -18251,7 +18337,7 @@ function periodicRuntime(ROWS) {
   }
   function render(s, o) {
     o = o || {};
-    var v = o.view || viewAt(s, 0), th = THEMES[s.theme], L = layout(s);
+    var v = o.view || viewAt(s, 0), th = THEMES2[s.theme], L = layout(s);
     var pinned = o.pinned !== void 0 ? o.pinned : v.pin;
     var shown = o.shown !== void 0 ? o.shown : pinned || s.restingElement;
     var mode = o.mode || "static", ro = { mode, key: o.key == null ? null : o.key, sub: o.sub, pinned, animate: o.animate, tab: shown || L.tiles[0] && L.tiles[0].z };
@@ -18285,7 +18371,7 @@ function periodicRuntime(ROWS) {
   var live = [], escOn = false;
   function attach(root, el, opts) {
     opts = opts || {};
-    var s = normalize(el), L = layout(s), th = THEMES[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
+    var s = normalize(el), L = layout(s), th = THEMES2[s.theme], mode = opts.mode === "canvas" ? "canvas" : "deck";
     var st = { view: viewAt(s, 0), hover: null, pin: null, sub: null, key: null };
     var raf = 0, canvas = null, gone = false;
     var win = root.ownerDocument.defaultView || window;
@@ -19658,7 +19744,7 @@ function harmonicsRuntime(SH2) {
     var x = p[0], y = p[1], z = p[2];
     return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[3] * x + M[7] * y + M[11] * z + M[15]];
   }
-  var THEMES = {
+  var THEMES2 = {
     light: { pos: "#cf5a1f", neg: "#2470cc", mid: "#e7e5e0", node: "#1f2328", zero: "#34363d", axis: "#8a939d", fg: "#16202a", muted: "#56636f", hue0: 42 * DEG, L: 0.69, C: 0.12 },
     dark: { pos: "#ff9759", neg: "#63a6f7", mid: "#d8d5cf", node: "#15181b", zero: "#26282e", axis: "#8f9aa6", fg: "#e3e8ed", muted: "#9ba7b3", hue0: 42 * DEG, L: 0.74, C: 0.115 }
   };
@@ -19905,7 +19991,7 @@ function harmonicsRuntime(SH2) {
       ctx.clearRect(0, 0, W2, H2);
       return true;
     }
-    var s = pic.s, th = THEMES[s.theme] || THEMES.dark, t = o.t || 0;
+    var s = pic.s, th = THEMES2[s.theme] || THEMES2.dark, t = o.t || 0;
     var turn = (o.turn != null ? o.turn : s.turn) + (s.motion === "spin" ? t * 24 * s.speed : 0);
     var tilt = o.tilt != null ? o.tilt : s.tilt;
     var wt = s.motion === "wave" ? t * 2.2 * s.speed : 0;
@@ -20236,7 +20322,7 @@ function harmonicsRuntime(SH2) {
       node.textContent = src.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\^/g, "").replace(/_/g, "");
     }
     function sized() {
-      var h = root.clientHeight || 0, th = THEMES[s.theme] || THEMES.dark;
+      var h = root.clientHeight || 0, th = THEMES2[s.theme] || THEMES2.dark;
       var fs = Math.max(10, Math.min(48, h * 0.06));
       label.style.fontSize = fs + "px";
       label.style.color = th.fg;
@@ -20398,7 +20484,7 @@ function harmonicsRuntime(SH2) {
   }
   function still(el, w, h, dpr, n) {
     var s = normalize(el), state = stepState(s, n || 0), pic = picture(state);
-    var c = document.createElement("canvas"), th = THEMES[s.theme] || THEMES.dark;
+    var c = document.createElement("canvas"), th = THEMES2[s.theme] || THEMES2.dark;
     var capH = state.caption ? Math.max(10, h * 0.055) * 1.4 : 0;
     if (!draw(c, pic, { w, h: h - capH, dpr })) {
       freePicture(pic);
@@ -20430,7 +20516,7 @@ function harmonicsRuntime(SH2) {
     return out.toDataURL("image/png");
   }
   return {
-    THEMES,
+    THEMES: THEMES2,
     DEFAULTS: DEFAULTS2,
     PICTURE_FIELDS,
     SOURCES,
@@ -20588,6 +20674,12 @@ function harmonicsDeckScript() {
   return deckScript4;
 }
 
+// client/src/utils/deckFont.js
+var DEFAULT_DECK_FONT = "Arial, sans-serif";
+function deckFont(globalFont) {
+  return typeof globalFont === "string" && globalFont.trim() || DEFAULT_DECK_FONT;
+}
+
 // client/src/utils/text3d.js
 var TEXT3D_DEFAULTS = {
   content: "3D Text",
@@ -20642,7 +20734,7 @@ function text3dSettings(el, fallbackFont) {
     fontWeight: WEIGHTS.test(weight) ? weight : TEXT3D_DEFAULTS.fontWeight,
     fontStyle: STYLES.includes(el.fontStyle) ? el.fontStyle : "normal",
     textAlign: ALIGNS[el.textAlign] ? el.textAlign : "center",
-    fontFamily: String(el.fontFamily || fallbackFont || "sans-serif").replace(/[<>"`;{}\\\r\n]/g, "")
+    fontFamily: String(el.fontFamily || deckFont(fallbackFont)).replace(/[<>"`;{}\\\r\n]/g, "")
   };
 }
 var escapeText2 = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -21281,6 +21373,64 @@ var SCROLLING_SCRIPT = `
 // client/src/utils/annotations.js
 var ANNOTATION_MESSAGE = "parallax-annotations";
 
+// client/src/utils/placeholders.js
+function isEmptyHtml(html) {
+  const s = String(html || "");
+  if (/<(img|table|hr|iframe|svg|video)\b/i.test(s) || /data-math-latex|data-cite/.test(s)) return false;
+  const text = s.replace(/<[^>]*>/g, "").replace(/&nbsp;|&#160;| /g, " ").replace(/&[a-z]+;|&#\d+;/gi, "x");
+  return text.trim() === "";
+}
+function isEmptyPlaceholder(el) {
+  return !!el && el.type === "text" && !!el.placeholder && isEmptyHtml(el.content);
+}
+
+// client/src/utils/shrinkFit.js
+var MIN_FIT = 0.3;
+var SHRINK_FIT_SCRIPT = `
+(function () {
+  function height(el) {
+    var last = el.lastElementChild
+    if (!last) return el.offsetHeight
+    return last.offsetTop + last.offsetHeight + (parseFloat(getComputedStyle(el).paddingBottom) || 0)
+  }
+  function fit(box) {
+    var inner = box.firstElementChild
+    var w = box.clientWidth, h = box.clientHeight
+    if (!inner || !w || !h) return
+    inner.style.transform = ''
+    inner.style.transformOrigin = '0 0'
+    inner.style.width = w + 'px'
+    var s = 1
+    if (height(inner) > h + 0.5) {
+      var lo = ${MIN_FIT}, hi = 1
+      for (var i = 0; i < 9; i++) {
+        var mid = (lo + hi) / 2
+        inner.style.width = (w / mid) + 'px'
+        if (height(inner) * mid <= h + 0.5) lo = mid; else hi = mid
+      }
+      s = Math.floor(lo * 100) / 100
+    }
+    inner.style.width = (w / s) + 'px'
+    inner.style.transform = s < 1 ? 'scale(' + s + ')' : ''
+  }
+  function fitAll(root) {
+    var boxes = (root || document).querySelectorAll('[data-fit="shrink"]')
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].getClientRects().length) fit(boxes[i])
+  }
+  window.parallaxFitText = fitAll
+  function start() {
+    fitAll()
+    if (window.Reveal && window.Reveal.on) {
+      window.Reveal.on('ready', function () { fitAll() })
+      window.Reveal.on('slidechanged', function (e) { fitAll(e.currentSlide) })
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fitAll() })
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start)
+  else start()
+})();
+`;
+
 // client/src/utils/clickActions.js
 var HOVER_EFFECTS = ["brighten", "lift", "grow", "none"];
 var VISIBILITY_KEYS = ["show", "hide", "toggle"];
@@ -21758,9 +21908,9 @@ var CLICK_ACTION_SCRIPT = `
     })();`;
 
 // client/src/utils/latinModern.js
-var import_libraries3 = require("./libraries");
+var import_libraries4 = require("./libraries");
 var FACES = [["normal", 400, "cmunrm"], ["normal", 700, "cmunbx"], ["italic", 400, "cmunti"], ["italic", 700, "cmunbi"]];
-function latinModernFaces(url = import_libraries3.libUrl) {
+function latinModernFaces(url = import_libraries4.libUrl) {
   return FACES.map(([style, weight, file]) => `@font-face { font-family: 'Latin Modern Roman'; font-style: ${style}; font-weight: ${weight}; src: url('${url("latex.js", `dist/fonts/Serif/${file}.woff`)}') format('woff'); }`).join("\n");
 }
 
@@ -21877,12 +22027,14 @@ function getSlideColumns(slides, presentation = {}) {
   return slides.map((s) => [s]);
 }
 var CUSTOM_TRANSITIONS = ["differential-rotation"];
-function referencesHtml(citations, markerColor) {
+var LIGHT_THEMES = /* @__PURE__ */ new Set(["white", "beige", "serif", "simple", "solarized", "sky"]);
+function referencesHtml(citations, markerColor, light = false) {
+  const ink2 = (alpha2) => light ? `rgba(0,0,0,${alpha2})` : `rgba(255,255,255,${alpha2})`;
   const items = citations.entries.map((entry) => {
     const year = entry.year || "";
     const journal = entry.journal || entry.booktitle || "";
     const vol = entry.volume || "";
-    const pages = entry.pages || "";
+    const pages = pageRange(entry.pages);
     const doi = entry.doi || "";
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
     line += `${escapeHtml(String(entry.author || "").replace(/[{}]/g, ""))}`;
@@ -21894,9 +22046,9 @@ function referencesHtml(citations, markerColor) {
     if (journal || vol || pages) line += ".";
     if (doi) line += ` <a href="https://doi.org/${escapeHtml(doi)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">DOI</a>`;
     else if (webLink(entry.url)) line += ` <a href="${sanitizeUrl(webLink(entry.url).href)}" target="_blank" rel="noopener" style="color:rgba(99,102,241,0.8);font-size:0.85em">${escapeHtml(webLink(entry.url).site)}</a>`;
-    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:rgba(255,255,255,0.85)">${line}</div>`;
+    return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:${ink2(0.85)}">${line}</div>`;
   }).join("\n          ");
-  return `<h2 style="font-size:28px;margin:0 0 20px;color:rgba(255,255,255,0.95)">References</h2>
+  return `<h2 style="font-size:28px;margin:0 0 20px;color:${ink2(0.95)}">References</h2>
         <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
           ${items}
         </div>`;
@@ -21943,6 +22095,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const slideSectionHtmlByIndex = /* @__PURE__ */ new Map();
   presentation.slides.forEach((slide, slideIndex) => {
     const bgAttrs = getBackgroundAttrs(slide.background);
+    const palette = slidePalette(slide, theme);
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : "";
     const sideCitations = (slide.elements || []).filter((el) => CITABLE_TYPES.includes(el.type) && (el.citationText || el.citationLink) && el.citationMode === "side").map((el) => ({ id: el.id, text: el.citationText, link: el.citationLink }));
     const clickTargets = visibilityTargets(slide);
@@ -21950,7 +22103,7 @@ function generateRevealHTML(presentation, opts = {}) {
     const canvasW = getCanvasWidth(slide, slideW, slideH);
     const axis = scrollAxis(slide, slideW, slideH);
     const scrolling = axis !== null;
-    const sortedElements = (slide.elements || []).slice().sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+    const sortedElements = (slide.elements || []).filter((el) => !isEmptyPlaceholder(el)).sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
     const renderedElements = sortedElements.map((el) => {
       const shadowStyle = el.shadowBlur || el.shadowX || el.shadowY ? `box-shadow:${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 0}px ${cssValue(el.shadowColor) || "rgba(0,0,0,0.5)"};` : "";
       const borderRadiusStyle = (el.type === "image" || el.type === "code") && el.borderRadius ? `border-radius:${el.borderRadius}px;` : "";
@@ -21963,8 +22116,12 @@ function generateRevealHTML(presentation, opts = {}) {
       const actionAttrs2 = clickActionAttrs(el, clickTargets);
       if (el.type === "text") {
         const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ""}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ""}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ""}`;
+        const content = resolveCitationsInHtml(el.content || "", citations.labelByKey);
+        if (el.sizeMode === "shrink") {
+          return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`;
+        }
         const textStyle = el.sizeMode === "auto" ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}` : style;
-        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:white;${spacingStyle}">${resolveCitationsInHtml(el.content || "", citations.labelByKey)}</div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`;
       }
       if (el.type === "image") {
         const src = absoluteSrc(sanitizeUrl(el.src));
@@ -22052,7 +22209,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || "Molecule")}"></iframe>${capHtml}${sup}</div>`;
       }
       if (el.type === "p5") {
-        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries4.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
+        const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${(0, import_libraries5.libUrl)("p5", "lib/p5.min.js")}"></script><script>${EMBED_RESIZE_LISTENER}</script>${offersData ? EMBED_DATASETS_SCRIPT : ""}</head><body><script>${el.content || ""}</script></body></html>`;
         const srcdoc = p5Doc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22063,7 +22220,7 @@ function generateRevealHTML(presentation, opts = {}) {
       }
       if (el.type === "markdown") {
         const md = (el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("marked", "lib/marked.umd.js")}"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});<\\/script></body></html>`;
+        const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries5.libUrl)("marked", "lib/marked.umd.js")}"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || "")});</script></body></html>`;
         const escaped = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
@@ -22164,7 +22321,7 @@ function generateRevealHTML(presentation, opts = {}) {
         const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content);
         const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content);
         if (hasTikz) {
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:100%;max-height:100%}</style></head><body><script type="text/tikz">${content}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"></script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${tikzInk(content, [el.textColor, palette.text])}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22175,7 +22332,7 @@ function generateRevealHTML(presentation, opts = {}) {
 \\begin{document}
 ${content}
 \\end{document}`;
-          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries4.libUrl)("latex.js", "dist/latex.js")}"><\\/script><link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\\/script></body></html>`;
+          const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${(0, import_libraries5.libUrl)("latex.js", "dist/latex.js")}"></script><link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/css/base.css")}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}</script></body></html>`;
           const escaped2 = srcdoc.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
           return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${escaped2}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
         }
@@ -22248,7 +22405,7 @@ ${content}
         const fontSize = el.fontSize || 64;
         const w = el.width;
         const pathSide = el.pathSide || "bottom";
-        const ff = (el.fontFamily || globalFont || "sans-serif").replace(/"/g, "'");
+        const ff = (el.fontFamily || deckFont(globalFont)).replace(/"/g, "'");
         const baseTextAttrs = `font-size="${fontSize}" font-family="${ff}" fill="${el.color || "#ffffff"}" font-weight="${el.fontWeight || "normal"}" font-style="${el.fontStyle || "normal"}" letter-spacing="${el.letterSpacing || 0}"${el.wordSpacing ? ` word-spacing="${el.wordSpacing}"` : ""}`;
         let svg, svgH;
         if (pathSide === "leftedge" || pathSide === "rightedge") {
@@ -22357,7 +22514,7 @@ ${content}
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};">
 ${bodyHtml}
 ${footerHtml}
 ${gridHtml}
@@ -22381,7 +22538,7 @@ ${sections}
     slidesHtml += `
     <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor)}
+        ${referencesHtml(citations, footerColor, LIGHT_THEMES.has(theme))}
       </div>
     </section>`;
   }
@@ -22391,15 +22548,15 @@ ${sections}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(presentation.title || "Presentation")}</title>
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reset.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.css")}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reset.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", "dist/reveal.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("reveal.js", `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="${(0, import_libraries4.libUrl)("latex.js", "dist/fonts/cmu.css")}">
+  <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/national-park">${customFontLinks(customFonts)}
@@ -22411,8 +22568,10 @@ ${sections}
     /* Override reveal.js theme CSS variables to match editor */
     :root { --r-main-font-size: 42px; --r-block-margin: 0px; --r-heading-margin: 0 0 0.4em 0; --r-heading-text-transform: none; --r-heading-letter-spacing: normal; }
     /* Reset reveal.js section padding/alignment so absolute positions match the editor canvas exactly */
-    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
+    .reveal .slides section { padding: 0 !important; text-align: left !important; overflow: hidden !important; font-family: ${DEFAULT_DECK_FONT}; line-height: 1.4 !important; text-transform: none; letter-spacing: normal; }
     .reveal .slides section > * { overflow: hidden; }
+    /* Headings are in the deck's font, as in the editor, not the reveal.js theme's heading font (League Gothic, Source Sans Pro, …) */
+    .reveal .slides section :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; }
     /* Override ALL theme element styles to match TipTap editor exactly */
     .reveal p { margin: 0 0 0.4em !important; }
     .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 { margin: 0 0 0.4em !important; text-transform: none !important; letter-spacing: normal !important; text-shadow: none !important; }
@@ -22506,11 +22665,11 @@ ${slidesHtml}
   <div id="overview-panel"><div class="ov-header"><span>Slides</span><span id="ov-count"></span></div><div class="ov-body ${sanitizeAttr(presentation.overviewLayout || "linear")}" id="ov-body"></div></div>
   <div id="laser-dot"></div>
   <canvas id="spotlight-overlay"></canvas>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "dist/reveal.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("katex", "dist/katex.min.js")}"></script>
-  <script src="${(0, import_libraries4.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "dist/reveal.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "plugin/notes/notes.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("reveal.js", "plugin/highlight/highlight.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.js")}"></script>
+  <script src="${(0, import_libraries5.libUrl)("katex", "dist/contrib/mhchem.min.js")}"></script>
   <script>
     var _customTransitions = ['differential-rotation'];
     var _globalTransition = ${scriptValue(presentation.transition || "slide")};
@@ -22718,7 +22877,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -22816,14 +22975,23 @@ ${(() => {
           if (t.h === state.h && t.v === state.v) t.el.classList.add('active');
           else t.el.classList.remove('active');
         });
+        // The current slide's thumbnail into view, scrolling the panel alone:
+        // scrollIntoView scrolls every box around it too, and so a page this
+        // deck is embedded in, down to the deck, as it loads
         var active = body.querySelector('.ov-thumb.active');
-        if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        if (!active || !isOpen) return;
+        var r = active.getBoundingClientRect(), b = body.getBoundingClientRect();
+        if (r.top < b.top) body.scrollTop -= b.top - r.top;
+        else if (r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom;
+        if (r.left < b.left) body.scrollLeft -= b.left - r.left;
+        else if (r.right > b.right) body.scrollLeft += r.right - b.right;
       }
 
       function togglePanel() {
         isOpen = !isOpen;
         if (isOpen) panel.classList.add('open');
         else panel.classList.remove('open');
+        if (isOpen) updateActive();
       }
 
       toggle.onclick = togglePanel;
@@ -22928,6 +23096,9 @@ function annotationScript(presentation, set) {
     if (Reveal.isReady()) start(); else Reveal.on('ready', start)
   })()
   </script>`;
+}
+function hasShrinkText(presentation) {
+  return (presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "text" && el.sizeMode === "shrink" && !isEmptyPlaceholder(el)));
 }
 function getBackgroundAttrs(bg) {
   if (!bg) return "";
@@ -23036,8 +23207,158 @@ function exampleDatasetNames(names) {
   return [...names].filter((name) => Object.prototype.hasOwnProperty.call(EXAMPLE_DATASETS, name));
 }
 
+// client/src/utils/plotImport/toGraph.js
+var IMPORT_WIDTH = 560;
+
+// client/src/utils/plotImport/toFigure.js
+var HIDDEN = { id: "hidden", name: "Hidden", opacity: 0, duration: 300, easing: "ease" };
+var pieceKey = (p) => `${p.part}:${p.run || 0}`;
+var figureLayers = (plot) => plot.panels ? plot.panels.flatMap((p) => p.layers) : plot.layers;
+var figureLegendEntry = (part2) => {
+  const m = /^figure-legend-(\d+)$/.exec(part2);
+  return m ? Number(m[1]) - 1 : -1;
+};
+var sigOf = (layer) => (layer.panel ? `${layer.panel}|` : "") + `${layer.kind}|${layer.color}`;
+var NONE = { step: 0, until: 0 };
+var NEVER = { step: 0, until: 0, never: true };
+function stepsOf(choice = {}) {
+  const step = choice.step > 0 ? choice.step : 0;
+  return { step, until: choice.until > step ? choice.until : 0 };
+}
+function meet(a, b) {
+  if (a.never || b.never) return NEVER;
+  const step = Math.max(a.step, b.step);
+  const until = a.until && b.until ? Math.min(a.until, b.until) : a.until || b.until;
+  return until && until <= step ? NEVER : { step, until };
+}
+function anyOf(list) {
+  const own = list.filter((st) => !st.never);
+  if (!own.length) return null;
+  const step = Math.min(...own.map((st) => st.step));
+  const until = own.every((st) => st.until) ? Math.max(...own.map((st) => st.until)) : 0;
+  return { step, until: until > step ? until : 0 };
+}
+function partSteps(plot, choices) {
+  const steps = /* @__PURE__ */ new Map();
+  const panels = plot.panels || [];
+  const byId = new Map(panels.map((p) => [p.id, p]));
+  const chosen = (id) => choices[id]?.include === false ? NEVER : stepsOf(choices[id]);
+  const panelSteps = (p) => meet(chosen(p.id), p.parent && byId.has(p.parent) ? panelSteps(byId.get(p.parent)) : NONE);
+  for (const p of panels) steps.set(p.id, panelSteps(p));
+  for (const l of figureLayers(plot)) steps.set(l.id, meet(chosen(l.id), steps.get(l.panel) || NONE));
+  const frame = (layers, within) => {
+    const shown = anyOf(layers.filter((l) => l.legend != null).map((l) => steps.get(l.id)));
+    return shown ? meet(shown, within) : within;
+  };
+  if (panels.length) for (const p of panels) steps.set(`${p.id}-legend`, frame(p.layers, steps.get(p.id)));
+  else steps.set("legend", frame(plot.layers, NONE));
+  const fl = plot.figureLegend;
+  if (fl) {
+    const entries = fl.entries.map((e) => anyOf(e.layers.map((id) => steps.get(id) || NEVER)) || NEVER);
+    entries.forEach((st, k) => steps.set(`figure-legend-${k + 1}`, st));
+    steps.set("figure-legend", fl.entries.length ? anyOf(entries) || NEVER : NONE);
+  }
+  return steps;
+}
+function setSteps(el, st) {
+  delete el.states;
+  delete el.stateSteps;
+  delete el.initialState;
+  if (!st.never && !st.step && !st.until) return;
+  el.states = [{ ...HIDDEN }];
+  el.stateSteps = {};
+  if (st.never) {
+    el.initialState = "hidden";
+    return;
+  }
+  if (st.step) {
+    el.initialState = "hidden";
+    el.stateSteps[st.step] = null;
+  }
+  if (st.until) el.stateSteps[st.until] = "hidden";
+}
+function recolorOf(plot, choices = {}) {
+  const out = /* @__PURE__ */ new Map();
+  const all = figureLayers(plot);
+  const given = (l) => {
+    const c = String(choices[l.id]?.color || "").toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(c) && c !== l.color.toLowerCase() ? c : null;
+  };
+  for (const l of all) {
+    const to = given(l);
+    if (to) out.set(l.id, { from: l.color.toLowerCase(), to });
+  }
+  plot.figureLegend?.entries.forEach((e, k) => {
+    const named = e.layers.map((id) => all.find((l) => l.id === id)).filter((l) => l && choices[l.id]?.include !== false);
+    const now = new Set(named.map((l) => given(l) || l.color.toLowerCase()));
+    const to = now.size === 1 ? [...now][0] : null;
+    if (to && to !== named[0].color.toLowerCase()) out.set(`figure-legend-${k + 1}`, { from: named[0].color.toLowerCase(), to });
+  });
+  return out;
+}
+function figureElements(plot, pieces, { choices = {}, meta = {}, reuse = /* @__PURE__ */ new Map(), box, groupId, z = 2, width = IMPORT_WIDTH, newId = () => crypto.randomUUID() } = {}) {
+  const b = box || { x: 0, y: 0, width: Math.round(width), height: Math.round(width * (plot.size.height / plot.size.width || 0.7)) };
+  const group = groupId || newId();
+  const figureId = meta.id || newId();
+  const layers = new Map(figureLayers(plot).map((l) => [l.id, l]));
+  const panels = new Map((plot.panels || []).map((p) => [p.id, p]));
+  const steps = partSteps(plot, choices);
+  const recolor2 = recolorOf(plot, choices);
+  const nameOf = (it) => choices[it.id]?.name || it.name;
+  return pieces.map((p, k) => {
+    const layer = layers.get(p.part);
+    const panel = panels.get(p.part);
+    const legendIn = /-legend$/.test(p.part) ? panels.get(p.part.replace(/-legend$/, "")) || null : null;
+    const entry = plot.figureLegend?.entries[figureLegendEntry(p.part)];
+    const outer = p.part === "figure-legend" || !!entry;
+    const legend = p.part === "legend" || !!legendIn || outer;
+    const own = layer || panel;
+    const run = p.run || 0;
+    const name = own ? nameOf(own) : entry ? `Figure legend: ${entry.label}` : outer ? "Figure legend" : legend ? "Legend" : "Figure";
+    const home = layer && panels.get(layer.panel) || legendIn;
+    const label = (run ? `${name}, part ${run + 1}` : name) + (home ? ` · ${nameOf(home)}` : "");
+    const shown = steps.get(p.part) || NONE;
+    const fresh = {
+      type: "image",
+      x: Math.round(b.x),
+      y: Math.round(b.y),
+      width: Math.round(b.width),
+      height: Math.round(b.height),
+      zIndex: z + k,
+      src: p.url,
+      objectFit: "contain",
+      groupId: group,
+      name: label,
+      alt: layer ? name : panel ? `The figure’s ${name}` : legend ? "The figure’s legend" : run ? "Part of the figure drawn over its layers" : "The figure, without the layers that come and go",
+      figure: {
+        ...meta,
+        id: figureId,
+        part: p.part,
+        run,
+        ...layer ? { sig: sigOf(layer) } : {},
+        ...own ? { name, label, steps: stepsOf(choices[own.id]), shown } : {},
+        ...layer && recolor2.has(layer.id) ? { color: recolor2.get(layer.id).to } : {}
+      }
+    };
+    const old = reuse.get(pieceKey(p));
+    const el = old ? { ...old, ...fresh } : { id: newId(), ...fresh };
+    if (own || legend) setSteps(el, shown);
+    return el;
+  });
+}
+
 // client/src/examples/decks.js
 var CAFFEINE_SRC = "/examples/caffeine.sdf";
+var FIGURE_LAYERS_DIR = "/examples/figure-layers/";
+var DECAY_PLOT = {
+  size: { width: 432, height: 288 },
+  layers: [
+    { id: "l1", name: "model", kind: "line", color: "#ff7f0e", legend: 0 },
+    { id: "l2", name: "measured", kind: "points", color: "#1f77b4", legend: 1 }
+  ]
+};
+var DECAY_PIECES = [["base", 0], ["l2", 0], ["l1", 0], ["l2", 1], ["base", 1], ["legend", 0], ["l1", 1], ["l2", 2]];
+var DECAY_PLAN = "base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12";
 var W = 960;
 var H = 540;
 var GRAPH_BOX = { w: 560, h: 400 };
@@ -23159,7 +23480,99 @@ parallax.datasets.query("newest").then(function (d) {
   }
 })
 </script>`;
+var CITE = (key, n) => '<sup data-cite="' + key + '" style="color:#6366f1;cursor:default">[' + n + "]</sup>";
+var SHOWCASE_BIB = [
+  { type: "article", key: "zwicky1933", author: "Zwicky, F.", title: "Die Rotverschiebung von extragalaktischen Nebeln", journal: "Helvetica Physica Acta", year: "1933", volume: "6", pages: "110–127" },
+  { type: "article", key: "rubin1970", author: "Rubin, Vera C. and Ford, W. Kent, Jr.", title: "Rotation of the Andromeda Nebula from a Spectroscopic Survey of Emission Regions", journal: "The Astrophysical Journal", year: "1970", volume: "159", pages: "379", doi: "10.1086/150317" },
+  { type: "article", key: "bertone2018", author: "Bertone, Gianfranco and Hooper, Dan", title: "History of dark matter", journal: "Reviews of Modern Physics", year: "2018", volume: "90", pages: "045002", doi: "10.1103/RevModPhys.90.045002" }
+];
+var DIFFUSION_SKETCH = `<canvas id="c" width="960" height="540" style="display:block;width:100%;height:100%"></canvas>
+<script>
+// 3000 random walkers from one point: where
+// they are after 50, 400 and 2000 steps
+const ctx = c.getContext('2d'), N = 3000
+const x = new Float32Array(N)
+const y = new Float32Array(N)
+const snaps = {
+  50: '#7dd3fc', 400: '#a78bfa',
+  2000: '#fb923c',
+}
+for (let t = 1; t <= 2000; t++) {
+  for (let i = 0; i < N; i++) {
+    x[i] += Math.random() - 0.5
+    y[i] += Math.random() - 0.5
+  }
+  if (!snaps[t]) continue
+  ctx.fillStyle = ctx.strokeStyle = snaps[t]
+  for (let i = 0; i < N; i++) {
+    ctx.fillRect(480 + 9 * x[i],
+      290 + 9 * y[i], 2, 2)
+  }
+  const r = 9 * Math.sqrt(t / 6)
+  ctx.beginPath()
+  ctx.arc(480, 290, r, 0, 2 * Math.PI)
+  ctx.stroke()
+}
+ctx.fillStyle = '#e8ecff'; ctx.font = '26px sans-serif'
+ctx.fillText('Diffusion: the spread grows as √t', 30, 48)
+</script>`;
+var JSXGRAPH_PLOT = `<div id="board" style="width:100%;height:100%"></div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraph.css">
+<script src="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraphcore.js"></script>
+<script>
+const board = JXG.JSXGraph.initBoard('board', { boundingbox: [-7, 4, 7, -4], axis: true, showCopyright: false, showNavigation: false })
+const a = board.create('slider', [[-6, 3.2], [-2, 3.2], [0, 2, 3]], { name: 'a' })
+const b = board.create('slider', [[-6, 2.5], [-2, 2.5], [0.2, 1, 3]], { name: 'b' })
+board.create('functiongraph', [x => a.Value() * Math.sin(b.Value() * x)], { strokeColor: '#f97316', strokeWidth: 3 })
+</script>`;
 var BUILDERS = {
+  "showcase-ai"() {
+    const b = builder("showcase-ai");
+    return b.deck("A sine wave you can tune", false, [
+      b.slide(false, [
+        { ...b.heading("A sine wave you can tune"), content: '<h2 style="margin: 0; font-size: 40px; line-height: 1.25; color: #1a1a1a">A sine wave you can tune</h2>' },
+        { id: b.id(), type: "html", x: 60, y: 110, width: 840, height: 400, zIndex: 2, content: JSXGRAPH_PLOT }
+      ])
+    ]);
+  },
+  "showcase-cite"() {
+    const b = builder("showcase-cite");
+    const point = (html) => '<li><p style="font-size: 30px; line-height: 1.45">' + html + "</p></li>";
+    return {
+      ...b.deck("Missing mass", false, [
+        b.slide(false, [
+          b.heading("Missing mass, twice"),
+          { id: b.id(), type: "text", x: 60, y: 130, width: 840, height: 300, zIndex: 2, content: '<ul style="color: #1a1a1a">' + point("Coma’s galaxies move too fast for their light " + CITE("zwicky1933", 1)) + point("Andromeda’s rotation curve stays flat far past its light " + CITE("rubin1970", 2)) + point("Both point to the same unseen matter " + CITE("bertone2018", 3)) + "</ul>" },
+          b.caption("Press → for the references slide Parallax builds", false)
+        ])
+      ]),
+      bibliography: SHOWCASE_BIB
+    };
+  },
+  "showcase-code"() {
+    const b = builder("showcase-code");
+    return b.deck("Diffusion", true, [
+      { id: b.id(), notes: "", background: { type: "color", color: "#0f1222" }, elements: [{ id: b.id(), type: "html", x: 0, y: 0, width: W, height: H, zIndex: 1, content: DIFFUSION_SKETCH }] }
+    ]);
+  },
+  "showcase-figure"() {
+    const b = builder("showcase-figure");
+    const pieces = DECAY_PIECES.map(([part2, run]) => ({ part: part2, run, url: `${FIGURE_LAYERS_DIR}${part2}${run ? `-${run + 1}` : ""}.svg` }));
+    const figure = figureElements(DECAY_PLOT, pieces, {
+      choices: { l1: { step: 1 }, l2: { step: 2 } },
+      meta: { id: b.id(), src: `${FIGURE_LAYERS_DIR}decay.svg`, file: "decay.svg", plan: DECAY_PLAN },
+      box: { x: 210, y: 104, width: 540, height: 360 },
+      groupId: b.id(),
+      newId: b.id
+    });
+    return b.deck("A figure, a layer at a time", false, [
+      b.slide(false, [
+        b.heading("The model first, then the measurements"),
+        ...figure,
+        b.caption("Click the slide, then press → for each layer", false)
+      ])
+    ]);
+  },
   hero() {
     const b = builder("hero");
     return b.deck("Parallax", true, [
@@ -23341,6 +23754,7 @@ var BUILDERS = {
   }
 };
 var EXAMPLE_SLUGS = Object.keys(BUILDERS);
+var SHOWCASE_SLUGS = EXAMPLE_SLUGS.filter((slug) => slug.startsWith("showcase-"));
 function exampleDeck(slug) {
   return Object.prototype.hasOwnProperty.call(BUILDERS, slug) ? BUILDERS[slug]() : null;
 }
@@ -23368,6 +23782,7 @@ var HERO_EXAMPLE = "hero";
   EXAMPLE_SOURCES,
   HERO_EXAMPLE,
   MAX_ROWS,
+  SHOWCASE_SLUGS,
   buildStaticPluginSrcdoc,
   carriedData,
   dataGraphs,

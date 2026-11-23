@@ -4,7 +4,7 @@ Put spherical harmonics Yₗᵐ, and sums of them, on a slide: as lobes, as a co
 
 ## Adding one
 
-Open the **Diagrams** menu in the toolbar and click **Spherical Harmonics**. A complex Y₂¹ goes on the slide, drawn as lobes colored by phase, in colors for the slide's background. Everything else is set in the right panel. **Start from** offers ready-made pictures: the five d orbitals as steps, the real and complex tables up to ℓ = 3, nodal lines on a sphere, a ringing star, an sp³ hybrid built term by term, a polar cap with its band limit raised step by step, and a random sky map.
+Open **Science** in the toolbar and click **Spherical harmonics**. A complex Y₂¹ goes on the slide, drawn as lobes colored by phase, in colors for the slide's background. Everything else is set in the right panel. **Start from** offers ready-made pictures: the five d orbitals as steps, the real and complex tables up to ℓ = 3, nodal lines on a sphere, a ringing star, an sp³ hybrid built term by term, a polar cap with its band limit raised step by step, and a random sky map.
 
 Once the element is selected, **drag it on the canvas to turn it**, with the z axis kept upright. **Keep This View** stores that angle as the one it starts from; **Reset View** goes back to the default. To move the element, drag it before selecting it, or use the arrow keys.
 

@@ -29,6 +29,10 @@ function extractBraced(str, from) {
   return depth === 0 ? str.slice(from, i - 1) : null
 }
 
+// Fields that hold an address, kept as written: cleaning them as TeX would
+// turn a URL's ~ into a space, or -- into a dash
+const VERBATIM = new Set(['url', 'doi', 'eprint', 'file'])
+
 function parseFields(body) {
   const fields = {}
   const re = /(\w+)\s*=\s*/g
@@ -37,7 +41,7 @@ function parseFields(body) {
     const name = m[1].toLowerCase()
     const valStart = m.index + m[0].length
     const val = readValue(body, valStart)
-    if (val !== null) fields[name] = cleanLatex(val)
+    if (val !== null) fields[name] = VERBATIM.has(name) ? val.trim() : cleanLatex(val)
   }
   return fields
 }
@@ -71,8 +75,11 @@ function readValue(str, from) {
   return str.slice(start, i)
 }
 
+// TeX's dashes: --- sets an em dash and -- an en dash
+const texDashes = str => str.replace(/---/g, '\u2014').replace(/--/g, '\u2013')
+
 function cleanLatex(str) {
-  return str
+  return texDashes(str)
     .replace(/\{([^{}]*)\}/g, '$1')
     .replace(/\\&/g, '&')
     .replace(/~/g, ' ')
@@ -168,6 +175,13 @@ export function webLink(url) {
   try { return { href, site: new URL(href).hostname.replace(/^www\./, '') } } catch { return null }
 }
 
+// A page range as a reference prints it, with an en dash between its ends:
+// from TeX's --, or a hyphen between two numbers (as Zotero gives them, and
+// as bibliographies imported before -- was read still have them)
+export function pageRange(pages) {
+  return texDashes(String(pages || '').trim()).replace(/(\d)\s*[-\u2013]\s*(\d)/g, '$1\u2013$2')
+}
+
 export function formatReference(entry, index) {
   const authors = parseAuthors(entry.author)
   const authorStr = formatAuthorsFull(authors)
@@ -175,7 +189,7 @@ export function formatReference(entry, index) {
   const title = entry.title || ''
   const journal = entry.journal || entry.booktitle || ''
   const volume = entry.volume || ''
-  const pages = entry.pages || ''
+  const pages = pageRange(entry.pages)
   const doi = entry.doi || ''
 
   let ref = `[${index + 1}] ${authorStr}`

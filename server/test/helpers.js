@@ -35,7 +35,8 @@ async function startCloudServer() {
   stub('@clerk/express', {
     clerkMiddleware: options => {
       clerkOptions.middleware = options
-      return (req, res, next) => { req.testUser = req.get('X-Test-User') || null; next() }
+      clerkOptions.handler = (req, res, next) => { req.testUser = req.get('X-Test-User') || null; next() }
+      return clerkOptions.handler
     },
     getAuth: req => ({ userId: req.testUser }),
     requireAuth: () => (req, res, next) => next(),

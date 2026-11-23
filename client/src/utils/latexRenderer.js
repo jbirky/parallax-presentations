@@ -3,18 +3,37 @@
 // Only shown in the editor, so it loads the bundled libraries
 
 import { libUrl, localizeLibraries } from './libraries'
+import { parseColor } from './themes'
 
-export function generateLatexIframeHtml(content, textColor, fontSize) {
-  return localizeLibraries(buildLatexIframeHtml(content, textColor, fontSize))
+// A TikZ picture in the color it should be drawn in. TikZJax draws in black
+// whatever color the page around it has, so a picture on a dark slide was
+// black on black. The color is set inside the picture, in TeX, as Beamer
+// import does for dark slides: the first of `colors` that can be read (the
+// element's own text color, then the slide's), so a picture with no color of
+// its own reads on any slide. Colors the picture names itself still win.
+export function tikzInk(content, colors) {
+  const rgb = colors.map(parseColor).find(Boolean)
+  if (!rgb) return content
+  const hex = rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase()
+  return `\\definecolor{parallaxink}{HTML}{${hex}}\\color{parallaxink}\n${content}`
 }
 
-function buildLatexIframeHtml(content, textColor, fontSize) {
+// slideText: the slide's text color, for a TikZ picture with no color of its
+// own (the editor's preview, which has none, draws it in white, on its dark
+// background)
+export function generateLatexIframeHtml(content, textColor, fontSize, slideText) {
+  return localizeLibraries(buildLatexIframeHtml(content, textColor, fontSize, slideText))
+}
+
+function buildLatexIframeHtml(content, textColor, fontSize, slideText) {
   const c = textColor || 'white'
   const scale = fontSize ? (fontSize / 20) : 1
   const hasTikz = /\\begin\{tikzpicture\}|\\tikz\s*[{[]/.test(content)
   const hasTable = /\\begin\{(tabular\*?|table\*?|longtable|tabularx|tabulary)\}/.test(content)
 
   if (hasTikz) {
+    // TikZJax puts its SVG in a box of no height, so the frame (vw, vh) is
+    // what bounds it: 100% of that box drew every diagram 0px tall
     return `<!doctype html><html><head>
 <meta charset="utf-8">
 <link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css">
@@ -23,9 +42,9 @@ function buildLatexIframeHtml(content, textColor, fontSize) {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: transparent; overflow: auto; color: ${c}; }
   body { transform: scale(${scale}); transform-origin: center center; }
-  svg { max-width: 100%; max-height: 100%; }
+  svg { max-width: ${100 / scale}vw; max-height: ${100 / scale}vh; }
 </style>
-</head><body><script type="text/tikz">${content}<\/script></body></html>`
+</head><body><script type="text/tikz">${tikzInk(content, [textColor, slideText, c])}<\/script></body></html>`
   }
 
   if (hasTable) {

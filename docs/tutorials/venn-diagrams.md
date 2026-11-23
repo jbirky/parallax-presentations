@@ -4,7 +4,7 @@ Type a set expression, like `A \cap (B \cup C)`, and the regions it names are sh
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Venn Diagram**.
+1. Open **Science** in the toolbar and click **Venn diagram**.
 2. The editor opens with *A* ∩ (*B* ∪ *C*), built up in four steps. Type over it, pick another diagram from **Start from…**, or choose **Blank**.
 3. Click **Insert**.
 

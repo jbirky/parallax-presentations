@@ -31,7 +31,7 @@ describe('the landing page’s examples', { skip }, () => {
   after(async () => {
     // Put the shared table back as it was
     await t.pool.query("DELETE FROM landing_examples WHERE NOT builtin")
-    await t.pool.query("UPDATE landing_examples SET hero = (slug = 'hero'), card = (slug <> 'hero'), deck = NULL, source_presentation_id = NULL, thumbnail = NULL WHERE builtin")
+    await t.pool.query("UPDATE landing_examples SET hero = (slug = 'hero'), card = (slug <> 'hero'), kind = 'example', deck = NULL, source_presentation_id = NULL, thumbnail = NULL WHERE builtin")
     await t.stop()
   })
 
@@ -49,6 +49,17 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(list.examples[0].slug, 'chemistry')
     assert.equal(list.examples.find(e => e.slug === 'venn').thumbnail, '/examples/thumbs/venn.jpg')
     assert.ok(!list.examples.some(e => e.slug === 'hero'))
+  })
+
+  it('serves the showcase’s decks, which aren’t in the list, and nothing for a name it doesn’t have', async () => {
+    const page = await fetch(`${t.base}/examples/showcase-cite/deck`)
+    assert.equal(page.status, 200)
+    const html = await page.text()
+    assert.match(html, /Missing mass, twice/)
+    assert.match(html, /data-slide-id="references"/)
+    assert.ok(!(await publicList()).examples.some(e => e.slug.startsWith('showcase-')))
+    assert.equal((await fetch(`${t.base}/examples/showcase-code/deck`)).status, 200)
+    assert.equal((await fetch(`${t.base}/examples/showcase-nope/deck`)).status, 404)
   })
 
   it('adds a copy of one of the admin’s presentations, without what’s private to it', async () => {
@@ -137,6 +148,59 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(res.body.example.ownDeck, true)
     const own = (await t.call(admin, 'GET', `/api/presentations/${res.body.presentation.id}`)).body
     assert.equal(own.slides.length, 2)
+  })
+
+  it('shows a template on the Templates tab, which anyone signed in can copy', async () => {
+    const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: deck, title: 'Journal club', field: 'Talks', description: 'A paper in ten slides', kind: 'template' })
+    assert.equal(res.status, 201, JSON.stringify(res.body))
+    const template = res.body.example
+    assert.equal(template.kind, 'template')
+    let list = await publicList()
+    assert.deepEqual(list.templates.map(e => e.slug), [template.slug])
+    assert.equal(list.templates[0].desc, 'A paper in ten slides')
+    assert.ok(!list.examples.some(e => e.slug === template.slug), 'not among the examples')
+
+    // The top of the page is an example
+    assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { hero: true })).status, 400)
+    assert.equal((await t.call(admin, 'PUT', '/api/admin/examples/hero', { kind: 'template' })).status, 400)
+    // A built-in example has no deck of its own to copy until it's given one
+    assert.equal((await t.call(admin, 'PUT', '/api/admin/examples/logic', { kind: 'template' })).status, 400)
+    assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'poster' })).status, 400)
+
+    // Someone signed in copies it: a presentation of theirs, without the notes
+    const used = await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)
+    assert.equal(used.status, 201, JSON.stringify(used.body))
+    assert.equal(used.body.title, 'Journal club')
+    const copy = (await t.call(someone, 'GET', `/api/presentations/${used.body.id}`)).body
+    assert.match(copy.slides[0].elements[0].content, /Meiosis/)
+    assert.equal(copy.slides[0].notes, '')
+    assert.ok((await t.call(someone, 'GET', '/api/presentations')).body.some(p => p.id === used.body.id))
+    assert.equal((await t.call(admin, 'GET', `/api/presentations/${used.body.id}`)).status, 404, 'theirs, not the admin’s')
+
+    // Only a template that's shown, and only signed in
+    assert.notEqual((await t.call(null, 'POST', `/api/landing-templates/${template.slug}/use`)).status, 201)
+    assert.equal((await t.call(someone, 'POST', '/api/landing-templates/venn/use')).status, 404)
+    assert.equal((await t.call(someone, 'POST', '/api/landing-templates/no-such-one/use')).status, 404)
+    assert.equal((await t.call(someone, 'POST', '/api/landing-templates/Bad!/use')).status, 404)
+    await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { card: false })
+    assert.equal((await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)).status, 404)
+    await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { card: true })
+
+    // Within their plan's presentations
+    let last
+    for (let i = 0; i < 6; i++) {
+      last = await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)
+      if (last.status !== 201) break
+    }
+    assert.equal(last.status, 403)
+    assert.match(last.body.message, /limited to \d+ presentations/)
+
+    // Back to an example
+    await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })
+    list = await publicList()
+    assert.deepEqual(list.templates, [])
+    assert.ok(list.examples.some(e => e.slug === template.slug))
+    assert.equal((await t.call(admin, 'DELETE', `/api/admin/examples/${template.slug}`)).status, 200)
   })
 
   it('deletes an added example, but only hides a built-in one', async () => {

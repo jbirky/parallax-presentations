@@ -44,6 +44,7 @@ export default defineConfig({
             { text: 'Your First Presentation', link: '/tutorials/first-presentation' },
             { text: 'Outlining a Talk', link: '/tutorials/outline' },
             { text: 'Academic Slides', link: '/tutorials/academic-slides' },
+            { text: 'Slides from LaTeX Beamer', link: '/tutorials/beamer-import' },
           ]
         },
         {
@@ -92,6 +93,7 @@ export default defineConfig({
             { text: 'Scrolling Slides', link: '/tutorials/scrolling-slides' },
             { text: 'Links, Click & Hover Actions', link: '/tutorials/interactive-slides' },
             { text: 'Editing with Others', link: '/tutorials/editing-with-others' },
+            { text: 'AI Collaborators', link: '/tutorials/ai-collaborators' },
             { text: 'Using LaTeX & Math', link: '/tutorials/using-latex' },
           ]
         }

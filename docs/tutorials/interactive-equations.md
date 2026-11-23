@@ -4,7 +4,7 @@ Explain an equation one piece at a time. Mark parts of it as terms, give each a 
 
 ## Making one
 
-1. Open the **Text** menu in the toolbar and click **Interactive Equation**.
+1. Open **Insert** in the toolbar and, under **Math and code**, click **Interactive equation**.
 2. Type the equation's LaTeX in **Equation** on the left. The symbol palette under it inserts symbols at the cursor. The right side draws the equation as the slide will.
 3. Mark its terms (below), then click **Insert**.
 

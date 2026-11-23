@@ -16,25 +16,43 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
-import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Download, Github, Settings, Check, X, Search, Share2, Video, Music, Table2, Layers, Clock, CloudUpload, History, FileDown, Group, Ungroup, Monitor, FileText, Database, Users } from 'lucide-react'
+import { ChevronLeft, Pencil, List, ChevronDown, Play, Timer, ListChecks, Github, Settings, Check, X, Search, Share2, CloudUpload, Bot, Video, Music, Clock, History, Monitor, FileText, Users, Type, Box, Code2, Star, Minus, LayoutGrid, Puzzle, ChartSpline, Atom, CircuitBoard, Binary, ArrowDownToDot, Blend, Activity, DraftingCompass, FlaskConical, Grid3x3, Globe, FileCode } from 'lucide-react'
 import { api, getAuthToken } from '../utils/api'
 import { connectLive } from '../utils/liveDeck'
 import { peersFrom, distinctPeople, peopleBySlide, elementsInUse, editorOf, shouldLetGo, editingMessage } from '../utils/presence'
+import { SLIDE_TEMPLATES, layoutElements } from '../utils/slideLayouts'
 import DiffViewer from '../components/DiffViewer'
 import { generateLatexIframeHtml } from '../utils/latexRenderer'
 import { downloadHTML, downloadSlideHTML, presentInWindow, presenterInWindow, livePresentInWindow, previewSlideInWindow, exportPDF, generateRevealHTML } from '../utils/generateHTML'
 import { reorderSlides } from '../utils/slideReorder'
+import { nextLayoutKey, newSlideIndex, nudgeFor, typesCharacter } from '../utils/slideEditing'
+import { writeElements, readElements, elementsFromHtml, sanitizePastedHtml, textToHtml, placePasted } from '../utils/elementClipboard'
+import { createWholeBoxEditor, toggleMarkAcross } from '../utils/wholeBoxEditor'
 import { useDeckDoc } from '../utils/useDeckDoc'
 import { exportToPptx } from '../utils/exportPptx'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
 import { simplifyPoints } from '../utils/drawingUtils'
 import { generateOfflineHTML } from '../utils/offlineExport'
-import Toolbar from '../components/Toolbar'
+import Toolbar, { ALIGN_COMMANDS } from '../components/Toolbar'
+import MenuBar, { MenuSearch } from '../components/MenuBar'
+import NotesStrip from '../components/NotesStrip'
+import PdfPagesModal, { loadPdfPages } from '../components/PdfPagesModal'
+import PlotImportModal from '../components/PlotImportModal'
+import { figureFromFile, wholeFigure, plotKind, baseName } from '../utils/plotImport'
+import LayoutPicker from '../components/LayoutPicker'
+import GettingStarted from '../components/GettingStarted'
+import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
+import { ThemePanel } from '../components/ThemeGallery'
+import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
+import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
+import { pickFile } from '../utils/pickFile'
+import KeyboardShortcuts from '../components/KeyboardShortcuts'
+import { keyLabel, SHORTCUTS, matchesShortcut } from '../utils/shortcuts'
 import SlidePanel from '../components/SlidePanel'
 import OutlinePanel, { PanelViewSwitch } from '../components/OutlinePanel'
 import PracticeRunsModal from '../components/PracticeRunsModal'
 import { practiceInWindow, PRACTICE_MESSAGE, upsertPracticeRun, removePracticeRun, minutesFromRun } from '../utils/practice'
-import SlideCanvas from '../components/SlideCanvas'
+import SlideCanvas, { editLabelFor } from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
 import FindReplaceBar from '../components/FindReplaceBar'
 import TransitionPreview from '../components/TransitionPreview'
@@ -84,15 +102,19 @@ import {
 } from '../utils/annotations'
 import AnnotationSessionsModal from '../components/AnnotationSessionsModal'
 import EditorsModal from '../components/EditorsModal'
-import { renewSlideIds, renewElementIds, copyElement, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
+import AiLinkModal from '../components/AiLinkModal'
+import HeaderMenu from '../components/HeaderMenu'
+import { renewSlideIds, renewElementIds, countLinksTo, buildTabs, buildHotspot, buildFlipCard, buildQuiz, canvasClickPreview, previewForSelection, seenLast, elementLabels, hoverPreview, withState, recordIntoState } from '../utils/clickActions'
 import ImportSlideModal from '../components/ImportSlideModal'
+import BeamerImportModal from '../components/BeamerImportModal'
 import DatasetPanel from '../components/DatasetPanel'
 import EquationPalette from '../components/EquationPalette'
-import { parseAuthors, formatAuthorsFull, webLink } from '../utils/bibtexParser'
+import { parseAuthors, formatAuthorsFull, webLink, pageRange } from '../utils/bibtexParser'
 import { workFinder } from '../utils/bibDuplicates'
 import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
 import { CitationNode } from '../extensions/CitationExtension'
+import { BlockStyle } from '../extensions/BlockStyle'
 import { FontSize } from '../extensions/FontSize'
 import { FontFamily } from '../extensions/FontFamily'
 import { FontWeight } from '../extensions/FontWeight'
@@ -125,29 +147,6 @@ const LIVE_WAIT_MS = 10000
 // brought back, along with ZENODO_ENABLED in server/index.js
 const ZENODO_ENABLED = false
 
-// The Share and Export dropdowns in the top bar
-const TOP_MENU_STYLE = {
-  position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-  background: 'var(--bg-card)', border: '1px solid var(--border)',
-  borderRadius: 8, padding: 4, zIndex: 1000, minWidth: 170,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 2,
-}
-
-// A dropdown's items, [{ label, icon, action }]; onPick closes it
-function MenuItems({ items, onPick }) {
-  return items.map(({ label, icon, action }) => (
-    <button
-      key={label}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', borderRadius: 5, textAlign: 'left', whiteSpace: 'nowrap' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-      onClick={() => { onPick(); action() }}
-    >
-      {icon}{label}
-    </button>
-  ))
-}
-
 // Downloads the presentation as one HTML file with its libraries and uploads
 // inlined, so it works offline and anywhere
 async function downloadOfflineHTML(presentation) {
@@ -174,135 +173,34 @@ const CODE_THEME_CSS = {
   'vs': vsCSS,
 }
 
-const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 
-const SLIDE_TEMPLATES = {
-  blank: { label: 'Blank', elements: [] },
-  title: { label: 'Title Slide', elements: [
-    { type: 'text', x: 80, y: 160, width: 800, height: 120, zIndex: 1, content: '<h1 style="text-align:center">Presentation Title</h1>' },
-    { type: 'text', x: 160, y: 300, width: 640, height: 80, zIndex: 2, content: '<p style="text-align:center">Subtitle or author name</p>' },
-  ]},
-  'two-column': { label: 'Two Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'text', x: 40, y: 140, width: 420, height: 340, zIndex: 2, content: '<p>Left column content</p>' },
-    { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Right column content</p>' },
-  ]},
-  'image-text': { label: 'Image + Text', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'shape', shape: 'rect', x: 40, y: 140, width: 420, height: 340, zIndex: 2, fill: '#2d2d4e', stroke: 'none', strokeWidth: 0, text: '[ Image ]', fontSize: 18, textColor: '#888888' },
-    { type: 'text', x: 500, y: 140, width: 420, height: 340, zIndex: 3, content: '<p>Add your text here</p>' },
-  ]},
-  'section-header': { label: 'Section Header', elements: [
-    { type: 'shape', shape: 'rect', x: 0, y: 0, width: 960, height: 540, zIndex: 0, fill: '#1a1a4e', stroke: 'none', strokeWidth: 0, opacity: 1, locked: true },
-    { type: 'text', x: 80, y: 200, width: 800, height: 100, zIndex: 1, content: '<h1 style="text-align:center">Section Title</h1>' },
-    { type: 'shape', shape: 'rect', x: 280, y: 310, width: 400, height: 4, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-    { type: 'text', x: 200, y: 330, width: 560, height: 60, zIndex: 3, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Section description</p>' },
-  ]},
-  'three-column': { label: 'Three Column', elements: [
-    { type: 'text', x: 40, y: 40, width: 880, height: 80, zIndex: 1, content: '<h2>Title</h2>' },
-    { type: 'text', x: 20, y: 140, width: 290, height: 340, zIndex: 2, content: '<p>Column 1</p>' },
-    { type: 'text', x: 335, y: 140, width: 290, height: 340, zIndex: 3, content: '<p>Column 2</p>' },
-    { type: 'text', x: 650, y: 140, width: 290, height: 340, zIndex: 4, content: '<p>Column 3</p>' },
-  ]},
-  'comparison': { label: 'Comparison', elements: [
-    { type: 'text', x: 40, y: 30, width: 880, height: 70, zIndex: 1, content: '<h2 style="text-align:center">Comparison</h2>' },
-    { type: 'shape', shape: 'rounded-rect', x: 30, y: 110, width: 440, height: 400, zIndex: 2, fill: 'rgba(99,102,241,0.1)', stroke: '#6366f1', strokeWidth: 1, locked: true },
-    { type: 'text', x: 50, y: 120, width: 400, height: 50, zIndex: 3, content: '<h3 style="text-align:center; color: #6366f1">Option A</h3>' },
-    { type: 'text', x: 50, y: 170, width: 400, height: 320, zIndex: 4, content: '<p>Details here...</p>' },
-    { type: 'shape', shape: 'rounded-rect', x: 490, y: 110, width: 440, height: 400, zIndex: 5, fill: 'rgba(236,72,153,0.1)', stroke: '#ec4899', strokeWidth: 1, locked: true },
-    { type: 'text', x: 510, y: 120, width: 400, height: 50, zIndex: 6, content: '<h3 style="text-align:center; color: #ec4899">Option B</h3>' },
-    { type: 'text', x: 510, y: 170, width: 400, height: 320, zIndex: 7, content: '<p>Details here...</p>' },
-  ]},
-  'big-number': { label: 'Big Number', elements: [
-    { type: 'text', x: 80, y: 80, width: 800, height: 200, zIndex: 1, content: '<h1 style="text-align:center; font-size: 120px; color: #6366f1">42%</h1>' },
-    { type: 'text', x: 160, y: 300, width: 640, height: 120, zIndex: 2, content: '<p style="text-align:center">Key statistic or metric description</p>' },
-  ]},
 
-  // ── Typographic System Presets (Elam / Bauhaus) ──────────────────────
-
-  'system-axial': {
-    label: 'Axial',
-    category: 'systems',
-    layoutGrid: { enabled: true, columns: 2, rows: 0, gutter: 0, marginX: 40, marginY: 40, snap: true },
-    axisLines: [{ id: 'ax1', axis: 'x', position: 320, visible: true, snap: true }],
-    elements: [
-      { type: 'text', x: 40, y: 50, width: 260, height: 80, zIndex: 1, content: '<h2 style="text-align:right">Title</h2>' },
-      { type: 'text', x: 40, y: 140, width: 260, height: 60, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.6)">Subtitle text</p>' },
-      { type: 'text', x: 340, y: 50, width: 580, height: 440, zIndex: 3, content: '<p>Main content arranged to the right of the axis. The asymmetric division creates visual tension.</p>' },
-      { type: 'shape', shape: 'rect', x: 318, y: 40, width: 3, height: 460, zIndex: 0, fill: 'rgba(244,114,182,0.4)', stroke: 'none', strokeWidth: 0, locked: true },
-    ]
-  },
-
-  'system-bilateral': {
-    label: 'Bilateral',
-    category: 'systems',
-    axisLines: [{ id: 'ax1', axis: 'x', position: 480, visible: true, snap: true }],
-    elements: [
-      { type: 'text', x: 130, y: 60, width: 700, height: 80, zIndex: 1, content: '<h2 style="text-align:center">Title</h2>' },
-      { type: 'shape', shape: 'rect', x: 380, y: 150, width: 200, height: 3, zIndex: 0, fill: '#6366f1', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 130, y: 170, width: 700, height: 60, zIndex: 2, content: '<p style="text-align:center; color: rgba(255,255,255,0.6)">Symmetry centered on a single axis</p>' },
-      { type: 'text', x: 130, y: 260, width: 700, height: 220, zIndex: 3, content: '<p style="text-align:center">Content arranged symmetrically. Place the axis off-center for asymmetric bilateral compositions.</p>' },
-    ]
-  },
-
-  'system-grid': {
-    label: 'Grid System',
-    category: 'systems',
-    layoutGrid: { enabled: true, columns: 3, rows: 2, gutter: 16, marginX: 40, marginY: 40, snap: true },
-    elements: [
-      { type: 'text', x: 40, y: 40, width: 880, height: 60, zIndex: 1, content: '<h2>Title</h2>' },
-      { type: 'shape', shape: 'rect', x: 40, y: 105, width: 880, height: 2, zIndex: 0, fill: 'rgba(99,102,241,0.3)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 40, y: 116, width: 277, height: 190, zIndex: 2, content: '<p>Cell 1</p>' },
-      { type: 'text', x: 333, y: 116, width: 277, height: 190, zIndex: 3, content: '<p>Cell 2</p>' },
-      { type: 'text', x: 626, y: 116, width: 277, height: 190, zIndex: 4, content: '<p>Cell 3</p>' },
-      { type: 'text', x: 40, y: 322, width: 277, height: 178, zIndex: 5, content: '<p>Cell 4</p>' },
-      { type: 'text', x: 333, y: 322, width: 277, height: 178, zIndex: 6, content: '<p>Cell 5</p>' },
-      { type: 'text', x: 626, y: 322, width: 277, height: 178, zIndex: 7, content: '<p>Cell 6</p>' },
-    ]
-  },
-
-  'system-modular': {
-    label: 'Modular',
-    category: 'systems',
-    layoutGrid: { enabled: true, columns: 4, rows: 3, gutter: 8, marginX: 32, marginY: 32, snap: true },
-    elements: [
-      { type: 'shape', shape: 'rect', x: 32, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1, text: 'Module', fontSize: 12, textColor: 'rgba(255,255,255,0.4)' },
-      { type: 'shape', shape: 'rect', x: 254, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
-      { type: 'shape', shape: 'rect', x: 476, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
-      { type: 'shape', shape: 'rect', x: 698, y: 32, width: 214, height: 150, zIndex: 0, fill: 'rgba(99,102,241,0.15)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
-      { type: 'text', x: 32, y: 198, width: 436, height: 304, zIndex: 1, content: '<h2>Title</h2><p>Content spans multiple modules</p>' },
-      { type: 'shape', shape: 'circle', x: 828, y: 420, width: 80, height: 80, zIndex: 2, fill: '#6366f1', stroke: 'none', strokeWidth: 0, opacity: 0.7 },
-    ]
-  },
-
-  'system-transitional': {
-    label: 'Transitional',
-    category: 'systems',
-    elements: [
-      { type: 'text', x: 60, y: 40, width: 500, height: 80, zIndex: 3, content: '<h2>Title</h2>' },
-      { type: 'text', x: 120, y: 130, width: 380, height: 50, zIndex: 2, content: '<p style="color: rgba(255,255,255,0.6)">Subtitle floats freely</p>' },
-      { type: 'shape', shape: 'rect', x: 0, y: 200, width: 700, height: 3, zIndex: 0, fill: 'rgba(255,255,255,0.15)', stroke: 'none', strokeWidth: 0, locked: true },
-      { type: 'text', x: 80, y: 220, width: 500, height: 200, zIndex: 1, content: '<p>Elements relate through massing and texture rather than alignment. The transitional system is the most informal — no axis required.</p>' },
-      { type: 'text', x: 520, y: 400, width: 400, height: 120, zIndex: 2, content: '<p style="text-align:right; color: rgba(255,255,255,0.4); font-size: 14px">Details drift toward the lower right, creating natural movement.</p>' },
-    ]
-  },
-
-  'system-radial': {
-    label: 'Radial',
-    category: 'systems',
-    elements: [
-      { type: 'shape', shape: 'circle', x: 380, y: 170, width: 200, height: 200, zIndex: 0, fill: 'rgba(99,102,241,0.12)', stroke: 'rgba(99,102,241,0.3)', strokeWidth: 1 },
-      { type: 'shape', shape: 'circle', x: 330, y: 120, width: 300, height: 300, zIndex: 0, fill: 'none', stroke: 'rgba(99,102,241,0.15)', strokeWidth: 1 },
-      { type: 'shape', shape: 'circle', x: 444, y: 234, width: 72, height: 72, zIndex: 1, fill: '#6366f1', stroke: 'none', strokeWidth: 0 },
-      { type: 'text', x: 440, y: 245, width: 80, height: 50, zIndex: 2, content: '<p style="text-align:center; font-size:11px; color:white">Focus</p>' },
-      { type: 'text', x: 540, y: 100, width: 380, height: 60, zIndex: 3, content: '<h3>Point 1</h3>' },
-      { type: 'text', x: 570, y: 310, width: 350, height: 60, zIndex: 3, content: '<h3>Point 2</h3>' },
-      { type: 'text', x: 40, y: 180, width: 300, height: 60, zIndex: 3, content: '<h3 style="text-align:right">Point 3</h3>' },
-      { type: 'text', x: 40, y: 420, width: 300, height: 60, zIndex: 3, content: '<h3 style="text-align:right">Point 4</h3>' },
-    ]
-  },
-}
+// The text editor's extensions: for editing a text box, and for formatting a
+// selected one as a whole (utils/wholeBoxEditor.js)
+const textExtensions = () => [
+  StarterKit,
+  Underline,
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Color,
+  TextStyle,
+  Link.configure({ openOnClick: false }),
+  Image.configure({ inline: false }),
+  // A placeholder's own hint while it's empty (utils/placeholders.js)
+  Placeholder.configure({ placeholder: () => editingHint.current || 'Click to start typing...' }),
+  MathNode,
+  CitationNode,
+  BlockStyle,
+  FontFamily,
+  FontSize,
+  FontWeight,
+  LineHeight,
+  Highlight.configure({ multicolor: true }),
+  Table.configure({ resizable: false }),
+  TableRow,
+  TableHeader,
+  TableCell,
+]
 
 // An element with `updates`, or, while one of its states is being recorded
 // (`recording`), with what a state can change going into that state
@@ -346,7 +244,35 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const selectedElementId = selectedElementIds[selectedElementIds.length - 1] ?? null
   const [showGrid, setShowGrid] = useState(false)
   const [gridSize, setGridSize] = useState(40) // synced to presentation.gridSize when changed
-  const [clipboard, setClipboard] = useState(null)
+  // The last elements copied in this tab, for Paste on the menus when the
+  // browser won't let the page read the system clipboard
+  const clipboardRef = useRef(null)
+  // Pastes onto the slide a copy came from, each stepping further
+  const pasteCountRef = useRef(0)
+  const addSlideAfterRef = useRef(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  // Help › Search the menus (Alt+/)
+  const [showMenuSearch, setShowMenuSearch] = useState(false)
+  // A menu asking the toolbar for a dropdown (Slide › Background…, Insert ›
+  // Table…), and the canvas for what its right-click menu does (Crop, Edit,
+  // layer order): { name, id, n }, n counting the asks
+  const [toolbarRequest, setToolbarRequest] = useState(null)
+  const askToolbar = useCallback(name => setToolbarRequest(r => ({ name, n: (r?.n ?? 0) + 1 })), [])
+  const [canvasRequest, setCanvasRequest] = useState(null)
+  const askCanvas = useCallback((name, id) => setCanvasRequest(r => ({ name, id, n: (r?.n ?? 0) + 1 })), [])
+  // The inspector's tab: Format, Animate or Slide
+  const [inspectorTab, setInspectorTab] = useState('format')
+  // The themes panel, in the inspector's place (components/ThemeGallery.jsx)
+  const [showThemes, setShowThemes] = useState(false)
+  // The slide whose layout is being changed (Slide › Change layout…)
+  const [layoutChangeIndex, setLayoutChangeIndex] = useState(null)
+  // The getting-started checklist (utils/gettingStarted.js), and asking the
+  // notes strip to open for typing
+  const checklist = useChecklist()
+  const [notesRequest, setNotesRequest] = useState(0)
+  // A PDF's pages, to pick which go on the slide as images
+  const [pdfPages, setPdfPages] = useState(null)
+  const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import; { source, figure }: one kept as it is, opened again
   const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
@@ -381,6 +307,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [access, setAccess] = useState(null)
   const isEditor = access?.role === 'editor'
   const [showEditorsModal, setShowEditorsModal] = useState(false)
+  const [showAiLinks, setShowAiLinks] = useState(false)
   // Autosave stopped: { kind: 'conflict', version } when someone else saved
   // first, { kind: 'gone' } when the presentation is gone or this user was
   // removed from it
@@ -415,18 +342,17 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     return !!peer
   }, [showNotice])
   const [shareStatus, setShareStatus] = useState({ shared: false, token: null })
-  const [showExportMenu, setShowExportMenu] = useState(false)
-  const [showShareMenu, setShowShareMenu] = useState(false)
-  // The Share menu: a share link for the owner, and who edits it (cloud, not
-  // for guests; a template has no editors)
+  // The Share button beside Present (components/HeaderMenu.jsx): a share link
+  // for the owner, who edits it, and the owner's AI collaborator links (cloud,
+  // not for guests; a template has no editors)
   const shareItems = [
-    isCloud && !guest && !isEditor && { label: 'Share link', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
+    isCloud && !guest && !isEditor && { label: 'Share link…', icon: <Share2 size={13} />, action: async () => { const status = await api.getShareStatus(presentationId); setShareStatus(status); setShowShareModal(true) } },
     isCloud && !guest && !isTemplate && { label: 'Editors…', icon: <Users size={13} />, action: async () => { setAccess(await api.getCollaborators(presentationId)); setShowEditorsModal(true) } },
+    isCloud && !guest && !isEditor && !isTemplate && { label: 'AI collaborator link…', icon: <Bot size={13} />, title: 'Let an AI chat app such as Claude or ChatGPT read and change this presentation', action: () => setShowAiLinks(true) },
   ].filter(Boolean)
   const [showTimeline, setShowTimeline] = useState(false)
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true)
   const [showMasterPanel, setShowMasterPanel] = useState(false)
-  const [showSyncDropdown, setShowSyncDropdown] = useState(false)
   const [showDefaultSettings, setShowDefaultSettings] = useState(false)
   const [showPresentDropdown, setShowPresentDropdown] = useState(false)
   const [showKineticModal, setShowKineticModal] = useState(false)
@@ -474,6 +400,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [drawTool, setDrawTool] = useState(null) // null = off, { color, strokeWidth, opacity, smooth } = drawing mode
   const [pendingAddColumn, setPendingAddColumn] = useState(null) // colNum to add slide to when template modal confirms
   const [showImportSlideModal, setShowImportSlideModal] = useState(false)
+  const [showBeamerModal, setShowBeamerModal] = useState(false)
   const [showSessions, setShowSessions] = useState(false)
   const [showPracticeRuns, setShowPracticeRuns] = useState(false)
   const [activeMathNode, setActiveMathNode] = useState(null) // { latex, display, fontSize, color } when inline math node is clicked
@@ -888,27 +815,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // TipTap editor
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Color,
-      TextStyle,
-      Link.configure({ openOnClick: false }),
-      Image.configure({ inline: false }),
-      Placeholder.configure({ placeholder: 'Click to start typing...' }),
-      MathNode,
-      CitationNode,
-      FontFamily,
-      FontSize,
-      FontWeight,
-      LineHeight,
-      Highlight.configure({ multicolor: true }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell
-    ],
+    extensions: textExtensions(),
     content: '',
     onUpdate: ({ editor }) => {
       // Don't trigger if we're setting content programmatically
@@ -999,6 +906,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
   // Presents with drawing on, into a new annotation set or on with `set`
   const presentAnnotated = useCallback((set = null) => {
+    tickStep('present')
     if (isTemplate) return presentInWindow(presentation)
     presentInWindow(presentation, { annotationSet: set ? JSON.parse(JSON.stringify(set)) : newAnnotationSet() })
   }, [presentation, isTemplate])
@@ -1187,6 +1095,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   }, [slideW, slideH])
 
   const addImageElement = useCallback((src, dropX, dropY) => {
+    tickStep('image')
     const newEl = {
       id: crypto.randomUUID(),
       type: 'image',
@@ -1449,14 +1358,8 @@ function draw() {
   // Opens the TikZ diagram editor on a canvas as dark or light as the slide,
   // so the diagram looks there as it will on the slide
   const slideIsDark = useCallback(() => {
-    const slide = presentation?.slides[currentSlideIndexRef.current]
-    const bg = slide?.background
-    if (bg?.type === 'color' && /^#[0-9a-f]{6}$/i.test(bg.color || '')) {
-      const [r, g, b] = [1, 3, 5].map(i => parseInt(bg.color.slice(i, i + 2), 16))
-      return 0.299 * r + 0.587 * g + 0.114 * b < 140
-    }
-    if (bg?.type === 'image' || bg?.type === 'gradient') return true
-    return !['white', 'beige', 'simple', 'serif', 'sky', 'solarized'].includes(presentation?.theme)
+    // The slide's own background, or the theme's (utils/themes.js)
+    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme).dark
   }, [presentation])
 
   const openTikzEditor = useCallback((elementId) => {
@@ -1467,8 +1370,10 @@ function draw() {
 
   // The slide's color behind the graph editor's preview
   const slideBackdrop = useCallback(() => {
-    const bg = presentation?.slides[currentSlideIndexRef.current]?.background
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    const bg = slide?.background
     if (bg?.type === 'color' && bg.color) return bg.color
+    if (!ownBackground(bg)) return themeOf(presentation?.theme).background
     return slideIsDark() ? '#1e1e2e' : '#ffffff'
   }, [presentation, slideIsDark])
 
@@ -1504,6 +1409,95 @@ function draw() {
     }
     setGraphEditor(null)
   }, [graphEditor, updateElement, slideW, slideH])
+
+  // An imported figure's graph (PlotImportModal), in the middle of the slide
+  const insertImportedPlot = useCallback((graph, size) => {
+    const w = Math.round(size?.w || GRAPH_SIZE.w), h = Math.round(size?.h || GRAPH_SIZE.h)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'graph', x: Math.round((slideW - w) / 2), y: Math.round((slideH - h) / 2),
+      width: w, height: h, zIndex: 2, ...graph,
+    }
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s) }
+    })
+    setSelectedElementIds([newEl.id])
+    setPlotImport(null)
+  }, [slideW, slideH])
+
+  // A PDF or SVG dropped on the slide: a figure matplotlib saved goes in
+  // whole, as one image, with its file, to be cut into pieces that come and
+  // go when it's opened again (right-click › Edit figure layers…); anything
+  // else, as before: an SVG as an image, a PDF's pages to choose from
+  const addDroppedFigure = useCallback(async (file, dropX, dropY) => {
+    const made = await figureFromFile(file).catch(() => null)
+    if (!made) {
+      if (plotKind(file) === 'svg') {
+        try { const r = await api.uploadFile(file); if (r.url) addImageElement(r.url, dropX, dropY) }
+        catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+        return
+      }
+      showNotice('Reading the PDF…')
+      try { setPdfPages(await loadPdfPages(file)) }
+      catch (err) { showNotice(`The PDF couldn’t be read: ${err.message}`) }
+      return
+    }
+    try {
+      const upload = async f => { const r = await api.uploadFile(f); if (!r?.url) throw new Error('nothing came back'); return r.url }
+      const kind = made.result.kind
+      const src = await upload(file.type ? file : new File([file], file.name, { type: kind === 'pdf' ? 'application/pdf' : 'image/svg+xml' }))
+      const name = baseName(file.name).replace(/[^\w.-]+/g, '-').slice(0, 40) || 'figure'
+      const url = kind === 'svg' ? src : await upload(new File([made.image], `${name}.png`, { type: made.type }))
+      const el = wholeFigure(made.result.plot, { url, meta: { src, file: file.name } })
+      // Centered where it was dropped, on the slide
+      el.x = Math.max(0, Math.min(slideW - el.width, Math.round(dropX - el.width / 2)))
+      el.y = Math.max(0, Math.min(slideH - el.height, Math.round(dropY - el.height / 2)))
+      // Over what's on the slide
+      setPresentation(prev => {
+        if (!prev) return prev
+        return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), { ...el, zIndex: Math.max(1, ...(s.elements || []).map(e => e.zIndex || 0)) + 1 }] } : s) }
+      })
+      setSelectedElementIds([el.id])
+      showNotice('Figure added: right-click it and choose Edit figure layers… to make its layers come and go.')
+    } catch (err) {
+      showNotice(`The figure couldn’t be added: ${err.message}`)
+    }
+  }, [addImageElement, showNotice, slideW, slideH])
+
+  // A figure kept as it is (PlotImportModal): its pieces, stacked in one
+  // group in the middle of the slide; or, opened again, in place of the
+  // pieces it had, wherever they are
+  const insertKeptFigure = useCallback((elements, { replace } = {}) => {
+    if (!elements?.length) return
+    if (replace?.length) {
+      const gone = new Set(replace)
+      setPresentation(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          slides: prev.slides.map(s => {
+            const els = s.elements || []
+            const at = els.findIndex(e => gone.has(e.id))
+            if (at < 0) return s
+            const before = els.slice(0, at).filter(e => !gone.has(e.id))
+            return { ...s, elements: [...before, ...elements, ...els.slice(at).filter(e => !gone.has(e.id))] }
+          }),
+        }
+      })
+      setSelectedElementIds(elements.map(el => el.id))
+      setPlotImport(null)
+      return
+    }
+    const { width: w, height: h } = elements[0]
+    const dx = Math.round((slideW - w) / 2), dy = Math.round((slideH - h) / 2)
+    const placed = elements.map(el => ({ ...el, x: el.x + dx, y: el.y + dy }))
+    setPresentation(prev => {
+      if (!prev) return prev
+      return { ...prev, slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...placed] } : s) }
+    })
+    setSelectedElementIds(placed.map(el => el.id))
+    setPlotImport(null)
+  }, [slideW, slideH])
 
   const addEquation = useCallback(() => {
     setEquationEditor({ elementId: null, equation: defaultEquation(slideIsDark()), size: EQUATION_SIZE, slideBg: slideBackdrop(), dark: slideIsDark() })
@@ -2256,17 +2250,24 @@ function draw() {
     setSelectedElementIds([newEl.id])
   }, [])
 
-  const startEditingElement = useCallback((elementId) => {
+  // Editing a text box: where a click put it, at the end of its text
+  // (caret: 'end'), or with a typed character added there (insert)
+  const startEditingElement = useCallback((elementId, { caret = null, insert = null } = {}) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'text' || heldByOther(elementId)) return
     setEditingElementId(elementId)
     editingElementIdRef.current = elementId
     setSelectedElementIds([elementId])
+    editingHint.current = element.placeholder ? placeholderHint(element) : ''
     settingContent.current = true
     // With its citations' labels as the index has them now
     editor?.commands.setContent(resolveCitationsInHtml(element.content || '', citationIndex.labelByKey), false)
     settingContent.current = false
-    setTimeout(() => editor?.commands.focus(), 10)
+    setTimeout(() => {
+      if (!editor) return
+      if (insert) editor.chain().focus('end').command(({ tr }) => { tr.insertText(insert); return true }).run()
+      else editor.commands.focus(caret || undefined)
+    }, 10)
   }, [presentation, editor, citationIndex])
 
   const stopEditingElement = useCallback(() => {
@@ -2323,77 +2324,6 @@ function draw() {
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [recording])
 
-  // Cut / copy / paste / duplicate keyboard shortcuts
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        if (drawTool) { setDrawTool(null); e.preventDefault(); return }
-        if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
-        if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
-      }
-      if (editingElementId) return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      // Typing elsewhere, as in the outline, which has its own undo keys
-      if (document.activeElement?.isContentEditable) return
-      const ctrl = e.ctrlKey || e.metaKey
-      if (!ctrl) return
-      const element = selectedElementId
-        ? presentation?.slides[currentSlideIndex]?.elements?.find(el => el.id === selectedElementId)
-        : null
-      // How far down and across a pasted or duplicated element can go: the
-      // canvas, or the screen when it's pinned
-      const bottomOf = el => isPinned(el) ? slideH : getCanvasHeight(presentation?.slides[currentSlideIndex], slideH)
-      const rightOf = el => isPinned(el) ? slideW : getCanvasWidth(presentation?.slides[currentSlideIndex], slideW, slideH)
-      if (e.key === 'f') {
-        setShowFindReplace(v => !v)
-        e.preventDefault()
-        return
-      }
-      if (e.key === 'c' && element) {
-        setClipboard({ ...element })
-        e.preventDefault()
-      } else if (e.key === 'x' && element) {
-        setClipboard({ ...element })
-        deleteElement(selectedElementId)
-        e.preventDefault()
-      } else if (e.key === 'v' && clipboard) {
-        const newEl = {
-          ...copyElement(clipboard, crypto.randomUUID()),
-          x: Math.min((clipboard.x || 0) + 20, rightOf(clipboard) - (clipboard.width || 100)),
-          y: Math.min((clipboard.y || 0) + 20, bottomOf(clipboard) - (clipboard.height || 100))
-        }
-        setPresentation(prev => ({
-          ...prev,
-          slides: prev.slides.map((s, i) =>
-            i === currentSlideIndex ? { ...s, elements: [...s.elements, newEl] } : s
-          )
-        }))
-        setSelectedElementIds([newEl.id])
-        e.preventDefault()
-      } else if (e.key === 'd' && element) {
-        const newEl = {
-          ...copyElement(element, crypto.randomUUID()),
-          x: Math.min((element.x || 0) + 20, rightOf(element) - (element.width || 100)),
-          y: Math.min((element.y || 0) + 20, bottomOf(element) - (element.height || 100))
-        }
-        setPresentation(prev => ({
-          ...prev,
-          slides: prev.slides.map((s, i) =>
-            i === currentSlideIndex ? { ...s, elements: [...s.elements, newEl] } : s
-          )
-        }))
-        setSelectedElementIds([newEl.id])
-        e.preventDefault()
-      } else if (e.key === 'z' && !e.shiftKey) {
-        doUndo(); e.preventDefault()
-      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
-        doRedo(); e.preventDefault()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [selectedElementId, selectedElementIds, editingElementId, clipboard, presentation, currentSlideIndex, deleteElement, stopEditingElement, doUndo, doRedo, drawTool])
 
   // Inject hljs theme CSS into the document head for the editor preview
   useEffect(() => {
@@ -2547,6 +2477,320 @@ function draw() {
     })
   }, [])
 
+  // What's selected on the current slide, in the slide's order
+  const selectedOnSlide = useCallback(() => {
+    const ids = selectedElementIdsRef.current
+    return (presentation?.slides[currentSlideIndexRef.current]?.elements || []).filter(el => ids.includes(el.id))
+  }, [presentation])
+
+  // Elements onto the current slide, on top of what's there, selected:
+  // pasted (copied from the slide `slideId`) or duplicated. On the slide
+  // they came from, each paste steps down and to the right.
+  const pasteElements = useCallback(({ slideId, elements }) => {
+    if (!elements?.length) return
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    if (!slide) return
+    const here = new Set((slide.elements || []).map(el => el.id))
+    const sameSlide = slide.id === slideId && elements.some(el => here.has(el.id))
+    const pastes = sameSlide ? ++pasteCountRef.current : 0
+    const top = Math.max(0, ...(slide.elements || []).map(el => el.zIndex || 0))
+    const lowest = Math.min(...elements.map(el => el.zIndex || 1))
+    // New ids, links between them following, and groups of their own
+    const groups = new Map()
+    const groupOf = id => { if (!groups.has(id)) groups.set(id, crypto.randomUUID()); return groups.get(id) }
+    const renewed = renewElementIds(elements, () => crypto.randomUUID()).map(({ layoutPart, ...el }) => ({
+      ...el,
+      zIndex: (el.zIndex || 1) - lowest + top + 1,
+      ...(el.groupId ? { groupId: groupOf(el.groupId) } : {}),
+    }))
+    const placed = placePasted(renewed, { sameSlide, pastes, width: getCanvasWidth(slide, slideW, slideH), height: getCanvasHeight(slide, slideH) })
+    setPresentation(prev => prev && ({
+      ...prev,
+      slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), ...placed] } : s),
+    }))
+    setSelectedElementIds(placed.map(el => el.id))
+  }, [presentation, slideW, slideH])
+
+  // A copy of what's selected: for Paste on the menus, and, given a copy
+  // event's clipboard, for pasting here, in another tab or presentation, or
+  // as text in another app
+  const copySelection = useCallback((dataTransfer = null) => {
+    const elements = selectedOnSlide()
+    if (!elements.length) return false
+    const slideId = presentation?.slides[currentSlideIndexRef.current]?.id ?? null
+    clipboardRef.current = { slideId, elements }
+    pasteCountRef.current = 0
+    if (dataTransfer) writeElements(dataTransfer, elements, slideId)
+    return true
+  }, [presentation, selectedOnSlide])
+
+  const duplicateSelection = useCallback(() => {
+    const elements = selectedOnSlide()
+    if (!elements.length) return
+    pasteCountRef.current = 0
+    pasteElements({ slideId: presentation?.slides[currentSlideIndexRef.current]?.id, elements })
+  }, [presentation, selectedOnSlide, pasteElements])
+
+  // Text from another app, as a text box; a long text in smaller type
+  const pasteText = useCallback((html, length = 0) => {
+    const slide = presentation?.slides[currentSlideIndexRef.current]
+    if (!html || !slide) return
+    const content = length > 120 ? html.replace(/<(p|li)>/g, '<$1 style="font-size: 24px">') : html
+    const width = Math.min(720, slideW - 80)
+    const newEl = {
+      id: crypto.randomUUID(), type: 'text', sizeMode: 'auto',
+      x: Math.round((slideW - width) / 2), y: 120, width, height: 120,
+      zIndex: Math.max(0, ...(slide.elements || []).map(el => el.zIndex || 0)) + 1,
+      content,
+    }
+    setPresentation(prev => prev && ({
+      ...prev,
+      slides: prev.slides.map((s, i) => i === currentSlideIndexRef.current ? { ...s, elements: [...(s.elements || []), newEl] } : s),
+    }))
+    setSelectedElementIds([newEl.id])
+  }, [presentation, slideW])
+
+  // An image from the clipboard, uploaded as a dropped one is
+  const pasteImage = useCallback(async (file) => {
+    try {
+      const result = await api.uploadFile(file)
+      if (result.url) addImageElement(result.url)
+    } catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+  }, [addImageElement, showNotice])
+
+  // A paste event's clipboard: elements copied from Parallax, an image, or
+  // text. Whether there was something to paste.
+  const pasteFromClipboard = useCallback((data) => {
+    const own = readElements(data)
+    if (own) { pasteElements(own); return true }
+    const image = [...(data.files || [])].find(f => f.type.startsWith('image/'))
+    if (image) { pasteImage(image); return true }
+    const html = data.getData('text/html')
+    const text = data.getData('text/plain')
+    const content = html ? sanitizePastedHtml(html) : textToHtml(text)
+    if (!content) return false
+    pasteText(content, text.length)
+    return true
+  }, [pasteElements, pasteImage, pasteText])
+
+  // Paste on a menu: what's on the system clipboard, where the browser lets
+  // the page read it, else the last copy made in this tab
+  const pasteFromMenu = useCallback(async () => {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const image = item.types.find(t => t.startsWith('image/'))
+        if (image) { await pasteImage(new File([await item.getType(image)], 'pasted-image', { type: image })); return }
+        if (item.types.includes('text/html')) {
+          const html = await (await item.getType('text/html')).text()
+          const own = elementsFromHtml(html)
+          if (own) { pasteElements(own); return }
+          const content = sanitizePastedHtml(html)
+          if (content) { pasteText(content, content.length); return }
+        }
+        if (item.types.includes('text/plain')) {
+          const text = await (await item.getType('text/plain')).text()
+          if (text) { pasteText(textToHtml(text), text.length); return }
+        }
+      }
+    } catch {
+      if (clipboardRef.current) { pasteElements(clipboardRef.current); return }
+      showNotice('To paste from another app, press Ctrl+V')
+    }
+  }, [pasteElements, pasteImage, pasteText, showNotice])
+
+  // Copy and Cut on a menu: the copy event the browser fires puts the copy
+  // on the system clipboard; where it doesn't, the copy stays in this tab
+  const copyFromMenu = useCallback((cut = false) => {
+    let copied = false
+    try { copied = document.execCommand('copy') } catch { /* refused */ }
+    if (!copied) copySelection()
+    if (cut) deleteSelectedElements()
+  }, [copySelection, deleteSelectedElements])
+
+  // Arrow keys: what's selected moves by `dx`, `dy`, onto the grid when it's
+  // on; what's locked or open in someone else's editor stays put
+  const nudgeSelection = useCallback(({ dx, dy }) => {
+    const grid = showGrid ? gridSize : 0
+    const to = (v, d) => (!d ? v : grid ? Math.round((v + d) / grid) * grid : v + d)
+    const movable = selectedOnSlide().filter(el => !el.locked && !editorOf(peersRef.current, el.id))
+    if (!movable.length) return
+    updateElements(movable.map(el => ({ id: el.id, x: to(el.x || 0, dx), y: to(el.y || 0, dy) })))
+  }, [showGrid, gridSize, selectedOnSlide, updateElements])
+
+  // Ctrl+B, Ctrl+I, Ctrl+U on selected text boxes: all of their text
+  const formatSelectedText = useCallback((key) => {
+    const mark = { b: 'bold', i: 'italic', u: 'underline' }[key]
+    const texts = selectedOnSlide().filter(el => el.type === 'text' && !editorOf(peersRef.current, el.id))
+    if (!mark || !texts.length) return false
+    const htmls = toggleMarkAcross(textExtensions(), texts.map(el => resolveCitationsInHtml(el.content || '', citationIndex.labelByKey)), mark)
+    updateElements(texts.map((el, i) => ({ id: el.id, content: htmls[i] })))
+    return true
+  }, [selectedOnSlide, updateElements, citationIndex])
+
+  // The keys PowerPoint, Keynote and Google Slides users bring, on the slide
+  // (utils/shortcuts.js lists them for the Ctrl+/ sheet)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (drawTool) { setDrawTool(null); e.preventDefault(); return }
+        if (editingElementId) { stopEditingElement(); setSelectedElementIds([]); e.preventDefault(); return }
+        if (selectedElementIds.length > 0) { setSelectedElementIds([]); e.preventDefault(); return }
+      }
+      // Alt+/ searches the menus, as in Google Slides, even while typing
+      // (on a Mac, Option+/ types ÷, so it's the key that counts)
+      if (matchesShortcut(e, SHORTCUTS.searchMenus)) { setShowMenuSearch(true); e.preventDefault(); return }
+      if (editingElementIdRef.current) return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      // Typing elsewhere, as in the outline, which has its own undo keys
+      if (document.activeElement?.isContentEditable) return
+      // A key the slide list took
+      if (e.defaultPrevented) return
+      const ctrl = e.ctrlKey || e.metaKey
+      const slide = presentation?.slides[currentSlideIndex]
+      const selected = (slide?.elements || []).filter(el => selectedElementIds.includes(el.id))
+      const inSlideList = !!document.activeElement?.closest?.('.slide-panel')
+
+      // The keys in the shortcuts table (utils/shortcuts.js), which the
+      // Ctrl+/ sheet, the menus and the tooltips show
+      const is = name => matchesShortcut(e, SHORTCUTS[name])
+      if (ctrl && !e.altKey) {
+        if (is('undo')) { doUndo(); e.preventDefault(); return }
+        if (is('redo') || is('redoAlt')) { doRedo(); e.preventDefault(); return }
+        if (is('find')) { setShowFindReplace(v => !v); e.preventDefault(); return }
+        if (is('newSlide')) { addSlideAfterRef.current?.(); e.preventDefault(); return }
+        if (is('shortcuts')) { setShowShortcuts(v => !v); e.preventDefault(); return }
+        if (inSlideList) return
+        if (is('selectAll')) { setSelectedElementIds((slide?.elements || []).map(el => el.id)); e.preventDefault(); return }
+        if (!selected.length) return
+        if (is('duplicate')) { duplicateSelection(); e.preventDefault(); return }
+        if (is('group')) { groupElements(); e.preventDefault(); return }
+        if (is('ungroup')) { ungroupElements(); e.preventDefault(); return }
+        const mark = is('bold') ? 'b' : is('italic') ? 'i' : is('underline') ? 'u' : null
+        if (mark && formatSelectedText(mark)) e.preventDefault()
+        return
+      }
+      if (e.altKey || inSlideList || !selected.length) return
+      const move = nudgeFor(e.key, { shift: e.shiftKey, grid: showGrid, gridSize })
+      if (move) { nudgeSelection(move); e.preventDefault(); return }
+      // Typing on a selected text box edits it, at the end of its text, as do
+      // Enter and F2
+      const box = selected.length === 1 && selected[0].type === 'text' && !selected[0].locked ? selected[0] : null
+      if (!box) return
+      if (e.key === 'Enter' || e.key === 'F2') { startEditingElement(box.id, { caret: 'end' }); e.preventDefault() }
+      else if (typesCharacter(e)) { startEditingElement(box.id, { insert: e.key }); e.preventDefault() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedElementIds, editingElementId, presentation, currentSlideIndex, stopEditingElement, startEditingElement, doUndo, doRedo, drawTool, showGrid, gridSize, duplicateSelection, groupElements, ungroupElements, formatSelectedText, nudgeSelection])
+
+  // Copy, cut and paste with the system clipboard, from the keys or the
+  // browser's own menu; not while text is being typed or is selected
+  useEffect(() => {
+    const typing = () => {
+      if (editingElementIdRef.current) return true
+      const active = document.activeElement
+      return ['INPUT', 'TEXTAREA', 'SELECT'].includes(active?.tagName) || !!active?.isContentEditable
+    }
+    const textSelected = () => String(window.getSelection?.() || '').length > 0
+    const onCopy = e => {
+      if (typing() || textSelected() || !e.clipboardData) return
+      if (copySelection(e.clipboardData)) e.preventDefault()
+    }
+    const onCut = e => {
+      if (typing() || textSelected() || !e.clipboardData) return
+      if (copySelection(e.clipboardData)) { e.preventDefault(); deleteSelectedElements() }
+    }
+    const onPaste = e => {
+      if (typing() || !e.clipboardData) return
+      if (pasteFromClipboard(e.clipboardData)) e.preventDefault()
+    }
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCut)
+    document.addEventListener('paste', onPaste)
+    return () => {
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCut)
+      document.removeEventListener('paste', onPaste)
+    }
+  }, [copySelection, deleteSelectedElements, pasteFromClipboard])
+
+  // A selected text box, formatted as a whole from the toolbar
+  // (utils/wholeBoxEditor.js)
+  const boxElement = !editingElementId && selectedElementIds.length === 1
+    ? (currentSlide?.elements?.find(el => el.id === selectedElementIds[0] && el.type === 'text') ?? null)
+    : null
+  const [boxEditor, setBoxEditor] = useState(null)
+  useEffect(() => {
+    if (!boxElement) { setBoxEditor(null); return }
+    const id = boxElement.id
+    const box = createWholeBoxEditor(textExtensions(), resolveCitationsInHtml(boxElement.content || '', citationIndex.labelByKey), html => {
+      if (heldByOther(id)) return
+      updateElement(id, { content: html })
+    })
+    setBoxEditor(box)
+    return () => box.destroy()
+  }, [boxElement?.id, boxElement?.content]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background… on a menu: the background popup, for the slide at `index`
+  const openBackground = (index = null) => {
+    if (index !== null && index !== currentSlideIndex) setCurrentSlideIndex(index)
+    stopEditingElement()
+    setSelectedElementIds([])
+    askToolbar('background')
+  }
+
+  // Replace image… on an image's menu: another file in its place
+  const replaceImage = (id) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const result = await api.uploadFile(file)
+        if (result.url) updateElement(id, { src: result.url, crop: null, imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null })
+      } catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+    }
+    input.click()
+  }
+
+  // An element's right-click menu, for what's selected (the element
+  // right-clicked is)
+  const elementCommand = (command, id) => {
+    if (command === 'cut') copyFromMenu(true)
+    else if (command === 'copy') copyFromMenu(false)
+    else if (command === 'paste') pasteFromMenu()
+    else if (command === 'duplicate') duplicateSelection()
+    else if (command === 'delete') deleteSelectedElements()
+    else if (command === 'group') groupElements()
+    else if (command === 'ungroup') ungroupElements()
+    else if (command === 'lock' || command === 'unlock') updateElements(selectedOnSlide().map(el => ({ id: el.id, locked: command === 'lock' })))
+    else if (command === 'replace-image') replaceImage(id)
+    else if (command === 'edit-figure') editFigure(id)
+  }
+
+  // A figure kept as it is, opened again in the plot import: its elements on
+  // this slide (those still grouped with the one right-clicked), and its file
+  const editFigure = (id) => {
+    const els = currentSlide?.elements || []
+    const el = els.find(e => e.id === id)
+    if (!el?.figure?.src) return
+    const figure = els.filter(e => e.figure?.id === el.figure.id && (!el.groupId || e.groupId === el.groupId))
+    setPlotImport({ source: { url: el.figure.src, name: el.figure.file }, figure })
+  }
+
+  // The empty slide's right-click menu
+  const canvasCommand = (command) => {
+    if (command === 'paste') pasteFromMenu()
+    else if (command === 'select-all') setSelectedElementIds((currentSlide?.elements || []).map(el => el.id))
+    else if (command === 'background') openBackground()
+    else if (command === 'change-layout') setLayoutChangeIndex(currentSlideIndex)
+    else if (command === 'toggle-grid') setShowGrid(v => !v)
+    else if (command === 'toggle-rulers') setShowRulers(v => !v)
+  }
+
   // Helper: build a map of colNum → flat indices within that column
   const getColumnsMap = (slides) => {
     const colMap = {}
@@ -2558,46 +2802,87 @@ function draw() {
     return colMap
   }
 
-  const addSlide = (templateKey = null, targetColNum = null) => {
+  // A slide from the layout `templateKey`, right after the slide at
+  // `afterIndex` (the current one), as PowerPoint, Keynote and Google Slides
+  // add it. In a deck of columns, a slide for another column (`targetColNum`)
+  // goes at the end of that column.
+  const addSlide = (templateKey = null, targetColNum = null, afterIndex = currentSlideIndex) => {
     const is2D = presentation.slides.some(s => s.column !== undefined)
-    // Determine which column to add to
     const colNum = targetColNum !== null
       ? targetColNum
       : is2D
-        ? (presentation.slides[currentSlideIndex]?.column ?? 0)
-        : null // 1D mode: append at end
+        ? (presentation.slides[afterIndex]?.column ?? 0)
+        : null
 
-    const template = templateKey && SLIDE_TEMPLATES[templateKey] ? SLIDE_TEMPLATES[templateKey] : null
-    const baseElements = template
-      ? template.elements.map(el => ({ ...el, id: crypto.randomUUID() }))
-      : [{ id: crypto.randomUUID(), type: 'text', x: 80, y: 160, width: 800, height: 220, zIndex: 1, content: '<h2 style="text-align: center">New Slide</h2><p style="text-align: center">Double-click to edit</p>' }]
+    const key = templateKey && SLIDE_TEMPLATES[templateKey] ? templateKey : 'title-content'
+    const template = SLIDE_TEMPLATES[key]
+    tickStep('slide')
+    // The theme's background, unless the slide before has the old default
+    // (utils/themes.js)
+    const background = newSlideBackground(presentation.slides[afterIndex])
     const newSlide = {
       id: crypto.randomUUID(),
       ...(colNum !== null ? { column: colNum } : {}),
-      elements: baseElements,
+      // Which layout it came from, for the next new slide to follow
+      layout: key,
+      elements: layoutElements(template),
       notes: '',
-      background: { type: 'color', color: '#1e1e2e' },
+      ...(background ? { background } : {}),
       ...(template?.layoutGrid ? { layoutGrid: { ...template.layoutGrid } } : {}),
       ...(template?.axisLines ? { axisLines: template.axisLines.map(a => ({ ...a, id: crypto.randomUUID() })) } : {}),
     }
+    const index = newSlideIndex(presentation.slides, afterIndex, is2D ? colNum : null)
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      slides.splice(index, 0, newSlide)
+      return { ...prev, slides }
+    })
+    setCurrentSlideIndex(index)
+  }
 
-    if (colNum === null || !is2D) {
-      // 1D: append at end
-      setPresentation(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
-      setCurrentSlideIndex(presentation.slides.length)
-    } else {
-      // 2D: insert after the last slide in this column
-      const colMap = getColumnsMap(presentation.slides)
-      const colSlides = colMap[colNum] || []
-      const insertAfterIdx = colSlides.length > 0 ? colSlides[colSlides.length - 1] : presentation.slides.length - 1
-      const newFlatIndex = insertAfterIdx + 1
-      setPresentation(prev => {
-        const slides = [...prev.slides]
-        slides.splice(newFlatIndex, 0, newSlide)
-        return { ...prev, slides }
-      })
-      setCurrentSlideIndex(newFlatIndex)
-    }
+  // A slide after the one at `index`, in the layout that follows its own:
+  // Ctrl+M, Enter in the slide list, and New slide on a slide's menu
+  const addSlideAfter = (index = currentSlideIndex) => {
+    if (!presentation?.slides[index]) return
+    addSlide(nextLayoutKey(presentation.slides[index], SLIDE_TEMPLATES), null, index)
+  }
+  addSlideAfterRef.current = addSlideAfter
+
+  // Slide › Change layout: the slide's title and body text move into the
+  // layout's placeholders; the rest stays (utils/placeholders.js)
+  const changeSlideLayout = (index, key) => {
+    const layout = SLIDE_TEMPLATES[key]
+    if (!layout || !presentation?.slides[index]) return
+    stopEditingElement()
+    setSelectedElementIds([])
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      const slide = slides[index]
+      slides[index] = {
+        ...slide,
+        layout: key,
+        elements: changeLayout(slide, layout, () => crypto.randomUUID()),
+        ...(layout.layoutGrid ? { layoutGrid: { ...layout.layoutGrid } } : {}),
+        ...(layout.axisLines ? { axisLines: layout.axisLines.map(a => ({ ...a, id: crypto.randomUUID() })) } : {}),
+      }
+      return { ...prev, slides }
+    })
+    if (index !== currentSlideIndex) setCurrentSlideIndex(index)
+  }
+
+  // A theme from the gallery: the deck's, and every slide that still has the
+  // old dark default takes the theme's page instead (one undo step)
+  const applyTheme = (id) => {
+    tickStep('theme')
+    setPresentation(prev => ({
+      ...prev,
+      theme: id,
+      slides: prev.slides.map(slide => {
+        if (!isLegacyBackground(slide.background)) return slide
+        const { background, ...rest } = slide
+        return rest
+      }),
+    }))
   }
 
   const addColumn = () => {
@@ -2605,12 +2890,14 @@ function draw() {
     const is2D = slides.some(s => s.column !== undefined)
     const maxCol = is2D ? slides.reduce((m, s) => Math.max(m, s.column ?? 0), 0) : 0
     const newColNum = maxCol + 1
+    tickStep('slide')
     const newSlide = {
       id: crypto.randomUUID(),
       column: newColNum,
-      elements: [{ id: crypto.randomUUID(), type: 'text', x: 80, y: 160, width: 800, height: 220, zIndex: 1, content: '<h2 style="text-align: center">New Slide</h2><p style="text-align: center">Double-click to edit</p>' }],
+      layout: 'title-content',
+      elements: layoutElements(SLIDE_TEMPLATES['title-content']),
       notes: '',
-      background: { type: 'color', color: '#1e1e2e' }
+      ...(newSlideBackground(slides[currentSlideIndex]) ? { background: newSlideBackground(slides[currentSlideIndex]) } : {}),
     }
     setPresentation(prev => ({
       ...prev,
@@ -2689,6 +2976,21 @@ function draw() {
     setCurrentSlideIndex(currentSlideIndex + 1)
   }
 
+  // Slides made from LaTeX Beamer (BeamerImportModal), after this one, with
+  // the references they cite joined to the bibliography
+  const insertBeamerSlides = (newSlides, bibliography) => {
+    if (!newSlides.length) return
+    const column = presentation.slides.some(s => s.column !== undefined) ? presentation.slides[currentSlideIndex]?.column ?? 0 : undefined
+    const placed = column === undefined ? newSlides : newSlides.map(slide => ({ ...slide, column }))
+    setPresentation(prev => {
+      const slides = [...prev.slides]
+      slides.splice(currentSlideIndex + 1, 0, ...placed)
+      return applyCitationNumbering({ ...prev, slides, ...(bibliography ? { bibliography } : {}) })
+    })
+    setCurrentSlideIndex(currentSlideIndex + 1)
+    setShowBeamerModal(false)
+  }
+
   const deleteSlide = (index) => {
     if (!presentation || presentation.slides.length <= 1) return
     // Not while someone else has something on it open
@@ -2705,6 +3007,25 @@ function draw() {
       slides: prev.slides.filter((_, i) => i !== index)
     }))
     setCurrentSlideIndex(prev => Math.min(prev, presentation.slides.length - 2))
+  }
+
+  // Slides deleted together from the slide list; one at least stays
+  const deleteSlides = (indices) => {
+    if (!presentation) return
+    const doomed = new Set(indices.filter(i => i >= 0 && i < presentation.slides.length))
+    if (!doomed.size || doomed.size >= presentation.slides.length) return
+    const open = [...doomed].flatMap(i => presentation.slides[i]?.elements || []).map(el => editorOf(peersRef.current, el.id)).find(Boolean)
+    if (open) {
+      return showNotice(open.self
+        ? 'You’re editing something on one of these slides in another tab, so they weren’t deleted'
+        : `${open.name} is editing something on one of these slides, so they weren’t deleted`)
+    }
+    const kept = presentation.slides.filter((_, i) => !doomed.has(i))
+    const links = [...doomed].reduce((n, i) => n + countLinksTo(kept, presentation.slides[i]?.id), 0)
+    if (links && !confirm(`${links} ${links === 1 ? 'link or button goes' : 'links or buttons go'} to these slides, and won't do anything once they're deleted. Delete them anyway?`)) return
+    setPresentation(prev => ({ ...prev, slides: prev.slides.filter((_, i) => !doomed.has(i)) }))
+    setSelectedSlideIds([])
+    setCurrentSlideIndex(Math.min(Math.min(...doomed), kept.length - 1))
   }
 
   const duplicateSlide = (index) => {
@@ -2794,6 +3115,357 @@ function draw() {
     )
   }
 
+
+  // ── What can be added, for the toolbar's Insert ▾ and Science ▾ and the
+  // Insert menu ─────────────────────────────────────────────────────────────
+  const uploadImage = () => pickFile('image/*', async file => {
+    try { const result = await api.uploadFile(file); if (result.url) addImageElement(result.url) }
+    catch (err) { showNotice(`The image couldn’t be uploaded: ${err.message}`) }
+  })
+  const imageFromUrl = () => { const url = window.prompt('Image URL:'); if (url?.trim()) addImageElement(url.trim()) }
+  const uploadVideo = () => pickFile('video/mp4,video/webm,video/ogg,video/*', async file => {
+    try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addVideoElement(result.url) }
+    catch (err) { showNotice(`The video couldn’t be uploaded: ${err.message}`) }
+  })
+  const videoFromUrl = () => { const url = window.prompt('Video URL:'); if (url?.trim()) addVideoElement(url.trim()) }
+  const uploadAudio = () => pickFile('audio/*', async file => {
+    try { const result = await api.uploadFile(file); if (result.url) addAudioElement(result.url) }
+    catch (err) { showNotice(`The audio couldn’t be uploaded: ${err.message}`) }
+  })
+  const uploadModel = () => pickFile('.stl,.glb', async file => {
+    if (!isModelFile(file.name)) { showNotice('3D models can be STL or GLB files.'); return }
+    try { const result = await api.uploadFileToPresentation(presentation.id, file); if (result.url) addModelElement(result.url, file.name) }
+    catch (err) { showNotice(`The model couldn’t be uploaded: ${err.message}`) }
+  })
+  // A matplotlib figure, kept as drawn or as a graph, its layers coming and going by step (PlotImportModal)
+  const importPlot = () => pickFile('.pdf,.svg,application/pdf,image/svg+xml', file => setPlotImport({ file }))
+  const importPdfPages = () => pickFile('application/pdf,.pdf', async file => {
+    showNotice('Reading the PDF…')
+    try { setPdfPages(await loadPdfPages(file)) }
+    catch (err) { showNotice(`The PDF couldn’t be read: ${err.message}`) }
+  })
+  const importPptx = () => pickFile('.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint', async file => {
+    showNotice('Converting the PowerPoint file…')
+    try { await handleImportPptx(file) }
+    catch (err) { showNotice(`The PowerPoint file couldn’t be imported: ${err.message}`) }
+  })
+  const glyph = (text, style) => <span style={{ fontSize: 13, lineHeight: 1, ...style }}>{text}</span>
+  const ruleIcon = (w, h, color = '#fff', extra) => <span style={{ display: 'inline-block', width: w, height: h, background: color, ...extra }} />
+  const pluginTypes = pluginsLoaded ? getInsertablePluginTypes() : []
+  const insertGroups = [
+    { heading: 'Text', docs: 'text-typography', items: [
+      { label: 'Text path', icon: glyph('T/', { fontStyle: 'italic' }), title: 'Text along a curve', action: addTextPathElement },
+      { label: '3D text', icon: glyph('T', { fontWeight: 800, textShadow: '1px 1px 0 var(--accent), 2px 2px 0 var(--accent)' }), action: addText3dElement },
+      { label: 'Kinetic text', icon: <Type size={14} />, title: 'Words that move in, one after another', action: () => setShowKineticModal(true) },
+    ] },
+    { heading: 'Math and code', docs: 'code-math', items: [
+      { label: 'LaTeX and TikZ', icon: glyph('TeX', { fontFamily: 'serif', fontSize: 11, fontWeight: 700 }), keywords: 'math equation', action: addLatexElement },
+      { label: 'Interactive equation', icon: glyph('x²', { fontFamily: 'serif', fontStyle: 'italic', color: 'var(--accent)' }), title: 'An equation whose terms are colored and labeled one at a time', keywords: 'math', action: addEquation },
+      { label: 'Markdown', icon: glyph('M↓', { fontWeight: 700 }), action: addMarkdownElement },
+      { label: 'Code', icon: <Code2 size={14} />, keywords: 'syntax highlighting', action: addCodeElement },
+      { label: 'Math grid', icon: glyph('∮'), title: 'Equations lined up in a grid', keywords: 'equations', action: () => setShowMathGridModal(true) },
+    ] },
+    { heading: 'Media', docs: 'media', items: [
+      { label: 'Upload video…', icon: <Video size={14} />, action: uploadVideo },
+      { label: 'Video from URL…', icon: <Video size={14} />, keywords: 'youtube vimeo', action: videoFromUrl },
+      { label: 'Upload audio…', icon: <Music size={14} />, keywords: 'sound', action: uploadAudio },
+      { label: '3D model…', icon: <Box size={14} />, title: 'An STL or GLB file, to turn while presenting', keywords: 'stl glb', action: uploadModel },
+      { label: 'PDF pages…', icon: <FileText size={14} />, title: 'Pages of a PDF, as images', action: importPdfPages },
+      { label: 'Icon', icon: <Star size={14} />, title: 'Pick one under Shape', action: () => askToolbar('shape') },
+    ] },
+    { heading: 'Shapes and layout', docs: 'shapes-drawing', items: [
+      { label: 'Callout', icon: glyph('1', { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700 }), title: 'A numbered marker', action: addCalloutElement },
+      { label: 'Lines and rules', icon: <Minus size={14} />, keywords: 'composition circles tone blocks', items: [
+        ...[['rule-h-thin', 'Thin line', ruleIcon(14, 1)], ['rule-h-medium', 'Medium line', ruleIcon(14, 2)], ['rule-h-heavy', 'Heavy line', ruleIcon(14, 4)], ['rule-diagonal', 'Diagonal line', ruleIcon(14, 2, '#fff', { transform: 'rotate(-15deg)' })],
+          ['rule-v-thin', 'Thin vertical line', ruleIcon(1, 14)], ['rule-v-medium', 'Medium vertical line', ruleIcon(2, 14)], ['rule-v-heavy', 'Heavy vertical line', ruleIcon(4, 14)],
+          ['circle-dot', 'Dot', ruleIcon(6, 6, '#fff', { borderRadius: '50%' })], ['circle-medium', 'Circle', ruleIcon(12, 12, '#6366f1', { borderRadius: '50%' })], ['circle-large', 'Large circle', ruleIcon(14, 14, 'rgba(99,102,241,0.25)', { borderRadius: '50%' })],
+          ['tone-dark', 'Dark block', ruleIcon(14, 9, '#0a0a14', { border: '1px solid rgba(255,255,255,0.2)' })], ['tone-medium', 'Mid block', ruleIcon(14, 9, '#2d2d4e')], ['tone-light', 'Light block', ruleIcon(14, 9, 'rgba(255,255,255,0.15)')], ['tone-accent', 'Accent block', ruleIcon(14, 9, 'rgba(99,102,241,0.3)')],
+        ].map(([id, label, icon]) => ({ label, icon, action: () => addNonobjectiveElement(id) })),
+      ] },
+      { label: 'Modular grid', icon: <LayoutGrid size={14} />, title: 'Boxes in rows and columns', items: [
+        ['2 × 2 squares', 'rect', 2, 2, 16], ['3 × 2 rectangles', 'rect', 3, 2, 12], ['4 × 3 rectangles', 'rect', 4, 3, 8],
+        ['3 × 3 circles', 'circle', 3, 3, 12], ['4 × 2 cards', 'rounded-rect', 4, 2, 10], ['6 × 1 strip', 'rect', 6, 1, 8],
+      ].map(([label, shape, cols, rows, gap]) => ({ label, action: () => addModularGrid(shape, cols, rows, gap) })) },
+      { label: 'Draw', icon: <Pencil size={14} />, title: 'Draw freehand on the slide (Esc to stop)', keywords: 'pen freehand ink', action: () => { stopEditingElement(); setSelectedElementIds([]); setDrawTool({ color: '#ffffff', strokeWidth: 3, opacity: 1, smooth: true }) } },
+    ] },
+    { heading: 'Interactive', docs: 'interactive-slides', items: [
+      { label: 'Tabs', icon: glyph('⎕'), title: 'Tabs that switch between panels when presenting', items: [2, 3, 4].map(n => ({ label: `${n} tabs`, action: () => addTabs(n) })) },
+      { label: 'Hotspot', icon: glyph('ⓘ'), title: 'A marker that shows a card while the pointer is over it', action: addHotspot },
+      { label: 'Flip card', icon: glyph('↻'), title: 'A card that turns over when clicked', action: () => addStatePreset(buildFlipCard, 0) },
+      { label: 'Quiz', icon: glyph('✓'), title: 'A question with answers that turn green or red when clicked', action: () => addStatePreset(buildQuiz, 1) },
+      { label: 'Timeline', icon: <Clock size={14} />, title: 'Dates and events', action: addTimelineElement },
+    ] },
+    { heading: 'Embed', docs: 'html-embeds', items: [
+      { label: 'HTML', icon: <FileCode size={14} />, action: addHtmlElement },
+      { label: 'D3', icon: <FileCode size={14} />, keywords: 'd3.js chart', action: addD3Element },
+      { label: 'p5.js', icon: <Code2 size={14} />, keywords: 'sketch processing', action: addP5Element },
+      { label: 'anime.js', icon: glyph('✨'), keywords: 'animation', action: () => setShowAnimeModal(true) },
+      { label: 'three.js', icon: glyph('▲'), keywords: '3d', action: () => setShowThreeModal(true) },
+    ] },
+    (pluginTypes.length > 0 || (isCloud && !guest)) && { heading: 'Plugins', docs: 'plugins', items: [
+      ...pluginTypes.map(pt => ({ label: pt.label, icon: <Puzzle size={14} />, action: () => addPluginElement(pt.type) })),
+      isCloud && !guest && { label: 'Browse plugins…', icon: <Search size={14} />, action: () => setShowPluginBrowser(true) },
+    ].filter(Boolean) },
+  ].filter(Boolean)
+  const scienceItems = [
+    { label: 'Graph', icon: <ChartSpline size={14} />, title: 'Functions, curves, regions and fields', keywords: 'plot chart function', action: addGraph },
+    { label: '3D graph', icon: <ChartSpline size={14} />, title: 'Surfaces, curves and points in 3D, to turn while presenting', keywords: 'surface plot', action: addGraph3d },
+    { label: 'Plot from a figure…', icon: <ChartSpline size={14} />, title: 'A matplotlib figure saved as PDF or SVG, kept as drawn or made a graph of its data, its layers coming and going by step', keywords: 'matplotlib import pdf svg data layers figure', action: importPlot },
+    { label: 'Diagram', icon: glyph('▦'), title: 'Boxes and arrows', keywords: 'flowchart', action: () => setShowDiagramModal(true) },
+    { label: 'TikZ diagram', icon: glyph('⬡'), keywords: 'latex', action: () => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() }) },
+    { label: 'Feynman diagram', icon: <Atom size={14} />, title: 'Particle physics diagrams that build up line by line', keywords: 'particle physics', action: addFeynman },
+    { label: 'Circuit', icon: <CircuitBoard size={14} />, title: 'Circuit schematics, solved to show currents and meter readings', keywords: 'electronics circuitikz', action: addCircuit },
+    { label: 'Logic gates', icon: <Binary size={14} />, title: 'Gates, latches and flip-flops, simulated step by step', keywords: 'digital truth table', action: addLogic },
+    { label: 'Free-body diagram', icon: <ArrowDownToDot size={14} />, title: 'A body and the forces on it', keywords: 'forces physics mechanics', action: addFreebody },
+    { label: 'Venn diagram', icon: <Blend size={14} />, title: 'Sets shaded from an expression or by clicking regions', keywords: 'sets', action: addVenn },
+    { label: 'Timing diagram', icon: <Activity size={14} />, title: 'Clock, signal and bus waveforms', keywords: 'wavedrom waveform', action: addTiming },
+    { label: 'Geometry', icon: <DraftingCompass size={14} />, title: 'Ruler-and-compass constructions', keywords: 'construction geogebra', action: addGeometry },
+    { label: 'Molecule', icon: <FlaskConical size={14} />, title: 'A 3D structure from PubChem, the Protein Data Bank or a file', keywords: 'chemistry protein', action: addMolecule },
+    { label: 'Periodic table', icon: <Grid3x3 size={14} />, title: 'Point at an element to see its details', keywords: 'chemistry elements', action: addPeriodic },
+    { label: 'Spherical harmonics', icon: <Globe size={14} />, title: 'Lobes, a colored sphere, a sky map or the ℓ, m table', keywords: 'quantum orbitals', action: addHarmonics },
+  ]
+  // A group's items as menu items (sub-items as a submenu)
+  const asMenuItems = items => items.map(item => ({ label: item.label, title: item.title, keywords: item.keywords, ...(item.items ? { items: asMenuItems(item.items) } : { action: item.action }) }))
+
+  // ── What's selected, for the toolbar and the menus ───────────────────────
+  const selectedEls = (currentSlide?.elements || []).filter(el => selectedElementIds.includes(el.id))
+  const singleEl = selectedEls.length === 1 ? selectedEls[0] : null
+  const toolbarSelection = {
+    count: selectedEls.length,
+    image: singleEl?.type === 'image' && !singleEl.locked,
+    editLabel: singleEl && !singleEl.locked ? editLabelFor(singleEl.type) : null,
+    canUngroup: selectedEls.some(el => el.groupId),
+  }
+  const selectionCommand = name => {
+    if (name === 'crop' || name === 'edit') { if (singleEl) askCanvas(name, singleEl.id) }
+    else elementCommand(name, singleEl?.id)
+  }
+  // The text the Format menu formats: the text being edited, or a selected
+  // text box as a whole
+  const textTarget = editingElementId ? editor : boxEditor
+  const selectedTexts = selectedEls.filter(el => el.type === 'text')
+  const textCommand = run => () => { if (textTarget) run(textTarget.chain().focus()).run() }
+  const markCommand = (key, toggle) => () => {
+    if (textTarget) textTarget.chain().focus()[toggle]().run()
+    else formatSelectedText(key)
+  }
+  // Edit › Cut, Copy, Paste…: the text's while it's being edited, else the elements'
+  const editCommand = name => {
+    if (editingElementId && editor) {
+      if (name === 'cut' || name === 'copy') { try { document.execCommand(name) } catch { /* refused */ } return }
+      if (name === 'paste') {
+        navigator.clipboard?.readText?.()
+          .then(text => { if (text) editor.chain().focus().insertContent(textToHtml(text)).run() })
+          .catch(() => showNotice(`To paste, press ${keyLabel('Mod+V')}`))
+        return
+      }
+      if (name === 'select-all') { editor.chain().focus().selectAll().run(); return }
+      if (name === 'delete') { editor.chain().focus().deleteSelection().run(); return }
+    }
+    if (name === 'select-all') canvasCommand('select-all')
+    else elementCommand(name, singleEl?.id)
+  }
+  const addGuide = guide => setGuides(prev => {
+    const next = [...prev, guide]
+    setPresentation(p => p ? { ...p, guides: next } : p)
+    return next
+  })
+  const clearGuides = () => { setGuides([]); setPresentation(p => p ? { ...p, guides: [] } : p) }
+  const openHistory = async () => {
+    setSnapshots(await api.getSnapshots(presentationId))
+    setShowHistoryModal(true)
+  }
+  const openFiles = async () => {
+    setShowFileBrowser(true)
+    setFileBrowserLoading(true)
+    try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
+    catch { setFileBrowserFiles([]) }
+    setFileBrowserLoading(false)
+  }
+  const annotationSets = isTemplate ? [] : recentAnnotationSets(presentation)
+  const editing = !!editingElementId
+  const anySelected = selectedEls.length > 0
+
+  // The Sync button beside Share (the owner's)
+  const syncItems = [
+    { label: 'GitHub…', icon: <Github size={13} />, action: () => setShowGithubModal(true) },
+    ZENODO_ENABLED && {
+      label: 'Zenodo…',
+      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>,
+      action: () => {
+        setZenodoStatus(null)
+        if (presentationId) api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
+        setShowZenodoModal(true)
+      },
+    },
+    { divider: true },
+    {
+      label: 'Git History…',
+      icon: <History size={13} />,
+      action: async () => {
+        setShowGitHistory(true)
+        setGitLoading(true)
+        try { setGitCommits(await api.getGitHistory(presentationId)) } catch (e) { setGitCommits([]); console.error(e) }
+        setGitLoading(false)
+      },
+    },
+  ].filter(Boolean)
+
+  // The Plugins button: each installed plugin's element to add, and the
+  // gallery to find more (cloud, signed in). It isn't there without either.
+  const pluginItems = [
+    ...pluginTypes.map(pt => ({ label: pt.label, action: () => addPluginElement(pt.type) })),
+    pluginTypes.length > 0 && isCloud && !guest && { divider: true },
+    isCloud && !guest && { label: 'Browse plugins…', action: () => setShowPluginBrowser(true) },
+  ].filter(Boolean)
+
+  // Practice Talk: a present, for the getting-started checklist too
+  const startPractice = () => {
+    tickStep('present')
+    practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 })
+  }
+
+  // A step of the getting-started checklist, done for you or shown where
+  const checklistStep = id => {
+    if (id === 'theme') setShowThemes(true)
+    else if (id === 'slide') addSlideAfter()
+    else if (id === 'image') uploadImage()
+    else if (id === 'notes') setNotesRequest(n => n + 1)
+    else if (id === 'present') presentAnnotated()
+  }
+
+  // ── The menu bar (components/MenuBar.jsx) ────────────────────────────────
+  const menus = [
+    { key: 'file', label: 'File', items: [
+      { label: 'Import', items: [
+        !guest && { label: 'PowerPoint (.pptx)…', action: importPptx },
+        { label: 'PDF pages…', action: importPdfPages },
+        { label: 'Plot from a PDF or SVG figure…', title: 'A matplotlib figure, kept as drawn or made a graph of its data', action: importPlot },
+        { label: 'LaTeX Beamer…', action: () => setShowBeamerModal(true) },
+        { label: 'Slides from another presentation…', action: () => setShowImportSlideModal(true) },
+      ] },
+      { label: 'Export', items: [
+        { label: 'PDF', action: () => exportPDF(presentation) },
+        { label: 'PowerPoint (.pptx)', action: () => exportToPptx(presentation) },
+        { label: 'HTML', action: () => downloadHTML(presentation) },
+        { label: 'This slide as HTML', action: () => downloadSlideHTML(presentation, currentSlideIndex) },
+        { label: 'Offline HTML', title: 'One file that presents without a connection', action: () => downloadOfflineHTML(presentation) },
+        annotationSets.length > 0 && { label: 'With annotations…', action: () => setShowSessions(true) },
+      ] },
+      '-',
+      { label: 'Version history…', action: openHistory },
+      { label: 'Files…', title: 'Files uploaded to this presentation', action: openFiles },
+    ] },
+    { key: 'edit', label: 'Edit', items: [
+      { label: 'Undo', shortcut: SHORTCUTS.undo, action: editing && editor ? () => editor.chain().focus().undo().run() : doUndo, disabled: !editing && !canUndo() },
+      { label: 'Redo', shortcut: SHORTCUTS.redo, action: editing && editor ? () => editor.chain().focus().redo().run() : doRedo, disabled: !editing && !canRedo() },
+      '-',
+      { label: 'Cut', shortcut: SHORTCUTS.cut, action: () => editCommand('cut'), disabled: !editing && !anySelected },
+      { label: 'Copy', shortcut: SHORTCUTS.copy, action: () => editCommand('copy'), disabled: !editing && !anySelected },
+      { label: 'Paste', shortcut: SHORTCUTS.paste, action: () => editCommand('paste') },
+      { label: 'Duplicate', shortcut: SHORTCUTS.duplicate, action: () => editCommand('duplicate'), disabled: editing || !anySelected },
+      { label: 'Delete', shortcut: SHORTCUTS.delete, action: () => editCommand('delete'), disabled: !editing && !anySelected },
+      '-',
+      { label: 'Select all', shortcut: SHORTCUTS.selectAll, action: () => editCommand('select-all') },
+      '-',
+      { label: 'Find and replace', shortcut: SHORTCUTS.find, action: () => setShowFindReplace(true) },
+    ] },
+    { key: 'view', label: 'View', items: [
+      { label: 'Slides', radio: true, checked: leftView === 'slides', action: () => chooseLeftView('slides') },
+      { label: 'Outline', radio: true, checked: leftView === 'outline', action: () => chooseLeftView('outline') },
+      '-',
+      { label: 'Grid', checked: showGrid, action: () => setShowGrid(v => !v) },
+      { label: 'Grid size', items: [10, 20, 40, 80].map(size => ({ label: `${size} px`, radio: true, checked: gridSize === size, action: () => { setGridSize(size); setPresentation(prev => prev ? { ...prev, gridSize: size } : prev) } })) },
+      { label: 'Rulers', checked: showRulers, action: () => setShowRulers(v => !v) },
+      { label: 'Guides', items: [
+        { label: 'Smart guides', title: 'Lines that show when something lines up with the slide or another element', checked: smartGuidesEnabled, action: () => setSmartGuidesEnabled(v => !v) },
+        '-',
+        { label: 'Add horizontal guide', action: () => { setShowRulers(true); addGuide({ axis: 'y', position: Math.round(slideH / 2) }) } },
+        { label: 'Add vertical guide', action: () => { setShowRulers(true); addGuide({ axis: 'x', position: Math.round(slideW / 2) }) } },
+        { label: 'Remove all guides', action: clearGuides, disabled: !guides.length },
+      ] },
+      '-',
+      { label: 'Animation timeline', checked: showTimeline, action: () => setShowTimeline(v => !v) },
+      onThemeChange && '-',
+      onThemeChange && { label: 'Editor theme', items: [
+        { label: 'Light', radio: true, checked: theme === 'light', action: () => onThemeChange('light') },
+        { label: 'Dark', radio: true, checked: theme === 'dark', action: () => onThemeChange('dark') },
+      ] },
+    ] },
+    { key: 'insert', label: 'Insert', items: [
+      { label: 'Text box', action: addTextElement },
+      { label: 'Image', items: [
+        { label: 'Upload image…', action: uploadImage },
+        { label: 'Image from URL…', action: imageFromUrl },
+      ] },
+      { label: 'Shape…', action: () => { stopEditingElement(); setSelectedElementIds([]); askToolbar('shape') } },
+      { label: 'Table…', action: () => { stopEditingElement(); setSelectedElementIds([]); askToolbar('table') } },
+      '-',
+      ...insertGroups.map(group => ({ label: group.heading, items: asMenuItems(group.items) })),
+      '-',
+      { label: 'Science', items: asMenuItems(scienceItems) },
+    ] },
+    { key: 'format', label: 'Format', items: [
+      { label: 'Text', items: [
+        { label: 'Bold', shortcut: SHORTCUTS.bold, action: markCommand('b', 'toggleBold'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Italic', shortcut: SHORTCUTS.italic, action: markCommand('i', 'toggleItalic'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Underline', shortcut: SHORTCUTS.underline, action: markCommand('u', 'toggleUnderline'), disabled: !textTarget && !selectedTexts.length },
+        { label: 'Strikethrough', shortcut: SHORTCUTS.strike, action: textCommand(c => c.toggleStrike()), disabled: !textTarget },
+        { label: 'Inline code', shortcut: SHORTCUTS.code, action: textCommand(c => c.toggleCode()), disabled: !textTarget },
+      ] },
+      { label: 'Alignment', items: [
+        { label: 'Left', shortcut: SHORTCUTS.alignLeft, action: textCommand(c => c.setTextAlign('left')), disabled: !textTarget },
+        { label: 'Center', shortcut: SHORTCUTS.alignCenter, action: textCommand(c => c.setTextAlign('center')), disabled: !textTarget },
+        { label: 'Right', shortcut: SHORTCUTS.alignRight, action: textCommand(c => c.setTextAlign('right')), disabled: !textTarget },
+      ] },
+      { label: 'Lists', items: [
+        { label: 'Bulleted list', shortcut: SHORTCUTS.bulletList, action: textCommand(c => c.toggleBulletList()), disabled: !textTarget },
+        { label: 'Numbered list', shortcut: SHORTCUTS.orderedList, action: textCommand(c => c.toggleOrderedList()), disabled: !textTarget },
+      ] },
+      { label: 'Clear formatting', action: textCommand(c => c.clearNodes().unsetAllMarks()), disabled: !textTarget },
+      '-',
+      { label: 'Arrange', items: [
+        ['front', 'Bring to front'], ['forward', 'Bring forward'], ['backward', 'Send backward'], ['back', 'Send to back'],
+      ].map(([name, label]) => ({ label, action: () => askCanvas(name, singleEl?.id), disabled: !singleEl })) },
+      { label: 'Align and distribute', items: ALIGN_COMMANDS.map(([type, label]) => ({ label, action: () => alignElements(type), disabled: selectedEls.length < 2 })) },
+      { label: 'Group', shortcut: SHORTCUTS.group, action: () => elementCommand('group'), disabled: selectedEls.length < 2 },
+      { label: 'Ungroup', shortcut: SHORTCUTS.ungroup, action: () => elementCommand('ungroup'), disabled: !toolbarSelection.canUngroup },
+      '-',
+      anySelected && selectedEls.every(el => el.locked)
+        ? { label: 'Unlock', action: () => elementCommand('unlock') }
+        : { label: 'Lock', title: 'Keep it from being moved or resized', action: () => elementCommand('lock'), disabled: !anySelected },
+    ] },
+    { key: 'slide', label: 'Slide', items: [
+      { label: 'New slide', shortcut: SHORTCUTS.newSlide, action: () => addSlideAfter() },
+      { label: 'New slide from a layout…', action: () => { setPendingAddColumn(null); setShowTemplateModal(true) } },
+      { label: 'Duplicate slide', action: () => duplicateSlide(currentSlideIndex), disabled: isViewingReferences },
+      { label: 'Delete slide', action: () => deleteSlide(currentSlideIndex), disabled: isViewingReferences || presentation.slides.length <= 1 },
+      '-',
+      { label: 'Change layout', title: 'Move this slide’s title and text into another layout', disabled: isViewingReferences, items: Object.entries(SLIDE_TEMPLATES).map(([key, layout]) => ({ label: layout.label, radio: true, checked: currentSlide?.layout === key, action: () => changeSlideLayout(currentSlideIndex, key) })) },
+      { label: 'Background…', action: () => openBackground(), disabled: isViewingReferences },
+      { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => { setShowThemes(false); setInspectorTab('animate') } },
+      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => setShowThemes(true) },
+      { label: 'Footer and page numbers…', action: () => setShowDefaultSettings(true) },
+      '-',
+      { label: 'New vertical section', title: 'A column of slides reached with ↓ when presenting', action: addColumn },
+    ] },
+    { key: 'tools', label: 'Tools', items: [
+      { label: `Citations and bibliography…${(presentation.bibliography || []).length ? ` (${presentation.bibliography.length})` : ''}`, action: () => setShowBibliographyModal(true) },
+      { label: 'Datasets…', action: () => setShowDatasetPanel(true) },
+      '-',
+      !isTemplate && { label: 'Practice talk', title: 'Present with a timer on each slide, against the minutes planned in the outline', action: startPractice },
+      !isTemplate && (presentation.practiceRuns || []).length > 0 && { label: 'Practice runs…', action: () => setShowPracticeRuns(true) },
+      annotationSets.length > 0 && { label: 'Annotation sessions…', action: () => setShowSessions(true) },
+    ] },
+    { key: 'help', label: 'Help', items: [
+      { label: 'Docs', action: () => { window.location.hash = '#docs' } },
+      { label: 'Keyboard shortcuts', shortcut: SHORTCUTS.shortcuts, action: () => setShowShortcuts(true) },
+      { label: 'Search the menus', shortcut: SHORTCUTS.searchMenus, action: () => setShowMenuSearch(true) },
+      '-',
+      { label: 'Getting-started checklist', title: 'Five steps to a first talk, above the slide list', action: () => { chooseLeftView('slides'); reopenChecklist() } },
+    ] },
+  ]
+
   return (
     <div className="editor-page" style={{ position: 'relative' }}>
       {/* Editor Header */}
@@ -2832,7 +3504,9 @@ function draw() {
           value={presentation.title || ''}
           onChange={e => setPresentation(prev => ({ ...prev, title: e.target.value }))}
           placeholder={isTemplate ? 'Untitled Template' : 'Untitled Presentation'}
+          aria-label="Title"
         />
+        <MenuBar menus={menus} />
         <div className="header-controls">
           {live?.synced && (live.status !== 'connected'
             ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
@@ -2849,12 +3523,12 @@ function draw() {
             <div className="presence-avatars" role="group" aria-label="Also editing" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
               {othersHere.slice(0, 4).map((p, i) => {
                 const index = presentation.slides.findIndex(s => s.id === p.slide)
-                const where = `${p.name}${index >= 0 ? `, slide ${index + 1}` : ''}${p.editing ? ', editing' : ''}`
+                const where = `${p.name}${p.ai ? ' (AI)' : ''}${index >= 0 ? `, slide ${index + 1}` : ''}${p.editing ? ', editing' : ''}`
                 return (
                   <button key={p.userId} title={where} aria-label={where}
                     onClick={() => { if (index >= 0) setCurrentSlideIndex(index) }}
                     style={{ marginLeft: i ? -6 : 0, width: 26, height: 26, borderRadius: '50%', border: `2px solid ${p.color}`, padding: 0, background: '#3a3a52', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" width={22} height={22} style={{ borderRadius: '50%' }} /> : (p.name || '?')[0].toUpperCase()}
+                    {p.ai ? <Bot size={14} aria-hidden /> : p.avatarUrl ? <img src={p.avatarUrl} alt="" width={22} height={22} style={{ borderRadius: '50%' }} /> : (p.name || '?')[0].toUpperCase()}
                   </button>
                 )
               })}
@@ -2864,192 +3538,6 @@ function draw() {
             </div>
           )}
 
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowDefaultSettings(true)}
-            title="Default slide settings"
-          >
-            <Settings size={14} />
-            Settings
-          </button>
-
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowBibliographyModal(true)}
-            title="Bibliography & Citations"
-          >
-            <FileText size={14} />
-            Citations
-            {(presentation.bibliography || []).length > 0 && (
-              <span style={{ fontSize: 9, background: 'var(--accent)', color: 'white', borderRadius: 8, padding: '0 4px', lineHeight: '14px', fontWeight: 700 }}>
-                {presentation.bibliography.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowFindReplace(v => !v)}
-            title="Find & Replace (Ctrl+F)"
-          >
-            <Search size={14} />
-            Find
-          </button>
-
-          <button
-            className={`btn btn-secondary ${showTimeline ? 'active' : ''}`}
-            onClick={() => setShowTimeline(v => !v)}
-            title="Animation Timeline"
-          >
-            <Clock size={14} />
-            Timeline
-          </button>
-
-          {shareItems.length > 0 && (
-            <div style={{ position: 'relative' }}>
-              <button
-                className={`btn btn-secondary ${showShareMenu ? 'active' : ''}`}
-                onClick={() => setShowShareMenu(v => !v)}
-                title="Share link and editors"
-              >
-                <Share2 size={14} />
-                Share
-              </button>
-              {showShareMenu && (
-                <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowShareMenu(false)}>
-                  <MenuItems items={shareItems} onPick={() => setShowShareMenu(false)} />
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={{ position: 'relative' }}>
-            <button
-              className={`btn btn-secondary ${showExportMenu ? 'active' : ''}`}
-              onClick={() => setShowExportMenu(v => !v)}
-              title="Export"
-            >
-              <Download size={14} />
-              Export
-            </button>
-            {showExportMenu && (
-              <div style={TOP_MENU_STYLE} onMouseLeave={() => setShowExportMenu(false)}>
-                <MenuItems onPick={() => setShowExportMenu(false)} items={[
-                  { label: 'Export PDF', icon: <Download size={13} />, action: () => exportPDF(presentation) },
-                  { label: 'Export PPTX', icon: <Download size={13} />, action: () => exportToPptx(presentation) },
-                  { label: 'Export HTML', icon: <Download size={13} />, action: () => downloadHTML(presentation) },
-                  { label: 'Export Slide HTML', icon: <Download size={13} />, action: () => downloadSlideHTML(presentation, currentSlideIndex) },
-                  { label: 'Export Offline HTML', icon: <FileDown size={13} />, action: () => downloadOfflineHTML(presentation) },
-                  { label: 'Export Annotated…', icon: <Pencil size={13} />, action: () => setShowSessions(true) },
-                ].filter(item => item.label !== 'Export Annotated…' || (!isTemplate && recentAnnotationSets(presentation).length > 0))} />
-              </div>
-            )}
-          </div>
-
-          <button
-            className="btn btn-secondary"
-            onClick={async () => {
-              const snaps = await api.getSnapshots(presentationId)
-              setSnapshots(snaps)
-              setShowHistoryModal(true)
-            }}
-            title="Version History"
-          >
-            <History size={14} />
-            History
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={async () => {
-              setShowFileBrowser(true)
-              setFileBrowserLoading(true)
-              try { const files = await api.getPresentationUploads(presentationId); setFileBrowserFiles(Array.isArray(files) ? files : []) }
-              catch { setFileBrowserFiles([]) }
-              setFileBrowserLoading(false)
-            }}
-            title="Browse uploaded files"
-          >
-            <Layers size={14} />
-            Files
-          </button>
-
-          <button
-            className="btn btn-secondary"
-            onClick={() => setShowDatasetPanel(true)}
-            title="Manage datasets"
-          >
-            <Database size={14} />
-            Data
-          </button>
-
-          {!guest && !isEditor && (
-            <div style={{ position: 'relative' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowSyncDropdown(v => !v)}
-                title="Sync options"
-              >
-                <CloudUpload size={14} />
-                Sync
-                <ChevronDown size={12} style={{ marginLeft: 2 }} />
-              </button>
-              {showSyncDropdown && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setShowSyncDropdown(false)} />
-                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 1000, minWidth: 150, overflow: 'hidden' }}>
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowSyncDropdown(false); setShowGithubModal(true) }}
-                    >
-                      <Github size={14} />
-                      GitHub
-                    </button>
-                    {ZENODO_ENABLED && (
-                      <button
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                        onClick={async () => {
-                          setShowSyncDropdown(false)
-                          setZenodoStatus(null)
-                          if (presentationId) {
-                            api.getZenodoStatus(presentationId).then(setZenodoPubStatus).catch(() => setZenodoPubStatus(null))
-                          }
-                          setShowZenodoModal(true)
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19h16"/><path d="M4 5l16 14"/><path d="M4 5h16"/></svg>
-                        Zenodo
-                      </button>
-                    )}
-                    <div style={{ borderTop: '1px solid var(--border)' }} />
-                    <button
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={async () => {
-                        setShowSyncDropdown(false)
-                        setShowGitHistory(true)
-                        setGitLoading(true)
-                        try {
-                          const commits = await api.getGitHistory(presentationId)
-                          setGitCommits(commits)
-                        } catch (e) { setGitCommits([]); console.error(e) }
-                        setGitLoading(false)
-                      }}
-                    >
-                      <History size={14} />
-                      Git History
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
 
           {liveSession && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 11 }}>
@@ -3065,6 +3553,16 @@ function draw() {
               </button>
             </div>
           )}
+
+          <button type="button" className="btn btn-secondary" aria-label="Deck settings"
+            title="Deck settings: font, theme, transition, size, footer and more, for the whole presentation"
+            onClick={() => setShowDefaultSettings(true)}>
+            <Settings size={14} />
+            <span className="header-btn-label">Settings</span>
+          </button>
+          <HeaderMenu label="Plugins" icon={<Puzzle size={14} />} title="Add a plugin's element, or find more plugins" items={pluginItems} />
+          {!guest && !isEditor && <HeaderMenu label="Sync" icon={<CloudUpload size={14} />} title="GitHub and git history" items={syncItems} />}
+          <HeaderMenu label="Share" icon={<Share2 size={14} />} title="Share link and editors" items={shareItems} />
 
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex' }}>
@@ -3103,7 +3601,7 @@ function draw() {
                     style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    onClick={() => { setShowPresentDropdown(false); presenterInWindow(presentation) }}
+                    onClick={() => { setShowPresentDropdown(false); tickStep('present'); presenterInWindow(presentation) }}
                   >
                     <Monitor size={14} />
                     Presenter Mode
@@ -3113,7 +3611,7 @@ function draw() {
                       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowPresentDropdown(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+                      onClick={() => { setShowPresentDropdown(false); startPractice() }}
                       title="Present with a timer on each slide, against the minutes planned in the outline"
                     >
                       <Timer size={14} />
@@ -3200,13 +3698,13 @@ function draw() {
         </div>
       </div>
 
-      {/* Default Settings Modal */}
+      {/* Deck settings */}
       {showDefaultSettings && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowDefaultSettings(false) }}>
           <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Default Settings</h2>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Deck settings</h2>
               <button onClick={() => setShowDefaultSettings(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '2px 6px' }}>&times;</button>
             </div>
 
@@ -3231,7 +3729,7 @@ function draw() {
                 <select className="prop-input" value={presentation.globalFont || ''}
                   onChange={e => setPresentation(prev => ({ ...prev, globalFont: e.target.value || null }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
-                  <option value="">— Default —</option>
+                  <option value="">Default (Arial)</option>
                   <optgroup label="Sans-serif">
                     <option value="Arial, sans-serif">Arial</option>
                     <option value="'Helvetica Neue', sans-serif">Helvetica</option>
@@ -3293,12 +3791,15 @@ function draw() {
 
               {/* Theme */}
               <div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Background</div>
-                <select className="prop-input" value={presentation.theme || 'black'}
-                  onChange={e => setPresentation(prev => ({ ...prev, theme: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 8px' }}>
-                  {THEMES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-                </select>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 }}>Theme</div>
+                <button type="button" className="btn btn-secondary" onClick={() => { setShowDefaultSettings(false); setShowThemes(true) }}
+                  style={{ width: '100%', justifyContent: 'space-between', padding: '6px 8px' }} aria-label={`Theme: ${themeOf(presentation.theme).label}. Change`}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 3, border: '1px solid var(--border)', background: themeOf(presentation.theme).background }} />
+                    {themeOf(presentation.theme).label}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Change…</span>
+                </button>
               </div>
 
               {/* Transition */}
@@ -4325,8 +4826,13 @@ function draw() {
           onMoveMultiple={moveSlides}
           onAdd={(colNum) => { setPendingAddColumn(colNum ?? null); setShowTemplateModal(true) }}
           onAddColumn={addColumn}
-          onImport={() => setShowImportSlideModal(true)}
           onDelete={deleteSlide}
+          onDeleteMultiple={deleteSlides}
+          onNewSlideAfter={addSlideAfter}
+          onBackground={openBackground}
+          onChangeLayout={index => setLayoutChangeIndex(index)}
+          theme={presentation.theme || 'black'}
+          notice={!isTemplate && showChecklist(checklist, { guest: !!guest }) ? <GettingStarted onStep={checklistStep} /> : null}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
           onMoveInColumn={moveSlideInColumn}
@@ -4340,122 +4846,38 @@ function draw() {
 
         <div className="editor-main">
           <Toolbar
-            editor={editingElementId ? editor : null}
+            editor={editingElementId ? editor : boxEditor}
+            wholeBox={!editingElementId && !!boxEditor}
             editingElementId={editingElementId}
-            showGrid={showGrid}
-            onToggleGrid={() => setShowGrid(v => !v)}
-            gridSize={gridSize}
-            onGridSizeChange={(v) => { setGridSize(v); setPresentation(prev => prev ? { ...prev, gridSize: v } : prev) }}
-            onAddText={addTextElement}
-            onAddTextPath={addTextPathElement}
-            onAddText3d={addText3dElement}
-            onAddImage={() => {
-              const url = window.prompt('Image URL:')
-              if (url) addImageElement(url)
-            }}
-            onAddImageUpload={async (file) => {
-              try {
-                const result = await api.uploadFile(file)
-                if (result.url) addImageElement(result.url)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-
-            onAddShape={addShapeElement}
-            onAddNonobjective={addNonobjectiveElement}
-            onAddModularGrid={addModularGrid}
-            onAddHtml={addHtmlElement}
-            onAddD3={addD3Element}
-            onAddKineticText={() => setShowKineticModal(true)}
-            onAddMathGrid={() => setShowMathGridModal(true)}
-            onAddTabs={addTabs}
-            onAddHotspot={addHotspot}
-            onAddFlipCard={() => addStatePreset(buildFlipCard, 0)}
-            onAddQuiz={() => addStatePreset(buildQuiz, 1)}
-            onAddAnime={() => setShowAnimeModal(true)}
-            onAddThree={() => setShowThreeModal(true)}
-            onAddGraph={addGraph}
-            onAddGraph3d={addGraph3d}
-            onAddDiagram={() => setShowDiagramModal(true)}
-            onAddTikz={() => setTikzEditor({ elementId: null, state: null, dark: slideIsDark() })}
-            onAddP5={addP5Element}
-            onAddCode={addCodeElement}
-            onAddLatex={addLatexElement}
-            onAddEquation={addEquation}
-            onAddFeynman={addFeynman}
-            onAddCircuit={addCircuit}
-            onAddLogic={addLogic}
-            onAddFreebody={addFreebody}
-            onAddVenn={addVenn}
-            onAddTiming={addTiming}
-            onAddGeometry={addGeometry}
-            onAddMolecule={addMolecule}
-            onAddPeriodic={addPeriodic}
-            onAddHarmonics={addHarmonics}
-            onAddMarkdown={addMarkdownElement}
-            onAddTimeline={addTimelineElement}
-            onAddCallout={addCalloutElement}
-            onAddIcon={addIconElement}
-            onAddVideo={addVideoElement}
-            onAddVideoUpload={async (file) => {
-              try {
-                const result = await api.uploadFileToPresentation(presentation.id, file)
-                if (result.url) addVideoElement(result.url)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-            onAddAudio={addAudioElement}
-            onAddModelUpload={async (file) => {
-              if (!isModelFile(file.name)) { alert('3D models can be STL or GLB files.'); return }
-              try {
-                const result = await api.uploadFileToPresentation(presentation.id, file)
-                if (result.url) addModelElement(result.url, file.name)
-              } catch (err) { alert('Upload failed: ' + err.message) }
-            }}
-            onAddTable={addTableElement}
-            pluginTypes={pluginsLoaded ? getInsertablePluginTypes() : []}
-            onAddPluginElement={addPluginElement}
-            onBrowsePlugins={isCloud && !guest ? () => setShowPluginBrowser(true) : undefined}
-            selectedCount={selectedElementIds.length}
-            onAlignElements={alignElements}
-            smartGuidesEnabled={smartGuidesEnabled}
-            onToggleSmartGuides={() => setSmartGuidesEnabled(v => !v)}
-            slide={currentSlide}
-            slides={presentation.slides}
-            onUpdateSlide={updateCurrentSlide}
-            onGroupElements={groupElements}
-            onUngroupElements={ungroupElements}
-            showRulers={showRulers}
-            onToggleRulers={() => setShowRulers(v => !v)}
-            guides={guides}
-            onAddGuide={(guide) => {
-              setGuides(prev => {
-                const next = [...prev, guide]
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onRemoveGuide={(idx) => {
-              setGuides(prev => {
-                const next = prev.filter((_, i) => i !== idx)
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onUpdateGuide={(idx, pos) => {
-              setGuides(prev => {
-                const next = prev.map((g, i) => i === idx ? { ...g, position: pos } : g)
-                setPresentation(p => p ? { ...p, guides: next } : p)
-                return next
-              })
-            }}
-            onImportPptx={guest ? undefined : handleImportPptx}
-            drawTool={drawTool}
-            onSetDrawTool={setDrawTool}
+            request={toolbarRequest}
             onUndo={doUndo}
             onRedo={doRedo}
             canUndo={canUndo()}
             canRedo={canRedo()}
+            onNewSlide={() => addSlideAfter()}
+            onNewSlideFromLayout={() => { setPendingAddColumn(null); setShowTemplateModal(true) }}
+            onAddText={addTextElement}
+            onAddImage={imageFromUrl}
+            onUploadImage={uploadImage}
+            onAddShape={addShapeElement}
+            onAddIcon={addIconElement}
+            onAddCallout={() => addCalloutElement()}
+            onAddTable={addTableElement}
+            insertGroups={insertGroups}
+            scienceItems={scienceItems}
+            selection={toolbarSelection}
+            onSelectionCommand={selectionCommand}
+            onAlignElements={alignElements}
+            slide={isViewingReferences ? null : currentSlide}
+            slides={presentation.slides}
+            onUpdateSlide={updateCurrentSlide}
+            drawTool={drawTool}
+            onSetDrawTool={setDrawTool}
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
+            theme={presentation.theme || 'black'}
+            onTheme={() => setShowThemes(v => !v)}
+            themesOpen={showThemes}
           />
           <div className="canvas-area" style={{ display: 'flex', flexDirection: 'column' }}>
             {!isViewingReferences && !recording && offeredUpdates.map(u => (
@@ -4522,7 +4944,7 @@ function draw() {
                           <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>
                           {authorStr}{entry.year ? ` (${entry.year})` : ''}. {entry.title}.
                           {entry.journal || entry.booktitle ? <em> {entry.journal || entry.booktitle}</em> : null}
-                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${entry.pages}` : ''}
+                          {entry.volume ? `, ${entry.volume}` : ''}{entry.pages ? `, ${pageRange(entry.pages)}` : ''}
                           {entry.journal || entry.booktitle || entry.volume || entry.pages ? '.' : ''}
                           {entry.doi && <a href={`https://doi.org/${entry.doi}`} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>DOI</a>}
                           {!entry.doi && webLink(entry.url) && <a href={webLink(entry.url).href} target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(99,102,241,0.8)', fontSize: '0.85em', marginLeft: 4 }}>{webLink(entry.url).site}</a>}
@@ -4606,6 +5028,10 @@ function draw() {
               }}
               onToggleSelectElement={toggleElementSelection}
               onStartEdit={startEditingElement}
+              onElementCommand={elementCommand}
+              onCanvasCommand={canvasCommand}
+              request={canvasRequest}
+              theme={presentation.theme || 'black'}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -4631,6 +5057,7 @@ function draw() {
                   if (result.url) addImageElement(result.url, dropX, dropY)
                 } catch (err) { alert('Upload failed: ' + err.message) }
               }}
+              onAddFigure={addDroppedFigure}
               slideW={slideW}
               slideH={slideH}
               drawTool={drawTool}
@@ -4639,9 +5066,15 @@ function draw() {
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
             />}
           </div>
+          {!isViewingReferences && currentSlide && (
+            <NotesStrip notes={currentSlide.notes || ''} focusRequest={notesRequest}
+              onChange={notes => { if (notes.trim()) tickStep('notes'); updateCurrentSlide({ notes }) }} slideNumber={currentSlideIndex + 1} />
+          )}
         </div>
 
-        <PropertiesPanel
+        {showThemes ? (
+          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)} />
+        ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
           pluginInfo={(() => {
@@ -4686,7 +5119,10 @@ function draw() {
           onCloseMathNode={() => { setActiveMathNode(null); mathNodeUpdateRef.current = null }}
           onPreviewSlide={() => previewSlideInWindow(presentation, currentSlideIndex)}
           currentSlideIndex={currentSlideIndex}
-        />
+          tab={inspectorTab}
+          onTabChange={setInspectorTab}
+          theme={presentation.theme || 'black'}
+        />}
 
       {/* HTML / D3 Code Editor Modal */}
       {htmlEditorState && (
@@ -5172,6 +5608,7 @@ function draw() {
         />
       )}
 
+      {showAiLinks && <AiLinkModal presentationId={presentationId} onClose={() => setShowAiLinks(false)} />}
       {showEditorsModal && access && (
         <EditorsModal
           presentationId={presentationId}
@@ -5244,68 +5681,42 @@ function draw() {
         </div>
       )}
 
-      {showTemplateModal && (
-        <div className="modal-overlay" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
-            <h2 style={{ marginBottom: 16 }}>Add Slide</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-              {Object.entries(SLIDE_TEMPLATES).filter(([, t]) => !t.category).map(([key, tmpl]) => (
-                <button key={key}
-                  onClick={() => { addSlide(key, pendingAddColumn); setPendingAddColumn(null); setShowTemplateModal(false) }}
-                  style={{ background: 'var(--bg-card)', border: '2px solid var(--border)', borderRadius: 8, padding: 10, cursor: 'pointer', textAlign: 'left' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover)' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-card)' }}
-                >
-                  <div style={{ height: 55, background: '#1e1e2e', borderRadius: 4, marginBottom: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-                    {key === 'blank' && <span style={{ fontSize: 20, opacity: 0.4 }}>□</span>}
-                    {key === 'title' && <div style={{textAlign:'center'}}><div style={{fontSize:9,fontWeight:700,color:'white',marginBottom:3}}>─────────</div><div style={{fontSize:7,color:'#aaa'}}>─────</div></div>}
-                    {key === 'two-column' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'image-text' && <div style={{display:'flex',gap:3,width:'80%',height:'60%'}}><div style={{flex:1,background:'rgba(99,102,241,0.3)',borderRadius:2,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}}>🖼</div><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'section-header' && <div style={{textAlign:'center'}}><div style={{fontSize:10,fontWeight:700,color:'#6366f1'}}>─────</div><div style={{width:30,height:2,background:'#6366f1',margin:'3px auto'}}/><div style={{fontSize:6,color:'#888'}}>section</div></div>}
-                    {key === 'three-column' && <div style={{display:'flex',gap:2,width:'85%',height:'60%'}}><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/><div style={{flex:1,background:'rgba(255,255,255,0.1)',borderRadius:2}}/></div>}
-                    {key === 'comparison' && <div style={{display:'flex',gap:4,width:'80%',height:'60%'}}><div style={{flex:1,border:'1px solid #6366f1',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#6366f1'}}>A</div><div style={{flex:1,border:'1px solid #ec4899',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#ec4899'}}>B</div></div>}
-                    {key === 'big-number' && <div style={{textAlign:'center'}}><div style={{fontSize:18,fontWeight:700,color:'#6366f1'}}>42</div><div style={{fontSize:6,color:'#888'}}>metric</div></div>}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#e0e0e0', fontWeight: 500 }}>{tmpl.label}</div>
-                </button>
-              ))}
-            </div>
-            <h3 style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, borderTop: '1px solid var(--border)', paddingTop: 12 }}>Typographic Systems</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-              {Object.entries(SLIDE_TEMPLATES).filter(([, t]) => t.category === 'systems').map(([key, tmpl]) => {
-                const icons = {
-                  'system-axial':        <div style={{display:'flex',height:'60%',width:'80%',gap:0}}><div style={{width:'35%',borderRight:'2px solid #f472b6'}}/><div style={{flex:1,background:'rgba(255,255,255,0.06)'}}/></div>,
-                  'system-bilateral':    <div style={{display:'flex',flexDirection:'column',alignItems:'center',height:'60%',width:'80%'}}><div style={{width:'60%',height:2,background:'#6366f1',marginTop:'30%'}}/></div>,
-                  'system-grid':         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gridTemplateRows:'1fr 1fr',gap:2,width:'80%',height:'60%'}}>{Array.from({length:6}).map((_,i)=><div key={i} style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:1}}/>)}</div>,
-                  'system-modular':      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:2,width:'85%',height:'60%'}}>{Array.from({length:8}).map((_,i)=><div key={i} style={{background:i<4?'rgba(99,102,241,0.15)':'transparent',border:'1px solid rgba(99,102,241,0.2)',borderRadius:1}}/>)}</div>,
-                  'system-transitional': <div style={{width:'80%',height:'60%',position:'relative'}}><div style={{position:'absolute',top:'10%',left:'5%',width:'55%',height:8,background:'rgba(255,255,255,0.12)',borderRadius:1}}/><div style={{position:'absolute',top:'35%',left:'15%',width:'45%',height:6,background:'rgba(255,255,255,0.08)',borderRadius:1}}/><div style={{position:'absolute',top:'55%',width:'70%',height:1,background:'rgba(255,255,255,0.15)'}}/><div style={{position:'absolute',top:'65%',left:'10%',width:'50%',height:8,background:'rgba(255,255,255,0.1)',borderRadius:1}}/></div>,
-                  'system-radial':       <div style={{width:'80%',height:'60%',position:'relative',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{width:16,height:16,borderRadius:'50%',background:'#6366f1'}}/><div style={{position:'absolute',width:32,height:32,borderRadius:'50%',border:'1px solid rgba(99,102,241,0.3)'}}/><div style={{position:'absolute',width:48,height:48,borderRadius:'50%',border:'1px solid rgba(99,102,241,0.15)'}}/></div>,
-                }
-                return (
-                  <button key={key}
-                    onClick={() => { addSlide(key, pendingAddColumn); setPendingAddColumn(null); setShowTemplateModal(false) }}
-                    style={{ background: 'var(--bg-card)', border: '2px solid var(--border)', borderRadius: 8, padding: 10, cursor: 'pointer', textAlign: 'left' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#f472b6'; e.currentTarget.style.background = 'var(--bg-hover)' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-card)' }}
-                  >
-                    <div style={{ height: 55, background: '#1e1e2e', borderRadius: 4, marginBottom: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-                      {icons[key] || <span style={{ fontSize: 9 }}>{tmpl.label}</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#f472b6', fontWeight: 500 }}>{tmpl.label}</div>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => { setShowTemplateModal(false); setPendingAddColumn(null) }}>Cancel</button>
-            </div>
-          </div>
-        </div>
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
+      {showMenuSearch && <MenuSearch menus={menus} onClose={() => setShowMenuSearch(false)} />}
+      {plotImport && (
+        <PlotImportModal file={plotImport.file} source={plotImport.source} figure={plotImport.figure} presentationId={presentationId} dark={slideIsDark()}
+          onInsert={insertImportedPlot} onInsertElements={insertKeptFigure} onClose={() => setPlotImport(null)} />
+      )}
+      {pdfPages && (
+        <PdfPagesModal pages={pdfPages} onClose={() => setPdfPages(null)}
+          onInsert={async files => {
+            for (const file of files) {
+              try { const result = await api.uploadFile(file); if (result.url) addImageElement(result.url) }
+              catch (err) { showNotice(`A page couldn’t be uploaded: ${err.message}`); return }
+            }
+          }} />
+      )}
+
+      {(showTemplateModal || layoutChangeIndex !== null) && (
+        <LayoutPicker
+          layouts={SLIDE_TEMPLATES}
+          theme={presentation.theme || 'black'}
+          slideW={slideW}
+          slideH={slideH}
+          title={layoutChangeIndex !== null ? 'Change layout' : 'New slide'}
+          current={layoutChangeIndex !== null ? presentation.slides[layoutChangeIndex]?.layout ?? null : null}
+          onPick={key => {
+            if (layoutChangeIndex !== null) changeSlideLayout(layoutChangeIndex, key)
+            else addSlide(key, pendingAddColumn)
+            setPendingAddColumn(null); setShowTemplateModal(false); setLayoutChangeIndex(null)
+          }}
+          onClose={() => { setShowTemplateModal(false); setPendingAddColumn(null); setLayoutChangeIndex(null) }}
+        />
       )}
       {showPracticeRuns && (
         <PracticeRunsModal
           runs={presentation.practiceRuns || []}
-          onPractice={() => { setShowPracticeRuns(false); practiceInWindow(presentation, { referencesCount: hasReferencesSlide ? referencedEntries.length : 0 }) }}
+          onPractice={() => { setShowPracticeRuns(false); startPractice() }}
           onUsePlan={run => { stopCapturing(); setPresentation(prev => minutesFromRun(prev, run)); stopCapturing(); showNotice('Planned minutes set from this run; see them in the outline') }}
           onDelete={id => setPresentation(prev => removePracticeRun(prev, id))}
           onClose={() => setShowPracticeRuns(false)}
@@ -5329,7 +5740,20 @@ function draw() {
         <ImportSlideModal
           currentPresentationId={presentationId}
           onImport={importSlidesFromPresentation}
+          onBeamer={() => { setShowImportSlideModal(false); setShowBeamerModal(true) }}
           onClose={() => setShowImportSlideModal(false)}
+        />
+      )}
+      {showBeamerModal && (
+        <BeamerImportModal
+          mode="insert"
+          slideW={presentation.slideWidth || 960}
+          slideH={presentation.slideHeight || 540}
+          bibliography={presentation.bibliography || []}
+          globalFont={presentation.globalFont || ''}
+          dark={slidePalette(currentSlide, presentation.theme).dark}
+          onInsert={insertBeamerSlides}
+          onClose={() => setShowBeamerModal(false)}
         />
       )}
       {/* Park the TipTap editor DOM off-screen when not editing so ProseMirror's

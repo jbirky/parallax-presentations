@@ -58,56 +58,141 @@ afterEach(() => {
 })
 
 describe('the editor, shared', () => {
-  // The labels of the items in a top-bar menu, after opening it
-  async function menu(name) {
-    await act(async () => button(name).click())
-    return [...el.querySelectorAll('button')].map(b => b.textContent.trim())
+  // The labels in a menu of the menu bar, after opening it and, along
+  // `path`, its submenus
+  async function menu(name, ...path) {
+    const title = [...el.querySelectorAll('.menu-bar .menu-title')].find(b => b.textContent === name)
+    await act(async () => title.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+    for (const label of path) {
+      const row = [...el.querySelectorAll('.menu-dropdown [role^=menuitem]')].find(b => b.querySelector('.menu-label').textContent.replace(/^[✓•]/, '').trim() === label)
+      await act(async () => row.click())
+    }
+    const deepest = [...el.querySelectorAll('.menu-dropdown')].pop()
+    return [...deepest.querySelectorAll(':scope > .menu-row > button')].map(b => b.querySelector('.menu-label').textContent.replace(/^[✓•]/, '').trim())
   }
+  const closeMenus = async () => act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
 
-  it('puts the share link and editors under Share, not Export', async () => {
+  it('has a menu bar where the top bar’s buttons were, and keeps Settings, Plugins, Sync, Share and Present', async () => {
     await open('owner')
-    const share = await menu('Share')
-    expect(share).toContain('Share link')
-    expect(share).toContain('Editors…')
-    await act(async () => button('Share').click())
-    const exports = await menu('Export')
-    expect(exports).toContain('Export PDF')
-    expect(exports).not.toContain('Share link')
-    expect(exports).not.toContain('Editors…')
+    expect([...el.querySelectorAll('.menu-bar .menu-title')].map(b => b.textContent)).toEqual(['File', 'Edit', 'View', 'Insert', 'Format', 'Slide', 'Tools', 'Help'])
+    expect(el.querySelector('.menu-bar').getAttribute('role')).toBe('menubar')
+    for (const gone of ['Export', 'History', 'Files', 'Data']) expect(button(gone)).toBeUndefined()
+    // Settings, Plugins, Sync, Share, then Present
+    const settings = button('Settings'), plugins = button('Plugins'), sync = button('Sync'), share = button('Share'), present = button('Present')
+    expect(settings && plugins && sync && share && present).toBeTruthy()
+    expect(settings.compareDocumentPosition(plugins) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(plugins.compareDocumentPosition(sync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sync.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(share.compareDocumentPosition(present) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('gives an editor the editors but not the share link, which is the owner’s', async () => {
+  // A header button's menu items (Share, Sync), after opening it
+  async function headerMenu(name) {
+    const b = button(name)
+    if (!b) return null
+    await act(async () => b.click())
+    return [...el.querySelectorAll(`[role=menu][aria-label=${name}] [role=menuitem]`)].map(b => b.textContent.trim())
+  }
+  const shareMenu = () => headerMenu('Share')
+
+  it('puts the share link and editors under Share, not in the menu bar', async () => {
+    await open('owner')
+    expect(await shareMenu()).toEqual(['Share link…', 'Editors…', 'AI collaborator link…'])
+    expect(button('Share').getAttribute('aria-expanded')).toBe('true')
+    const tools = await menu('Tools')
+    expect(tools).not.toContain('Share link…')
+    expect(tools).not.toContain('Editors…')
+    await closeMenus()
+    const exports = await menu('File', 'Export')
+    expect(exports).toEqual(expect.arrayContaining(['PDF', 'PowerPoint (.pptx)', 'HTML']))
+    expect(exports).not.toContain('Share link…')
+  })
+
+  it('opens the editors from Share, and closes the menu', async () => {
+    await open('owner')
+    await shareMenu()
+    const editors = [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'Editors…')
+    await act(async () => editors.click())
+    expect(el.querySelector('[role=menu][aria-label=Share]')).toBeNull()
+    expect(api.getCollaborators).toHaveBeenCalledWith('p1')
+  })
+
+  it('gives an editor the editors but not the share link or AI links, which are the owner’s', async () => {
     await open('editor')
-    const share = await menu('Share')
-    expect(share).toContain('Editors…')
-    expect(share).not.toContain('Share link')
+    expect(await shareMenu()).toEqual(['Editors…'])
   })
 
-  it('has no Share menu for a guest', async () => {
+  it('opens the AI collaborator links from Share', async () => {
+    api.getAiLinks.mockResolvedValue({ links: [] })
+    await open('owner')
+    await shareMenu()
+    const item = [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'AI collaborator link…')
+    await act(async () => item.click())
+    expect(el.querySelector('[role=dialog][aria-labelledby=ai-links-title]')).toBeTruthy()
+    expect(api.getAiLinks).toHaveBeenCalledWith('p1')
+  })
+
+  it('has no sharing for a guest', async () => {
     await open('owner', { guest: { idleHours: 12 } })
     expect(button('Share')).toBeUndefined()
-    expect(button('Export')).toBeTruthy()
+    expect(await menu('File', 'Export')).toContain('Offline HTML')
   })
 
-  it('switches the editor between light and dark in Settings', async () => {
+  it('switches the editor between light and dark in View', async () => {
     const onThemeChange = vi.fn()
     await open('owner', { theme: 'light', onThemeChange })
-    await act(async () => button('Settings').click())
-    const select = el.querySelector('select[aria-label="Editor theme"]')
-    expect(select.value).toBe('light')
-    await act(async () => { select.value = 'dark'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const themes = await menu('View', 'Editor theme')
+    expect(themes).toEqual(['Light', 'Dark'])
+    const dark = [...el.querySelectorAll('.menu-dropdown [role=menuitemradio]')].find(b => b.textContent.includes('Dark'))
+    await act(async () => dark.click())
     expect(onThemeChange).toHaveBeenCalledWith('dark')
   })
 
-  it('leaves the owner’s Sync menu out for an editor', async () => {
+  it('has a Plugins button for finding plugins, not a Tools submenu', async () => {
+    await open('owner')
+    expect(await headerMenu('Plugins')).toEqual(['Browse plugins…'])
+    expect(await menu('Tools')).not.toContain('Plugins')
+  })
+
+  it('leaves the owner’s Sync button out for an editor', async () => {
     await open('editor')
     expect(el.querySelector('.editor-header .title-input').value).toBe('Group talk')
     expect(button('Sync')).toBeUndefined()
+    expect(await menu('Tools')).not.toContain('Sync')
   })
 
-  it('keeps the Sync menu for the owner', async () => {
+  it('gives the owner a Sync button with GitHub and the git history, not a Tools submenu', async () => {
+    api.getGitHistory.mockResolvedValue([])
     await open('owner')
-    expect(button('Sync')).toBeTruthy()
+    expect(await headerMenu('Sync')).toEqual(['GitHub…', 'Git History…'])
+    expect(el.querySelectorAll('[role=menu][aria-label=Sync] [role=separator]').length).toBe(1)
+    await act(async () => [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'Git History…').click())
+    expect(el.querySelector('[role=menu][aria-label=Sync]')).toBeNull()
+    expect(api.getGitHistory).toHaveBeenCalledWith('p1')
+    expect(await menu('Tools')).not.toContain('Sync')
+  })
+
+  it('opens the GitHub settings from Sync', async () => {
+    api.getGithubConfig.mockResolvedValue({ owner: '', repo: '', hasToken: false, pagesUrl: '' })
+    await open('owner')
+    await headerMenu('Sync')
+    await act(async () => [...el.querySelectorAll('[role=menuitem]')].find(b => b.textContent.trim() === 'GitHub…').click())
+    expect(button('Save Settings')).toBeTruthy()
+  })
+
+  it('opens the deck settings from their own button, for an editor too, and not from File', async () => {
+    await open('editor')
+    const settings = button('Settings')
+    expect(settings.getAttribute('aria-label')).toBe('Deck settings')
+    expect(await menu('File')).not.toContain('Deck settings…')
+    await closeMenus()
+    await act(async () => settings.click())
+    expect([...el.querySelectorAll('h2')].map(h => h.textContent)).toContain('Deck settings')
+  })
+
+  it('has no Sync button for a guest', async () => {
+    await open('owner', { guest: { idleHours: 12 } })
+    expect(button('Sync')).toBeUndefined()
   })
 
   it('stops saving when someone else saved first, and can load their version', async () => {

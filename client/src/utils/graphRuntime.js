@@ -121,10 +121,13 @@ export function graphRuntime(P, G, G3, config) {
   }
 
   function exprOf(it) { return (C.expressions || []).find(e => e.id === it.id) || {} }
+  // A line shows from its step, and until the step it leaves at (until);
+  // the editor and thumbnails (showAll) show every line
   function visible(it) {
     const e = exprOf(it)
     if (e.hidden) return false
-    return !(e.step > 0) || e.step <= step
+    if (C.showAll) return true
+    return (!(e.step > 0) || e.step <= step) && !(e.until > 0 && e.until <= step)
   }
 
   // ── Numbers ──────────────────────────────────────────────────────────────
@@ -885,6 +888,8 @@ export function graphRuntime(P, G, G3, config) {
   let dataHits = [] // what each data line drew where, for hovering
 
   const isNum = v => typeof v === 'number' && isFinite(v)
+  // A cell's number: an empty cell (null) is no number, never 0
+  const val = v => (v === null || v === undefined || v === '' ? NaN : +v)
   function extent(values) {
     let lo = Infinity, hi = -Infinity
     for (const v of values) { if (isNum(v)) { if (v < lo) lo = v; if (v > hi) hi = v } }
@@ -942,7 +947,7 @@ export function graphRuntime(P, G, G3, config) {
     const radius = radiusOf(spec, d)
     const alpha = clamp(num(spec.opacity, mark === 'bars' ? 0.85 : 0.85), 0.05, 1)
     const hit = { it, xs: new Float32Array(n), ys: new Float32Array(n), rows: new Int32Array(n), n: 0, style }
-    const pxOf = i => sx(+d.x[i]), pyOf = i => sy(+d.y[i])
+    const pxOf = i => sx(val(d.x[i])), pyOf = i => sy(val(d.y[i]))
     const onCanvas = (px, py, m) => px >= -m && px <= W + m && py >= -m && py <= H + m
 
     // Error bars under the marks
@@ -951,12 +956,12 @@ export function graphRuntime(P, G, G3, config) {
       ctx.globalAlpha = alpha * 0.6
       const byColor = new Map()
       for (let i = 0; i < n; i++) {
-        const x = +d.x[i], y = +d.y[i]
+        const x = val(d.x[i]), y = val(d.y[i])
         if (!isFinite(x) || !isFinite(y)) continue
         const c = color(i)
         if (!byColor.has(c)) byColor.set(c, new Path2D())
         const path = byColor.get(c)
-        const ex = Array.isArray(d.xErr) ? Math.abs(+d.xErr[i]) : 0, ey = Array.isArray(d.yErr) ? Math.abs(+d.yErr[i]) : 0
+        const ex = Array.isArray(d.xErr) ? Math.abs(val(d.xErr[i])) || 0 : 0, ey = Array.isArray(d.yErr) ? Math.abs(val(d.yErr[i])) || 0 : 0
         const px = sx(x), py = sy(y)
         if (ex > 0) { const a = clampPx(sx(x - ex)), b = clampPx(sx(x + ex)); if (isFinite(py)) { path.moveTo(isFinite(a) ? a : -1e5, py); path.lineTo(b, py) } }
         if (ey > 0) { const a = clampPx(sy(y - ey)), b = clampPx(sy(y + ey)); if (isFinite(px)) { path.moveTo(px, isFinite(a) ? a : 1e5); path.lineTo(px, b) } }
@@ -969,13 +974,13 @@ export function graphRuntime(P, G, G3, config) {
       // A bar from x to x2 (or halfway to its neighbors), up from 0 or the
       // bottom of a log axis
       const base = logY ? H : clamp(sy(0), 0, H)
-      const order = Array.from({ length: n }, (_, i) => i).filter(i => isFinite(+d.x[i])).sort((a, b) => d.x[a] - d.x[b])
+      const order = Array.from({ length: n }, (_, i) => i).filter(i => isFinite(val(d.x[i])) && isFinite(val(d.y[i]))).sort((a, b) => d.x[a] - d.x[b])
       ctx.globalAlpha = alpha
       order.forEach((i, k) => {
         const top = pyOf(i)
         if (!isFinite(top)) return
         let left, right
-        if (Array.isArray(d.x2) && isFinite(+d.x2[i])) { left = pxOf(i); right = sx(+d.x2[i]) } else {
+        if (Array.isArray(d.x2) && isFinite(val(d.x2[i]))) { left = pxOf(i); right = sx(val(d.x2[i])) } else {
           const prev = k > 0 ? pxOf(order[k - 1]) : null, next = k < order.length - 1 ? pxOf(order[k + 1]) : null
           const here = pxOf(i)
           const half = Math.min(prev === null ? Infinity : here - prev, next === null ? Infinity : next - here) / 2

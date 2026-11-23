@@ -6,6 +6,7 @@ import {
   formatAuthorsFull,
   formatCitation,
   formatReference,
+  pageRange,
   webLink,
 } from './bibtexParser'
 
@@ -28,7 +29,7 @@ describe('parseBibtex', () => {
     expect(entries[0].journal).toBe('Nature')
     expect(entries[0].year).toBe('2020')
     expect(entries[0].volume).toBe('42')
-    expect(entries[0].pages).toBe('100--110')
+    expect(entries[0].pages).toBe('100\u2013110')
   })
 
   it('parses multiple entries', () => {
@@ -239,7 +240,7 @@ describe('formatReference', () => {
     expect(ref).toContain('A Paper')
     expect(ref).toContain('<em>Nature</em>')
     expect(ref).toContain('42')
-    expect(ref).toContain('100-110')
+    expect(ref).toContain('100\u2013110')
     expect(ref).toContain('10.1234/test')
   })
 
@@ -287,5 +288,29 @@ describe('webLink', () => {
     expect(webLink(undefined)).toBe(null)
     expect(webLink('javascript:alert(1)')).toBe(null)
     expect(webLink('doi:10.1/x')).toBe(null)
+  })
+})
+
+describe("TeX's dashes", () => {
+  it('reads -- as an en dash and --- as an em dash, but leaves addresses as written', () => {
+    const [entry] = parseBibtex(`@article{z33,
+  title = {Galaxies --- and what holds them},
+  pages = {110--127},
+  url = {https://example.org/~zwicky/a--b},
+  doi = {10.1000/x--y}
+}`)
+    expect(entry.title).toBe('Galaxies — and what holds them')
+    expect(entry.pages).toBe('110–127')
+    expect(entry.url).toBe('https://example.org/~zwicky/a--b')
+    expect(entry.doi).toBe('10.1000/x--y')
+  })
+
+  it('prints a page range with an en dash, however it was stored', () => {
+    expect(pageRange('110--127')).toBe('110–127')
+    expect(pageRange('110-127')).toBe('110–127')
+    expect(pageRange('110 - 127, 130-131')).toBe('110–127, 130–131')
+    expect(pageRange('045002')).toBe('045002')
+    expect(pageRange('e1001-e1010')).toBe('e1001-e1010')
+    expect(pageRange(undefined)).toBe('')
   })
 })

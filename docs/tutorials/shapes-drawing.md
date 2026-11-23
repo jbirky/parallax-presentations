@@ -4,7 +4,7 @@ This tutorial covers shape elements, freehand drawing, non-objective composition
 
 ## Inserting shapes
 
-1. Click the **Shapes** dropdown in the toolbar.
+1. Click **Shape** in the toolbar.
 2. Choose from: **Rectangle**, **Rounded Rectangle**, **Circle**, **Triangle**, **Diamond**, **Arrow**, **Star**, or **Line**.
 3. The shape appears on the slide. Drag to reposition, drag handles to resize.
 
@@ -26,26 +26,26 @@ Select a shape to configure in the right panel:
 
 ## Freehand drawing
 
-1. Click the **Pencil** icon in the toolbar to enter draw mode.
-2. Choose a color and stroke width from the drawing toolbar.
+1. Open **Insert** in the toolbar and, under **Shapes and layout**, click **Draw**.
+2. Choose a color and stroke width in the toolbar, which shows the pen's settings while you draw.
 3. Draw directly on the slide canvas.
-4. Click the pencil icon again (or press `Escape`) to exit draw mode.
+4. Click **Done** (or press `Escape`) to stop drawing.
 
 Drawn strokes are SVG elements that can be selected, moved, and deleted like any other element.
 
 ## Non-objective compositions
 
-Inspired by Bauhaus and De Stijl, these insert randomized geometric compositions.
+Inspired by Bauhaus and De Stijl: lines, circles and blocks of tone to compose a slide with.
 
-1. Click **Shapes** > **Non-objective** in the toolbar.
-2. A composition of overlapping geometric forms appears.
-3. Each shape can be individually selected and edited.
+1. Open **Insert** in the toolbar and, under **Shapes and layout**, open **Lines and rules**.
+2. Pick a line, a circle or a tone block. It appears on the slide.
+3. Each piece can be selected, moved and edited like any shape.
 
 ## Modular grid
 
 Creates a grid of identical shapes as a structural framework.
 
-1. Click **Shapes** > **Modular Grid**.
-2. Configure the number of columns, rows, gap size, and shape type.
-3. Click **Apply** — a grid of shapes fills the slide.
+1. Open **Insert** in the toolbar and, under **Shapes and layout**, open **Modular grid**.
+2. Pick a grid: 2 × 2 squares, 3 × 2 or 4 × 3 rectangles, 3 × 3 circles, 4 × 2 cards, or a 6 × 1 strip.
+3. The grid's shapes go on the slide in rows and columns.
 4. Assign content to individual cells as needed.

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Window } from 'happy-dom'
 
 // Stub browser APIs that generateHTML uses (only window.location.origin for absoluteSrc)
 if (!globalThis.window) globalThis.window = {}
@@ -231,6 +232,21 @@ describe('generateRevealHTML', () => {
   it('applies globalFont to text elements', () => {
     const html = generateRevealHTML(makePresentation({ globalFont: 'Inter, sans-serif' }))
     expect(html).toContain('font-family:Inter, sans-serif')
+  })
+
+  it('sets slides in Arial when no font is picked, headings too', () => {
+    const html = generateRevealHTML(makePresentation())
+    expect(html).toMatch(/\.reveal \.slides section \{[^}]*font-family: Arial, sans-serif;/)
+    expect(html).not.toMatch(/\.reveal \.slides section \{[^}]*-apple-system/)
+    // the reveal.js theme's heading font (League Gothic, …) doesn't win
+    expect(html).toContain('.reveal .slides section :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; }')
+  })
+
+  it('draws text paths in Arial when neither they nor the deck pick a font', () => {
+    const pres = makePresentation({
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'textpath', x: 0, y: 0, width: 400, height: 200, zIndex: 1, content: 'Around', pathType: 'arc' }] }],
+    })
+    expect(generateRevealHTML(pres)).toContain('font-family="Arial, sans-serif"')
   })
 
   it('renders code elements', () => {
@@ -526,6 +542,54 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
     const html = generateRevealHTML(embedPresentation(JSX_EMBED))
     const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
     expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
+  })
+})
+
+describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
+  // Each draws in a frame of its own; parsed as a browser parses the srcdoc,
+  // that page's scripts must close, or the first swallows the rest of it
+  const framePage = el => {
+    const html = generateRevealHTML(makePresentation({ slides: [{ id: 's1', elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 300, zIndex: 1, ...el }] }] }))
+    const attr = html.match(/<iframe srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    return new (new Window().DOMParser)().parseFromString(attr, 'text/html')
+  }
+
+  it('closes the scripts of each one’s page', () => {
+    const tikz = framePage({ type: 'latex', content: '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}' })
+    expect(tikz.querySelector('script[type="text/tikz"]').textContent).toContain('\\draw (0,0)')
+    const table = framePage({ type: 'latex', content: '\\begin{tabular}{cc} a & b \\end{tabular}' })
+    expect(table.querySelector('#out')).toBeTruthy()
+    expect([...table.querySelectorAll('script')].pop().textContent).toContain('new HtmlGenerator')
+    const md = framePage({ type: 'markdown', content: '# Hi' })
+    expect(md.querySelector('#out')).toBeTruthy()
+    expect([...md.querySelectorAll('script')].pop().textContent).toContain('marked.parse')
+  })
+
+  it('never scrolls a page it\'s embedded in: the overview scrolls its own panel', () => {
+    const html = generateRevealHTML(makePresentation({ slides: [{ id: 's1', elements: [] }, { id: 's2', elements: [] }] }))
+    expect(html).toContain("id=\"ov-body\"")
+    expect(html).not.toContain('scrollIntoView(')
+  })
+
+  it('prints a reference\'s page range with an en dash, as stored before -- was read too', () => {
+    const html = generateRevealHTML(makePresentation({
+      bibliography: [{ type: 'article', key: 'z33', author: 'Zwicky, F.', title: 'Rotverschiebung', journal: 'Helv. Phys. Acta', year: '1933', volume: '6', pages: '110--127' }],
+      slides: [{ id: 's1', elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 100, zIndex: 1, type: 'text', content: '<p>Coma <sup data-cite="z33">[1]</sup></p>' }] }],
+    }))
+    expect(html).toContain('6, 110–127.')
+    expect(html).not.toContain('110--127')
+  })
+
+  it('draws TikZ in the slide\'s ink, or its own text color, since TikZJax draws in black', () => {
+    const tikzIn = (slide, el = {}, theme) => {
+      const html = generateRevealHTML(makePresentation({ ...(theme ? { theme } : {}), slides: [{ id: 's1', ...slide, elements: [{ id: 'e1', x: 0, y: 0, width: 400, height: 300, zIndex: 1, type: 'latex', content: '\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}', ...el }] }] }))
+      const attr = html.match(/<iframe srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+      return new (new Window().DOMParser)().parseFromString(attr, 'text/html').querySelector('script[type="text/tikz"]').textContent
+    }
+    expect(tikzIn({}, {}, 'black')).toBe('\\definecolor{parallaxink}{HTML}{FFFFFF}\\color{parallaxink}\n\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}')
+    expect(tikzIn({}, {}, 'white')).toMatch(/^\\definecolor\{parallaxink\}\{HTML\}\{222222\}/)
+    expect(tikzIn({ background: { type: 'color', color: '#1e1e2e' } }, {}, 'white')).toMatch(/\{HTML\}\{FFFFFF\}/)
+    expect(tikzIn({}, { textColor: 'rgb(255, 136, 0)' }, 'white')).toMatch(/\{HTML\}\{FF8800\}/)
   })
 })
 

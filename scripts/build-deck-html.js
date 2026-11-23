@@ -55,7 +55,7 @@ const serverSide = {
 async function bundle() {
   const esbuild = require('esbuild')
   const result = await esbuild.build({
-    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'\nexport { buildStaticPluginSrcdoc } from './${PLUGIN_EMBED}'`, resolveDir: root, sourcefile: 'deck-html.js' },
+    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'\nexport { buildStaticPluginSrcdoc } from './${PLUGIN_EMBED}'`, resolveDir: root, sourcefile: 'deck-html.js' },
     absWorkingDir: root,
     bundle: true,
     format: 'cjs',

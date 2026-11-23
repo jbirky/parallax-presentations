@@ -5,11 +5,11 @@ This tutorial covers inserting images and the interactive features: click-to-exp
 ## Inserting an image
 
 **From a URL:**
-1. Click the **Image** button in the toolbar.
+1. Click **Image** in the toolbar and choose **Image from URL…**.
 2. Paste the image URL in the prompt and click OK.
 
 **By uploading:**
-1. Click the small upload arrow next to the Image button.
+1. Click **Image** in the toolbar and choose **Upload image…**, or paste an image with `Ctrl+V`, or drop a file on the slide.
 2. Select a file from your computer. It's uploaded to the server and inserted on the slide.
 
 ## Adjusting an image

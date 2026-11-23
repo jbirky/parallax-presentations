@@ -39,21 +39,21 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 ## Speaker notes
 
-1. In the editor, click the **Notes** area at the bottom of the properties panel.
+1. In the editor, click **Click to add speaker notes** in the strip under the slide. Drag the strip's top edge to make it taller.
 2. Type your speaker notes for the current slide.
 3. In present mode, press `S` to open the speaker view with notes, timer, and next-slide preview.
 
 ## Themes
 
-Change the visual theme in the toolbar under **Theme**:
+Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
 - Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula
 
-Themes affect the background color, text color, and heading styles. Element-level formatting takes precedence over theme defaults.
+A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
 ## Footer & page numbers
 
-1. Open footer settings in the toolbar.
+1. Choose **Slide › Footer and page numbers…**.
 2. Configure:
    - **Section labels** — show active section in a progress bar
    - **Page numbers** — `n/total` or just `n`
@@ -63,28 +63,28 @@ Themes affect the background color, text color, and heading styles. Element-leve
 
 ### HTML
 
-Click **Export** > **Download HTML** to get a self-contained HTML file. All fonts, scripts, and images (if from URLs) are loaded via CDN. The file can be opened in any browser without a server.
+Choose **File › Export › HTML** to get a self-contained HTML file. All fonts, scripts, and images (if from URLs) are loaded via CDN. The file can be opened in any browser without a server.
 
 ### Single slide HTML
 
-Click **Export** > **Export Slide HTML** to download just the current slide.
+Choose **File › Export › This slide as HTML** to download just the current slide.
 
 ### PDF
 
-Click **Export** > **Export PDF** to generate a print-ready PDF with one page per slide. Fragment states are expanded into separate pages.
+Choose **File › Export › PDF** to generate a print-ready PDF with one page per slide. Fragment states are expanded into separate pages.
 
 ### PowerPoint
 
-Click **Export** > **Export PPTX** to generate a PowerPoint file. Text, shapes, and images are converted to native PowerPoint objects.
+Choose **File › Export › PowerPoint (.pptx)** to generate a PowerPoint file. Text, shapes, and images are converted to native PowerPoint objects.
 
 ## Sharing
 
 Sharing is only in the cloud version at parallax-presentations.com. The self-hosted version and the desktop app keep everything on your computer, so share an exported HTML file from them instead.
 
-1. Click the **Share** button in the toolbar.
-2. Toggle sharing on. A shareable URL is generated.
+1. Click **Share**, next to **Present** at the top right, and choose **Share link…**.
+2. Click **Enable Sharing**. A link to the presentation appears; click it to copy it.
 3. Anyone with the link can view the presentation in present mode (read-only).
-4. Toggle sharing off to revoke access.
+4. Click **Disable Sharing** to stop the link working. Sharing again makes a new link.
 
 ### Example: exported slide
 

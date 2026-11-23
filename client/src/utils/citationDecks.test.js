@@ -51,6 +51,12 @@ describe('citations in a presented deck', () => {
     expect(section.getAttribute('style')).toContain('width:960px;height:540px;overflow:hidden;')
   })
 
+  it('writes the references in dark ink on a light theme’s page, and light on a dark one', () => {
+    const heading = theme => parse(generateRevealHTML(deck({ theme }))).querySelector('section[data-slide-id="references"] h2').getAttribute('style')
+    expect(heading('white')).toContain('color:rgba(0,0,0,0.95)')
+    expect(heading('black')).toContain('color:rgba(255,255,255,0.95)')
+  })
+
   it('follows the alphabetical order and the author-year style', () => {
     const doc = parse(generateRevealHTML(deck({ citationOrder: 'alphabetical', citationStyle: 'author-year' })))
     expect(doc.querySelector('section[data-slide-id="s1"] sup[data-cite]').textContent).toBe('(Ames, 2021)')

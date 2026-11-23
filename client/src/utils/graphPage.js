@@ -147,13 +147,14 @@ export function graphPageHtml(el, opts = {}) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;-webkit-user-select:none;user-select:none}</style></head><body><script>${code}</script></body></html>`
 }
 
-// The steps a graph's expressions appear at
+// The steps a graph's expressions appear and leave at
 export function graphSteps(el) {
   const steps = new Set()
   for (const e of el?.expressions || []) {
     if (e?.hidden) continue
-    // A line's own step, and its field overlays' (equilibria, nullclines…)
-    const at = [e?.step].concat(e?.field?.steps ? Object.values(e.field.steps) : [])
+    // A line's own step, the step it leaves at, and its field overlays'
+    // (equilibria, nullclines…)
+    const at = [e?.step, e?.until].concat(e?.field?.steps ? Object.values(e.field.steps) : [])
     for (const v of at) {
       const n = Number(v)
       if (Number.isInteger(n) && n >= 1 && n <= 1000) steps.add(n)

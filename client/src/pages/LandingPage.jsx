@@ -2,16 +2,24 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The landing page, for visitors who aren't signed in: what Parallax is, a
-// live deck, the example decks by field (as /admin arranges them, served at
+// live deck, what sets it apart (components/landing/FeatureShowcase.jsx), the
+// example decks by field (as /admin arranges them, served at
 // /examples/<slug>; the built-in ones in client/src/examples if the list
-// can't be had), how a talk comes together, the elements by subject, and the
-// plans. The docs open in place of it, at #docs. What visitors open and click
-// is counted (utils/analytics.js) where the server has analytics set up.
+// can't be had), how it compares with the tools people use, how a talk comes
+// together with Practice Talk to try (PracticeDemo.jsx), the elements by
+// subject, and the plans. The docs open in place of it, at #docs, and the
+// templates, which people copy into their account (/templates/<slug>/use,
+// TemplateUsePage.jsx), at #templates. What
+// visitors open and click is counted (utils/analytics.js) where the server
+// has analytics set up.
 
 import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
+import SlideFrame from '../components/landing/SlideFrame'
+import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
+import PracticeDemo from '../components/landing/PracticeDemo'
 import { api } from '../utils/api'
 import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
@@ -25,19 +33,27 @@ const STEPS = [
   { title: 'Build', text: 'Lay out text, figures and live elements in a visual editor. Math is LaTeX; references come from your citations.', tool: 'Editor' },
   { title: 'Rehearse', text: 'Practice Talk times every slide against your plan and shows where you run long.', tool: 'Practice Talk' },
   { title: 'Present', text: 'Speaker notes, drawing on slides, and a live link your audience can follow on their own screens.', tool: 'Presenter view' },
-  { title: 'Share', text: 'Send a link, export PDF or PowerPoint, push to GitHub, or publish with a DOI from Zenodo.', tool: 'Share and publish' },
+  { title: 'Share', text: 'Send a link, export PDF or PowerPoint, or push to GitHub and host it on GitHub Pages.', tool: 'Share and publish' },
 ]
 
-const ELEMENTS = [
-  { field: 'Physics', items: [['Feynman diagrams', 'drawn one propagator per step'], ['Free-body diagrams', 'ΣF = ma solved for you'], ['Spherical harmonics', <>any Y<sub>l</sub><sup>m</sup>, in WebGL</>]] },
-  { field: 'Mathematics', items: [['Graphs', '2D, 3D, vector and slope fields, with sliders'], ['Geometry constructions', 'compass and straightedge, step by step'], ['Venn diagrams', 'shade any set expression'], ['Interactive equations', 'click a term to explain it']] },
-  { field: 'Chemistry', items: [['3D molecules', 'from PubChem or the PDB'], ['Periodic table', 'with element details on click'], ['Reactions', 'mhchem: \\ce{2H2 + O2 -> 2H2O}']] },
-  { field: 'Engineering and CS', items: [['Circuits', 'readings from a DC solver'], ['Logic gates', 'click an input, watch it propagate'], ['Timing diagrams', 'WaveDrom, stepped through as you talk'], ['Code', 'with syntax highlighting']] },
-  { field: 'Every subject', items: [['LaTeX math', 'inline and display'], ['Citations', 'a references slide built from them'], ['Scrolling slides', 'for a derivation too long for one screen'], ['Click and hover actions', 'states that morph from one look to another']] },
+// Parallax beside the tools researchers already use: [feature, PowerPoint
+// and Google Slides, Beamer, reveal.js, Parallax], each cell [mark, words]
+// with mark y (yes), p (partly) or n (no)
+const COMPARISON = [
+  ['Visual editor', ['y', 'Yes'], ['n', 'No, you write source'], ['n', 'No, you write source'], ['y', 'Yes']],
+  ['LaTeX math', ['p', 'Partly, in PowerPoint’s equation editor'], ['y', 'Yes'], ['y', 'Yes, with its math plugin'], ['y', 'Yes']],
+  ['Citations from BibTeX', ['n', 'No'], ['y', 'Yes'], ['n', 'Not built in'], ['y', 'Yes, and from Zotero']],
+  ['Charts that refresh from a data source', ['p', 'Partly, from linked spreadsheets'], ['n', 'No, fixed when compiled'], ['p', 'If you code it'], ['y', 'Yes, on a schedule']],
+  ['Interactive graphs and diagrams', ['n', 'No'], ['n', 'No'], ['p', 'If you code it'], ['y', 'Built in']],
+  ['Your own HTML and JavaScript', ['n', 'No'], ['n', 'No'], ['y', 'Yes'], ['y', 'Yes']],
+  ['Git history', ['n', 'No'], ['p', 'Git, by hand'], ['p', 'Git, by hand'], ['y', 'Push to GitHub']],
+  ['Export to PowerPoint', ['y', 'Yes'], ['n', 'No'], ['n', 'No'], ['y', 'Yes']],
+  ['Open source, runs on your server', ['n', 'No'], ['y', 'Yes'], ['y', 'Yes'], ['y', 'Yes']],
 ]
+const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
 // The built-in examples, as the server lists them
-const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })) }
+const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
 // The filters: the usual fields first, then any others the examples have
 const fieldsOf = examples => {
   const have = new Set(examples.map(e => e.field).filter(Boolean))
@@ -45,31 +61,12 @@ const fieldsOf = examples => {
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
 
-const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting']
+const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
 
-// A deck page drawn at its own 960 × 540 and scaled to the width it's
-// given, so a phone shows the slide rather than reveal.js's scroll view
-function SlideFrame({ src, title }) {
-  const ref = useRef(null)
-  useEffect(() => {
-    const box = ref.current
-    if (!box) return
-    const fit = () => box.style.setProperty('--s', String(box.clientWidth / 960))
-    fit()
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', fit)
-      return () => window.removeEventListener('resize', fit)
-    }
-    const observer = new ResizeObserver(fit)
-    observer.observe(box)
-    return () => observer.disconnect()
-  }, [])
-  return <div className="lp-slide" ref={ref}><iframe src={src} title={title} allow="fullscreen" /></div>
-}
-
-// An example, live, with what it shows and a way into the editor
-function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }) {
+// An example, live, with what it shows and a way into the editor. template:
+// one of the Templates tab's, which people copy into their account instead
+function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn, template = false }) {
   const ref = useRef(null)
   const example = at === null ? null : examples[at]
   useEffect(() => {
@@ -94,8 +91,8 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
             <h3 id="lp-viewer-title">{example.title}</h3>
           </div>
           <div className="lp-viewer-nav">
-            <button type="button" className="lp-icon" aria-label="Previous example" onClick={() => onMove(-1)}><ChevronLeft size={18} /></button>
-            <button type="button" className="lp-icon" aria-label="Next example" onClick={() => onMove(1)}><ChevronRight size={18} /></button>
+            <button type="button" className="lp-icon" aria-label={template ? 'Previous template' : 'Previous example'} onClick={() => onMove(-1)}><ChevronLeft size={18} /></button>
+            <button type="button" className="lp-icon" aria-label={template ? 'Next template' : 'Next example'} onClick={() => onMove(1)}><ChevronRight size={18} /></button>
             <button type="button" className="lp-icon" aria-label="Close" onClick={onClose}><X size={18} /></button>
           </div>
         </div>
@@ -103,13 +100,19 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
           <div className="lp-viewer-deck"><SlideFrame key={example.slug} src={`/examples/${example.slug}/deck`} title={`${example.title}, a live Parallax deck`} /></div>
           <div className="lp-viewer-side">
             <p className="lp-viewer-desc">{example.desc}</p>
-            <div>
-              <div className="lp-label">Made with</div>
-              <div className="lp-tags">{example.tags.map(t => <span key={t}>{t}</span>)}</div>
-            </div>
+            {example.tags.length > 0 && (
+              <div>
+                <div className="lp-label">{template ? 'What’s in it' : 'Made with'}</div>
+                <div className="lp-tags">{example.tags.map(t => <span key={t}>{t}</span>)}</div>
+              </div>
+            )}
             <p className="lp-keys">Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
-            <a className="lp-quiet" href={`/examples/${example.slug}`}>This example’s own page, to share</a>
-            {guestEnabled ? (<>
+            {template ? (<>
+              <a className="lp-btn primary" href={`/templates/${example.slug}/use`} onClick={() => track('template-to-account', { template: example.slug })}>Use this template</a>
+              <p className="lp-small">Sign in or sign up, and a copy opens in your presentations, yours to change.</p>
+              {guestEnabled && <a className="lp-quiet" href={`/try?example=${example.slug}`} onClick={() => track('template-to-guest', { template: example.slug })}>Try it without an account</a>}
+            </>) : <a className="lp-quiet" href={`/examples/${example.slug}`}>This example’s own page, to share</a>}
+            {template ? null : guestEnabled ? (<>
               <a className="lp-btn primary" href={`/try?example=${example.slug}`} onClick={() => track('example-to-editor', { example: example.slug })}>Open in the editor</a>
               <p className="lp-small">Opens a copy you can change, with no account. It lasts until you close the tab.</p>
             </>) : (
@@ -128,9 +131,12 @@ export default function LandingPage({ onSignIn }) {
   const [guestEnabled, setGuestEnabled] = useState(false)
   const [field, setField] = useState('All')
   const [viewing, setViewing] = useState(null)
+  const [templateField, setTemplateField] = useState('All')
+  const [viewingTemplate, setViewingTemplate] = useState(null)
   const [scrollTo, setScrollTo] = useState(null)
   const [copied, setCopied] = useState(false)
   const [catalog, setCatalog] = useState(null)
+  const [feature, setFeature] = useState(FEATURES[0].key)
 
   useEffect(() => {
     startAnalytics()
@@ -145,6 +151,8 @@ export default function LandingPage({ onSignIn }) {
         setTab('docs')
         const p = h.replace('#docs/', '').replace('#docs', '')
         if (p && p.includes('/')) setDocsPage(p)
+      } else if (h === '#templates') {
+        setTab('templates')
       } else {
         setTab('home')
       }
@@ -156,7 +164,7 @@ export default function LandingPage({ onSignIn }) {
 
   const switchTab = (t) => {
     setTab(t)
-    window.location.hash = t === 'docs' ? 'docs' : ''
+    window.location.hash = t === 'home' ? '' : t
   }
   // A section of the home tab, from the docs too
   const goTo = id => {
@@ -170,6 +178,8 @@ export default function LandingPage({ onSignIn }) {
 
   const examples = catalog?.examples || []
   const shown = field === 'All' ? examples : examples.filter(e => e.field === field)
+  const templates = catalog?.templates || []
+  const templatesShown = templateField === 'All' ? templates : templates.filter(e => e.field === templateField)
   const tryIt = guestEnabled
     ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from: 'hero' })}>Try it, no account needed <ArrowRight size={16} /></a>
     : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'hero' }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
@@ -185,7 +195,12 @@ export default function LandingPage({ onSignIn }) {
         <div className="lp-wrap lp-nav-row">
           <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
           <div className="lp-links">
-            <button type="button" onClick={() => goTo('examples')}>Examples</button>
+            <button type="button" className="lp-wide" onClick={() => goTo('features')}>Features</button>
+            {/* On a phone, Templates takes its place; the hero's See the examples leads there */}
+            <button type="button" className={templates.length > 0 ? 'lp-mid' : undefined} onClick={() => goTo('examples')}>Examples</button>
+            {(templates.length > 0 || tab === 'templates') && (
+              <button type="button" className={tab === 'templates' ? 'on' : ''} aria-current={tab === 'templates' ? 'page' : undefined} onClick={() => { track('templates', { from: 'nav' }); switchTab('templates') }}>Templates</button>
+            )}
             <a className="lp-wide" href="/plugins" onClick={() => track('plugins', { from: 'nav' })}>Plugins</a>
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
             <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
@@ -198,14 +213,61 @@ export default function LandingPage({ onSignIn }) {
       <div className="landing-scroll">
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
+        ) : tab === 'templates' ? (
+          <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
+            <div className="lp-wrap">
+              <div className="lp-head">
+                <h2 id="lp-templates">Templates</h2>
+                <p>Decks set up to start from. Use one, and a copy opens in your account, yours to change.</p>
+              </div>
+              {templates.length === 0 ? (
+                <p className="lp-empty">{catalog ? 'No templates yet. In the meantime, the examples show what Parallax can do.' : 'Loading the templates…'}</p>
+              ) : (<>
+                {fieldsOf(templates).length > 1 && (
+                  <div className="lp-filters" role="group" aria-label="Show templates for">
+                    {['All', ...fieldsOf(templates)].map(f => (
+                      <button key={f} type="button" aria-pressed={templateField === f} onClick={() => { track('template-filter', { field: f }); setTemplateField(f) }}>
+                        {f}<span>{f === 'All' ? templates.length : templates.filter(e => e.field === f).length}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="lp-grid">
+                  {templatesShown.map((e, i) => (
+                    <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}${e.field ? `, ${e.field}` : ''}: open the template`} onClick={() => {
+                      track('open-template', { template: e.slug, from: 'card' })
+                      setViewingTemplate(i)
+                    }}>
+                      <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
+                        {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
+                        <span>Preview</span>
+                      </div>
+                      <div className="lp-card-body">
+                        {e.field && <div className="lp-label">{e.field}</div>}
+                        <h3>{e.title}</h3>
+                        <p>{e.desc}</p>
+                        <div className="lp-tags">{e.tags.map(t => <span key={t}>{t}</span>)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>)}
+            </div>
+          </section>
         ) : (<>
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
             <h1>Create interactive and intuitive slides <em>for complex concepts.</em></h1>
-            <p className="lp-sub">Parallax is a slide editor that runs in your browser. Put live graphs, physics and circuit diagrams, equations and 3D molecules on a slide, and move them while you present.</p>
             <div className="lp-ctas">
               {tryIt}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
+            </div>
+            <div className="lp-chips" aria-label="What sets Parallax apart">
+              {FEATURES.map(f => (
+                <button key={f.key} type="button" onClick={() => { track('feature', { feature: f.key, from: 'hero' }); setFeature(f.key); goTo('features') }}>
+                  <i aria-hidden="true" />{f.name}
+                </button>
+              ))}
             </div>
             <div className="lp-facts"><span>Free to start</span><span>Open source, AGPL-3.0</span><span>Export to HTML, PDF and PowerPoint</span></div>
             <div className="lp-stage">
@@ -215,6 +277,17 @@ export default function LandingPage({ onSignIn }) {
               <div className="lp-hint"><i aria-hidden="true">●</i> Live deck: drag a slider, then click and press →</div>
             </div>
           </header>
+
+          <section className="lp-band alt" id="features" aria-labelledby="lp-features">
+            <div className="lp-wrap">
+              <div className="lp-head">
+                <div className="lp-label">What sets it apart</div>
+                <h2 id="lp-features">Slides that work like <em>your research</em></h2>
+                <p>Your data, your references and your code are part of the talk, not pasted into it. Each of these is in Parallax today.</p>
+              </div>
+              <FeatureShowcase feature={feature} onFeature={setFeature} guestEnabled={guestEnabled} />
+            </div>
+          </section>
 
           <section className="lp-band" id="examples" aria-labelledby="lp-examples">
             <div className="lp-wrap">
@@ -254,32 +327,35 @@ export default function LandingPage({ onSignIn }) {
             </div>
           </section>
 
-          <section className="lp-band alt" id="workflow" aria-labelledby="lp-workflow">
+          <section className="lp-band alt" id="compare" aria-labelledby="lp-compare">
             <div className="lp-wrap">
-              <div className="lp-head">
-                <h2 id="lp-workflow">From outline to talk</h2>
-                <p>Parallax follows a talk the whole way, from the first plan to the DOI.</p>
+              <div className="lp-head lp-head-wide">
+                <div className="lp-label">Where it fits</div>
+                <h2 id="lp-compare">A visual editor that knows <em>LaTeX, BibTeX and git</em></h2>
+                <p>Parallax keeps what researchers like about the tools they already use, in one place.</p>
               </div>
-              <ol className="lp-steps">
-                {STEPS.map(s => <li key={s.title}><h3>{s.title}</h3><p>{s.text}</p><span>{s.tool}</span></li>)}
-              </ol>
+              <div className="lp-compare">
+                <table>
+                  <thead><tr><th scope="col"><span className="lp-label">Feature</span></th>{COMPARED.map((t, i) => <th scope="col" key={t} className={i === COMPARED.length - 1 ? 'us' : undefined}>{t}</th>)}</tr></thead>
+                  <tbody>{COMPARISON.map(([name, ...cells]) => (
+                    <tr key={name}><th scope="row">{name}</th>{cells.map(([mark, words], i) => <td key={i} className={`${mark}${i === cells.length - 1 ? ' us' : ''}`}>{words}</td>)}</tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <p className="lp-compare-note">Coming from Beamer? File › Import › LaTeX Beamer… turns a .tex talk into slides you can edit.</p>
             </div>
           </section>
 
-          <section className="lp-band" id="elements" aria-labelledby="lp-elements">
+          <section className="lp-band" id="workflow" aria-labelledby="lp-workflow">
             <div className="lp-wrap">
               <div className="lp-head">
-                <h2 id="lp-elements">Built for the subjects you teach</h2>
-                <p>Each of these is an element you place on a slide and edit in its own panel, not a screenshot.</p>
+                <h2 id="lp-workflow">From outline to talk</h2>
+                <p>Parallax follows a talk the whole way, from the first plan to the version you share.</p>
               </div>
-              <div className="lp-fields">
-                {ELEMENTS.map(g => (
-                  <div key={g.field}>
-                    <h3>{g.field}</h3>
-                    <ul>{g.items.map(([name, note]) => <li key={name}>{name}<small>{note}</small></li>)}</ul>
-                  </div>
-                ))}
-              </div>
+              <ol className="lp-steps">
+                {STEPS.map(s => <li key={s.title} className={s.title === 'Rehearse' ? 'on' : undefined}><h3>{s.title}</h3><p>{s.text}</p><span>{s.title === 'Rehearse' ? `${s.tool} · try it below` : s.tool}</span></li>)}
+              </ol>
+              <PracticeDemo />
             </div>
           </section>
 
@@ -317,7 +393,9 @@ export default function LandingPage({ onSignIn }) {
                   <p>Parallax is in beta, so features may change. Tell us what breaks and what you’d like next.</p>
                 </div>
                 <div><h4>Product</h4><ul>
+                  <li><button type="button" onClick={() => goTo('features')}>Features</button></li>
                   <li><button type="button" onClick={() => goTo('examples')}>Examples</button></li>
+                  {templates.length > 0 && <li><button type="button" onClick={() => { track('templates', { from: 'footer' }); switchTab('templates') }}>Templates</button></li>}
                   <li><button type="button" onClick={() => goTo('workflow')}>How it works</button></li>
                   <li><button type="button" onClick={() => { track('docs', { from: 'footer' }); switchTab('docs') }}>Docs</button></li>
                 </ul></div>
@@ -340,6 +418,12 @@ export default function LandingPage({ onSignIn }) {
           const next = (viewing + d + shown.length) % shown.length
           track('open-example', { example: shown[next].slug, from: 'viewer' })
           setViewing(next)
+        }} guestEnabled={guestEnabled} onSignIn={onSignIn} />
+      <ExampleViewer template examples={templatesShown} at={viewingTemplate} onClose={() => setViewingTemplate(null)}
+        onMove={d => {
+          const next = (viewingTemplate + d + templatesShown.length) % templatesShown.length
+          track('open-template', { template: templatesShown[next].slug, from: 'viewer' })
+          setViewingTemplate(next)
         }} guestEnabled={guestEnabled} onSignIn={onSignIn} />
     </div>
   )

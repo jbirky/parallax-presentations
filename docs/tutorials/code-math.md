@@ -4,7 +4,7 @@ This tutorial covers code blocks, LaTeX/TikZ elements, and Markdown blocks.
 
 ## Code blocks
 
-1. Click **Code** in the toolbar.
+1. Open **Insert** in the toolbar and, under **Math and code**, click **Code**.
 2. A code block element appears. Double-click it to open the code editor.
 3. Select a language from the dropdown (Python, JavaScript, TypeScript, C++, etc.).
 4. Write or paste your code. Syntax highlighting is applied automatically.
@@ -18,7 +18,7 @@ This tutorial covers code blocks, LaTeX/TikZ elements, and Markdown blocks.
 
 ## LaTeX & TikZ
 
-1. Click the **TeX** button in the toolbar.
+1. Open **Insert** in the toolbar and, under **Math and code**, click **LaTeX and TikZ**.
 2. A LaTeX element appears. Double-click it to open the LaTeX editor.
 3. Enter LaTeX code — display math, aligned equations, or TikZ diagrams.
 4. A live preview renders on the left as you type.
@@ -36,7 +36,7 @@ For TikZ diagrams, the editor uses TikZJax for client-side rendering. Wrap your 
 
 ## Markdown blocks
 
-1. Click the **Markdown** button in the toolbar (or find it under the insert menu).
+1. Open **Insert** in the toolbar and, under **Math and code**, click **Markdown**.
 2. A markdown element appears. Double-click it to edit.
 3. Write standard Markdown — headings, lists, links, bold/italic, code blocks.
 4. The rendered output appears when you deselect the element.

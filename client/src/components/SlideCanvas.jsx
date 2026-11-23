@@ -5,6 +5,8 @@ import { useRef, useEffect, useState, useCallback, useMemo, useSyncExternalStore
 import PluginSandbox from '../plugins/PluginSandbox'
 import registry from '../plugins/PluginRegistry'
 import { getCanvasHeight, getCanvasWidth, isPinned } from '../utils/scrollingSlides'
+import ContextMenu from './ContextMenu'
+import { SNAP_REF_OPTIONS } from '../utils/snapRef'
 
 // Editor only: hand the slide panel a still of this embed once it has settled,
 // so thumbnails need no second run of the embed's script. Serialising an SVG is
@@ -62,7 +64,11 @@ import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
+import { slidePalette } from '../utils/themes'
+import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
+import { fitScale, applyScale } from '../utils/shrinkFit'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
+import { DEFAULT_DECK_FONT, deckFont } from '../utils/deckFont'
 
 function highlightCode(code, language) {
   try {
@@ -75,17 +81,6 @@ function highlightCode(code, language) {
   }
 }
 
-const SNAP_REF_OPTIONS = [
-  { id: 'ul', label: 'Upper Left',   fx: 0,   fy: 0   },
-  { id: 'uc', label: 'Upper Center', fx: 0.5, fy: 0   },
-  { id: 'ur', label: 'Upper Right',  fx: 1,   fy: 0   },
-  { id: 'ml', label: 'Middle Left',  fx: 0,   fy: 0.5 },
-  { id: 'mc', label: 'Center',       fx: 0.5, fy: 0.5 },
-  { id: 'mr', label: 'Middle Right', fx: 1,   fy: 0.5 },
-  { id: 'll', label: 'Lower Left',   fx: 0,   fy: 1   },
-  { id: 'lc', label: 'Lower Center', fx: 0.5, fy: 1   },
-  { id: 'lr', label: 'Lower Right',  fx: 1,   fy: 1   },
-]
 
 function snapWithRef(rawX, rawY, w, h, ref, snapFn) {
   const opt = SNAP_REF_OPTIONS.find(o => o.id === ref) || SNAP_REF_OPTIONS[0]
@@ -260,15 +255,15 @@ ${userCode}
 <\/script></body></html>`
 }
 
-function getBgStyle(bg) {
-  if (!bg) return { backgroundColor: '#1e1e2e' }
-  if (bg.type === 'color') return { backgroundColor: bg.color || '#1e1e2e' }
-  if (bg.type === 'gradient') return { background: bg.gradient || 'linear-gradient(135deg, #1e1e2e, #2d2d5e)' }
-  if (bg.type === 'image' && bg.image) return { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }
-  return { backgroundColor: '#1e1e2e' }
+// What Edit… is called on an element that opens in an editor, or null
+const EDIT_LABELS = { html: 'Edit HTML', code: 'Edit code', latex: 'Edit LaTeX', graph: 'Edit graph', equation: 'Edit equation', circuit: 'Edit circuit', geometry: 'Edit construction', p5: 'Edit sketch', tikz: 'Edit diagram', feynman: 'Edit diagram', logic: 'Edit diagram', freebody: 'Edit diagram', venn: 'Edit diagram', timing: 'Edit diagram' }
+export function editLabelFor(type) {
+  return EDIT_LABELS[type] || null
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black' }) {
+  // The slide's colors: its background, or the theme's (utils/themes.js)
+  const palette = slidePalette(slide, theme)
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -325,11 +320,14 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   })()
   const pendingDragRef = useRef(null)
   const draggingRef = useRef(null)
+  const dragEndedRef = useRef(0)
   const [, forceUpdate] = useState(0)
   const showGridRef = useRef(showGrid)
   const selectedElementIdsRef = useRef(selectedElementIds)
   const gridSizeRef = useRef(gridSize)
   const [contextMenu, setContextMenu] = useState(null) // { elementId, x, y }
+  const [canvasMenu, setCanvasMenu] = useState(null) // { x, y }, on the empty slide
+  const closeMenus = useCallback(() => { setContextMenu(null); setCanvasMenu(null) }, [])
   const [cropMode, setCropMode] = useState(null) // { elementId, x, y, w, h }
   const cropDragRef = useRef(null) // { handle, startX, startY, startCrop, elW, elH }
   // The 3D text in tilt mode: double-click it, drag to tilt, Esc when done
@@ -665,6 +663,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       }
     }
     const onMouseUp = () => {
+      // A drag that moved something isn't a click on it
+      if (draggingRef.current) dragEndedRef.current = Date.now()
       draggingGuideRef.current = null
       draggingAxisRef.current = null
       cropDragRef.current = null
@@ -720,13 +720,20 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     if (!el || el.locked || selectedElementIds.length !== 1 || selectedElementIds[0] !== tiltId) setTiltId(null)
   }, [tiltId, selectedElementIds, slide])
 
-  // Close context menu on outside click
-  useEffect(() => {
-    if (!contextMenu) return
-    const close = () => setContextMenu(null)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [contextMenu])
+  // What a double-click, or Edit on the right-click menu, opens
+  const openers = {
+    html: onOpenHtmlEditor, code: onOpenCodeEditor, latex: onOpenLatexEditor, tikz: onOpenTikzEditor,
+    graph: onOpenGraphEditor, equation: onOpenEquationEditor, feynman: onOpenFeynmanEditor,
+    circuit: onOpenCircuitEditor, logic: onOpenLogicEditor, freebody: onOpenFreebodyEditor,
+    venn: onOpenVennEditor, timing: onOpenTimingEditor, geometry: onOpenGeometryEditor, p5: onOpenP5Editor,
+  }
+  const openElement = (element) => {
+    if (element.type === 'text' || element.type === 'textpath') { onStartEdit(element.id); return true }
+    const open = openers[element.type]
+    if (!open) return false
+    open(element.id)
+    return true
+  }
 
   const startElementDrag = (e, elementId, type, handle = null) => {
     if (!canvasRef.current) return
@@ -803,6 +810,19 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     setContextMenu(null)
   }, [slide, onUpdateElements])
 
+  // The toolbar or a menu asking for what the right-click menu does: Crop,
+  // Edit, or a layer move, for the element `request.id`
+  const requestSeen = useRef(request?.n ?? 0)
+  useEffect(() => {
+    if (!request || request.n === requestSeen.current) return
+    requestSeen.current = request.n
+    const element = slide?.elements?.find(el => el.id === request.id)
+    if (!element) return
+    if (request.name === 'crop' && element.type === 'image') startCrop(element.id)
+    else if (request.name === 'edit') openElement(element)
+    else if (['front', 'forward', 'backward', 'back'].includes(request.name)) reorderElement(element.id, request.name)
+  }, [request?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // File drop on canvas
   const onDragOver = (e) => {
     if (!e.dataTransfer.types.includes('Files')) return
@@ -813,8 +833,14 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   const onDrop = async (e) => {
     e.preventDefault()
     setDragOver(false)
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/'))
-    if (!files.length || !onAddImage) return
+    // A PDF or an SVG may be a matplotlib figure (onAddFigure says, and adds
+    // it, or else an image or the PDF's pages)
+    const figureFile = f => !!onAddFigure && (/\.(pdf|svg)$/i.test(f.name) || f.type === 'application/pdf' || f.type === 'image/svg+xml')
+    const all = Array.from(e.dataTransfer.files)
+    const figures = all.filter(figureFile)
+    const files = all.filter(f => !figures.includes(f) && (f.type.startsWith('image/') || f.type.startsWith('video/') || f.type.startsWith('audio/')))
+    if (!files.length && !figures.length) return
+    if (files.length && !onAddImage) return
     // Get drop position in slide coordinates
     let dropX = 130, dropY = 100
     if (canvasRef.current) {
@@ -822,6 +848,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       dropX = Math.round((e.clientX - rect.left) / scale)
       dropY = Math.round((e.clientY - rect.top) / scale)
     }
+    for (const file of figures) await onAddFigure(file, dropX, dropY)
     for (const file of files) {
       await onAddImage(file, dropX, dropY)
     }
@@ -902,10 +929,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
-          flexShrink: 0, position: 'relative', fontSize: '42px',
+          flexShrink: 0, position: 'relative', fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
           outline: dragOver ? '3px dashed #6366f1' : 'none',
           cursor: drawTool ? 'crosshair' : undefined,
-          ...getBgStyle(slide?.background)
+          ...palette.background,
+          '--slide-text': palette.text,
+          '--slide-heading': palette.heading,
+          '--slide-link': palette.link,
         }}
         onMouseDown={(e) => {
           if (!drawToolRef.current || editingElementId || cropMode) return
@@ -923,7 +953,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           if (cropMode || drawTool) return
           if (e.target === canvasRef.current) { onToggleSelectElement(null, false); onStopEdit() }
         }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          if (cropMode || drawTool || editingElementId || !onCanvasCommand) return
+          onToggleSelectElement(null, false)
+          setContextMenu(null)
+          setCanvasMenu({ x: e.clientX, y: e.clientY })
+        }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -1110,6 +1146,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           <CanvasElement
             key={element.id}
             element={element}
+            slideText={palette.text}
             canvasScale={scale}
             faded={!!fadedIds?.has(element.id)}
             unseen={!!unseenIds?.has(element.id)}
@@ -1136,30 +1173,27 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey)
               startElementDrag(e, element.id, type, handle)
             }}
-            onClick={(e) => { e.stopPropagation(); if (!cropMode && !drawToolRef.current) onToggleSelectElement(element.id, e.shiftKey || e.ctrlKey || e.metaKey) }}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (cropMode || drawToolRef.current) return
+              const many = e.shiftKey || e.ctrlKey || e.metaKey
+              onToggleSelectElement(element.id, many)
+              // One click on an empty placeholder starts typing in it, as in
+              // PowerPoint, Keynote and Google Slides (not after a drag)
+              if (!many && !element.locked && isEmptyPlaceholder(element) && Date.now() - dragEndedRef.current > 250) onStartEdit(element.id)
+            }}
             onDoubleClick={(e) => {
               e.stopPropagation()
-              if (element.type === 'text') onStartEdit(element.id)
-              else if (element.type === 'html') onOpenHtmlEditor?.(element.id)
-              else if (element.type === 'code') onOpenCodeEditor?.(element.id)
-              else if (element.type === 'latex') onOpenLatexEditor?.(element.id)
-              else if (element.type === 'tikz') onOpenTikzEditor?.(element.id)
-              else if (element.type === 'graph') onOpenGraphEditor?.(element.id)
-              else if (element.type === 'equation') onOpenEquationEditor?.(element.id)
-              else if (element.type === 'feynman') onOpenFeynmanEditor?.(element.id)
-              else if (element.type === 'circuit') onOpenCircuitEditor?.(element.id)
-              else if (element.type === 'logic') onOpenLogicEditor?.(element.id)
-              else if (element.type === 'freebody') onOpenFreebodyEditor?.(element.id)
-              else if (element.type === 'venn') onOpenVennEditor?.(element.id)
-              else if (element.type === 'timing') onOpenTimingEditor?.(element.id)
-              else if (element.type === 'geometry') onOpenGeometryEditor?.(element.id)
-              else if (element.type === 'p5') onOpenP5Editor?.(element.id)
-              else if (element.type === 'textpath') onStartEdit(element.id)
+              if (openElement(element)) return
               // In and out of tilt mode; its text is edited in the properties panel
-              else if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
+              if (element.type === 'text3d' && !element.locked) setTiltId(id => id === element.id ? null : element.id)
             }}
             onContextMenu={(e) => {
+              // Text being edited keeps the browser's own menu (spelling, paste)
+              if (editingElementId === element.id) { e.stopPropagation(); return }
               e.preventDefault(); e.stopPropagation()
+              if (!selectedElementIdsRef.current.includes(element.id)) onToggleSelectElement(element.id, false)
+              setCanvasMenu(null)
               setContextMenu({ elementId: element.id, elementType: element.type, x: e.clientX, y: e.clientY })
             }}
             onStopEdit={onStopEdit}
@@ -1311,96 +1345,70 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         {/* Drop hint */}
         {dragOver && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 999, background: 'rgba(99,102,241,0.08)', fontSize: '16px', color: 'rgba(255,255,255,0.7)', fontFamily: 'sans-serif' }}>
-            Drop image here
+            Drop an image or a figure here
           </div>
         )}
       </div>
 
-      {/* Context menu */}
+      {/* Right-click menus: on an element, and on the empty slide */}
       {contextMenu && (() => {
-        const ctxEl = slide?.elements?.find(e => e.id === contextMenu.elementId)
-        const currentRef = ctxEl?.snapRef || 'ul'
+        const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
+        if (!el) return null
+        const id = el.id
+        const command = name => () => onElementCommand?.(name, id)
+        const selected = (slide?.elements || []).filter(e => selectedElementIds.includes(e.id))
+        const all = selected.length ? selected : [el]
+        const copyUrl = () => {
+          const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
+          navigator.clipboard?.writeText(url).catch(() => {})
+        }
+        const resetCrop = () => onUpdateElement(id, {
+          x: el.x + (el.imageOffsetX ?? 0), y: el.y + (el.imageOffsetY ?? 0),
+          width: el.imageW, height: el.imageH,
+          imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null, crop: null,
+        })
+        const editLabel = el.type === 'text' || el.type === 'textpath' ? 'Edit text' : editLabelFor(el.type)
+        const canOpen = el.type === 'text' || el.type === 'textpath' || !!openers[el.type]
         return (
-          <div
-            className="canvas-context-menu"
-            style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button onClick={() => reorderElement(contextMenu.elementId, 'front')}>▲▲ Bring to Front</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'forward')}>▲ Bring Forward</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'backward')}>▼ Send Backward</button>
-            <button onClick={() => reorderElement(contextMenu.elementId, 'back')}>▼▼ Send to Back</button>
-            <div className="canvas-context-menu-separator" />
-
-            {contextMenu.elementType === 'image' && (<>
-              <button onClick={() => startCrop(contextMenu.elementId)}>
-                ✂ Crop
-              </button>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el && el.imageW != null) {
-                  onUpdateElement(contextMenu.elementId, {
-                    x: el.x + (el.imageOffsetX ?? 0),
-                    y: el.y + (el.imageOffsetY ?? 0),
-                    width: el.imageW,
-                    height: el.imageH,
-                    imageW: null, imageH: null, imageOffsetX: null, imageOffsetY: null, crop: null,
-                  })
-                }
-                setContextMenu(null)
-              }}>
-                ↺ Reset crop
-              </button>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el?.src) {
-                  const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
-                  navigator.clipboard.writeText(url)
-                }
-                setContextMenu(null)
-              }}>
-                📋 Copy URL
-              </button>
-              <div className="canvas-context-menu-separator" />
-            </>)}
-            {contextMenu.elementType === 'video' && (<>
-              <button onClick={() => {
-                const el = slide?.elements?.find(e => e.id === contextMenu.elementId)
-                if (el?.src) {
-                  const url = el.src.startsWith('http') ? el.src : `${window.location.origin}${el.src}`
-                  navigator.clipboard.writeText(url)
-                }
-                setContextMenu(null)
-              }}>
-                📋 Copy URL
-              </button>
-              <div className="canvas-context-menu-separator" />
-            </>)}
-            <div style={{ padding: '4px 8px 2px', fontSize: 10, color: 'var(--text-muted)', userSelect: 'none' }}>Snap Reference</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 2, padding: '2px 6px 6px' }}>
-              {SNAP_REF_OPTIONS.map(opt => (
-                <button
-                  key={opt.id}
-                  title={opt.label}
-                  style={{
-                    padding: '5px 4px', fontSize: 11, background: currentRef === opt.id ? 'var(--accent)' : 'var(--bg-hover)',
-                    border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onClick={() => {
-                    onUpdateElement(contextMenu.elementId, { snapRef: opt.id })
-                    setContextMenu(null)
-                  }}
-                >
-                  {opt.id === 'ul' ? '↖' : opt.id === 'uc' ? '↑' : opt.id === 'ur' ? '↗' :
-                   opt.id === 'ml' ? '←' : opt.id === 'mc' ? '⊕' : opt.id === 'mr' ? '→' :
-                   opt.id === 'll' ? '↙' : opt.id === 'lc' ? '↓' : '↘'}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={closeMenus} label="Element" items={[
+            { label: 'Cut', shortcut: 'Mod+X', action: command('cut') },
+            { label: 'Copy', shortcut: 'Mod+C', action: command('copy') },
+            { label: 'Paste', shortcut: 'Mod+V', action: command('paste') },
+            { label: 'Duplicate', shortcut: 'Mod+D', action: command('duplicate') },
+            { label: 'Delete', shortcut: 'Delete', action: command('delete') },
+            '-',
+            canOpen && { label: editLabel, action: () => openElement(el) },
+            el.type === 'image' && { label: 'Crop', action: () => startCrop(id) },
+            el.type === 'image' && el.imageW != null && { label: 'Reset crop', action: resetCrop },
+            // (a kept figure's piece, or an annotation of it)
+            el.figure?.src && { label: 'Edit figure layers\u2026', action: command('edit-figure') },
+            el.type === 'image' && { label: 'Replace image\u2026', action: command('replace-image') },
+            (el.type === 'image' || el.type === 'video') && el.src && { label: 'Copy URL', action: copyUrl },
+            '-',
+            { label: 'Bring to front', action: () => reorderElement(id, 'front') },
+            { label: 'Bring forward', action: () => reorderElement(id, 'forward') },
+            { label: 'Send backward', action: () => reorderElement(id, 'backward') },
+            { label: 'Send to back', action: () => reorderElement(id, 'back') },
+            '-',
+            selected.length >= 2 && { label: 'Group', shortcut: 'Mod+G', action: command('group') },
+            all.some(e => e.groupId) && { label: 'Ungroup', shortcut: 'Mod+Shift+G', action: command('ungroup') },
+            all.every(e => e.locked)
+              ? { label: 'Unlock', action: command('unlock') }
+              : { label: 'Lock', action: command('lock') },
+          ]} />
         )
       })()}
+      {canvasMenu && (
+        <ContextMenu x={canvasMenu.x} y={canvasMenu.y} onClose={closeMenus} label="Slide" items={[
+          { label: 'Paste', shortcut: 'Mod+V', action: () => onCanvasCommand('paste') },
+          { label: 'Select all', shortcut: 'Mod+A', action: () => onCanvasCommand('select-all'), disabled: !slide?.elements?.length },
+          '-',
+          { label: 'Change layout\u2026', action: () => onCanvasCommand('change-layout') },
+          { label: 'Background\u2026', action: () => onCanvasCommand('background') },
+          { label: 'Grid', checked: !!showGrid, action: () => onCanvasCommand('toggle-grid') },
+          { label: 'Rulers', checked: !!showRulers, action: () => onCanvasCommand('toggle-rulers') },
+        ]} />
+      )}
     </div>
   )
 }
@@ -1434,11 +1442,14 @@ function GraphFrame({ element, scale }) {
   )
 }
 
-export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
+export function CanvasElement({ element, slideText, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
   const isAutoFit = element.type === 'text' && element.sizeMode === 'auto'
+  const isShrink = element.type === 'text' && element.sizeMode === 'shrink'
+  const emptyPlaceholder = element.type === 'text' && !isEditing && isEmptyPlaceholder(element)
+  const editFitRef = useRef(null)
 
   // Render KaTeX math in preview (when not editing)
   useEffect(() => {
@@ -1454,6 +1465,31 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
       } catch(e) {}
     })
   }, [element.content, isEditing])
+
+  // Text that shrinks to fit its box: after its math is drawn, and again once
+  // fonts are in (utils/shrinkFit.js)
+  useEffect(() => {
+    if (!isShrink || isEditing || !contentRef.current) return
+    const inner = contentRef.current
+    const fit = () => applyScale(inner, element.width, fitScale(inner, element.width, element.height))
+    fit()
+    let live = true
+    document.fonts?.ready?.then(() => { if (live) fit() })
+    return () => { live = false }
+  }, [isShrink, isEditing, element.content, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont, emptyPlaceholder])
+
+  // …and while it's being typed in
+  useEffect(() => {
+    if (!isShrink || !isEditing || !editFitRef.current) return
+    const inner = editFitRef.current
+    let frame = 0
+    const fit = () => applyScale(inner, element.width, fitScale(inner, element.width, element.height, inner.querySelector('.ProseMirror') || inner))
+    fit()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit) })
+    observer.observe(inner.querySelector('.ProseMirror') || inner)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [isShrink, isEditing, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont])
 
   // Sync auto-fit height back to element data so drag, export, etc. stay consistent
   useEffect(() => {
@@ -1519,30 +1555,51 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
             ▶ {element.animationDelay ? `+${element.animationDelay}ms` : 'anim'}
           </div>
         )}
-        {element.type === 'text' && !isEditing && (
-          <div
-            ref={contentRef}
-            className="slide-text-content"
-            style={{
-              width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden',
-              color: 'white', padding: '8px 12px', boxSizing: 'border-box',
-              fontFamily: globalFont || undefined,
-              lineHeight: element.lineHeight ?? 1.5,
-              letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
-              wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-            }}
-            dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(element.content, citationLabels)) }}
-          />
-        )}
-        {element.type === 'text' && isEditing && (
-          <EditorContent editor={editor} style={{
-            width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined, color: 'white',
+        {/* An empty placeholder's outline, as in Google Slides */}
+        {emptyPlaceholder && !isSelected && <div className="placeholder-outline" aria-hidden="true" />}
+        {element.type === 'text' && !isEditing && (() => {
+          const textStyle = {
+            color: 'var(--slide-text, white)', padding: '8px 12px', boxSizing: 'border-box',
+            fontFamily: globalFont || undefined,
+            lineHeight: element.lineHeight ?? 1.5,
+            letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
+            wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
+          }
+          const html = safeHtml(resolveCitationsInHtml(emptyPlaceholder ? withHint(element.content, placeholderHint(element)) : element.content, citationLabels))
+          // Text that shrinks to fit: laid out wider, then scaled (utils/shrinkFit.js)
+          if (isShrink) return (
+            <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+              <div ref={contentRef} className="slide-text-content" style={{ ...textStyle, position: 'relative' }} dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          )
+          return (
+            <div
+              ref={contentRef}
+              className="slide-text-content"
+              style={{ ...textStyle, width: '100%', height: isAutoFit ? 'auto' : '100%', overflow: isAutoFit ? 'visible' : 'hidden' }}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )
+        })()}
+        {element.type === 'text' && isEditing && (() => {
+          const editorStyle = {
+            color: 'var(--slide-text, white)',
             fontFamily: globalFont || undefined,
             lineHeight: element.lineHeight || undefined,
             letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : undefined,
             wordSpacing: element.wordSpacing ? `${element.wordSpacing}px` : undefined,
-          }} />
-        )}
+          }
+          if (isShrink) return (
+            <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+              <div ref={editFitRef} className="fit-shrink">
+                <EditorContent editor={editor} style={editorStyle} />
+              </div>
+            </div>
+          )
+          return (
+            <EditorContent editor={editor} style={{ ...editorStyle, width: '100%', height: isAutoFit ? 'auto' : '100%', minHeight: isAutoFit ? 40 : undefined }} />
+          )
+        })()}
         {element.type === 'image' && (() => {
           const imgFilter = [
             (element.filterBrightness != null && element.filterBrightness !== 100) ? `brightness(${element.filterBrightness}%)` : '',
@@ -1715,7 +1772,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           <TableRenderer element={element} isEditing={isEditing} />
         )}
         {element.type === 'latex' && (
-          <LatexRenderer element={element} isSelected={isSelected} />
+          <LatexRenderer element={element} isSelected={isSelected} slideText={slideText} />
         )}
         {element.type === 'equation' && (
           <EquationView element={element} style={{ pointerEvents: 'none' }} />
@@ -1779,7 +1836,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const pathSide = element.pathSide || 'bottom'
           const fontSize = element.fontSize || 64
           const w = element.width
-          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+          const effectiveFont = element.fontFamily || deckFont(globalFont)
 
           // Edge modes: multi-line text with each line's first/last char aligned to an (optionally angled) guide
           if (pathSide === 'leftedge' || pathSide === 'rightedge') {
@@ -1851,7 +1908,7 @@ export function CanvasElement({ element, canvasScale = 1, faded, unseen, isSelec
           const pathSide = element.pathSide || 'bottom'
           const fontSize = element.fontSize || 64
           const w = element.width
-          const effectiveFont = element.fontFamily || globalFont || 'sans-serif'
+          const effectiveFont = element.fontFamily || deckFont(globalFont)
 
           const editOverlay = (svgH, svgPreview) => (
             <div style={{ position: 'relative', width: w, height: svgH }}>
@@ -2322,7 +2379,7 @@ function TimelineRenderer({ element }) {
 // with their names, or who's editing it
 function RemoteUse({ use }) {
   const lead = use.editing || use.people[0]
-  const names = use.people.map(p => p.self ? 'You (other tab)' : p.name)
+  const names = use.people.map(p => p.self ? 'You (other tab)' : p.ai ? `${p.name} (AI)` : p.name)
   const label = use.editing
     ? (use.editing.self ? 'You’re editing in another tab' : `${use.editing.name} is editing`)
     : names.join(', ')
@@ -2344,8 +2401,8 @@ function RemoteUse({ use }) {
   )
 }
 
-function LatexRenderer({ element, isSelected }) {
-  const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize)
+function LatexRenderer({ element, isSelected, slideText }) {
+  const html = generateLatexIframeHtml(element.content || '', element.textColor, element.fontSize, slideText)
   return (
     <iframe
       srcDoc={localizeLibraries(html)}

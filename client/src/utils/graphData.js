@@ -222,10 +222,12 @@ export function dataExtent(el) {
     const r = e && e.data && !e.hidden && rows[e.id]
     if (!r || !Array.isArray(r.x) || !Array.isArray(r.y)) continue
     const bars = e.data.mark === 'bars'
+    // An empty cell is no number, never 0
+    const val = v => (v === null || v === undefined || v === '' ? NaN : +v)
     for (let i = 0; i < r.x.length; i++) {
-      const x = +r.x[i], y = +r.y[i]
+      const x = val(r.x[i]), y = val(r.y[i])
       if (!isFinite(x) || !isFinite(y) || (xLog && x <= 0) || (yLog && y <= 0)) continue
-      const x2 = bars && Array.isArray(r.x2) ? +r.x2[i] : x
+      const x2 = bars && Array.isArray(r.x2) ? val(r.x2[i]) : x
       if (x < xMin) xMin = x
       if (x > xMax) xMax = x
       if (isFinite(x2) && x2 > xMax) xMax = x2

@@ -155,6 +155,21 @@ function ColumnSelect({ ds, value, onChange, numeric, none, title, width }) {
   )
 }
 
+// The step a line leaves at, after the one it appears at: for a layer that
+// goes, such as raw data making way for its fit
+function LeaveSelect({ ex, onChange }) {
+  const from = ex.step || 0
+  return (
+    <select value={ex.until || 0} onChange={e => onChange(+e.target.value || undefined)} aria-label="Leaves" style={{ ...inputStyle, flex: 1 }}>
+      <option value={0}>Stays</option>
+      {Array.from({ length: 12 }, (_, i) => i + 1).filter(n => n > from).map(n => <option key={n} value={n}>At step {n}</option>)}
+    </select>
+  )
+}
+
+// A new step for a line, and its leaving step cleared when it no longer comes after
+const stepPatch = (ex, step) => ({ step, ...(ex.until && step && ex.until <= step ? { until: undefined } : {}) })
+
 // A data line: the dataset whose rows it plots, and how. Under it, how many
 // rows it has, or why it has none
 function DataLine({ ex, index, datasets, rows, palette, open, onUpdate, onToggleOptions, onRemove }) {
@@ -229,11 +244,12 @@ function DataLine({ ex, index, datasets, rows, palette, open, onUpdate, onToggle
               </select>
             ))}
             {row('Appears', (
-              <select value={ex.step || 0} onChange={e => onUpdate({ step: +e.target.value || undefined })} style={{ ...inputStyle, flex: 1 }}>
+              <select value={ex.step || 0} onChange={e => onUpdate(stepPatch(ex, +e.target.value || undefined))} style={{ ...inputStyle, flex: 1 }}>
                 <option value={0}>With the slide</option>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>At step {n}</option>)}
               </select>
             ))}
+            {row('Leaves', <LeaveSelect ex={ex} onChange={until => onUpdate({ until })} />)}
           </div>
         )}
       </div>
@@ -833,15 +849,19 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                               </label>
                             </>
                           )}
-                          {drawn && (
+                          {drawn && (<>
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                               <span style={{ ...smallLabel, width: 44 }}>Appears</span>
-                              <select value={ex.step || 0} onChange={e => updateExpr(ex.id, { step: +e.target.value || undefined })} style={{ ...inputStyle, flex: 1 }}>
+                              <select value={ex.step || 0} onChange={e => updateExpr(ex.id, stepPatch(ex, +e.target.value || undefined))} style={{ ...inputStyle, flex: 1 }}>
                                 <option value={0}>With the slide</option>
                                 {Array.from({ length: 12 }, (_, i) => i + 1).map(n => <option key={n} value={n}>At step {n}</option>)}
                               </select>
                             </div>
-                          )}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...smallLabel, width: 44 }}>Leaves</span>
+                              <LeaveSelect ex={ex} onChange={until => updateExpr(ex.id, { until })} />
+                            </div>
+                          </>)}
                         </div>
                       )}
                     </div>

@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import EditorPage from './pages/EditorPage'
 import LandingPage from './pages/LandingPage'
 import GuestPage from './pages/GuestPage'
+import TemplateUsePage from './pages/TemplateUsePage'
 import AdminPage from './pages/AdminPage'
 import InvitePage from './pages/InvitePage'
 import PluginInstallPage from './pages/PluginInstallPage'
@@ -18,6 +19,8 @@ const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 const inviteToken = () => (isCloud && window.location.pathname.match(/^\/invite\/([0-9a-f-]{36})$/i)?.[1]) || null
 // /plugins/<slug>/install, from a plugin's page in the gallery
 const pluginToInstall = () => (isCloud && window.location.pathname.match(/^\/plugins\/([a-z0-9][a-z0-9_-]{0,63})\/install$/)?.[1]) || null
+// /templates/<slug>/use, from Use this template on the landing page
+const templateToUse = () => (isCloud && window.location.pathname.match(/^\/templates\/([a-z0-9-]{1,64})\/use$/)?.[1]) || null
 
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
@@ -29,11 +32,13 @@ function TokenBridge() {
   return null
 }
 
-// Signing in from an invite link, or a plugin's Install button, comes back to it
+// Signing in from an invite link, a plugin's Install button, or a template's
+// Use this template comes back to it
 function SignInPage() {
   const invited = !!inviteToken()
   const installing = !invited && !!pluginToInstall()
-  const comeBack = invited || installing
+  const forking = !invited && !installing && !!templateToUse()
+  const comeBack = invited || installing || forking
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -46,7 +51,7 @@ function SignInPage() {
           <span style={{ color: 'var(--accent, #6366f1)' }}>P</span>arallax<BetaBadge />
         </h1>
         <p style={{ color: 'var(--text-muted, #888)', marginTop: 8, fontSize: 15 }}>
-          {invited ? 'Sign in to accept the invitation' : installing ? 'Sign in to install the plugin' : 'Sign in to create and manage presentations'}
+          {invited ? 'Sign in to accept the invitation' : installing ? 'Sign in to install the plugin' : forking ? 'Sign in or sign up to use the template' : 'Sign in to create and manage presentations'}
         </p>
       </div>
       <SignIn routing="hash" afterSignInUrl={comeBack ? window.location.pathname : '/dashboard'} afterSignUpUrl={comeBack ? window.location.pathname : undefined} appearance={{
@@ -198,6 +203,15 @@ export default function App() {
     return (
       <AuthGate>
         <PluginInstallPage slug={installSlug} />
+      </AuthGate>
+    )
+  }
+
+  const forkSlug = page === 'home' ? templateToUse() : null
+  if (forkSlug) {
+    return (
+      <AuthGate>
+        <TemplateUsePage slug={forkSlug} onOpen={(id, title) => openEditor(id, false, title)} />
       </AuthGate>
     )
   }

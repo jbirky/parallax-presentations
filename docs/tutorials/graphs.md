@@ -53,7 +53,7 @@ A point made of sliders, like `(p, q)`, can be dragged while presenting, and its
 
 ## Step by step
 
-Under a line's options, **Appears** sets the step it's added at. The graph then builds up as you advance, one step at a time, alongside the slide's other animations.
+Under a line's options, **Appears** sets the step it's added at, and **Leaves** the step it goes at. The graph then builds up as you advance, one step at a time, alongside the slide's other animations: raw data first, then a fit over it, then the raw data gone. In the editor every line shows, whatever its steps.
 
 ## Vector fields and phase portraits
 
@@ -105,7 +105,7 @@ In a PDF, particles are drawn as still streamlines, dots are at rest, and clicke
 
 ## 3D graphs
 
-Switch a graph to **3D** at the top of its editor, or choose **3D Graph** in the toolbar's **3D Model** menu. The same expression list then draws surfaces, curves and points in a box, which you can turn while presenting.
+Switch a graph to **3D** at the top of its editor, or choose **3D graph** under **Science** in the toolbar. The same expression list then draws surfaces, curves and points in a box, which you can turn while presenting.
 
 | Type | Example |
 | --- | --- |
@@ -165,7 +165,7 @@ While presenting, drag to turn it, scroll or pinch to zoom, and double-click to 
 
 ## Plotting data
 
-A graph can plot a dataset's rows beside its curves. Link the dataset to the deck first (**Data** at the top of the editor; see [Live Datasets](./live-datasets.md)), then click **+ Data** under the expression list. The new line plots the dataset's first two number columns; choose the dataset, and the columns for **x** and **y**, in its row. In a new graph it takes the example's place, and the view fits the rows once they arrive.
+A graph can plot a dataset's rows beside its curves. Link the dataset to the deck first (**Tools › Datasets…**; see [Live Datasets](./live-datasets.md)), then click **+ Data** under the expression list. The new line plots the dataset's first two number columns; choose the dataset, and the columns for **x** and **y**, in its row. In a new graph it takes the example's place, and the view fits the rows once they arrive.
 
 | Choice | What it does |
 | --- | --- |
@@ -181,6 +181,19 @@ Under each data line, the graph says how many rows it has, or why it has none. I
 For an exoplanet plot, use the dataset from [Live Datasets](./live-datasets.md): `pl_orbper` across, `pl_bmasse` up, both scales **Log**, colored by `discoverymethod` and labeled by `pl_name`. Then add a curve such as `y = 0.5 x^(2/3)` over the points.
 
 Graphs show their data everywhere the deck goes: the editor, Present, share links, live sessions, exported HTML files and PDFs, and decks published to GitHub or Zenodo. The deck carries the columns its graphs plot, so it works offline and never waits on a source (see [Live Datasets](./live-datasets.md#data-in-presented-decks)).
+
+## Importing a matplotlib figure
+
+A figure you saved from matplotlib can come into a slide with its layers coming and going a step at a time: **Insert › Science › Plot from a figure…** (or **File › Import › Plot from a PDF or SVG figure…**). Or drop the PDF or SVG on the slide: it goes in whole, as one image, and **Edit figure layers…** in its right-click menu cuts it into its layers, stacked where it is. (An SVG that isn't a matplotlib figure goes in as an image, and a PDF that isn't one offers its pages.) Parallax reads the figure in your browser and shows what it found beside it: the axes, with their scales (linear or log), ranges and labels, and each layer, named from the legend. Each layer can be renamed, left out, and given the step it appears at and the step it leaves at; **One a step** brings them in in the legend's order. Then choose what to make of it:
+
+- **Keep the figure as it is**: the figure stays exactly as matplotlib drew it. It's cut, in the order matplotlib drew it, into images stacked in one group: an SVG into SVG images, a PDF into PNG images. Each layer is hidden until its step, and again from the step it leaves at, with an ordinary state and state steps. Where matplotlib drew one layer partly over another (a line between a series' error bars and its markers, say) or the legend over the data, that layer's images keep their places in the stack, so with every layer showing the slide matches the figure. Each layer's legend entry comes and goes with it, and the legend's frame shows from the step its first entry appears until its last one leaves. A layer left out is taken out of the figure, legend entry and all (the frame keeps its size). **Transparent background** leaves out the white behind the figure and behind its axes, as `savefig(transparent=True)` does, and inside the legend's box, so the slide shows through (the box keeps its outline). **Axes and text: Dark** makes the figure for a dark slide: black text, spines and ticks turn white, and every other gray turns over too (a white background black, the legend's light gray outline dark gray), while the layers keep their colors. Click a layer's color to draw it in another: its line or markers, error bars and legend entry change, its label doesn't, and ↺ puts its own color back. (Only the layer's main color changes: edges or error bars matplotlib drew in a color of their own keep it.) A legend entry for the whole figure takes the new color once every layer it names has it. Under **Titles and labels**, change the words of a panel's title, its axis labels or the figure's title (`fig.suptitle`): they're drawn again the way matplotlib draws text, in its own DejaVu fonts, at the same size and angle, and centered (or lined up at one end) where the old words were. Math in a label (`$…$`) is drawn as plain text once changed, so type symbols such as μ directly. The preview shows the figure as it will look. The file is saved with the images: to rename the layers, change their steps or colors, put one back, change the titles and labels, or change the background or the slide it's for, right-click the figure and choose **Edit figure layers…**.
+- **Make a graph of its data** (a PDF or an SVG): the layers' data goes into a dataset ("*figure* data") linked to the deck, plotted by a Parallax graph in the figure's colors (or the ones you chose), which can be pointed at, restyled and changed like any graph. Markers, bars and error bars come in exactly; lines come through the points the file draws them with (matplotlib leaves out points that don't change the picture; save with `plt.rcParams['path.simplify'] = False` to keep them all).
+
+To annotate a figure kept as it is, use **Annotations** in the same editor: **+ Arrow** and click a point for words with an arrow to it, **+ Ring** to circle a point, or **+ Box** and drag over a stretch of the data. A click snaps to the nearest data point, and an arrow's words start as its value. Type the words, choose the steps they come and go at (after the layers, to begin with), and drag them over the figure to move them. Each annotation is pinned to its place in the data, in its panel, log axes too. On the slide it's ordinary text, arrows and shapes in the figure's group, so it can be restyled like any other; opened again, the editor keeps those looks and where the words were moved, redrawing an arrow to point from them.
+
+A figure of several panels (`plt.subplots`, an inset) kept as it is lists each panel with its layers under it. A panel comes and goes as a whole (its axes, labels and title), and its layers show only while it does; **One a step** brings in the first panel with the slide, then its layers, then the next panel and its layers. Panels are named from their titles, or by where they are (top left, inset). Layers are named from their panel's legend, or else from a legend for the whole figure (`fig.legend`), whose entries come and go too: each from the step the first layer it names appears (in any panel) until the last one leaves, its frame while any entry shows. The figure's own title stays as drawn.
+
+A graph of its data is made of one set of axes, with numbered ticks. Of a figure with several panels, choose which under **Make a graph of**: any panel whose numbers can be read (shared axes leave some panels without), starting with the largest; the dataset is named after the figure and the panel. A PNG or JPEG has no data to read. Filled areas such as `fill_between`, and pictures such as `imshow`'s, are left out, and the dialog says so.
 
 ## Styling
 

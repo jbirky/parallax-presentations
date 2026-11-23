@@ -73,14 +73,14 @@ describe('the landing page examples, in /admin', () => {
 
   it('adds one from the admin’s own presentations, and says if the thumbnail wasn’t drawn', async () => {
     await mount()
-    await act(async () => button(el, 'Add an example').click())
+    await act(async () => button(el, 'Add an example or template').click())
     const select = el.querySelector('select')
     expect([...select.options].map(o => o.textContent)).toEqual(['Choose one of your presentations…', 'Cell division'])
     await act(async () => type(select, 'p1'))
     expect(el.querySelector('input[maxlength="80"]').value).toBe('Cell division')
     await act(async () => type(el.querySelector('input[list="example-fields"]'), 'Biology'))
     await act(async () => el.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-    expect(api.addExample).toHaveBeenCalledWith({ presentationId: 'p1', field: 'Biology', title: 'Cell division', description: '', tags: '' })
+    expect(api.addExample).toHaveBeenCalledWith({ presentationId: 'p1', field: 'Biology', title: 'Cell division', description: '', tags: '', kind: 'example' })
     expect(el.textContent).toContain('the thumbnail wasn’t drawn: This server has no Chromium')
   })
 
@@ -98,6 +98,28 @@ describe('the landing page examples, in /admin', () => {
     await act(async () => button(row('Cells'), 'Delete').click())
     expect(api.deleteExample).toHaveBeenCalledWith('cells')
     expect(el.textContent).not.toContain('Cells')
+  })
+
+  it('adds a template, for the landing page’s Templates tab', async () => {
+    await mount()
+    await act(async () => button(el, 'Add an example or template').click())
+    await act(async () => type(el.querySelector('select'), 'p1'))
+    await act(async () => type(el.querySelector('select[aria-label="Shown as"]'), 'template'))
+    expect(button(el, 'Add template')).toBeDefined()
+    await act(async () => el.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(api.addExample).toHaveBeenCalledWith(expect.objectContaining({ presentationId: 'p1', kind: 'template' }))
+  })
+
+  it('turns an example with a deck of its own into a template, and back', async () => {
+    state.list[2] = { ...state.list[2], kind: 'template' }
+    await mount()
+    expect(row('Cells').textContent).toContain('Template')
+    // A template isn't the top of the page; a built-in example needs a copy of its own first
+    expect(button(row('Cells'), 'Put at the top')).toBeUndefined()
+    expect(button(row('Venn diagrams'), 'Make a template')).toBeUndefined()
+    expect(button(row('Parallax'), 'Make a template')).toBeUndefined()
+    await act(async () => button(row('Cells'), 'Make an example').click())
+    expect(api.saveExample).toHaveBeenLastCalledWith('cells', { kind: 'example' })
   })
 
   it('makes an editable copy of a built-in one, and links to it', async () => {

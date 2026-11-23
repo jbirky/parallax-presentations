@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
-import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, Download } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react'
+import ContextMenu from './ContextMenu'
+import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
+import { keyLabel } from '../utils/shortcuts'
+import { slidePalette } from '../utils/themes'
+import { isEmptyPlaceholder } from '../utils/placeholders'
+import { fitScale, applyScale } from '../utils/shrinkFit'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
@@ -25,19 +30,36 @@ import TimingView from './TimingView'
 import GeometryView from './GeometryView'
 import PeriodicView from './PeriodicView'
 import HarmonicsView from './HarmonicsView'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const THUMB_W = 150
 
-function getBgStyle(bg) {
-  if (!bg) return { backgroundColor: '#1e1e2e' }
-  if (bg.type === 'color') return { backgroundColor: bg.color || '#1e1e2e' }
-  if (bg.type === 'gradient') return { background: bg.gradient || '#1e1e2e' }
-  if (bg.type === 'image' && bg.image) return { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }
-  return { backgroundColor: '#1e1e2e' }
+// A text box in a thumbnail, as on the slide: shrunk to fit when it's set to
+function ThumbText({ el, globalFont, citationLabels }) {
+  const ref = useRef(null)
+  const shrink = el.sizeMode === 'shrink'
+  useEffect(() => {
+    if (!shrink || !ref.current) return
+    const inner = ref.current
+    const fit = () => applyScale(inner, el.width, fitScale(inner, el.width, el.height))
+    fit()
+    let live = true
+    document.fonts?.ready?.then(() => { if (live) fit() })
+    return () => { live = false }
+  }, [shrink, el.content, el.width, el.height, el.lineHeight, globalFont])
+  const style = { color: 'var(--slide-text, white)', padding: '8px 12px', boxSizing: 'border-box', fontFamily: globalFont || undefined, lineHeight: el.lineHeight ?? 1.5 }
+  const html = { __html: safeHtml(resolveCitationsInHtml(el.content, citationLabels)) }
+  if (shrink) return (
+    <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+      <div ref={ref} className="slide-text-content" style={{ ...style, position: 'relative' }} dangerouslySetInnerHTML={html} />
+    </div>
+  )
+  return <div className="slide-text-content" style={{ ...style, width: '100%', height: '100%', overflow: 'hidden' }} dangerouslySetInnerHTML={html} />
 }
 
-function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, theme }) {
   const scale = THUMB_W / slideW
+  const palette = slidePalette(slide, theme)
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
   const canvasH = getCanvasHeight(slide, slideH)
@@ -50,10 +72,14 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
         width: slideW, height: slideH,
         transform: `scale(${scale})`, transformOrigin: 'top left',
         pointerEvents: 'none',
-        ...getBgStyle(slide.background),
-      }}>
+        fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
+        ...palette.background,
+        '--slide-text': palette.text,
+        '--slide-heading': palette.heading,
+        '--slide-link': palette.link,
+      }} className="slide-thumb-canvas">
         {(slide.elements || [])
-          .slice()
+          .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
           .map(el => (
             <div key={el.id} style={{
@@ -68,10 +94,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels }) {
                 : undefined,
               filter: el.type === 'text3d' ? text3dShadowFilter(el) || undefined : undefined,
             }}>
-              {el.type === 'text' && (
-                <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
-                  dangerouslySetInnerHTML={{ __html: safeHtml(resolveCitationsInHtml(el.content, citationLabels)) }} />
-              )}
+              {el.type === 'text' && <ThumbText el={el} globalFont={globalFont} citationLabels={citationLabels} />}
               {el.type === 'image' && (() => {
                 const imgFilter = [
                   (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
@@ -207,13 +230,16 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, onImport, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', notice = null }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
   const dragSrcRef = useRef(null)
   const listRef = useRef(null)
   const itemRefs = useRef([])
+  // The right-click menu on a slide: { index, x, y }
+  const [menu, setMenu] = useState(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   const columns = useMemo(() => buildColumns(slides), [slides])
   const is2D = slides.some(s => s.column !== undefined)
@@ -267,13 +293,62 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     itemRefs.current[currentIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [currentIndex])
 
+  function openMenu(e, index) {
+    e.preventDefault()
+    if (!(isMultiSelect && selectedIndices.includes(index)) && index !== currentIndex) onSelect(index)
+    setMenu({ index, x: e.clientX, y: e.clientY })
+  }
+
+  const slideMenu = menu && slides[menu.index] && (() => {
+    const { index } = menu
+    const many = isMultiSelect && selectedIndices.includes(index)
+    return (
+      <ContextMenu x={menu.x} y={menu.y} onClose={closeMenu} label="Slide" items={[
+        onNewSlideAfter && { label: 'New slide', shortcut: 'Mod+M', action: () => onNewSlideAfter(index) },
+        { label: 'Duplicate slide', shortcut: 'Mod+D', action: () => onDuplicate(index) },
+        many
+          ? { label: `Delete ${selectedIndices.length} slides`, shortcut: 'Delete', action: () => onDeleteMultiple?.(selectedIndices), disabled: !onDeleteMultiple || selectedIndices.length >= slides.length }
+          : { label: 'Delete slide', shortcut: 'Delete', action: () => onDelete(index), disabled: slides.length <= 1 },
+        '-',
+        onChangeLayout && { label: 'Change layout\u2026', action: () => onChangeLayout(index) },
+        onBackground && { label: 'Background\u2026', action: () => onBackground(index) },
+        // Moving to the ends of a deck of columns isn't one place
+        !is2D && '-',
+        !is2D && { label: 'Move to start', action: () => onMove(index, 0), disabled: index === 0 },
+        !is2D && { label: 'Move to end', action: () => onMove(index, slides.length - 1), disabled: index === slides.length - 1 },
+      ]} />
+    )
+  })()
+
   const currentColNum = slides[currentIndex]?.column ?? (is2D ? 0 : currentIndex)
   const currentColIdx = columns.findIndex(c => c.colNum === currentColNum)
+
+  // Delete, Ctrl+D and Enter act on the slide the list has selected
+  function deleteSelected() {
+    if (isMultiSelect && onDeleteMultiple) onDeleteMultiple(selectedIndices)
+    else if (slides.length > 1) onDelete(currentIndex)
+  }
 
   function handleKeyDown(e) {
     if (e.key === 'Escape' && isMultiSelect) {
       e.preventDefault()
       onSelect(currentIndex)
+      return
+    }
+    if (currentIndex >= slides.length) return
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      deleteSelected()
+      return
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      e.preventDefault()
+      onDuplicate(currentIndex)
+      return
+    }
+    if (e.key === 'Enter' && onNewSlideAfter) {
+      e.preventDefault()
+      onNewSlideAfter(currentIndex)
       return
     }
     if (is2D) {
@@ -307,16 +382,33 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
     }
   }
 
+  // New slide, at the top of the list: after the current slide, in the
+  // layout that follows its own (Ctrl+M); ▾ picks a layout
+  const newSlideBar = colNum => (
+    <div className="new-slide-bar">
+      <button className="add-slide-btn" onClick={() => (onNewSlideAfter ? onNewSlideAfter(currentIndex) : onAdd(colNum))} title={`New slide after this one (${keyLabel('Mod+M')})`}>
+        <Plus size={14} />
+        New slide
+      </button>
+      <button className="add-slide-btn new-slide-layouts" onClick={() => onAdd(colNum)} title="New slide from a layout" aria-label="New slide from a layout">
+        <ChevronDown size={13} />
+      </button>
+    </div>
+  )
+
   if (!is2D) {
     // ── 1D layout (original) ──────────────────────────────────────────────────
     return (
       <div className="slide-panel">
+        {slideMenu}
         <div className="slide-panel-header">
           {viewSwitch || <span>Slides</span>}
           <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
             {isMultiSelect ? `${selectedIndices.length} selected` : slides.length}
           </span>
         </div>
+        {notice}
+        {newSlideBar(null)}
 
         <div
           className="slide-list"
@@ -351,12 +443,13 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
               onDrop={e => { e.preventDefault(); handleDrop(index) }}
               onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
               onClick={e => { handleItemClick(e, index); listRef.current?.focus() }}
+              onContextMenu={e => openMenu(e, index)}
             >
               {isGrouped && (
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -372,6 +465,12 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <button className="slide-action-btn" title="Move down" onClick={e => { e.stopPropagation(); onMove(index, index + 1) }} disabled={index === slides.length - 1}><ArrowDown size={10} /></button>
                 <button className="slide-action-btn" title="Delete" onClick={e => { e.stopPropagation(); if (slides.length > 1) onDelete(index) }} style={{ color: slides.length > 1 ? 'white' : 'rgba(255,255,255,0.3)' }}><Trash2 size={10} /></button>
               </div>
+              {onNewSlideAfter && (
+                <button className="slide-gap-add" title="New slide here" aria-label={`New slide after slide ${index + 1}`}
+                  draggable={false} onClick={e => { e.stopPropagation(); onNewSlideAfter(index) }}>
+                  <Plus size={11} />
+                </button>
+              )}
             </div>
             )
           })}
@@ -395,20 +494,6 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
           )}
         </div>
 
-        <div className="slide-panel-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <button className="add-slide-btn" onClick={() => onAdd(null)}>
-            <Plus size={14} />
-            Add Slide
-          </button>
-          <button className="add-slide-btn" onClick={onAddColumn} title="Start a 2D vertical column" style={{ fontSize: 11 }}>
-            <Plus size={12} />
-            Add Column
-          </button>
-          <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
-            <Download size={12} />
-            Import Slide
-          </button>
-        </div>
       </div>
     )
   }
@@ -416,12 +501,15 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
   // ── 2D layout ──────────────────────────────────────────────────────────────
   return (
     <div className="slide-panel" style={{ width: Math.min(columns.length * (THUMB_W + 28) + 20, 480), maxWidth: '45vw', minWidth: 200 }}>
+      {slideMenu}
       <div className="slide-panel-header">
         {viewSwitch || <span>Slides</span>}
         <span style={{ color: isMultiSelect ? 'var(--accent)' : 'var(--text-muted)', fontSize: 11 }}>
           {isMultiSelect ? `${selectedIndices.length} selected` : `${columns.length} col · ${slides.length}`}
         </span>
       </div>
+      {notice}
+      {newSlideBar(currentColNum)}
 
       <div
         style={{ flex: 1, display: 'flex', flexDirection: 'row', gap: 4, overflowX: 'auto', overflowY: 'hidden', padding: '6px 4px', outline: 'none' }}
@@ -496,9 +584,10 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onDrop={e => { e.preventDefault(); handleDrop(flatIndex, colNum) }}
                   onDragEnd={() => { setDragOverInfo(null); dragSrcRef.current = null }}
                   onClick={e => handleItemClick(e, flatIndex)}
+                  onContextMenu={e => openMenu(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -551,16 +640,6 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
         </div>
       </div>
 
-      <div className="slide-panel-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <button className="add-slide-btn" style={{ fontSize: 11 }} onClick={() => onAdd(currentColNum)}>
-          <Plus size={12} />
-          Add to Col {currentColIdx + 1}
-        </button>
-        <button className="add-slide-btn" onClick={onImport} title="Import slides from another presentation" style={{ fontSize: 11 }}>
-          <Download size={12} />
-          Import Slide
-        </button>
-      </div>
     </div>
   )
 }

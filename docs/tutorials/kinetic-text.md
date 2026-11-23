@@ -4,7 +4,7 @@ The Kinetic Text tool lets you insert animated text effects with a template gall
 
 ## Opening the gallery
 
-Click the **Kinetic** button in the toolbar (next to Embed). A modal opens with a template grid, live preview, and parameter controls.
+Open **Insert** in the toolbar and, under **Text**, click **Kinetic text**. A modal opens with a template grid, live preview, and parameter controls.
 
 ## Workflow
 

@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
+import ThemeGallery from '../components/ThemeGallery'
+import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
+import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
+import BeamerImportModal from '../components/BeamerImportModal'
+import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
-const THEMES = ['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula']
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom']
 
 function formatDate(dateStr) {
@@ -72,6 +76,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
 
   const [showForkModal, setShowForkModal] = useState(false)
+  const [showBeamerModal, setShowBeamerModal] = useState(false)
   const [forkUrl, setForkUrl] = useState('')
   const [forkBrowseResult, setForkBrowseResult] = useState(null)
   const [forkBrowsing, setForkBrowsing] = useState(false)
@@ -216,6 +221,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         api.getTemplates(),
       ])
       setPresentations(Array.isArray(presData) ? presData : [])
+      // For the getting-started checklist: shown on someone's first decks
+      rememberDeckCount((Array.isArray(presData) ? presData : []).filter(p => p.role !== 'editor').length)
       setTemplates(Array.isArray(tmplData) ? tmplData : [])
       if (isCloud) {
         api.getMe().then(setPlanInfo).catch(() => {})
@@ -244,6 +251,14 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     } finally {
       setCreating(false)
     }
+  }
+
+  // A new deck of slides made from LaTeX Beamer (BeamerImportModal)
+  async function handleCreateFromBeamer({ title, slides, bibliography, slideWidth, slideHeight, theme }) {
+    const deck = applyCitationNumbering({ title, theme, transition: 'slide', slideWidth, slideHeight, slides, bibliography })
+    const pres = await api.createPresentation(deck)
+    setShowBeamerModal(false)
+    onOpen(pres.id, false, pres.title)
   }
 
   async function handleCreateFromTemplate(templateId) {
@@ -331,10 +346,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
   // A presentation's card; one shared with this user names its owner and can be left
   function presentationCard(pres) {
+    // Its first slide's background, or its theme's page
     const bg = getCardBg(pres.thumbnail)
-    const bgProp = isGradientOrImage(pres.thumbnail)
-      ? { background: bg }
-      : { backgroundColor: bg }
+    const bgProp = !ownBackground(pres.thumbnail)
+      ? themeBackgroundStyle(pres.theme)
+      : isGradientOrImage(pres.thumbnail)
+        ? { background: bg }
+        : { backgroundColor: bg }
     const shared = pres.role === 'editor'
 
     return (
@@ -344,8 +362,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         onClick={() => onOpen(pres.id, false, pres.title)}
       >
         <div className="card-preview" style={bgProp}>
-          {(!pres.thumbnail || pres.thumbnail.type === 'none') && (
-            <Presentation size={40} />
+          {!ownBackground(pres.thumbnail) && (
+            <Presentation size={40} style={{ color: themeOf(pres.theme).heading, opacity: 0.5 }} />
           )}
         </div>
         <div className="card-info">
@@ -450,6 +468,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <GitFork size={15} />
             Fork from Git
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
+            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <FileCode size={15} />
+            From Beamer
           </button>
           <button className="btn btn-primary" onClick={handleOpenModal} disabled={atLimit}
             title={atLimit ? 'Presentation limit reached' : ''}>
@@ -800,17 +824,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
               {!form.templateId && (
                 <>
+                  {/* The themes as pictures, Black chosen, so Create alone skips them */}
                   <div className="form-group">
-                    <label>Theme</label>
-                    <select
-                      className="form-select"
-                      value={form.theme}
-                      onChange={e => setForm(f => ({ ...f, theme: e.target.value }))}
-                    >
-                      {THEMES.map(t => (
-                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                      ))}
-                    </select>
+                    <label id="new-theme-label">Theme</label>
+                    <div style={{ maxHeight: 260, overflowY: 'auto', padding: 2 }}>
+                      <ThemeGallery value={form.theme} onChange={t => { tickStep('theme'); setForm(f => ({ ...f, theme: t })) }} columns={4} width={100} label="Theme" />
+                    </div>
                   </div>
                   <div className="form-group">
                     <label>Transition</label>
@@ -837,6 +856,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
           </div>
         </div>
+      )}
+
+      {showBeamerModal && (
+        <BeamerImportModal mode="new" onCreate={handleCreateFromBeamer} onClose={() => setShowBeamerModal(false)} />
       )}
 
       {/* Fork from Git modal */}

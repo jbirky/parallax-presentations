@@ -66,7 +66,7 @@ describe('3D text markup', () => {
   it('uses the deck font when the element has none of its own', () => {
     expect(text3dHtml(el({ fontFamily: null }), { fontFamily: "'Inter', sans-serif" })).toContain("font-family:'Inter', sans-serif;")
     expect(text3dHtml(el({ fontFamily: 'Georgia, serif' }), { fontFamily: 'Inter' })).toContain('font-family:Georgia, serif;')
-    expect(text3dHtml(el({ fontFamily: null }))).toContain('font-family:sans-serif;')
+    expect(text3dHtml(el({ fontFamily: null }))).toContain('font-family:Arial, sans-serif;')
   })
 
   it('lines the text up with the side of the box it is aligned to', () => {

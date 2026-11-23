@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="432pt" height="288pt" viewBox="0 0 432 288" version="1.1"><defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ 
+       
+      
+        
+       
+        
+       
+        
+       
+        
+       
+        
+       
+        
+       
+       
+       
+       
+       
+       
+       
+       
+       
+      
+       
+      
+        
+       
+        
+       
+       
+       
+       
+       
+       
+      
+     
+    
+     
+    
+       
+       
+      
+       
+       
+      
+  <clipPath id="p48a2f298ae">
+   <rect x="54" y="34.56" width="334.8" height="221.76"/>
+  </clipPath>
+ </defs>
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.6, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ 
+ <g id="figure_1">
+  
+  <g id="axes_1">
+   
+   
+   
+   
+   
+   
+   <g id="line2d_14">
+    <path d="M 69.218182 44.64  L 73.806578 54.275179  L 78.394975 63.438143  L 82.983371 72.152034  L 87.571768 80.438861  L 92.160164 88.319555  L 96.748561 95.814019  L 101.336958 102.941183  L 105.925354 109.719048  L 110.513751 116.164733  L 115.102147 122.294517  L 119.690544 128.123884  L 124.27894 133.667556  L 128.867337 138.939535  L 133.455733 143.953137  L 139.573595 150.257816  L 145.691457 156.153912  L 151.809319 161.667903  L 157.927181 166.824552  L 164.045043 171.647018  L 170.162905 176.156957  L 176.280767 180.374623  L 182.39863 184.318958  L 188.516492 188.007675  L 194.634354 191.457339  L 200.752216 194.683443  L 206.870078 197.700475  L 214.517405 201.198315  L 222.164733 204.415135  L 229.81206 207.373514  L 237.459388 210.094214  L 245.106715 212.596331  L 254.283508 215.334966  L 263.460302 217.811742  L 272.637095 220.051695  L 281.813888 222.07747  L 292.520146 224.197388  L 303.226405 226.082758  L 313.932663 227.759532  L 326.168387 229.449906  L 338.404111 230.928286  L 352.169301 232.371034  L 367.463956 233.73856  L 373.581818 234.224572  L 373.581818 234.224572  " clip-path="url(#p48a2f298ae)" style="fill: none; stroke: #ff7f0e; stroke-width: 1.5; stroke-linecap: square"/>
+   </g>
+   
+   
+   
+   
+   
+   
+  </g>
+ </g>
+ 
+</svg>

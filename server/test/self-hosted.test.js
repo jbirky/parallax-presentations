@@ -256,4 +256,16 @@ describe('the self-hosted version', () => {
       assert.equal((await call(method, url)).status, 404, `${method} ${url}`)
     }
   })
+
+  it('has no AI collaborator links', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'No links' })).body
+    for (const [method, url, body] of [
+      ['GET', `/api/presentations/${id}/ai-links`],
+      ['POST', `/api/presentations/${id}/ai-links`, { name: 'Claude' }],
+      ['GET', `/mcp/plx_${'A'.repeat(43)}`],
+      ['POST', `/mcp/plx_${'A'.repeat(43)}`, { jsonrpc: '2.0', id: 1, method: 'tools/list' }],
+    ]) {
+      assert.equal((await call(method, url, body)).status, 404, `${method} ${url}`)
+    }
+  })
 })

@@ -20,9 +20,26 @@ import { defaultHarmonics } from '../utils/harmonicsView'
 import { MOLECULE_DEFAULTS } from '../utils/moleculeViewer'
 import { defaultEquation, EQUATION_SIZE } from '../utils/equationTerms'
 import { defaultGraph, defaultGraph3d, GRAPH_COLORS } from '../utils/graphPage'
+import { figureElements } from '../utils/plotImport/toFigure'
 
 // The structure file the chemistry deck's molecule loads, from client/public
 export const CAFFEINE_SRC = '/examples/caffeine.sdf'
+
+// The matplotlib figure the figure-layers showcase keeps as it was drawn
+// (the plot import's decay fixture), and the pieces the plot import cut it
+// into, in client/public: the model line, then the measured points, each
+// with its legend entry. Opened in the editor, Edit figure layers… reads
+// decay.svg again
+export const FIGURE_LAYERS_DIR = '/examples/figure-layers/'
+const DECAY_PLOT = {
+  size: { width: 432, height: 288 },
+  layers: [
+    { id: 'l1', name: 'model', kind: 'line', color: '#ff7f0e', legend: 0 },
+    { id: 'l2', name: 'measured', kind: 'points', color: '#1f77b4', legend: 1 },
+  ],
+}
+const DECAY_PIECES = [['base', 0], ['l2', 0], ['l1', 0], ['l2', 1], ['base', 1], ['legend', 0], ['l1', 1], ['l2', 2]]
+const DECAY_PLAN = 'base:53 l2:57 l1:1 l2:19 base:4 legend:1 l1:6 l2:12'
 
 const W = 960, H = 540
 const GRAPH_BOX = { w: 560, h: 400 }
@@ -143,7 +160,106 @@ parallax.datasets.query("newest").then(function (d) {
 })
 </script>`
 
+// The landing page's feature showcase: citations numbered from a .bib file,
+// and code that runs on the slide (a diffusion sketch)
+const CITE = (key, n) => '<sup data-cite="' + key + '" style="color:#6366f1;cursor:default">[' + n + ']</sup>'
+const SHOWCASE_BIB = [
+  { type: 'article', key: 'zwicky1933', author: 'Zwicky, F.', title: 'Die Rotverschiebung von extragalaktischen Nebeln', journal: 'Helvetica Physica Acta', year: '1933', volume: '6', pages: '110–127' },
+  { type: 'article', key: 'rubin1970', author: 'Rubin, Vera C. and Ford, W. Kent, Jr.', title: 'Rotation of the Andromeda Nebula from a Spectroscopic Survey of Emission Regions', journal: 'The Astrophysical Journal', year: '1970', volume: '159', pages: '379', doi: '10.1086/150317' },
+  { type: 'article', key: 'bertone2018', author: 'Bertone, Gianfranco and Hooper, Dan', title: 'History of dark matter', journal: 'Reviews of Modern Physics', year: '2018', volume: '90', pages: '045002', doi: '10.1103/RevModPhys.90.045002' },
+]
+export const DIFFUSION_SKETCH = `<canvas id="c" width="960" height="540" style="display:block;width:100%;height:100%"></canvas>
+<script>
+// 3000 random walkers from one point: where
+// they are after 50, 400 and 2000 steps
+const ctx = c.getContext('2d'), N = 3000
+const x = new Float32Array(N)
+const y = new Float32Array(N)
+const snaps = {
+  50: '#7dd3fc', 400: '#a78bfa',
+  2000: '#fb923c',
+}
+for (let t = 1; t <= 2000; t++) {
+  for (let i = 0; i < N; i++) {
+    x[i] += Math.random() - 0.5
+    y[i] += Math.random() - 0.5
+  }
+  if (!snaps[t]) continue
+  ctx.fillStyle = ctx.strokeStyle = snaps[t]
+  for (let i = 0; i < N; i++) {
+    ctx.fillRect(480 + 9 * x[i],
+      290 + 9 * y[i], 2, 2)
+  }
+  const r = 9 * Math.sqrt(t / 6)
+  ctx.beginPath()
+  ctx.arc(480, 290, r, 0, 2 * Math.PI)
+  ctx.stroke()
+}
+ctx.fillStyle = '#e8ecff'; ctx.font = '26px sans-serif'
+ctx.fillText('Diffusion: the spread grows as √t', 30, 48)
+</script>`
+
+// What an AI collaborator writes when asked for an interactive JSXGraph plot,
+// as its HTML guide's example has it (server/mcp/guides.js)
+export const JSXGRAPH_PLOT = `<div id="board" style="width:100%;height:100%"></div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraph.css">
+<script src="https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraphcore.js"></script>
+<script>
+const board = JXG.JSXGraph.initBoard('board', { boundingbox: [-7, 4, 7, -4], axis: true, showCopyright: false, showNavigation: false })
+const a = board.create('slider', [[-6, 3.2], [-2, 3.2], [0, 2, 3]], { name: 'a' })
+const b = board.create('slider', [[-6, 2.5], [-2, 2.5], [0.2, 1, 3]], { name: 'b' })
+board.create('functiongraph', [x => a.Value() * Math.sin(b.Value() * x)], { strokeColor: '#f97316', strokeWidth: 3 })
+</script>`
+
 const BUILDERS = {
+  'showcase-ai'() {
+    const b = builder('showcase-ai')
+    return b.deck('A sine wave you can tune', false, [
+      b.slide(false, [
+        { ...b.heading('A sine wave you can tune'), content: '<h2 style="margin: 0; font-size: 40px; line-height: 1.25; color: #1a1a1a">A sine wave you can tune</h2>' },
+        { id: b.id(), type: 'html', x: 60, y: 110, width: 840, height: 400, zIndex: 2, content: JSXGRAPH_PLOT },
+      ]),
+    ])
+  },
+  'showcase-cite'() {
+    const b = builder('showcase-cite')
+    const point = html => '<li><p style="font-size: 30px; line-height: 1.45">' + html + '</p></li>'
+    return {
+      ...b.deck('Missing mass', false, [
+        b.slide(false, [
+          b.heading('Missing mass, twice'),
+          { id: b.id(), type: 'text', x: 60, y: 130, width: 840, height: 300, zIndex: 2, content: '<ul style="color: #1a1a1a">'
+            + point('Coma’s galaxies move too fast for their light ' + CITE('zwicky1933', 1))
+            + point('Andromeda’s rotation curve stays flat far past its light ' + CITE('rubin1970', 2))
+            + point('Both point to the same unseen matter ' + CITE('bertone2018', 3)) + '</ul>' },
+          b.caption('Press → for the references slide Parallax builds', false),
+        ]),
+      ]),
+      bibliography: SHOWCASE_BIB,
+    }
+  },
+  'showcase-code'() {
+    const b = builder('showcase-code')
+    return b.deck('Diffusion', true, [
+      { id: b.id(), notes: '', background: { type: 'color', color: '#0f1222' }, elements: [{ id: b.id(), type: 'html', x: 0, y: 0, width: W, height: H, zIndex: 1, content: DIFFUSION_SKETCH }] },
+    ])
+  },
+  'showcase-figure'() {
+    const b = builder('showcase-figure')
+    const pieces = DECAY_PIECES.map(([part, run]) => ({ part, run, url: `${FIGURE_LAYERS_DIR}${part}${run ? `-${run + 1}` : ''}.svg` }))
+    const figure = figureElements(DECAY_PLOT, pieces, {
+      choices: { l1: { step: 1 }, l2: { step: 2 } },
+      meta: { id: b.id(), src: `${FIGURE_LAYERS_DIR}decay.svg`, file: 'decay.svg', plan: DECAY_PLAN },
+      box: { x: 210, y: 104, width: 540, height: 360 }, groupId: b.id(), newId: b.id,
+    })
+    return b.deck('A figure, a layer at a time', false, [
+      b.slide(false, [
+        b.heading('The model first, then the measurements'),
+        ...figure,
+        b.caption('Click the slide, then press → for each layer', false),
+      ]),
+    ])
+  },
   hero() {
     const b = builder('hero')
     return b.deck('Parallax', true, [
@@ -320,6 +436,9 @@ const BUILDERS = {
 }
 
 export const EXAMPLE_SLUGS = Object.keys(BUILDERS)
+// Decks the landing page's showcase plays, not cards of their own: the server
+// serves them though /admin's list doesn't have them (landing-examples.js)
+export const SHOWCASE_SLUGS = EXAMPLE_SLUGS.filter(slug => slug.startsWith('showcase-'))
 
 // The deck for an example's slug, made fresh each time, or null
 export function exampleDeck(slug) {

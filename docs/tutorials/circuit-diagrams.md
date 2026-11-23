@@ -4,7 +4,7 @@ Draw circuit schematics from parts on a grid, show the current flowing through t
 
 ## Making one
 
-1. Open the **Diagrams** menu in the toolbar and click **Circuit Diagram**.
+1. Open **Science** in the toolbar and click **Circuit**.
 2. The editor opens with a battery, a switch, a resistor and a lamp drawn. Change it, pick another circuit from **Start from…**, or choose **Blank**.
 3. Click **Insert**.
 

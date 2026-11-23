@@ -9,13 +9,13 @@ There are two ways to compare versions:
 ### From snapshots
 
 1. Open your presentation in the editor.
-2. Click the **History** button (clock icon) in the top toolbar.
+2. Choose **File › Version history…**.
 3. Next to each saved snapshot, click **Compare**.
 4. The diff viewer opens, comparing that snapshot against your current presentation state.
 
 ### From git history
 
-1. Click **Sync → Git History** in the editor toolbar.
+1. Click **Sync** at the top right of the editor and choose **Git History…**.
 2. Next to each commit, click **Compare**.
 3. The diff viewer opens, comparing the presentation at that commit against your current version.
 

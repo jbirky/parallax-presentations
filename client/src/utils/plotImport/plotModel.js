@@ -1,0 +1,1059 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Jessica Birky
+
+// A plot read out of a figure's drawing (drawing.js): its axes, calibrated
+// from their numbered ticks, and its layers, each with the data it draws.
+//
+//   { size: { width, height },
+//     axes: { box, x: { scale, range, label, categories }, y: {…}, grid },
+//     layers: [{ id, name, kind: 'points' | 'line' | 'bars', color, shape, size, width, style,
+//                data: { x, y, xErr?, yErr?, x2? }, fidelity: 'exact' | 'as drawn', legend, groups, ops }],
+//     legend: { groups, ops } | null,
+//     panels?: [{ id, name, box, parent, main, calibrated, axes, warnings, groups, ops, layers, legend }],
+//     fileWarnings?: [] (of several panels: what's said of the figure, not of a panel),
+//     figureLegend?: { groups, ops, entries: [{ label, groups, ops, layers: [ids] }] } (fig.legend),
+//     warnings: [] }
+//
+// axes and layers are the panel a graph is made of: the largest whose
+// numbers read. A figure of several panels also has them all, each with its
+// layers (ids across the figure, each layer's panel in layer.panel), for
+// keeping the figure as it is a panel at a time (toFigure.js)
+//
+// Markers, bars and error bars are where the file puts them, so their data
+// is exact. A line has the points the file draws it through; matplotlib
+// leaves out points that don't change the picture.
+//
+// An axis is calibrated from its numbered ticks: the tick marks (on any
+// side, on the box or on a spine moved out from it), or grid lines where a
+// style draws no ticks, or, with neither, the numbers' own places, which
+// matplotlib centers on their ticks.
+
+import { bboxOf, parseTickLabel, parseAxisOffset, markerShape, fontMetrics } from './drawing'
+
+export class PlotError extends Error {}
+
+const EDGE = 0.75 // points: how near an edge counts as on it
+const TICK_MAX = 12 // points: the longest a tick mark is
+const LABEL_GAP = 45 // points: the furthest a tick label sits from its axis
+
+export function plotFromDrawing(drawing) {
+  const warnings = [...(drawing.notes || [])]
+  if (drawing.pages > 1) warnings.push(`This PDF has ${drawing.pages} pages; the first was read.`)
+  if (drawing.producer && !/matplotlib/i.test(drawing.producer)) warnings.push(`This figure was made by ${drawing.producer.split(/[\s,]/)[0]}, not matplotlib, so check what was found.`)
+  if (drawing.images) warnings.push('The figure has a picture in it (such as imshow’s), which has no data to read.')
+  drawing = withInlineMarks(drawing)
+
+  // The axes: the SVG's, or found from what's drawn, in the order drawn
+  let all = (drawing.axes || []).filter(a => a.box)
+  if (!all.length) all = findAxes(drawing)
+  if (!all.length) throw new PlotError('No axes were found in this figure.')
+  const texts = mergeTexts(drawing.texts || [])
+  // The panels: each set of axes but a twin (twinx, twiny), which goes with
+  // the one whose box it shares
+  const panels = []
+  for (const a of all) {
+    const host = panels.find(p => sameBox(p.axes.box, a.box))
+    if (host) host.twins.push(a)
+    else panels.push({ axes: a, twins: [] })
+  }
+  // The one a graph is made of: the largest whose scale reads (the first
+  // drawn, of ones the same size): shared axes leave some panels' numbers off
+  const big = p => area(p.axes.box)
+  const bySize = [...panels].sort((p, q) => { const d = big(q) - big(p); return Math.abs(d) > 0.02 * big(p) ? d : 0 })
+  // Each panel reads the words nearer it than any other panel (its
+  // neighbor's numbers aren't a second axis of its own); an inset, all
+  const away = (t, b) => Math.hypot(Math.max(b.x0 - t.x, 0, t.x - b.x1), Math.max(b.y0 - t.y, 0, t.y - b.y1))
+  const tops = panels.filter(p => !panels.some(q => nestedIn(p.axes.box, q.axes.box)))
+  const wordsOf = p => !tops.includes(p) || tops.length < 2 ? texts
+    : texts.filter(t => { const c = { x: t.x + (t.w || 0) / 2, y: t.y + t.size * 0.35 }; return tops.every(q => away(c, p.axes.box) <= away(c, q.axes.box) + 0.5) })
+  let main = null, failed = null
+  for (const p of bySize) {
+    const said = []
+    try { p.read = readAxes(drawing, p.axes, all, wordsOf(p), said) } catch (err) {
+      if (!(err instanceof PlotError)) throw err
+      failed = failed || err
+      continue
+    }
+    main = p
+    p.said = said
+    break
+  }
+  if (!main) throw failed
+  // What's said of the file, before what's said of a panel
+  const fileWarnings = [...warnings]
+  warnings.push(...main.said)
+  for (const p of panels) {
+    // Another panel's scale may not read: its layers are found all the same,
+    // measured in points (and no graph is made of it)
+    if (p !== main) { p.said = []; p.read = readAxes(drawing, p.axes, all, wordsOf(p), p.said, { loose: true }) }
+  }
+  // Layers no legend in their panel names: named from a legend of the
+  // figure's own (fig.legend), or one drawn outside every panel
+  // Its entries come and go with the layers they name (one in each panel,
+  // say), each a part of its own; its frame and the rest are its own part
+  const outer = figureLegend(drawing, panels.map(p => p.axes.box), texts)
+  let outerLegend = null
+  if (outer) {
+    const entries = legendEntries(drawing, outer, texts)
+    const named = entries.map(() => [])
+    const like = (e, layer) => e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape)
+    for (const p of panels) {
+      const taken = new Set()
+      for (const layer of p.read.layers) {
+        const i = entries.findIndex((e, k) => !taken.has(k) && like(e, layer))
+        if (i < 0) continue
+        taken.add(i)
+        named[i].push(layer)
+        if (!layer.name) layer.name = entries[i].label
+      }
+    }
+    const sinks = entries.map((e, k) => (named[k].length ? { label: e.label, groups: new Set(), ops: [], layers: named[k] } : null))
+    const rest = legendDrawing(drawing, outer, entries, k => sinks[k], (drawing.axes || []).length ? null : undefined)
+    outerLegend = { rest, entries: sinks.filter(Boolean) }
+  }
+  // The layers' ids across the figure, in the order drawn; their names
+  let n = 0
+  const noun = { points: 'Points', line: 'Line', bars: 'Bars' }
+  for (const p of panels) {
+    const counts = {}
+    for (const l of p.read.layers) {
+      l.id = `l${++n}`
+      counts[l.kind] = (counts[l.kind] || 0) + 1
+      if (!l.name) l.name = `${noun[l.kind]} ${counts[l.kind]}`
+      // What draws it, for keeping the figure as it is: an SVG's groups
+      // (splitSvg.js), a PDF's operators (splitPdf.js)
+      l.groups = [...(l.groups || [])]
+      l.ops = l.ops || []
+      delete l.z; delete l.px; delete l.py
+    }
+  }
+
+  const { layers, legend } = main.read
+  const plot = {
+    size: { width: drawing.width, height: drawing.height },
+    producer: drawing.producer || '',
+    axes: axesOf(main.read),
+    layers,
+    // What draws the legend but no layer's entry (its frame, its title), for
+    // keeping the figure as it is; null without a legend
+    legend,
+    // What draws the figure's background and the axes', and the legends'
+    // boxes, for keeping the figure as it is with them clear
+    backdrop: { ...backdropOf(drawing, all), frames: [...panels.map(p => p.read.frame), outer?.frame].filter(Boolean).map(f => ({ group: f.group || null, ops: f.ops || null, fill: f.fill, stroke: f.stroke || null })) },
+    warnings,
+  }
+  // A legend of the figure's own: its frame (and what no layer has), and
+  // its entries, each with the layers it names
+  if (outerLegend) {
+    plot.figureLegend = {
+      groups: [...outerLegend.rest.groups], ops: outerLegend.rest.ops,
+      entries: outerLegend.entries.map(e => ({ label: e.label, groups: [...e.groups], ops: e.ops, layers: e.layers.map(l => l.id) })),
+    }
+  }
+  // A figure of several panels: each, for keeping the figure as it is
+  plot.labels = labelsOf(drawing, panels, panels.length > 1 ? panels.map((p, i) => `p${i + 1}`) : null, { texts, outer })
+  if (panels.length > 1) {
+    plot.panels = panelsOf(drawing, panels, main, texts)
+    for (const pn of plot.panels) for (const l of pn.layers) l.panel = pn.id
+    // Kept as it is, the figure's notes are the file's, not a panel's
+    plot.fileWarnings = fileWarnings
+    warnings.push(`This figure has ${panels.length} panels: a graph is made of one of them: ${panelNamed(plot.panels.find(pn => pn.main))}, unless you choose another.`)
+  }
+  return plot
+}
+
+// What draws matplotlib's figure patch and its axes patches, the white
+// behind the figure and behind each set of axes, which savefig(transparent=
+// True) leaves out: { groups: an SVG's, ops: a PDF's operators }. (A
+// legend's box, its frame, is kept apart: its outline stays when it's clear.) The
+// figure's is the first thing drawn, a filled rectangle over the page; a set
+// of axes' is the first thing it draws (svgReader.js marks it; in a PDF,
+// findAxes found the axes by it). A twin draws none
+function backdropOf(d, all) {
+  const page = (d.width || 0) * (d.height || 0)
+  const starts = new Set(all.map(a => a.start).filter(s => s != null))
+  const paths = [...(d.paths || [])].sort((p, q) => (p.order ?? 0) - (q.order ?? 0))
+  const found = paths.filter((p, i) => {
+    if (!p.fill || p.segs.length !== 1) return false
+    if (p.role === 'axes' || (p.ops && starts.has(p.ops[0]))) return true
+    const r = i === 0 && !p.axes && rectOf(p.segs[0])
+    return !!r && area(r) >= page * 0.98
+  })
+  return { groups: [...new Set(found.map(p => p.group).filter(Boolean))], ops: found.filter(p => p.ops).map(p => p.ops) }
+}
+
+// The titles and axis labels a figure's words can be changed in, kept as it
+// is: [{ id, kind ('title', 'xlabel', 'ylabel', 'ylabel2' a twin's or one
+// on the right, 'xlabel2' a twin's), panel, s (the words, math's $ and all),
+// math, font, size, angle, x, y (where they start, in points up from the
+// bottom left), w (how long they are), align (which of their start, middle
+// and end lines up with the axes, to stay there when they change: 'start',
+// 'center', 'end'), and what draws them: gid (an SVG's text group) or ops
+// and fill (a PDF's operators, and their color) }]
+function labelsOf(drawing, panels, ids, { texts = [], outer = null } = {}) {
+  const out = []
+  const textOps = drawing.textOps || []
+  // The figure's title (suptitle): words over every panel, across the
+  // middle of the figure, not a legend's (an SVG's, in no axes)
+  const tops = panels.map(p => p.axes.box).filter(b => !panels.some(q => q.axes.box !== b && nestedIn(b, q.axes.box)))
+  const highest = Math.max(...tops.map(b => b.y1))
+  const svg = (drawing.axes || []).length > 0
+  const sup = (svg ? drawing.texts || [] : texts).filter(t => !t.angle && t.s && !parseTickLabel(t.s) && t.y > highest
+    && (svg ? !t.axes && t.role !== 'legend' : !(outer && t.x >= outer.box.x0 - 1 && t.x <= outer.box.x1 + 1 && t.y >= outer.box.y0 - 1 && t.y <= outer.box.y1 + 1))
+    && Math.abs(t.x + (t.w || 0) / 2 - (drawing.width || 0) / 2) < 0.15 * (drawing.width || 0)
+    && !panels.some(p => p.read.words?.title === t))
+    .sort((a, b) => b.y - a.y)[0]
+  panels.forEach((p, i) => {
+    const box = p.axes.box
+    const w = p.read.words || {}
+    const twin = (p.twins || [])[0] || null
+    const found = [
+      ['title', w.title], ['xlabel', w.x], ['ylabel', w.y],
+      ['ylabel2', twin ? twin.yLabelText : w.y2], ['xlabel2', twin ? twin.xLabelText : null],
+    ]
+    for (const [kind, t] of found) add(kind, t, box, ids ? ids[i] : null)
+  })
+  if (sup) add('suptitle', sup, { x0: 0, y0: 0, x1: drawing.width || 0, y1: drawing.height || 0 }, null)
+  return out.map(({ t, ...rest }) => rest)
+
+  function add(kind, t, box, panel) {
+      if (!t || !t.s || out.some(o => o.t === t)) return
+      const entry = {
+        t, id: panel && kind !== 'suptitle' ? `${panel}:${kind}` : kind, kind, panel,
+        s: t.s, math: t.s.includes('$'), font: t.font || '', size: t.size, angle: t.angle || 0, x: t.x, y: t.y, w: t.w || 0,
+        align: alignOf(t, box),
+      }
+      if (t.gid) entry.gid = t.gid
+      else {
+        // A PDF's: the runs of text drawn along it
+        const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a)
+        const along = textOps.filter(o => {
+          const ox = o.x - t.x, oy = o.y - t.y
+          const s = ox * dx + oy * dy, n = -ox * dy + oy * dx
+          return Math.abs(n) < 0.3 * t.size && s > -0.5 && s < (t.w || 0) + 0.5
+        })
+        if (!along.length) return
+        entry.ops = along.map(o => o.ops)
+        entry.fill = along[0].fill || '#000000'
+      }
+      out.push(entry)
+  }
+}
+
+// Which of a label's start, middle and end lines up with its axes: along
+// its line, the nearest of the box's near edge, middle and far edge
+function alignOf(t, box) {
+  const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a)
+  const along = (x, y) => x * dx + y * dy
+  const start = along(t.x, t.y), len = t.w || 0
+  const ends = [along(box.x0, box.y0), along(box.x1, box.y1)].sort((p, q) => p - q)
+  const marks = { start: [start, ends[0]], center: [start + len / 2, (ends[0] + ends[1]) / 2], end: [start + len, ends[1]] }
+  let best = 'center', gap = Math.abs(marks.center[0] - marks.center[1]) - 1
+  for (const k of ['start', 'end']) { const g = Math.abs(marks[k][0] - marks[k][1]); if (g < gap) { best = k; gap = g } }
+  return best
+}
+
+// A panel in a sentence: “(a) decay”, the top left panel
+export const panelNamed = p => (/ panel$|^Inset( \d+)?$/.test(p.name) ? `the ${p.name.toLowerCase()}` : `“${p.name}”`)
+
+// What a graph needs of a set of axes read: its box, scales, ranges, labels
+// and grid
+function axesOf({ box, X, Y, labels, grid }) {
+  return {
+    box,
+    x: { scale: X.scale, range: X.range, label: clean(labels.x), categories: X.categories || null },
+    y: { scale: Y.scale, range: Y.range, label: clean(labels.y), categories: Y.categories || null },
+    grid,
+  }
+}
+
+// A figure of several panels as a graph of one of them sees it: that
+// panel's axes, layers and notes. null for a panel no graph can be made of
+// (its numbers don't read, or it has no layers)
+export function panelPlot(plot, id) {
+  const p = plot.panels?.find(q => q.id === id)
+  if (!p || p.main) return plot
+  if (!p.axes || !p.layers.length) return null
+  return {
+    ...plot, axes: p.axes, layers: p.layers, legend: p.legend,
+    warnings: [...(plot.fileWarnings || []), ...p.warnings, `A graph of ${panelNamed(p)}, one of this figure’s ${plot.panels.length} panels.`],
+  }
+}
+
+const area = b => (b.x1 - b.x0) * (b.y1 - b.y0)
+// A box inside another, and smaller: an inset
+const nestedIn = (b, outer) => b !== outer && b.x0 >= outer.x0 - 0.5 && b.x1 <= outer.x1 + 0.5 && b.y0 >= outer.y0 - 0.5 && b.y1 <= outer.y1 + 0.5 && area(b) < area(outer) * 0.9
+
+// One set of axes read: its box, scales, labels, grid, layers and legend.
+// loose: for a panel besides the one a graph is made of, whose scale needn't
+// read (its layers measured in points, then) and which may have no layers
+function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
+  const box = axes.box
+  // An SVG says which axes drew what: a twin's layers (twinx) are its own
+  const mine = it => !it.axes || !axes.id || it.axes === axes.id
+  const inBox = it => { const [x, y] = centerOf(it); return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1 }
+  const insets = new Set(all.filter(a => a.id && nestedIn(a.box, box)).map(a => a.id))
+  const twinDrawn = axes.id && [...(drawing.paths || []), ...(drawing.marks || [])].some(it => !it.role && it.axes && it.axes !== axes.id && !insets.has(it.axes) && inBox(it))
+  if (all.some(a => a !== axes && sameBox(a.box, box)) || twinDrawn) warnings.push('A second set of axes shares this plot’s box (twinx or twiny); its layers were left out.')
+  const others = all.filter(a => a !== axes && !sameBox(a.box, box))
+  const inside = (x, y, b = box, m = 0.5) => x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m
+  // In another panel: outside this one, or in an inset in it, drawn with
+  // the inset (a PDF's inset is drawn after what's under it)
+  // (an inset's tick marks and numbers stand outside its box: what's drawn
+  // near it once it's begun is its own)
+  const inOther = (x, y, order) => others.some(a => {
+    const inset = nestedIn(a.box, box)
+    const after = a.order != null && order != null && order >= a.order
+    return inside(x, y, a.box, inset ? (after ? LABEL_GAP : TICK_MAX) : 0) && (!inside(x, y, box, -0.5) || (inset && (a.order == null || order == null || after)))
+  })
+  // An inset of a PDF: what's in its box drawn before it is its parent's
+  const drawnHere = it => axes.order == null || !others.some(a => nestedIn(box, a.box)) || (it.order ?? Infinity) >= axes.order
+
+  // Ticks and their labels
+  const own = axes.ticks && (axes.ticks.x.length || axes.ticks.y.length)
+  const found = own ? null : ticksOf(drawing, box, texts)
+  if (found?.twin) warnings.push(`This plot has a second ${found.twin.split('').join(' and ')} axis on its other side; everything was read against the ${found.twin === 'x' ? 'bottom' : found.twin === 'y' ? 'left' : 'bottom and left'} one.`)
+  const xTicks = own ? axes.ticks.x : found.x
+  const yTicks = own ? axes.ticks.y : found.y
+  const offsets = own ? { x: axes.xOffset, y: axes.yOffset } : offsetsOf(texts, box)
+  let X = calibrate(xTicks, offsets.x, 'x', warnings)
+  let Y = calibrate(yTicks, offsets.y, 'y', warnings)
+  const calibrated = !!(X && Y)
+  if (!calibrated && loose) { X = POINTS(); Y = POINTS() }
+  if (!X || !Y) {
+    const which = !X ? 'x' : 'y'
+    const ticks = !X ? xTicks : yTicks
+    const words = ticks.filter(t => t.label != null).map(t => t.label)
+    throw new PlotError(`The ${which} axis doesn’t have two numbered ticks to read its scale from${words.length ? ` (its labels read as: ${words.slice(0, 4).join(', ')})` : ' (no tick labels were found beside it)'}.`)
+  }
+  X.range = [X.toData(box.x0), X.toData(box.x1)]
+  Y.range = [Y.toData(box.y0), Y.toData(box.y1)]
+  const used = new Set([...(found?.used || [])])
+  const words = own ? { x: axes.xLabelText || null, y: axes.yLabelText || null } : axisLabels(texts.filter(t => !used.has(t)), box)
+  const labels = own ? { x: axes.xLabel, y: axes.yLabel } : { x: words.x?.s || '', y: words.y?.s || '' }
+
+  // The legend: its frame (or, without one, its entries), and when it was drawn
+  const legend = legendOf(drawing, box, texts, axes.id)
+  // Part of the legend: inside it and drawn with it. Data under the legend
+  // was drawn before it
+  const ofLegend = it => legend && it.order >= legend.order && inside(...centerOf(it), legend.box, 1)
+  const isData = it => !it.role && mine(it) && drawnHere(it)
+
+  // What's drawn inside the axes
+  const marks = (drawing.marks || []).filter(m => isData(m) && inside(m.x, m.y) && !ofLegend(m) && !inOther(m.x, m.y, m.order) && !isTickMark(m, box))
+  const lines = [], segments = [], rects = [], fills = []
+  let grid = false
+  for (const p of drawing.paths || []) {
+    if (!isData(p)) {
+      if ((p.role === 'tick-x' || p.role === 'tick-y') && spansBox(p, box)) grid = true
+      continue
+    }
+    const pts = p.segs.flat()
+    if (!pts.length) continue
+    const b = bboxOf(pts)
+    if (!inside(b.x0, b.y0) || !inside(b.x1, b.y1)) continue
+    if (inOther((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, p.order)) continue
+    if (ofLegend(p)) continue
+    if (sameBox(b, box)) continue
+    if (isSpine(p, b, box) || isInnerTick(p, b, box)) continue
+    if (p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && spansBox(p, box)) { grid = true; continue }
+    if (p.fill && (p.closed || isClosed(p)) && p.segs.length === 1 && rectOf(p.segs[0])) { rects.push({ ...rectOf(p.segs[0]), fill: p.fill, group: p.group, ops: p.ops, order: p.order ?? 0 }); continue }
+    if (p.fill && !p.stroke) { fills.push(p); continue }
+    if (!p.stroke) continue
+    if (p.segs.every(s => s.length === 2 && (flat(s, 0) || flat(s, 1)))) { for (const s of p.segs) segments.push({ s, color: p.stroke, group: p.group, ops: p.ops }); continue }
+    lines.push(p)
+  }
+  if (fills.length) warnings.push(`${fills.length === 1 ? 'A filled area' : `${fills.length} filled areas`} (fill_between, a shaded band) couldn’t be read as data.`)
+
+  // Error bars: upright or level segments through markers of their color
+  const ups = segments.filter(g => flat(g.s, 0)), levels = segments.filter(g => flat(g.s, 1) && !flat(g.s, 0))
+  // Caps: level or upright tick markers at the bars' ends
+  const ends = segments.flatMap(g => g.s)
+  const isCap = m => (m.shape === 'hline' || m.shape === 'vline') && ends.some(([x, y]) => Math.abs(x - m.x) < 0.05 && Math.abs(y - m.y) < 0.05)
+  const points = marks.filter(m => !isCap(m))
+  const caps = marks.filter(isCap)
+
+  // Layers: markers by the element they came from (an SVG says), or by look
+  const layers = []
+  const groups = new Map()
+  for (const m of points) {
+    const key = m.group || `${m.fill}|${m.stroke}|${m.shape}|${m.size.toFixed(1)}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(m)
+  }
+  for (const ms of groups.values()) {
+    const first = ms[0]
+    const color = first.fill || first.stroke || '#000000'
+    layers.push({
+      kind: 'points', color, shape: first.shape, size: first.size, z: first.order ?? 0,
+      groups: new Set(ms.map(m => m.group).filter(Boolean)),
+      ops: ms.map(m => m.ops).filter(Boolean),
+      px: ms.map(m => m.x), py: ms.map(m => m.y),
+      data: { x: ms.map(m => X.toData(m.x)), y: ms.map(m => Y.toData(m.y)) },
+      fidelity: 'exact',
+    })
+  }
+  attachErrors(layers, ups, 'y', X, Y, warnings)
+  attachErrors(layers, levels, 'x', X, Y, warnings)
+  // An error bar's caps go with its points
+  for (const c of caps) {
+    const layer = (c.group || c.ops) && layers.find(l => l.kind === 'points' && l.color === (c.fill || c.stroke))
+    if (layer && c.group) layer.groups.add(c.group)
+    if (layer && c.ops) layer.ops.push(c.ops)
+  }
+
+  for (const p of lines) {
+    const pts = p.segs.length === 1 ? p.segs[0] : p.segs.flatMap((s, i) => (i ? [[NaN, NaN], ...s] : s))
+    layers.push({
+      kind: 'line', color: p.stroke, width: p.width, style: dashStyle(p.dash, p.width), z: p.order ?? 0,
+      groups: new Set(p.group ? [p.group] : []),
+      ops: p.ops ? [p.ops] : [],
+      data: { x: pts.map(([x]) => (isFinite(x) ? X.toData(x) : NaN)), y: pts.map(([, y]) => (isFinite(y) ? Y.toData(y) : NaN)) },
+      fidelity: 'as drawn',
+    })
+  }
+
+  // Bars: rectangles standing on the axis, by color
+  if (rects.length) {
+    const byFill = new Map()
+    for (const r of rects) { if (!byFill.has(r.fill)) byFill.set(r.fill, []); byFill.get(r.fill).push(r) }
+    let shifted = false
+    for (const [fill, rs] of byFill) {
+      const data = { x: [], x2: [], y: [] }
+      for (const r of rs) {
+        const left = X.toData(r.x0), right = X.toData(r.x1)
+        const lo = Y.toData(r.y0), hi = Y.toData(r.y1)
+        const zero = v => Math.abs(v) <= 1e-9 * (Math.abs(Y.range[1] - Y.range[0]) || 1)
+        let value
+        if (Y.scale === 'log') value = hi
+        else if (zero(lo)) value = hi
+        else if (zero(hi)) value = lo
+        else { value = hi; shifted = true }
+        data.x.push(left); data.x2.push(right); data.y.push(value)
+      }
+      layers.push({ kind: 'bars', color: fill, z: rs[0].order, data, fidelity: 'exact', groups: new Set(rs.map(r => r.group).filter(Boolean)), ops: rs.map(r => r.ops).filter(Boolean) })
+    }
+    if (shifted) warnings.push('Some bars don’t start at zero (stacked bars?); they stand on zero here.')
+  }
+
+  if (!layers.length && !loose) throw new PlotError('No points, lines or bars were found inside the axes.')
+  layers.sort((p, q) => p.z - q.z)
+
+  // Names from the legend, matched by kind, color and marker
+  const entries = legendEntries(drawing, legend, texts)
+  const taken = new Set()
+  for (const layer of layers) {
+    const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== 'points' || !e.shape || e.shape === layer.shape))
+    if (i >= 0) { taken.add(i); layer.name = entries[i].label; layer.legend = i }
+  }
+  // Each entry's drawing to its layer, to come and go with it; the frame and
+  // the rest to the legend's own part
+  const byEntry = new Map(layers.filter(l => l.legend != null).map(l => [l.legend, l]))
+  const legendPart = legend ? legendDrawing(drawing, legend, entries, k => byEntry.get(k) || null, axes.id) : null
+  return {
+    box, X, Y, labels, grid, layers, calibrated,
+    legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
+    frame: legend?.frame || null,
+    // Its title's and axis labels' words, for changing them (labelsOf)
+    words: { ...words, title: own ? axes.titleText || null : titleOver(texts, box) },
+  }
+}
+
+// ── Panels ──
+
+// A figure's panels, for keeping it as it is: [{ id, name, box, parent,
+// main, calibrated, groups, ops, layers, legend }]. Each is a part of its
+// own, coming and going with its layers inside it: its background, axes,
+// ticks, labels and title, which an SVG groups (its axes_N, and a twin's)
+// and a PDF draws in one run of operators, a panel whole before the next
+// (an inset, inside its parent's run). parent: the panel an inset is in
+function panelsOf(d, panels, main, texts) {
+  const out = panels.map((p, i) => ({
+    id: `p${i + 1}`, name: '', box: p.axes.box, parent: null, main: p === main, calibrated: p.read.calibrated,
+    groups: [p.axes, ...p.twins].map(a => a.id).filter(Boolean), ops: [],
+    layers: p.read.layers, legend: p.read.legend,
+    // For a graph of it: its axes (null when its numbers don't read), and
+    // what was said of it
+    axes: p.read.calibrated ? axesOf(p.read) : null, warnings: p.said || [],
+    title: clean(p.axes.title || ''),
+  }))
+  for (const p of out) {
+    const outer = out.filter(q => nestedIn(p.box, q.box)).sort((a, b) => area(a.box) - area(b.box))[0]
+    if (outer) p.parent = outer.id
+  }
+
+  // A PDF's runs
+  const items = [...(d.paths || []), ...(d.marks || []), ...(d.textOps || [])].filter(it => it.ops)
+  if (items.length && !out.some(p => p.groups.length)) {
+    const within = (it, b, m = 0) => { const [x, y] = centerOf(it); return x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m }
+    const away = (it, b) => { const [x, y] = centerOf(it); return Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.y0 - y, 0, y - b.y1)) }
+    const first = (b, after = -1) => Math.min(...items.filter(it => it.ops[0] > after && within(it, b)).map(it => it.ops[0]))
+    const top = out.filter(p => !p.parent)
+    top.forEach(p => { p.start = panels[out.indexOf(p)].axes.start ?? first(p.box) })
+    top.sort((a, b) => a.start - b.start)
+    // Each to the next one's start; the last to the last thing near it
+    // (after it come the figure's own title and legend)
+    top.forEach((p, k) => {
+      if (k < top.length - 1) { p.end = top[k + 1].start - 1; return }
+      const near = items.filter(it => it.ops[0] >= p.start && top.every(q => away(it, p.box) <= away(it, q.box)) && away(it, p.box) <= LABEL_GAP + 15)
+      p.end = Math.max(p.start, ...near.map(it => it.ops[1]))
+    })
+    for (const p of out.filter(q => q.parent)) {
+      const host = out.find(q => q.id === p.parent)
+      p.start = panels[out.indexOf(p)].axes.start ?? first(p.box, host.start ?? -1)
+      const near = items.filter(it => it.ops[0] >= p.start && (host.end == null || it.ops[1] <= host.end) && away(it, p.box) <= 30)
+      p.end = Math.max(p.start, ...near.map(it => it.ops[1]))
+    }
+    for (const p of out) {
+      if (isFinite(p.start) && isFinite(p.end)) p.ops = [[p.start, p.end]]
+      delete p.start; delete p.end
+    }
+  }
+
+  // Names: a title, else where it is (top left, right, an inset)
+  const top = out.filter(p => !p.parent)
+  const spots = k => {
+    const vals = []
+    for (const p of top) { const c = k === 'x' ? (p.box.x0 + p.box.x1) / 2 : -(p.box.y0 + p.box.y1) / 2; if (!vals.some(v => Math.abs(v - c) < 10)) vals.push(c) }
+    return vals.sort((a, b) => a - b)
+  }
+  const xs = spots('x'), ys = spots('y')
+  const word = (list, i, n, other) => n === 1 ? '' : n <= 3 ? list[n === 2 && i === 1 ? 2 : i] : `${other} ${i + 1}`
+  for (const p of out) {
+    if (!p.title && !p.groups.length) {
+      // A PDF's: words centered over the box, just above it
+      const over = titleOver(texts, p.box)
+      if (over) p.title = clean(over.s)
+    }
+    if (p.parent) { const k = out.filter(q => q.parent).indexOf(p); p.name = p.title || (k ? `Inset ${k + 1}` : 'Inset'); continue }
+    const xi = xs.findIndex(v => Math.abs(v - (p.box.x0 + p.box.x1) / 2) < 10)
+    const yi = ys.findIndex(v => Math.abs(v + (p.box.y0 + p.box.y1) / 2) < 10)
+    const where = [word(['top', 'middle', 'bottom'], yi, ys.length, 'row'), word(['left', 'center', 'right'], xi, xs.length, 'column')].filter(Boolean).join(' ')
+    p.name = p.title || (where ? `${where[0].toUpperCase()}${where.slice(1)} panel` : top.length === 1 ? 'Main panel' : `Panel ${out.indexOf(p) + 1}`)
+  }
+  for (const p of out) delete p.title
+  return out
+}
+
+// A scale for a panel whose numbers don't read: the page's points
+const POINTS = () => ({ scale: 'linear', toData: v => v, categories: null, range: null, approx: false })
+
+const clean = s => String(s || '').replace(/\$/g, '').replace(/\\mathdefault\{([^{}]*)\}/g, '$1').trim()
+const centerOf = it => (it.segs ? (b => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2])(bboxOf(it.segs.flat())) : [it.x, it.y])
+
+// matplotlib stamps a marker only where that's shorter than drawing each
+// one out: a lone marker (a legend's sample, a one-point series, a few tick
+// marks) comes as a small path, filled and stroked. Those are markers too
+function withInlineMarks(drawing) {
+  const inline = new Set()
+  const marks = [...(drawing.marks || [])]
+  for (const p of drawing.paths || []) {
+    if (p.group || !p.fill || !p.stroke) continue
+    const pts = p.segs.flat()
+    if (!pts.length) continue
+    const b = bboxOf(pts)
+    const w = b.x1 - b.x0, h = b.y1 - b.y0, big = Math.max(w, h)
+    if (big > 20 || big < 0.5) continue
+    // Square-ish, or a line ('_', '|')
+    if (p.curves === 0 && Math.min(w, h) > 0.01 && Math.abs(w - h) > 0.15 * big) continue
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2
+    const { shape, size } = markerShape(p.segs.map(s => s.map(([x, y]) => [x - cx, y - cy])), p.curves)
+    if (shape === 'other' || shape === 'polygon') continue
+    marks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, ops: p.ops, role: p.role, line: shape === 'hline' || shape === 'vline' ? p.segs[0] : null })
+    inline.add(p)
+  }
+  return { ...drawing, marks, paths: (drawing.paths || []).filter(p => !inline.has(p)) }
+}
+
+// A tick mark drawn as a marker, on the box's edge
+function isTickMark(m, box) {
+  if (m.shape === 'vline') return Math.abs(m.y - box.y0) <= m.size / 2 + EDGE || Math.abs(m.y - box.y1) <= m.size / 2 + EDGE
+  if (m.shape === 'hline') return Math.abs(m.x - box.x0) <= m.size / 2 + EDGE || Math.abs(m.x - box.x1) <= m.size / 2 + EDGE
+  return false
+}
+
+// ── Axes, in a drawing that doesn't name them (a PDF) ──
+
+function findAxes(d) {
+  const page = d.width * d.height
+  const boxes = []
+  for (const p of d.paths || []) {
+    if (!p.fill || p.segs.length !== 1) continue
+    const r = rectOf(p.segs[0])
+    if (!r) continue
+    const a = (r.x1 - r.x0) * (r.y1 - r.y0)
+    // Not the page's own background, and big enough to be a plot
+    if (a > page * 0.98 || a < page * 0.04) continue
+    if (boxes.some(b => sameBox(b, r))) continue
+    // When it's drawn: the panel's first operator, for keeping it as it is
+    boxes.push({ ...r, order: p.order, start: p.ops?.[0] })
+  }
+  // Keep the boxes numbered along two sides: a bar or a legend isn't
+  const texts = mergeTexts(d.texts || [])
+  const numbered = boxes.filter(b => {
+    const t = ticksOf(d, b, texts)
+    return t.x.filter(k => parseTickLabel(k.label)).length >= 2 && t.y.filter(k => parseTickLabel(k.label)).length >= 2
+  })
+  // With them, panels the same size or so with no numbers of their own
+  // (shared axes leave them off), not inside one (a legend's frame is)
+  const smallest = Math.min(...numbered.map(area))
+  const panels = boxes.filter(b => numbered.includes(b) || (numbered.length && area(b) >= smallest * 0.5 && !numbered.some(n => nestedIn(b, n) || nestedIn(n, b))))
+  if (numbered.length) return panels.map(b => ({ box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, order: b.order, start: b.start }))
+  // No background: the spines' box
+  const spines = (d.paths || []).filter(p => p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && (flat(p.segs[0], 0) || flat(p.segs[0], 1)))
+    .filter(p => { const b = bboxOf(p.segs[0]); return Math.max(b.x1 - b.x0, b.y1 - b.y0) > Math.min(d.width, d.height) * 0.3 })
+  if (spines.length >= 2) {
+    const b = bboxOf(spines.flatMap(p => p.segs[0]))
+    if (b.x1 - b.x0 > 20 && b.y1 - b.y0 > 20) return [{ box: b }]
+  }
+  // A background with words beside it that aren't numbers (categories)
+  return boxes.length ? [{ box: boxes.sort((p, q) => (q.x1 - q.x0) * (q.y1 - q.y0) - (p.x1 - p.x0) * (p.y1 - p.y0))[0] }] : []
+}
+
+// Each axis's labeled ticks: [{ pos, label, approx }]. The labels are the
+// row of words under (or over) the box and the column beside it nearest the
+// box; each goes to the nearest tick mark or grid line, or, with none near,
+// stands where its tick would be (approx). used: the words taken as labels
+function ticksOf(d, box, texts) {
+  // Where ticks are: short strokes (or tick markers) along an edge, in a row
+  // that shares an end on the edge or on a spine moved out from it, and
+  // grid lines across the box
+  const strokes = []
+  for (const p of d.paths || []) {
+    if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) continue
+    strokes.push(p.segs[0])
+  }
+  for (const m of d.marks || []) if (m.line) strokes.push(m.line)
+    else if (m.shape === 'vline') strokes.push([[m.x, m.y - m.size / 2], [m.x, m.y + m.size / 2]])
+    else if (m.shape === 'hline') strokes.push([[m.x - m.size / 2, m.y], [m.x + m.size / 2, m.y]])
+  const places = { x: [], y: [] }
+  const rows = { x: new Map(), y: new Map() }
+  for (const s of strokes) {
+    const [[ax, ay], [bx, by]] = s
+    const len = Math.hypot(bx - ax, by - ay)
+    const upright = Math.abs(ax - bx) < 0.01, level = Math.abs(ay - by) < 0.01
+    if (upright && ax >= box.x0 - 1 && ax <= box.x1 + 1) {
+      if (Math.min(ay, by) <= box.y0 + 1 && Math.max(ay, by) >= box.y1 - 1) { places.x.push(ax); continue } // a grid line
+      if (len > TICK_MAX) continue
+      // Grouped by the end nearer the box's edge: at or below the bottom, at or above the top
+      for (const y of [ay, by]) if (y <= box.y0 + EDGE || y >= box.y1 - EDGE) { const k = y.toFixed(1); if (!rows.x.has(k)) rows.x.set(k, []); rows.x.get(k).push(ax) }
+    } else if (level && ay >= box.y0 - 1 && ay <= box.y1 + 1) {
+      if (Math.min(ax, bx) <= box.x0 + 1 && Math.max(ax, bx) >= box.x1 - 1) { places.y.push(ay); continue }
+      if (len > TICK_MAX) continue
+      for (const x of [ax, bx]) if (x <= box.x0 + EDGE || x >= box.x1 - EDGE) { const k = x.toFixed(1); if (!rows.y.has(k)) rows.y.set(k, []); rows.y.get(k).push(ay) }
+    }
+  }
+  // A row of ticks: three or more marks sharing an end
+  for (const k of ['x', 'y']) for (const list of rows[k].values()) if (list.length >= 3) places[k].push(...list)
+
+  // The labels: words beside the box, the row (or column) nearest it, on
+  // whichever side has more
+  const flatText = texts.filter(t => !t.angle)
+  const pick = groups => [...groups.values()].sort((p, q) => p.gap - q.gap)[0]?.items || []
+  const cluster = (list, key, gap) => {
+    const groups = new Map()
+    for (const t of list) {
+      const k = Math.round(key(t) * 2) / 2
+      const g = [...groups.keys()].find(q => Math.abs(q - k) <= 1)
+      const at = g ?? k
+      if (!groups.has(at)) groups.set(at, { gap: gap(t), items: [] })
+      groups.get(at).items.push(t)
+    }
+    return groups
+  }
+  const below = flatText.filter(t => t.y + t.size * 0.75 < box.y0 + 1 && box.y0 - t.y < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20)
+  const above = flatText.filter(t => t.y > box.y1 - 1 && t.y - box.y1 < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20)
+  const left = flatText.filter(t => t.x + t.w < box.x0 + 1 && box.x0 - (t.x + t.w) < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10)
+  const right = flatText.filter(t => t.x > box.x1 - 1 && t.x - box.x1 < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10)
+  // The bottom and left first, where they're numbered; a second axis on the
+  // other side (twinx) is a different scale
+  const numbered = list => list.filter(t => parseTickLabel(t.s)).length
+  const side = (first, other) => (numbered(first) >= 2 || numbered(other) < 2 ? (first.length || !other.length ? first : other) : other)
+  const bottomRow = pick(cluster(below, t => t.y, t => box.y0 - t.y)), topRow = pick(cluster(above, t => t.y, t => t.y - box.y1))
+  const leftCol = pick(cluster(left, t => t.x + t.w, t => box.x0 - (t.x + t.w))), rightCol = pick(cluster(right, t => t.x, t => t.x - box.x1))
+  const xRow = side(bottomRow, topRow), yCol = side(leftCol, rightCol)
+  const twin = (xRow === bottomRow && numbered(topRow) >= 2 ? 'x' : '') + (yCol === leftCol && numbered(rightCol) >= 2 ? 'y' : '')
+
+  const pair = (labels, list, anchor, tol) => labels.map(t => {
+    const a = anchor(t)
+    let best = null
+    for (const p of list) if (Math.abs(p - a) <= tol && (best === null || Math.abs(p - a) < Math.abs(best - a))) best = p
+    return best === null ? { pos: a, label: t.s, approx: true } : { pos: best, label: t.s }
+  }).sort((p, q) => p.pos - q.pos)
+  const x = pair(xRow, places.x, t => t.x + t.w / 2, 6)
+  // matplotlib centers a y label's line on its tick, its baseline a
+  // font's measure below
+  const y = pair(yCol, places.y, t => t.y + fontMetrics(t.font).drop * t.size, 4)
+  return { x, y, used: [...xRow, ...yCol], twin }
+}
+
+// pdf.js may give a label in pieces: LaTeX's glyphs one by one ("2", ".",
+// "5"), and 10³ as "10" and a raised "3". One label each
+function mergeTexts(texts) {
+  // Pieces on one baseline, touching: one word
+  const sorted = [...texts].sort((p, q) => (Math.abs(p.y - q.y) > 0.1 * Math.max(p.size, q.size) ? q.y - p.y : p.x - q.x))
+  const runs = []
+  for (const t of sorted) {
+    const last = runs[runs.length - 1]
+    const gap = last ? t.x - (last.x + last.w) : Infinity
+    if (last && !t.angle && !last.angle && Math.abs(t.y - last.y) < 0.1 * t.size && Math.abs(t.size - last.size) < 0.5 && gap > -0.6 && gap < 0.45 * t.size) {
+      last.s += gap > 0.12 * t.size ? ` ${t.s}` : t.s
+      last.w = t.x + t.w - last.x
+    } else runs.push({ ...t })
+  }
+  // 10 (or 3 × 10) with its raised power: 10^{3}. Every pair is found
+  // first: a power, higher up, comes before its 10
+  const power = new Map() // 10's index -> its power's
+  const taken = new Set()
+  runs.forEach((t, i) => {
+    if (!/^(?:[-−]?\d+(?:\.\d+)?\s*×\s*)?10$/.test(t.s)) return
+    const j = runs.findIndex((u, k) => k !== i && !taken.has(k) && u.x >= t.x + t.w - 2 && u.x <= t.x + t.w + 8
+      && u.y > t.y + 1 && u.y < t.y + t.size && /^[-−]?\d+$/.test(u.s))
+    if (j >= 0) { power.set(i, j); taken.add(j) }
+  })
+  return runs.flatMap((t, i) => {
+    if (taken.has(i)) return []
+    if (!power.has(i)) return [t]
+    const u = runs[power.get(i)]
+    return [{ ...t, s: `${t.s}^{${u.s}}`, w: u.x + u.w - t.x }]
+  })
+}
+
+// The scale note at an axis's end (1e6, ×10^{6}), from a PDF's words
+function offsetsOf(texts, box) {
+  const out = { x: null, y: null }
+  for (const t of texts) {
+    if (!parseAxisOffset(t.s)) continue
+    if (t.x > box.x1 - 60 && t.y < box.y0) out.x = t.s
+    else if (t.y > box.y1 - 2 && (t.x < box.x0 + 60 || t.x > box.x1 - 60)) out.y = t.s
+  }
+  return out
+}
+
+// A PDF's axis labels: the words under the x axis's numbers, and the
+// upright words beside the y axis's
+// A set of axes' labels in a drawing that doesn't name them (a PDF): the
+// words under the box, the words turned on their side beside it (the left
+// one's the y label; one on the right, a twin's or one moved there, y2)
+function axisLabels(texts, box) {
+  const words = texts.filter(t => !parseTickLabel(t.s) && !parseAxisOffset(t.s))
+  const x = words.filter(t => !t.angle && t.y < box.y0 - 2 && t.x + t.w / 2 > box.x0 && t.x + t.w / 2 < box.x1).sort((p, q) => q.y - p.y)[0]
+  const side = words.filter(t => Math.abs(Math.abs(t.angle) - 90) < 2 && (t.x < box.x0 || t.x > box.x1))
+  const y = side.sort((p, q) => Math.abs(p.x - box.x0) - Math.abs(q.x - box.x0))[0]
+  const y2 = side.filter(t => t !== y && t.x > box.x1).sort((p, q) => p.x - q.x)[0]
+  return { x: x || null, y: y || null, y2: y2 || null }
+}
+
+// A set of axes' title in a drawing that doesn't name it (a PDF): words over
+// the box, just above it, centered on it (or at one end, a title placed so)
+function titleOver(texts, box) {
+  const cx = (box.x0 + box.x1) / 2, span = box.x1 - box.x0
+  return texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.y > box.y1 && t.y < box.y1 + 3 * t.size
+    && (Math.abs(t.x + (t.w || 0) / 2 - cx) < span / 4 || Math.abs(t.x - box.x0) < 2 || Math.abs(t.x + (t.w || 0) - box.x1) < 2))
+    .sort((a, b) => a.y - b.y)[0] || null
+}
+
+// An axis's scale from its labeled ticks: linear or log, whichever puts the
+// ticks where they are; words for labels number the ticks 0, 1, 2…
+function calibrate(ticks, offsetText, axis, warnings) {
+  let pairs = ticks.filter(t => t.pos != null && t.label != null).map(t => ({ pos: t.pos, label: t.label, approx: !!t.approx, ...(parseTickLabel(t.label) || {}) }))
+    .sort((p, q) => p.pos - q.pos)
+  const numbered = pairs.filter(p => p.value !== undefined && isFinite(p.value))
+  let categories = null
+  if (numbered.length < 2) {
+    const named = pairs.filter(p => String(p.label).trim())
+    if (named.length < 2) return null
+    categories = named.map(p => String(p.label).replace(/\$/g, '').trim())
+    pairs = named.map((p, i) => ({ pos: p.pos, value: i, approx: p.approx }))
+    warnings.push(`The ${axis} axis is labeled with words (${categories.slice(0, 3).join(', ')}${categories.length > 3 ? '…' : ''}), so the graph numbers them from 0.`)
+  } else pairs = numbered
+
+  if (!categories) {
+    // Type 3 text loses minus signs: labels rise along an axis, so those
+    // before a 0 are negative, and labels that fall are all negative
+    const powers = pairs.every(p => p.power !== undefined)
+    const key = powers ? 'power' : 'value'
+    const rising = pairs.every((p, i) => i === 0 || p[key] > pairs[i - 1][key])
+    if (!rising) {
+      const zero = pairs.findIndex(p => p[key] === 0)
+      let fixed = false
+      if (zero > 0 && pairs.slice(0, zero).every(p => p[key] > 0)) { pairs.slice(0, zero).forEach(p => { p[key] = -p[key] }); fixed = true }
+      else if (pairs.every((p, i) => (i === 0 || p[key] < pairs[i - 1][key]) && p[key] > 0)) { pairs.forEach(p => { p[key] = -p[key] }); fixed = true }
+      if (fixed && powers) pairs.forEach(p => { p.value = 10 ** p.power })
+    }
+    const off = parseAxisOffset(offsetText)
+    if (off) pairs.forEach(p => { p.value = off.scale ? p.value * off.scale : p.value + off.shift })
+  }
+
+  const fit = f => {
+    const n = pairs.length
+    let sx = 0, sy = 0, sxx = 0, sxy = 0
+    for (const p of pairs) { const u = f(p.value); sx += u; sy += p.pos; sxx += u * u; sxy += u * p.pos }
+    const den = n * sxx - sx * sx
+    if (!(Math.abs(den) > 0)) return null
+    const b = (n * sxy - sx * sy) / den, a = (sy - b * sx) / n
+    const resid = Math.max(...pairs.map(p => Math.abs(a + b * f(p.value) - p.pos)))
+    return { a, b, resid }
+  }
+  const lin = fit(v => v)
+  const canLog = !categories && pairs.every(p => p.value > 0)
+  const log = canLog ? fit(v => Math.log10(v)) : null
+  const useLog = log && (!lin || log.resid < lin.resid * 0.5 || pairs.every(p => p.power !== undefined))
+  const F = useLog ? log : lin
+  if (!F || !isFinite(F.b) || F.b === 0) return null
+  const approx = pairs.some(p => p.approx)
+  if (approx) warnings.push(`The ${axis} axis has no tick marks or grid lines to measure from, so its scale comes from where its numbers are printed: very close (within about 0.01% of the axis), not exact.`)
+  else if (F.resid > 0.5) warnings.push(`The ${axis} axis’s numbered ticks don’t line up evenly (off by up to ${F.resid.toFixed(1)} pt); check its numbers.`)
+  const toData = pos => { const u = (pos - F.a) / F.b; return useLog ? 10 ** u : u }
+  return { scale: useLog ? 'log' : 'linear', toData, categories, range: null, fit: F, approx }
+}
+
+// ── The legend ──
+
+// { box, order, frame }: where the legend is and when it was drawn (it's
+// drawn after the data), from the SVG's group (in these axes: axesId), a
+// filled frame with words in it, or, without a frame, words inside the axes
+// with a sample just left of them
+function legendOf(d, box, texts, axesId) {
+  const ours = it => it.role === 'legend' && (!axesId || it.axes === axesId)
+  const own = [...(d.paths || []), ...(d.marks || [])].filter(ours)
+  if (own.length) {
+    const frame = own.find(p => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4)
+    // Without a frame: around its samples and its words
+    const words = (d.texts || []).filter(ours).flatMap(t => [[t.x, t.y], [t.x + t.w, t.y + t.size]])
+    const b = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap(p => (p.segs ? p.segs.flat() : [[p.x, p.y]])), ...words])
+    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)), frame: frame || null }
+  }
+  // An SVG's legend is its group: these axes have none
+  if (axesId && [...(d.paths || []), ...(d.marks || [])].some(it => it.role === 'legend')) return null
+  const words = texts.filter(t => !t.angle && !parseTickLabel(t.s) && t.x > box.x0 && t.x < box.x1 && t.y > box.y0 && t.y < box.y1)
+  for (const p of d.paths || []) {
+    if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue
+    const b = bboxOf(p.segs[0])
+    if (sameBox(b, box) || b.x0 < box.x0 - 1 || b.x1 > box.x1 + 1 || b.y0 < box.y0 - 1 || b.y1 > box.y1 + 1) continue
+    if (words.some(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)) return { box: b, order: p.order ?? 0, frame: p }
+  }
+  // No frame: entries, each a word with a sample just before it on its line
+  const found = []
+  for (const t of words) {
+    const s = sampleBefore(d, t, -Infinity)
+    if (s) found.push({ t, s })
+  }
+  if (!found.length) return null
+  const pts = found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])])
+  const b = bboxOf(pts)
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null }
+}
+
+// A legend outside every panel: the figure's own (fig.legend), or one an
+// axes draws outside its box. { box, order, frame } as legendOf has it: an
+// SVG's, from a legend group no axes holds; a PDF's, a filled frame outside
+// the panels with words and samples in it, or, without one, words outside
+// the panels with a sample just before them. null without one
+function figureLegend(d, boxes, texts) {
+  const outside = (x, y) => boxes.every(b => x < b.x0 - 1 || x > b.x1 + 1 || y < b.y0 - 1 || y > b.y1 + 1)
+  const items = [...(d.paths || []), ...(d.marks || [])]
+  if (items.some(it => it.role === 'legend') || (d.texts || []).some(t => t.role === 'legend')) {
+    const own = items.filter(it => it.role === 'legend' && !it.axes)
+    if (!own.length) return null
+    const frame = own.find(p => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4) || null
+    const words = (d.texts || []).filter(t => t.role === 'legend' && !t.axes).flatMap(t => [[t.x, t.y], [t.x + t.w, t.y + t.size]])
+    const b = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap(p => (p.segs ? p.segs.flat() : [[p.x, p.y]])), ...words])
+    return { box: b, order: Math.min(...own.map(p => p.order ?? 0)), frame }
+  }
+  const page = (d.width || 0) * (d.height || 0)
+  const words = texts.filter(t => !t.angle && !parseTickLabel(t.s) && outside(t.x, t.y))
+  for (const p of d.paths || []) {
+    if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue
+    const b = bboxOf(p.segs[0])
+    // Not the figure's background
+    if (page && area(b) > page * 0.5) continue
+    if (!outside((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2)) continue
+    const inFrame = words.filter(t => t.x >= b.x0 && t.x <= b.x1 && t.y >= b.y0 && t.y <= b.y1)
+    if (inFrame.some(t => sampleBefore(d, t, p.order ?? 0))) return { box: b, order: p.order ?? 0, frame: p }
+  }
+  const found = words.map(t => ({ t, s: sampleBefore(d, t, -Infinity) })).filter(f => f.s && outside(...centerOf(f.s)))
+  if (!found.length) return null
+  const b = bboxOf(found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...(s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]])]))
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null }
+}
+
+// The sample a legend entry's words follow: a marker or a short line on
+// their line, ending just before them, drawn from `after` on
+function sampleBefore(d, t, after) {
+  const mid = t.y + t.size * 0.35
+  const row = y => Math.abs(y - mid) < t.size * 0.6
+  const before = x => x < t.x && x > t.x - 40
+  const mark = (d.marks || []).find(m => (m.order ?? 0) >= after && row(m.y) && before(m.x) && m.shape !== 'hline' && m.shape !== 'vline')
+  if (mark) return mark
+  return (d.paths || []).find(p => {
+    if ((p.order ?? 0) < after) return false
+    const b = bboxOf(p.segs.flat())
+    // (the gap before the words is handletextpad, 0.8 of their size by default)
+    return row((b.y0 + b.y1) / 2) && b.y1 - b.y0 < t.size && before(b.x1 + 0.01) && t.x - b.x1 < Math.max(12, t.size * 1.6) && (b.x1 - b.x0) > 3 && (b.x1 - b.x0) < 40
+  }) || null
+}
+
+// Each legend entry's words, and the kind and color of the sample beside them
+function legendEntries(d, legend, texts) {
+  if (!legend) return []
+  const lb = legend.box
+  const within = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1
+  const words = texts.filter(t => within(t.x, t.y) && !parseTickLabel(t.s)).sort((p, q) => q.y - p.y)
+  return words.map(t => {
+    const label = t.s.replace(/\$/g, '')
+    const s = sampleBefore(d, t, legend.order)
+    if (!s) return { label, kind: null, t }
+    if (!s.segs) return { label, kind: 'points', color: s.fill || s.stroke, shape: s.shape, t }
+    const r = s.fill && s.segs.length === 1 && rectOf(s.segs[0])
+    return r && !s.stroke ? { label, kind: 'bars', color: s.fill, t } : { label, kind: 'line', color: s.stroke, t }
+  })
+}
+
+// What the legend draws, shared out: each entry's sample and words go to the
+// layer named from it (its groups, an SVG's; its operators, a PDF's), so
+// they come and go with it; the frame, a title and entries no layer has
+// stay the legend's ({ groups, ops }). An SVG's legend is its group's; a
+// PDF's, what's drawn in its box from its frame on. An entry is a row of
+// the legend: its words, and the sample just before them
+// sinkOf(k): where entry k's drawing goes ({ groups, ops }: a layer, or a
+// figure legend's entry), null to leave it the legend's. axesId: an SVG
+// axes' legend; null, an SVG legend of the figure's own (in no axes)
+function legendDrawing(d, legend, entries, sinkOf, axesId) {
+  const lb = legend.box
+  const out = { groups: new Set(), ops: [] }
+  const svg = [...(d.paths || []), ...(d.marks || []), ...(d.texts || [])].some(it => it.role === 'legend')
+  const ours = it => it.role === 'legend' && (axesId === null ? !it.axes : !axesId || it.axes === axesId)
+  const inBox = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1
+  const drawn = it => svg ? ours(it) : !it.role && (it.order ?? -Infinity) >= legend.order && inBox(...centerOf(it))
+  const items = [
+    ...[...(d.paths || []), ...(d.marks || [])].filter(drawn),
+    ...(svg ? (d.texts || []).filter(ours) : (d.textOps || []).filter(drawn)),
+  ]
+  const rows = entries.map((e, k) => ({ k, mid: e.t.y + e.t.size * 0.35, x0: e.t.x - 45, x: e.t.x, x1: e.t.x + (e.t.w || 0) + 2, size: e.t.size }))
+  for (const r of rows) {
+    // Half the way to the next row of the same column, or near a line's height
+    const gaps = rows.filter(o => o !== r && o.x1 > r.x0 && o.x0 < r.x1).map(o => Math.abs(o.mid - r.mid)).filter(g => g > 0)
+    r.half = gaps.length ? Math.min(...gaps) / 2 : r.size * 0.9
+  }
+  const wide = (lb.x1 - lb.x0) * 0.85
+  const rowOf = it => {
+    if (it === legend.frame) return null
+    let cx, cy, w = 0
+    if (it.segs) { const b = bboxOf(it.segs.flat()); cx = (b.x0 + b.x1) / 2; cy = (b.y0 + b.y1) / 2; w = b.x1 - b.x0 }
+    else if (it.s != null) { cx = it.x + (it.w || 0) / 2; cy = it.y + it.size * 0.35 }
+    else if (it.ops && it.size != null && it.shape == null) { cx = it.x; cy = it.y + it.size * 0.35 }
+    else { cx = it.x; cy = it.y }
+    // The frame, its shadow: across the legend
+    if (w >= wide) return null
+    let best = null, score = Infinity
+    for (const r of rows) {
+      const dy = Math.abs(cy - r.mid)
+      if (dy > r.half || cx < r.x0 || cx > r.x1) continue
+      // Words before a sample: one column's words can reach the next's sample
+      const sc = dy + (cx >= r.x ? 0 : (r.x - cx) / 100)
+      if (sc < score) { score = sc; best = r }
+    }
+    return best
+  }
+  for (const it of items) {
+    const row = rowOf(it)
+    const sink = row ? sinkOf(row.k) : null
+    const key = it.gid || it.group
+    if (sink) {
+      if (key && sink.groups) sink.groups.add(key)
+      if (it.ops && sink.ops) sink.ops.push(it.ops)
+    } else {
+      if (it.legendId) out.groups.add(it.legendId)
+      if (it.ops) out.ops.push(it.ops)
+    }
+  }
+  return out
+}
+
+// ── Error bars ──
+
+function attachErrors(layers, segs, axis, X, Y, warnings) {
+  if (!segs.length) return
+  const left = []
+  let lopsided = false
+  for (const g of segs) {
+    const [[ax, ay], [bx, by]] = g.s
+    let hit = null
+    for (const layer of layers) {
+      if (layer.kind !== 'points' || layer.color !== g.color) continue
+      for (let i = 0; i < layer.px.length; i++) {
+        const px = layer.px[i], py = layer.py[i]
+        const ok = axis === 'y'
+          ? Math.abs(px - ax) < 0.05 && py >= Math.min(ay, by) - 0.05 && py <= Math.max(ay, by) + 0.05
+          : Math.abs(py - ay) < 0.05 && px >= Math.min(ax, bx) - 0.05 && px <= Math.max(ax, bx) + 0.05
+        if (ok) { hit = { layer, i }; break }
+      }
+      if (hit) break
+    }
+    if (!hit) { left.push(g); continue }
+    const { layer, i } = hit
+    if (g.group && layer.groups) layer.groups.add(g.group)
+    if (g.ops && layer.ops) layer.ops.push(g.ops)
+    const A = axis === 'y' ? Y : X
+    const lo = A.toData(axis === 'y' ? Math.min(ay, by) : Math.min(ax, bx))
+    const hi = A.toData(axis === 'y' ? Math.max(ay, by) : Math.max(ax, bx))
+    const v = layer.data[axis][i]
+    const key = axis === 'y' ? 'yErr' : 'xErr'
+    if (!layer.data[key]) layer.data[key] = layer.data.x.map(() => null)
+    layer.data[key][i] = (hi - lo) / 2
+    if (Math.abs((hi - v) - (v - lo)) > 1e-6 * Math.max(Math.abs(hi - lo), 1e-12)) lopsided = true
+  }
+  if (lopsided) warnings.push(`Some ${axis} error bars reach further one way than the other; they’re shown the same both ways.`)
+  if (left.length) warnings.push(`${left.length} ${axis === 'y' ? 'upright' : 'level'} line${left.length === 1 ? '' : 's'} (error bars without markers?) weren’t read.`)
+}
+
+// ── Shapes ──
+
+const flat = (s, k) => Math.abs(s[0][k] - s[1][k]) < 0.01
+const isClosed = p => p.segs.length === 1 && p.segs[0].length > 2 && Math.abs(p.segs[0][0][0] - p.segs[0].at(-1)[0]) < 0.01 && Math.abs(p.segs[0][0][1] - p.segs[0].at(-1)[1]) < 0.01
+const sameBox = (a, b) => Math.abs(a.x0 - b.x0) < EDGE && Math.abs(a.x1 - b.x1) < EDGE && Math.abs(a.y0 - b.y0) < EDGE && Math.abs(a.y1 - b.y1) < EDGE
+
+// An axis-aligned rectangle's box, or null
+function rectOf(pts) {
+  let p = pts
+  if (p.length === 5 && Math.abs(p[0][0] - p[4][0]) < 0.01 && Math.abs(p[0][1] - p[4][1]) < 0.01) p = p.slice(0, 4)
+  if (p.length !== 4) return null
+  for (let i = 0; i < 4; i++) {
+    const a = p[i], b = p[(i + 1) % 4]
+    if (!(Math.abs(a[0] - b[0]) < 0.01 || Math.abs(a[1] - b[1]) < 0.01)) return null
+  }
+  return bboxOf(p)
+}
+
+// A spine: a line along one of the box's edges
+function isSpine(p, b, box) {
+  if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) return false
+  const upright = b.x1 - b.x0 < 0.01, level = b.y1 - b.y0 < 0.01
+  if (upright && (Math.abs(b.x0 - box.x0) < EDGE || Math.abs(b.x0 - box.x1) < EDGE)) return b.y1 - b.y0 > (box.y1 - box.y0) * 0.5
+  if (level && (Math.abs(b.y0 - box.y0) < EDGE || Math.abs(b.y0 - box.y1) < EDGE)) return b.x1 - b.x0 > (box.x1 - box.x0) * 0.5
+  return false
+}
+
+// A tick drawn inward, or on the top and right edges
+function isInnerTick(p, b, box) {
+  if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) return false
+  const len = Math.max(b.x1 - b.x0, b.y1 - b.y0)
+  if (len > TICK_MAX) return false
+  const onEdge = Math.abs(b.y0 - box.y0) < EDGE || Math.abs(b.y1 - box.y1) < EDGE || Math.abs(b.x0 - box.x0) < EDGE || Math.abs(b.x1 - box.x1) < EDGE
+  return onEdge
+}
+
+// A line right across the box: a grid line, or a reference line
+function spansBox(p, box) {
+  if (p.segs.length !== 1 || p.segs[0].length !== 2) return false
+  const b = bboxOf(p.segs[0])
+  if (b.y1 - b.y0 < 0.01) return b.x1 - b.x0 >= (box.x1 - box.x0) * 0.98
+  if (b.x1 - b.x0 < 0.01) return b.y1 - b.y0 >= (box.y1 - box.y0) * 0.98
+  return false
+}
+
+function dashStyle(dash, width) {
+  if (!dash || !dash.length || dash.every(v => !v)) return 'solid'
+  return dash[0] <= Math.max(1.5, width * 1.5) ? 'dotted' : 'dashed'
+}

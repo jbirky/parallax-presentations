@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
+import { slidePalette } from '../utils/themes'
+import { isEmptyPlaceholder } from '../utils/placeholders'
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, FileCode } from 'lucide-react'
 import { shapeSvgString } from '../utils/shapeUtils'
 import { safeHtml } from '../utils/safeHtml'
 import { pointsToPath } from '../utils/drawingUtils'
+import { DEFAULT_DECK_FONT } from '../utils/deckFont'
 
 const THUMB_W = 160
 
-function getBgStyle(bg) {
-  if (!bg) return { backgroundColor: '#1e1e2e' }
-  if (bg.type === 'color') return { backgroundColor: bg.color || '#1e1e2e' }
-  if (bg.type === 'gradient') return { background: bg.gradient || '#1e1e2e' }
-  if (bg.type === 'image' && bg.image) return { backgroundImage: `url(${bg.image})`, backgroundSize: bg.size || 'cover', backgroundPosition: bg.position || 'center' }
-  return { backgroundColor: '#1e1e2e' }
-}
-
-function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
+// A slide of another deck, in that deck's theme (utils/themes.js)
+function MiniThumbnail({ slide, slideW = 960, slideH = 540, theme }) {
   const scale = THUMB_W / slideW
+  const palette = slidePalette(slide, theme)
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   return (
     <div style={{ width: THUMB_W, height: thumbH, overflow: 'hidden', position: 'relative', borderRadius: 4 }}>
@@ -28,10 +25,12 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
         width: slideW, height: slideH,
         transform: `scale(${scale})`, transformOrigin: 'top left',
         pointerEvents: 'none',
-        ...getBgStyle(slide.background),
-      }}>
+        fontSize: '42px', fontFamily: DEFAULT_DECK_FONT,
+        ...palette.background,
+        '--slide-heading': palette.heading,
+      }} className="slide-thumb-canvas">
         {(slide.elements || [])
-          .slice()
+          .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
           .map(el => (
             <div key={el.id} style={{
@@ -43,7 +42,7 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
               transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
             }}>
               {el.type === 'text' && (
-                <div style={{ width: '100%', height: '100%', color: 'white', padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
+                <div className="slide-text-content" style={{ width: '100%', height: '100%', color: palette.text, padding: '8px 12px', boxSizing: 'border-box', overflow: 'hidden' }}
                   dangerouslySetInnerHTML={{ __html: safeHtml(el.content) }} />
               )}
               {el.type === 'image' && (
@@ -82,10 +81,12 @@ function MiniThumbnail({ slide, slideW = 960, slideH = 540 }) {
   )
 }
 
-export default function ImportSlideModal({ currentPresentationId, onImport, onClose }) {
+// onBeamer: opens the Beamer import instead (BeamerImportModal)
+export default function ImportSlideModal({ currentPresentationId, onImport, onBeamer, onClose }) {
   const [presentations, setPresentations] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedPresentation, setSelectedPresentation] = useState(null)
+  const [sourceTheme, setSourceTheme] = useState('black')
   const [loadingSlides, setLoadingSlides] = useState(false)
   const [slides, setSlides] = useState([])
   const [slideW, setSlideW] = useState(960)
@@ -108,6 +109,7 @@ export default function ImportSlideModal({ currentPresentationId, onImport, onCl
       setSlides(data.slides || [])
       setSlideW(data.slideWidth || 960)
       setSlideH(data.slideHeight || 540)
+      setSourceTheme(data.theme || 'black')
     } catch {
       setSlides([])
     }
@@ -156,6 +158,20 @@ export default function ImportSlideModal({ currentPresentationId, onImport, onCl
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {!selectedPresentation && onBeamer && (
+            <button onClick={onBeamer}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', marginBottom: 12, padding: '12px 14px', background: 'var(--bg-card)', border: '1px dashed var(--accent)', borderRadius: 6, cursor: 'pointer', textAlign: 'left' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-card)' }}
+            >
+              <FileCode size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>From LaTeX Beamer</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Type or paste frames, or drop a .tex or a project’s .zip</div>
+              </div>
+              <ArrowLeft size={14} style={{ transform: 'rotate(180deg)', color: 'var(--text-muted)', marginLeft: 'auto' }} />
+            </button>
+          )}
           {!selectedPresentation ? (
             loading ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>Loading presentations...</div>
@@ -203,7 +219,7 @@ export default function ImportSlideModal({ currentPresentationId, onImport, onCl
                         <Check size={12} color="white" />
                       </div>
                     )}
-                    <MiniThumbnail slide={slide} slideW={slideW} slideH={slideH} />
+                    <MiniThumbnail slide={slide} slideW={slideW} slideH={slideH} theme={sourceTheme} />
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'center' }}>
                       Slide {index + 1}
                     </div>

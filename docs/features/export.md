@@ -50,11 +50,11 @@ Export a **PowerPoint-compatible `.pptx` file** for editing in Microsoft Office,
 
 ## Shareable links
 
-Generate a **shareable URL** that others can open to view (or edit) your presentation directly in their browser — no installation required.
+Generate a **shareable URL** that others can open to view your presentation directly in their browser — no installation required.
 
-- Click **Share → Get Link**.
-- Choose **View only** or **Editable**.
-- Copy and share the URL.
+- Click **Share** (next to **Present**) → **Share link…**.
+- Click **Enable Sharing**, then click the link to copy it.
+- To let someone edit instead, choose **Share** → **Editors…** and send them an invite link (see [Editing with Others](/tutorials/editing-with-others)).
 
 ::: tip
 Sharing is only in the cloud version at parallax-presentations.com. The self-hosted version and the desktop app keep everything on your computer, so share an exported HTML file from them instead.
@@ -66,7 +66,7 @@ Push your presentations to a **GitHub repository** and host them for free with *
 
 ### Setting up GitHub
 
-1. Open any presentation and click the **GitHub** button in the top toolbar.
+1. Open any presentation, click **Sync** at the top right (next to **Share**) and choose **GitHub…**.
 2. Enter your **repository owner** (your username or org) and **repository name**.
 3. Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope and paste it into the token field.
 4. Optionally set a **Pages URL** if you use a custom domain (e.g. `https://yoursite.com/presentations`). If left blank, it defaults to `https://<owner>.github.io/<repo>`.
@@ -76,7 +76,7 @@ This configuration is saved once and reused across all your presentations.
 
 ### Pushing a presentation
 
-1. Click the **GitHub** button, enter an optional commit message, and click **Push to GitHub**.
+1. Choose **Sync › GitHub…**, enter an optional commit message, and click **Push to GitHub**.
 2. Parallax exports a self-contained `presentation.html` and the raw `presentation.json` into a folder named after your presentation title. Ink you drew while presenting isn't included.
 3. All images and assets referenced in the presentation are uploaded alongside the HTML into an `assets/` subfolder.
 4. A `README.md` at the repo root is automatically generated with links to all your pushed presentations.
@@ -102,7 +102,7 @@ If you have multiple presentations in one repo, they each get their own folder. 
 
 Parallax can also pull commit history from GitHub to browse and restore previous versions of a presentation:
 
-- Click the **History** button (clock icon) in the editor toolbar.
+- Choose **File › Version history…** in the editor.
 - Browse past commits with timestamps and messages.
 - Click any version to preview it, and restore it if needed.
 
