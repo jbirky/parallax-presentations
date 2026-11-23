@@ -59,6 +59,7 @@ export default function DeckFontOptions() {
         <option value="'Roboto Mono', monospace">Roboto Mono</option>
         <option value="'Space Mono', monospace">Space Mono</option>
         <option value="VT323, monospace">VT323</option>
+        <option value="'B612 Mono', monospace">B612 Mono</option>
       </optgroup>
       <optgroup label="Display">
         <option value="Impact, sans-serif">Impact</option>

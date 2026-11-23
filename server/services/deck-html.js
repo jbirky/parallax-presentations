@@ -6450,7 +6450,8 @@ var THEME_LIST = [
   { id: "moon", label: "Moon", background: "#002b36", text: "#93a1a1", heading: "#eee8d5", link: "#268bd2", dark: true },
   { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
   { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" },
-  { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" }
+  { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" },
+  { id: "mission", label: "Mission", background: "#f4f6f8", backgroundCss: "linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8", text: "#0d1b2e", heading: "#0d1b2e", link: "#1d6fd1", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: "Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -27964,7 +27965,7 @@ ${css}
   </style>` : "";
 }
 
-// raw:/home/jbirky/docker_server/parallax-presentations/client/src/themes/bauhaus.css
+// raw:client/src/themes/bauhaus.css
 var bauhaus_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* Copyright (c) 2026 Jessica Birky */
 
@@ -28032,7 +28033,7 @@ var bauhaus_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
-// raw:/home/jbirky/docker_server/parallax-presentations/client/src/themes/pixel.css
+// raw:client/src/themes/pixel.css
 var pixel_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* Copyright (c) 2026 Jessica Birky */
 
@@ -28095,8 +28096,87 @@ var pixel_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/mission.css
+var mission_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Mission theme's stylesheet: an engineering drawing on top of its
+   colors and fonts (utils/themes.js: IBM Plex Sans for text, Barlow Condensed
+   for headings, which the Themes panel's Text tab can change). It's scoped
+   to .deck-theme-mission, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages, so a slide looks the same in
+   all of them. The editor loads it with the app (main.jsx); presented decks
+   and the PDF write it into their page (utils/themeCss.js). Presented decks
+   are drawn on reveal.js's white theme. The drafting grid is the theme's
+   page (its backgroundCss) in the editor and the PDF. */
+
+/* reveal.js: links, the arrows and the progress bar in telemetry blue */
+.deck-theme-mission {
+  --r-background-color: #f4f6f8;
+  --r-main-color: #0d1b2e;
+  --r-heading-color: #0d1b2e;
+  --r-link-color: #1d6fd1;
+  --r-link-color-dark: #1557a6;
+  --r-link-color-hover: #e4462b;
+  --r-selection-background-color: #1d6fd1;
+  --r-selection-color: #f4f6f8;
+}
+
+/* The drafting grid on presented slides that show the theme's page */
+.deck-theme-mission .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px,
+    linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px,
+    linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px,
+    linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px,
+    #f4f6f8;
+}
+
+/* Headings in capitals, a little tracked, like drawing lettering. (!important:
+   presented decks reset headings' case and spacing with it.) */
+.deck-theme-mission :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: uppercase !important;
+  letter-spacing: 0.01em !important;
+  line-height: 1.05;
+}
+
+/* A hairline under slide titles (Heading 2), the width of their box */
+.deck-theme-mission h2::after {
+  content: "";
+  display: block;
+  height: 1px;
+  margin-top: 0.22em;
+  background: #0d1b2e;
+}
+
+/* Square bullets in signal red */
+.deck-theme-mission ul { list-style-type: square; }
+.deck-theme-mission li::marker { color: #e4462b; }
+
+/* Quotes behind an ink bar */
+.deck-theme-mission blockquote {
+  border-left: 0.12em solid #0d1b2e !important;
+  opacity: 1 !important;
+}
+
+/* Inline code in B612 Mono, the cockpit-display face, on a square gray block */
+.deck-theme-mission :not(pre) > code {
+  font-family: 'B612 Mono', monospace !important;
+  font-size: 0.9em;
+  color: #0d1b2e;
+  background: #e3e9ef !important;
+  border-radius: 0 !important;
+  padding: 0 0.3em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-mission .theme-swatch-title {
+  text-transform: uppercase;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -29362,7 +29442,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">

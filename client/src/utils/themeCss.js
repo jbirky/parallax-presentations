@@ -8,8 +8,9 @@
 
 import bauhaus from '../themes/bauhaus.css?raw'
 import pixel from '../themes/pixel.css?raw'
+import mission from '../themes/mission.css?raw'
 
-const SHEETS = { bauhaus, pixel }
+const SHEETS = { bauhaus, pixel, mission }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

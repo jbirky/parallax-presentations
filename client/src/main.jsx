@@ -6,6 +6,7 @@ import './index.css'
 // The themes' stylesheets, scoped to their slides (utils/themeCss.js)
 import './themes/bauhaus.css'
 import './themes/pixel.css'
+import './themes/mission.css'
 import 'katex/dist/katex.min.css'
 // \ce and \pu (chemical equations and units) for every KaTeX the editor
 // draws; decks load the same extension (generateHTML.js)

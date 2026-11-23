@@ -653,6 +653,15 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain('family=Jost')
   })
 
+  it('draws Mission on reveal’s white, with its grid on slides that show its page', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'mission' }))
+    expect(html).toContain('dist/theme/white.css')
+    expect(html).toContain('<div class="reveal deck-theme-mission">')
+    expect(html).toContain('.deck-theme-mission .slides > section:not([data-background-color])')
+    expect(html).toContain("font-family: 'Barlow Condensed', sans-serif; font-weight: 600;")
+    expect(html).toContain('family=B612+Mono')
+  })
+
   it('sets Pixel’s headings in its heading font, on reveal’s black', () => {
     const html = generateRevealHTML(makePresentation({ theme: 'pixel' }))
     expect(html).toContain('dist/theme/black.css')

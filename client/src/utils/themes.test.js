@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
 
 describe('themes', () => {
-  it('has reveal’s eleven, Bauhaus and Pixel, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus'])
+  it('has reveal’s eleven, Bauhaus, Pixel and Mission, light and dark', () => {
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -33,6 +33,9 @@ describe('themes', () => {
     const own = { bodySize: 30 }
     expect(deckTextStyles(own, 'bauhaus')).toBe(own)
     expect(revealTheme('pixel')).toBe('black')
+    expect(revealTheme('mission')).toBe('white')
+    expect(themeBackgroundStyle('mission').background).toMatch(/^linear-gradient.*#f4f6f8$/)
+    expect(deckTextStyles(null, 'mission')).toMatchObject({ headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600, h2Size: 44 })
   })
 
   it('tells dark colors from light ones', () => {
