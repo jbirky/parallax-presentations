@@ -51,6 +51,10 @@ describe('what a template’s page says about its deck', () => {
     expect(f.theme).toMatchObject({ label: 'White', ownColors: true, stylesheet: 'h2 { color: red }' })
     expect(f.fonts.text).toBe('IBM Plex Sans')
     expect(f.colors.find(c => c.name === 'Accent').value).toBe('#ff0000')
+    expect(f.theme).toMatchObject({ named: false, base: 'White' })
+    // A theme of its own, named where it came from, described by its stylesheet
+    const own = templateFacts({ theme: 'white', themeSource: { name: 'DNA', version: 1 }, themeCss: '/* DNA: a theme for bioinformatics talks. Red Hat type; nucleotide colors.\n   The title page has a helix. */\nh2 { color: red }', slides: [] })
+    expect(own.theme).toMatchObject({ label: 'DNA', base: 'White', named: true, note: 'A theme for bioinformatics talks. Red Hat type; nucleotide colors.' })
     const none = templateFacts(null)
     expect(none.slides).toEqual([])
     expect(none.theme.label).toBe('Black')

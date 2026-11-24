@@ -84,6 +84,18 @@ function kindsOf(elements) {
   return [...counts].sort((a, b) => (PLAIN.has(a[0]) - PLAIN.has(b[0])) || b[1] - a[1])
 }
 
+// What a deck's own stylesheet says it is, from its opening comment: its
+// first sentence or two, without the theme's name before them
+function stylesheetNote(css) {
+  const comment = /^\s*\/\*([\s\S]*?)\*\//.exec(css || '')
+  if (!comment) return ''
+  const text = comment[1].replace(/\s+/g, ' ').trim().replace(/^[^:.]{1,40}:\s*/, '')
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
+  const note = sentences.slice(0, 2).join('').trim()
+  const short = note.length > 240 ? sentences[0].trim() : note
+  return short.replace(/^./, c => c.toUpperCase())
+}
+
 export function templateFacts(deck) {
   const themeId = typeof deck?.theme === 'string' ? deck.theme : 'black'
   const known = THEMES[themeId]
@@ -91,6 +103,8 @@ export function templateFacts(deck) {
   const styles = deckTextStyles(deck?.textStyles, themeId) || {}
   const textFont = deckFont(deckTextFont(deck?.globalFont, themeId))
   const css = typeof deck?.themeCss === 'string' ? deck.themeCss.trim() : ''
+  // A theme of the deck's own, named where it came from (customTheme.js)
+  const named = typeof deck?.themeSource?.name === 'string' ? deck.themeSource.name.trim().slice(0, 80) : ''
 
   const colors = [['Background', t.background], ['Text', t.text], ['Headings', t.heading], ['Links', t.link], ['Accent', t.accent]]
     .filter(([, value], i, all) => value && all.findIndex(([, v]) => v === value) === i)
@@ -110,7 +124,15 @@ export function templateFacts(deck) {
   const all = kindsOf((deck?.slides || []).flatMap(s => s?.elements || []))
 
   return {
-    theme: { id: themeId, label: known?.label || themeId, note: known?.note || '', ownColors: !!deck?.themeColors && Object.keys(deck.themeColors).length > 0, stylesheet: css },
+    theme: {
+      id: themeId,
+      label: named || known?.label || themeId,
+      base: known?.label || themeId,
+      named: !!named,
+      note: named ? stylesheetNote(css) : known?.note || '',
+      ownColors: !!deck?.themeColors && Object.keys(deck.themeColors).length > 0,
+      stylesheet: css,
+    },
     colors,
     fonts: { text: fontName(textFont), heading: fontName(styles.headingFont) || fontName(textFont) },
     sizes: [

@@ -32609,6 +32609,15 @@ function kindsOf(elements) {
   }
   return [...counts].sort((a, b) => PLAIN.has(a[0]) - PLAIN.has(b[0]) || b[1] - a[1]);
 }
+function stylesheetNote(css) {
+  const comment = /^\s*\/\*([\s\S]*?)\*\//.exec(css || "");
+  if (!comment) return "";
+  const text = comment[1].replace(/\s+/g, " ").trim().replace(/^[^:.]{1,40}:\s*/, "");
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  const note = sentences.slice(0, 2).join("").trim();
+  const short = note.length > 240 ? sentences[0].trim() : note;
+  return short.replace(/^./, (c) => c.toUpperCase());
+}
 function templateFacts(deck) {
   const themeId = typeof deck?.theme === "string" ? deck.theme : "black";
   const known = THEMES[themeId];
@@ -32616,6 +32625,7 @@ function templateFacts(deck) {
   const styles = deckTextStyles(deck?.textStyles, themeId) || {};
   const textFont = deckFont(deckTextFont(deck?.globalFont, themeId));
   const css = typeof deck?.themeCss === "string" ? deck.themeCss.trim() : "";
+  const named = typeof deck?.themeSource?.name === "string" ? deck.themeSource.name.trim().slice(0, 80) : "";
   const colors = [["Background", t.background], ["Text", t.text], ["Headings", t.heading], ["Links", t.link], ["Accent", t.accent]].filter(([, value], i, all2) => value && all2.findIndex(([, v]) => v === value) === i).map(([name50, value]) => ({ name: name50, value }));
   const slides = (Array.isArray(deck?.slides) ? deck.slides : []).map((slide, i) => {
     const palette = slidePalette(slide, themeId, deck?.themeColors);
@@ -32630,7 +32640,15 @@ function templateFacts(deck) {
   });
   const all = kindsOf((deck?.slides || []).flatMap((s) => s?.elements || []));
   return {
-    theme: { id: themeId, label: known?.label || themeId, note: known?.note || "", ownColors: !!deck?.themeColors && Object.keys(deck.themeColors).length > 0, stylesheet: css },
+    theme: {
+      id: themeId,
+      label: named || known?.label || themeId,
+      base: known?.label || themeId,
+      named: !!named,
+      note: named ? stylesheetNote(css) : known?.note || "",
+      ownColors: !!deck?.themeColors && Object.keys(deck.themeColors).length > 0,
+      stylesheet: css
+    },
     colors,
     fonts: { text: fontName(textFont), heading: fontName(styles.headingFont) || fontName(textFont) },
     sizes: [

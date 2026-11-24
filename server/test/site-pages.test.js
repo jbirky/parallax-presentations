@@ -86,6 +86,9 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<pre>h2 \{ color: red \}<\/pre>/)
     assert.doesNotMatch(html, /background:url\(x\)|red;x:y/)
     assert.match(html, /<a class="card" href="\/templates\/seminar">[\s\S]*?<b>Seminar<\/b>/)
+    // A theme of the deck's own goes by its name, on the theme it starts from
+    const own = templatePage({ origin, template, facts: { ...facts, theme: { ...facts.theme, label: '<DNA>', base: 'White', named: true } }, others: [], guestEnabled: false, analytics: null, index: false })
+    assert.match(own, /<strong>&lt;DNA&gt;<\/strong>, a theme of the deck’s own, on White/)
     const noGuest = templatePage({ origin, template, facts: { ...facts, contents: [] }, others: [], guestEnabled: false, analytics: null, index: false })
     assert.doesNotMatch(noGuest, /\/try\?example|More templates|What’s in it/)
   })

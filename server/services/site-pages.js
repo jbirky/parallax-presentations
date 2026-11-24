@@ -335,7 +335,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
           </section>
           <section class="tp-card">
             <h2>Theme</h2>
-            <p><strong>${esc(theme.label)}</strong>${theme.ownColors ? ', with colors of its own' : ''}${theme.stylesheet ? ' and a stylesheet of its own' : ''}</p>
+            <p><strong>${esc(theme.label)}</strong>${theme.named ? `, a theme of the deck’s own, on ${esc(theme.base)}` : `${theme.ownColors ? ', with colors of its own' : ''}${theme.stylesheet ? ' and a stylesheet of its own' : ''}`}</p>
             ${theme.note ? `<p>${esc(theme.note)}</p>` : ''}
             <ul class="tp-swatches">
               ${facts.colors.map(swatch).join('\n              ')}
