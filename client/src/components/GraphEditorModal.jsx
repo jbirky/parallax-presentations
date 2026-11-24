@@ -257,7 +257,7 @@ function DataLine({ ex, index, datasets, rows, palette, open, onUpdate, onToggle
   )
 }
 
-export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave, onClose }) {
+export default function GraphEditorModal({ initial, size, slideBg, stability = null, isNew, onSave, onClose }) {
   const P = useMemo(() => createMathParser(), [])
   const constant = useConstant(P)
   const [graph, setGraph] = useState(() => ({ ...initial, view: { ...DEFAULT_VIEW, ...(initial.view || {}) } }))
@@ -389,10 +389,10 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   }, [focusId, expressions])
 
   // The preview: the slide's page, loaded once, then sent each change
-  const previewHtml = useMemo(() => graphPageHtml(initial, { editor: true }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const previewHtml = useMemo(() => graphPageHtml(initial, { editor: true, stability }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const sendConfig = useCallback(() => {
     const win = frameRef.current?.contentWindow
-    if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true }) }, '*')
+    if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true, stability }) }, '*')
   }, [graph, dataVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const onPreviewLoad = () => {
     sendConfig()

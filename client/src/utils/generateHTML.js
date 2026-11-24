@@ -456,7 +456,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'graph') {
-          const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, { ...(deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}), stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
           return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
@@ -1592,7 +1592,7 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'graph') {
           // Finished: every expression, no controls
-          const srcdoc = graphPageHtml(el, { print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, { print: true, stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {

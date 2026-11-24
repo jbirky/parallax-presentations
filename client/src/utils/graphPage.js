@@ -91,11 +91,24 @@ function validView(v, dims3, { xLog = false, yLog = false } = {}) {
   return { xMin, xMax, yMin, yMax, zMin, zMax }
 }
 
+// The colors of stability a graph draws fixed points and separatrices in:
+// the slide's theme's (themes.js slidePalette's stable and unstable), each a
+// hex color, or none
+export function graphStability(palette) {
+  const out = {}
+  for (const k of ['stable', 'unstable']) if (typeof palette?.[k] === 'string' && /^#[0-9a-f]{3,8}$/i.test(palette[k])) out[k] = palette[k]
+  return Object.keys(out).length ? out : null
+}
+
 // The graph as its page reads it. `showAll` draws expressions that appear
 // at a step (the editor, thumbnails and the PDF show the finished graph).
-export function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data } = {}) {
+// `stability` is the slide's palette (or its colors of stability), for the
+// fixed points and separatrices.
+export function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data, stability } = {}) {
   const config = {}
   for (const key of GRAPH_FIELDS) if (el[key] !== undefined) config[key] = el[key]
+  const colors = graphStability(stability)
+  if (colors) config.stability = colors
   config.expressions = Array.isArray(el.expressions) ? el.expressions : []
   config.view = validView(el.view, el.dims === 3, { xLog: el.xScale === 'log', yLog: el.yScale === 'log' })
   // The rows its data lines plot, by line id: written in, since a graph's
@@ -110,11 +123,13 @@ export function graphConfig(el, { snapshotKey = null, print = false, editor = fa
 }
 
 // For the editor's snapshot key: a thumbnail isn't reused after a change,
-// nor once its data lines' rows have come (or changed)
-export function graphSnapshotContent(el) {
+// nor once its data lines' rows have come (or changed), nor in another
+// theme's colors of stability
+export function graphSnapshotContent(el, stability) {
   const rows = dataSource && hasDataLines(el) ? dataSource(el) : null
   const marks = rows ? Object.keys(rows).sort().map(id => [id, rows[id] && rows[id].version]) : null
-  return JSON.stringify(GRAPH_FIELDS.map(k => el[k]).concat(marks ? [marks] : []))
+  const colors = graphStability(stability)
+  return JSON.stringify(GRAPH_FIELDS.map(k => el[k]).concat(marks ? [marks] : [], colors ? [colors] : []))
 }
 
 // Whether a graph plots any dataset's rows

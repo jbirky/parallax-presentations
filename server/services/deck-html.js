@@ -6489,7 +6489,7 @@ var THEME_LIST = [
   { id: "quincunx", label: "Quincunx", background: "#f3f6f6", text: "#11262e", heading: "#11262e", link: "#1f5a86", accent: "#e2a23a", dark: false, reveal: "white", font: "Rubik, sans-serif", textStyles: { bodySize: 30, h1Size: 76, h2Size: 44, h3Size: 32, headingFont: "Rubik, sans-serif", headingWeight: 600 }, note: "A Galton board: dark title and section slides with pegs, a tally footer, brass samples, ink models, Space Mono numbers" },
   { id: "partition", label: "Partition", background: "#f7f7f5", text: "#16191e", heading: "#16191e", link: "#2d55c4", accent: "#d94a1e", dark: false, reveal: "white", font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 40, h3Size: 28, headingFont: "Manrope, sans-serif", headingWeight: 800 }, note: "Slides drawn as partitioned matrices: brackets, a partition line under titles, a basis-vector footer" },
   { id: "holdout", label: "Holdout", background: "#f7f8f6", text: "#161b22", heading: "#161b22", link: "#1d4f91", accent: "#1d4f91", dark: false, reveal: "white", font: "Rubik, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Rubik, sans-serif", headingWeight: 600 }, note: "A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer" },
-  { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" }
+  { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", stable: "#1d5fa8", unstable: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -6570,10 +6570,13 @@ function themeBackgroundStyle(themeId, colors = null) {
   const t = deckTheme(themeId, colors);
   return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background };
 }
+function stabilityColors(t) {
+  return Object.fromEntries(["stable", "unstable"].filter((k) => typeof t?.[k] === "string" && t[k]).map((k) => [k, t[k]]));
+}
 function slidePalette(slide, themeId, colors = null) {
   const t = deckTheme(themeId, colors);
   const own = ownBackground(slide?.background);
-  if (!own) return { background: themeBackgroundStyle(themeId, colors), bg: t.background, text: t.text, heading: t.heading, link: t.link, accent: t.accent, dark: t.dark, own: false };
+  if (!own) return { background: themeBackgroundStyle(themeId, colors), bg: t.background, text: t.text, heading: t.heading, link: t.link, accent: t.accent, dark: t.dark, own: false, ...stabilityColors(t) };
   const match = own.dark === t.dark;
   const plain2 = own.dark ? "#ffffff" : "#222222";
   const link = match ? t.link : own.dark ? "#42affa" : "#2a76dd";
@@ -6585,7 +6588,9 @@ function slidePalette(slide, themeId, colors = null) {
     link,
     accent: match ? t.accent : link,
     dark: own.dark,
-    own: true
+    own: true,
+    // The theme's, on a background as dark or light as its page
+    ...match ? stabilityColors(t) : {}
   };
 }
 function paletteVars(palette) {
@@ -9585,17 +9590,19 @@ function graphRuntime(P, G2, G3, config) {
       ctx.globalAlpha = 1;
     }
   }
-  function strokePath(run, color2, width, alpha2) {
+  function strokePath(run, color2, width, alpha2, dash) {
     const pts = run.pts;
     if (!pts || pts.length < 2) return;
     ctx.strokeStyle = color2;
     ctx.fillStyle = color2;
     ctx.globalAlpha = alpha2;
     ctx.lineWidth = width;
+    if (dash) ctx.setLineDash(dash);
     ctx.beginPath();
     ctx.moveTo(clampPx(sx(pts[0][0])), clampPx(sy(pts[0][1])));
     for (let i = 1; i < pts.length; i++) ctx.lineTo(clampPx(sx(pts[i][0])), clampPx(sy(pts[i][1])));
     ctx.stroke();
+    if (dash) ctx.setLineDash([]);
     const forward = pts[pts.length - 1][2] >= pts[0][2];
     let acc = 0, next = 60;
     for (let k = 1; k < pts.length; k++) {
@@ -9628,7 +9635,16 @@ function graphRuntime(P, G2, G3, config) {
         E.x = 0;
         E.y = 0;
       }
-      for (const sep of f.seps || []) strokePath(sep, f.color, 2.6, 1);
+    }
+    for (const unstable of [false, true]) {
+      for (const f of g.fields) {
+        const colors = stability(f.color);
+        for (const sep of f.seps || []) {
+          if (!!sep.unstable !== unstable) continue;
+          const st = G2.manifoldStyle(sep, colors);
+          strokePath(sep, st.color, 2.6, 1, st.dash);
+        }
+      }
     }
     for (const p of g.paths.concat(g.clicked)) {
       if (p.solution) {
@@ -9668,33 +9684,43 @@ function graphRuntime(P, G2, G3, config) {
     const td = g.fields.find((f) => f.eq && overlayShown(f.e, f.o, "traceDet"));
     if (td) traceDet(td);
   }
-  function marker(q) {
-    const x = sx(q.x), y = sy(q.y), r = 6.5;
-    if (x < -r || x > W2 + r || y < -r || y > H2 + r) return;
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = theme.fg;
-    ctx.fillStyle = C2.background && C2.background !== "transparent" ? C2.background : theme.halo;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = theme.fg;
-    if (/^stable/.test(q.kind)) {
+  function stability(ink2, bg) {
+    const s = C2.stability || {};
+    return {
+      stable: s.stable || ink2 || theme.fg,
+      unstable: s.unstable || ink2 || theme.fg,
+      neutral: theme.fg,
+      bg: bg || (C2.background && C2.background !== "transparent" ? C2.background : theme.halo)
+    };
+  }
+  function drawGlyph(kind, x, y, r, colors) {
+    for (const s of G2.glyph(kind, r, colors)) {
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (q.kind === "saddle") {
-      ctx.beginPath();
-      ctx.arc(x, y, r, Math.PI / 2, 3 * Math.PI / 2);
-      ctx.closePath();
-      ctx.fill();
-    } else if (q.kind === "center") {
-      ctx.beginPath();
-      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
-      ctx.fill();
+      if (s.shape === "half") {
+        ctx.arc(x, y, s.r, Math.PI / 2, 3 * Math.PI / 2);
+        ctx.closePath();
+      } else if (s.shape === "diamond") {
+        ctx.moveTo(x, y - s.r);
+        ctx.lineTo(x + s.r, y);
+        ctx.lineTo(x, y + s.r);
+        ctx.lineTo(x - s.r, y);
+        ctx.closePath();
+      } else ctx.arc(x, y, s.r, 0, Math.PI * 2);
+      if (s.fill) {
+        ctx.fillStyle = s.fill;
+        ctx.fill();
+      }
+      if (s.stroke) {
+        ctx.strokeStyle = s.stroke;
+        ctx.lineWidth = s.width;
+        ctx.stroke();
+      }
     }
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.stroke();
+  }
+  function marker(q) {
+    const x = sx(q.x), y = sy(q.y), r = 7;
+    if (x < -r || x > W2 + r || y < -r || y > H2 + r) return;
+    drawGlyph(q.kind, x, y, r, stability());
   }
   function nullclineKey(y, entries) {
     let x = 10;
@@ -9779,15 +9805,8 @@ function graphRuntime(P, G2, G3, config) {
     ctx.fillText("nodes", ix + 2, dy(R2 * R2 / 4 * 0.12));
     ctx.textAlign = "right";
     ctx.fillText("nodes", ix + iw - 2, dy(R2 * R2 / 4 * 0.12));
-    for (const q of f.eq) {
-      ctx.fillStyle = f.color;
-      ctx.strokeStyle = theme.halo;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(tx(q.trace), Math.max(iy + 3, Math.min(iy + ih - 3, dy(q.det))), 4.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
+    const colors = stability(null, theme.panel);
+    for (const q of f.eq) drawGlyph(q.kind, Math.max(ix + 6, Math.min(ix + iw - 6, tx(q.trace))), Math.max(iy + 6, Math.min(iy + ih - 6, dy(q.det))), 5, colors);
     ctx.restore();
     ctx.font = "italic 12px " + MATH_FONT2;
     ctx.fillStyle = theme.text;
@@ -9806,8 +9825,11 @@ function graphRuntime(P, G2, G3, config) {
       "λ = " + (q.eig[0][1] ? fmt(q.eig[0][0]) + " ± " + fmt(Math.abs(q.eig[0][1])) + "i" : fmt(q.eig[0][0]) + ", " + fmt(q.eig[1][0])),
       "τ = " + fmt(q.trace) + ",  Δ = " + fmt(q.det)
     ];
-    ctx.font = "12.5px " + FONT2;
-    const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12;
+    const indent = (i) => i ? 0 : 18;
+    const w = Math.max(...lines.map((l, i) => {
+      ctx.font = (i ? "" : "600 ") + "12.5px " + FONT2;
+      return ctx.measureText(l).width + indent(i);
+    })) + 20, h = lines.length * 18 + 12;
     const bx = x + 14 + w > W2 ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H2 - h - 4, y - h / 2));
     ctx.fillStyle = theme.panel;
     ctx.strokeStyle = theme.border;
@@ -9816,12 +9838,13 @@ function graphRuntime(P, G2, G3, config) {
     ctx.rect(bx, by, w, h);
     ctx.fill();
     ctx.stroke();
+    drawGlyph(q.kind, bx + 16, by + 15, 5.5, stability(null, theme.panel));
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     lines.forEach((l, i) => {
       ctx.fillStyle = theme.panelText;
       ctx.font = (i ? "" : "600 ") + "12.5px " + FONT2;
-      ctx.fillText(l, bx + 10, by + 8 + i * 18);
+      ctx.fillText(l, bx + 10 + indent(i), by + 8 + i * 18);
     });
   }
   function startAt(it, E) {
@@ -10677,6 +10700,23 @@ function graphFields() {
     }
     return lines;
   }
+  function glyphOf(kind) {
+    if (/^stable/.test(kind)) return "stable";
+    if (/^unstable/.test(kind)) return "unstable";
+    if (kind === "saddle" || kind === "center") return kind;
+    return "degenerate";
+  }
+  function glyph(kind, r, colors) {
+    var c = colors, q = r - 1, g = glyphOf(kind);
+    if (g === "stable") return [{ shape: "disc", r, fill: c.stable, stroke: c.bg, width: 1.5 }];
+    if (g === "unstable") return [{ shape: "disc", r: q, fill: c.bg, stroke: c.unstable, width: 2 }];
+    if (g === "saddle") return [{ shape: "disc", r: q, fill: c.bg }, { shape: "half", r: q, fill: c.stable }, { shape: "disc", r: q, stroke: c.unstable, width: 2 }];
+    if (g === "center") return [{ shape: "disc", r: q, fill: c.bg, stroke: c.neutral, width: 1.7 }, { shape: "disc", r: r * 0.36, fill: c.neutral }];
+    return [{ shape: "diamond", r: q, fill: c.bg, stroke: c.neutral, width: 1.7 }];
+  }
+  function manifoldStyle(sep, colors) {
+    return sep.unstable ? { color: colors.unstable, dash: [7, 6] } : { color: colors.stable, dash: null };
+  }
   return {
     dopri,
     trajectory,
@@ -10685,7 +10725,10 @@ function graphFields() {
     classify,
     equilibria,
     separatrices,
-    streamlines
+    streamlines,
+    glyphOf,
+    glyph,
+    manifoldStyle
   };
 }
 
@@ -11439,9 +11482,16 @@ function validView(v, dims3, { xLog = false, yLog = false } = {}) {
   if (!(zMax > zMin)) ({ zMin, zMax } = base3);
   return { xMin, xMax, yMin, yMax, zMin, zMax };
 }
-function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data } = {}) {
+function graphStability(palette) {
+  const out = {};
+  for (const k of ["stable", "unstable"]) if (typeof palette?.[k] === "string" && /^#[0-9a-f]{3,8}$/i.test(palette[k])) out[k] = palette[k];
+  return Object.keys(out).length ? out : null;
+}
+function graphConfig(el, { snapshotKey = null, print = false, editor = false, showAll = false, data, stability } = {}) {
   const config = {};
   for (const key of GRAPH_FIELDS) if (el[key] !== void 0) config[key] = el[key];
+  const colors = graphStability(stability);
+  if (colors) config.stability = colors;
   config.expressions = Array.isArray(el.expressions) ? el.expressions : [];
   config.view = validView(el.view, el.dims === 3, { xLog: el.xScale === "log", yLog: el.yScale === "log" });
   const rows = data !== void 0 ? data : dataSource && hasDataLines(el) ? dataSource(el) : null;
@@ -32793,7 +32843,7 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
       }
       if (el.type === "graph") {
-        const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+        const srcdoc = graphPageHtml(el, { ...deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}, stability: palette }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
         const graphId = String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "");
         return `<div${dataId2}${fragClass2}${fragIdx2}${gsapAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`;
       }

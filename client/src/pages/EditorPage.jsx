@@ -74,7 +74,7 @@ import { setGraphDataPresentation, refreshGraphData, loadGraphData, loadEmbedDat
 import datasetManager from '../datasets/DatasetManager'
 import { installEmbedDatasets } from '../datasets/embedBridge'
 import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
-import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
+import { defaultGraph, defaultGraph3d, GRAPH_FIELDS, graphStability } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
@@ -1385,21 +1385,23 @@ function draw() {
     if (!ownBackground(bg)) return deckTheme(presentation?.theme, presentation?.themeColors).background
     return slideIsDark() ? '#1e1e2e' : '#ffffff'
   }, [presentation, slideIsDark])
+  // The slide's theme's colors of stability, for a graph's fixed points
+  const slideStability = useCallback(() => graphStability(slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme, presentation?.themeColors)), [presentation])
 
   const addGraph = useCallback(() => {
-    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
-  }, [slideIsDark, slideBackdrop])
+    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [slideIsDark, slideBackdrop, slideStability])
   const addGraph3d = useCallback(() => {
-    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
-  }, [slideIsDark, slideBackdrop])
+    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [slideIsDark, slideBackdrop, slideStability])
 
   const openGraphEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'graph' || heldByOther(elementId)) return
     const graph = {}
     for (const key of GRAPH_FIELDS) if (element[key] !== undefined) graph[key] = element[key]
-    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop() })
-  }, [presentation, slideBackdrop])
+    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [presentation, slideBackdrop, slideStability])
 
   const saveGraph = useCallback((graph) => {
     const elementId = graphEditor?.elementId
@@ -5458,6 +5460,7 @@ function draw() {
           initial={graphEditor.graph}
           size={graphEditor.size}
           slideBg={graphEditor.slideBg}
+          stability={graphEditor.stability}
           isNew={!graphEditor.elementId}
           onSave={saveGraph}
           onClose={() => setGraphEditor(null)}

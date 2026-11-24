@@ -85,15 +85,17 @@ A system draws streamlines by default, a vector field arrows, and a slope field 
 
 ### Equilibria, separatrices and nullclines
 
-For a system, or a vector field's zeros, the graph finds the equilibria in view and classifies each one from its Jacobian. A filled dot is stable (a node or a spiral), an open one unstable, a half-filled one a saddle, and a dot in a ring a center. Point at one to read its kind, its eigenvalues, and the trace and determinant of its Jacobian. A center is found from the linearization, which can't tell it from a very slow spiral.
+For a system, or a vector field's zeros, the graph finds the equilibria in view and classifies each one from its Jacobian. Each kind has its own shape, so a portrait reads in grayscale too: a filled disc is stable (a node or a spiral), an open ring unstable, a disc half filled inside a ring a saddle, a dot in a ring a center, and an open diamond a degenerate point. Point at one to read its kind, beside its shape, its eigenvalues, and the trace and determinant of its Jacobian. A center is found from the linearization, which can't tell it from a very slow spiral.
 
 Also in the options:
 
-- **Separatrices of saddles**: the curves into and out of each saddle, drawn heavier.
+- **Separatrices of saddles**: the curves into and out of each saddle, drawn heavier: the stable ones, coming in, solid, and the unstable ones, going out, dashed. A curve that is both, one saddle's way out and another's way in, is a solid line under a dash.
 - **Nullclines**: dashed lines where x′ = 0 and where y′ = 0, with a key.
-- **Trace–determinant plane**: a small chart, top right, of where each equilibrium sits among saddles, nodes, spirals and centers. It moves as the sliders do.
+- **Trace–determinant plane**: a small chart, top right, of where each equilibrium sits among saddles, nodes, spirals and centers, each in its shape. It moves as the sliders do.
 
 Each of these can appear at its own step, so a portrait can build up as you present: the field, then the equilibria, then the separatrices.
+
+The shapes and separatrices are in the graph's own ink and the line's color. A theme can give them colors of stability instead: Separatrix draws what attracts in blue and what repels in vermilion, so a saddle is half blue inside a vermilion ring.
 
 ### Paths while presenting
 

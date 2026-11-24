@@ -70,6 +70,12 @@ describe('themes', () => {
     expect(deckTextStyles(null, 'holdout')).toMatchObject({ bodySize: 28, headingFont: 'Rubik, sans-serif', headingWeight: 600 })
     expect(deckTextFont('', 'separatrix')).toBe("'Fira Sans', sans-serif")
     expect(slidePalette({}, 'separatrix')).toMatchObject({ link: '#1d5fa8', accent: '#cf4f1b' })
+    // Colors of stability: Separatrix's, kept on a light background of a slide's own, and no other theme's
+    expect(slidePalette({}, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })
+    expect(slidePalette({ background: { type: 'color', color: '#f0f0e8' } }, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })
+    expect(slidePalette({ background: { type: 'color', color: '#202020' } }, 'separatrix').stable).toBeUndefined()
+    expect(THEME_LIST.filter(t => t.stable || t.unstable).map(t => t.id)).toEqual(['separatrix'])
+    expect(Object.keys(slidePalette({}, 'white'))).not.toContain('stable')
   })
 
   it('tells dark colors from light ones', () => {

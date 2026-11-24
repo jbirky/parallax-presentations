@@ -60,7 +60,7 @@ const clickChangesStatesOnly = action => action.type === 'visibility' && !['show
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeViewer'
-import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
+import { graphPageHtml, graphSnapshotContent, graphStability } from '../utils/graphPage'
 import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
 import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
@@ -269,6 +269,8 @@ export function editLabelFor(type) {
 export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black', textStyles = null, themeColors = null }) {
   // The slide's colors: its background, or the theme's (utils/themes.js)
   const palette = slidePalette(slide, theme, themeColors)
+  // Graphs' fixed points and separatrices, in the theme's colors of stability
+  const stability = useMemo(() => graphStability(palette), [palette.stable, palette.unstable]) // eslint-disable-line react-hooks/exhaustive-deps
   // The deck's text styles, as variables index.css reads; their text, for
   // shrinking text to fit again when they change
   const textVars = useMemo(() => textStyleVars(deckTextStyles(textStyles, theme)), [textStyles, theme])
@@ -1160,6 +1162,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             key={element.id}
             element={element}
             slideText={palette.text}
+            slideStability={stability}
             canvasScale={scale}
             faded={!!fadedIds?.has(element.id)}
             unseen={!!unseenIds?.has(element.id)}
@@ -1440,12 +1443,12 @@ function CitationCaption({ element, fontSize, fontFamily }) {
 
 // A graph's page, with its data lines' rows once the editor has them (they
 // come later than the graph: graphData.js), and built again only then or
-// when the graph changes
-function GraphFrame({ element, scale }) {
+// when the graph or the theme's colors of stability change
+function GraphFrame({ element, scale, stability }) {
   const dataVersion = useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const srcDoc = useMemo(
-    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true }),
-    [element, dataVersion], // eslint-disable-line react-hooks/exhaustive-deps
+    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element, stability)), showAll: true, stability }),
+    [element, dataVersion, stability], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
     <ScaledFrame
@@ -1458,7 +1461,7 @@ function GraphFrame({ element, scale }) {
   )
 }
 
-export function CanvasElement({ element, slideText, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, textStylesKey = '', citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
+export function CanvasElement({ element, slideText, slideStability = null, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, textStylesKey = '', citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1709,7 +1712,7 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
         {element.type === 'graph' && (
           // Edited in its own window (double-click), so the canvas never takes
           // its clicks: dragging moves it
-          <GraphFrame key={element.id} element={element} scale={canvasScale} />
+          <GraphFrame key={element.id} element={element} scale={canvasScale} stability={slideStability} />
         )}
         {element.type === 'model' && (
           <ScaledFrame

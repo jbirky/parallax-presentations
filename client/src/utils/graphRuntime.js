@@ -1368,17 +1368,19 @@ export function graphRuntime(P, G, G3, config) {
     }
   }
   // A path in graph coordinates, with arrows the way time runs
-  function strokePath(run, color, width, alpha) {
+  function strokePath(run, color, width, alpha, dash) {
     const pts = run.pts
     if (!pts || pts.length < 2) return
     ctx.strokeStyle = color
     ctx.fillStyle = color
     ctx.globalAlpha = alpha
     ctx.lineWidth = width
+    if (dash) ctx.setLineDash(dash)
     ctx.beginPath()
     ctx.moveTo(clampPx(sx(pts[0][0])), clampPx(sy(pts[0][1])))
     for (let i = 1; i < pts.length; i++) ctx.lineTo(clampPx(sx(pts[i][0])), clampPx(sy(pts[i][1])))
     ctx.stroke()
+    if (dash) ctx.setLineDash([])
     const forward = pts[pts.length - 1][2] >= pts[0][2]
     let acc = 0, next = 60
     for (let k = 1; k < pts.length; k++) {
@@ -1401,7 +1403,18 @@ export function graphRuntime(P, G, G3, config) {
         strokeRuns(contour(env => { f.F(env, env.x, env.y, out); return out[1] }, E), { color: theme.null2, style: 'dashed', width: 2 })
         E.x = 0; E.y = 0
       }
-      for (const sep of f.seps || []) strokePath(sep, f.color, 2.6, 1)
+    }
+    // Separatrices: the stable manifolds, solid, then the unstable ones,
+    // dashed, over them, so a line that is both is a solid under a dash
+    for (const unstable of [false, true]) {
+      for (const f of g.fields) {
+        const colors = stability(f.color)
+        for (const sep of f.seps || []) {
+          if (!!sep.unstable !== unstable) continue
+          const st = G.manifoldStyle(sep, colors)
+          strokePath(sep, st.color, 2.6, 1, st.dash)
+        }
+      }
     }
     for (const p of g.paths.concat(g.clicked)) {
       if (p.solution) {
@@ -1442,19 +1455,35 @@ export function graphRuntime(P, G, G3, config) {
     const td = g.fields.find(f => f.eq && overlayShown(f.e, f.o, 'traceDet'))
     if (td) traceDet(td)
   }
-  // Filled: attracts. Open: repels. Half filled: a saddle. A dot in a ring: a center
+  // The colors of stability: the theme's (config.stability), or else
+  // `ink` (a line's own color, for separatrices), or else the graph's ink;
+  // `bg` fills the open glyphs
+  function stability(ink, bg) {
+    const s = C.stability || {}
+    return {
+      stable: s.stable || ink || theme.fg,
+      unstable: s.unstable || ink || theme.fg,
+      neutral: theme.fg,
+      bg: bg || (C.background && C.background !== 'transparent' ? C.background : theme.halo),
+    }
+  }
+  // An equilibrium's glyph (graphFields.js glyph): filled attracts, open
+  // repels, half filled is a saddle, a dot in a ring a center, a diamond
+  // degenerate
+  function drawGlyph(kind, x, y, r, colors) {
+    for (const s of G.glyph(kind, r, colors)) {
+      ctx.beginPath()
+      if (s.shape === 'half') { ctx.arc(x, y, s.r, Math.PI / 2, 3 * Math.PI / 2); ctx.closePath() }
+      else if (s.shape === 'diamond') { ctx.moveTo(x, y - s.r); ctx.lineTo(x + s.r, y); ctx.lineTo(x, y + s.r); ctx.lineTo(x - s.r, y); ctx.closePath() }
+      else ctx.arc(x, y, s.r, 0, Math.PI * 2)
+      if (s.fill) { ctx.fillStyle = s.fill; ctx.fill() }
+      if (s.stroke) { ctx.strokeStyle = s.stroke; ctx.lineWidth = s.width; ctx.stroke() }
+    }
+  }
   function marker(q) {
-    const x = sx(q.x), y = sy(q.y), r = 6.5
+    const x = sx(q.x), y = sy(q.y), r = 7
     if (x < -r || x > W + r || y < -r || y > H + r) return
-    ctx.lineWidth = 2.2
-    ctx.strokeStyle = theme.fg
-    ctx.fillStyle = C.background && C.background !== 'transparent' ? C.background : theme.halo
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = theme.fg
-    if (/^stable/.test(q.kind)) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
-    else if (q.kind === 'saddle') { ctx.beginPath(); ctx.arc(x, y, r, Math.PI / 2, 3 * Math.PI / 2); ctx.closePath(); ctx.fill() }
-    else if (q.kind === 'center') { ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill() }
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+    drawGlyph(q.kind, x, y, r, stability())
   }
   function nullclineKey(y, entries) {
     let x = 10
@@ -1519,12 +1548,9 @@ export function graphRuntime(P, G, G3, config) {
     ctx.fillText('spirals', tx(R * 0.32), dy(R * R / 4 * 0.85))
     ctx.textAlign = 'left'; ctx.fillText('nodes', ix + 2, dy(R * R / 4 * 0.12))
     ctx.textAlign = 'right'; ctx.fillText('nodes', ix + iw - 2, dy(R * R / 4 * 0.12))
-    for (const q of f.eq) {
-      ctx.fillStyle = f.color
-      ctx.strokeStyle = theme.halo
-      ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(tx(q.trace), Math.max(iy + 3, Math.min(iy + ih - 3, dy(q.det))), 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    }
+    const colors = stability(null, theme.panel)
+    // (held inside the chart, the whole glyph showing)
+    for (const q of f.eq) drawGlyph(q.kind, Math.max(ix + 6, Math.min(ix + iw - 6, tx(q.trace))), Math.max(iy + 6, Math.min(iy + ih - 6, dy(q.det))), 5, colors)
     ctx.restore()
     ctx.font = 'italic 12px ' + MATH_FONT
     ctx.fillStyle = theme.text
@@ -1542,16 +1568,18 @@ export function graphRuntime(P, G, G3, config) {
       'λ = ' + (q.eig[0][1] ? fmt(q.eig[0][0]) + ' ± ' + fmt(Math.abs(q.eig[0][1])) + 'i' : fmt(q.eig[0][0]) + ', ' + fmt(q.eig[1][0])),
       'τ = ' + fmt(q.trace) + ',  Δ = ' + fmt(q.det),
     ]
-    ctx.font = '12.5px ' + FONT
-    const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, h = lines.length * 18 + 12
+    // The first line, its kind, after its glyph
+    const indent = i => (i ? 0 : 18)
+    const w = Math.max(...lines.map((l, i) => { ctx.font = (i ? '' : '600 ') + '12.5px ' + FONT; return ctx.measureText(l).width + indent(i) })) + 20, h = lines.length * 18 + 12
     const bx = x + 14 + w > W ? x - 14 - w : x + 14, by = Math.max(4, Math.min(H - h - 4, y - h / 2))
     ctx.fillStyle = theme.panel
     ctx.strokeStyle = theme.border
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.rect(bx, by, w, h); ctx.fill(); ctx.stroke()
+    drawGlyph(q.kind, bx + 16, by + 15, 5.5, stability(null, theme.panel))
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
-    lines.forEach((l, i) => { ctx.fillStyle = theme.panelText; ctx.font = (i ? '' : '600 ') + '12.5px ' + FONT; ctx.fillText(l, bx + 10, by + 8 + i * 18) })
+    lines.forEach((l, i) => { ctx.fillStyle = theme.panelText; ctx.font = (i ? '' : '600 ') + '12.5px ' + FONT; ctx.fillText(l, bx + 10 + indent(i), by + 8 + i * 18) })
   }
   // A path's or solution's starting point, where it can be dragged from
   function startAt(it, E) {

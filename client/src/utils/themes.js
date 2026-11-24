@@ -11,7 +11,9 @@
 // as deck.textStyles has them: sizes, and the headings' font and weight),
 // which hold until the Themes panel's Text tab sets its own (deckTextStyles),
 // and a stylesheet,
-// client/src/themes/<id>.css (utils/themeCss.js).
+// client/src/themes/<id>.css (utils/themeCss.js). A theme can also name the
+// colors of stability (`stable`, `unstable`), which Graph draws fixed points
+// and separatrices in (graphPage.js); without them, a graph uses its own ink.
 //
 // What a slide shows (slidePalette): a slide without a background of its own
 // shows the theme's page, text and headings, in the editor as when
@@ -48,7 +50,7 @@ export const THEME_LIST = [
   { id: 'quincunx', label: 'Quincunx', background: '#f3f6f6', text: '#11262e', heading: '#11262e', link: '#1f5a86', accent: '#e2a23a', dark: false, reveal: 'white', font: 'Rubik, sans-serif', textStyles: { bodySize: 30, h1Size: 76, h2Size: 44, h3Size: 32, headingFont: 'Rubik, sans-serif', headingWeight: 600 }, note: 'A Galton board: dark title and section slides with pegs, a tally footer, brass samples, ink models, Space Mono numbers' },
   { id: 'partition', label: 'Partition', background: '#f7f7f5', text: '#16191e', heading: '#16191e', link: '#2d55c4', accent: '#d94a1e', dark: false, reveal: 'white', font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 40, h3Size: 28, headingFont: 'Manrope, sans-serif', headingWeight: 800 }, note: 'Slides drawn as partitioned matrices: brackets, a partition line under titles, a basis-vector footer' },
   { id: 'holdout', label: 'Holdout', background: '#f7f8f6', text: '#161b22', heading: '#161b22', link: '#1d4f91', accent: '#1d4f91', dark: false, reveal: 'white', font: 'Rubik, sans-serif', textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Rubik, sans-serif', headingWeight: 600 }, note: 'A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer' },
-  { id: 'separatrix', label: 'Separatrix', background: '#eef1ec', text: '#15242a', heading: '#15242a', link: '#1d5fa8', accent: '#cf4f1b', dark: false, reveal: 'white', font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: 'Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer' },
+  { id: 'separatrix', label: 'Separatrix', background: '#eef1ec', text: '#15242a', heading: '#15242a', link: '#1d5fa8', accent: '#cf4f1b', stable: '#1d5fa8', unstable: '#cf4f1b', dark: false, reveal: 'white', font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: 'Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))
@@ -175,13 +177,19 @@ export function themeBackgroundStyle(themeId, colors = null) {
   return t.backgroundCss ? { background: t.backgroundCss } : { backgroundColor: t.background }
 }
 
+// A theme's colors of stability, those it has: { stable, unstable }
+export function stabilityColors(t) {
+  return Object.fromEntries(['stable', 'unstable'].filter(k => typeof t?.[k] === 'string' && t[k]).map(k => [k, t[k]]))
+}
+
 // What a slide shows: its background (CSS, camelCase) and a color for it
-// (bg), its text, heading, link and accent colors, and whether it's dark.
+// (bg), its text, heading, link and accent colors, whether it's dark, and
+// the theme's colors of stability where it has them (stable, unstable).
 // colors are the deck's own (deck.themeColors).
 export function slidePalette(slide, themeId, colors = null) {
   const t = deckTheme(themeId, colors)
   const own = ownBackground(slide?.background)
-  if (!own) return { background: themeBackgroundStyle(themeId, colors), bg: t.background, text: t.text, heading: t.heading, link: t.link, accent: t.accent, dark: t.dark, own: false }
+  if (!own) return { background: themeBackgroundStyle(themeId, colors), bg: t.background, text: t.text, heading: t.heading, link: t.link, accent: t.accent, dark: t.dark, own: false, ...stabilityColors(t) }
   const match = own.dark === t.dark
   const plain = own.dark ? '#ffffff' : '#222222'
   const link = match ? t.link : (own.dark ? '#42affa' : '#2a76dd')
@@ -194,6 +202,8 @@ export function slidePalette(slide, themeId, colors = null) {
     accent: match ? t.accent : link,
     dark: own.dark,
     own: true,
+    // The theme's, on a background as dark or light as its page
+    ...(match ? stabilityColors(t) : {}),
   }
 }
 
