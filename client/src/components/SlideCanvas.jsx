@@ -1254,7 +1254,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
 
         {/* Footer overlay. On a scrolling slide it's at the foot of the first
             screen: presenting, it stays at the foot of the screen as the canvas scrolls. */}
-        {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && (
+        {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && slide?.showSlideFooter !== false && (
           footerMode === 'sequence' && sequenceSections.length > 0 ? (
             <div className={FOOTER_CLASS} data-footer="sequence" style={{
               position: 'absolute', bottom: 6 + CANVAS_H - SLIDE_H, left: 16, right: 16 + CANVAS_W - SLIDE_W, zIndex: 900,

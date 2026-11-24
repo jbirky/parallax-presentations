@@ -105,6 +105,8 @@
   letter-spacing: 0.06em !important;
   text-transform: uppercase !important;
 }
+.deck-theme-transit .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-transit .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
 
 /* Bullets: stops on a line, the last a terminus; a list inside one, ticks */
 .deck-theme-transit .px-text ul { list-style: none; padding-left: 1.5em; }
@@ -309,6 +311,12 @@
   font-size: 13px !important;
   font-weight: 700 !important;
 }
+/* The page number at the route's start, and the route clear of the bottom
+   right, which a presented deck's arrows have (the rule with the class around
+   the slide is the presented deck's alone) */
+.deck-theme-transit.px-slide .px-footer[data-footer=sequence] .px-footer-page,
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] .px-footer-page { order: -1; margin: 0 14px 0 0 !important; }
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] { padding-right: 86px; }
 .deck-theme-transit.px-slide .px-footer .px-footer-page:not(:empty),
 .deck-theme-transit .px-slide .px-footer .px-footer-page:not(:empty) {
   padding: 2px 9px;

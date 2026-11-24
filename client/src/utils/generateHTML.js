@@ -236,9 +236,10 @@ function themeStyleTag(themeId, colors = null) {
 }
 
 // The references slide's heading and list: the entries the deck cites, in the
-// order and with the numbers the citation index gives them. light: dark text,
-// for a light page
-function referencesHtml(citations, markerColor, light = false) {
+// order and with the numbers the citation index gives them. markerColor: the
+// numbers' (the theme's link color); light: dark text, for a light page; font:
+// the deck's text font
+function referencesHtml(citations, markerColor, light = false, font = '') {
   const ink = alpha => light ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`
   const items = citations.entries.map(entry => {
     const year = entry.year || ''
@@ -260,7 +261,7 @@ function referencesHtml(citations, markerColor, light = false) {
     return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:${ink(0.85)}">${line}</div>`
   }).join('\n          ')
   return `<h2 style="font-size:28px;margin:0 0 20px;color:${ink(0.95)}">References</h2>
-        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px${font ? `;font-family:${font}` : ''}">
           ${items}
         </div>`
 }
@@ -792,7 +793,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     // clips the list, so the slide showed empty
     slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, !deckTheme(theme, presentation.themeColors).dark)}
+        ${referencesHtml(citations, deckTheme(theme, presentation.themeColors).link, !deckTheme(theme, presentation.themeColors).dark, globalFont)}
       </div>
     </section>`
   }
@@ -1761,9 +1762,9 @@ function generatePrintHTML(presentation) {
     return `<div class="${pageClass}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};${cssText(paletteVars(palette))}">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n') + (citations.entries.length > 0
     // The references, last, as the presented deck has them
-    ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
+    ? `\n<div class="slide-page" style="${getBgPrintStyle(null, theme, presentation.themeColors)}font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:hidden;z-index:1">
-        ${referencesHtml(citations, footerColor)}
+        ${referencesHtml(citations, deckTheme(theme, presentation.themeColors).link, !deckTheme(theme, presentation.themeColors).dark, cssValue(globalFont))}
       </div>
 </div>`
     : '')

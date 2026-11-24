@@ -360,6 +360,19 @@ describe('generateRevealHTML', () => {
     expect(html).toContain('<em>Nature</em>')
   })
 
+  it('numbers references in the theme’s link color and sets them in the deck’s font', () => {
+    const pres = makePresentation({
+      theme: 'preprint',
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: '<p>See <sup>[1]</sup></p>' }] }],
+      bibliography: [{ key: 'smith2020', type: 'article', author: 'Smith, John', title: 'A Paper', year: '2020' }],
+    })
+    const html = generateRevealHTML(pres)
+    // not the footer's color, which is a faint white unless the deck sets one
+    expect(html).toContain('<span style="color:#1f4e9c;font-weight:700;margin-right:6px">[1]</span>')
+    expect(html).toContain("column-gap:30px;font-family:'Computer Modern Serif', serif\">")
+    expect(html).toContain('color:rgba(0,0,0,0.95)">References</h2>')
+  })
+
   it('generates a references slide for entries cited via image citationText', () => {
     const pres = makePresentation({
       slides: [{

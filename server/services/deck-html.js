@@ -29496,8 +29496,10 @@ var preprint_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-preprint .px-text ul ul > li::marker { content: "\\2013  "; }
 .deck-theme-preprint .px-text ol ol > li::marker { content: "(" counter(list-item, lower-alpha) ")  "; }
 
-/* Links and citations in link blue, without the underline */
+/* Links and citations in link blue, without the underline (citation markers
+   are written in indigo) */
 .deck-theme-preprint .px-text a { color: var(--px-link, #1f4e9c) !important; text-decoration: none !important; }
+.deck-theme-preprint .px-text sup[data-cite] { color: var(--px-link, #1f4e9c) !important; }
 
 /* Quotes: an abstract, narrower and smaller; a bold first line is its
    heading, centered in small capitals */
@@ -29681,6 +29683,8 @@ var transit_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
   letter-spacing: 0.06em !important;
   text-transform: uppercase !important;
 }
+.deck-theme-transit .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-transit .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
 
 /* Bullets: stops on a line, the last a terminus; a list inside one, ticks */
 .deck-theme-transit .px-text ul { list-style: none; padding-left: 1.5em; }
@@ -29885,6 +29889,12 @@ var transit_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
   font-size: 13px !important;
   font-weight: 700 !important;
 }
+/* The page number at the route's start, and the route clear of the bottom
+   right, which a presented deck's arrows have (the rule with the class around
+   the slide is the presented deck's alone) */
+.deck-theme-transit.px-slide .px-footer[data-footer=sequence] .px-footer-page,
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] .px-footer-page { order: -1; margin: 0 14px 0 0 !important; }
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] { padding-right: 86px; }
 .deck-theme-transit.px-slide .px-footer .px-footer-page:not(:empty),
 .deck-theme-transit .px-slide .px-footer .px-footer-page:not(:empty) {
   padding: 2px 9px;
@@ -30645,7 +30655,7 @@ function themeStyleTag(themeId, colors = null) {
 ${css.replace(/<\/style/gi, "<\\/style")}
   </style>` : "";
 }
-function referencesHtml(citations, markerColor, light = false) {
+function referencesHtml(citations, markerColor, light = false, font = "") {
   const ink2 = (alpha2) => light ? `rgba(0,0,0,${alpha2})` : `rgba(255,255,255,${alpha2})`;
   const items = citations.entries.map((entry) => {
     const year = entry.year || "";
@@ -30666,7 +30676,7 @@ function referencesHtml(citations, markerColor, light = false) {
     return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:${ink2(0.85)}">${line}</div>`;
   }).join("\n          ");
   return `<h2 style="font-size:28px;margin:0 0 20px;color:${ink2(0.95)}">References</h2>
-        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px${font ? `;font-family:${font}` : ""}">
           ${items}
         </div>`;
 }
@@ -31159,7 +31169,7 @@ ${sections}
     slidesHtml += `
     <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, !deckTheme(theme, presentation.themeColors).dark)}
+        ${referencesHtml(citations, deckTheme(theme, presentation.themeColors).link, !deckTheme(theme, presentation.themeColors).dark, globalFont)}
       </div>
     </section>`;
   }

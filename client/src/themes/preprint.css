@@ -125,8 +125,10 @@
 .deck-theme-preprint .px-text ul ul > li::marker { content: "\2013  "; }
 .deck-theme-preprint .px-text ol ol > li::marker { content: "(" counter(list-item, lower-alpha) ")  "; }
 
-/* Links and citations in link blue, without the underline */
+/* Links and citations in link blue, without the underline (citation markers
+   are written in indigo) */
 .deck-theme-preprint .px-text a { color: var(--px-link, #1f4e9c) !important; text-decoration: none !important; }
+.deck-theme-preprint .px-text sup[data-cite] { color: var(--px-link, #1f4e9c) !important; }
 
 /* Quotes: an abstract, narrower and smaller; a bold first line is its
    heading, centered in small capitals */
