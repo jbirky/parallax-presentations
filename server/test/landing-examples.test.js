@@ -163,6 +163,10 @@ describe('the landing page’s examples', { skip }, () => {
     let list = await publicList()
     assert.deepEqual(list.templates.map(e => e.slug), [template.slug])
     assert.equal(list.templates[0].desc, 'A paper in ten slides')
+    // A template's card names its deck's theme; an example's doesn't
+    assert.equal(typeof list.templates[0].theme, 'string')
+    assert.ok(list.templates[0].theme.length > 0)
+    assert.ok(list.examples.every(e => e.theme === undefined))
     assert.ok(!list.examples.some(e => e.slug === template.slug), 'not among the examples')
 
     // Its own page: the deck, its slides, its theme, and Use this template

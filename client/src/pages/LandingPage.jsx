@@ -238,11 +238,11 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                 )}
                 <div className="lp-grid">
                   {templatesShown.map(e => (
-                    <a key={e.slug} className="lp-card" href={`/templates/${e.slug}`} aria-label={`${e.title}${e.field ? `, ${e.field}` : ''}: open the template`}
+                    <a key={e.slug} className="lp-card" href={`/templates/${e.slug}`} aria-label={`${e.title}${e.field ? `, ${e.field}` : ''}${e.theme ? `, in the ${e.theme} theme` : ''}: open the template`}
                       onClick={() => track('open-template', { template: e.slug, from: 'card' })}>
                       <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
                         {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
-                        <span>Preview</span>
+                        <span>{e.theme || 'Preview'}</span>
                       </div>
                       <div className="lp-card-body">
                         {e.field && <div className="lp-label">{e.field}</div>}

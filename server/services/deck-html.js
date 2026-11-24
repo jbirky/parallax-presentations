@@ -5813,7 +5813,8 @@ __export(deck_html_exports, {
   graphNeeds: () => graphNeeds,
   graphRowsFrom: () => graphRowsFrom,
   hasEmbeds: () => hasEmbeds,
-  templateFacts: () => templateFacts
+  templateFacts: () => templateFacts,
+  themeName: () => themeName
 });
 module.exports = __toCommonJS(deck_html_exports);
 
@@ -33094,6 +33095,11 @@ function stylesheetNote(css) {
   const short = note.length > 240 ? sentences[0].trim() : note;
   return short.replace(/^./, (c) => c.toUpperCase());
 }
+function themeName(deck) {
+  const named = typeof deck?.themeSource?.name === "string" ? deck.themeSource.name.trim().slice(0, 80) : "";
+  const id = typeof deck?.theme === "string" ? deck.theme : "black";
+  return named || THEMES[id]?.label || id;
+}
 function templateFacts(deck) {
   const themeId = typeof deck?.theme === "string" ? deck.theme : "black";
   const known = THEMES[themeId];
@@ -33118,7 +33124,7 @@ function templateFacts(deck) {
   return {
     theme: {
       id: themeId,
-      label: named || known?.label || themeId,
+      label: themeName(deck),
       base: known?.label || themeId,
       named: !!named,
       note: named ? stylesheetNote(css) : known?.note || "",
@@ -33158,5 +33164,6 @@ function templateFacts(deck) {
   graphNeeds,
   graphRowsFrom,
   hasEmbeds,
-  templateFacts
+  templateFacts,
+  themeName
 });

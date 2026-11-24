@@ -99,6 +99,14 @@ function stylesheetNote(css) {
   return short.replace(/^./, c => c.toUpperCase())
 }
 
+// The name of a deck's theme: a theme of its own by the name it came with
+// (customTheme.js's themeSource), or the built-in one's
+export function themeName(deck) {
+  const named = typeof deck?.themeSource?.name === 'string' ? deck.themeSource.name.trim().slice(0, 80) : ''
+  const id = typeof deck?.theme === 'string' ? deck.theme : 'black'
+  return named || THEMES[id]?.label || id
+}
+
 export function templateFacts(deck) {
   const themeId = typeof deck?.theme === 'string' ? deck.theme : 'black'
   const known = THEMES[themeId]
@@ -129,7 +137,7 @@ export function templateFacts(deck) {
   return {
     theme: {
       id: themeId,
-      label: named || known?.label || themeId,
+      label: themeName(deck),
       base: known?.label || themeId,
       named: !!named,
       note: named ? stylesheetNote(css) : known?.note || '',

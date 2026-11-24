@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { describe, it, expect } from 'vitest'
-import { templateFacts } from './templateFacts'
+import { templateFacts, themeName } from './templateFacts'
 
 const deck = {
   theme: 'bauhaus',
@@ -24,6 +24,16 @@ const deck = {
     { layout: 'title-content', elements: [{ type: 'text', placeholder: 'title', y: 36, content: '<h2>2.1&#8194;The test step &amp;#38; more &#x2014; done</h2>' }] },
   ],
 }
+
+describe('a deck’s theme, by name', () => {
+  it('is a built-in theme’s name, or the name a theme of the deck’s own came with', () => {
+    expect(themeName({ theme: 'bauhaus' })).toBe('Bauhaus')
+    expect(themeName({ theme: 'white', themeSource: { name: ' DNA ', version: 1 } })).toBe('DNA')
+    expect(themeName({ theme: 'white', themeSource: { name: '' } })).toBe('White')
+    expect(themeName({})).toBe('Black')
+    expect(themeName(null)).toBe('Black')
+  })
+})
 
 describe('what a template’s page says about its deck', () => {
   it('names its theme, colors, fonts and text sizes, with the theme’s where the deck has none', () => {

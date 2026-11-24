@@ -122,7 +122,7 @@ describe('the landing page', () => {
 
   it('lists the templates on their own tab, each opening its own page', async () => {
     const template = (slug, title, field) => ({ slug, title, field, desc: `${title}, ready to fill in`, tags: ['Outline'], thumbnail: null, background: { type: 'color', color: '#202040' } })
-    server.list = { hero: 'hero', examples: [], templates: [template('journal-club', 'Journal club', 'Talks'), template('lecture', 'Lecture', 'Teaching')] }
+    server.list = { hero: 'hero', examples: [], templates: [{ ...template('journal-club', 'Journal club', 'Talks'), theme: 'Preprint' }, template('lecture', 'Lecture', 'Teaching')] }
     try {
       await mount()
       await act(async () => button('Templates').click())
@@ -134,8 +134,11 @@ describe('the landing page', () => {
       expect(cards()).toEqual(['Lecture'])
       await act(async () => button('All').click())
 
-      // Each card is a link to the template's own page, which Use this template is on
+      // Each card is a link to the template's own page, which Use this template is on,
+      // its picture labeled with its theme
       const links = [...el.querySelectorAll('a.lp-card')]
+      expect(links.map(a => a.querySelector('.lp-thumb span').textContent)).toEqual(['Preprint', 'Preview'])
+      expect(links[0].getAttribute('aria-label')).toBe('Journal club, Talks, in the Preprint theme: open the template')
       expect(links.map(a => a.getAttribute('href'))).toEqual(['/templates/journal-club', '/templates/lecture'])
       links[1].addEventListener('click', e => e.preventDefault())
       await act(async () => links[1].click())

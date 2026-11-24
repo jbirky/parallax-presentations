@@ -268,7 +268,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
   const slug = esc(t.slug)
   const bg = b => (b?.type === 'color' && b.color) || '#1e1e2e'
   const card = o => `<a class="card" href="/templates/${esc(o.slug)}">
-          <span class="thumb" style="background:${esc(safeColor(bg(o.background)))}">${o.thumbnail ? `<img loading="lazy" alt="" src="${esc(o.thumbnail)}" />` : `<b>${esc(o.title)}</b>`}</span>
+          <span class="thumb" style="background:${esc(safeColor(bg(o.background)))}">${o.thumbnail ? `<img loading="lazy" alt="" src="${esc(o.thumbnail)}" />` : `<b>${esc(o.title)}</b>`}${o.theme ? `<i class="theme-pill">${esc(o.theme)}<span class="sr"> theme</span></i>` : ''}</span>
           ${o.field ? `<span class="label">${esc(o.field)}</span>` : ''}
           <span class="name">${esc(o.title)}</span>
         </a>`
@@ -336,7 +336,9 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
       .thumb b { padding: 12px; text-align: center; color: #fff; }
       .card:hover .thumb { border-color: rgba(143, 146, 250, 0.6); }
-      .card .name { font-weight: 600; }`,
+      .card .name { font-weight: 600; }
+      .theme-pill { position: absolute; right: 8px; bottom: 8px; font: normal 600 11.5px/1 Inter, sans-serif; color: #fff; background: rgba(15, 15, 23, 0.82); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; padding: 5px 10px; }
+      .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }`,
     main: `
       <div class="label">${t.field ? `${esc(t.field)} · ` : ''}Template</div>
       <h1>${esc(t.title)}</h1>

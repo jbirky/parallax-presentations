@@ -69,7 +69,7 @@ describe('what link previews and search engines see', () => {
       slides: [{ title: 'Forces', layout: 'Title Slide', kinds: [], background: '#f7f6f2', text: '#151515' }, { title: 'Second law', layout: '', kinds: ['2 graphs'], background: 'red;x:y', text: '#151515' }],
       contents: ['2 graphs', '3 text boxes'],
     }
-    const html = templatePage({ origin, template, facts, others: [{ ...template, slug: 'seminar', title: 'Seminar', thumbnail: null }], guestEnabled: true, analytics: null, index: true })
+    const html = templatePage({ origin, template, facts, others: [{ ...template, slug: 'seminar', title: 'Seminar', thumbnail: null, theme: 'Turin' }], guestEnabled: true, analytics: null, index: true })
     assert.match(html, /<title>Physics lecture · Parallax templates<\/title>/)
     assert.match(html, /<link rel="canonical" href="https:\/\/parallax-presentations\.com\/templates\/lecture" \/>/)
     assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/lecture\.jpg" \/>/)
@@ -85,7 +85,7 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<strong>Bauhaus<\/strong>, with colors of its own and a stylesheet of its own/)
     assert.match(html, /<pre>h2 \{ color: red \}<\/pre>/)
     assert.doesNotMatch(html, /background:url\(x\)|red;x:y/)
-    assert.match(html, /<a class="card" href="\/templates\/seminar">[\s\S]*?<b>Seminar<\/b>/)
+    assert.match(html, /<a class="card" href="\/templates\/seminar">[\s\S]*?<b>Seminar<\/b><i class="theme-pill">Turin<span class="sr"> theme<\/span><\/i>/)
     // A theme of the deck's own goes by its name, on the theme it starts from
     const own = templatePage({ origin, template, facts: { ...facts, theme: { ...facts.theme, label: '<DNA>', base: 'White', named: true } }, others: [], guestEnabled: false, analytics: null, index: false })
     assert.match(own, /<strong>&lt;DNA&gt;<\/strong>, a theme of the deck’s own, on White/)

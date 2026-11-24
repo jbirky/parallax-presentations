@@ -29,7 +29,8 @@ const columns = () => `slug, field, title, description, tags, builtin, card, her
   ${kindFound ? 'kind' : "'example' AS kind"},
   source_presentation_id, (SELECT p.title FROM presentations p WHERE p.id = source_presentation_id) AS source_title,
   deck IS NOT NULL AS has_deck, thumbnail IS NOT NULL AS has_thumbnail,
-  COALESCE(deck->'slides'->0->'background', 'null'::jsonb) AS background, updated_at`
+  COALESCE(deck->'slides'->0->'background', 'null'::jsonb) AS background,
+  deck->>'theme' AS theme_id, deck->'themeSource'->>'name' AS theme_source, updated_at`
 
 let tableFound = false
 let kindFound = false
@@ -64,6 +65,8 @@ function fromRow(r) {
     ownDeck: r.has_deck,
     hasThumbnail: r.has_thumbnail,
     background: r.background || (r.builtin && !r.has_deck ? builtinBackground(r.slug) : null),
+    // The theme its deck is in, by name: Bauhaus, or a theme of the deck's own
+    theme: r.has_deck ? deckHtml.themeName({ theme: r.theme_id, themeSource: r.theme_source ? { name: r.theme_source } : null }) : null,
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at,
   }
 }
@@ -73,10 +76,10 @@ function builtins() {
   const cards = deckHtml.EXAMPLES.map((e, i) => ({
     slug: e.slug, field: e.field, title: e.title, description: e.desc, tags: e.tags,
     builtin: true, card: true, hero: false, kind: 'example', sortOrder: i + 1,
-    sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: builtinBackground(e.slug), updatedAt: null,
+    sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: builtinBackground(e.slug), theme: null, updatedAt: null,
   }))
   const hero = { slug: deckHtml.HERO_EXAMPLE, field: '', title: 'Parallax', description: 'A galaxy rotation curve, a Feynman diagram and a geometry construction', tags: [],
-    builtin: true, card: false, hero: true, kind: 'example', sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, updatedAt: null }
+    builtin: true, card: false, hero: true, kind: 'example', sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, theme: null, updatedAt: null }
   return [hero, ...cards]
 }
 
@@ -94,7 +97,7 @@ function thumbnailUrl(e) {
 }
 
 // What the landing page shows: the deck at the top, the example cards, and
-// the template cards on its Templates tab
+// the template cards on its Templates tab, each with its theme's name
 async function landingExamples(storage) {
   const all = await listExamples(storage)
   const hero = all.find(e => e.hero) || all.find(e => e.slug === deckHtml.HERO_EXAMPLE)
@@ -105,7 +108,7 @@ async function landingExamples(storage) {
   return {
     hero: hero ? hero.slug : null,
     examples: all.filter(e => e.card && e.kind !== 'template').map(card),
-    templates: all.filter(e => e.card && e.kind === 'template').map(card),
+    templates: all.filter(e => e.card && e.kind === 'template').map(e => ({ ...card(e), theme: e.theme })),
   }
 }
 
