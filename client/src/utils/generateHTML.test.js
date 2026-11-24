@@ -662,6 +662,31 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain('family=B612+Mono')
   })
 
+  it('draws Turin and Gutter on reveal’s white, with their bands on the slides', () => {
+    const turin = generateRevealHTML(makePresentation({ theme: 'turin' }))
+    expect(turin).toContain('dist/theme/white.css')
+    expect(turin).toContain('<div class="reveal deck-theme-turin">')
+    expect(turin).toContain('.deck-theme-turin .px-slide::after')
+    expect(turin).toMatch(/class="px-slide"/)
+    const gutter = generateRevealHTML(makePresentation({ theme: 'gutter' }))
+    expect(gutter).toContain('<div class="reveal deck-theme-gutter">')
+    expect(gutter).toContain('.deck-theme-gutter .px-slide::before')
+    expect(gutter).toContain('@keyframes gutter-caret')
+    expect(gutter).toContain('family=JetBrains+Mono')
+  })
+
+  it('sets text in the theme’s body size until the deck has its own, as the editor does', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain("font-family:'Computer Modern Sans', sans-serif;font-size:28px;")
+    expect(generateRevealHTML(makePresentation({ theme: 'turin', textStyles: { bodySize: 40 } }))).toContain('font-size:40px;')
+    expect(generateRevealHTML(makePresentation({ theme: 'pixel' }))).toContain('font-size:32px;')
+    // a theme without text styles leaves text boxes at the slide's size
+    expect(generateRevealHTML(makePresentation({ theme: 'black' }))).toContain('padding:8px 12px; color:#ffffff;line-height:1.5;')
+  })
+
+  it('keeps a quote’s paragraphs blocks, as the editor has them, over reveal.js’s inline ones', () => {
+    expect(generateRevealHTML(makePresentation())).toContain('.reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }')
+  })
+
   it('sets Pixel’s headings in its heading font, on reveal’s black', () => {
     const html = generateRevealHTML(makePresentation({ theme: 'pixel' }))
     expect(html).toContain('dist/theme/black.css')

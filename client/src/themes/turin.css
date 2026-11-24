@@ -1,0 +1,124 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Turin theme's stylesheet: LaTeX Beamer, after its Madrid and Warsaw
+   themes, in Beamer's structure blue (#3333b3) and Computer Modern Sans
+   (utils/themes.js: the font and the text sizes, which the Themes panel's
+   Text tab can change). It's scoped to .deck-theme-turin, a class on the
+   editor's canvas and thumbnails, the presented deck's .reveal and the PDF's
+   pages. In the editor and the PDF the slide (.px-slide) carries the class
+   too, so rules about the slide itself name both. The editor loads it with
+   the app (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Content slides get a headline and a frame-title band across the top, every
+   slide a three-part footline. Title and section slides put the title in a
+   rounded box. A quote whose first line is a title is a block: a plain title
+   makes a block, an italic one an example block, a bold one an alert. */
+
+/* reveal.js: links, the arrows and the progress bar in structure blue */
+.deck-theme-turin {
+  --r-background-color: #ffffff;
+  --r-main-color: #141414;
+  --r-heading-color: #3333b3;
+  --r-link-color: #3333b3;
+  --r-link-color-dark: #1c1c66;
+  --r-link-color-hover: #1c1c66;
+  --r-selection-background-color: #3333b3;
+  --r-selection-color: #ffffff;
+}
+
+/* Headline and frame title: two bands across the top of content slides,
+   behind their text */
+.deck-theme-turin.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-turin .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 104px;
+  background: linear-gradient(#1c1c66 0 22px, #3333b3 22px 104px);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+.deck-theme-turin.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-turin .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2) {
+  color: #ffffff !important;
+}
+
+/* Footline: three bands, as in Madrid */
+.deck-theme-turin.px-slide::after,
+.deck-theme-turin .px-slide::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 22px;
+  background: linear-gradient(90deg, #1c1c66 0 33.33%, #2828a0 33.33% 66.67%, #3333b3 66.67%);
+  pointer-events: none;
+}
+
+/* Title and section slides: the title in a rounded box. (!important:
+   presented decks set headings' margins with it.) */
+.deck-theme-turin.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-turin .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  margin: 0 auto 0.15em !important;
+  padding: 0.3em 0.75em;
+  border-radius: 0.28em;
+  background: #3333b3;
+  color: #ffffff !important;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+.deck-theme-turin.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-turin .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  color: #3333b3;
+}
+
+/* Bullets: Beamer's triangles */
+.deck-theme-turin .px-text ul > li::marker { content: "\25B6  "; color: var(--px-accent, #3333b3); font-size: 0.6em; }
+.deck-theme-turin .px-text ul ul > li::marker { content: "\25B8  "; font-size: 0.75em; }
+.deck-theme-turin .px-text ol > li::marker { color: var(--px-accent, #3333b3); }
+
+/* Blocks: a quote whose first line is its title */
+.deck-theme-turin .px-text blockquote {
+  --block: var(--px-accent, #3333b3);
+  --block-tint: #ebebf7;
+  border: 0 !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  margin: 0.15em 0 0.5em !important;
+  border-radius: 0.22em;
+  overflow: hidden;
+  background: var(--block-tint);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+}
+.deck-theme-turin .px-text blockquote:has(> p:first-child > em:only-child) { --block: #007a00; --block-tint: #e6f2e6; }
+.deck-theme-turin .px-text blockquote:has(> p:first-child > strong:only-child) { --block: #c00000; --block-tint: #f7e6e6; }
+.deck-theme-turin .px-text blockquote > p:first-child {
+  margin: 0 !important;
+  padding: 0.1em 0.45em;
+  background: var(--block);
+  color: #ffffff;
+}
+.deck-theme-turin .px-text blockquote > p:first-child :is(em, strong) { font-style: normal; font-weight: 400; }
+.deck-theme-turin .px-text blockquote > :not(:first-child) { padding-inline: 0.45em; }
+.deck-theme-turin .px-text blockquote > :nth-child(2) { padding-top: 0.2em; }
+.deck-theme-turin .px-text blockquote > :last-child { padding-bottom: 0.25em; margin-bottom: 0 !important; }
+.deck-theme-turin .px-text blockquote > :is(ul, ol):not(:first-child) { padding-left: 1.6em; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title in its box, over the footline */
+.deck-theme-turin.theme-swatch { position: relative; }
+.deck-theme-turin.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4%;
+  background: linear-gradient(90deg, #1c1c66 0 33.33%, #2828a0 33.33% 66.67%, #3333b3 66.67%);
+}
+.deck-theme-turin .theme-swatch-title {
+  padding: 0.2em 0.6em;
+  border-radius: 0.28em;
+  background: #3333b3;
+  color: #ffffff !important;
+  font-weight: 400 !important;
+}

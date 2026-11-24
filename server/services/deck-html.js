@@ -6451,7 +6451,9 @@ var THEME_LIST = [
   { id: "dracula", label: "Dracula", background: "#282a36", text: "#f8f8f2", heading: "#bd93f9", link: "#ff79c6", dark: true },
   { id: "bauhaus", label: "Bauhaus", background: "#f7f6f2", text: "#151515", heading: "#151515", link: "#d52b1e", dark: false, reveal: "white", font: "Jost, sans-serif", note: "Lowercase headings, a red rule under slide titles, square bullets, in Jost" },
   { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" },
-  { id: "mission", label: "Mission", background: "#f4f6f8", backgroundCss: "linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8", text: "#0d1b2e", heading: "#0d1b2e", link: "#1d6fd1", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: "Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono" }
+  { id: "mission", label: "Mission", background: "#f4f6f8", backgroundCss: "linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8", text: "#0d1b2e", heading: "#0d1b2e", link: "#1d6fd1", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: "Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono" },
+  { id: "turin", label: "Turin", background: "#ffffff", text: "#141414", heading: "#3333b3", link: "#3333b3", dark: false, reveal: "white", font: "'Computer Modern Sans', sans-serif", textStyles: { bodySize: 28, h1Size: 50, h2Size: 34, h3Size: 28, headingWeight: 400 }, note: "LaTeX Beamer: a blue title band and footline, triangle bullets, quotes as blocks, in Computer Modern Sans" },
+  { id: "gutter", label: "Gutter", background: "#f6f7f9", text: "#1d2127", heading: "#0e1116", link: "#0f766e", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 54, h2Size: 34, h3Size: 26, headingWeight: 600 }, note: "A code editor: a gutter and status bar, code in JetBrains Mono on a dark slab, quotes as callouts" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -28175,8 +28177,327 @@ var mission_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/turin.css
+var turin_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Turin theme's stylesheet: LaTeX Beamer, after its Madrid and Warsaw
+   themes, in Beamer's structure blue (#3333b3) and Computer Modern Sans
+   (utils/themes.js: the font and the text sizes, which the Themes panel's
+   Text tab can change). It's scoped to .deck-theme-turin, a class on the
+   editor's canvas and thumbnails, the presented deck's .reveal and the PDF's
+   pages. In the editor and the PDF the slide (.px-slide) carries the class
+   too, so rules about the slide itself name both. The editor loads it with
+   the app (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Content slides get a headline and a frame-title band across the top, every
+   slide a three-part footline. Title and section slides put the title in a
+   rounded box. A quote whose first line is a title is a block: a plain title
+   makes a block, an italic one an example block, a bold one an alert. */
+
+/* reveal.js: links, the arrows and the progress bar in structure blue */
+.deck-theme-turin {
+  --r-background-color: #ffffff;
+  --r-main-color: #141414;
+  --r-heading-color: #3333b3;
+  --r-link-color: #3333b3;
+  --r-link-color-dark: #1c1c66;
+  --r-link-color-hover: #1c1c66;
+  --r-selection-background-color: #3333b3;
+  --r-selection-color: #ffffff;
+}
+
+/* Headline and frame title: two bands across the top of content slides,
+   behind their text */
+.deck-theme-turin.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-turin .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 104px;
+  background: linear-gradient(#1c1c66 0 22px, #3333b3 22px 104px);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+.deck-theme-turin.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-turin .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2) {
+  color: #ffffff !important;
+}
+
+/* Footline: three bands, as in Madrid */
+.deck-theme-turin.px-slide::after,
+.deck-theme-turin .px-slide::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 22px;
+  background: linear-gradient(90deg, #1c1c66 0 33.33%, #2828a0 33.33% 66.67%, #3333b3 66.67%);
+  pointer-events: none;
+}
+
+/* Title and section slides: the title in a rounded box. (!important:
+   presented decks set headings' margins with it.) */
+.deck-theme-turin.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-turin .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  margin: 0 auto 0.15em !important;
+  padding: 0.3em 0.75em;
+  border-radius: 0.28em;
+  background: #3333b3;
+  color: #ffffff !important;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+.deck-theme-turin.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-turin .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  color: #3333b3;
+}
+
+/* Bullets: Beamer's triangles */
+.deck-theme-turin .px-text ul > li::marker { content: "\\25B6  "; color: var(--px-accent, #3333b3); font-size: 0.6em; }
+.deck-theme-turin .px-text ul ul > li::marker { content: "\\25B8  "; font-size: 0.75em; }
+.deck-theme-turin .px-text ol > li::marker { color: var(--px-accent, #3333b3); }
+
+/* Blocks: a quote whose first line is its title */
+.deck-theme-turin .px-text blockquote {
+  --block: var(--px-accent, #3333b3);
+  --block-tint: #ebebf7;
+  border: 0 !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  margin: 0.15em 0 0.5em !important;
+  border-radius: 0.22em;
+  overflow: hidden;
+  background: var(--block-tint);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+}
+.deck-theme-turin .px-text blockquote:has(> p:first-child > em:only-child) { --block: #007a00; --block-tint: #e6f2e6; }
+.deck-theme-turin .px-text blockquote:has(> p:first-child > strong:only-child) { --block: #c00000; --block-tint: #f7e6e6; }
+.deck-theme-turin .px-text blockquote > p:first-child {
+  margin: 0 !important;
+  padding: 0.1em 0.45em;
+  background: var(--block);
+  color: #ffffff;
+}
+.deck-theme-turin .px-text blockquote > p:first-child :is(em, strong) { font-style: normal; font-weight: 400; }
+.deck-theme-turin .px-text blockquote > :not(:first-child) { padding-inline: 0.45em; }
+.deck-theme-turin .px-text blockquote > :nth-child(2) { padding-top: 0.2em; }
+.deck-theme-turin .px-text blockquote > :last-child { padding-bottom: 0.25em; margin-bottom: 0 !important; }
+.deck-theme-turin .px-text blockquote > :is(ul, ol):not(:first-child) { padding-left: 1.6em; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title in its box, over the footline */
+.deck-theme-turin.theme-swatch { position: relative; }
+.deck-theme-turin.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4%;
+  background: linear-gradient(90deg, #1c1c66 0 33.33%, #2828a0 33.33% 66.67%, #3333b3 66.67%);
+}
+.deck-theme-turin .theme-swatch-title {
+  padding: 0.2em 0.6em;
+  border-radius: 0.28em;
+  background: #3333b3;
+  color: #ffffff !important;
+  font-weight: 400 !important;
+}
+`;
+
+// raw:client/src/themes/gutter.css
+var gutter_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Gutter theme's stylesheet: a code editor, for code-heavy talks. Light
+   slides with an editor's gutter down the left and its status bar along the
+   bottom; slide titles sit on the "current line", with a breakpoint beside
+   them. Text is in IBM Plex Sans (utils/themes.js, which the Themes panel's
+   Text tab can change), code in JetBrains Mono on a dark slab, with its own
+   syntax colors over whichever code theme the deck picked. It's scoped to
+   .deck-theme-gutter, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   A Heading 4 right before a code block is its file tab. A quote whose first
+   line is a label is a callout: a plain label makes a note, an italic one a
+   tip, a bold one a warning. */
+
+/* reveal.js: links, the arrows and the progress bar in teal */
+.deck-theme-gutter {
+  --r-background-color: #f6f7f9;
+  --r-main-color: #1d2127;
+  --r-heading-color: #0e1116;
+  --r-link-color: #0f766e;
+  --r-link-color-dark: #134e4a;
+  --r-link-color-hover: #134e4a;
+  --r-selection-background-color: #0f766e;
+  --r-selection-color: #ffffff;
+}
+
+/* Gutter, current line, breakpoint and status bar, behind everything */
+.deck-theme-gutter.px-slide::before,
+.deck-theme-gutter .px-slide::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #134e4a 0 156px, #0f766e 156px) left bottom / 100% 20px no-repeat,
+    radial-gradient(circle, #0f766e 0 5px, transparent 5.5px) 0 43px / 40px 40px no-repeat,
+    linear-gradient(rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.08)) 0 36px / 100% 54px no-repeat,
+    linear-gradient(90deg, #e8ebef 0 40px, #d5dbe1 40px 41px, transparent 41px) 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-gutter.px-slide[data-layout=title]::before,
+.deck-theme-gutter .px-slide[data-layout=title]::before {
+  background:
+    linear-gradient(90deg, #134e4a 0 156px, #0f766e 156px) left bottom / 100% 20px no-repeat,
+    radial-gradient(circle, #0f766e 0 5px, transparent 5.5px) 0 172px / 40px 40px no-repeat,
+    linear-gradient(rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.08)) 0 152px / 100% 80px no-repeat,
+    linear-gradient(90deg, #e8ebef 0 40px, #d5dbe1 40px 41px, transparent 41px) 0 0 / 100% 100% no-repeat;
+}
+
+/* Slide titles start with a comment marker */
+.deck-theme-gutter.px-slide:not([data-layout=title]) [data-placeholder=title] h2::before,
+.deck-theme-gutter .px-slide:not([data-layout=title]) [data-placeholder=title] h2::before {
+  content: "// ";
+  color: var(--px-accent, #0f766e);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+}
+
+/* Title slide: a larger title with a blinking caret, the subtitle in mono.
+   (!important: presented decks set headings' spacing with it.) */
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=title] h2,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=title] h2 {
+  font-size: 54px;
+  letter-spacing: -0.02em !important;
+}
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=title] h2::after,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=title] h2::after {
+  content: "";
+  display: inline-block;
+  width: 0.09em;
+  height: 0.85em;
+  margin-left: 0.12em;
+  vertical-align: -0.06em;
+  background: var(--px-accent, #0f766e);
+  animation: gutter-caret 1.1s steps(1) infinite;
+}
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78em;
+  color: #57606a;
+}
+@keyframes gutter-caret { 50% { opacity: 0; } }
+/* Still for those who'd rather, and on paper, where it could print mid-blink */
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-gutter [data-placeholder=title] h2::after { animation: none !important; }
+}
+
+/* Bullets: a chevron; numbered lists count from 01 */
+.deck-theme-gutter .px-text ul > li::marker { content: "\\203A  "; color: var(--px-accent, #0f766e); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.deck-theme-gutter .px-text ul ul > li::marker { content: "\\2013  "; }
+.deck-theme-gutter .px-text ol { padding-left: 2.2em; }
+.deck-theme-gutter .px-text ol > li::marker { content: counter(list-item, decimal-leading-zero) "  "; color: var(--px-accent, #0f766e); font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.85em; }
+
+/* Inline code */
+.deck-theme-gutter .px-text :not(pre) > code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.84em;
+  padding: 0.06em 0.32em;
+  border-radius: 0.25em;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0b5650;
+}
+
+/* Code: code elements and code blocks in text, on a dark slab */
+.deck-theme-gutter :is(pre, pre.hljs) {
+  background: #1b1f24 !important;
+  color: #e6edf3;
+  border-radius: 8px !important;
+  box-shadow: 0 6px 18px rgba(16, 24, 32, 0.18) !important;
+}
+.deck-theme-gutter :is(pre.hljs, pre code) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-gutter pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-gutter .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.6em; line-height: 1.5; }
+
+/* A code block's file name: a heading 4 right before it becomes its tab */
+.deck-theme-gutter .px-text h4:has(+ pre) {
+  display: inline-block;
+  margin: 0 !important;
+  padding: 0.3em 0.85em 0.25em;
+  border-radius: 8px 8px 0 0;
+  background: #2d333b;
+  color: #c9d1d9 !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.56em;
+  font-weight: 400;
+  line-height: 1.3;
+}
+.deck-theme-gutter .px-text h4 + pre { border-top-left-radius: 0 !important; margin-top: 0 !important; }
+
+/* Syntax colors, over whichever code theme the deck picked */
+.deck-theme-gutter :is(.hljs-comment, .hljs-quote) { color: #7d8590; font-style: italic; }
+.deck-theme-gutter :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal) { color: #5eead4; }
+.deck-theme-gutter :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #f2cc8f; }
+.deck-theme-gutter :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #ff9e64; }
+.deck-theme-gutter :is(.hljs-title, .hljs-section) { color: #9ecbff; }
+.deck-theme-gutter :is(.hljs-type, .hljs-built_in, .hljs-title.class_) { color: #e5a8ff; }
+.deck-theme-gutter :is(.hljs-attr, .hljs-property, .hljs-params, .hljs-variable, .hljs-subst, .hljs-punctuation) { color: #e6edf3; }
+.deck-theme-gutter :is(.hljs-meta, .hljs-deletion) { color: #ff7b72; }
+
+/* Callouts: a quote whose first line is its label */
+.deck-theme-gutter .px-text blockquote {
+  --c: var(--px-accent, #0f766e);
+  border: 0 !important;
+  border-left: 0.2em solid var(--c) !important;
+  opacity: 1 !important;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.45em 0.75em 0.5em !important;
+  border-radius: 0 0.3em 0.3em 0;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 24, 32, 0.08), 0 4px 12px rgba(16, 24, 32, 0.06) !important;
+}
+.deck-theme-gutter .px-text blockquote:has(> p:first-child > em:only-child) { --c: #1a7f37; }
+.deck-theme-gutter .px-text blockquote:has(> p:first-child > strong:only-child) { --c: #b35900; }
+.deck-theme-gutter .px-text blockquote > p:first-child {
+  margin-bottom: 0.3em !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c);
+}
+.deck-theme-gutter .px-text blockquote > p:first-child :is(em, strong) { font-style: normal; font-weight: 600; }
+.deck-theme-gutter .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-gutter .px-text blockquote > :is(ul, ol) { padding-left: 1.2em; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the gutter and status bar, and the caret after the title */
+.deck-theme-gutter.theme-swatch {
+  position: relative;
+  background:
+    linear-gradient(90deg, #134e4a 0 16%, #0f766e 16%) left bottom / 100% 5% no-repeat,
+    linear-gradient(90deg, #e8ebef 0 4.2%, #d5dbe1 4.2% 4.4%, transparent 4.4%) 0 0 / 100% 100% no-repeat,
+    #f6f7f9 !important;
+}
+.deck-theme-gutter .theme-swatch-title::after {
+  content: "";
+  display: inline-block;
+  width: 0.09em;
+  height: 0.85em;
+  margin-left: 0.12em;
+  vertical-align: -0.06em;
+  background: #0f766e;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -28943,7 +29264,7 @@ function generateRevealHTML(presentation, opts = {}) {
   const slideW = Number(presentation.slideWidth) || 960;
   const slideH = Number(presentation.slideHeight) || 540;
   const globalFont = cssValue(deckTextFont(presentation.globalFont, presentation.theme));
-  const bodySize = bodySizeStyle(presentation.textStyles);
+  const bodySize = bodySizeStyle(deckTextStyles(presentation.textStyles, presentation.theme));
   const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), ".reveal .slides section");
   const showFooter = presentation.showFooter || false;
   const showPageNumbers = presentation.showPageNumbers || false;
@@ -29479,6 +29800,8 @@ ${sections}
     .reveal pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 6px; margin: 0 0 0.4em !important; overflow: auto; width: auto !important; box-shadow: none !important; }
     .reveal pre code { background: none; padding: 0; }
     .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
+    /* reveal.js themes set a quote's first and last paragraphs inline, which puts them on one line and list markers on a list item's last line */
+    .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
     /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
     /* color only on the container so per-span inline colors (inactive sections) are not overridden */
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }

@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Jessica Birky
 
 // The presentation themes: reveal.js 5's, whose page color, heading color and
-// link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission), which
+// link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
+// Gutter), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -32,6 +33,8 @@ export const THEME_LIST = [
   { id: 'bauhaus', label: 'Bauhaus', background: '#f7f6f2', text: '#151515', heading: '#151515', link: '#d52b1e', dark: false, reveal: 'white', font: 'Jost, sans-serif', note: 'Lowercase headings, a red rule under slide titles, square bullets, in Jost' },
   { id: 'pixel', label: 'Pixel', background: '#14112e', text: '#f3eedf', heading: '#ffcc33', link: '#39e5c0', dark: true, reveal: 'black', font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: '8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323' },
   { id: 'mission', label: 'Mission', background: '#f4f6f8', backgroundCss: 'linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8', text: '#0d1b2e', heading: '#0d1b2e', link: '#1d6fd1', dark: false, reveal: 'white', font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: 'Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono' },
+  { id: 'turin', label: 'Turin', background: '#ffffff', text: '#141414', heading: '#3333b3', link: '#3333b3', dark: false, reveal: 'white', font: "'Computer Modern Sans', sans-serif", textStyles: { bodySize: 28, h1Size: 50, h2Size: 34, h3Size: 28, headingWeight: 400 }, note: 'LaTeX Beamer: a blue title band and footline, triangle bullets, quotes as blocks, in Computer Modern Sans' },
+  { id: 'gutter', label: 'Gutter', background: '#f6f7f9', text: '#1d2127', heading: '#0e1116', link: '#0f766e', dark: false, reveal: 'white', font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 54, h2Size: 34, h3Size: 26, headingWeight: 600 }, note: 'A code editor: a gutter and status bar, code in JetBrains Mono on a dark slab, quotes as callouts' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

@@ -1,0 +1,189 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Gutter theme's stylesheet: a code editor, for code-heavy talks. Light
+   slides with an editor's gutter down the left and its status bar along the
+   bottom; slide titles sit on the "current line", with a breakpoint beside
+   them. Text is in IBM Plex Sans (utils/themes.js, which the Themes panel's
+   Text tab can change), code in JetBrains Mono on a dark slab, with its own
+   syntax colors over whichever code theme the deck picked. It's scoped to
+   .deck-theme-gutter, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   A Heading 4 right before a code block is its file tab. A quote whose first
+   line is a label is a callout: a plain label makes a note, an italic one a
+   tip, a bold one a warning. */
+
+/* reveal.js: links, the arrows and the progress bar in teal */
+.deck-theme-gutter {
+  --r-background-color: #f6f7f9;
+  --r-main-color: #1d2127;
+  --r-heading-color: #0e1116;
+  --r-link-color: #0f766e;
+  --r-link-color-dark: #134e4a;
+  --r-link-color-hover: #134e4a;
+  --r-selection-background-color: #0f766e;
+  --r-selection-color: #ffffff;
+}
+
+/* Gutter, current line, breakpoint and status bar, behind everything */
+.deck-theme-gutter.px-slide::before,
+.deck-theme-gutter .px-slide::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #134e4a 0 156px, #0f766e 156px) left bottom / 100% 20px no-repeat,
+    radial-gradient(circle, #0f766e 0 5px, transparent 5.5px) 0 43px / 40px 40px no-repeat,
+    linear-gradient(rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.08)) 0 36px / 100% 54px no-repeat,
+    linear-gradient(90deg, #e8ebef 0 40px, #d5dbe1 40px 41px, transparent 41px) 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-gutter.px-slide[data-layout=title]::before,
+.deck-theme-gutter .px-slide[data-layout=title]::before {
+  background:
+    linear-gradient(90deg, #134e4a 0 156px, #0f766e 156px) left bottom / 100% 20px no-repeat,
+    radial-gradient(circle, #0f766e 0 5px, transparent 5.5px) 0 172px / 40px 40px no-repeat,
+    linear-gradient(rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.08)) 0 152px / 100% 80px no-repeat,
+    linear-gradient(90deg, #e8ebef 0 40px, #d5dbe1 40px 41px, transparent 41px) 0 0 / 100% 100% no-repeat;
+}
+
+/* Slide titles start with a comment marker */
+.deck-theme-gutter.px-slide:not([data-layout=title]) [data-placeholder=title] h2::before,
+.deck-theme-gutter .px-slide:not([data-layout=title]) [data-placeholder=title] h2::before {
+  content: "// ";
+  color: var(--px-accent, #0f766e);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+}
+
+/* Title slide: a larger title with a blinking caret, the subtitle in mono.
+   (!important: presented decks set headings' spacing with it.) */
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=title] h2,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=title] h2 {
+  font-size: 54px;
+  letter-spacing: -0.02em !important;
+}
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=title] h2::after,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=title] h2::after {
+  content: "";
+  display: inline-block;
+  width: 0.09em;
+  height: 0.85em;
+  margin-left: 0.12em;
+  vertical-align: -0.06em;
+  background: var(--px-accent, #0f766e);
+  animation: gutter-caret 1.1s steps(1) infinite;
+}
+.deck-theme-gutter.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-gutter .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78em;
+  color: #57606a;
+}
+@keyframes gutter-caret { 50% { opacity: 0; } }
+/* Still for those who'd rather, and on paper, where it could print mid-blink */
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-gutter [data-placeholder=title] h2::after { animation: none !important; }
+}
+
+/* Bullets: a chevron; numbered lists count from 01 */
+.deck-theme-gutter .px-text ul > li::marker { content: "\203A  "; color: var(--px-accent, #0f766e); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.deck-theme-gutter .px-text ul ul > li::marker { content: "\2013  "; }
+.deck-theme-gutter .px-text ol { padding-left: 2.2em; }
+.deck-theme-gutter .px-text ol > li::marker { content: counter(list-item, decimal-leading-zero) "  "; color: var(--px-accent, #0f766e); font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.85em; }
+
+/* Inline code */
+.deck-theme-gutter .px-text :not(pre) > code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.84em;
+  padding: 0.06em 0.32em;
+  border-radius: 0.25em;
+  background: rgba(15, 118, 110, 0.1);
+  color: #0b5650;
+}
+
+/* Code: code elements and code blocks in text, on a dark slab */
+.deck-theme-gutter :is(pre, pre.hljs) {
+  background: #1b1f24 !important;
+  color: #e6edf3;
+  border-radius: 8px !important;
+  box-shadow: 0 6px 18px rgba(16, 24, 32, 0.18) !important;
+}
+.deck-theme-gutter :is(pre.hljs, pre code) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-gutter pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-gutter .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.6em; line-height: 1.5; }
+
+/* A code block's file name: a heading 4 right before it becomes its tab */
+.deck-theme-gutter .px-text h4:has(+ pre) {
+  display: inline-block;
+  margin: 0 !important;
+  padding: 0.3em 0.85em 0.25em;
+  border-radius: 8px 8px 0 0;
+  background: #2d333b;
+  color: #c9d1d9 !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.56em;
+  font-weight: 400;
+  line-height: 1.3;
+}
+.deck-theme-gutter .px-text h4 + pre { border-top-left-radius: 0 !important; margin-top: 0 !important; }
+
+/* Syntax colors, over whichever code theme the deck picked */
+.deck-theme-gutter :is(.hljs-comment, .hljs-quote) { color: #7d8590; font-style: italic; }
+.deck-theme-gutter :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal) { color: #5eead4; }
+.deck-theme-gutter :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #f2cc8f; }
+.deck-theme-gutter :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #ff9e64; }
+.deck-theme-gutter :is(.hljs-title, .hljs-section) { color: #9ecbff; }
+.deck-theme-gutter :is(.hljs-type, .hljs-built_in, .hljs-title.class_) { color: #e5a8ff; }
+.deck-theme-gutter :is(.hljs-attr, .hljs-property, .hljs-params, .hljs-variable, .hljs-subst, .hljs-punctuation) { color: #e6edf3; }
+.deck-theme-gutter :is(.hljs-meta, .hljs-deletion) { color: #ff7b72; }
+
+/* Callouts: a quote whose first line is its label */
+.deck-theme-gutter .px-text blockquote {
+  --c: var(--px-accent, #0f766e);
+  border: 0 !important;
+  border-left: 0.2em solid var(--c) !important;
+  opacity: 1 !important;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.45em 0.75em 0.5em !important;
+  border-radius: 0 0.3em 0.3em 0;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 24, 32, 0.08), 0 4px 12px rgba(16, 24, 32, 0.06) !important;
+}
+.deck-theme-gutter .px-text blockquote:has(> p:first-child > em:only-child) { --c: #1a7f37; }
+.deck-theme-gutter .px-text blockquote:has(> p:first-child > strong:only-child) { --c: #b35900; }
+.deck-theme-gutter .px-text blockquote > p:first-child {
+  margin-bottom: 0.3em !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c);
+}
+.deck-theme-gutter .px-text blockquote > p:first-child :is(em, strong) { font-style: normal; font-weight: 600; }
+.deck-theme-gutter .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-gutter .px-text blockquote > :is(ul, ol) { padding-left: 1.2em; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the gutter and status bar, and the caret after the title */
+.deck-theme-gutter.theme-swatch {
+  position: relative;
+  background:
+    linear-gradient(90deg, #134e4a 0 16%, #0f766e 16%) left bottom / 100% 5% no-repeat,
+    linear-gradient(90deg, #e8ebef 0 4.2%, #d5dbe1 4.2% 4.4%, transparent 4.4%) 0 0 / 100% 100% no-repeat,
+    #f6f7f9 !important;
+}
+.deck-theme-gutter .theme-swatch-title::after {
+  content: "";
+  display: inline-block;
+  width: 0.09em;
+  height: 0.85em;
+  margin-left: 0.12em;
+  vertical-align: -0.06em;
+  background: #0f766e;
+}

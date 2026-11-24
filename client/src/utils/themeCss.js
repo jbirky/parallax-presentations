@@ -9,8 +9,10 @@
 import bauhaus from '../themes/bauhaus.css?raw'
 import pixel from '../themes/pixel.css?raw'
 import mission from '../themes/mission.css?raw'
+import turin from '../themes/turin.css?raw'
+import gutter from '../themes/gutter.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

@@ -47,7 +47,7 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
@@ -56,6 +56,12 @@ Bauhaus does a little more than set colors. It sets headings in lowercase, puts 
 Mission is an engineering-drawing theme: a drafting grid on the page, headings in capitals in Barlow Condensed with a hairline under slide titles, text in IBM Plex Sans, red square bullets and code in B612 Mono.
 
 Pixel is an 8-bit theme: headings in capitals in Press Start 2P with a purple drop shadow, text in Pixelify Sans, gold arrow bullets, and code in VT323. The Text tab's heading font and weight take precedence over its heading font.
+
+Turin looks like a LaTeX Beamer talk. Content slides have a dark blue headline and a blue band behind the slide title, and every slide has a three-part footline. Title and section slides put the title in a rounded blue box. Bullets are blue triangles, and text is in Computer Modern Sans. A quote whose first line is a title becomes a Beamer block: a plain title makes a blue block, an *italic* title a green example block, and a **bold** title a red alert block.
+
+Gutter is for talks with a lot of code. It draws a code editor's gutter down the left of each slide and its status bar along the bottom, and puts slide titles on a highlighted "current line" after `//`. Code is in JetBrains Mono on a dark background, with Gutter's own syntax colors whichever code theme the deck uses. A Heading 4 right before a code block becomes the block's file tab. A quote whose first line is a label becomes a callout: a plain label makes a note, an *italic* one a tip, and a **bold** one a warning. Text is in IBM Plex Sans.
+
+Turin and Gutter draw their bands behind what's on the slide, so a full-slide image covers them.
 
 ### Your own colors
 

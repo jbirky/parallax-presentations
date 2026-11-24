@@ -275,9 +275,9 @@ export function generateRevealHTML(presentation, opts = {}) {
   const slideH = Number(presentation.slideHeight) || 540
   // The deck's font, or its theme's (utils/themes.js)
   const globalFont = cssValue(deckTextFont(presentation.globalFont, presentation.theme))
-  // The deck's text styles (utils/textStyles.js): text boxes' body size, and
-  // rules for the headings after the page's own
-  const bodySize = bodySizeStyle(presentation.textStyles)
+  // The deck's text styles, else its theme's (utils/textStyles.js): text
+  // boxes' body size, and rules for the headings after the page's own
+  const bodySize = bodySizeStyle(deckTextStyles(presentation.textStyles, presentation.theme))
   const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.reveal .slides section')
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -844,6 +844,8 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 6px; margin: 0 0 0.4em !important; overflow: auto; width: auto !important; box-shadow: none !important; }
     .reveal pre code { background: none; padding: 0; }
     .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
+    /* reveal.js themes set a quote's first and last paragraphs inline, which puts them on one line and list markers on a list item's last line */
+    .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
     /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
     /* color only on the container so per-span inline colors (inactive sections) are not overridden */
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
@@ -1425,7 +1427,7 @@ function generatePrintHTML(presentation) {
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
   const globalFont = deckTextFont(presentation.globalFont, presentation.theme)
-  const bodySize = bodySizeStyle(presentation.textStyles)
+  const bodySize = bodySizeStyle(deckTextStyles(presentation.textStyles, presentation.theme))
   const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.slide-page')
   const pageClass = ['slide-page', SLIDE_CLASS, deckThemeClass(presentation.theme)].filter(Boolean).join(' ')
   const theme = presentation.theme || 'black'
@@ -1766,7 +1768,7 @@ function generatePrintHTML(presentation) {
 <head>
   <meta charset="utf-8">
   <title>${title} — PDF</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">

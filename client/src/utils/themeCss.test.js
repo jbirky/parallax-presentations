@@ -9,9 +9,13 @@ describe('the themes’ stylesheets', () => {
     expect(deckThemeClass(undefined)).toBe('')
     expect(themeCss('bauhaus')).toContain('text-transform: lowercase')
     expect(themeCss('pixel')).toContain('text-transform: uppercase')
+    // a slide's own rules name it both with the class (editor, PDF) and inside it (presented decks)
+    expect(themeCss('turin')).toContain('.deck-theme-turin.px-slide::after,\n.deck-theme-turin .px-slide::after {')
+    expect(themeCss('gutter')).toContain('@keyframes gutter-caret')
     // every rule is inside the theme's class, so the editor can load them all for every deck
-    for (const id of ['bauhaus', 'pixel', 'mission']) {
-      const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim())
+    // (at-rules and keyframe steps aside)
+    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter']) {
+      const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim()).filter(s => !/^(@|from$|to$|[\d.]+%)/.test(s))
       expect(selectors.length).toBeGreaterThan(4)
       for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(new RegExp(`^\\.deck-theme-${id}\\b`))
     }
@@ -20,6 +24,6 @@ describe('the themes’ stylesheets', () => {
   it('is empty for themes without one', () => {
     expect(themeCss('black')).toBe('')
     expect(themeCss('constructor')).toBe('')
-    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission'])
+    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter'])
   })
 })
