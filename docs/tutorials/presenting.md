@@ -47,7 +47,7 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
@@ -73,7 +73,11 @@ Preprint sets slides like a paper, in Computer Modern Serif on paper white. Cont
 
 Transit looks like a transit map. Slide titles are stops with the line running in from the edge, bullets are stops along a line ending at a terminus, and numbered lists count in route bullets of different line colors. Section titles are station signs, the title slide sits on a route map, a quote is a yellow service notice, a table is a timetable and a Heading 4 is a route's tag. Turn on the footer's sections in sequence (**Settings › Footer**) and the footer becomes the route: the sections you've passed, the one you're in, and the ones to come, each in its line's color (a section's own color if you gave it one). Text is in Barlow.
 
-Turin, Gutter, Lemma, Beamline, Ledger and Transit draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, Ledger's headers and tab, and Transit's route map show only on slides without a background of their own.
+Trace is for algorithms and data structures: a whiteboard's dot grid, titles in Figtree and code in Fira Code. The title slide's title sits over a row of cells mid-sort, and section titles and the Big Number are cells. A Heading 4 is a complexity chip, such as `O(n log n)`. A quote is a margin note, and one whose first words are **bold** (`> **Invariant.** …`) is a dashed callout. Numbered lists count from 0 in index cells, bullets are small cells, and tables have ink rules. With the footer's sections in sequence, they're a row of cells: done in teal, the current one dashed in amber.
+
+Prompt is a terminal window. Every slide has the window's title bar, slide titles are commands typed after `~/talk $` with a blinking block cursor, and everything is in Fira Code on a dark window. Subtitles and quotes are `#` comments; a quote whose first words are **bold** is a yellow warning, and *italic* a red error. Bullets are `-` lines, numbered lists count as `cat -n` does, a Heading 4 is a command after `$`, and section slides are man pages, with NAME and DESCRIPTION. With the footer's sections in sequence, the footer is a tmux status bar, the current section marked `*`.
+
+Turin, Gutter, Lemma, Beamline, Ledger, Transit and Prompt draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, Ledger's headers and tab, and Transit's route map show only on slides without a background of their own.
 
 ### Your own colors
 

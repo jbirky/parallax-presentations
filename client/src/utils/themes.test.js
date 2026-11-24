@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -53,6 +53,11 @@ describe('themes', () => {
     expect(deckTextFont('', 'preprint')).toBe("'Computer Modern Serif', serif")
     expect(slidePalette({}, 'transit')).toMatchObject({ link: '#0b62c4', accent: '#e2231a' })
     expect(deckTextStyles(null, 'transit')).toMatchObject({ bodySize: 28, headingWeight: 700 })
+    expect(themeBackgroundStyle('trace').background).toMatch(/^radial-gradient.*#fcfcfe$/)
+    expect(deckTextStyles(null, 'trace')).toMatchObject({ headingFont: 'Figtree, sans-serif', headingWeight: 800 })
+    expect(revealTheme('prompt')).toBe('black')
+    expect(deckTextFont('', 'prompt')).toBe("'Fira Code', monospace")
+    expect(slidePalette({}, 'prompt').accent).toBe('#7ed67a')
   })
 
   it('tells dark colors from light ones', () => {

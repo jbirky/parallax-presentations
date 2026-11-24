@@ -355,9 +355,23 @@ describe('generateRevealHTML', () => {
     })
     const html = generateRevealHTML(pres)
     expect(html).toContain('>References<')
-    expect(html).toContain('Smith, John')
+    expect(html).toContain('John Smith (2020)')
     expect(html).toContain('A Paper')
     expect(html).toContain('<em>Nature</em>')
+  })
+
+  it('lists authors by name, with et al. where BibTeX says "and others"', () => {
+    const pres = makePresentation({
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: '<p>See <sup>[1]</sup> and <sup>[2]</sup></p>' }] }],
+      bibliography: [
+        { key: 'atlas', type: 'article', author: 'Aad, Georges and others', title: 'Observation', year: '2012' },
+        { key: 'pair', type: 'article', author: 'Doe, Jane and Roe, Rick', title: 'Pairs', year: '2019' },
+      ],
+    })
+    const html = generateRevealHTML(pres)
+    expect(html).toContain('Georges Aad et al. (2012)')
+    expect(html).toContain('Jane Doe and Rick Roe (2019)')
+    expect(html).not.toContain('and others')
   })
 
   it('numbers references in the theme’s link color and sets them in the deck’s font', () => {

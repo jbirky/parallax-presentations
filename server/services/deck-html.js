@@ -5994,11 +5994,24 @@ function parseAuthors(authorStr) {
     return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
   });
 }
+var isOthers = (a) => !!a && !a.first && /^others$/i.test(a.last);
 function formatAuthorsShort(authors) {
   if (!authors || authors.length === 0) return "";
-  if (authors.length === 1) return authors[0].last;
-  if (authors.length === 2) return `${authors[0].last} & ${authors[1].last}`;
-  return `${authors[0].last} et al.`;
+  const people = authors.filter((a) => !isOthers(a));
+  if (people.length === 0) return "";
+  if (people.length < authors.length) return `${people[0].last} et al.`;
+  if (people.length === 1) return people[0].last;
+  if (people.length === 2) return `${people[0].last} & ${people[1].last}`;
+  return `${people[0].last} et al.`;
+}
+function formatAuthorsReference(authors) {
+  if (!authors || authors.length === 0) return "";
+  const people = authors.filter((a) => !isOthers(a));
+  const name50 = (a) => a.first ? `${a.first} ${a.last}` : a.last;
+  if (people.length === 0) return "";
+  if (people.length < authors.length || people.length > 6) return `${name50(people[0])} et al.`;
+  if (people.length === 1) return name50(people[0]);
+  return `${people.slice(0, -1).map(name50).join(", ")} and ${name50(people[people.length - 1])}`;
 }
 function formatCitation(entry, style, index) {
   const authors = parseAuthors(entry.author);
@@ -6462,7 +6475,9 @@ var THEME_LIST = [
   { id: "kourou", label: "Kourou", background: "#ffffff", text: "#003247", heading: "#003247", link: "#003247", accent: "#cf1d39", dark: false, reveal: "white", font: "Arial, sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 40, h3Size: 28, headingFont: "'Titillium Web', sans-serif" }, note: "Space science: a navy strip with a red rule, red tags, a starfield title slide and a timeline for sections, in Titillium Web and Arial" },
   { id: "ledger", label: "Ledger", background: "#ffffff", backgroundCss: "linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px, linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px, #ffffff", text: "#13221b", heading: "#13221b", link: "#2457c5", accent: "#1e6b49", dark: false, reveal: "white", font: "Geist, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 38, h3Size: 28, headingFont: "Geist, sans-serif", headingWeight: 700 }, note: "A spreadsheet, for pitches: gridlines, column letters and row numbers, a formula bar before slide titles, figures in JetBrains Mono" },
   { id: "preprint", label: "Preprint", background: "#fffdf8", text: "#161616", heading: "#161616", link: "#1f4e9c", dark: false, reveal: "white", font: "'Computer Modern Serif', serif", textStyles: { bodySize: 26, h1Size: 46, h2Size: 34, h3Size: 28, headingWeight: 700 }, note: "A typeset paper: Computer Modern Serif, justified paragraphs, quotes as an abstract, booktabs tables, footnotes and figure captions" },
-  { id: "transit", label: "Transit", background: "#ffffff", text: "#1b1b1f", heading: "#1b1b1f", link: "#0b62c4", accent: "#e2231a", dark: false, reveal: "white", font: "Barlow, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: "A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables" }
+  { id: "transit", label: "Transit", background: "#ffffff", text: "#1b1b1f", heading: "#1b1b1f", link: "#0b62c4", accent: "#e2231a", dark: false, reveal: "white", font: "Barlow, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: "A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables" },
+  { id: "trace", label: "Trace", background: "#fcfcfe", backgroundCss: "radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe", text: "#1c1e2e", heading: "#1c1e2e", link: "#4338ca", accent: "#4338ca", dark: false, reveal: "white", font: "Figtree, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 28, headingFont: "Figtree, sans-serif", headingWeight: 800 }, note: "Algorithms: a dot grid, cells and index cells, complexity chips, invariant callouts, code in Fira Code" },
+  { id: "prompt", label: "Prompt", background: "#101317", text: "#dde2de", heading: "#f5f7f3", link: "#5c9cff", accent: "#7ed67a", dark: true, reveal: "black", font: "'Fira Code', monospace", textStyles: { bodySize: 22, h1Size: 56, h2Size: 26, h3Size: 22, headingFont: "'Fira Code', monospace", headingWeight: 600 }, note: "A terminal window: titles typed at a prompt, # comments, man-page sections, a tmux status bar" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -29917,8 +29932,450 @@ var transit_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/trace.css
+var trace_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Trace theme's stylesheet: algorithms, drawn as a careful trace on a
+   whiteboard. A dot grid, ink and a pointer indigo (#4338ca), titles in
+   Figtree and code, indices and complexity in Fira Code (utils/themes.js:
+   the fonts and the text sizes, which the Themes panel's Text tab can
+   change). The state colors are the demo's: comparing amber, done teal.
+
+   It's scoped to .deck-theme-trace, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide's title sits over a row of cells mid-sort; section titles
+   and the Big Number are cells. A Heading 4 is a complexity chip; a quote is
+   a margin note, and one whose first words are bold (**Invariant.**) a
+   dashed callout. Numbered lists count from 0 in index cells, bullets are
+   small cells, tables have ink rules and tabular figures, and the footer's
+   sections in sequence are a row of cells: done teal, the current one
+   dashed amber. */
+
+/* reveal.js: links, the arrows and the progress bar in indigo */
+.deck-theme-trace {
+  --r-background-color: #fcfcfe;
+  --r-main-color: #1c1e2e;
+  --r-heading-color: #1c1e2e;
+  --r-link-color: #4338ca;
+  --r-link-color-dark: #3730a3;
+  --r-link-color-hover: #1c1e2e;
+  --r-selection-background-color: #ffe98a;
+  --r-selection-color: #1c1e2e;
+}
+
+/* The dot grid on presented slides that show the theme's page (the editor
+   draws it from the theme's backgroundCss) */
+.deck-theme-trace .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe;
+}
+
+/* Headings: tight */
+.deck-theme-trace .px-text :is(h1, h2, h3) { letter-spacing: -0.02em !important; line-height: 1.08; }
+
+/* The title slide: its title over a row of cells, two being compared */
+.deck-theme-trace.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-trace .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 356px;
+  max-width: 100%;
+  height: 74px;
+  margin: 0.45em auto 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20356%2074%27%20width%3D%27356%27%20height%3D%2774%27%3E%3Crect%20x%3D%272%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%2312917c%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%2722%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%23ffffff%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Ctext%20x%3D%2722%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E0%3C%2Ftext%3E%3Crect%20x%3D%2746%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%2312917c%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%2766%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%23ffffff%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Ctext%20x%3D%2766%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Crect%20x%3D%2790%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23fff6e0%27%20stroke%3D%27%23f2a11f%27%20stroke-width%3D%272.5%27%20stroke-dasharray%3D%275%203%27%2F%3E%3Ctext%20x%3D%27110%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E8%3C%2Ftext%3E%3Ctext%20x%3D%27110%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Crect%20x%3D%27134%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23fff6e0%27%20stroke%3D%27%23f2a11f%27%20stroke-width%3D%272.5%27%20stroke-dasharray%3D%275%203%27%2F%3E%3Ctext%20x%3D%27154%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Ctext%20x%3D%27154%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Crect%20x%3D%27178%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27198%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Ctext%20x%3D%27198%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E4%3C%2Ftext%3E%3Crect%20x%3D%27222%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27242%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E9%3C%2Ftext%3E%3Ctext%20x%3D%27242%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Crect%20x%3D%27266%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27286%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Ctext%20x%3D%27286%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Crect%20x%3D%27310%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27330%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Ctext%20x%3D%27330%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Cpath%20d%3D%27M110%2064l6%206h-12z%27%20fill%3D%27%234338ca%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+/* Section titles and the Big Number: a cell. (!important: presented decks
+   set headings' margins with it.) */
+.deck-theme-trace.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-trace .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-trace.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-trace .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.08em 0.45em 0.12em;
+  border: 0.05em solid #1c1e2e;
+  border-radius: 0.08em;
+  background: #ffffff;
+  box-shadow: 0.1em 0.1em 0 #4338ca;
+}
+.deck-theme-trace.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-trace .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #1c1e2e !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A Heading 4 is a complexity chip: O(n log n) */
+.deck-theme-trace .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.65em;
+  border: 2px solid #4338ca;
+  border-radius: 999px;
+  color: #4338ca !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 0.5em;
+  font-weight: 500;
+  font-variant-ligatures: none;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.deck-theme-trace .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-trace .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
+
+/* Bullets: small cells */
+.deck-theme-trace .px-text ul > li::marker { content: "\\25A1  "; color: #4338ca; font-size: 0.85em; }
+.deck-theme-trace .px-text ul ul > li::marker { content: "\\2013  "; color: #5d6276; font-size: 1em; }
+
+/* Numbered lists count from 0, in index cells */
+.deck-theme-trace .px-text ol { list-style: none; padding-left: 1.8em; counter-reset: trace-index -1; }
+.deck-theme-trace .px-text ol > li { position: relative; counter-increment: trace-index; }
+.deck-theme-trace .px-text ol > li::before {
+  content: counter(trace-index);
+  position: absolute;
+  left: -2.85em; top: 0.22em;
+  width: 1.9em; height: 1.9em;
+  box-sizing: border-box;
+  border: 0.12em solid #1c1e2e;
+  border-radius: 0.15em;
+  background: #ffffff;
+  color: #1c1e2e;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.6em;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1.66em;
+  text-align: center;
+}
+
+/* Links */
+.deck-theme-trace .px-text a { color: var(--px-link, #4338ca) !important; }
+
+/* Quotes: a margin note; one whose first words are bold, a dashed callout
+   (a loop invariant, say) */
+.deck-theme-trace .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.1em 0 0.1em 0.65em !important;
+  border: 0 !important;
+  border-left: 0.12em solid #4338ca !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-trace .px-text blockquote:has(> p:first-child > strong:first-child) {
+  padding: 0.45em 0.75em !important;
+  border: 0.07em dashed #4338ca !important;
+  border-radius: 0.2em;
+  background: #e9e8fb;
+}
+.deck-theme-trace .px-text blockquote > p:first-child > strong:first-child {
+  margin-right: 0.35em;
+  color: #4338ca;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.deck-theme-trace .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Fira Code on white, without ligatures, which would hide ≤ and → */
+.deck-theme-trace .px-text :not(pre) > code { padding: 0.04em 0.3em; border-radius: 0.2em; background: #e9e8fb !important; color: #3730a3; font-family: 'Fira Code', monospace; font-size: 0.85em; font-variant-ligatures: none; }
+.deck-theme-trace :is(pre, pre.hljs) { background: #ffffff !important; border: 1px solid #c7ccdb; border-radius: 8px !important; box-shadow: none !important; }
+.deck-theme-trace :is(pre.hljs, pre code) { font-family: 'Fira Code', monospace !important; font-variant-ligatures: none; }
+.deck-theme-trace pre > code.hljs { background: transparent !important; }
+.deck-theme-trace .px-text mark { border-radius: 0.1em; }
+
+/* Tables: ink rules and tabular figures, for traces and cost tables */
+.deck-theme-trace table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #c7ccdb !important;
+  background: transparent !important;
+  color: #1c1e2e !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-trace table tr:first-child :is(td, th) { border-bottom: 2px solid #1c1e2e !important; font-weight: 700; }
+
+/* The footer's sections in sequence: a row of cells, done teal, the current
+   one dashed amber. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-trace.px-slide .px-footer .px-footer-sections,
+.deck-theme-trace .px-slide .px-footer .px-footer-sections { justify-content: center !important; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section,
+.deck-theme-trace .px-slide .px-footer .px-footer-section {
+  padding: 2px 12px;
+  margin-left: -2px;
+  border: 2px solid #1c1e2e;
+  background: #ffffff;
+  color: #1c1e2e !important;
+  font-family: Figtree, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=past] { background: #12917c; color: #ffffff !important; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=current] { position: relative; border-style: dashed; border-color: #f2a11f; background: #fff6e0; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=future] { color: #5d6276 !important; font-weight: 500 !important; }
+.deck-theme-trace.px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time),
+.deck-theme-trace .px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time) {
+  color: #5d6276 !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 12px !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the dot grid, and the title in a cell */
+.deck-theme-trace.theme-swatch { background: radial-gradient(circle, #d6dae6 1px, transparent 1.4px) 0 0 / 10px 10px, #fcfcfe !important; }
+.deck-theme-trace .theme-swatch-title { padding: 0.05em 0.35em; border: 2px solid #1c1e2e; background: #ffffff; box-shadow: 2px 2px 0 #4338ca; }
+`;
+
+// raw:client/src/themes/prompt.css
+var prompt_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Prompt theme's stylesheet: a terminal window. Every slide sits in the
+   window, under its title bar; titles are commands typed after the prompt,
+   with a block cursor; text is output, in Fira Code (utils/themes.js: the
+   font and the text sizes, which the Themes panel's Text tab can change),
+   and the palette is an ANSI one tuned for projectors.
+
+   It's scoped to .deck-theme-prompt, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme.
+
+   Subtitles and quotes are # comments; a quote whose first words are bold is
+   a warning (yellow), italic an error (red). Bullets are "- " lines,
+   numbered lists count as cat -n does, a Heading 4 is a command, tables and
+   code have no rules or slab, and section slides are man pages. The footer's
+   sections in sequence are a tmux status bar. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-prompt {
+  --r-background-color: #101317;
+  --r-main-color: #dde2de;
+  --r-heading-color: #f5f7f3;
+  --r-link-color: #5c9cff;
+  --r-link-color-dark: #93bfff;
+  --r-link-color-hover: #93bfff;
+  --r-selection-background-color: #2a323d;
+  --r-selection-color: #f5f7f3;
+}
+
+/* The window's title bar, across the top of every slide */
+.deck-theme-prompt.px-slide::before,
+.deck-theme-prompt .px-slide::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 30px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%2030%27%20width%3D%27960%27%20height%3D%2730%27%3E%3Crect%20width%3D%27960%27%20height%3D%2730%27%20fill%3D%27%231b2027%27%2F%3E%3Cpath%20d%3D%27M10%2030V11a6%206%200%200%201%206-6h232a6%206%200%200%201%206%206v19z%27%20fill%3D%27%23101317%27%2F%3E%3Ctext%20x%3D%2724%27%20y%3D%2721%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2712%27%20fill%3D%27%237ed67a%27%3E%26gt%3B_%3C%2Ftext%3E%3Ctext%20x%3D%2746%27%20y%3D%2721%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2712%27%20fill%3D%27%23c4cacc%27%3Eyou%40laptop%3A%20~%2Ftalk%3C%2Ftext%3E%3Cpath%20d%3D%27M266%2015h10M271%2010v10%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M884%2015h11%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Crect%20x%3D%27909.5%27%20y%3D%2710.5%27%20width%3D%2710%27%20height%3D%2710%27%20fill%3D%27none%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M934%2010l10%2010M944%2010l-10%2010%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Ligatures off: the terminal shows -> and != as typed */
+.deck-theme-prompt .px-text { font-variant-ligatures: none; }
+
+/* Slide titles: a command after the prompt, then the cursor */
+.deck-theme-prompt.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "~/talk $\\00A0";
+  color: #5c9cff;
+  font-weight: 400;
+}
+.deck-theme-prompt.px-slide:not([data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-prompt .px-slide:not([data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em; height: 1em;
+  margin-left: 0.12em;
+  vertical-align: -0.14em;
+  background: #dde2de;
+  animation: prompt-cursor 1.06s steps(1) infinite;
+}
+@keyframes prompt-cursor { 50% { opacity: 0; } }
+/* Still for those who'd rather, and on paper */
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-prompt [data-placeholder=title] :is(h1, h2)::after { animation: none !important; }
+}
+
+/* Subtitles: comments */
+.deck-theme-prompt [data-placeholder=subtitle] p { color: #8c95a0; }
+.deck-theme-prompt.px-slide:not([data-layout=section-header]) [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide:not([data-layout=section-header]) [data-placeholder=subtitle] p::before { content: "#\\00A0"; }
+
+/* A Heading 4 is a command, after a $ */
+.deck-theme-prompt .px-text h4 { color: #f5f7f3 !important; font-size: 0.9em; letter-spacing: 0 !important; text-transform: none !important; }
+.deck-theme-prompt .px-text h4::before { content: "$\\00A0"; color: #5c9cff; font-weight: 400; }
+
+/* Bullets: output lines; numbered lists count as cat -n does */
+.deck-theme-prompt .px-text ul > li::marker { content: "-  "; color: #7ed67a; }
+.deck-theme-prompt .px-text ul ul > li::marker { content: "+  "; color: #8c95a0; }
+.deck-theme-prompt .px-text ol > li::marker { content: counter(list-item) "  "; color: #8c95a0; }
+
+/* Links */
+.deck-theme-prompt .px-text a { color: var(--px-link, #5c9cff) !important; text-decoration: underline !important; }
+
+/* Quotes: comments. Bold first words make a warning, italic an error */
+.deck-theme-prompt .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #8c95a0;
+  font-style: normal;
+}
+.deck-theme-prompt .px-text blockquote:not(:has(> p:first-child > :is(strong, em):first-child)) > p::before { content: "#\\00A0"; }
+.deck-theme-prompt .px-text blockquote:has(> p:first-child > strong:first-child) { color: #f5c04a; }
+.deck-theme-prompt .px-text blockquote:has(> p:first-child > em:first-child) { color: #ff6f61; }
+.deck-theme-prompt .px-text blockquote em { font-style: normal; }
+.deck-theme-prompt .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: as the terminal shows it, inline in cyan, blocks without a slab */
+.deck-theme-prompt .px-text :not(pre) > code { padding: 0 !important; background: none !important; color: #4fd2df; font-family: 'Fira Code', monospace; }
+.deck-theme-prompt :is(pre, pre.hljs) { background: transparent !important; border-left: 2px solid #262c34; border-radius: 0 !important; box-shadow: none !important; }
+.deck-theme-prompt :is(pre.hljs, pre code) { font-family: 'Fira Code', monospace !important; font-variant-ligatures: none; }
+.deck-theme-prompt pre > code.hljs { background: transparent !important; }
+
+/* Tables: column -t output, without rules */
+.deck-theme-prompt table :is(td, th) {
+  border: 0 !important;
+  background: transparent !important;
+  color: #dde2de !important;
+  font-family: 'Fira Code', monospace;
+  font-variant-ligatures: none;
+}
+.deck-theme-prompt table tr:first-child :is(td, th) { color: #f5f7f3 !important; font-weight: 600; }
+
+/* Section slides: a man page, with its header line, NAME and DESCRIPTION.
+   (!important: the layout centers them) */
+.deck-theme-prompt.px-slide[data-layout=section-header]::after,
+.deck-theme-prompt .px-slide[data-layout=section-header]::after {
+  /* 109 columns of 14px Fira Code (8px each) fill the 880px line */
+  content: "TALK(7)                                          Talk Manual                                          TALK(7)";
+  position: absolute;
+  left: 40px; right: 40px; top: 44px;
+  overflow: hidden;
+  color: #8c95a0;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: pre;
+  pointer-events: none;
+}
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p { text-align: left !important; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before {
+  display: block;
+  margin-bottom: 0.35em;
+  color: #f5f7f3;
+  font-size: 0.32em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before { content: "NAME"; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before { content: "DESCRIPTION"; font-size: 0.85em; margin-left: -2em; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p { padding-left: 2em; color: #c4cacc; }
+
+/* The Big Number, in green */
+.deck-theme-prompt.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-prompt .px-slide[data-layout=big-number] [data-placeholder=title] h1 { color: #7ed67a !important; }
+
+/* The footer's sections in sequence: a tmux status bar, the current window
+   marked * and the last one -. (The class and the slide both named, to
+   outweigh the presented deck's footer rules.) */
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence],
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] {
+  left: 0 !important; right: 0 !important; bottom: 0 !important;
+  height: 24px;
+  padding: 0 10px;
+  justify-content: flex-start !important;
+  background: #262c34;
+  color: #c4cacc !important;
+  counter-reset: prompt-window -1;
+}
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence]::before,
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence]::before {
+  content: "[talk]";
+  margin-right: 10px;
+  color: #7ed67a;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.deck-theme-prompt.px-slide .px-footer .px-footer-sections,
+.deck-theme-prompt .px-slide .px-footer .px-footer-sections { flex: 0 1 auto !important; justify-content: flex-start !important; gap: 2px; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section {
+  counter-increment: prompt-window;
+  padding: 0 0.5em;
+  color: #c4cacc !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 24px;
+  white-space: nowrap;
+}
+.deck-theme-prompt.px-slide .px-footer .px-footer-section::before,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section::before { content: counter(prompt-window) ":"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=current] { background: #7ed67a; color: #101317 !important; font-weight: 600 !important; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=current]::after { content: "*"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::after,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::after { content: "-"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=future] { color: #8c95a0 !important; }
+.deck-theme-prompt.px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time),
+.deck-theme-prompt .px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time) {
+  color: #c4cacc !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 13px !important;
+}
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence] .px-footer-page,
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] .px-footer-page { margin-left: auto !important; }
+/* Clear of a presented deck's arrows (the rule with the class around the
+   slide is the presented deck's alone) */
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] { padding-right: 96px; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title bar, a prompt with the cursor, and the status bar's window */
+.deck-theme-prompt.theme-swatch {
+  position: relative;
+  background: linear-gradient(#1b2027 0 12%, #101317 12% 88%, #262c34 88%) !important;
+}
+.deck-theme-prompt.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 6%; bottom: 2%;
+  width: 16%; height: 8%;
+  background: #7ed67a;
+}
+.deck-theme-prompt .theme-swatch-title::before { content: "$\\00A0"; color: #5c9cff; font-weight: 400; }
+.deck-theme-prompt .theme-swatch-title::after { content: ""; display: inline-block; width: 0.5em; height: 0.95em; margin-left: 0.1em; vertical-align: -0.12em; background: #dde2de; }
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -30664,7 +31121,7 @@ function referencesHtml(citations, markerColor, light = false, font = "") {
     const pages = pageRange(entry.pages);
     const doi = entry.doi || "";
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
-    line += `${escapeHtml(String(entry.author || "").replace(/[{}]/g, ""))}`;
+    line += escapeHtml(formatAuthorsReference(parseAuthors(String(entry.author || ""))));
     if (year) line += ` (${escapeHtml(year)})`;
     line += `. ${escapeHtml(entry.title || "")}.`;
     if (journal) line += ` <em>${escapeHtml(journal)}</em>`;

@@ -15,6 +15,8 @@ import './themes/kourou.css'
 import './themes/ledger.css'
 import './themes/preprint.css'
 import './themes/transit.css'
+import './themes/trace.css'
+import './themes/prompt.css'
 import 'katex/dist/katex.min.css'
 // \ce and \pu (chemical equations and units) for every KaTeX the editor
 // draws; decks load the same extension (generateHTML.js)

@@ -127,11 +127,30 @@ export function parseAuthors(authorStr) {
   })
 }
 
+// BibTeX ends a list it cuts short with "and others": not an author
+const isOthers = a => !!a && !a.first && /^others$/i.test(a.last)
+
 export function formatAuthorsShort(authors) {
   if (!authors || authors.length === 0) return ''
-  if (authors.length === 1) return authors[0].last
-  if (authors.length === 2) return `${authors[0].last} & ${authors[1].last}`
-  return `${authors[0].last} et al.`
+  const people = authors.filter(a => !isOthers(a))
+  if (people.length === 0) return ''
+  if (people.length < authors.length) return `${people[0].last} et al.`
+  if (people.length === 1) return people[0].last
+  if (people.length === 2) return `${people[0].last} & ${people[1].last}`
+  return `${people[0].last} et al.`
+}
+
+// Authors as a list of references prints them, "Ada Ames, Jane Doe and Rick
+// Roe", or the first et al. when the list was cut short ("and others") or runs
+// past six names
+export function formatAuthorsReference(authors) {
+  if (!authors || authors.length === 0) return ''
+  const people = authors.filter(a => !isOthers(a))
+  const name = a => a.first ? `${a.first} ${a.last}` : a.last
+  if (people.length === 0) return ''
+  if (people.length < authors.length || people.length > 6) return `${name(people[0])} et al.`
+  if (people.length === 1) return name(people[0])
+  return `${people.slice(0, -1).map(name).join(', ')} and ${name(people[people.length - 1])}`
 }
 
 export function formatAuthorsFull(authors) {
@@ -184,7 +203,7 @@ export function pageRange(pages) {
 
 export function formatReference(entry, index) {
   const authors = parseAuthors(entry.author)
-  const authorStr = formatAuthorsFull(authors)
+  const authorStr = formatAuthorsReference(authors)
   const year = entry.year || ''
   const title = entry.title || ''
   const journal = entry.journal || entry.booktitle || ''

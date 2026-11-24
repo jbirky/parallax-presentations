@@ -1,0 +1,234 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Prompt theme's stylesheet: a terminal window. Every slide sits in the
+   window, under its title bar; titles are commands typed after the prompt,
+   with a block cursor; text is output, in Fira Code (utils/themes.js: the
+   font and the text sizes, which the Themes panel's Text tab can change),
+   and the palette is an ANSI one tuned for projectors.
+
+   It's scoped to .deck-theme-prompt, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme.
+
+   Subtitles and quotes are # comments; a quote whose first words are bold is
+   a warning (yellow), italic an error (red). Bullets are "- " lines,
+   numbered lists count as cat -n does, a Heading 4 is a command, tables and
+   code have no rules or slab, and section slides are man pages. The footer's
+   sections in sequence are a tmux status bar. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-prompt {
+  --r-background-color: #101317;
+  --r-main-color: #dde2de;
+  --r-heading-color: #f5f7f3;
+  --r-link-color: #5c9cff;
+  --r-link-color-dark: #93bfff;
+  --r-link-color-hover: #93bfff;
+  --r-selection-background-color: #2a323d;
+  --r-selection-color: #f5f7f3;
+}
+
+/* The window's title bar, across the top of every slide */
+.deck-theme-prompt.px-slide::before,
+.deck-theme-prompt .px-slide::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 30px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%2030%27%20width%3D%27960%27%20height%3D%2730%27%3E%3Crect%20width%3D%27960%27%20height%3D%2730%27%20fill%3D%27%231b2027%27%2F%3E%3Cpath%20d%3D%27M10%2030V11a6%206%200%200%201%206-6h232a6%206%200%200%201%206%206v19z%27%20fill%3D%27%23101317%27%2F%3E%3Ctext%20x%3D%2724%27%20y%3D%2721%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2712%27%20fill%3D%27%237ed67a%27%3E%26gt%3B_%3C%2Ftext%3E%3Ctext%20x%3D%2746%27%20y%3D%2721%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2712%27%20fill%3D%27%23c4cacc%27%3Eyou%40laptop%3A%20~%2Ftalk%3C%2Ftext%3E%3Cpath%20d%3D%27M266%2015h10M271%2010v10%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M884%2015h11%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Crect%20x%3D%27909.5%27%20y%3D%2710.5%27%20width%3D%2710%27%20height%3D%2710%27%20fill%3D%27none%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M934%2010l10%2010M944%2010l-10%2010%27%20stroke%3D%27%238c95a0%27%20stroke-width%3D%271.4%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Ligatures off: the terminal shows -> and != as typed */
+.deck-theme-prompt .px-text { font-variant-ligatures: none; }
+
+/* Slide titles: a command after the prompt, then the cursor */
+.deck-theme-prompt.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "~/talk $\00A0";
+  color: #5c9cff;
+  font-weight: 400;
+}
+.deck-theme-prompt.px-slide:not([data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-prompt .px-slide:not([data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em; height: 1em;
+  margin-left: 0.12em;
+  vertical-align: -0.14em;
+  background: #dde2de;
+  animation: prompt-cursor 1.06s steps(1) infinite;
+}
+@keyframes prompt-cursor { 50% { opacity: 0; } }
+/* Still for those who'd rather, and on paper */
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-prompt [data-placeholder=title] :is(h1, h2)::after { animation: none !important; }
+}
+
+/* Subtitles: comments */
+.deck-theme-prompt [data-placeholder=subtitle] p { color: #8c95a0; }
+.deck-theme-prompt.px-slide:not([data-layout=section-header]) [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide:not([data-layout=section-header]) [data-placeholder=subtitle] p::before { content: "#\00A0"; }
+
+/* A Heading 4 is a command, after a $ */
+.deck-theme-prompt .px-text h4 { color: #f5f7f3 !important; font-size: 0.9em; letter-spacing: 0 !important; text-transform: none !important; }
+.deck-theme-prompt .px-text h4::before { content: "$\00A0"; color: #5c9cff; font-weight: 400; }
+
+/* Bullets: output lines; numbered lists count as cat -n does */
+.deck-theme-prompt .px-text ul > li::marker { content: "-  "; color: #7ed67a; }
+.deck-theme-prompt .px-text ul ul > li::marker { content: "+  "; color: #8c95a0; }
+.deck-theme-prompt .px-text ol > li::marker { content: counter(list-item) "  "; color: #8c95a0; }
+
+/* Links */
+.deck-theme-prompt .px-text a { color: var(--px-link, #5c9cff) !important; text-decoration: underline !important; }
+
+/* Quotes: comments. Bold first words make a warning, italic an error */
+.deck-theme-prompt .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #8c95a0;
+  font-style: normal;
+}
+.deck-theme-prompt .px-text blockquote:not(:has(> p:first-child > :is(strong, em):first-child)) > p::before { content: "#\00A0"; }
+.deck-theme-prompt .px-text blockquote:has(> p:first-child > strong:first-child) { color: #f5c04a; }
+.deck-theme-prompt .px-text blockquote:has(> p:first-child > em:first-child) { color: #ff6f61; }
+.deck-theme-prompt .px-text blockquote em { font-style: normal; }
+.deck-theme-prompt .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: as the terminal shows it, inline in cyan, blocks without a slab */
+.deck-theme-prompt .px-text :not(pre) > code { padding: 0 !important; background: none !important; color: #4fd2df; font-family: 'Fira Code', monospace; }
+.deck-theme-prompt :is(pre, pre.hljs) { background: transparent !important; border-left: 2px solid #262c34; border-radius: 0 !important; box-shadow: none !important; }
+.deck-theme-prompt :is(pre.hljs, pre code) { font-family: 'Fira Code', monospace !important; font-variant-ligatures: none; }
+.deck-theme-prompt pre > code.hljs { background: transparent !important; }
+
+/* Tables: column -t output, without rules */
+.deck-theme-prompt table :is(td, th) {
+  border: 0 !important;
+  background: transparent !important;
+  color: #dde2de !important;
+  font-family: 'Fira Code', monospace;
+  font-variant-ligatures: none;
+}
+.deck-theme-prompt table tr:first-child :is(td, th) { color: #f5f7f3 !important; font-weight: 600; }
+
+/* Section slides: a man page, with its header line, NAME and DESCRIPTION.
+   (!important: the layout centers them) */
+.deck-theme-prompt.px-slide[data-layout=section-header]::after,
+.deck-theme-prompt .px-slide[data-layout=section-header]::after {
+  /* 109 columns of 14px Fira Code (8px each) fill the 880px line */
+  content: "TALK(7)                                          Talk Manual                                          TALK(7)";
+  position: absolute;
+  left: 40px; right: 40px; top: 44px;
+  overflow: hidden;
+  color: #8c95a0;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: pre;
+  pointer-events: none;
+}
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p { text-align: left !important; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before {
+  display: block;
+  margin-bottom: 0.35em;
+  color: #f5f7f3;
+  font-size: 0.32em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before { content: "NAME"; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p::before { content: "DESCRIPTION"; font-size: 0.85em; margin-left: -2em; }
+.deck-theme-prompt.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-prompt .px-slide[data-layout=section-header] [data-placeholder=subtitle] p { padding-left: 2em; color: #c4cacc; }
+
+/* The Big Number, in green */
+.deck-theme-prompt.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-prompt .px-slide[data-layout=big-number] [data-placeholder=title] h1 { color: #7ed67a !important; }
+
+/* The footer's sections in sequence: a tmux status bar, the current window
+   marked * and the last one -. (The class and the slide both named, to
+   outweigh the presented deck's footer rules.) */
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence],
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] {
+  left: 0 !important; right: 0 !important; bottom: 0 !important;
+  height: 24px;
+  padding: 0 10px;
+  justify-content: flex-start !important;
+  background: #262c34;
+  color: #c4cacc !important;
+  counter-reset: prompt-window -1;
+}
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence]::before,
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence]::before {
+  content: "[talk]";
+  margin-right: 10px;
+  color: #7ed67a;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+.deck-theme-prompt.px-slide .px-footer .px-footer-sections,
+.deck-theme-prompt .px-slide .px-footer .px-footer-sections { flex: 0 1 auto !important; justify-content: flex-start !important; gap: 2px; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section {
+  counter-increment: prompt-window;
+  padding: 0 0.5em;
+  color: #c4cacc !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 24px;
+  white-space: nowrap;
+}
+.deck-theme-prompt.px-slide .px-footer .px-footer-section::before,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section::before { content: counter(prompt-window) ":"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=current] { background: #7ed67a; color: #101317 !important; font-weight: 600 !important; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=current]::after { content: "*"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::after,
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::after { content: "-"; }
+.deck-theme-prompt.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-prompt .px-slide .px-footer .px-footer-section[data-state=future] { color: #8c95a0 !important; }
+.deck-theme-prompt.px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time),
+.deck-theme-prompt .px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time) {
+  color: #c4cacc !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 13px !important;
+}
+.deck-theme-prompt.px-slide .px-footer[data-footer=sequence] .px-footer-page,
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] .px-footer-page { margin-left: auto !important; }
+/* Clear of a presented deck's arrows (the rule with the class around the
+   slide is the presented deck's alone) */
+.deck-theme-prompt .px-slide .px-footer[data-footer=sequence] { padding-right: 96px; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title bar, a prompt with the cursor, and the status bar's window */
+.deck-theme-prompt.theme-swatch {
+  position: relative;
+  background: linear-gradient(#1b2027 0 12%, #101317 12% 88%, #262c34 88%) !important;
+}
+.deck-theme-prompt.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 6%; bottom: 2%;
+  width: 16%; height: 8%;
+  background: #7ed67a;
+}
+.deck-theme-prompt .theme-swatch-title::before { content: "$\00A0"; color: #5c9cff; font-weight: 400; }
+.deck-theme-prompt .theme-swatch-title::after { content: ""; display: inline-block; width: 0.5em; height: 0.95em; margin-left: 0.1em; vertical-align: -0.12em; background: #dde2de; }

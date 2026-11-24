@@ -17,8 +17,10 @@ import kourou from '../themes/kourou.css?raw'
 import ledger from '../themes/ledger.css?raw'
 import preprint from '../themes/preprint.css?raw'
 import transit from '../themes/transit.css?raw'
+import trace from '../themes/trace.css?raw'
+import prompt from '../themes/prompt.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

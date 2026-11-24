@@ -114,7 +114,7 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import BeamerImportModal from '../components/BeamerImportModal'
 import DatasetPanel from '../components/DatasetPanel'
 import EquationPalette from '../components/EquationPalette'
-import { parseAuthors, formatAuthorsFull, webLink, pageRange } from '../utils/bibtexParser'
+import { parseAuthors, formatAuthorsReference, webLink, pageRange } from '../utils/bibtexParser'
 import { workFinder } from '../utils/bibDuplicates'
 import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
@@ -4940,7 +4940,7 @@ function draw() {
                   <div style={{ columns: referencedEntries.length > 8 ? 2 : 1, columnGap: 24 }}>
                     {referencedEntries.map((entry, i) => {
                       const authors = parseAuthors(entry.author)
-                      const authorStr = formatAuthorsFull(authors)
+                      const authorStr = formatAuthorsReference(authors)
                       return (
                         <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
                           <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>

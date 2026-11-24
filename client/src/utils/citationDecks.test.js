@@ -41,8 +41,8 @@ describe('citations in a presented deck', () => {
   it('lists only cited entries on the references slide, numbered the same way', () => {
     const refs = references(parse(generateRevealHTML(deck())))
     expect(refs).toHaveLength(2)
-    expect(refs[0]).toBe('[1]Ames, Ada (2021). Gamma Paper.')
-    expect(refs[1]).toBe('[2]Smith, John (2020). Alpha Paper.')
+    expect(refs[0]).toBe('[1]Ada Ames (2021). Gamma Paper.')
+    expect(refs[1]).toBe('[2]John Smith (2020). Alpha Paper.')
   })
 
   it('sizes the references slide like the others, so its list shows', () => {
@@ -89,7 +89,7 @@ describe('citations in a PDF', () => {
     expect(pages).toHaveLength(3)
     expect(pages[0].querySelector('sup[data-cite]').textContent).toBe('[1]')
     expect(pages[2].textContent).toContain('References')
-    expect(pages[2].textContent.replace(/\s+/g, ' ')).toContain('[2]Smith, John (2020). Alpha Paper.')
+    expect(pages[2].textContent.replace(/\s+/g, ' ')).toContain('[2]John Smith (2020). Alpha Paper.')
     expect(page).toContain(CITATION_CSS)
   })
 })
