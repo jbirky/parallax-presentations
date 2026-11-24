@@ -1159,9 +1159,17 @@ app.post('/api/admin/examples', exampleRoute(async (req, res) => {
 app.put('/api/admin/examples/order', exampleRoute(async (req, res) => {
   res.json({ examples: await examples.setOrder(storage, req.body?.slugs) })
 }))
-// { field, title, description, tags, card, hero }, each optional
+// { field, title, description, tags, card, hero, kind }, each optional. A
+// card made a template takes its speaker notes from the presentation it came
+// from, when that's the admin's
 app.put('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
-  res.json({ example: await examples.updateExample(storage, req.params.slug, req.body || {}) })
+  const before = await examples.getRow(storage, req.params.slug)
+  let example = await examples.updateExample(storage, req.params.slug, req.body || {})
+  if (before.kind !== 'template' && example.kind === 'template' && isValidUUID(example.sourcePresentationId)) {
+    const source = await storage.getPresentation(example.sourcePresentationId, req.userId)
+    if (source) example = await examples.refreshExample(storage, req.params.slug, source)
+  }
+  res.json({ example })
 }))
 // The deck copied again from the presentation it came from
 app.post('/api/admin/examples/:slug/refresh', exampleRoute(async (req, res) => {

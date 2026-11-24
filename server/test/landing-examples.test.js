@@ -151,7 +151,12 @@ describe('the landing page’s examples', { skip }, () => {
   })
 
   it('shows a template on the Templates tab, which anyone signed in can copy', async () => {
-    const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: deck, title: 'Journal club', field: 'Talks', description: 'A paper in ten slides', kind: 'template' })
+    // A template's speaker notes are for whoever starts from it
+    const talk = await t.createDeck(admin, `Journal club ${t.run}`, {
+      slides: [{ id: 's1', notes: 'Click the figure to show the method', outlineNotes: [{ text: 'my plan', level: 0 }],
+        elements: [{ id: 'e1', type: 'text', x: 60, y: 60, width: 600, height: 100, content: '<h2>Meiosis</h2>' }] }],
+    })
+    const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: talk, title: 'Journal club', field: 'Talks', description: 'A paper in ten slides', kind: 'template' })
     assert.equal(res.status, 201, JSON.stringify(res.body))
     const template = res.body.example
     assert.equal(template.kind, 'template')
@@ -167,13 +172,19 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal((await t.call(admin, 'PUT', '/api/admin/examples/logic', { kind: 'template' })).status, 400)
     assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'poster' })).status, 400)
 
-    // Someone signed in copies it: a presentation of theirs, without the notes
+    // Someone signed in copies it: a presentation of theirs, with the speaker
+    // notes but not the outline's
     const used = await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)
     assert.equal(used.status, 201, JSON.stringify(used.body))
     assert.equal(used.body.title, 'Journal club')
     const copy = (await t.call(someone, 'GET', `/api/presentations/${used.body.id}`)).body
     assert.match(copy.slides[0].elements[0].content, /Meiosis/)
-    assert.equal(copy.slides[0].notes, '')
+    assert.equal(copy.slides[0].notes, 'Click the figure to show the method')
+    assert.equal(copy.slides[0].outlineNotes, undefined)
+    // The presented deck doesn't show them
+    const page = await (await fetch(`${t.base}/examples/${template.slug}/deck`)).text()
+    assert.match(page, /Meiosis/)
+    assert.ok(!page.includes('Click the figure'), 'no notes in the deck page')
     assert.ok((await t.call(someone, 'GET', '/api/presentations')).body.some(p => p.id === used.body.id))
     assert.equal((await t.call(admin, 'GET', `/api/presentations/${used.body.id}`)).status, 404, 'theirs, not the admin’s')
 
@@ -195,11 +206,15 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(last.status, 403)
     assert.match(last.body.message, /limited to \d+ presentations/)
 
-    // Back to an example
+    // Back to an example, without the notes; a template again, with them
     await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })
     list = await publicList()
     assert.deepEqual(list.templates, [])
     assert.ok(list.examples.some(e => e.slug === template.slug))
+    assert.equal((await t.call(null, 'GET', `/api/examples/${template.slug}`)).body.slides[0].notes, '')
+    assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'template' })).status, 200)
+    assert.equal((await t.call(null, 'GET', `/api/examples/${template.slug}`)).body.slides[0].notes, 'Click the figure to show the method')
+    await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })
     assert.equal((await t.call(admin, 'DELETE', `/api/admin/examples/${template.slug}`)).status, 200)
   })
 

@@ -137,10 +137,13 @@ async function getThumbnail(storage, slug) {
 }
 
 // A presentation as anyone may see it on the landing page: without its
-// present-mode ink, practice runs, speaker notes or outline notes
-function publicCopy(presentation) {
+// present-mode ink, practice runs or outline notes, and an example without its
+// speaker notes. A template keeps them (keepNotes): they're written for
+// whoever starts from it (what to click, how to change it), and Use this
+// template copies them. Presented decks never show notes.
+function publicCopy(presentation, { keepNotes = false } = {}) {
   const { id, createdAt, updatedAt, expiresAt, version, annotationSets, practiceRuns, ...deck } = presentation
-  deck.slides = (deck.slides || []).map(({ notes, outlineNotes, ...slide }) => ({ ...slide, notes: '' }))
+  deck.slides = (deck.slides || []).map(({ notes, outlineNotes, ...slide }) => ({ ...slide, notes: keepNotes && typeof notes === 'string' ? notes : '' }))
   return deck
 }
 
@@ -201,7 +204,7 @@ async function createExample(storage, presentation, input) {
   await storage.query(
     `INSERT INTO landing_examples (slug, field, title, description, tags, deck, source_presentation_id, builtin, card, hero, sort_order${kindFound ? ', kind' : ''})
      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE, FALSE, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM landing_examples)${kindFound ? ', $8' : ''})`,
-    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation)), presentation.id, ...(kindFound ? [fields.kind] : [])]
+    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation, { keepNotes: fields.kind === 'template' })), presentation.id, ...(kindFound ? [fields.kind] : [])]
   )
   return getRow(storage, slug)
 }
@@ -225,6 +228,12 @@ async function updateExample(storage, slug, input) {
   }
   if (input.card !== undefined) { params.push(!!input.card); sets.push(`card = $${params.length}`) }
   if (sets.length) await storage.query(`UPDATE landing_examples SET ${sets.join(', ')}, updated_at = NOW() WHERE slug = $1`, params)
+  // A template made an example again loses its speaker notes. (One made a
+  // template gets them back from its presentation: the admin route refreshes it.)
+  if (before.kind === 'template' && kind === 'example') {
+    const { rows: [r] } = await storage.query('SELECT deck FROM landing_examples WHERE slug = $1', [slug])
+    if (r?.deck) await storage.query('UPDATE landing_examples SET deck = $2 WHERE slug = $1', [slug, JSON.stringify(publicCopy(r.deck))])
+  }
   if (input.hero === true) {
     // One statement, so the page always has exactly one
     await storage.query('UPDATE landing_examples SET hero = (slug = $1), updated_at = NOW() WHERE hero OR slug = $1', [slug])
@@ -248,8 +257,9 @@ async function setOrder(storage, slugs) {
 // The deck copied again from the presentation it came from
 async function refreshExample(storage, slug, presentation) {
   await needTable(storage)
+  const { kind } = await getRow(storage, slug)
   await storage.query('UPDATE landing_examples SET deck = $2, source_presentation_id = $3, updated_at = NOW() WHERE slug = $1',
-    [slug, JSON.stringify(publicCopy(presentation)), presentation.id])
+    [slug, JSON.stringify(publicCopy(presentation, { keepNotes: kind === 'template' })), presentation.id])
   return getRow(storage, slug)
 }
 
