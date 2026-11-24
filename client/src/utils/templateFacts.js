@@ -46,7 +46,10 @@ function firstLine(html) {
   const text = String(html || '')
     .replace(/<\/(p|h[1-6]|li|div|blockquote|pre|tr)>|<br\s*\/?>/gi, '\n')
     .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    // Numbered entities, such as the en space after a section's number
+    .replace(/&#(x[0-9a-f]{1,6}|[0-9]{1,7});/gi, (m, n) => { const c = n[0].toLowerCase() === 'x' ? parseInt(n.slice(1), 16) : Number(n); return c > 0 && c <= 0x10ffff ? String.fromCodePoint(c) : m })
+    .replace(/&amp;/g, '&')
   return text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).find(Boolean) || ''
 }
 

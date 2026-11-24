@@ -21,6 +21,7 @@ const deck = {
       { type: 'text', y: 90, content: '<h2>The <em>idea</em>,<br>at last</h2><p>More</p>' },
     ] },
     { elements: [] },
+    { layout: 'title-content', elements: [{ type: 'text', placeholder: 'title', y: 36, content: '<h2>2.1&#8194;The test step &amp;#38; more &#x2014; done</h2>' }] },
   ],
 }
 
@@ -38,12 +39,12 @@ describe('what a template’s page says about its deck', () => {
 
   it('names each slide, says what it holds, and gives its colors', () => {
     const f = templateFacts(deck)
-    expect(f.slides.map(s => s.title)).toEqual(['Forces & motion', 'Newton’s second law', 'Slide 3', 'The idea, at last', 'Slide 5'])
+    expect(f.slides.map(s => s.title)).toEqual(['Forces & motion', 'Newton’s second law', 'Slide 3', 'The idea, at last', 'Slide 5', '2.1 The test step &#38; more \u2014 done'])
     expect(f.slides[3].layout).toBe('')
     expect(f.slides[0].layout).toBe('Title Slide')
     expect(f.slides[1].kinds).toEqual(['2 graphs', 'Equation'])
     expect(f.slides[2]).toMatchObject({ kinds: ['Plugin', 'HTML embed'], background: '#101010', text: '#ffffff' })
-    expect(f.contents).toEqual(['2 graphs', 'Equation', 'Plugin', 'HTML embed', '5 text boxes', 'Shape'])
+    expect(f.contents).toEqual(['2 graphs', 'Equation', 'Plugin', 'HTML embed', '6 text boxes', 'Shape'])
   })
 
   it('tells of a deck’s own colors and stylesheet, and copes with a deck of nothing', () => {
