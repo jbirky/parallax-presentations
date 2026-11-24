@@ -3,7 +3,9 @@
 
 // Reads a graph's expressions the way people type them into Desmos:
 // multiplication without a sign (2x, 3(x+1), ab), functions with or without
-// parentheses (sin x, sin^2 x, sin^-1 x), |x|, π and θ, subscripts (a_1),
+// parentheses (sin x, sin^2 x, sin^-1 x), among them the special functions
+// of probability (erf, erfc, normcdf, normpdf, gamma, lgamma, beta, nCr),
+// |x|, π and θ, subscripts (a_1),
 // piecewise braces ({x < 0: -x, x}), which also restrict a curve
 // (y = x^2 {0 < x < 2}), f(x) = … definitions, and a = 1 for sliders.
 // Also fields: F(x, y) = (−y, x) and ∇f, systems x′ = …, y′ = … (or r′, θ′),
@@ -15,6 +17,88 @@
 // offer sliders, so what the editor accepts is what the slide draws.
 
 export function createMathParser() {
+  // ── Special functions, for probability and statistics ──
+  // log Γ(x), by Lanczos's approximation (g = 7), and Γ's sign; for x < 1/2
+  // by reflection. At 0 and the negative integers, Γ has poles.
+  const LANCZOS = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7]
+  const pole = x => x <= 0 && Math.floor(x) === x
+  function lgamma(x) {
+    if (pole(x)) return Infinity
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x)
+    x -= 1
+    let a = LANCZOS[0]
+    const t = x + 7.5
+    for (let i = 1; i < 9; i++) a += LANCZOS[i] / (x + i)
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a)
+  }
+  const gammaSign = x => (x > 0 || Math.floor(-x) % 2 === 1 ? 1 : -1)
+  function gamma(x) {
+    if (pole(x)) return NaN
+    // Whole numbers exactly: (n − 1)!
+    if (x === Math.floor(x) && x <= 171) { let f = 1; for (let i = 2; i < x; i++) f *= i; return f }
+    return gammaSign(x) * Math.exp(lgamma(x))
+  }
+  // B(a, b) = Γ(a)Γ(b)/Γ(a + b), through log Γ so large arguments don't overflow
+  function beta(a, b) {
+    if (pole(a) || pole(b)) return NaN
+    if (pole(a + b)) return 0
+    return gammaSign(a) * gammaSign(b) * gammaSign(a + b) * Math.exp(lgamma(a) + lgamma(b) - lgamma(a + b))
+  }
+  // erf, without cancellation: 2/√π e^(−x²) Σ (2x²)^n x / (1·3·…·(2n + 1))
+  function erfSeries(x) {
+    const x2 = x * x
+    let term = x, sum = x
+    for (let n = 1; n < 300; n++) { term *= 2 * x2 / (2 * n + 1); sum += term; if (term < 1e-17 * sum) break }
+    return 2 / Math.sqrt(Math.PI) * Math.exp(-x2) * sum
+  }
+  // erfc: 1 − the series below 2.5, a continued fraction above
+  function erfc(x) {
+    if (isNaN(x)) return NaN
+    if (x < 0) return 2 - erfc(-x)
+    if (x < 2.5) return 1 - erfSeries(x)
+    let f = x
+    for (let k = 80; k >= 1; k--) f = x + (k / 2) / f
+    return Math.exp(-x * x) / (Math.sqrt(Math.PI) * f)
+  }
+  function erf(x) {
+    if (isNaN(x)) return NaN
+    if (Math.abs(x) < 2.5) return Math.sign(x) * erfSeries(Math.abs(x))
+    return Math.sign(x) * (1 - erfc(Math.abs(x)))
+  }
+  // The normal distribution's CDF and density, with mean μ and standard
+  // deviation σ (0 and 1 when left out)
+  function normcdf(x, mu = 0, sigma = 1) {
+    if (!(sigma > 0)) return NaN
+    return 0.5 * erfc(-(x - mu) / (sigma * Math.SQRT2))
+  }
+  function normpdf(x, mu = 0, sigma = 1) {
+    if (!(sigma > 0)) return NaN
+    const z = (x - mu) / sigma
+    return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI))
+  }
+  // n choose k. For whole numbers, the product (n − k + 1)/1 · (n − k + 2)/2 ⋯,
+  // exact while it fits in a double's 53 bits (each step is a whole
+  // number), and through log Γ for k past 2000; for other numbers
+  // Γ(n + 1)/(Γ(k + 1)Γ(n − k + 1)), a smooth curve through the whole-number
+  // values
+  function nCr(n, k) {
+    if (!isFinite(n) || !isFinite(k)) return NaN
+    const whole = n === Math.floor(n) && k === Math.floor(k)
+    if (whole && n >= 0) {
+      if (k < 0 || k > n) return 0
+      const j = Math.min(k, n - k)
+      if (j > 2000) return Math.exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1))
+      let c = 1
+      for (let i = 1; i <= j; i++) c = c * (n - j + i) / i
+      return c
+    }
+    if (pole(n + 1)) return NaN
+    // 1/Γ is 0 at Γ's poles
+    if (pole(k + 1) || pole(n - k + 1)) return 0
+    return gammaSign(n + 1) * gammaSign(k + 1) * gammaSign(n - k + 1) * Math.exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1))
+  }
+
   const FUNCS = {
     sin: Math.sin, cos: Math.cos, tan: Math.tan,
     sec: x => 1 / Math.cos(x), csc: x => 1 / Math.sin(x), cot: x => 1 / Math.tan(x),
@@ -24,9 +108,14 @@ export function createMathParser() {
     sqrt: Math.sqrt, cbrt: Math.cbrt, exp: Math.exp, ln: Math.log, log: Math.log10,
     abs: Math.abs, floor: Math.floor, ceil: Math.ceil, round: Math.round, sign: Math.sign, sgn: Math.sign,
     min: Math.min, max: Math.max, mod: (a, b) => ((a % b) + b) % b,
+    erf, erfc, normcdf, normpdf, lgamma, gamma, beta, nCr,
   }
   // [fewest, most] arguments
-  const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2] }
+  const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2], normcdf: [1, 3], normpdf: [1, 3], beta: [2, 2], nCr: [2, 2] }
+  // Functions named like a Greek letter: beta(…) and gamma(…), written out
+  // with their parentheses, are B and Γ; β and γ, and beta or gamma without
+  // a parenthesis after them, are still names for sliders
+  const GREEK_FUNCS = ['beta', 'gamma']
   const INVERSE = { sin: 'arcsin', cos: 'arccos', tan: 'arctan' }
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E }
   const GREEK = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'lambda', 'sigma', 'omega', 'phi', 'rho', 'mu', 'nu', 'kappa', 'eta']
@@ -51,9 +140,17 @@ export function createMathParser() {
   }
 
   function normalize(text) {
+    return normalized(text).text
+  }
+  // ...and where in it β and γ were (they become beta and gamma)
+  function normalized(text) {
     let out = ''
-    for (const ch of String(text)) out += UNICODE[ch] !== undefined ? UNICODE[ch] : ch
-    return out
+    const greek = new Set()
+    for (const ch of String(text)) {
+      if (ch === 'β' || ch === 'γ') greek.add(out.length)
+      out += UNICODE[ch] !== undefined ? UNICODE[ch] : ch
+    }
+    return { text: out, greek }
   }
 
   const isDigit = c => c >= '0' && c <= '9'
@@ -61,7 +158,7 @@ export function createMathParser() {
   const isWord = c => isLetter(c) || isDigit(c)
 
   function tokenize(text) {
-    const s = normalize(text)
+    const { text: s, greek } = normalized(text)
     const tokens = []
     let i = 0
     while (i < s.length) {
@@ -79,7 +176,10 @@ export function createMathParser() {
         const word = NAMES.find(n => s.startsWith(n, i))
         let name = word || c
         let j = i + name.length
-        if (!word || !FUNCS[word]) {
+        let k = j
+        while (s[k] === ' ') k++
+        const isFn = !!(word && FUNCS[word]) && (!GREEK_FUNCS.includes(word) || (!greek.has(i) && s[k] === '('))
+        if (!isFn) {
           // A subscript: a_1, a_{12}, v_x
           if (s[j] === '_') {
             if (s[j + 1] === '{') {
@@ -98,7 +198,7 @@ export function createMathParser() {
             }
           }
         }
-        tokens.push({ t: word && FUNCS[word] ? 'fn' : 'id', v: name })
+        tokens.push({ t: isFn ? 'fn' : 'id', v: name })
         i = j
         continue
       }

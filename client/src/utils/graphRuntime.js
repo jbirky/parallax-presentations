@@ -767,9 +767,31 @@ export function graphRuntime(P, G, G3, config) {
     return runs
   }
 
-  function fillStyle(e) {
-    ctx.fillStyle = e.color || '#c74440'
-    ctx.globalAlpha = 0.28
+  // A region's fill, of the path just made: a tint of its color, or, with
+  // fill 'hatched', diagonal lines in its color over a lighter tint, which
+  // keep a tail or a region apart from another in grayscale
+  function fillRegion(e) {
+    const color = e.color || '#c74440'
+    ctx.fillStyle = color
+    if (e.fill !== 'hatched') {
+      ctx.globalAlpha = 0.28
+      ctx.fill()
+      ctx.globalAlpha = 1
+      return
+    }
+    ctx.globalAlpha = 0.1
+    ctx.fill()
+    ctx.save()
+    ctx.clip()
+    ctx.globalAlpha = 0.85
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.3
+    ctx.setLineDash([])
+    ctx.beginPath()
+    for (let c = -H; c < W + 7; c += 7) { ctx.moveTo(c, H); ctx.lineTo(c + H, 0) }
+    ctx.stroke()
+    ctx.restore()
+    ctx.globalAlpha = 1
   }
 
   function drawRegion(it, E) {
@@ -779,7 +801,6 @@ export function graphRuntime(P, G, G3, config) {
       const runs = explicitRuns(it.f, E, it.axis)
       const horiz = it.axis === 'y'
       const edge = horiz ? (it.side === 'below' ? H + 2 : -2) : (it.side === 'below' ? -2 : W + 2)
-      fillStyle(e)
       ctx.beginPath()
       for (const run of runs) {
         if (run.length < 2) continue
@@ -789,14 +810,12 @@ export function graphRuntime(P, G, G3, config) {
         if (horiz) { ctx.lineTo(last[0], edge); ctx.lineTo(first[0], edge) } else { ctx.lineTo(edge, last[1]); ctx.lineTo(edge, first[1]) }
         ctx.closePath()
       }
-      ctx.fill()
-      ctx.globalAlpha = 1
+      fillRegion(e)
       strokeRuns(runs, Object.assign({}, e, { style: it.strict ? 'dashed' : e.style }))
       return
     }
     // Anything else: every cell where all the parts hold, then each boundary
     const cell = clamp(4.5 / density(), 1.5, 3)
-    fillStyle(e)
     ctx.beginPath()
     for (let py = 0; py < H; py += cell) {
       E.y = wy(py + cell / 2)
@@ -808,8 +827,7 @@ export function graphRuntime(P, G, G3, config) {
         if (!inside && start >= 0) { ctx.rect(start, py, px - start, cell); start = -1 }
       }
     }
-    ctx.fill()
-    ctx.globalAlpha = 1
+    fillRegion(e)
     for (const c of it.comps) strokeRuns(contour(c.g, E), Object.assign({}, e, { style: c.strict ? 'dashed' : e.style }))
   }
 

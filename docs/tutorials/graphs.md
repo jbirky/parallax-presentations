@@ -39,6 +39,21 @@ Multiplication doesn't need a sign: `2x`, `3(x + 1)`, `ab`. Functions work with 
 
 Functions: `sin`, `cos`, `tan`, `sec`, `csc`, `cot`, `arcsin`, `arccos`, `arctan`, `sinh`, `cosh`, `tanh`, `sqrt`, `cbrt`, `exp`, `ln`, `log` (base 10), `abs`, `floor`, `ceil`, `round`, `sign`, `min`, `max`, `mod`.
 
+For probability and statistics:
+
+| Function | What it is |
+| --- | --- |
+| `erf(x)`, `erfc(x)` | The error function, and 1 − erf(x), accurate far into the tail |
+| `normcdf(x)`, `normcdf(x, μ, σ)` | The normal distribution's cumulative probability; μ = 0 and σ = 1 when left out |
+| `normpdf(x)`, `normpdf(x, μ, σ)` | The normal density, the same way |
+| `gamma(x)`, `lgamma(x)` | Γ(x), exact on whole numbers (`gamma(5)` is 24), and log Γ(x), for arguments too large for Γ |
+| `beta(a, b)` | B(a, b) = Γ(a)Γ(b)/Γ(a + b) |
+| `nCr(n, k)` | n choose k, exact on whole numbers; between them it follows Γ, a smooth curve through them |
+
+So a Beta density with sliders `a` and `b` is `y = x^(a-1)(1-x)^(b-1)/beta(a, b)`, a normal tail beyond a slider `z` is `0 <= y <= normpdf(x) {x >= z}`, and the binomial probabilities are `y = nCr(n, x) p^x (1-p)^(n-x)`, through the points at whole numbers.
+
+`beta(…)` and `gamma(…)` are the functions only written out and followed by parentheses. The Greek letters `β` and `γ`, and `beta` or `gamma` without parentheses after them, are still sliders.
+
 ::: tip
 A power covers only what comes right after `^`, so `e^2x` is e² · x. For a longer exponent use parentheses or braces: `e^(2x)` or `e^{2x}`.
 :::
@@ -201,6 +216,7 @@ A graph of its data is made of one set of axes, with numbered ticks. Of a figure
 
 - **Color**: click the dot beside a line.
 - **Line**: solid, dashed or dotted, and its thickness (in the line's options). A strict inequality (`<`, `>`) always has a dashed edge.
+- **Fill** (for a shaded region, in its options): solid, or hatched, diagonal lines in the line's color over a lighter tint. A hatched tail or region still stands apart from a solid one when the slide is printed in gray.
 - **Points**: a label, or their coordinates.
 - **Colors for a light or dark slide**: sets the grid, axes and numbers to suit the slide.
 - **Background**: see-through by default, so the slide shows behind the graph.

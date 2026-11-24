@@ -185,6 +185,19 @@ describe("an AI collaborator's edits", () => {
     assert.ok(added[0].elements.some(el => el.fragment), 'the second item comes in at a step')
   })
 
+  it('keep a graph region’s hatched fill, and the special functions of probability', () => {
+    const d = deck()
+    runEdits(d, [{ op: 'add_element', slide: 1, type: 'graph', spec: { expressions: [
+      { text: '0 <= y <= normpdf(x) {x >= z}', fill: 'hatched' }, { text: 'z = 1.5', slider: { min: -3, max: 3, step: 0.1 } },
+      { text: 'y = x^(a-1)(1-x)^(b-1)/beta(a, b)', fill: 'solid' }, { text: 'a = 3' }, { text: 'b = 5' },
+    ] } }])
+    const graph = d.slides[0].elements.at(-1)
+    assert.equal(graph.expressions[0].fill, 'hatched')
+    assert.equal(graph.expressions[2].fill, undefined) // solid is the default, so not kept
+    assert.match([].concat(require('../mcp/guides').readElement(graph)).join('\n'), /hatched/)
+    fails([{ op: 'add_element', slide: 1, type: 'graph', spec: { expressions: [{ text: 'y < x', fill: 'dotted' }] } }], /fill must be one of: solid, hatched/)
+  })
+
   it('add graphs, tables and diagrams from their guides, checked as their editors check them', () => {
     const d = { ...deck(), theme: 'white' }
     const datasets = [{ name: 'planets', columns: [{ name: 'period' }, { name: 'mass' }] }]

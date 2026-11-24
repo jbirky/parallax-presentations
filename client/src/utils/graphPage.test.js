@@ -58,6 +58,14 @@ describe('graph pages', () => {
     expect(graphSnapshotContent(el, { text: '#222' })).toBe(graphSnapshotContent(el))
   })
 
+  it('carry a region’s hatched fill to the page, the deck and the PDF', () => {
+    const el = graph([{ id: 'a', text: '0 <= y <= normpdf(x) {x >= z}', fill: 'hatched' }, { id: 'b', text: 'z = 1.5' }])
+    expect(config(graphPageHtml(el)).expressions[0].fill).toBe('hatched')
+    expect(graphSnapshotContent(el)).not.toBe(graphSnapshotContent(graph([{ id: 'a', text: '0 <= y <= normpdf(x) {x >= z}' }, { id: 'b', text: 'z = 1.5' }])))
+    const page = generateRevealHTML(deck([el])).match(/srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    expect(config(page).expressions[0].fill).toBe('hatched')
+  })
+
   it('take the theme’s colors of stability from the slide, when it has them', () => {
     const el = graph([{ id: 'a', text: "(x', y') = (y, -sin x)" }])
     expect(graphConfig(el).stability).toBeUndefined()

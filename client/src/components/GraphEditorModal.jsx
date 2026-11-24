@@ -624,6 +624,16 @@ export default function GraphEditorModal({ initial, size, slideBg, stability = n
                               </select>
                             </div>
                           )}
+                          {it.kind === 'region' && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...smallLabel, width: 44 }}>Fill</span>
+                              <select value={ex.fill === 'hatched' ? 'hatched' : 'solid'} onChange={e => updateExpr(ex.id, { fill: e.target.value === 'hatched' ? 'hatched' : undefined })} style={{ ...inputStyle, flex: 1 }}
+                                title="Hatched: diagonal lines over a lighter tint, which still read in grayscale">
+                                <option value="solid">Solid</option>
+                                <option value="hatched">Hatched</option>
+                              </select>
+                            </div>
+                          )}
                           {it.kind === 'curve3' && (
                             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                               <span style={{ ...smallLabel, width: 44 }}>Color</span>

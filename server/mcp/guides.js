@@ -41,7 +41,7 @@ const without = (obj, keys) => Object.fromEntries(Object.entries(obj).filter(([k
 
 // ── Graph ──
 
-const GRAPH_LINE_KEYS = ['id', 'text', 'color', 'hidden', 'step', 'style', 'width', 'label', 'showCoords', 'min', 'max', 'uMin', 'uMax', 'vMin', 'vMax',
+const GRAPH_LINE_KEYS = ['id', 'text', 'color', 'hidden', 'step', 'style', 'width', 'fill', 'label', 'showCoords', 'min', 'max', 'uMin', 'uMax', 'vMin', 'vMax',
   'slider', 'field', 'traj', 'surface', 'volume', 'data']
 const DATA_KEYS = ['dataset', 'x', 'y', 'mark', 'colorBy', 'sizeBy', 'label', 'x2', 'xErr', 'yErr', 'size', 'opacity']
 const RESERVED_2D = 'x, y, t, θ (theta) and r'
@@ -77,6 +77,7 @@ function graphLine(line, i, used) {
   if (line.step !== undefined) out.step = int(line.step, `${name}.step`, 1, 1000)
   if (line.style !== undefined) out.style = oneOf(line.style, `${name}.style`, ['solid', 'dashed', 'dotted'])
   if (line.width !== undefined) out.width = num(line.width, `${name}.width`, 0.5, 10)
+  if (line.fill !== undefined && oneOf(line.fill, `${name}.fill`, ['solid', 'hatched']) === 'hatched') out.fill = 'hatched'
   if (line.label !== undefined) out.label = str(line.label, `${name}.label`, 100)
   if (line.showCoords !== undefined) out.showCoords = bool(line.showCoords, `${name}.showCoords`)
   for (const key of ['min', 'max', 'uMin', 'uMax', 'vMin', 'vMax']) if (line[key] !== undefined) out[key] = num(line[key], `${name}.${key}`, -1e6, 1e6)
@@ -161,7 +162,7 @@ function makeGraph(spec, cx, template, size, kept = {}) {
 function readGraph(el) {
   const lines = (el.expressions || []).slice(0, 30).map(e => {
     const what = e.data ? `data: ${json(e.data)}` : json(e.text || '')
-    const extra = [e.color && `color ${e.color}`, e.step && `step ${e.step}`, e.slider && `slider ${e.slider.min} to ${e.slider.max}`, e.hidden && 'hidden'].filter(Boolean)
+    const extra = [e.color && `color ${e.color}`, e.step && `step ${e.step}`, e.slider && `slider ${e.slider.min} to ${e.slider.max}`, e.fill === 'hatched' && 'hatched', e.hidden && 'hidden'].filter(Boolean)
     return `   - \`${e.id}\` ${what}${extra.length ? ` (${extra.join(', ')})` : ''}`
   })
   const v = el.view || {}
@@ -496,7 +497,7 @@ const GUIDES = {
     make: makeGraph, size: () => ({ w: 560, h: 400 }), fit: { cap: 1, fw: 0.92, fh: 0.85 }, read: readGraph,
     text: `spec: { "expressions": [lines], and optional view, xLabel, yLabel, xScale, yScale, dims, grid, axes, axisNumbers, equalScale, showSliders, theme, background, camera, spin }.
 
-Each line is { "text": "…" } with optional color, step (the slide step it appears at), style (solid, dashed, dotted), width, label, hidden. Line kinds, by example:
+Each line is { "text": "…" } with optional color, step (the slide step it appears at), style (solid, dashed, dotted), width, fill ("hatched" for a region: diagonal lines that read in grayscale), label, hidden. Line kinds, by example:
 - explicit: "y = x^2 - 2", "x = sin y"; function: "f(x) = e^(-x^2)"
 - implicit: "x^2 + y^2 = 9"; region: "y < 0.5x + 1", "1 < x^2 + y^2 < 4"
 - polar: "r = 2 + 2cos θ"; parametric: "(3cos t, 2sin t)" with min and max for t
@@ -506,6 +507,7 @@ Each line is { "text": "…" } with optional color, step (the slide step it appe
 - vector field: "F(x, y) = (-y, x)"; system: "(x', y') = (y, -sin x - 0.3y)"; slope field: "dy/dx = x - y" with a solution "y(0) = 1"; trajectory: "(x, y)(0) = (1, 0)"
 - data: { "data": { "dataset": "planets", "x": "period", "y": "mass", "mark": "points" } }, with optional colorBy, sizeBy, label, xErr, yErr (columns), from list_datasets
 Variables are ${RESERVED_2D}; any other name needs a slider or value line. Implicit multiplication (2x), sin^2 x, |x|, a_1, π and √ work.
+Functions: sin cos tan sec csc cot arcsin arccos arctan sinh cosh tanh sqrt cbrt exp ln log abs floor ceil round sign min max mod, and for probability erf, erfc, normcdf(x) or normcdf(x, μ, σ), normpdf (the same), gamma, lgamma (log Γ), beta(a, b) and nCr(n, k) (through Γ between whole numbers). Written out with parentheses, beta(…) and gamma(…) are B and Γ; β and γ are sliders. A Beta density: "y = x^(a-1)(1-x)^(b-1)/beta(a, b)"; a normal tail: "0 <= y <= normpdf(x) {x >= z}" with fill "hatched".
 
 3D ("dims": 3, variables ${RESERVED_3D}): surface "z = sin x cos y", implicit "x^2 + y^2 + z^2 = 36", parametric surface "((6+2cos v)cos u, (6+2cos v)sin u, 2sin v)", curve "(5cos t, 5sin t, t/2)", point "(2, 3, 4)", volume "w = sin x + sin y + sin z". camera: { "turn": 35, "tilt": 25 }.
 

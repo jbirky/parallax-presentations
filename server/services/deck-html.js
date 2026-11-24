@@ -7037,6 +7037,89 @@ fetch(O.src)
 
 // client/src/utils/graphParser.js
 function createMathParser() {
+  const LANCZOS = [
+    0.9999999999998099,
+    676.5203681218851,
+    -1259.1392167224028,
+    771.3234287776531,
+    -176.6150291621406,
+    12.507343278686905,
+    -0.13857109526572012,
+    9984369578019572e-21,
+    15056327351493116e-23
+  ];
+  const pole = (x) => x <= 0 && Math.floor(x) === x;
+  function lgamma(x) {
+    if (pole(x)) return Infinity;
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1;
+    let a = LANCZOS[0];
+    const t = x + 7.5;
+    for (let i = 1; i < 9; i++) a += LANCZOS[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  const gammaSign = (x) => x > 0 || Math.floor(-x) % 2 === 1 ? 1 : -1;
+  function gamma(x) {
+    if (pole(x)) return NaN;
+    if (x === Math.floor(x) && x <= 171) {
+      let f = 1;
+      for (let i = 2; i < x; i++) f *= i;
+      return f;
+    }
+    return gammaSign(x) * Math.exp(lgamma(x));
+  }
+  function beta(a, b) {
+    if (pole(a) || pole(b)) return NaN;
+    if (pole(a + b)) return 0;
+    return gammaSign(a) * gammaSign(b) * gammaSign(a + b) * Math.exp(lgamma(a) + lgamma(b) - lgamma(a + b));
+  }
+  function erfSeries(x) {
+    const x2 = x * x;
+    let term = x, sum = x;
+    for (let n = 1; n < 300; n++) {
+      term *= 2 * x2 / (2 * n + 1);
+      sum += term;
+      if (term < 1e-17 * sum) break;
+    }
+    return 2 / Math.sqrt(Math.PI) * Math.exp(-x2) * sum;
+  }
+  function erfc(x) {
+    if (isNaN(x)) return NaN;
+    if (x < 0) return 2 - erfc(-x);
+    if (x < 2.5) return 1 - erfSeries(x);
+    let f = x;
+    for (let k = 80; k >= 1; k--) f = x + k / 2 / f;
+    return Math.exp(-x * x) / (Math.sqrt(Math.PI) * f);
+  }
+  function erf(x) {
+    if (isNaN(x)) return NaN;
+    if (Math.abs(x) < 2.5) return Math.sign(x) * erfSeries(Math.abs(x));
+    return Math.sign(x) * (1 - erfc(Math.abs(x)));
+  }
+  function normcdf(x, mu = 0, sigma = 1) {
+    if (!(sigma > 0)) return NaN;
+    return 0.5 * erfc(-(x - mu) / (sigma * Math.SQRT2));
+  }
+  function normpdf(x, mu = 0, sigma = 1) {
+    if (!(sigma > 0)) return NaN;
+    const z = (x - mu) / sigma;
+    return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI));
+  }
+  function nCr(n, k) {
+    if (!isFinite(n) || !isFinite(k)) return NaN;
+    const whole = n === Math.floor(n) && k === Math.floor(k);
+    if (whole && n >= 0) {
+      if (k < 0 || k > n) return 0;
+      const j = Math.min(k, n - k);
+      if (j > 2e3) return Math.exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1));
+      let c = 1;
+      for (let i = 1; i <= j; i++) c = c * (n - j + i) / i;
+      return c;
+    }
+    if (pole(n + 1)) return NaN;
+    if (pole(k + 1) || pole(n - k + 1)) return 0;
+    return gammaSign(n + 1) * gammaSign(k + 1) * gammaSign(n - k + 1) * Math.exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1));
+  }
   const FUNCS = {
     sin: Math.sin,
     cos: Math.cos,
@@ -7066,9 +7149,18 @@ function createMathParser() {
     sgn: Math.sign,
     min: Math.min,
     max: Math.max,
-    mod: (a, b) => (a % b + b) % b
+    mod: (a, b) => (a % b + b) % b,
+    erf,
+    erfc,
+    normcdf,
+    normpdf,
+    lgamma,
+    gamma,
+    beta,
+    nCr
   };
-  const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2] };
+  const ARITY = { min: [1, 99], max: [1, 99], mod: [2, 2], arctan: [1, 2], atan: [1, 2], normcdf: [1, 3], normpdf: [1, 3], beta: [2, 2], nCr: [2, 2] };
+  const GREEK_FUNCS = ["beta", "gamma"];
   const INVERSE = { sin: "arcsin", cos: "arccos", tan: "arctan" };
   const CONSTANTS = { pi: Math.PI, tau: 2 * Math.PI, e: Math.E };
   const GREEK2 = ["alpha", "beta", "gamma", "delta", "epsilon", "lambda", "sigma", "omega", "phi", "rho", "mu", "nu", "kappa", "eta"];
@@ -7112,15 +7204,22 @@ function createMathParser() {
     throw e;
   }
   function normalize(text) {
+    return normalized(text).text;
+  }
+  function normalized(text) {
     let out = "";
-    for (const ch of String(text)) out += UNICODE[ch] !== void 0 ? UNICODE[ch] : ch;
-    return out;
+    const greek = /* @__PURE__ */ new Set();
+    for (const ch of String(text)) {
+      if (ch === "β" || ch === "γ") greek.add(out.length);
+      out += UNICODE[ch] !== void 0 ? UNICODE[ch] : ch;
+    }
+    return { text: out, greek };
   }
   const isDigit2 = (c) => c >= "0" && c <= "9";
   const isLetter2 = (c) => c >= "a" && c <= "z" || c >= "A" && c <= "Z";
   const isWord = (c) => isLetter2(c) || isDigit2(c);
   function tokenize4(text) {
-    const s = normalize(text);
+    const { text: s, greek } = normalized(text);
     const tokens = [];
     let i = 0;
     while (i < s.length) {
@@ -7144,7 +7243,10 @@ function createMathParser() {
         const word = NAMES.find((n) => s.startsWith(n, i));
         let name50 = word || c;
         let j = i + name50.length;
-        if (!word || !FUNCS[word]) {
+        let k = j;
+        while (s[k] === " ") k++;
+        const isFn = !!(word && FUNCS[word]) && (!GREEK_FUNCS.includes(word) || !greek.has(i) && s[k] === "(");
+        if (!isFn) {
           if (s[j] === "_") {
             if (s[j + 1] === "{") {
               const end = s.indexOf("}", j + 2);
@@ -7154,15 +7256,15 @@ function createMathParser() {
               name50 += "_" + sub2;
               j = end + 1;
             } else {
-              let k = j + 1;
-              while (k < s.length && isWord(s[k])) k++;
-              if (k === j + 1) fail2("Put a letter or digit after _, like a_1");
-              name50 += "_" + s.slice(j + 1, k);
-              j = k;
+              let k2 = j + 1;
+              while (k2 < s.length && isWord(s[k2])) k2++;
+              if (k2 === j + 1) fail2("Put a letter or digit after _, like a_1");
+              name50 += "_" + s.slice(j + 1, k2);
+              j = k2;
             }
           }
         }
-        tokens.push({ t: word && FUNCS[word] ? "fn" : "id", v: name50 });
+        tokens.push({ t: isFn ? "fn" : "id", v: name50 });
         i = j;
         continue;
       }
@@ -8954,9 +9056,31 @@ function graphRuntime(P, G2, G3, config) {
     }
     return runs;
   }
-  function fillStyle(e) {
-    ctx.fillStyle = e.color || "#c74440";
-    ctx.globalAlpha = 0.28;
+  function fillRegion(e) {
+    const color2 = e.color || "#c74440";
+    ctx.fillStyle = color2;
+    if (e.fill !== "hatched") {
+      ctx.globalAlpha = 0.28;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.globalAlpha = 0.1;
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = color2;
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let c = -H2; c < W2 + 7; c += 7) {
+      ctx.moveTo(c, H2);
+      ctx.lineTo(c + H2, 0);
+    }
+    ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
   function drawRegion(it, E) {
     const e = exprOf(it);
@@ -8964,7 +9088,6 @@ function graphRuntime(P, G2, G3, config) {
       const runs = explicitRuns(it.f, E, it.axis);
       const horiz = it.axis === "y";
       const edge = horiz ? it.side === "below" ? H2 + 2 : -2 : it.side === "below" ? -2 : W2 + 2;
-      fillStyle(e);
       ctx.beginPath();
       for (const run of runs) {
         if (run.length < 2) continue;
@@ -8980,13 +9103,11 @@ function graphRuntime(P, G2, G3, config) {
         }
         ctx.closePath();
       }
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      fillRegion(e);
       strokeRuns(runs, Object.assign({}, e, { style: it.strict ? "dashed" : e.style }));
       return;
     }
     const cell = clamp4(4.5 / density(), 1.5, 3);
-    fillStyle(e);
     ctx.beginPath();
     for (let py = 0; py < H2; py += cell) {
       E.y = wy(py + cell / 2);
@@ -9001,8 +9122,7 @@ function graphRuntime(P, G2, G3, config) {
         }
       }
     }
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    fillRegion(e);
     for (const c of it.comps) strokeRuns(contour(c.g, E), Object.assign({}, e, { style: c.strict ? "dashed" : e.style }));
   }
   function pointAt(it, E) {
