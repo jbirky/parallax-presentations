@@ -201,9 +201,18 @@ export function pageRange(pages) {
   return texDashes(String(pages || '').trim()).replace(/(\d)\s*[-\u2013]\s*(\d)/g, '$1\u2013$2')
 }
 
+// An entry's author field as a list of references prints it. A role written
+// after the names, "Evans, Lyndon and Bryant, Philip (eds.)", stays at the end
+// rather than joining the last name
+export function formatAuthorLine(authorStr) {
+  const str = String(authorStr || '')
+  const role = /^(.*?)\s*(\([^(){}]*\))\s*$/.exec(str)
+  const line = formatAuthorsReference(parseAuthors(role ? role[1] : str))
+  return role && line ? `${line} ${role[2]}` : line
+}
+
 export function formatReference(entry, index) {
-  const authors = parseAuthors(entry.author)
-  const authorStr = formatAuthorsReference(authors)
+  const authorStr = formatAuthorLine(entry.author)
   const year = entry.year || ''
   const title = entry.title || ''
   const journal = entry.journal || entry.booktitle || ''

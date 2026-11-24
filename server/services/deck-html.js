@@ -6033,6 +6033,12 @@ function webLink(url) {
 function pageRange(pages) {
   return texDashes(String(pages || "").trim()).replace(/(\d)\s*[-\u2013]\s*(\d)/g, "$1–$2");
 }
+function formatAuthorLine(authorStr) {
+  const str7 = String(authorStr || "");
+  const role = /^(.*?)\s*(\([^(){}]*\))\s*$/.exec(str7);
+  const line = formatAuthorsReference(parseAuthors(role ? role[1] : str7));
+  return role && line ? `${line} ${role[2]}` : line;
+}
 
 // client/src/utils/citationIndex.js
 var BARE_NUMBER_RE = /\[(\d{1,3})\]/g;
@@ -31121,7 +31127,7 @@ function referencesHtml(citations, markerColor, light = false, font = "") {
     const pages = pageRange(entry.pages);
     const doi = entry.doi || "";
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`;
-    line += escapeHtml(formatAuthorsReference(parseAuthors(String(entry.author || ""))));
+    line += escapeHtml(formatAuthorLine(entry.author));
     if (year) line += ` (${escapeHtml(year)})`;
     line += `. ${escapeHtml(entry.title || "")}.`;
     if (journal) line += ` <em>${escapeHtml(journal)}</em>`;

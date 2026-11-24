@@ -5,6 +5,7 @@ import {
   formatAuthorsShort,
   formatAuthorsFull,
   formatAuthorsReference,
+  formatAuthorLine,
   formatCitation,
   formatReference,
   pageRange,
@@ -192,6 +193,13 @@ describe('formatAuthorsReference', () => {
     expect(formatAuthorsReference(parseAuthors('Aad, Georges and others'))).toBe('Georges Aad et al.')
     expect(formatAuthorsReference(parseAuthors('A, A and B, B and C, C and D, D and E, E and F, F and G, G'))).toBe('A A et al.')
     expect(formatAuthorsReference([])).toBe('')
+  })
+
+  it('keeps a role written after the names at the end', () => {
+    expect(formatAuthorLine('Evans, Lyndon and Bryant, Philip (eds.)')).toBe('Lyndon Evans and Philip Bryant (eds.)')
+    expect(formatAuthorLine('Damerau, Heiko and others (eds.)')).toBe('Heiko Damerau et al. (eds.)')
+    expect(formatAuthorLine('{CMS Collaboration (CERN)}')).toBe('CMS Collaboration (CERN)')
+    expect(formatAuthorLine('')).toBe('')
   })
 
   it('returns empty string for empty array', () => {

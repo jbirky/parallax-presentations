@@ -4,7 +4,7 @@
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
 import { buildCitationIndex, resolveCitationsInHtml, CITATION_CSS } from './citationIndex'
-import { webLink, pageRange, parseAuthors, formatAuthorsReference } from './bibtexParser'
+import { webLink, pageRange, formatAuthorLine } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
@@ -249,7 +249,7 @@ function referencesHtml(citations, markerColor, light = false, font = '') {
     const doi = entry.doi || ''
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`
     // "Ada Ames, Jane Doe and Rick Roe", or et al. (bibtexParser.js)
-    line += escapeHtml(formatAuthorsReference(parseAuthors(String(entry.author || ''))))
+    line += escapeHtml(formatAuthorLine(entry.author))
     if (year) line += ` (${escapeHtml(year)})`
     line += `. ${escapeHtml(entry.title || '')}.`
     if (journal) line += ` <em>${escapeHtml(journal)}</em>`
