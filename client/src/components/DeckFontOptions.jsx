@@ -20,6 +20,7 @@ export default function DeckFontOptions() {
         <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
         <option value="Manrope, sans-serif">Manrope</option>
         <option value="Geist, sans-serif">Geist</option>
+        <option value="'Titillium Web', sans-serif">Titillium Web</option>
         <option value="Figtree, sans-serif">Figtree</option>
         <option value="Jost, sans-serif">Jost</option>
         <option value="Ubuntu, sans-serif">Ubuntu</option>

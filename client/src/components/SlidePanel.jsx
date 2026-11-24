@@ -85,7 +85,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
         '--slide-link': palette.link,
         ...paletteVars(palette),
         ...textVars,
-      }} className={['slide-thumb-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')} data-layout={slideLayout(slide) || undefined}>
+      }} className={['slide-thumb-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')} data-layout={slideLayout(slide) || undefined} data-own-background={palette.own ? '' : undefined}>
         {(slide.elements || [])
           .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))

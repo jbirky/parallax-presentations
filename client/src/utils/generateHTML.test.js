@@ -675,6 +675,23 @@ describe('what a deck writes into its page', () => {
     expect(gutter).toContain('family=JetBrains+Mono')
   })
 
+  it('draws Lemma, Beamline, Kourou and Ledger, and marks slides with a background of their own', () => {
+    const kourou = generateRevealHTML(makePresentation({ theme: 'kourou', slides: [
+      { id: 's1', layout: 'title', elements: [], background: { type: 'color', color: '#1e1e2e' } },
+      { id: 's2', layout: 'title', elements: [] },
+    ] }))
+    expect(kourou).toContain('dist/theme/white.css')
+    expect(kourou).toContain('class="px-slide" data-layout="title" data-own-background>')
+    expect(kourou).toContain('class="px-slide" data-layout="title">')
+    expect(kourou).toContain('.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background])::before')
+    expect(kourou).toContain('family=Titillium+Web')
+    expect(generateRevealHTML(makePresentation({ theme: 'lemma' }))).toContain('<div class="reveal deck-theme-lemma">')
+    const beamline = generateRevealHTML(makePresentation({ theme: 'beamline' }))
+    expect(beamline).toContain('dist/theme/black.css')
+    expect(beamline).toContain('@keyframes beamline-bunch')
+    expect(generateRevealHTML(makePresentation({ theme: 'ledger' }))).toContain('.deck-theme-ledger .slides > section:not([data-background-color])')
+  })
+
   it('sets text in the theme’s body size until the deck has its own, as the editor does', () => {
     expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain("font-family:'Computer Modern Sans', sans-serif;font-size:28px;")
     expect(generateRevealHTML(makePresentation({ theme: 'turin', textStyles: { bodySize: 40 } }))).toContain('font-size:40px;')
@@ -685,6 +702,10 @@ describe('what a deck writes into its page', () => {
 
   it('keeps a quote’s paragraphs blocks, as the editor has them, over reveal.js’s inline ones', () => {
     expect(generateRevealHTML(makePresentation())).toContain('.reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }')
+  })
+
+  it('keeps themes’ pictures off the background layers reveal.js copies slides’ classes onto', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain('.reveal .backgrounds .px-slide::before, .reveal .backgrounds .px-slide::after { content: none !important; }')
   })
 
   it('sets Pixel’s headings in its heading font, on reveal’s black', () => {

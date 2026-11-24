@@ -47,7 +47,7 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
@@ -61,7 +61,15 @@ Turin looks like a LaTeX Beamer talk. Content slides have a dark blue headline a
 
 Gutter is for talks with a lot of code. It draws a code editor's gutter down the left of each slide and its status bar along the bottom, and puts slide titles on a highlighted "current line" after `//`. Code is in JetBrains Mono on a dark background, with Gutter's own syntax colors whichever code theme the deck uses. A Heading 4 right before a code block becomes the block's file tab. A quote whose first line is a label becomes a callout: a plain label makes a note, an *italic* one a tip, and a **bold** one a warning. Text is in IBM Plex Sans.
 
-Turin and Gutter draw their bands behind what's on the slide, so a full-slide image covers them.
+Lemma is Beamer for mathematics, in a slate blue: content slides have a headline and a title bar, every slide a three-part footline, and title and section slides put the title in a box. Bullets are triangles and numbered lists count in shaded balls. A quote is a block titled by the bold or italic words it opens with: `> **Theorem 2 (IVT).** Let f be…` makes a theorem, whose statement is italic; italic words make a green example, and bold italic a red alert. A quote that opens with neither is an untitled block. Text is in Computer Modern Sans.
+
+Beamline is a dark theme for particle physics. Slide titles have a beam under them, whose bunch flies in as a presented slide opens; the title slide is a collider ring with two bunches about to collide, and section slides sit on an event display. A Heading 4 is a kicker in blue capitals, a Heading 1 in a text box (and the Big Number) a figure in JetBrains Mono, and a quote a readout panel whose bold first line is its label. Headings are in Manrope, text in Inter.
+
+Kourou is for space science: navy and red, with a navy strip and a red rule along the top of every slide. The title slide is a starfield and section slides sit on a mission timeline. A Heading 4 is a red tag, a Heading 5 a small navy label, a Heading 6 a gray caption, a Heading 1 in a text box (and the Big Number) a number that fades from red into navy, and italic words in a heading are red. A plain quote is a headline quote; one whose first line is **bold** is a blue notice, and *italic* a dark card. A bold link is a button and an italic one an arrow link. Headings are in Titillium Web, text in Arial.
+
+Ledger looks like a spreadsheet, for pitches and anything with a model behind it: gridlines, column letters, row numbers and a sheet tab. Slide titles open with a formula bar's *fx*, the title slide's title and the Big Number are a selected range, and section titles are a sheet's tab. A Heading 1 in a text box is a figure in JetBrains Mono, inline code a cell reference in blue, and a quote a cell's comment whose bold first line is its label. Text is in Geist.
+
+Turin, Gutter, Lemma, Beamline and Ledger draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, and Ledger's headers and tab show only on slides without a background of their own.
 
 ### Your own colors
 

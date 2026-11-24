@@ -6453,7 +6453,11 @@ var THEME_LIST = [
   { id: "pixel", label: "Pixel", background: "#14112e", text: "#f3eedf", heading: "#ffcc33", link: "#39e5c0", dark: true, reveal: "black", font: "'Pixelify Sans', sans-serif", textStyles: { bodySize: 32, h1Size: 56, h2Size: 36, h3Size: 26, headingFont: "'Press Start 2P', monospace", headingWeight: 400 }, note: "8-bit: pixel headings with a purple shadow, arrow bullets, code in VT323" },
   { id: "mission", label: "Mission", background: "#f4f6f8", backgroundCss: "linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px, linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px, linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px, #f4f6f8", text: "#0d1b2e", heading: "#0d1b2e", link: "#1d6fd1", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { h1Size: 88, h2Size: 44, h3Size: 30, headingFont: "'Barlow Condensed', sans-serif", headingWeight: 600 }, note: "Engineering drawing: a drafting grid, capital headings with a rule under slide titles, code in B612 Mono" },
   { id: "turin", label: "Turin", background: "#ffffff", text: "#141414", heading: "#3333b3", link: "#3333b3", dark: false, reveal: "white", font: "'Computer Modern Sans', sans-serif", textStyles: { bodySize: 28, h1Size: 50, h2Size: 34, h3Size: 28, headingWeight: 400 }, note: "LaTeX Beamer: a blue title band and footline, triangle bullets, quotes as blocks, in Computer Modern Sans" },
-  { id: "gutter", label: "Gutter", background: "#f6f7f9", text: "#1d2127", heading: "#0e1116", link: "#0f766e", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 54, h2Size: 34, h3Size: 26, headingWeight: 600 }, note: "A code editor: a gutter and status bar, code in JetBrains Mono on a dark slab, quotes as callouts" }
+  { id: "gutter", label: "Gutter", background: "#f6f7f9", text: "#1d2127", heading: "#0e1116", link: "#0f766e", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 54, h2Size: 34, h3Size: 26, headingWeight: 600 }, note: "A code editor: a gutter and status bar, code in JetBrains Mono on a dark slab, quotes as callouts" },
+  { id: "lemma", label: "Lemma", background: "#ffffff", text: "#1d2027", heading: "#26426e", link: "#26426e", dark: false, reveal: "white", font: "'Computer Modern Sans', sans-serif", textStyles: { bodySize: 28, h1Size: 48, h2Size: 32, h3Size: 28, headingWeight: 700 }, note: "Beamer for mathematics: a slate title bar and footline, theorem, example and alert blocks, numbered balls, in Computer Modern Sans" },
+  { id: "beamline", label: "Beamline", background: "#0a0e17", backgroundCss: "radial-gradient(900px 520px at 72% 46%, #0f1828 0%, #0a0e17 62%)", text: "#e6ebf3", heading: "#ffffff", link: "#4fb4ff", dark: true, reveal: "black", font: "Inter, sans-serif", textStyles: { h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Manrope, sans-serif", headingWeight: 800 }, note: "Particle physics: a beam under slide titles, a collider ring on the title slide, an event display on section slides, numbers in JetBrains Mono" },
+  { id: "kourou", label: "Kourou", background: "#ffffff", text: "#003247", heading: "#003247", link: "#003247", accent: "#cf1d39", dark: false, reveal: "white", font: "Arial, sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 40, h3Size: 28, headingFont: "'Titillium Web', sans-serif" }, note: "Space science: a navy strip with a red rule, red tags, a starfield title slide and a timeline for sections, in Titillium Web and Arial" },
+  { id: "ledger", label: "Ledger", background: "#ffffff", backgroundCss: "linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px, linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px, #ffffff", text: "#13221b", heading: "#13221b", link: "#2457c5", accent: "#1e6b49", dark: false, reveal: "white", font: "Geist, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 38, h3Size: 28, headingFont: "Geist, sans-serif", headingWeight: 700 }, note: "A spreadsheet, for pitches: gridlines, column letters and row numbers, a formula bar before slide titles, figures in JetBrains Mono" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -22320,6 +22324,9 @@ function slideLayoutAttr(slide) {
   const layout = slideLayout(slide);
   return layout ? ` data-layout="${layout}"` : "";
 }
+function ownBackgroundAttr(palette) {
+  return palette?.own ? " data-own-background" : "";
+}
 function placeholderAttr(el) {
   const role = textPlaceholder(el);
   return role ? ` data-placeholder="${role}"` : "";
@@ -28496,8 +28503,860 @@ var gutter_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/lemma.css
+var lemma_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Lemma theme's stylesheet: LaTeX Beamer for mathematics, in a slate
+   structure color (#26426e) and Computer Modern Sans (utils/themes.js: the
+   font and the text sizes, which the Themes panel's Text tab can change).
+   It's scoped to .deck-theme-lemma, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Content slides get a headline and a frame-title bar across the top, every
+   slide a three-part footline, flat as in Beamer's default themes. Title and
+   section slides put the title in a box. Numbered lists count in Beamer's
+   balls. Quotes are blocks, titled by the bold or italic words they open
+   with ("**Theorem 2 (IVT).** Let f be…"): bold makes a theorem, whose
+   statement is italic; italic an example; bold italic an alert. A quote
+   that opens with neither is an untitled block. */
+
+/* reveal.js: links, the arrows and the progress bar in the structure color */
+.deck-theme-lemma {
+  --r-background-color: #ffffff;
+  --r-main-color: #1d2027;
+  --r-heading-color: #26426e;
+  --r-link-color: #26426e;
+  --r-link-color-dark: #1a2f50;
+  --r-link-color-hover: #3b5d93;
+  --r-selection-background-color: #26426e;
+  --r-selection-color: #ffffff;
+}
+
+/* Headline and frame title: two bars across the top of content slides,
+   behind their text */
+.deck-theme-lemma.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-lemma .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 106px;
+  background: linear-gradient(#1a2f50 0 24px, #26426e 24px 106px);
+  pointer-events: none;
+}
+.deck-theme-lemma.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-lemma .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2) {
+  color: #ffffff !important;
+}
+
+/* Footline: dark, structure and tint thirds */
+.deck-theme-lemma.px-slide:not([data-layout=blank])::after,
+.deck-theme-lemma .px-slide:not([data-layout=blank])::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 22px;
+  background: linear-gradient(90deg, #1a2f50 0 33.33%, #26426e 33.33% 66.67%, #e9eef6 66.67%);
+  pointer-events: none;
+}
+
+/* Title and section slides: the title in a box. (!important: presented
+   decks set headings' margins with it.) */
+.deck-theme-lemma.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-lemma .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto 0.2em !important;
+  padding: 0.45em 1em 0.5em;
+  border-radius: 0.18em;
+  background: #26426e;
+  color: #ffffff !important;
+}
+.deck-theme-lemma.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p,
+.deck-theme-lemma .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p {
+  color: #26426e;
+}
+
+/* The Big Number, in the structure color */
+.deck-theme-lemma.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-lemma .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-accent, #26426e) !important;
+}
+
+/* Bullets: Beamer's triangles */
+.deck-theme-lemma .px-text ul > li::marker { content: "\\25B6  "; color: var(--px-accent, #26426e); font-size: 0.55em; }
+.deck-theme-lemma .px-text ul ul > li::marker { content: "\\25B8  "; font-size: 0.75em; }
+
+/* Numbered lists: shaded balls */
+.deck-theme-lemma .px-text ol { list-style: none; padding-left: 1.75em; }
+.deck-theme-lemma .px-text ol > li { position: relative; }
+.deck-theme-lemma .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.75em;
+  top: 0.2em;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #8ea9d6 0, #3b5d93 38%, #1a2f50 100%);
+  color: #ffffff;
+  font-size: 0.62em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.9em;
+  text-align: center;
+}
+
+/* Blocks: a tinted box. The bold or italic words a quote opens with are its
+   title bar; bold makes a theorem (an italic statement, where emphasis is
+   upright), italic an example, bold italic an alert */
+.deck-theme-lemma .px-text blockquote {
+  --block: var(--px-accent, #26426e);
+  --block-tint: #e9eef6;
+  border: 0 !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  margin: 0.15em 0 0.5em !important;
+  border-radius: 0.16em;
+  overflow: hidden;
+  background: var(--block-tint);
+}
+.deck-theme-lemma .px-text blockquote > * { padding-inline: 0.45em; }
+.deck-theme-lemma .px-text blockquote > :first-child { padding-top: 0.3em; }
+.deck-theme-lemma .px-text blockquote > :last-child { padding-bottom: 0.35em; margin-bottom: 0 !important; }
+.deck-theme-lemma .px-text blockquote > :is(ul, ol) { padding-left: 1.7em; }
+.deck-theme-lemma .px-text blockquote > p:first-child > :is(strong, em):first-child {
+  display: block;
+  margin: -0.3em -0.45em 0.3em;
+  padding: 0.12em 0.45em 0.16em;
+  background: var(--block);
+  color: #ffffff;
+  font-style: normal;
+  font-weight: 700;
+}
+.deck-theme-lemma .px-text blockquote > p:first-child > :is(strong, em):first-child :is(strong, em) { font-style: normal; font-weight: 700; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child) { font-style: italic; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child) em { font-style: normal; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > em:first-child) { --block: #2d7a4c; --block-tint: #eaf4ee; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child > em, > p:first-child > em:first-child > strong) { --block: #b5352a; --block-tint: #f8ebe9; font-style: normal; }
+
+/* Code: Beamer's verbatim, on the structure tint */
+.deck-theme-lemma .px-text :not(pre) > code { padding: 0.04em 0.25em; border-radius: 0.15em; background: #e9eef6; color: #1a2f50; font-size: 0.86em; }
+.deck-theme-lemma .px-text pre { background: #f4f6fa !important; border-left: 0.18em solid #26426e; border-radius: 0.12em; box-shadow: none !important; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title in its box, over the footline */
+.deck-theme-lemma.theme-swatch { position: relative; }
+.deck-theme-lemma.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4%;
+  background: linear-gradient(90deg, #1a2f50 0 33.33%, #26426e 33.33% 66.67%, #e9eef6 66.67%);
+}
+.deck-theme-lemma .theme-swatch-title {
+  padding: 0.25em 0.7em;
+  border-radius: 0.18em;
+  background: #26426e;
+  color: #ffffff !important;
+}
+`;
+
+// raw:client/src/themes/beamline.css
+var beamline_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Beamline theme's stylesheet: particle physics. A beam pipe's dark
+   (#0a0e17), Cherenkov blue (#4fb4ff) and RF copper (#e08a4f); Manrope
+   headings over Inter, and numbers in JetBrains Mono (utils/themes.js: the
+   fonts and the text sizes, which the Themes panel's Text tab can change).
+   Slide titles have a beam under them, whose bunch flies in when a presented
+   slide opens; the title slide is a collider ring, section slides an event
+   display, and content slides carry a small ring in the corner. No
+   laboratory's or experiment's branding.
+
+   It's scoped to .deck-theme-beamline, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme.
+
+   In text: a Heading 4 is a kicker in blue capitals, a Heading 1 in a text
+   box (and the Big Number) a figure in JetBrains Mono, and a quote a
+   readout panel, whose first line in bold is its copper label. */
+
+/* reveal.js: links, the arrows and the progress bar in blue */
+.deck-theme-beamline {
+  --r-background-color: #0a0e17;
+  --r-main-color: #e6ebf3;
+  --r-heading-color: #ffffff;
+  --r-link-color: #4fb4ff;
+  --r-link-color-dark: #2b8fe0;
+  --r-link-color-hover: #dff1ff;
+  --r-selection-background-color: #4fb4ff;
+  --r-selection-color: #0a0e17;
+}
+
+/* The glow behind presented slides that show the theme's page (the editor
+   draws it from the theme's backgroundCss) */
+.deck-theme-beamline .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: radial-gradient(900px 520px at 72% 46%, #0f1828 0%, #0a0e17 62%);
+}
+
+/* The beam under slide titles: a fading line, and its bunch */
+.deck-theme-beamline.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-beamline .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 360px;
+  max-width: 100%;
+  height: 10px;
+  margin-top: 8px;
+  background:
+    radial-gradient(circle, #dff1ff 0 2.5px, rgba(79, 180, 255, 0.55) 3.5px, transparent 7px) 0 0 / 10px 10px no-repeat,
+    linear-gradient(90deg, #4fb4ff, rgba(79, 180, 255, 0)) 0 4px / 100% 2px no-repeat;
+}
+.deck-theme-beamline.px-slide.present:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-beamline .px-slide.present:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  animation: beamline-bunch 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both;
+}
+@keyframes beamline-bunch {
+  from { background-position: 350px 0, 0 4px; }
+  to { background-position: 0 0, 0 4px; }
+}
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-beamline [data-placeholder=title] :is(h1, h2)::after { animation: none !important; }
+}
+
+/* A small ring in the corner of content slides, clear of a presented deck's
+   arrows */
+.deck-theme-beamline.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::after,
+.deck-theme-beamline .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::after {
+  content: "";
+  position: absolute;
+  left: 14px; bottom: 12px;
+  width: 40px; height: 40px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2040%2040%27%20width%3D%2740%27%20height%3D%2740%27%3E%3Ccircle%20cx%3D%2720%27%20cy%3D%2720%27%20r%3D%2713%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%272.5%27%2F%3E%3Ccircle%20cx%3D%2733%27%20cy%3D%2720%27%20r%3D%272.6%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%2720%27%20cy%3D%2733%27%20r%3D%272.6%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%277%27%20cy%3D%2720%27%20r%3D%272.6%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%2720%27%20cy%3D%277%27%20r%3D%272.6%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271%27%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%27g2911%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23dff1ff%27%2F%3E%3Cstop%20offset%3D%27.25%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%27.9%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%2711.6%27%20r%3D%275%27%20fill%3D%27url%28%23g2911%29%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+/* Title slide: the collider ring, with two bunches closing on a collision */
+.deck-theme-beamline.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-beamline .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Cellipse%20cx%3D%27480%27%20cy%3D%27282%27%20rx%3D%27442%27%20ry%3D%27159%27%20fill%3D%27none%27%20stroke%3D%27%23e08a4f%27%20stroke-opacity%3D%27.22%27%20stroke-width%3D%271%27%2F%3E%3Cellipse%20cx%3D%27480%27%20cy%3D%27282%27%20rx%3D%27430%27%20ry%3D%27150%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%275%27%2F%3E%3Cellipse%20cx%3D%27480%27%20cy%3D%27282%27%20rx%3D%27418%27%20ry%3D%27141%27%20fill%3D%27none%27%20stroke%3D%27%234fb4ff%27%20stroke-opacity%3D%27.25%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27910%27%20cy%3D%27282%27%20r%3D%276%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271.2%27%2F%3E%3Ccircle%20cx%3D%2750%27%20cy%3D%27282%27%20r%3D%276%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271.2%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27132%27%20r%3D%276%27%20fill%3D%27%230a0e17%27%20stroke%3D%27%238a99b2%27%20stroke-width%3D%271.2%27%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%27g234396%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23dff1ff%27%2F%3E%3Cstop%20offset%3D%27.25%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%27.9%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%27234.3%27%20cy%3D%27396.1%27%20r%3D%2716%27%20fill%3D%27url%28%23g234396%29%27%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%27g739410%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23ffe9d9%27%2F%3E%3Cstop%20offset%3D%27.25%27%20stop-color%3D%27%23e08a4f%27%20stop-opacity%3D%27.9%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23e08a4f%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%27739.8%27%20cy%3D%27410.6%27%20r%3D%2716%27%20fill%3D%27url%28%23g739410%29%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q394.2%20420%20330%20372%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q422.9%20394.1%20400%20337%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q482%20377.2%20520%20332%27%20fill%3D%27none%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q527.4%20382.6%20600%20362%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q563.9%20401%20655%20412%27%20fill%3D%27none%27%20stroke%3D%27%23ff6b57%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cpath%20d%3D%27M480%20432%20Q386.8%20459.8%20290%20442%27%20fill%3D%27none%27%20stroke%3D%27%23a98bff%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%271.4%27%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%27g480432%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23ffffff%27%2F%3E%3Cstop%20offset%3D%27.25%27%20stop-color%3D%27%23ffffff%27%20stop-opacity%3D%27.9%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23ffffff%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27432%27%20r%3D%2722%27%20fill%3D%27url%28%23g480432%29%27%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+.deck-theme-beamline.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p,
+.deck-theme-beamline .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p { color: #4fb4ff; font-family: 'JetBrains Mono', monospace; font-size: 0.62em; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* Section slides: an event display behind the title */
+.deck-theme-beamline.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-beamline .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%2746%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-opacity%3D%271%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%2778%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-opacity%3D%271%27%20stroke-width%3D%271%27%20stroke-dasharray%3D%273%204%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27108%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-opacity%3D%271%27%20stroke-width%3D%271%27%20stroke-dasharray%3D%273%204%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27138%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-opacity%3D%271%27%20stroke-width%3D%271%27%20stroke-dasharray%3D%273%204%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27170%27%20fill%3D%27none%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.10%27%20stroke-width%3D%2736%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27224%27%20fill%3D%27none%27%20stroke%3D%27%23ff6b57%27%20stroke-opacity%3D%27.07%27%20stroke-width%3D%2746%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27152%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27188%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27201%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27247%27%20fill%3D%27none%27%20stroke%3D%27%2322314a%27%20stroke-width%3D%271%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27272%27%20fill%3D%27none%27%20stroke%3D%27%23a98bff%27%20stroke-opacity%3D%27.3%27%20stroke-width%3D%271%27%20stroke-dasharray%3D%2710%206%27%2F%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%27296%27%20fill%3D%27none%27%20stroke%3D%27%23a98bff%27%20stroke-opacity%3D%27.3%27%20stroke-width%3D%271%27%20stroke-dasharray%3D%2710%206%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q561.2%20252.8%20614.2%20190.6%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M618.6%20182%20L630.7%20175%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M617.7%20188.8%20L637.2%20178.4%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M623.8%20191.9%20L636.4%20185.7%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q543%20314%20624.6%20309%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M633.8%20306.1%20L647.3%20309.9%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M628.4%20310.2%20L649.3%20317%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M630.3%20316.7%20L643.5%20321.5%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q425.1%20320.6%20345.8%20333.4%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M341.4%20342%20L329.3%20349%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M342.3%20335.2%20L322.8%20345.6%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M336.2%20332.1%20L323.6%20338.3%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q425.5%20199.1%20342.2%20197.8%27%20fill%3D%27none%27%20stroke%3D%27%23f7c948%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M332.7%20199.5%20L319.8%20194%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M338.6%20196.1%20L318.7%20186.8%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M337.4%20189.3%20L325%20183%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q416.3%20201.6%20389.9%20117.8%27%20fill%3D%27none%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M390.5%20129.4%20L382.7%20117.8%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M397.3%20129.7%20L385.7%20111%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M400%20123.4%20L393%20111.3%27%20stroke%3D%27%2348d597%27%20stroke-opacity%3D%27.55%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q452.7%20367%20461.3%20475.2%27%20fill%3D%27none%27%20stroke%3D%27%23ff6b57%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cpath%20d%3D%27M480%20262%20Q597.1%20167.8%20725.7%2089.9%27%20fill%3D%27none%27%20stroke%3D%27%23a98bff%27%20stroke-opacity%3D%27.6%27%20stroke-width%3D%271.5%27%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%27g480262%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23dff1ff%27%2F%3E%3Cstop%20offset%3D%27.25%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%27.9%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%234fb4ff%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%27480%27%20cy%3D%27262%27%20r%3D%2714%27%20fill%3D%27url%28%23g480262%29%27%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Headings: tight */
+.deck-theme-beamline .px-text :is(h1, h2, h3) { letter-spacing: -0.015em !important; line-height: 1.08; }
+
+/* A Heading 4 is a kicker: blue capitals in JetBrains Mono */
+.deck-theme-beamline .px-text h4 {
+  margin: 0 0 0.5em !important;
+  color: #4fb4ff !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.42em;
+  font-weight: 700;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase !important;
+}
+
+/* Figures: a Heading 1 in a text box, and the Big Number, in JetBrains Mono
+   with a glow */
+.deck-theme-beamline.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-beamline .px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-beamline .px-text:not([data-placeholder=title], [data-placeholder=subtitle]) h1 {
+  color: #ffffff !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-weight: 700;
+  letter-spacing: -0.03em !important;
+  text-shadow: 0 0 0.35em rgba(79, 180, 255, 0.55);
+}
+.deck-theme-beamline.px-slide[data-layout=big-number] [data-placeholder=subtitle] p,
+.deck-theme-beamline .px-slide[data-layout=big-number] [data-placeholder=subtitle] p { color: #8a99b2; }
+
+/* Bullets: blue diamonds; numbers in copper */
+.deck-theme-beamline .px-text ul > li::marker { content: "\\25C6  "; color: var(--px-accent, #4fb4ff); font-size: 0.6em; }
+.deck-theme-beamline .px-text ul ul > li::marker { content: "\\2013  "; color: #8a99b2; font-size: 1em; }
+.deck-theme-beamline .px-text ol > li::marker { color: #e08a4f; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.85em; }
+
+/* Links: blue, without the underline */
+.deck-theme-beamline .px-text a { color: var(--px-link, #4fb4ff) !important; text-decoration: none !important; border-bottom: 0.06em solid rgba(79, 180, 255, 0.45); }
+
+/* Quotes: a readout panel, edged copper to blue; a bold first line is its
+   copper label */
+.deck-theme-beamline .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.5em 0.75em !important;
+  border: 1px solid #22314a !important;
+  border-left: 0 !important;
+  border-radius: 6px;
+  opacity: 1 !important;
+  box-shadow: inset 3px 0 0 #e08a4f !important;
+  background: linear-gradient(90deg, rgba(224, 138, 79, 0.08), transparent 30%), #101826;
+  font-style: normal;
+}
+.deck-theme-beamline .px-text blockquote > p:first-child > strong:only-child {
+  color: #e08a4f;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.deck-theme-beamline .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: JetBrains Mono, on the panel */
+.deck-theme-beamline .px-text :not(pre) > code { padding: 0.05em 0.3em; border-radius: 3px; background: #152137; color: #dff1ff; font-family: 'JetBrains Mono', monospace; font-size: 0.84em; }
+.deck-theme-beamline :is(pre, pre.hljs) { background: #101826 !important; border: 1px solid #22314a; border-radius: 6px !important; box-shadow: none !important; }
+.deck-theme-beamline :is(pre.hljs, pre code) { font-family: 'JetBrains Mono', monospace !important; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the glow, and the beam under the title */
+.deck-theme-beamline.theme-swatch { background: radial-gradient(90% 96% at 72% 46%, #0f1828 0%, #0a0e17 62%) !important; }
+.deck-theme-beamline .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 70%;
+  height: 2px;
+  margin: 0.25em auto 0;
+  background: linear-gradient(90deg, rgba(79, 180, 255, 0), #4fb4ff, rgba(79, 180, 255, 0));
+}
+`;
+
+// raw:client/src/themes/kourou.css
+var kourou_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Kourou theme's stylesheet: space science, after the look of an agency's
+   science website. Deep navy (#003247) and signal red (#cf1d39), Titillium
+   Web headlines over Arial text (utils/themes.js: the fonts and the text
+   sizes, which the Themes panel's Text tab can change). Every slide but a
+   blank one has a navy strip with a red rule along the top; the title slide
+   is a starfield and section slides sit on a mission timeline. There are no
+   agency logos, names or patches, and the icons are drawn here.
+
+   It's scoped to .deck-theme-kourou, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   In text: a Heading 4 is a red tag, a Heading 5 a small navy label, a
+   Heading 6 a gray caption, a Heading 1 in a text box (and the Big Number)
+   a number that fades from red into navy, and italic words in a heading are
+   red. A plain quote is a headline quote; one whose first line is bold is a
+   blue notice, italic a dark card. A bold link is a button, an italic one an
+   arrow link. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-kourou {
+  --r-background-color: #ffffff;
+  --r-main-color: #003247;
+  --r-heading-color: #003247;
+  --r-link-color: #003247;
+  --r-link-color-dark: #001f2d;
+  --r-link-color-hover: #cf1d39;
+  --r-selection-background-color: #cf1d39;
+  --r-selection-color: #ffffff;
+}
+
+/* Line icons, for links and notices */
+.deck-theme-kourou {
+  --k-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M4%2012h15M13%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E");
+  --k-info: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Ccircle%20cx%3D%2712%27%20cy%3D%2712%27%20r%3D%279%27%2F%3E%3Cpath%20d%3D%27M12%2011v6M12%207.6v.2%27%2F%3E%3C%2Fsvg%3E");
+}
+
+/* The header strip: navy, a red rule under it, a red tag with an arrow */
+.deck-theme-kourou.px-slide:not([data-layout=blank])::after,
+.deck-theme-kourou .px-slide:not([data-layout=blank])::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 23px;
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M4%2012h15M13%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E") 33px 2px / 16px 16px no-repeat,
+    linear-gradient(var(--px-accent), var(--px-accent)) 24px 0 / 34px 20px no-repeat,
+    linear-gradient(#003247 0 20px, var(--px-accent) 20px 23px);
+  pointer-events: none;
+}
+
+/* Headlines: tight, with red highlights (italic words in a heading) */
+.deck-theme-kourou .px-text :is(h1, h2, h3) { letter-spacing: -0.03em !important; line-height: 1.08; }
+.deck-theme-kourou .px-text :is(h1, h2, h3) em { font-style: normal; color: var(--px-accent); }
+
+/* Tags: a Heading 4 is a red tag in capitals, above a title or anywhere */
+.deck-theme-kourou .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.5em !important;
+  padding: 0.14em 0.3em 0.06em;
+  background: var(--px-accent);
+  color: #ffffff !important;
+  font-size: 0.62em;
+  line-height: 1.1;
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+}
+.deck-theme-kourou .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-kourou .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
+
+/* Heading 5: a small navy label in capitals. Heading 6: a gray caption. */
+.deck-theme-kourou .px-text h5 {
+  margin: 0 0 0.3em !important;
+  font-size: 0.66em;
+  line-height: 1.2;
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+}
+.deck-theme-kourou.px-slide[data-layout=big-number] [data-placeholder=subtitle] h5,
+.deck-theme-kourou .px-slide[data-layout=big-number] [data-placeholder=subtitle] h5 { font-size: 0.85em; }
+.deck-theme-kourou .px-text h6 {
+  margin: 0 !important;
+  font-size: 0.56em;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #6b6c7e !important;
+  letter-spacing: 0 !important;
+}
+
+/* Numbers: a Heading 1 in a text box, and the Big Number, fade from red
+   into navy */
+.deck-theme-kourou.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-kourou .px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-kourou .px-text:not([data-placeholder=title], [data-placeholder=subtitle]) h1 {
+  color: transparent !important;
+  background: linear-gradient(0deg, #003247 -42%, var(--px-accent) 61%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  line-height: 1.1;
+}
+
+/* Title page: a starfield, white type (unless the slide has a background of
+   its own) */
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 10% 84%, rgba(255, 255, 255, 0.95) 0 1.3px, transparent 1.9px) 61px 36px / 211px 173px,
+    radial-gradient(circle at 68% 53%, rgba(205, 222, 255, 0.95) 0 1.3px, transparent 1.9px) 87px 172px / 263px 229px,
+    radial-gradient(circle at 70% 53%, rgba(255, 255, 255, 0.95) 0 1.3px, transparent 1.9px) 210px 179px / 307px 281px,
+    radial-gradient(circle at 75% 29%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 56px 111px / 149px 157px,
+    radial-gradient(circle at 66% 14%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 230px 93px / 337px 199px,
+    radial-gradient(circle at 84% 75%, rgba(205, 222, 255, 0.7) 0 0.95px, transparent 1.5px) 22px 124px / 181px 241px,
+    radial-gradient(circle at 84% 65%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 147px 183px / 229px 317px,
+    radial-gradient(circle at 83% 83%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 145px 91px / 389px 271px,
+    radial-gradient(circle at 77% 37%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 25px 57px / 167px 193px,
+    radial-gradient(circle at 44% 34%, rgba(205, 222, 255, 0.35) 0 0.7px, transparent 1.3px) 265px 193px / 283px 347px,
+    radial-gradient(circle at 68% 80%, rgba(255, 255, 255, 0.35) 0 0.7px, transparent 1.3px) 7px 38px / 127px 139px,
+    radial-gradient(circle at 55% 51%, rgba(255, 255, 255, 0.35) 0 0.7px, transparent 1.3px) 48px 19px / 113px 101px,
+    radial-gradient(circle at 81% 24%, #ffffff 0 1.8px, rgba(170, 200, 255, 0.3) 2.6px, transparent 13px),
+    radial-gradient(circle at 12% 70%, #ffffff 0 1.5px, rgba(170, 200, 255, 0.25) 2.2px, transparent 10px),
+    radial-gradient(ellipse 55% 45% at 74% 26%, rgba(46, 96, 150, 0.34), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 16% 84%, rgba(140, 40, 70, 0.24), transparent 70%),
+    linear-gradient(#02080d, #061019);
+}
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background]) .px-text,
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background]) .px-text,
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5),
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5) { color: #ffffff !important; }
+.deck-theme-kourou.px-slide[data-layout=title] [data-placeholder=title] h2,
+.deck-theme-kourou .px-slide[data-layout=title] [data-placeholder=title] h2 { font-size: 52px; }
+.deck-theme-kourou.px-slide[data-layout=title] .px-text h4,
+.deck-theme-kourou .px-slide[data-layout=title] .px-text h4 { font-size: 0.85em; }
+
+/* Section titles: on a mission timeline, over a pale dust cloud */
+.deck-theme-kourou.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-kourou .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, var(--px-accent) 0 9px, #003247 9.5px 13px, #ffffff 13.5px 16px, transparent 16.5px) 50% 288px / 34px 34px no-repeat,
+    radial-gradient(circle, #003247 0 3.5px, transparent 4px) 0 299px / 80px 10px repeat-x,
+    linear-gradient(#003247, #003247) 0 303px / 100% 2px no-repeat,
+    radial-gradient(circle, rgba(0, 50, 71, 0.28) 0 0.8px, transparent 1.3px) 7px 11px / 43px 41px,
+    radial-gradient(circle, rgba(0, 119, 181, 0.32) 0 1.1px, transparent 1.6px) 17px 29px / 71px 67px,
+    radial-gradient(ellipse 42% 52% at 27% 62%, rgba(0, 119, 181, 0.14), transparent 70%),
+    radial-gradient(ellipse 32% 42% at 77% 32%, rgba(0, 119, 181, 0.1), transparent 70%),
+    #f6f9fb;
+}
+
+/* Bullets: red squares */
+.deck-theme-kourou .px-text ul { list-style-type: square; }
+.deck-theme-kourou .px-text ul > li::marker { color: var(--px-accent); }
+.deck-theme-kourou .px-text ul ul > li::marker { content: "\\2013  "; color: #003247; }
+.deck-theme-kourou .px-text ol > li::marker { color: var(--px-accent); font-weight: 700; }
+
+/* Links: navy, underlined. An italic link is an arrow link, a bold one a
+   navy button with an arrow. */
+.deck-theme-kourou .px-text a {
+  color: #003247 !important;
+  font-weight: 700;
+  text-decoration: none !important;
+  border-bottom: 0.08em solid currentColor;
+}
+.deck-theme-kourou .px-text em:has(> a:only-child) { font-style: normal; }
+.deck-theme-kourou .px-text :is(em, strong) > a:only-child { display: inline-flex; align-items: center; gap: 0.4em; }
+.deck-theme-kourou .px-text :is(em, strong) > a:only-child::after {
+  content: "";
+  width: 1em;
+  height: 1em;
+  background: currentColor;
+  -webkit-mask: var(--k-arrow) center / contain no-repeat;
+  mask: var(--k-arrow) center / contain no-repeat;
+}
+.deck-theme-kourou .px-text strong > a:only-child {
+  padding: 0.5em 0.7em;
+  border: 0;
+  border-radius: 4px;
+  background: #003247;
+  color: #ffffff !important;
+  font-size: 0.72em;
+  line-height: 1.2;
+}
+
+/* Quotes: a headline with a red opening mark; a last line under it is the
+   attribution */
+.deck-theme-kourou .px-text blockquote {
+  position: relative;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0 0 0 0.85em !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-family: 'Titillium Web', sans-serif;
+  font-size: 1.4em;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #003247;
+}
+.deck-theme-kourou .px-text blockquote::before {
+  content: "\\201C";
+  position: absolute;
+  left: 0;
+  top: -0.04em;
+  font-size: 1.5em;
+  line-height: 1;
+  color: var(--px-accent);
+}
+.deck-theme-kourou .px-text blockquote > p { margin: 0 0 0.3em !important; }
+.deck-theme-kourou .px-text blockquote > p:last-child:not(:first-child) {
+  margin: 0.9em 0 0 !important;
+  font-family: Arial, sans-serif;
+  font-size: 0.5em;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* A quote that starts with a bold line is a blue notice with an info mark */
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child) {
+  padding: 0.6em 0.85em 0.65em 2.35em !important;
+  background: #0077b5;
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 0.74em;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child)::before {
+  content: "";
+  left: 0.8em;
+  top: 0.66em;
+  font-size: 1em;
+  width: 1.15em;
+  height: 1.15em;
+  background: #ffffff;
+  -webkit-mask: var(--k-info) center / contain no-repeat;
+  mask: var(--k-info) center / contain no-repeat;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+
+/* A quote that starts with an italic line is a dark card: the line is its
+   red tag, and a red button with a chevron sits in the corner */
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) {
+  min-height: 13em;
+  box-sizing: border-box;
+  padding: 0.85em 0.95em 3.4em !important;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.7) 0 0.8px, transparent 1.3px) 9px 13px / 53px 47px,
+    radial-gradient(circle, rgba(255, 255, 255, 0.4) 0 0.6px, transparent 1.1px) 31px 5px / 37px 41px,
+    radial-gradient(ellipse 90% 60% at 90% 105%, rgba(207, 29, 57, 0.3), transparent 70%),
+    linear-gradient(165deg, #0b3d55, #021821);
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 0.72em;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child)::before {
+  content: "";
+  top: auto; left: auto;
+  right: 0.8em;
+  bottom: 0.8em;
+  font-size: 1em;
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 2px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M9.5%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E") center / 62% no-repeat, var(--px-accent);
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child {
+  width: fit-content;
+  margin: 0 0 0.55em !important;
+  padding: 0.12em 0.32em 0.04em;
+  background: var(--px-accent);
+  font-family: 'Titillium Web', sans-serif;
+  font-size: 0.82em;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child em { font-style: normal; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) :is(h1, h2, h3) { margin: 0 0 0.25em !important; color: #ffffff !important; font-size: 1.7em; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+
+/* Inline code */
+.deck-theme-kourou .px-text :not(pre) > code {
+  padding: 0.05em 0.3em;
+  border-radius: 2px;
+  background: #e7ecef !important;
+  color: #003247;
+  font-size: 0.86em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the navy strip and red rule over the page, the title tight */
+.deck-theme-kourou.theme-swatch { position: relative; }
+.deck-theme-kourou.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 7%;
+  background: linear-gradient(#003247 0 80%, #cf1d39 80%);
+}
+.deck-theme-kourou .theme-swatch-title { letter-spacing: -0.03em; }
+`;
+
+// raw:client/src/themes/ledger.css
+var ledger_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Ledger theme's stylesheet: a spreadsheet, for pitches and anything
+   with a model behind it. Gridlines, column letters and row numbers, and a
+   sheet tab along the bottom; text in Geist, figures in JetBrains Mono, in
+   ledger green (#1e6b49) with inputs in blue (#2457c5), the modeler's habit
+   (utils/themes.js: the fonts and the text sizes, which the Themes panel's
+   Text tab can change). Slide titles open with a formula bar's fx; the title
+   slide's title and the Big Number are a selected range, with its fill
+   handle; section titles are a sheet's tab.
+
+   It's scoped to .deck-theme-ledger, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The sheet's headers and tab show on slides that show the theme's page,
+   not on ones with a background of their own. In text: a Heading 1 in a
+   text box is a figure in JetBrains Mono, inline code a cell reference in
+   input blue, and a quote a cell's comment, whose first line in bold is its
+   label. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-ledger {
+  --r-background-color: #ffffff;
+  --r-main-color: #13221b;
+  --r-heading-color: #13221b;
+  --r-link-color: #2457c5;
+  --r-link-color-dark: #1a3f8f;
+  --r-link-color-hover: #1e6b49;
+  --r-selection-background-color: #d3e9dc;
+  --r-selection-color: #13221b;
+}
+
+/* The gridlines on presented slides that show the theme's page (the editor
+   draws them from the theme's backgroundCss) */
+.deck-theme-ledger .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px,
+    linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px,
+    #ffffff;
+}
+
+/* Column letters, row numbers and the sheet's tab, behind everything */
+.deck-theme-ledger.px-slide:not([data-layout=blank], [data-own-background])::before,
+.deck-theme-ledger .px-slide:not([data-layout=blank], [data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Crect%20x%3D%270%27%20y%3D%270%27%20width%3D%27960%27%20height%3D%2719%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%270%27%20width%3D%2727%27%20height%3D%27518%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27518%27%20width%3D%27960%27%20height%3D%2722%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Cpath%20d%3D%27M0%2019.5H960M27.5%200V518M0%20518.5H960%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Cpath%20d%3D%27M21%2014L21%206L13%2014Z%27%20fill%3D%27%23c6cfca%27%2F%3E%3Ctext%20x%3D%2768%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EA%3C%2Ftext%3E%3Ctext%20x%3D%27148%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EB%3C%2Ftext%3E%3Ctext%20x%3D%27228%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EC%3C%2Ftext%3E%3Ctext%20x%3D%27308%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3ED%3C%2Ftext%3E%3Ctext%20x%3D%27388%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EE%3C%2Ftext%3E%3Ctext%20x%3D%27468%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EF%3C%2Ftext%3E%3Ctext%20x%3D%27548%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EG%3C%2Ftext%3E%3Ctext%20x%3D%27628%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EH%3C%2Ftext%3E%3Ctext%20x%3D%27708%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EI%3C%2Ftext%3E%3Ctext%20x%3D%27788%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EJ%3C%2Ftext%3E%3Ctext%20x%3D%27868%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EK%3C%2Ftext%3E%3Ctext%20x%3D%27948%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EL%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2738%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2768%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2798%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27128%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E4%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27158%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27188%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27218%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27248%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E8%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27278%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E9%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27308%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E10%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27338%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E11%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27368%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E12%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27398%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E13%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27428%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E14%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27458%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E15%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27488%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E16%3C%2Ftext%3E%3Cpath%20d%3D%27M107.5%200V19M187.5%200V19M267.5%200V19M347.5%200V19M427.5%200V19M507.5%200V19M587.5%200V19M667.5%200V19M747.5%200V19M827.5%200V19M907.5%200V19M987.5%200V19M0%2049.5H27M0%2079.5H27M0%20109.5H27M0%20139.5H27M0%20169.5H27M0%20199.5H27M0%20229.5H27M0%20259.5H27M0%20289.5H27M0%20319.5H27M0%20349.5H27M0%20379.5H27M0%20409.5H27M0%20439.5H27M0%20469.5H27M0%20499.5H27%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Cpath%20d%3D%27M10%20529H18M14%20525V533%27%20stroke%3D%27%237b8781%27%20stroke-width%3D%271.3%27%2F%3E%3Crect%20x%3D%2728%27%20y%3D%27519%27%20width%3D%27104%27%20height%3D%2721%27%20fill%3D%27%23ffffff%27%2F%3E%3Crect%20x%3D%2728%27%20y%3D%27518%27%20width%3D%27104%27%20height%3D%272%27%20fill%3D%27%231e6b49%27%2F%3E%3Cpath%20d%3D%27M132.5%20519V540%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2748%27%20y%3D%27527%27%20width%3D%2764%27%20height%3D%275%27%20rx%3D%272.5%27%20fill%3D%27%231e6b49%27%20fill-opacity%3D%27.35%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Slide titles open with a formula bar's fx */
+.deck-theme-ledger.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-ledger .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "fx";
+  display: inline-block;
+  margin-right: 0.45em;
+  padding-right: 0.45em;
+  border-right: 1px solid #cfd7d2;
+  color: #7b8781;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.6em;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  vertical-align: 0.18em;
+}
+
+/* The title slide's title and the Big Number: a selected range, with its
+   fill handle. (!important: presented decks set headings' margins with it.) */
+.deck-theme-ledger.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-ledger .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto 0.15em !important;
+  padding: 0.1em 0.4em;
+  background: rgba(30, 107, 73, 0.06);
+  box-shadow: inset 0 0 0 2px #1e6b49;
+}
+.deck-theme-ledger.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-ledger .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1::after,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1::after {
+  content: "";
+  position: absolute;
+  right: -4px; bottom: -4px;
+  width: 7px; height: 7px;
+  border: 1.5px solid #ffffff;
+  background: #1e6b49;
+}
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #1e6b49 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: -0.03em !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-ledger.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p,
+.deck-theme-ledger .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p { color: #5c6a63; font-family: 'JetBrains Mono', monospace; font-size: 0.6em; }
+
+/* Section titles: a sheet's tab, white with a green edge */
+.deck-theme-ledger.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=section-header] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.12em 0.6em 0.16em;
+  border: 1px solid #d7ddd9;
+  background: #ffffff;
+  box-shadow: inset 0 0.08em 0 #1e6b49;
+  color: #1e6b49 !important;
+}
+
+/* Headings: tight */
+.deck-theme-ledger .px-text :is(h1, h2, h3) { letter-spacing: -0.025em !important; line-height: 1.08; }
+
+/* Figures: a Heading 1 in a text box, in JetBrains Mono */
+.deck-theme-ledger .px-text:not([data-placeholder=title], [data-placeholder=subtitle]) h1 {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em !important;
+}
+.deck-theme-ledger .px-text table { font-variant-numeric: tabular-nums; }
+
+/* Bullets: green squares; numbers in JetBrains Mono */
+.deck-theme-ledger .px-text ul { list-style-type: square; }
+.deck-theme-ledger .px-text ul > li::marker { color: var(--px-accent, #1e6b49); }
+.deck-theme-ledger .px-text ul ul > li::marker { content: "\\2013  "; color: #7b8781; }
+.deck-theme-ledger .px-text ol > li::marker { color: var(--px-accent, #1e6b49); font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.85em; }
+
+/* Inline code: a cell reference, in input blue */
+.deck-theme-ledger .px-text :not(pre) > code { padding: 0.04em 0.3em; border: 1px solid #c9d6f0; border-radius: 2px; background: #eef3fc !important; color: #2457c5; font-family: 'JetBrains Mono', monospace; font-size: 0.82em; }
+.deck-theme-ledger .px-text pre { background: #f7f8f8 !important; border: 1px solid #cfd7d2; border-radius: 2px; box-shadow: none !important; }
+.deck-theme-ledger :is(pre.hljs, pre code) { font-family: 'JetBrains Mono', monospace !important; }
+
+/* Quotes: a cell's comment, with the red mark in its corner; a bold first
+   line is its label */
+.deck-theme-ledger .px-text blockquote {
+  position: relative;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.5em 0.8em !important;
+  border: 1px solid #13221b !important;
+  border-radius: 0;
+  opacity: 1 !important;
+  box-shadow: 3px 3px 0 rgba(19, 34, 27, 0.12) !important;
+  background: #fffbe6;
+  font-style: normal;
+}
+.deck-theme-ledger .px-text blockquote::before {
+  content: "";
+  position: absolute;
+  top: 0; right: 0;
+  border-top: 0.45em solid #c8372d;
+  border-left: 0.45em solid transparent;
+}
+.deck-theme-ledger .px-text blockquote > p:first-child > strong:only-child {
+  color: #7b8781;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-theme-ledger .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   gridlines with the column header, the title a selected range */
+.deck-theme-ledger.theme-swatch {
+  position: relative;
+  background:
+    linear-gradient(#f3f5f4, #f3f5f4) 0 0 / 100% 8% no-repeat,
+    linear-gradient(#e3e8e5 1px, transparent 1px) 0 0 / 25% 16%,
+    linear-gradient(90deg, #e3e8e5 1px, transparent 1px) 0 0 / 25% 16%,
+    #ffffff !important;
+}
+.deck-theme-ledger .theme-swatch-title { padding: 0.05em 0.3em; background: #ffffff; box-shadow: inset 0 0 0 2px #1e6b49; }
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -29723,7 +30582,7 @@ ${content}
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}>
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>
 ${bodyHtml}
 ${footerHtml}
 ${gridHtml}
@@ -29763,7 +30622,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
@@ -29802,6 +30661,8 @@ ${sections}
     .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
     /* reveal.js themes set a quote's first and last paragraphs inline, which puts them on one line and list markers on a list item's last line */
     .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
+    /* reveal.js copies a slide's classes onto its background layer, which has none of the slide's data-*: a theme's bands and pictures belong on the slide, not on that layer as well */
+    .reveal .backgrounds .${SLIDE_CLASS}::before, .reveal .backgrounds .${SLIDE_CLASS}::after { content: none !important; }
     /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
     /* color only on the container so per-span inline colors (inactive sections) are not overridden */
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }

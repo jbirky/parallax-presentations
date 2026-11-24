@@ -11,6 +11,12 @@
 //
 //   .px-slide[data-layout=section-header] { … }
 //   [data-placeholder=title] h2 { border-bottom: 6px solid var(--px-accent); }
+//
+// A slide with a background of its own (themes.js's slidePalette: own) also
+// has data-own-background, so a stylesheet that draws over the theme's page,
+// such as a starfield on title slides, can leave that background showing:
+//
+//   .px-slide[data-layout=title]:not([data-own-background])::before { … }
 
 export const SLIDE_CLASS = 'px-slide'
 export const TEXT_CLASS = 'px-text'
@@ -32,6 +38,11 @@ export function textPlaceholder(el) {
 export function slideLayoutAttr(slide) {
   const layout = slideLayout(slide)
   return layout ? ` data-layout="${layout}"` : ''
+}
+
+// data-own-background, for a slide whose palette (themes.js) is its own
+export function ownBackgroundAttr(palette) {
+  return palette?.own ? ' data-own-background' : ''
 }
 
 export function placeholderAttr(el) {

@@ -1,0 +1,162 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Lemma theme's stylesheet: LaTeX Beamer for mathematics, in a slate
+   structure color (#26426e) and Computer Modern Sans (utils/themes.js: the
+   font and the text sizes, which the Themes panel's Text tab can change).
+   It's scoped to .deck-theme-lemma, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Content slides get a headline and a frame-title bar across the top, every
+   slide a three-part footline, flat as in Beamer's default themes. Title and
+   section slides put the title in a box. Numbered lists count in Beamer's
+   balls. Quotes are blocks, titled by the bold or italic words they open
+   with ("**Theorem 2 (IVT).** Let f be…"): bold makes a theorem, whose
+   statement is italic; italic an example; bold italic an alert. A quote
+   that opens with neither is an untitled block. */
+
+/* reveal.js: links, the arrows and the progress bar in the structure color */
+.deck-theme-lemma {
+  --r-background-color: #ffffff;
+  --r-main-color: #1d2027;
+  --r-heading-color: #26426e;
+  --r-link-color: #26426e;
+  --r-link-color-dark: #1a2f50;
+  --r-link-color-hover: #3b5d93;
+  --r-selection-background-color: #26426e;
+  --r-selection-color: #ffffff;
+}
+
+/* Headline and frame title: two bars across the top of content slides,
+   behind their text */
+.deck-theme-lemma.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-lemma .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 106px;
+  background: linear-gradient(#1a2f50 0 24px, #26426e 24px 106px);
+  pointer-events: none;
+}
+.deck-theme-lemma.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-lemma .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2) {
+  color: #ffffff !important;
+}
+
+/* Footline: dark, structure and tint thirds */
+.deck-theme-lemma.px-slide:not([data-layout=blank])::after,
+.deck-theme-lemma .px-slide:not([data-layout=blank])::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 22px;
+  background: linear-gradient(90deg, #1a2f50 0 33.33%, #26426e 33.33% 66.67%, #e9eef6 66.67%);
+  pointer-events: none;
+}
+
+/* Title and section slides: the title in a box. (!important: presented
+   decks set headings' margins with it.) */
+.deck-theme-lemma.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-lemma .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto 0.2em !important;
+  padding: 0.45em 1em 0.5em;
+  border-radius: 0.18em;
+  background: #26426e;
+  color: #ffffff !important;
+}
+.deck-theme-lemma.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p,
+.deck-theme-lemma .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p {
+  color: #26426e;
+}
+
+/* The Big Number, in the structure color */
+.deck-theme-lemma.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-lemma .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-accent, #26426e) !important;
+}
+
+/* Bullets: Beamer's triangles */
+.deck-theme-lemma .px-text ul > li::marker { content: "\25B6  "; color: var(--px-accent, #26426e); font-size: 0.55em; }
+.deck-theme-lemma .px-text ul ul > li::marker { content: "\25B8  "; font-size: 0.75em; }
+
+/* Numbered lists: shaded balls */
+.deck-theme-lemma .px-text ol { list-style: none; padding-left: 1.75em; }
+.deck-theme-lemma .px-text ol > li { position: relative; }
+.deck-theme-lemma .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.75em;
+  top: 0.2em;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #8ea9d6 0, #3b5d93 38%, #1a2f50 100%);
+  color: #ffffff;
+  font-size: 0.62em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.9em;
+  text-align: center;
+}
+
+/* Blocks: a tinted box. The bold or italic words a quote opens with are its
+   title bar; bold makes a theorem (an italic statement, where emphasis is
+   upright), italic an example, bold italic an alert */
+.deck-theme-lemma .px-text blockquote {
+  --block: var(--px-accent, #26426e);
+  --block-tint: #e9eef6;
+  border: 0 !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  margin: 0.15em 0 0.5em !important;
+  border-radius: 0.16em;
+  overflow: hidden;
+  background: var(--block-tint);
+}
+.deck-theme-lemma .px-text blockquote > * { padding-inline: 0.45em; }
+.deck-theme-lemma .px-text blockquote > :first-child { padding-top: 0.3em; }
+.deck-theme-lemma .px-text blockquote > :last-child { padding-bottom: 0.35em; margin-bottom: 0 !important; }
+.deck-theme-lemma .px-text blockquote > :is(ul, ol) { padding-left: 1.7em; }
+.deck-theme-lemma .px-text blockquote > p:first-child > :is(strong, em):first-child {
+  display: block;
+  margin: -0.3em -0.45em 0.3em;
+  padding: 0.12em 0.45em 0.16em;
+  background: var(--block);
+  color: #ffffff;
+  font-style: normal;
+  font-weight: 700;
+}
+.deck-theme-lemma .px-text blockquote > p:first-child > :is(strong, em):first-child :is(strong, em) { font-style: normal; font-weight: 700; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child) { font-style: italic; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child) em { font-style: normal; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > em:first-child) { --block: #2d7a4c; --block-tint: #eaf4ee; }
+.deck-theme-lemma .px-text blockquote:has(> p:first-child > strong:first-child > em, > p:first-child > em:first-child > strong) { --block: #b5352a; --block-tint: #f8ebe9; font-style: normal; }
+
+/* Code: Beamer's verbatim, on the structure tint */
+.deck-theme-lemma .px-text :not(pre) > code { padding: 0.04em 0.25em; border-radius: 0.15em; background: #e9eef6; color: #1a2f50; font-size: 0.86em; }
+.deck-theme-lemma .px-text pre { background: #f4f6fa !important; border-left: 0.18em solid #26426e; border-radius: 0.12em; box-shadow: none !important; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title in its box, over the footline */
+.deck-theme-lemma.theme-swatch { position: relative; }
+.deck-theme-lemma.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4%;
+  background: linear-gradient(90deg, #1a2f50 0 33.33%, #26426e 33.33% 66.67%, #e9eef6 66.67%);
+}
+.deck-theme-lemma .theme-swatch-title {
+  padding: 0.25em 0.7em;
+  border-radius: 0.18em;
+  background: #26426e;
+  color: #ffffff !important;
+}

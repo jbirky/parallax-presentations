@@ -936,6 +936,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
         ref={canvasRef}
         className={['slide-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')}
         data-layout={slideLayout(slide) || undefined}
+        data-own-background={palette.own ? '' : undefined}
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',

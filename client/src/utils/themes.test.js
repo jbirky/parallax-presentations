@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePalette, newSlideBackground, isDark, ownBackground, themeBackgroundStyle, cssText } from './themes'
 
 describe('themes', () => {
-  it('has reveal’s eleven, Bauhaus, Pixel, Mission, Turin and Gutter, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter'])
+  it('has reveal’s eleven and Parallax’s own, light and dark', () => {
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -41,6 +41,15 @@ describe('themes', () => {
     expect(deckTextStyles(null, 'turin')).toEqual({ bodySize: 28, h1Size: 50, h2Size: 34, h3Size: 28, headingWeight: 400 })
     expect(deckTextStyles(null, 'gutter')).toMatchObject({ bodySize: 26, h2Size: 34, headingWeight: 600 })
     expect(slidePalette({}, 'gutter').accent).toBe('#0f766e')
+    expect(revealTheme('beamline')).toBe('black')
+    expect(themeBackgroundStyle('beamline').background).toMatch(/^radial-gradient.*#0a0e17 62%\)$/)
+    expect(deckTextStyles(null, 'beamline')).toMatchObject({ headingFont: 'Manrope, sans-serif', headingWeight: 800 })
+    expect(deckTextFont('', 'lemma')).toBe("'Computer Modern Sans', sans-serif")
+    // Kourou's accent is its red, apart from its navy links
+    expect(slidePalette({}, 'kourou')).toMatchObject({ link: '#003247', accent: '#cf1d39' })
+    expect(deckTextStyles(null, 'kourou')).toMatchObject({ bodySize: 24, headingFont: "'Titillium Web', sans-serif" })
+    expect(themeBackgroundStyle('ledger').background).toMatch(/^linear-gradient.*#ffffff$/)
+    expect(slidePalette({}, 'ledger').accent).toBe('#1e6b49')
   })
 
   it('tells dark colors from light ones', () => {

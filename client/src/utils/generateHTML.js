@@ -30,7 +30,7 @@ import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles, deckTheme, cleanThemeColors, paletteVars } from './themes'
-import { SLIDE_CLASS, TEXT_CLASS, slideLayoutAttr, placeholderAttr } from './slideHooks'
+import { SLIDE_CLASS, TEXT_CLASS, slideLayoutAttr, placeholderAttr, ownBackgroundAttr } from './slideHooks'
 import { themeCssTag } from './scopeCss'
 import { themeCss, deckThemeClass } from './themeCss'
 import { isEmptyPlaceholder } from './placeholders'
@@ -771,7 +771,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}>\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
 
@@ -808,7 +808,7 @@ export function generateRevealHTML(presentation, opts = {}) {
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
@@ -846,6 +846,8 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
     /* reveal.js themes set a quote's first and last paragraphs inline, which puts them on one line and list markers on a list item's last line */
     .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
+    /* reveal.js copies a slide's classes onto its background layer, which has none of the slide's data-*: a theme's bands and pictures belong on the slide, not on that layer as well */
+    .reveal .backgrounds .${SLIDE_CLASS}::before, .reveal .backgrounds .${SLIDE_CLASS}::after { content: none !important; }
     /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
     /* color only on the container so per-span inline colors (inactive sections) are not overridden */
     .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
@@ -1752,7 +1754,7 @@ function generatePrintHTML(presentation) {
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })
     }
-    return `<div class="${pageClass}"${slideLayoutAttr(slide)}${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};${cssText(paletteVars(palette))}">\n${bodyHtml}\n${footerHtml}\n</div>`
+    return `<div class="${pageClass}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};${cssText(paletteVars(palette))}">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n') + (citations.entries.length > 0
     // The references, last, as the presented deck has them
     ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
@@ -1768,7 +1770,7 @@ function generatePrintHTML(presentation) {
 <head>
   <meta charset="utf-8">
   <title>${title} — PDF</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Manrope:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800;900&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
