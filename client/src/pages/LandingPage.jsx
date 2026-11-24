@@ -8,8 +8,9 @@
 // can't be had), how it compares with the tools people use, how a talk comes
 // together with Practice Talk to try (PracticeDemo.jsx), the elements by
 // subject, and the plans. The docs open in place of it, at #docs, and the
-// templates, which people copy into their account (/templates/<slug>/use,
-// TemplateUsePage.jsx), at #templates. What
+// templates at #templates: each opens its own page (/templates/<slug>, which
+// the server builds, server/services/site-pages.js), where people copy it
+// into their account (/templates/<slug>/use, TemplateUsePage.jsx). What
 // visitors open and click is counted (utils/analytics.js) where the server
 // has analytics set up.
 
@@ -64,9 +65,8 @@ const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 
 const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
 
-// An example, live, with what it shows and a way into the editor. template:
-// one of the Templates tab's, which people copy into their account instead
-function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn, template = false }) {
+// An example, live, with what it shows and a way into the editor
+function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }) {
   const ref = useRef(null)
   const example = at === null ? null : examples[at]
   useEffect(() => {
@@ -91,8 +91,8 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn, 
             <h3 id="lp-viewer-title">{example.title}</h3>
           </div>
           <div className="lp-viewer-nav">
-            <button type="button" className="lp-icon" aria-label={template ? 'Previous template' : 'Previous example'} onClick={() => onMove(-1)}><ChevronLeft size={18} /></button>
-            <button type="button" className="lp-icon" aria-label={template ? 'Next template' : 'Next example'} onClick={() => onMove(1)}><ChevronRight size={18} /></button>
+            <button type="button" className="lp-icon" aria-label="Previous example" onClick={() => onMove(-1)}><ChevronLeft size={18} /></button>
+            <button type="button" className="lp-icon" aria-label="Next example" onClick={() => onMove(1)}><ChevronRight size={18} /></button>
             <button type="button" className="lp-icon" aria-label="Close" onClick={onClose}><X size={18} /></button>
           </div>
         </div>
@@ -102,17 +102,13 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn, 
             <p className="lp-viewer-desc">{example.desc}</p>
             {example.tags.length > 0 && (
               <div>
-                <div className="lp-label">{template ? 'What’s in it' : 'Made with'}</div>
+                <div className="lp-label">Made with</div>
                 <div className="lp-tags">{example.tags.map(t => <span key={t}>{t}</span>)}</div>
               </div>
             )}
             <p className="lp-keys">Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
-            {template ? (<>
-              <a className="lp-btn primary" href={`/templates/${example.slug}/use`} onClick={() => track('template-to-account', { template: example.slug })}>Use this template</a>
-              <p className="lp-small">Sign in or sign up, and a copy opens in your presentations, yours to change.</p>
-              {guestEnabled && <a className="lp-quiet" href={`/try?example=${example.slug}`} onClick={() => track('template-to-guest', { template: example.slug })}>Try it without an account</a>}
-            </>) : <a className="lp-quiet" href={`/examples/${example.slug}`}>This example’s own page, to share</a>}
-            {template ? null : guestEnabled ? (<>
+            <a className="lp-quiet" href={`/examples/${example.slug}`}>This example’s own page, to share</a>
+            {guestEnabled ? (<>
               <a className="lp-btn primary" href={`/try?example=${example.slug}`} onClick={() => track('example-to-editor', { example: example.slug })}>Open in the editor</a>
               <p className="lp-small">Opens a copy you can change, with no account. It lasts until you close the tab.</p>
             </>) : (
@@ -132,7 +128,6 @@ export default function LandingPage({ onSignIn }) {
   const [field, setField] = useState('All')
   const [viewing, setViewing] = useState(null)
   const [templateField, setTemplateField] = useState('All')
-  const [viewingTemplate, setViewingTemplate] = useState(null)
   const [scrollTo, setScrollTo] = useState(null)
   const [copied, setCopied] = useState(false)
   const [catalog, setCatalog] = useState(null)
@@ -233,11 +228,9 @@ export default function LandingPage({ onSignIn }) {
                   </div>
                 )}
                 <div className="lp-grid">
-                  {templatesShown.map((e, i) => (
-                    <button key={e.slug} type="button" className="lp-card" aria-label={`${e.title}${e.field ? `, ${e.field}` : ''}: open the template`} onClick={() => {
-                      track('open-template', { template: e.slug, from: 'card' })
-                      setViewingTemplate(i)
-                    }}>
+                  {templatesShown.map(e => (
+                    <a key={e.slug} className="lp-card" href={`/templates/${e.slug}`} aria-label={`${e.title}${e.field ? `, ${e.field}` : ''}: open the template`}
+                      onClick={() => track('open-template', { template: e.slug, from: 'card' })}>
                       <div className="lp-thumb" style={e.thumbnail ? undefined : { background: placeholderBg(e.background) }}>
                         {e.thumbnail ? <img loading="lazy" alt="" src={e.thumbnail} /> : <strong className="lp-thumb-title">{e.title}</strong>}
                         <span>Preview</span>
@@ -248,7 +241,7 @@ export default function LandingPage({ onSignIn }) {
                         <p>{e.desc}</p>
                         <div className="lp-tags">{e.tags.map(t => <span key={t}>{t}</span>)}</div>
                       </div>
-                    </button>
+                    </a>
                   ))}
                 </div>
               </>)}
@@ -418,12 +411,6 @@ export default function LandingPage({ onSignIn }) {
           const next = (viewing + d + shown.length) % shown.length
           track('open-example', { example: shown[next].slug, from: 'viewer' })
           setViewing(next)
-        }} guestEnabled={guestEnabled} onSignIn={onSignIn} />
-      <ExampleViewer template examples={templatesShown} at={viewingTemplate} onClose={() => setViewingTemplate(null)}
-        onMove={d => {
-          const next = (viewingTemplate + d + templatesShown.length) % templatesShown.length
-          track('open-template', { template: templatesShown[next].slug, from: 'viewer' })
-          setViewingTemplate(next)
         }} guestEnabled={guestEnabled} onSignIn={onSignIn} />
     </div>
   )

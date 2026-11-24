@@ -1,9 +1,10 @@
 // What link previews and search engines are given: head tags, the app's page,
-// robots.txt, sitemap.xml and the examples' pages. Needs no server.
+// robots.txt, sitemap.xml and the examples' and templates' pages. Needs no
+// server.
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage } = require('../services/site-pages')
+const { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage, templatePage } = require('../services/site-pages')
 
 const origin = 'https://parallax-presentations.com'
 const example = { slug: 'venn', field: 'Mathematics', title: 'Venn diagrams', desc: 'De Morgan’s law, shaded.', tags: ['Venn diagram'], thumbnail: '/examples/thumbs/venn.jpg', background: null }
@@ -39,8 +40,8 @@ describe('what link previews and search engines see', () => {
     for (const p of ['/api/', '/dashboard', '/admin', '/try', '/share/']) assert.match(robots, new RegExp(`Disallow: ${p}\\n`))
     assert.match(robots, /Sitemap: https:\/\/parallax-presentations\.com\/sitemap\.xml/)
     assert.equal(robotsTxt({ origin, index: false }), 'User-agent: *\nDisallow: /\n')
-    const sitemap = sitemapXml({ origin, examples: [example] })
-    assert.deepEqual([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]), [`${origin}/`, `${origin}/examples/venn`])
+    const sitemap = sitemapXml({ origin, examples: [example], templates: [{ slug: 'lecture' }] })
+    assert.deepEqual([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]), [`${origin}/`, `${origin}/examples/venn`, `${origin}/templates/lecture`])
   })
 
   it('makes an example a page of its own, around its deck', () => {
@@ -58,9 +59,46 @@ describe('what link previews and search engines see', () => {
     assert.doesNotMatch(signedIn, /stats\/script\.js|More examples/)
   })
 
+  it('makes a template a page of its own: its deck, its slides to jump to, its theme, and a way to copy it', () => {
+    const template = { slug: 'lecture', field: 'Teaching', title: 'Physics lecture', desc: 'Forces, slide by slide.', tags: ['Graph'], thumbnail: '/examples/thumbs/lecture.jpg', background: null }
+    const facts = {
+      theme: { id: 'bauhaus', label: 'Bauhaus', note: 'Lowercase headings', ownColors: true, stylesheet: 'h2 { color: red }' },
+      colors: [{ name: 'Background', value: '#f7f6f2' }, { name: 'Accent', value: 'url(x)' }],
+      fonts: { text: 'Jost', heading: 'Jost' },
+      sizes: [{ name: 'Body text', px: 26 }],
+      slides: [{ title: 'Forces', layout: 'Title Slide', kinds: [], background: '#f7f6f2', text: '#151515' }, { title: 'Second law', layout: '', kinds: ['2 graphs'], background: 'red;x:y', text: '#151515' }],
+      contents: ['2 graphs', '3 text boxes'],
+    }
+    const html = templatePage({ origin, template, facts, others: [{ ...template, slug: 'seminar', title: 'Seminar', thumbnail: null }], guestEnabled: true, analytics: null, index: true })
+    assert.match(html, /<title>Physics lecture · Parallax templates<\/title>/)
+    assert.match(html, /<link rel="canonical" href="https:\/\/parallax-presentations\.com\/templates\/lecture" \/>/)
+    assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/lecture\.jpg" \/>/)
+    assert.match(html, /<iframe id="deck" src="\/examples\/lecture\/deck"/)
+    assert.match(html, /<a class="btn primary" href="\/templates\/lecture\/use" data-umami-event="template-to-account"/)
+    assert.match(html, /href="\/try\?example=lecture"/)
+    // Every slide, to jump to, on its own color until it's drawn
+    assert.equal((html.match(/class="tp-thumb"/g) || []).length, 2)
+    assert.match(html, /data-go="1" aria-label="Slide 2: Second law"/)
+    assert.match(html, /<p>2 graphs<\/p>/)
+    assert.match(html, /fetch\('\/templates\/lecture\/slides\.json'/)
+    // The theme, its colors and its stylesheet; a color that isn't one isn't written
+    assert.match(html, /<strong>Bauhaus<\/strong>, with colors of its own and a stylesheet of its own/)
+    assert.match(html, /<pre>h2 \{ color: red \}<\/pre>/)
+    assert.doesNotMatch(html, /background:url\(x\)|red;x:y/)
+    assert.match(html, /<a class="card" href="\/templates\/seminar">[\s\S]*?<b>Seminar<\/b>/)
+    const noGuest = templatePage({ origin, template, facts: { ...facts, contents: [] }, others: [], guestEnabled: false, analytics: null, index: false })
+    assert.doesNotMatch(noGuest, /\/try\?example|More templates|What’s in it/)
+  })
+
   it('escapes what an admin typed', () => {
     const html = examplePage({ origin, example: { ...example, title: '</title><script>alert(1)</script>', desc: '"><img onerror=x>', tags: ['<b>'] }, others: [], guestEnabled: true, analytics: null, index: true })
     assert.doesNotMatch(html, /<script>alert|<img onerror|<b>/)
     assert.match(html, /&lt;\/title&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/)
+    const facts = { theme: { label: '<i>', note: '', stylesheet: '</pre><script>x</script>' }, colors: [], fonts: { text: '<b>', heading: '' }, sizes: [], contents: ['<u>'],
+      slides: [{ title: '</button><script>y</script>', layout: '', kinds: [], background: '#000', text: '#fff' }] }
+    const page = templatePage({ origin, template: { ...example, title: '<s>', desc: '<q>' }, facts, others: [], guestEnabled: false, analytics: null, index: true })
+    assert.doesNotMatch(page, /<script>x|<script>y|<i>|<b>|<u>|<s>|<q>/)
+    // The slides' names in the page's script can't end it
+    assert.doesNotMatch(page.slice(page.indexOf('var names')), /<\/button>/)
   })
 })

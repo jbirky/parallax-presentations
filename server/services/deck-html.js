@@ -5812,7 +5812,8 @@ __export(deck_html_exports, {
   generateRevealHTML: () => generateRevealHTML,
   graphNeeds: () => graphNeeds,
   graphRowsFrom: () => graphRowsFrom,
-  hasEmbeds: () => hasEmbeds
+  hasEmbeds: () => hasEmbeds,
+  templateFacts: () => templateFacts
 });
 module.exports = __toCommonJS(deck_html_exports);
 
@@ -20362,10 +20363,10 @@ function harmonicsCore() {
     return { C: fromTerms([t], conv), terms: [t], tex: basisTex(t), real: t.form === "real", single: t };
   }
   function grid(nt, np, wrap) {
-    var th = [], ph = [];
+    var th = [], ph2 = [];
     for (var i = 0; i <= nt; i++) th.push(PI * i / nt);
-    for (var j = 0; j < np + (wrap ? 0 : 1); j++) ph.push(wrap ? 2 * PI * j / np : -PI + 2 * PI * j / np);
-    return { th, ph, nt: nt + 1, np: ph.length, wrap };
+    for (var j = 0; j < np + (wrap ? 0 : 1); j++) ph2.push(wrap ? 2 * PI * j / np : -PI + 2 * PI * j / np);
+    return { th, ph: ph2, nt: nt + 1, np: ph2.length, wrap };
   }
   function indices(G2, keepPoles) {
     var out = [], np = G2.np, cols = G2.wrap ? np : np - 1;
@@ -31748,6 +31749,9 @@ var DECK_BRIDGE_SCRIPT = `  <script>
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;
+      // A step forward or back, builds included, or a slide by its index
+      if (e.data.step === 1) return Reveal.next();
+      if (e.data.step === -1) return Reveal.prev();
       var s = Reveal.getSlides()[e.data.slide];
       if (s) { var i = Reveal.getIndices(s); Reveal.slide(i.h, i.v); }
     });
@@ -32403,6 +32407,242 @@ var EXAMPLES = [
   { slug: "gaia", field: "Astronomy", title: "The solar neighborhood", desc: "Every well-measured star within 50 parsecs, from ESA’s Gaia archive: an HR diagram, then counts that grow as distance squared.", tags: ["Live dataset", "Graph with data"] }
 ];
 var HERO_EXAMPLE = "hero";
+
+// client/src/utils/slideLayouts.js
+var ph = (placeholder2, x, y, width, height, content, extra = {}) => ({ type: "text", placeholder: placeholder2, sizeMode: "shrink", x, y, width, height, zIndex: 2, content, ...extra });
+var layoutTitle = (x, y, width, height, align) => ph("title", x, y, width, height, `<h2${align ? ` style="text-align:${align}"` : ""}></h2>`, { zIndex: 1 });
+var bullets = (x, y, width, height) => ph("body", x, y, width, height, "<ul><li><p></p></li></ul>");
+var SLIDE_TEMPLATES = {
+  blank: { label: "Blank", elements: [] },
+  title: { label: "Title Slide", elements: [
+    layoutTitle(60, 150, 840, 120, "center"),
+    ph("subtitle", 120, 282, 720, 80, '<p style="text-align:center"></p>')
+  ] },
+  "title-content": { label: "Title and Content", elements: [
+    layoutTitle(40, 36, 880, 100),
+    bullets(40, 140, 880, 360)
+  ] },
+  "two-column": { label: "Two Column", elements: [
+    layoutTitle(40, 36, 880, 100),
+    bullets(40, 140, 420, 360),
+    bullets(500, 140, 420, 360)
+  ] },
+  "image-text": { label: "Image + Text", elements: [
+    layoutTitle(40, 36, 880, 100),
+    { type: "shape", shape: "rect", x: 40, y: 140, width: 420, height: 340, zIndex: 2, fill: "#2d2d4e", stroke: "none", strokeWidth: 0, text: "[ Image ]", fontSize: 18, textColor: "#888888" },
+    ph("body", 500, 140, 420, 340, "<p></p>")
+  ] },
+  "section-header": { label: "Section Header", elements: [
+    ph("title", 80, 140, 800, 150, '<h1 style="text-align:center"></h1>', { zIndex: 1 }),
+    { type: "shape", shape: "rect", x: 280, y: 302, width: 400, height: 4, zIndex: 2, fill: "#6366f1", stroke: "none", strokeWidth: 0, locked: true },
+    ph("subtitle", 200, 320, 560, 80, '<p style="text-align:center"></p>', { hint: "Click to add a description" })
+  ] },
+  "three-column": { label: "Three Column", elements: [
+    layoutTitle(40, 36, 880, 100),
+    ph("body", 20, 140, 290, 340, "<p></p>"),
+    ph("body", 335, 140, 290, 340, "<p></p>"),
+    ph("body", 650, 140, 290, 340, "<p></p>")
+  ] },
+  "comparison": { label: "Comparison", elements: [
+    layoutTitle(40, 26, 880, 100, "center"),
+    { type: "shape", shape: "rounded-rect", x: 30, y: 136, width: 440, height: 380, zIndex: 1, fill: "rgba(99,102,241,0.1)", stroke: "#6366f1", strokeWidth: 1, locked: true },
+    ph("subtitle", 50, 146, 400, 80, '<h3 style="text-align:center; color: #6366f1"></h3>', { hint: "Click to add heading" }),
+    bullets(50, 230, 400, 276),
+    { type: "shape", shape: "rounded-rect", x: 490, y: 136, width: 440, height: 380, zIndex: 1, fill: "rgba(236,72,153,0.1)", stroke: "#ec4899", strokeWidth: 1, locked: true },
+    ph("subtitle", 510, 146, 400, 80, '<h3 style="text-align:center; color: #ec4899"></h3>', { hint: "Click to add heading" }),
+    bullets(510, 230, 400, 276)
+  ] },
+  "big-number": { label: "Big Number", elements: [
+    ph("title", 80, 80, 800, 200, '<h1 style="text-align:center; font-size: 120px; color: #6366f1"></h1>', { zIndex: 1, hint: "42%" }),
+    ph("subtitle", 160, 300, 640, 120, '<p style="text-align:center"></p>', { hint: "Click to add what the number means" })
+  ] },
+  // ── Typographic System Presets (Elam / Bauhaus) ──────────────────────
+  "system-axial": {
+    label: "Axial",
+    category: "systems",
+    layoutGrid: { enabled: true, columns: 2, rows: 0, gutter: 0, marginX: 40, marginY: 40, snap: true },
+    axisLines: [{ id: "ax1", axis: "x", position: 320, visible: true, snap: true }],
+    elements: [
+      layoutTitle(40, 50, 260, 100, "right"),
+      ph("subtitle", 40, 150, 260, 80, '<p style="text-align:right"></p>'),
+      ph("body", 340, 50, 580, 440, "<p></p>"),
+      { type: "shape", shape: "rect", x: 318, y: 40, width: 3, height: 460, zIndex: 0, fill: "rgba(244,114,182,0.4)", stroke: "none", strokeWidth: 0, locked: true }
+    ]
+  },
+  "system-bilateral": {
+    label: "Bilateral",
+    category: "systems",
+    axisLines: [{ id: "ax1", axis: "x", position: 480, visible: true, snap: true }],
+    elements: [
+      layoutTitle(130, 56, 700, 100, "center"),
+      { type: "shape", shape: "rect", x: 380, y: 164, width: 200, height: 3, zIndex: 0, fill: "#6366f1", stroke: "none", strokeWidth: 0, locked: true },
+      ph("subtitle", 130, 176, 700, 80, '<p style="text-align:center"></p>'),
+      ph("body", 130, 266, 700, 230, '<p style="text-align:center"></p>')
+    ]
+  },
+  "system-grid": {
+    label: "Grid System",
+    category: "systems",
+    layoutGrid: { enabled: true, columns: 3, rows: 2, gutter: 16, marginX: 40, marginY: 40, snap: true },
+    elements: [
+      layoutTitle(40, 36, 880, 100),
+      { type: "shape", shape: "rect", x: 40, y: 140, width: 880, height: 2, zIndex: 0, fill: "rgba(99,102,241,0.3)", stroke: "none", strokeWidth: 0, locked: true },
+      ph("body", 40, 152, 277, 166, "<p></p>"),
+      ph("body", 333, 152, 277, 166, "<p></p>"),
+      ph("body", 626, 152, 277, 166, "<p></p>"),
+      ph("body", 40, 326, 277, 174, "<p></p>"),
+      ph("body", 333, 326, 277, 174, "<p></p>"),
+      ph("body", 626, 326, 277, 174, "<p></p>")
+    ]
+  },
+  "system-modular": {
+    label: "Modular",
+    category: "systems",
+    layoutGrid: { enabled: true, columns: 4, rows: 3, gutter: 8, marginX: 32, marginY: 32, snap: true },
+    elements: [
+      { type: "shape", shape: "rect", x: 32, y: 32, width: 214, height: 150, zIndex: 0, fill: "rgba(99,102,241,0.15)", stroke: "rgba(99,102,241,0.3)", strokeWidth: 1 },
+      { type: "shape", shape: "rect", x: 254, y: 32, width: 214, height: 150, zIndex: 0, fill: "rgba(99,102,241,0.15)", stroke: "rgba(99,102,241,0.3)", strokeWidth: 1 },
+      { type: "shape", shape: "rect", x: 476, y: 32, width: 214, height: 150, zIndex: 0, fill: "rgba(99,102,241,0.15)", stroke: "rgba(99,102,241,0.3)", strokeWidth: 1 },
+      { type: "shape", shape: "rect", x: 698, y: 32, width: 214, height: 150, zIndex: 0, fill: "rgba(99,102,241,0.15)", stroke: "rgba(99,102,241,0.3)", strokeWidth: 1 },
+      layoutTitle(32, 198, 436, 100),
+      ph("body", 32, 300, 436, 202, "<p></p>"),
+      { type: "shape", shape: "circle", x: 828, y: 420, width: 80, height: 80, zIndex: 2, fill: "#6366f1", stroke: "none", strokeWidth: 0, opacity: 0.7 }
+    ]
+  },
+  "system-transitional": {
+    label: "Transitional",
+    category: "systems",
+    elements: [
+      layoutTitle(60, 36, 500, 100),
+      ph("subtitle", 120, 136, 460, 56, '<p style="font-size: 28px"></p>'),
+      { type: "shape", shape: "rect", x: 0, y: 200, width: 700, height: 3, zIndex: 0, fill: "rgba(128,128,128,0.35)", stroke: "none", strokeWidth: 0, locked: true },
+      ph("body", 80, 220, 460, 230, '<p style="font-size: 26px"></p>'),
+      ph("body", 520, 440, 400, 80, '<p style="text-align:right; font-size: 14px"></p>', { hint: "Click to add a detail" })
+    ]
+  },
+  "system-radial": {
+    label: "Radial",
+    category: "systems",
+    elements: [
+      { type: "shape", shape: "circle", x: 380, y: 170, width: 200, height: 200, zIndex: 0, fill: "rgba(99,102,241,0.12)", stroke: "rgba(99,102,241,0.3)", strokeWidth: 1 },
+      { type: "shape", shape: "circle", x: 330, y: 120, width: 300, height: 300, zIndex: 0, fill: "none", stroke: "rgba(99,102,241,0.15)", strokeWidth: 1 },
+      { type: "shape", shape: "circle", x: 444, y: 234, width: 72, height: 72, zIndex: 1, fill: "#6366f1", stroke: "none", strokeWidth: 0 },
+      ph("body", 440, 245, 80, 50, '<p style="text-align:center; font-size:11px; color:white"></p>', { hint: "Focus" }),
+      ph("body", 540, 100, 380, 80, "<h3></h3>", { zIndex: 3, hint: "Click to add a point" }),
+      ph("body", 570, 310, 350, 80, "<h3></h3>", { zIndex: 3, hint: "Click to add a point" }),
+      ph("body", 40, 180, 300, 80, '<h3 style="text-align:right"></h3>', { zIndex: 3, hint: "Click to add a point" }),
+      ph("body", 40, 420, 300, 80, '<h3 style="text-align:right"></h3>', { zIndex: 3, hint: "Click to add a point" })
+    ]
+  }
+};
+
+// client/src/utils/templateFacts.js
+var KINDS = {
+  text: ["text box", "text boxes"],
+  shape: ["shape", "shapes"],
+  image: ["image", "images"],
+  graph: ["graph", "graphs"],
+  equation: ["equation", "equations"],
+  code: ["code block", "code blocks"],
+  table: ["table", "tables"],
+  latex: ["LaTeX block", "LaTeX blocks"],
+  tikz: ["TikZ diagram", "TikZ diagrams"],
+  html: ["HTML embed", "HTML embeds"],
+  video: ["video", "videos"],
+  audio: ["audio clip", "audio clips"],
+  molecule: ["molecule", "molecules"],
+  model: ["3D model", "3D models"],
+  feynman: ["Feynman diagram", "Feynman diagrams"],
+  circuit: ["circuit", "circuits"],
+  logic: ["logic diagram", "logic diagrams"],
+  freebody: ["free-body diagram", "free-body diagrams"],
+  venn: ["Venn diagram", "Venn diagrams"],
+  timing: ["timing diagram", "timing diagrams"],
+  geometry: ["geometry construction", "geometry constructions"],
+  periodic: ["periodic table", "periodic tables"],
+  harmonics: ["spherical harmonic", "spherical harmonics"],
+  timeline: ["timeline", "timelines"],
+  text3d: ["3D text", "3D text"],
+  textpath: ["text on a path", "texts on paths"],
+  drawing: ["drawing", "drawings"],
+  icon: ["icon", "icons"],
+  callout: ["callout", "callouts"],
+  markdown: ["Markdown block", "Markdown blocks"],
+  p5: ["p5.js sketch", "p5.js sketches"]
+};
+var PLAIN = /* @__PURE__ */ new Set(["text", "shape"]);
+function kindName(type, count) {
+  if (typeof type === "string" && type.startsWith("plugin:")) return count === 1 ? "plugin" : "plugins";
+  const [one, many] = KINDS[type] || ["element", "elements"];
+  return count === 1 ? one : many;
+}
+var counted = (type, count) => {
+  const name50 = kindName(type, count);
+  return count === 1 ? name50.replace(/^./, (c) => c.toUpperCase()) : `${count} ${name50}`;
+};
+var fontName = (font) => String(font || "").split(",")[0].replace(/['"]/g, "").trim();
+function firstLine(html) {
+  const text = String(html || "").replace(/<\/(p|h[1-6]|li|div|blockquote|pre|tr)>|<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  return text.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).find(Boolean) || "";
+}
+var shorten = (s, n) => s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
+function headingIn(html) {
+  for (const m of String(html || "").matchAll(/<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>/gi)) {
+    const line = firstLine(m[2].replace(/<br\s*\/?>/gi, " "));
+    if (new RegExp("\\p{L}", "u").test(line)) return line;
+  }
+  return "";
+}
+function slideTitle(slide, index) {
+  if (typeof slide?.name === "string" && slide.name.trim()) return shorten(slide.name.trim(), 60);
+  const texts = (slide?.elements || []).filter((el) => el.type === "text" && el.content).sort((a, b) => (a.y || 0) - (b.y || 0));
+  const title = texts.find((el) => el.placeholder === "title")?.content;
+  const line = headingIn(title) || firstLine(title) || texts.map((el) => headingIn(el.content)).find(Boolean) || texts.map((el) => firstLine(el.content)).find(Boolean);
+  return line ? shorten(line, 60) : `Slide ${index + 1}`;
+}
+function kindsOf(elements) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const el of elements || []) {
+    const type = typeof el?.type === "string" && el.type.startsWith("plugin:") ? "plugin:" : el?.type;
+    if (!type) continue;
+    counts.set(type, (counts.get(type) || 0) + 1);
+  }
+  return [...counts].sort((a, b) => PLAIN.has(a[0]) - PLAIN.has(b[0]) || b[1] - a[1]);
+}
+function templateFacts(deck) {
+  const themeId = typeof deck?.theme === "string" ? deck.theme : "black";
+  const known = THEMES[themeId];
+  const t = deckTheme(themeId, deck?.themeColors);
+  const styles = deckTextStyles(deck?.textStyles, themeId) || {};
+  const textFont = deckFont(deckTextFont(deck?.globalFont, themeId));
+  const css = typeof deck?.themeCss === "string" ? deck.themeCss.trim() : "";
+  const colors = [["Background", t.background], ["Text", t.text], ["Headings", t.heading], ["Links", t.link], ["Accent", t.accent]].filter(([, value], i, all2) => value && all2.findIndex(([, v]) => v === value) === i).map(([name50, value]) => ({ name: name50, value }));
+  const slides = (Array.isArray(deck?.slides) ? deck.slides : []).map((slide, i) => {
+    const palette = slidePalette(slide, themeId, deck?.themeColors);
+    return {
+      title: slideTitle(slide, i),
+      // A blank slide's layout says nothing about it
+      layout: slide?.layout !== "blank" ? SLIDE_TEMPLATES[slide?.layout]?.label || "" : "",
+      kinds: kindsOf(slide?.elements).filter(([type]) => !PLAIN.has(type)).map(([type, n]) => counted(type, n)),
+      background: palette.bg || t.background,
+      text: palette.text
+    };
+  });
+  const all = kindsOf((deck?.slides || []).flatMap((s) => s?.elements || []));
+  return {
+    theme: { id: themeId, label: known?.label || themeId, note: known?.note || "", ownColors: !!deck?.themeColors && Object.keys(deck.themeColors).length > 0, stylesheet: css },
+    colors,
+    fonts: { text: fontName(textFont), heading: fontName(styles.headingFont) || fontName(textFont) },
+    sizes: [
+      ["Body text", styles.bodySize ?? DEFAULT_SIZES.bodySize],
+      ["Heading 1", styles.h1Size ?? DEFAULT_SIZES.h1Size],
+      ["Heading 2, slide titles", styles.h2Size ?? DEFAULT_SIZES.h2Size],
+      ["Heading 3", styles.h3Size ?? DEFAULT_SIZES.h3Size]
+    ].map(([name50, px]) => ({ name: name50, px: Math.round(px) })),
+    slides,
+    contents: all.map(([type, n]) => counted(type, n))
+  };
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   EXAMPLES,
@@ -32423,5 +32663,6 @@ var HERO_EXAMPLE = "hero";
   generateRevealHTML,
   graphNeeds,
   graphRowsFrom,
-  hasEmbeds
+  hasEmbeds,
+  templateFacts
 });

@@ -165,6 +165,30 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(list.templates[0].desc, 'A paper in ten slides')
     assert.ok(!list.examples.some(e => e.slug === template.slug), 'not among the examples')
 
+    // Its own page: the deck, its slides, its theme, and Use this template
+    const own = await fetch(`${t.base}/templates/${template.slug}`)
+    assert.equal(own.status, 200)
+    const ownHtml = await own.text()
+    assert.match(ownHtml, /<title>Journal club · Parallax templates<\/title>/)
+    assert.match(ownHtml, new RegExp(`<iframe id="deck" src="/examples/${template.slug}/deck"`))
+    assert.match(ownHtml, new RegExp(`href="/templates/${template.slug}/use"`))
+    assert.match(ownHtml, /aria-label="Slide 1: Meiosis"/)
+    assert.match(ownHtml, /content="A paper in ten slides\. A Parallax template/)
+    // The deck answers the page that frames it
+    assert.match(await (await fetch(`${t.base}/examples/${template.slug}/deck`)).text(), /parallax-deck-go/)
+    // Its slides wait for a Chromium, which this server hasn't
+    const chromium = process.env.PARALLAX_CHROMIUM
+    process.env.PARALLAX_CHROMIUM = '/no/such/chromium'
+    try {
+      assert.deepEqual((await t.call(null, 'GET', `/templates/${template.slug}/slides.json`)).body, { ready: false, drawing: false })
+    } finally {
+      if (chromium === undefined) delete process.env.PARALLAX_CHROMIUM; else process.env.PARALLAX_CHROMIUM = chromium
+    }
+    assert.equal((await t.call(null, 'GET', `/templates/${template.slug}/slides/${template.slug}-000000000000/1.jpg`)).status, 404)
+    // An example, or a name it doesn't have, has no template page
+    assert.equal((await t.call(null, 'GET', '/templates/venn/slides.json')).status, 404)
+    assert.notEqual((await fetch(`${t.base}/templates/venn`)).status, 200)
+
     // The top of the page is an example
     assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { hero: true })).status, 400)
     assert.equal((await t.call(admin, 'PUT', '/api/admin/examples/hero', { kind: 'template' })).status, 400)

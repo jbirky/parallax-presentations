@@ -1919,9 +1919,10 @@ export function openDeckWindow(deckHtml, options) {
   return win
 }
 
-// In a deck framed by one of those pages (opts.bridge): tells the page which
-// slide is shown, as its index in Reveal.getSlides() and its slide's id, and
-// goes to the slide it asks for. Only the page around the deck is heard.
+// In a deck framed by one of those pages, or by a landing page template's
+// own page (opts.bridge): tells the page which slide is shown, as its index
+// in Reveal.getSlides() and its slide's id, and goes to the slide it asks for
+// or a step forward or back. Only the page around the deck is heard.
 const DECK_BRIDGE_SCRIPT = `  <script>
   (function () {
     function send() {
@@ -1930,6 +1931,9 @@ const DECK_BRIDGE_SCRIPT = `  <script>
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;
+      // A step forward or back, builds included, or a slide by its index
+      if (e.data.step === 1) return Reveal.next();
+      if (e.data.step === -1) return Reveal.prev();
       var s = Reveal.getSlides()[e.data.slide];
       if (s) { var i = Reveal.getIndices(s); Reveal.slide(i.h, i.v); }
     });
