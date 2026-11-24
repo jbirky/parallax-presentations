@@ -27,6 +27,7 @@ import HarmonicsProperties from './HarmonicsProperties'
 import BackgroundEditor from './BackgroundEditor'
 import { deckFont } from '../utils/deckFont'
 import { deckTextFont } from '../utils/themes'
+import { hasEmbedContent } from '../utils/embedContent'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -530,18 +531,36 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           )}
 
           {/* HTML embed options */}
-          {selectedElement.type === 'html' && (
+          {selectedElement.type === 'html' && (hasEmbedContent(selectedElement.content) ? (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
+                onClick={() => onEditHtml('content')}
+              >
+                Edit Content…
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
+                onClick={() => onEditHtml('code')}
+              >
+                Edit HTML / D3 Code
+              </button>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Its words and numbers are a form: double-click the element to open it</p>
+            </div>
+          ) : (
             <div style={{ marginBottom: 10 }}>
               <button
                 className="btn btn-secondary"
                 style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
-                onClick={onEditHtml}
+                onClick={() => onEditHtml('code')}
               >
                 Edit HTML / D3 Code
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open code editor</p>
             </div>
-          )}
+          ))}
 
           {selectedElement.type === 'p5' && (
             <div style={{ marginBottom: 10 }}>

@@ -58,6 +58,7 @@ import PracticeRunsModal from '../components/PracticeRunsModal'
 import { practiceInWindow, PRACTICE_MESSAGE, upsertPracticeRun, removePracticeRun, minutesFromRun } from '../utils/practice'
 import SlideCanvas, { editLabelFor } from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
+import HtmlEmbedModal from '../components/HtmlEmbedModal'
 import FindReplaceBar from '../components/FindReplaceBar'
 import TransitionPreview from '../components/TransitionPreview'
 import AnimationTimeline from '../components/AnimationTimeline'
@@ -279,7 +280,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
   const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import; { source, figure }: one kept as it is, opened again
-  const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
+  const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content, width, height, mode }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
   const [latexEditorState, setLatexEditorState] = useState(null) // { elementId, content }
@@ -1172,7 +1173,7 @@ svg.selectAll('circle').data(data).join('circle')
       }
     })
     setSelectedElementIds([newEl.id])
-    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_HTML })
+    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_HTML, width: newEl.width, height: newEl.height, mode: 'code' })
   }, [DEFAULT_HTML])
 
   const addD3Element = useCallback(() => {
@@ -1192,7 +1193,7 @@ svg.selectAll('circle').data(data).join('circle')
       }
     })
     setSelectedElementIds([newEl.id])
-    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_D3 })
+    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_D3, width: newEl.width, height: newEl.height, mode: 'code' })
   }, [DEFAULT_D3])
 
   const insertKineticText = useCallback((html, width, height) => {
@@ -1218,15 +1219,17 @@ svg.selectAll('circle').data(data).join('circle')
     setShowKineticModal(false)
   }, [slideW])
 
-  const openHtmlEditor = useCallback((elementId) => {
+  // mode: 'content' or 'code'; left out, an embed with a content block opens
+  // on its form (utils/embedContent.js) and any other on its code
+  const openHtmlEditor = useCallback((elementId, mode) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'html' || heldByOther(elementId)) return
-    setHtmlEditorState({ elementId, content: element.content || '' })
+    setHtmlEditorState({ elementId, content: element.content || '', width: element.width, height: element.height, mode })
   }, [presentation])
 
-  const commitHtmlEdit = useCallback(() => {
+  const commitHtmlEdit = useCallback((content) => {
     if (!htmlEditorState) return
-    updateElement(htmlEditorState.elementId, { content: htmlEditorState.content })
+    updateElement(htmlEditorState.elementId, { content })
     setHtmlEditorState(null)
   }, [htmlEditorState, updateElement])
 
@@ -5100,7 +5103,7 @@ function draw() {
           onDeleteElement={() => selectedElementId && deleteElement(selectedElementId)}
           onBringForward={() => selectedElementId && bringElementForward(selectedElementId)}
           onSendBackward={() => selectedElementId && sendElementBackward(selectedElementId)}
-          onEditHtml={() => selectedElementId && openHtmlEditor(selectedElementId)}
+          onEditHtml={mode => selectedElementId && openHtmlEditor(selectedElementId, mode)}
           onEditP5={() => selectedElementId && openP5Editor(selectedElementId)}
           onEditCode={() => selectedElementId && openCodeEditor(selectedElementId)}
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
@@ -5132,39 +5135,17 @@ function draw() {
           themeColors={presentation.themeColors || null}
         />}
 
-      {/* HTML / D3 Code Editor Modal */}
+      {/* HTML / D3 embed: its code, and its content block as a form */}
       {htmlEditorState && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onKeyDown={e => { if (e.key === 'Escape') setHtmlEditorState(null) }}
-        >
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '78vw', maxWidth: 960, height: '78vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>HTML / D3 Embed</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>D3, plain HTML, or any JavaScript — renders in an iframe</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setHtmlEditorState(null)}>Cancel</button>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={commitHtmlEdit}>Apply</button>
-              </div>
-            </div>
-            <textarea
-              value={htmlEditorState.content}
-              onChange={e => setHtmlEditorState(s => ({ ...s, content: e.target.value }))}
-              style={{ flex: 1, background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code', 'JetBrains Mono', monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', borderRadius: '0 0 12px 12px', lineHeight: 1.6, tabSize: 2 }}
-              spellCheck={false}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Tab') {
-                  e.preventDefault()
-                  const { selectionStart: s, selectionEnd: end, value } = e.target
-                  const next = value.substring(0, s) + '  ' + value.substring(end)
-                  e.target.value = next
-                  setHtmlEditorState(st => ({ ...st, content: next }))
-                  requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
-                }
-              }}
-            />
-          </div>
-        </div>
+        <HtmlEmbedModal
+          content={htmlEditorState.content}
+          width={htmlEditorState.width}
+          height={htmlEditorState.height}
+          initialMode={htmlEditorState.mode}
+          background={slidePalette(currentSlide, presentation.theme, presentation.themeColors).background}
+          onApply={commitHtmlEdit}
+          onCancel={() => setHtmlEditorState(null)}
+        />
       )}
 
       {/* p5.js Sketch Editor Modal */}
