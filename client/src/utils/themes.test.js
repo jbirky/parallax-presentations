@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -62,6 +62,14 @@ describe('themes', () => {
     expect(deckTextFont('', 'zenith')).toBe("'Public Sans', sans-serif")
     expect(deckTextStyles(null, 'zenith')).toMatchObject({ headingFont: 'Inter, sans-serif', headingWeight: 800, h1Size: 72 })
     expect(slidePalette({}, 'zenith').accent).toBe('#f64137')
+    expect(revealTheme('quincunx')).toBe('white')
+    expect(deckTextFont('', 'quincunx')).toBe('Rubik, sans-serif')
+    expect(slidePalette({}, 'quincunx')).toMatchObject({ link: '#1f5a86', accent: '#e2a23a' })
+    expect(deckTextStyles(null, 'partition')).toMatchObject({ headingFont: 'Manrope, sans-serif', headingWeight: 800, h1Size: 72 })
+    expect(deckTextFont('', 'partition')).toBe("'Source Sans 3', sans-serif")
+    expect(deckTextStyles(null, 'holdout')).toMatchObject({ bodySize: 28, headingFont: 'Rubik, sans-serif', headingWeight: 600 })
+    expect(deckTextFont('', 'separatrix')).toBe("'Fira Sans', sans-serif")
+    expect(slidePalette({}, 'separatrix')).toMatchObject({ link: '#1d5fa8', accent: '#cf4f1b' })
   })
 
   it('tells dark colors from light ones', () => {

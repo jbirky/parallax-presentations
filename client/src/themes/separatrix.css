@@ -1,0 +1,309 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Separatrix theme's stylesheet: dynamical systems, phase portraits in
+   fading ink. Paper (#eef1ec), sheet (#f7f8f5) for panels, ink (#15242a),
+   graphite (#58676c) for what's secondary and field (#9fada6) for the flow.
+   Stable blue (#1d5fa8) is the link color and unstable vermilion (#cf4f1b)
+   the accent. Fira Sans for titles and text, Inconsolata for kickers,
+   numbers and code (utils/themes.js: the fonts and the text sizes, which
+   the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-separatrix, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Every slide without a background of its own has the flow-field frame: a
+   flow whose limit cycle is a rounded rectangle 10 px inside the slide's
+   edge, drawn as tapered streamlets circling toward it (generated once, as
+   a mask, so its color can change). Section slides turn night: ink, with
+   paper text and the frame dimmed. Subtitles and a Heading 4 are kickers in
+   Inconsolata capitals; bullets are streamlets, thin to thick with a dot
+   at the head; code, tables
+   and the Big Number are in Inconsolata with tabular figures; a quote is a
+   panel, whose bold first words are its label. With the footer's sections
+   in sequence, the footer is a time ribbon: the sections behind you a trail
+   that darkens toward the present, the current one a filled dot, those
+   ahead dotted. */
+
+/* reveal.js: links, the arrows and the progress bar in stable blue; and
+   the frame, used as a mask below */
+.deck-theme-separatrix {
+  --r-background-color: #eef1ec;
+  --r-main-color: #15242a;
+  --r-heading-color: #15242a;
+  --r-link-color: #1d5fa8;
+  --r-link-color-dark: #144679;
+  --r-link-color-hover: #cf4f1b;
+  --r-selection-background-color: #c9d7e8;
+  --r-selection-color: #15242a;
+  --sx-frame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080' preserveAspectRatio='none'%3E%3Cpath d='M8,28l10,0l10,0l10-1l10-1l-1-4l-9,2l-10,2l-10,1zM51,27l10-3l10-2l10-1l10,0l-1-4l-10,1l-10,2l-9,3zM88,22l10,0l10,0l10,0l10,0l0-3l-10,0l-10,1l-10,1zM105,20l10,0l10,1l10,0l10,1l0-4l-10,1l-10,0l-10,0zM144,23l10,0l10,0l10-1l10,0l0-3l-10,1l-10,1l-10,1zM165,26l10-2l10,0l10-1l10,0l0-3l-10,1l-10,1l-10,1zM203,17l10,2l10,1l10,1l10,0l0-3l-10,0l-10,0l-10,0zM250,17l10,1l10,2l10,0l10,1l0-3l-10,0l-10,0l-10-1zM281,15l10,2l10,2l10,1l10,1l0-4l-10,0l-10,0l-10-1zM304,15l10,2l10,1l10,2l10,1l0-4l-10,0l-10,0l-10-1zM330,4l9,5l9,4l10,3l9,2l1-4l-10-1l-10-2l-9-3zM365,23l10-1l10,0l10,0l10,0l0-3l-10,1l-10,0l-10,1zM402,20l10,0l10,1l10,0l10,1l0-4l-10,1l-10,0l-10,0zM422,26l10-1l10-1l10-1l10,0l0-3l-10,1l-10,1l-10,2zM454,7l9,4l9,3l10,3l10,2l0-4l-10-1l-9-1l-10-3zM497,10l9,4l10,2l10,2l10,1l0-3l-10-1l-9-1l-10-1zM531,13l10,2l10,2l9,2l10,1l1-3l-10-1l-10,0l-10-2zM559,27l10-2l10-1l10,0l10-1l0-3l-10,1l-10,1l-10,2zM598,27l10-1l10-1l10-1l10-1l0-3l-10,1l-10,2l-10,2zM631,13l10,2l10,2l9,2l10,1l1-3l-10-1l-10,0l-10-2zM656,21l10,0l10,0l10,1l10,0l0-3l-10,0l-10,1l-10,0zM693,16l10,2l10,1l10,1l10,1l0-4l-10,0l-10,0l-10,0zM732,5l9,5l9,4l10,2l10,2l0-3l-10-1l-10-2l-9-3zM750,18l10,1l10,1l10,1l10,0l0-3l-10,0l-10,0l-10,0zM771,24l10,0l10-1l10,0l10,0l0-4l-10,1l-10,1l-10,2zM823,27l10-2l10-1l10-1l10,0l-1-3l-10,1l-10,1l-9,2zM837,25l10-1l10-1l10,0l10,0l0-4l-10,1l-10,1l-10,2zM868,4l8,5l10,4l9,3l10,2l1-4l-10-1l-10-2l-9-3zM919,18l10,1l10,1l10,1l10,0l0-3l-10,0l-10,0l-10,0zM937,13l10,3l10,2l10,1l10,1l0-3l-10-1l-10,0l-10-1zM971,9l9,3l10,3l10,2l10,2l0-3l-10-1l-10-1l-9-3zM1012,15l9,2l10,2l10,1l10,1l0-4l-10,0l-10,0l-10-1zM1030,8l9,4l10,3l10,2l10,2l0-3l-10-1l-10-2l-10-2zM1079,4l9,5l9,4l10,3l10,2l0-4l-10-1l-9-2l-10-3zM1110,26l10-1l10-1l10-1l10,0l0-3l-10,1l-10,1l-10,2zM1128,25l10-1l10-1l10,0l10,0l-1-4l-10,1l-10,1l-10,2zM1175,24l10-1l10,0l10,0l10,0l0-4l-10,1l-10,1l-10,1zM1193,16l9,1l10,2l10,1l10,1l0-4l-10,0l-10,0l-10-1zM1235,11l9,3l10,2l10,2l10,2l0-4l-10,0l-10-1l-10-2zM1271,24l10-1l10,0l10,0l10,0l0-4l-10,1l-10,1l-10,1zM1309,15l10,2l9,2l10,1l10,1l1-4l-10,0l-10,0l-10-1zM1339,29l9-2l10-2l10-1l10,0l0-4l-10,2l-10,1l-10,3zM1370,17l10,2l10,1l10,0l10,1l0-3l-10,0l-10,0l-10,0zM1404,5l9,5l10,3l9,3l10,2l1-3l-10-2l-10-1l-10-3zM1413,6l9,4l9,4l10,2l10,2l1-3l-10-1l-10-2l-10-2zM1456,22l10,0l10,0l10,0l10,0l0-3l-10,0l-10,1l-10,1zM1486,9l9,3l10,3l10,2l10,2l0-3l-10-1l-10-1l-9-3zM1531,4l9,5l9,4l10,3l10,2l1-3l-10-2l-10-2l-9-3zM1562,25l10-1l10-1l10,0l10,0l0-4l-10,1l-10,1l-10,2zM1572,19l10,1l10,1l10,0l10,1l0-4l-10,0l-10,1l-10,0zM1615,18l10,1l10,1l10,1l10,0l0-3l-10,0l-10,0l-10,0zM1656,3l9,6l9,4l10,3l9,2l1-4l-10-1l-10-2l-9-3zM1670,5l9,5l9,3l10,3l10,2l1-3l-10-1l-10-2l-10-3zM1722,22l10,0l10,0l10,0l10,0l0-3l-10,0l-10,1l-10,1zM1743,23l10,0l10-1l10,0l10,0l0-3l-10,1l-10,1l-10,1zM1775,17l10,1l10,1l10,1l10,1l0-3l-10,0l-10,0l-10-1zM1816,13l10,3l9,3l10,3l8,4l2-3l-10-3l-9-3l-10-2zM1843,24l9,3l9,5l8,5l7,7l3-3l-8-6l-9-5l-9-4zM1882,27l3,9l4,9l3,10l3,9l3-1l-4-9l-4-9l-4-9zM1911,7l-3,10l-3,10l-2,10l-1,10l4,0l0-10l1-10l2-10zM6,55l9-4l9-5l9-5l9-4l-2-3l-8,5l-9,6l-8,5zM41,40l9-5l8-5l9-4l10-2l-1-3l-10,3l-9,4l-8,6zM72,40l7-6l9-5l10-2l10-2l-1-3l-10,2l-10,3l-8,6zM206,36l9-4l9-3l10-2l10-2l-1-3l-10,2l-9,3l-10,4zM1869,37l8,7l6,7l5,8l4,9l3-1l-4-9l-6-8l-8-7zM1902,38l-1,10l0,10l1,10l0,10l3,0l-1-10l-1-10l0-10zM27,82l2-10l3-9l4-9l7-7l-3-2l-6,8l-4,9l-2,10zM1915,68l-4,10l-3,9l-3,10l-2,10l3,0l2-10l2-9l2-10zM22,101l0-10l1-10l3-10l4-9l-3-1l-3,10l-2,9l-1,11zM1911,109l-4,9l-2,10l-2,9l-2,10l3,1l1-10l1-10l2-10zM16,152l2-9l1-10l1-10l1-10l-3-1l0,10l-1,10l0,10zM1901,139l-1,10l0,10l-1,10l0,10l3,0l0-10l0-10l-1-10zM5,188l5-9l4-10l2-9l2-10l-3-1l-1,10l-2,10l-3,9zM1885,176l4,10l2,9l2,10l2,10l3-1l-2-10l-3-9l-3-10zM1910,169l-3,10l-3,10l-2,9l-1,10l3,1l1-10l1-10l2-10zM25,216l-1-10l-1-10l0-10l0-10l-4,0l1,10l1,10l2,10zM1885,211l3,10l3,9l2,10l2,10l3-1l-2-10l-3-9l-4-10zM1904,206l-2,10l-1,10l-1,10l-1,10l4,0l0-10l0-10l0-10zM19,247l1-10l1-10l0-10l1-10l-4,0l0,10l1,10l0,10zM1912,253l-4,9l-3,9l-2,10l-2,10l4,0l0-9l2-10l2-10zM25,272l-1-10l0-10l-1-10l0-10l-3,0l0,10l2,10l1,10zM1892,264l2,10l1,10l1,9l0,10l4,0l-1-10l-2-10l-2-10zM9,296l4-10l3-9l2-10l1-10l-3,0l-1,10l-1,9l-2,10zM1907,309l-3,10l-2,10l-1,10l-1,10l3,0l1-10l0-10l1-10zM9,348l3-9l3-10l2-10l2-10l-3,0l-1,10l-2,10l-2,9zM1911,328l-4,10l-3,9l-2,10l-1,10l3,1l1-10l1-10l2-10zM4,357l5-9l4-9l3-10l2-9l-4-1l-1,10l-2,9l-3,10zM1898,363l0,10l0,10l0,10l0,10l3-1l0-10l-1-10l-1-10zM11,404l3-9l3-10l1-10l2-10l-4,0l0,10l-1,10l-2,10zM1905,400l-2,10l-2,10l-1,10l-1,10l4,0l0-10l0-10l1-10zM25,428l-1-10l-1-10l0-10l0-10l-4,0l1,10l1,10l2,10zM1901,442l-1,10l0,10l-1,10l0,10l3,0l0-10l0-10l-1-10zM19,468l1-10l1-10l0-10l1-10l-4,0l1,10l0,10l0,10zM1910,476l-3,9l-3,10l-2,10l-1,9l3,1l1-10l1-10l2-10zM17,501l1-10l1-9l1-10l1-10l-3-1l0,10l-1,10l0,10zM1910,505l-4,10l-2,9l-2,10l-1,10l3,1l1-10l1-10l1-10zM23,526l-1-10l0-10l0-10l0-10l-3,0l1,10l0,10l1,10zM1901,539l-1,10l0,10l-1,10l0,10l3,0l0-10l-1-10l0-10zM18,565l1-10l1-10l1-10l0-10l-3,0l0,10l0,10l0,10zM1903,562l-2,10l-1,10l0,10l-1,10l3,0l0-10l0-10l0-10zM15,589l2-10l1-10l2-10l1-10l-4,0l0,10l0,10l-1,10zM1916,592l-5,8l-4,10l-3,9l-2,10l4,1l1-10l2-10l3-9zM26,627l-1-10l-1-10l-1-10l0-10l-3,0l1,10l1,10l2,10zM36,616l-4-9l-3-9l-2-10l-1-10l-4,1l2,9l3,10l4,9zM1910,636l-4,10l-2,9l-2,10l-1,10l3,0l1-9l1-10l1-10zM9,651l4-9l3-10l2-10l1-10l-3,0l-1,10l-1,10l-2,9zM1901,655l-1,10l0,10l-1,10l0,10l3,0l0-10l-1-10l0-10zM20,680l1-10l0-10l0-10l1-10l-4,0l1,10l0,10l1,10zM1912,684l-4,9l-3,10l-2,10l-2,10l4,0l1-10l1-10l2-9zM17,712l2-10l1-10l0-10l1-10l-3,0l0,10l0,10l-1,10zM1901,708l-1,10l0,10l-1,10l0,10l3,0l0-10l-1-10l0-10zM9,740l4-10l3-9l2-10l1-10l-3-1l-1,10l-1,10l-2,10zM1892,764l2,9l1,10l1,10l1,10l3,0l-1-10l-2-10l-2-10zM16,793l2-10l1-10l1-10l1-10l-4,0l0,10l0,10l-1,10zM1914,790l-5,9l-3,10l-3,9l-1,10l3,1l1-10l2-10l2-10zM18,810l1-10l1-10l1-10l0-10l-3,0l0,10l0,10l0,10zM1893,808l1,9l1,10l1,10l1,10l3,0l-1-10l-2-10l-2-10zM17,840l2-9l1-10l0-10l1-10l-3-1l0,10l0,10l0,10zM1915,844l-5,9l-4,10l-2,9l-2,10l3,1l1-10l2-10l3-9zM24,893l-1-10l0-10l0-10l0-10l-4,0l1,10l1,10l1,10zM1905,892l-2,9l-1,10l-2,10l0,10l3,0l0-10l0-10l1-9zM28,908l-2-10l-1-10l-1-10l0-10l-4,0l1,10l2,10l2,10zM1917,912l-6,8l-3,9l-3,10l-3,10l4,0l1-9l2-10l3-9zM29,941l-2-10l-2-9l-1-10l0-10l-4,0l2,10l1,10l3,10zM1916,945l-5,8l-4,10l-3,9l-2,10l4,1l1-10l2-10l3-9zM11,979l3-9l2-10l2-10l2-10l-4,0l0,10l-1,10l-2,9zM1906,986l-3,9l-4,9l-4,9l-6,9l3,1l5-9l4-9l3-10zM14,1014l1-10l1-10l2-10l1-10l-3,0l-1,10l-1,10l0,10zM40,1010l-7-7l-4-9l-3-9l-1-10l-3,0l2,10l3,10l5,9zM1899,1017l-7,8l-7,7l-7,6l-8,6l2,3l8-7l7-7l6-7zM5,1051l3-10l3-10l2-9l2-10l-4-1l-1,10l-1,10l-2,10zM59,1043l-9-5l-7-6l-7-7l-5-9l-3,2l6,8l7,7l9,6zM175,1047l-10,3l-9,2l-10,2l-10,1l0,3l10-1l10-3l10-3zM313,1050l-9,3l-10,1l-10,1l-10,1l0,3l10-1l10-2l10-2zM398,1044l-9,4l-10,3l-10,2l-9,2l0,3l10-2l10-3l9-4zM559,1050l-10,3l-10,1l-10,1l-10,1l1,3l10-1l10-2l9-2zM665,1049l-10,3l-9,2l-10,1l-10,1l0,3l10-1l10-2l10-3zM721,1051l-10,2l-10,2l-10,1l-10,0l1,4l9-2l10-1l10-3zM1134,1050l-10,3l-10,1l-9,1l-10,1l0,3l10-1l10-2l9-2zM1392,1044l-9,4l-9,3l-10,2l-10,2l1,3l10-2l9-3l10-4zM1433,1046l-9,4l-10,2l-10,2l-10,1l1,3l10-1l9-3l10-3zM1465,1052l-10,2l-9,1l-10,1l-10,0l0,4l10-1l10-2l10-2zM1490,1044l-9,4l-10,3l-9,2l-10,2l0,3l10-2l10-3l9-4zM1554,1048l-10,3l-10,2l-9,1l-10,1l0,4l10-2l10-2l9-3zM1690,1047l-9,4l-10,2l-10,1l-10,1l1,4l9-2l10-2l10-3zM1765,1051l-9,2l-10,2l-10,1l-10,0l0,4l10-2l10-1l10-3zM1870,1047l-9,4l-9,4l-10,2l-10,1l1,4l10-2l9-3l9-5zM1891,1035l-8,5l-9,5l-9,4l-9,4l1,3l9-4l9-5l8-6zM10,1066l3-10l2-9l2-10l1-10l-4-1l0,10l-1,10l-1,10zM68,1072l-6-8l-7-7l-6-8l-6-8l-3,3l7,7l7,7l7,7zM119,1074l-8-4l-10-4l-10-2l-9-4l-1,4l10,2l10,2l9,3zM143,1071l-9-4l-10-3l-10-2l-10-1l0,3l10,1l9,1l10,2zM172,1062l-10-1l-10-1l-10-1l-10,0l0,3l10,0l10,0l10,0zM214,1076l-8-5l-10-4l-9-3l-10-2l-1,4l10,1l10,2l9,3zM252,1061l-10-1l-10,0l-10-1l-10,0l0,3l10,0l10-1l10,0zM265,1076l-9-5l-9-4l-10-3l-10-2l0,4l9,1l10,2l10,3zM299,1067l-10-2l-9-2l-10-2l-10-1l-1,3l10,1l10,0l10,2zM342,1061l-10-1l-10,0l-10-1l-10,0l0,3l10,0l10,0l10-1zM395,1065l-10-2l-10-1l-10-2l-10-1l0,4l10,0l10,0l10,1zM441,1072l-9-4l-10-3l-9-2l-10-2l-1,3l10,1l10,2l10,2zM464,1075l-9-5l-9-4l-10-2l-10-2l0,3l10,1l9,2l10,3zM508,1075l-9-5l-10-4l-9-2l-10-2l-1,3l10,1l10,2l9,3zM525,1077l-9-5l-9-4l-10-3l-9-2l-1,3l10,1l9,3l10,3zM551,1065l-10-2l-10-1l-10-2l-10-1l0,4l10,0l10,0l10,1zM645,1073l-9-4l-9-3l-10-3l-10-2l-1,4l10,1l10,1l10,3zM694,1073l-9-4l-9-3l-10-3l-10-1l0,3l9,1l10,2l10,2zM732,1077l-9-5l-9-4l-10-3l-10-3l0,4l10,1l9,2l10,4zM744,1067l-10-2l-9-2l-10-2l-10-1l-1,3l10,1l10,1l10,1zM821,1065l-10-2l-10-2l-10-1l-10-1l0,4l10,0l10,0l10,1zM851,1075l-8-5l-10-3l-9-3l-10-2l-1,3l10,1l10,2l9,3zM888,1066l-10-2l-10-2l-10-1l-10-1l0,3l10,0l10,1l10,1zM916,1065l-10-2l-10-2l-10-1l-10-1l0,4l10,0l10,0l10,1zM980,1067l-9-2l-10-2l-10-2l-10-1l0,3l9,1l10,1l10,1zM1007,1074l-9-5l-10-3l-9-3l-10-1l-1,3l10,1l10,2l9,2zM1027,1074l-9-5l-9-3l-10-2l-10-2l0,3l10,1l9,2l10,2zM1116,1062l-10-1l-10-1l-10-1l-10,0l0,3l10,0l10,0l10,0zM1145,1075l-9-5l-9-3l-10-3l-10-2l0,3l10,2l9,2l10,2zM1161,1063l-10-2l-10-1l-10-1l-10,0l0,3l10,0l10,0l10,0zM1209,1061l-10-1l-10,0l-10-1l-10,0l0,3l10,0l10-1l10,0zM1227,1076l-9-5l-9-4l-10-3l-10-2l0,4l10,1l9,2l10,3zM1275,1073l-9-5l-9-3l-10-2l-10-2l0,4l10,1l9,1l10,2zM1360,1070l-9-3l-10-3l-10-2l-10-1l0,3l10,1l10,1l10,2zM1414,1073l-9-5l-9-3l-10-2l-10-2l-1,4l10,1l10,1l10,2zM1459,1071l-10-4l-9-2l-10-2l-10-2l0,3l10,1l9,1l10,2zM1651,1070l-10-3l-10-3l-9-2l-10-1l-1,3l10,1l10,1l10,2zM1706,1063l-10-1l-10-1l-10-1l-10-1l0,3l10,0l10,1l10,0zM1766,1066l-10-3l-10-1l-10-2l-10,0l0,3l10,0l10,1l10,0zM1820,1076l-8-5l-10-4l-10-3l-9-2l-1,4l10,1l10,2l9,3zM1868,1075l-10-3l-10-3l-9-2l-10-2l-1,3l10,2l10,1l10,2zM1912,1061l-9-2l-10-1l-10,0l-10,0l0,3l10,0l10-1l10,0z'/%3E%3C/svg%3E");
+}
+
+/* The colors footers and kickers draw in, by day and at night (section
+   slides), and on a slide with a background of its own */
+.deck-theme-separatrix.px-slide,
+.deck-theme-separatrix .px-slide { --sx-ink: #15242a; --sx-dim: #58676c; }
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background]),
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background]) { --sx-ink: #e8ede9; --sx-dim: #8fa19b; }
+.deck-theme-separatrix.px-slide[data-own-background],
+.deck-theme-separatrix .px-slide[data-own-background] { --sx-ink: var(--px-text); --sx-dim: var(--px-text); }
+
+/* The flow-field frame, behind everything on the slide; at night (the
+   ::after over the section slide's ink), dimmer */
+.deck-theme-separatrix.px-slide:not([data-own-background])::before,
+.deck-theme-separatrix .px-slide:not([data-own-background])::before,
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background])::after,
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background])::after,
+.deck-theme-separatrix.theme-swatch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #9fada6;
+  opacity: 0.62;
+  -webkit-mask: var(--sx-frame) 0 0 / 100% 100% no-repeat;
+  mask: var(--sx-frame) 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  background: #15242a;
+  opacity: 1;
+  -webkit-mask: none;
+  mask: none;
+}
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background])::after,
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background])::after { background: #8fa19b; opacity: 0.42; }
+
+/* Night: section slides' text in paper */
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #e8ede9 !important; }
+.deck-theme-separatrix.px-slide[data-layout=section-header]:not([data-own-background]) .px-text a,
+.deck-theme-separatrix .px-slide[data-layout=section-header]:not([data-own-background]) .px-text a { color: #8fb8e8 !important; }
+
+/* Headings: Fira Sans 600, slightly tight. (!important: presented decks
+   set headings' spacing with it.) */
+.deck-theme-separatrix .px-text :is(h1, h2, h3) { letter-spacing: -0.012em !important; line-height: 1.1; }
+
+/* Kickers: subtitles, and a Heading 4, in Inconsolata capitals, tracked,
+   in graphite */
+.deck-theme-separatrix [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-separatrix .px-text h4 {
+  font-family: Inconsolata, monospace !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.16em !important;
+  line-height: 1.45;
+  text-transform: uppercase !important;
+  color: var(--sx-dim, #58676c) !important;
+}
+.deck-theme-separatrix [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h5, h6) { font-size: 0.66em; }
+.deck-theme-separatrix .px-text h4 { margin: 0 0 0.5em !important; font-size: 0.5em; }
+
+/* Bullets: streamlets, a stroke that thickens from a faint tail to a dot
+   at its head, so a list reads in the direction of flow; under them,
+   smaller ones in graphite. Numbered lists count in Inconsolata. */
+.deck-theme-separatrix .px-text ul { list-style: none; }
+.deck-theme-separatrix .px-text ul > li { position: relative; }
+.deck-theme-separatrix .px-text ul > li::before,
+.deck-theme-separatrix .px-text ul > li::after {
+  content: "";
+  position: absolute;
+  top: 0.6em;
+  height: 0.28em;
+}
+.deck-theme-separatrix .px-text ul > li::before {
+  left: -1.15em;
+  width: 0.6em;
+  background: linear-gradient(90deg, transparent, currentColor);
+  clip-path: polygon(0 45%, 100% 18%, 100% 82%, 0 55%);
+}
+.deck-theme-separatrix .px-text ul > li::after {
+  left: -0.7em;
+  width: 0.28em;
+  border-radius: 50%;
+  background: currentColor;
+}
+.deck-theme-separatrix .px-text ul ul > li::before { left: -1em; top: 0.64em; width: 0.5em; height: 0.22em; opacity: 0.6; }
+.deck-theme-separatrix .px-text ul ul > li::after { left: -0.62em; top: 0.64em; width: 0.22em; height: 0.22em; opacity: 0.6; }
+.deck-theme-separatrix .px-text ol > li::marker { color: #58676c; font-family: Inconsolata, monospace; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Links in stable blue */
+.deck-theme-separatrix .px-text a { color: var(--px-link, #1d5fa8) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: Inconsolata on the sheet, with a hairline */
+.deck-theme-separatrix .px-text :not(pre) > code {
+  padding: 0.04em 0.3em;
+  border: 1px solid #d3dad5;
+  border-radius: 0.2em;
+  background: #f7f8f5 !important;
+  color: #15242a;
+  font-family: Inconsolata, monospace;
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quotes: a panel on the sheet; bold first words are its label, in
+   Inconsolata capitals */
+.deck-theme-separatrix .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.4em 0.7em !important;
+  border: 1px solid #d3dad5 !important;
+  border-left: 0.12em solid #15242a !important;
+  background: #f7f8f5;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-separatrix .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.3em;
+  color: #58676c;
+  font-family: Inconsolata, monospace;
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-separatrix .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Inconsolata on the sheet, with Separatrix's own syntax colors
+   whichever code theme the deck uses: the stability code's blue and
+   vermilion, and plum */
+.deck-theme-separatrix :is(pre, pre.hljs) {
+  background: #f7f8f5 !important;
+  color: #15242a;
+  border: 1px solid #d3dad5;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.deck-theme-separatrix :is(pre.hljs, pre code) { font-family: Inconsolata, monospace !important; font-variant-ligatures: none; font-variant-numeric: tabular-nums; }
+.deck-theme-separatrix pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-separatrix .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.66em; line-height: 1.45; }
+.deck-theme-separatrix pre [class*=hljs-] { color: #15242a; font-style: normal; font-weight: 400; }
+.deck-theme-separatrix pre :is(.hljs-comment, .hljs-quote) { color: #58676c; font-style: italic; }
+.deck-theme-separatrix pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #1d5fa8; font-weight: 600; }
+.deck-theme-separatrix pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #7a3b8e; }
+.deck-theme-separatrix pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #b8441a; }
+.deck-theme-separatrix pre :is(.hljs-title, .hljs-section, .hljs-title.class_) { font-weight: 700; }
+.deck-theme-separatrix pre :is(.hljs-meta, .hljs-deletion) { color: #58676c; }
+
+/* Tables: Inconsolata with tabular figures, a capitals header over an ink
+   rule, hairlines between rows */
+.deck-theme-separatrix table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d3dad5 !important;
+  background: transparent !important;
+  color: #15242a !important;
+  font-family: Inconsolata, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-separatrix table tr:first-child :is(td, th) {
+  border-bottom: 1.5px solid #15242a !important;
+  color: #58676c !important;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* The Big Number: a figure in Inconsolata, in ink */
+.deck-theme-separatrix.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-separatrix .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #15242a) !important;
+  font-family: Inconsolata, monospace !important;
+  font-weight: 600;
+  letter-spacing: -0.02em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The footer: Inconsolata in graphite, the page number as t = k / n. With
+   its sections in sequence, it is a time ribbon: a tick at each section's
+   start; the sections behind you a solid trail that darkens toward the
+   present, the current one starting at a filled dot, those ahead dotted.
+   (The class and the slide both named, to outweigh the presented deck's
+   footer rules.) */
+.deck-theme-separatrix.px-slide .px-footer,
+.deck-theme-separatrix .px-slide .px-footer { padding: 0 24px 12px !important; color: var(--sx-dim) !important; }
+.deck-theme-separatrix.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-separatrix .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--sx-dim) !important;
+  font-family: Inconsolata, monospace !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-page,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-page { color: var(--sx-ink) !important; font-weight: 700 !important; }
+.deck-theme-separatrix.px-slide .px-footer .px-footer-page::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-page::before { content: "t = "; }
+.deck-theme-separatrix.px-slide .px-footer .px-footer-sections,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 0; max-width: 620px; }
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 10px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 11px;
+  background:
+    linear-gradient(var(--sx-dim), var(--sx-dim)) 0 0 / 1px 11px no-repeat,
+    radial-gradient(circle, var(--sx-dim) 0.75px, transparent 1.1px) 2px 50% / 4.6px 3px repeat-x;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=past]::before {
+  background:
+    linear-gradient(color-mix(in srgb, var(--sx-ink) 30%, transparent), color-mix(in srgb, var(--sx-ink) 30%, transparent)) 0 0 / 1px 11px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--sx-ink) 6%, transparent), color-mix(in srgb, var(--sx-ink) 15%, transparent)) 0 50% / 100% 2px no-repeat;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=past] + [data-state=past] + [data-state=current])::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=past] + [data-state=past] + [data-state=current])::before {
+  background:
+    linear-gradient(color-mix(in srgb, var(--sx-ink) 40%, transparent), color-mix(in srgb, var(--sx-ink) 40%, transparent)) 0 0 / 1px 11px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--sx-ink) 15%, transparent), color-mix(in srgb, var(--sx-ink) 30%, transparent)) 0 50% / 100% 2px no-repeat;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=past] + [data-state=current])::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=past] + [data-state=current])::before {
+  background:
+    linear-gradient(color-mix(in srgb, var(--sx-ink) 55%, transparent), color-mix(in srgb, var(--sx-ink) 55%, transparent)) 0 0 / 1px 11px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--sx-ink) 30%, transparent), color-mix(in srgb, var(--sx-ink) 55%, transparent)) 0 50% / 100% 2px no-repeat;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=past]:has(+ [data-state=current])::before {
+  background:
+    linear-gradient(color-mix(in srgb, var(--sx-ink) 75%, transparent), color-mix(in srgb, var(--sx-ink) 75%, transparent)) 0 0 / 1px 11px no-repeat,
+    linear-gradient(90deg, color-mix(in srgb, var(--sx-ink) 55%, transparent), var(--sx-ink)) 0 50% / 100% 2.4px no-repeat;
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--sx-ink) !important; font-weight: 700 !important; }
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=current]::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 1px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--sx-ink);
+}
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=current]::before { left: 6px; background: radial-gradient(circle, var(--sx-dim) 0.75px, transparent 1.1px) 2px 50% / 4.6px 3px repeat-x; }
+.deck-theme-separatrix.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-separatrix .px-slide .px-footer .px-footer-section[data-state=future] { opacity: 0.8; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the frame around the title */
+.deck-theme-separatrix.theme-swatch { position: relative; }
+.deck-theme-separatrix.theme-swatch::before { background: #7f8f88; opacity: 1; }
+.deck-theme-separatrix .theme-swatch-title { position: relative; }

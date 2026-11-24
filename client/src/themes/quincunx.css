@@ -1,0 +1,316 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Quincunx theme's stylesheet: probability and statistics, drawn as a
+   Galton board. Glass (#f3f6f6) slides in ink (#11262e), with brass
+   (#e2a23a) for the sample and Space Mono for numbers (utils/themes.js: the
+   font, Rubik, and the text sizes, which the Themes panel's Text tab can
+   change). Brass is the sample, ink the model, steel (#1f5a86) links.
+
+   It's scoped to .deck-theme-quincunx, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Title and section slides are the board: a dark field with a triangle of
+   pegs, and on the title slide the balls' bins below, under the binomial
+   curve. Slide titles have a hairline under them, and inline code in a
+   heading is the sample-size badge (`n = 1,000`), at the right of a slide
+   title. A Heading 4 is a kicker in mono capitals. Bullets are brass balls,
+   a quote is a verdict, tables and code are in Space Mono, and the Big
+   Number is a figure in it. With the footer's sections in sequence, each
+   section is a tally: a closed group of five when it's done, the brass
+   ball on the one you're in, faint strokes for those to come. The tallies
+   are masks, so they take the colors of the board or of a slide's own
+   background. */
+
+/* reveal.js: links, the arrows and the progress bar in steel */
+.deck-theme-quincunx {
+  --r-background-color: #f3f6f6;
+  --r-main-color: #11262e;
+  --r-heading-color: #11262e;
+  --r-link-color: #1f5a86;
+  --r-link-color-dark: #17466a;
+  --r-link-color-hover: #a66b0e;
+  --r-selection-background-color: #e2a23a;
+  --r-selection-color: #11262e;
+  --qx-pegs: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 120' width='240' height='120'%3E%3Cpath d='M94 0 L113 14 M146 0 L127 14' stroke='%239db5ba' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3Cg fill='%239db5ba'%3E%3Ccircle cx='120' cy='26' r='2.3'/%3E%3Ccircle cx='108' cy='39' r='2.3'/%3E%3Ccircle cx='132' cy='39' r='2.3'/%3E%3Ccircle cx='96' cy='52' r='2.3'/%3E%3Ccircle cx='120' cy='52' r='2.3'/%3E%3Ccircle cx='144' cy='52' r='2.3'/%3E%3Ccircle cx='84' cy='65' r='2.3'/%3E%3Ccircle cx='108' cy='65' r='2.3'/%3E%3Ccircle cx='132' cy='65' r='2.3'/%3E%3Ccircle cx='156' cy='65' r='2.3'/%3E%3Ccircle cx='72' cy='78' r='2.3'/%3E%3Ccircle cx='96' cy='78' r='2.3'/%3E%3Ccircle cx='120' cy='78' r='2.3'/%3E%3Ccircle cx='144' cy='78' r='2.3'/%3E%3Ccircle cx='168' cy='78' r='2.3'/%3E%3Ccircle cx='60' cy='91' r='2.3'/%3E%3Ccircle cx='84' cy='91' r='2.3'/%3E%3Ccircle cx='108' cy='91' r='2.3'/%3E%3Ccircle cx='132' cy='91' r='2.3'/%3E%3Ccircle cx='156' cy='91' r='2.3'/%3E%3Ccircle cx='180' cy='91' r='2.3'/%3E%3Ccircle cx='48' cy='104' r='2.3'/%3E%3Ccircle cx='72' cy='104' r='2.3'/%3E%3Ccircle cx='96' cy='104' r='2.3'/%3E%3Ccircle cx='120' cy='104' r='2.3'/%3E%3Ccircle cx='144' cy='104' r='2.3'/%3E%3Ccircle cx='168' cy='104' r='2.3'/%3E%3Ccircle cx='192' cy='104' r='2.3'/%3E%3C/g%3E%3Cg fill='%23e2a23a' stroke='%23a66b0e'%3E%3Ccircle cx='120' cy='10' r='4.2'/%3E%3Ccircle cx='120' cy='45.5' r='4.2'/%3E%3Ccircle cx='144' cy='71.5' r='4.2'/%3E%3Ccircle cx='120' cy='97.5' r='4.2'/%3E%3C/g%3E%3C/svg%3E");
+  --qx-tally-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' width='26' height='18'%3E%3Crect x='3' y='6' width='2' height='12' rx='1'/%3E%3Crect x='8' y='6' width='2' height='12' rx='1'/%3E%3Crect x='13' y='6' width='2' height='12' rx='1'/%3E%3Crect x='18' y='6' width='2' height='12' rx='1'/%3E%3Cpath d='M1 15.5 L24 7.5' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --qx-tally-current: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' width='26' height='18'%3E%3Crect x='3' y='6' width='2' height='12' rx='1'/%3E%3Crect x='8' y='6' width='2' height='12' rx='1'/%3E%3Crect x='13' y='6' width='2' height='12' rx='1' fill-opacity='0.35'/%3E%3Crect x='18' y='6' width='2' height='12' rx='1' fill-opacity='0.35'/%3E%3C/svg%3E");
+  --qx-tally-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' width='26' height='18'%3E%3Crect x='3' y='6' width='2' height='12' rx='1'/%3E%3Crect x='8' y='6' width='2' height='12' rx='1'/%3E%3Crect x='13' y='6' width='2' height='12' rx='1'/%3E%3Crect x='18' y='6' width='2' height='12' rx='1'/%3E%3C/svg%3E");
+}
+
+/* Headings: Rubik, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-quincunx .px-text :is(h1, h2, h3) { letter-spacing: -0.015em !important; line-height: 1.1; }
+
+/* Slide titles: a hairline under them, as wide as the title's box */
+.deck-theme-quincunx.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-quincunx .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  clear: both;
+  height: 1.5px;
+  margin-top: 0.3em;
+  background: currentColor;
+  opacity: 0.22;
+}
+
+/* Inline code in a heading: the sample-size badge, a pill in Space Mono. In
+   a slide title it sits at the right, as in a figure's corner. */
+.deck-theme-quincunx .px-text :is(h1, h2, h3) code {
+  display: inline-block;
+  padding: 0.18em 0.75em 0.14em;
+  border: 0.085em solid currentColor;
+  border-radius: 999px;
+  background: transparent !important;
+  color: inherit;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 0.42em;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.3;
+  vertical-align: 0.42em;
+  white-space: nowrap;
+}
+.deck-theme-quincunx.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2) code,
+.deck-theme-quincunx .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number]) [data-placeholder=title] :is(h1, h2) code {
+  float: right;
+  margin: 0.55em 0 0 0.8em;
+}
+
+/* A Heading 4: a kicker in mono capitals */
+.deck-theme-quincunx .px-text h4 {
+  margin: 0 0 0.5em !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 0.42em;
+  font-weight: 700;
+  letter-spacing: 0.14em !important;
+  line-height: 1.3;
+  text-transform: uppercase !important;
+  color: #4e646b !important;
+}
+
+/* The board: title and section slides (unless the slide has a background
+   of its own) are a dark field with a triangle of pegs. The title slide
+   also has the bins, with the balls that fell and the binomial curve. */
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    var(--qx-pegs) 50% 22px / 240px 120px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 104' width='300' height='104'%3E%3Cpath d='M7.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M29.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M51.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M73.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M95.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M117.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M139.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M161.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M183.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M205.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M227.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M249.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M271.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M293.5 30V100' stroke='%233a5a62'/%3E%3Cpath d='M7 100.5H293' stroke='%233a5a62'/%3E%3Cg fill='%23e2a23a' stroke='%23a66b0e' stroke-width='.8'%3E%3Ccircle cx='35.5' cy='95.4' r='4'/%3E%3Ccircle cx='44.5' cy='95.4' r='4'/%3E%3Ccircle cx='57.5' cy='95.4' r='4'/%3E%3Ccircle cx='66.5' cy='95.4' r='4'/%3E%3Ccircle cx='79.5' cy='95.4' r='4'/%3E%3Ccircle cx='88.5' cy='95.4' r='4'/%3E%3Ccircle cx='79.5' cy='86.8' r='4'/%3E%3Ccircle cx='88.5' cy='86.8' r='4'/%3E%3Ccircle cx='79.5' cy='78.2' r='4'/%3E%3Ccircle cx='88.5' cy='78.2' r='4'/%3E%3Ccircle cx='101.5' cy='95.4' r='4'/%3E%3Ccircle cx='110.5' cy='95.4' r='4'/%3E%3Ccircle cx='101.5' cy='86.8' r='4'/%3E%3Ccircle cx='110.5' cy='86.8' r='4'/%3E%3Ccircle cx='101.5' cy='78.2' r='4'/%3E%3Ccircle cx='110.5' cy='78.2' r='4'/%3E%3Ccircle cx='101.5' cy='69.6' r='4'/%3E%3Ccircle cx='110.5' cy='69.6' r='4'/%3E%3Ccircle cx='101.5' cy='61' r='4'/%3E%3Ccircle cx='110.5' cy='61' r='4'/%3E%3Ccircle cx='123.5' cy='95.4' r='4'/%3E%3Ccircle cx='132.5' cy='95.4' r='4'/%3E%3Ccircle cx='123.5' cy='86.8' r='4'/%3E%3Ccircle cx='132.5' cy='86.8' r='4'/%3E%3Ccircle cx='123.5' cy='78.2' r='4'/%3E%3Ccircle cx='132.5' cy='78.2' r='4'/%3E%3Ccircle cx='123.5' cy='69.6' r='4'/%3E%3Ccircle cx='132.5' cy='69.6' r='4'/%3E%3Ccircle cx='123.5' cy='61' r='4'/%3E%3Ccircle cx='132.5' cy='61' r='4'/%3E%3Ccircle cx='123.5' cy='52.4' r='4'/%3E%3Ccircle cx='132.5' cy='52.4' r='4'/%3E%3Ccircle cx='123.5' cy='43.8' r='4'/%3E%3Ccircle cx='132.5' cy='43.8' r='4'/%3E%3Ccircle cx='145.5' cy='95.4' r='4'/%3E%3Ccircle cx='154.5' cy='95.4' r='4'/%3E%3Ccircle cx='145.5' cy='86.8' r='4'/%3E%3Ccircle cx='154.5' cy='86.8' r='4'/%3E%3Ccircle cx='145.5' cy='78.2' r='4'/%3E%3Ccircle cx='154.5' cy='78.2' r='4'/%3E%3Ccircle cx='145.5' cy='69.6' r='4'/%3E%3Ccircle cx='154.5' cy='69.6' r='4'/%3E%3Ccircle cx='145.5' cy='61' r='4'/%3E%3Ccircle cx='154.5' cy='61' r='4'/%3E%3Ccircle cx='145.5' cy='52.4' r='4'/%3E%3Ccircle cx='154.5' cy='52.4' r='4'/%3E%3Ccircle cx='145.5' cy='43.8' r='4'/%3E%3Ccircle cx='154.5' cy='43.8' r='4'/%3E%3Ccircle cx='145.5' cy='35.2' r='4'/%3E%3Ccircle cx='154.5' cy='35.2' r='4'/%3E%3Ccircle cx='145.5' cy='26.6' r='4'/%3E%3Ccircle cx='154.5' cy='26.6' r='4'/%3E%3Ccircle cx='167.5' cy='95.4' r='4'/%3E%3Ccircle cx='176.5' cy='95.4' r='4'/%3E%3Ccircle cx='167.5' cy='86.8' r='4'/%3E%3Ccircle cx='176.5' cy='86.8' r='4'/%3E%3Ccircle cx='167.5' cy='78.2' r='4'/%3E%3Ccircle cx='176.5' cy='78.2' r='4'/%3E%3Ccircle cx='167.5' cy='69.6' r='4'/%3E%3Ccircle cx='176.5' cy='69.6' r='4'/%3E%3Ccircle cx='167.5' cy='61' r='4'/%3E%3Ccircle cx='176.5' cy='61' r='4'/%3E%3Ccircle cx='167.5' cy='52.4' r='4'/%3E%3Ccircle cx='176.5' cy='52.4' r='4'/%3E%3Ccircle cx='167.5' cy='43.8' r='4'/%3E%3Ccircle cx='176.5' cy='43.8' r='4'/%3E%3Ccircle cx='167.5' cy='35.2' r='4'/%3E%3Ccircle cx='176.5' cy='35.2' r='4'/%3E%3Ccircle cx='189.5' cy='95.4' r='4'/%3E%3Ccircle cx='198.5' cy='95.4' r='4'/%3E%3Ccircle cx='189.5' cy='86.8' r='4'/%3E%3Ccircle cx='198.5' cy='86.8' r='4'/%3E%3Ccircle cx='189.5' cy='78.2' r='4'/%3E%3Ccircle cx='198.5' cy='78.2' r='4'/%3E%3Ccircle cx='189.5' cy='69.6' r='4'/%3E%3Ccircle cx='198.5' cy='69.6' r='4'/%3E%3Ccircle cx='189.5' cy='61' r='4'/%3E%3Ccircle cx='198.5' cy='61' r='4'/%3E%3Ccircle cx='211.5' cy='95.4' r='4'/%3E%3Ccircle cx='220.5' cy='95.4' r='4'/%3E%3Ccircle cx='211.5' cy='86.8' r='4'/%3E%3Ccircle cx='220.5' cy='86.8' r='4'/%3E%3Ccircle cx='211.5' cy='78.2' r='4'/%3E%3Ccircle cx='220.5' cy='78.2' r='4'/%3E%3Ccircle cx='233.5' cy='95.4' r='4'/%3E%3Ccircle cx='242.5' cy='95.4' r='4'/%3E%3C/g%3E%3Cpath d='M7 99.93 L9.38 99.91 L11.77 99.89 L14.15 99.86 L16.53 99.83 L18.92 99.79 L21.3 99.74 L23.68 99.68 L26.07 99.6 L28.45 99.52 L30.83 99.41 L33.22 99.28 L35.6 99.13 L37.98 98.96 L40.37 98.75 L42.75 98.51 L45.13 98.22 L47.52 97.89 L49.9 97.51 L52.28 97.07 L54.67 96.57 L57.05 96 L59.43 95.35 L61.82 94.61 L64.2 93.79 L66.58 92.86 L68.97 91.83 L71.35 90.68 L73.73 89.42 L76.12 88.03 L78.5 86.52 L80.88 84.87 L83.27 83.08 L85.65 81.16 L88.03 79.1 L90.42 76.91 L92.8 74.59 L95.18 72.14 L97.57 69.58 L99.95 66.91 L102.33 64.15 L104.72 61.31 L107.1 58.4 L109.48 55.45 L111.87 52.48 L114.25 49.51 L116.63 46.57 L119.02 43.67 L121.4 40.85 L123.78 38.12 L126.17 35.53 L128.55 33.09 L130.93 30.83 L133.32 28.77 L135.7 26.93 L138.08 25.34 L140.47 24.02 L142.85 22.97 L145.23 22.21 L147.62 21.75 L150 21.6 L152.38 21.75 L154.77 22.21 L157.15 22.97 L159.53 24.02 L161.92 25.34 L164.3 26.93 L166.68 28.77 L169.07 30.83 L171.45 33.09 L173.83 35.53 L176.22 38.12 L178.6 40.85 L180.98 43.67 L183.37 46.57 L185.75 49.51 L188.13 52.48 L190.52 55.45 L192.9 58.4 L195.28 61.31 L197.67 64.15 L200.05 66.91 L202.43 69.58 L204.82 72.14 L207.2 74.59 L209.58 76.91 L211.97 79.1 L214.35 81.16 L216.73 83.08 L219.12 84.87 L221.5 86.52 L223.88 88.03 L226.27 89.42 L228.65 90.68 L231.03 91.83 L233.42 92.86 L235.8 93.79 L238.18 94.61 L240.57 95.35 L242.95 96 L245.33 96.57 L247.72 97.07 L250.1 97.51 L252.48 97.89 L254.87 98.22 L257.25 98.51 L259.63 98.75 L262.02 98.96 L264.4 99.13 L266.78 99.28 L269.17 99.41 L271.55 99.52 L273.93 99.6 L276.32 99.68 L278.7 99.74 L281.08 99.79 L283.47 99.83 L285.85 99.86 L288.23 99.89 L290.62 99.91 L293 99.93' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") 50% 392px / 300px 104px no-repeat,
+    #0f2a31;
+}
+.deck-theme-quincunx.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-quincunx .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  background:
+    var(--qx-pegs) 50% 18px / 220px 110px no-repeat,
+    #0f2a31;
+}
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #eef3f3 !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #ffffff !important; letter-spacing: -0.02em !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p:not(:first-child),
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] p:not(:first-child) { color: #a9bec2 !important; font-size: 0.8em; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text h4,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text h4 { color: #e2a23a !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a { color: #e2a23a !important; }
+
+/* Bullets: brass balls; under them, short ink dashes. Numbered lists count
+   in Space Mono. */
+.deck-theme-quincunx .px-text ul { list-style: none; }
+.deck-theme-quincunx .px-text ul > li { position: relative; }
+.deck-theme-quincunx .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: 0.58em;
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: #e2a23a;
+  box-shadow: 0 0 0 0.05em #a66b0e;
+}
+.deck-theme-quincunx .px-text ul ul > li::before {
+  top: 0.72em;
+  width: 0.4em;
+  height: 0.08em;
+  border-radius: 0;
+  background: #4e646b;
+  box-shadow: none;
+}
+.deck-theme-quincunx .px-text ol > li::marker { color: #4e646b; font-family: 'Space Mono', monospace; font-size: 0.8em; font-weight: 700; }
+
+/* Links in steel */
+.deck-theme-quincunx .px-text a { color: var(--px-link, #1f5a86) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: Space Mono on a tint */
+.deck-theme-quincunx .px-text :not(pre, h1, h2, h3) > code {
+  padding: 0.06em 0.3em;
+  border-radius: 0.2em;
+  background: #dfe8e9 !important;
+  color: #11262e;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.85em;
+}
+
+/* Quotes: a verdict, ink at its edge on a tint; one whose first words are
+   bold (a result) has a brass edge */
+.deck-theme-quincunx .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.35em 0.65em !important;
+  border: 0 !important;
+  border-left: 0.12em solid #11262e !important;
+  background: #e2eaeb;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-quincunx .px-text blockquote:has(> p:first-child > strong:first-child) { border-left-color: #e2a23a !important; background: #f4ead6; }
+.deck-theme-quincunx .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Space Mono on the board's color, with Quincunx's own syntax colors */
+.deck-theme-quincunx :is(pre, pre.hljs) {
+  background: #0f2a31 !important;
+  color: #eef3f3;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+.deck-theme-quincunx :is(pre.hljs, pre code) { font-family: 'Space Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-quincunx pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-quincunx .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-quincunx pre :is(.hljs-comment, .hljs-quote) { color: #8aa3a8; font-style: italic; }
+.deck-theme-quincunx pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in) { color: #e2a23a; }
+.deck-theme-quincunx pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #a8d8c8; }
+.deck-theme-quincunx pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #f0c27a; }
+.deck-theme-quincunx pre :is(.hljs-title, .hljs-section, .hljs-type, .hljs-title.class_) { color: #8ec5ef; }
+.deck-theme-quincunx pre :is(.hljs-attr, .hljs-property, .hljs-params, .hljs-variable, .hljs-subst, .hljs-punctuation, .hljs-operator) { color: #eef3f3; }
+.deck-theme-quincunx pre :is(.hljs-meta, .hljs-deletion) { color: #f08a8a; }
+
+/* Tables: a mono header with an ink rule under it, hairlines between rows,
+   every cell in Space Mono with tabular figures */
+.deck-theme-quincunx table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #c9d5d7 !important;
+  background: transparent !important;
+  color: #11262e !important;
+  font-family: 'Space Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-quincunx table tr:first-child :is(td, th) {
+  border-bottom: 2px solid #11262e !important;
+  color: #4e646b !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The Big Number: a figure in Space Mono, in ink */
+.deck-theme-quincunx.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-quincunx .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #11262e) !important;
+  font-family: 'Space Mono', monospace !important;
+  font-weight: 700;
+  letter-spacing: -0.04em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The footer: Space Mono capitals. With its sections in sequence, each
+   section is followed by a tally: a closed five when it's done, two strokes
+   and the brass ball on the one you're in, faint strokes for those to come.
+   (The class and the slide both named, to outweigh the presented deck's
+   footer rules.) */
+.deck-theme-quincunx.px-slide .px-footer,
+.deck-theme-quincunx .px-slide .px-footer { color: #4e646b !important; }
+.deck-theme-quincunx.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-quincunx .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: #4e646b !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-quincunx.px-slide .px-footer .px-footer-page,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-page { color: #11262e !important; font-size: 11px !important; letter-spacing: 0.04em; }
+.deck-theme-quincunx.px-slide .px-footer .px-footer-sections,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 18px; padding-left: 24px; }
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section[data-state=current] { color: #11262e !important; }
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section[data-state=future] { color: #7f969b !important; }
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section { position: relative; display: inline-flex; align-items: center; }
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section::after,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section::after {
+  content: "";
+  flex: none;
+  width: 26px;
+  height: 18px;
+  margin-left: 6px;
+  background: #9db5ba;
+  -webkit-mask: var(--qx-tally-future) center / 26px 18px no-repeat;
+  mask: var(--qx-tally-future) center / 26px 18px no-repeat;
+}
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section[data-state=past]::after,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section[data-state=past]::after {
+  background: #11262e;
+  -webkit-mask-image: var(--qx-tally-past);
+  mask-image: var(--qx-tally-past);
+}
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section[data-state=current]::after {
+  background: #11262e;
+  -webkit-mask-image: var(--qx-tally-current);
+  mask-image: var(--qx-tally-current);
+}
+/* the brass ball, on the current section's last stroke so far */
+.deck-theme-quincunx.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-quincunx .px-slide .px-footer .px-footer-section[data-state=current]::before {
+  content: "";
+  position: absolute;
+  right: 14.4px; top: 0.4px;
+  width: 5.2px; height: 5.2px;
+  border-radius: 50%;
+  background: #e2a23a;
+  box-shadow: 0 0 0 0.8px #a66b0e;
+}
+
+/* ...on the board, in its light ink */
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer :is(.px-footer-label, .px-footer-section, .px-footer-time),
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer :is(.px-footer-label, .px-footer-section, .px-footer-time) { color: #a9bec2 !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer :is(.px-footer-page, .px-footer-section[data-state=current]),
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer :is(.px-footer-page, .px-footer-section[data-state=current]) { color: #eef3f3 !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section[data-state=future],
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section[data-state=future] { color: #6f8c92 !important; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section::after,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section::after { background: #4d6b72; }
+.deck-theme-quincunx.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section:is([data-state=past], [data-state=current])::after,
+.deck-theme-quincunx .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-footer .px-footer-section:is([data-state=past], [data-state=current])::after { background: #eef3f3; }
+
+/* ...and on a slide with a background of its own, in its text color */
+.deck-theme-quincunx.px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-quincunx .px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) { color: var(--px-text) !important; }
+.deck-theme-quincunx.px-slide[data-own-background] .px-footer .px-footer-section::after,
+.deck-theme-quincunx .px-slide[data-own-background] .px-footer .px-footer-section::after { background: var(--px-text); }
+.deck-theme-quincunx.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-quincunx .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.55; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the board, its pegs and a ball, over the title; the subtitle in the
+   board's light ink, the rule in brass */
+.deck-theme-quincunx.theme-swatch { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 80' width='160' height='80'%3E%3Cpath d='M54 0 L73 14 M106 0 L87 14' stroke='%239db5ba' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3Cg fill='%239db5ba'%3E%3Ccircle cx='80' cy='22' r='2.3'/%3E%3Ccircle cx='70' cy='33' r='2.3'/%3E%3Ccircle cx='90' cy='33' r='2.3'/%3E%3Ccircle cx='60' cy='44' r='2.3'/%3E%3Ccircle cx='80' cy='44' r='2.3'/%3E%3Ccircle cx='100' cy='44' r='2.3'/%3E%3Ccircle cx='50' cy='55' r='2.3'/%3E%3Ccircle cx='70' cy='55' r='2.3'/%3E%3Ccircle cx='90' cy='55' r='2.3'/%3E%3Ccircle cx='110' cy='55' r='2.3'/%3E%3Ccircle cx='40' cy='66' r='2.3'/%3E%3Ccircle cx='60' cy='66' r='2.3'/%3E%3Ccircle cx='80' cy='66' r='2.3'/%3E%3Ccircle cx='100' cy='66' r='2.3'/%3E%3Ccircle cx='120' cy='66' r='2.3'/%3E%3C/g%3E%3Cg fill='%23e2a23a' stroke='%23a66b0e'%3E%3Ccircle cx='80' cy='10' r='4.2'/%3E%3Ccircle cx='90' cy='49.5' r='4.2'/%3E%3C/g%3E%3C/svg%3E") 50% 2px / 96px 48px no-repeat, #0f2a31 !important; justify-content: flex-end !important; }
+.deck-theme-quincunx .theme-swatch-title { color: #ffffff !important; }
+.deck-theme-quincunx.theme-swatch > span:nth-child(2) { color: #a9bec2 !important; }
+.deck-theme-quincunx.theme-swatch > span:nth-child(3) { background: #e2a23a !important; }

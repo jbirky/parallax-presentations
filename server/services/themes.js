@@ -7,7 +7,7 @@
 // The presentation themes: reveal.js 5's, whose page color, heading color and
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
 // Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
-// Zenith), which
+// Zenith, Quincunx, Partition, Holdout, Separatrix), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -48,6 +48,10 @@ const THEME_LIST = [
   { id: 'trace', label: 'Trace', background: '#fcfcfe', backgroundCss: 'radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe', text: '#1c1e2e', heading: '#1c1e2e', link: '#4338ca', accent: '#4338ca', dark: false, reveal: 'white', font: 'Figtree, sans-serif', textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 28, headingFont: 'Figtree, sans-serif', headingWeight: 800 }, note: 'Algorithms: a dot grid, cells and index cells, complexity chips, invariant callouts, code in Fira Code' },
   { id: 'prompt', label: 'Prompt', background: '#101317', text: '#dde2de', heading: '#f5f7f3', link: '#5c9cff', accent: '#7ed67a', dark: true, reveal: 'black', font: "'Fira Code', monospace", textStyles: { bodySize: 22, h1Size: 56, h2Size: 26, h3Size: 22, headingFont: "'Fira Code', monospace", headingWeight: 600 }, note: 'A terminal window: titles typed at a prompt, # comments, man-page sections, a tmux status bar' },
   { id: 'zenith', label: 'Zenith', background: '#000000', text: '#f6f6f6', heading: '#ffffff', link: '#ff5c52', accent: '#f64137', dark: true, reveal: 'black', font: "'Public Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 72, h2Size: 44, h3Size: 28, headingFont: "Inter, sans-serif", headingWeight: 800 }, note: 'Space science, photo-led: a gradient over slide photos, Inter headings, mono labels and red link arrows' },
+  { id: 'quincunx', label: 'Quincunx', background: '#f3f6f6', text: '#11262e', heading: '#11262e', link: '#1f5a86', accent: '#e2a23a', dark: false, reveal: 'white', font: 'Rubik, sans-serif', textStyles: { bodySize: 30, h1Size: 76, h2Size: 44, h3Size: 32, headingFont: 'Rubik, sans-serif', headingWeight: 600 }, note: 'A Galton board: dark title and section slides with pegs, a tally footer, brass samples, ink models, Space Mono numbers' },
+  { id: 'partition', label: 'Partition', background: '#f7f7f5', text: '#16191e', heading: '#16191e', link: '#2d55c4', accent: '#d94a1e', dark: false, reveal: 'white', font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 40, h3Size: 28, headingFont: 'Manrope, sans-serif', headingWeight: 800 }, note: 'Slides drawn as partitioned matrices: brackets, a partition line under titles, a basis-vector footer' },
+  { id: 'holdout', label: 'Holdout', background: '#f7f8f6', text: '#161b22', heading: '#161b22', link: '#1d4f91', accent: '#1d4f91', dark: false, reveal: 'white', font: 'Rubik, sans-serif', textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Rubik, sans-serif', headingWeight: 600 }, note: 'A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer' },
+  { id: 'separatrix', label: 'Separatrix', background: '#eef1ec', text: '#15242a', heading: '#15242a', link: '#1d5fa8', accent: '#cf4f1b', dark: false, reveal: 'white', font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: 'Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer' },
 ]
 
 const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

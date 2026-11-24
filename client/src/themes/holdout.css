@@ -1,0 +1,337 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Holdout theme's stylesheet: machine learning, on a figure page.
+   Paper (#f7f8f6) and ink (#161b22): ink draws structure, and color is kept
+   for classes. Rubik for titles and text, Roboto Mono for numbers
+   (utils/themes.js: the font and the text sizes, which the Themes panel's
+   Text tab can change).
+
+   It's scoped to .deck-theme-holdout, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Under every slide title is the split rule, train, validation and test:
+   solid, gray and hatched. The title slide's is wide, and a section slide's
+   is wide and labeled. A Heading 4 is a kicker in mono capitals. Bullets
+   cycle through the class markers, circle, triangle and square. Tables are
+   model cards, with an ink header row and mono numbers, and so is a quote
+   whose first words are bold, its label in the header band. Code and the
+   Big Number are in Roboto Mono. With the footer's sections in sequence,
+   the footer is the run strip: the epoch (the page number) first, then the
+   sections, done solid, the current one bold with a dot at its end, those
+   to come dashed. */
+
+/* reveal.js: links, the arrows and the progress bar in class A's blue */
+.deck-theme-holdout {
+  --r-background-color: #f7f8f6;
+  --r-main-color: #161b22;
+  --r-heading-color: #161b22;
+  --r-link-color: #1d4f91;
+  --r-link-color-dark: #123563;
+  --r-link-color-hover: #161b22;
+  --r-selection-background-color: #d8dcd6;
+  --r-selection-color: #161b22;
+}
+
+/* The split rule's colors: ink, gray and hatched ink. On a slide with a
+   background of its own, its text color. */
+.deck-theme-holdout.px-slide,
+.deck-theme-holdout .px-slide { --ho-ink: #161b22; --ho-val: #8a919c; }
+.deck-theme-holdout.px-slide[data-own-background],
+.deck-theme-holdout .px-slide[data-own-background] { --ho-ink: var(--px-text); --ho-val: var(--px-text); }
+
+/* Headings: Rubik 600, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-holdout .px-text :is(h1, h2, h3) { letter-spacing: -0.015em !important; line-height: 1.1; }
+
+/* The split rule under slide titles: train 70, validation 15, test 15 */
+.deck-theme-holdout [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 150px;
+  max-width: 100%;
+  height: 5px;
+  margin-top: 0.3em;
+  background:
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 0 0 / 104px 5px no-repeat,
+    linear-gradient(var(--ho-val), var(--ho-val)) 106px 0 / 21px 5px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 129px 0 / 21px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 129px 4px / 21px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 129px 0 / 1px 5px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 149px 0 / 1px 5px no-repeat,
+    repeating-linear-gradient(135deg, var(--ho-ink) 0 1px, transparent 1px 3.5px) 129px 0 / 21px 5px no-repeat;
+}
+.deck-theme-holdout [data-placeholder=title] :is(h1, h2)[style*="center"]::after { margin-inline: auto; }
+.deck-theme-holdout [data-placeholder=title] :is(h1, h2)[style*="right"]::after { margin-left: auto; }
+.deck-theme-holdout.px-slide[data-layout=big-number] [data-placeholder=title] h1::after,
+.deck-theme-holdout .px-slide[data-layout=big-number] [data-placeholder=title] h1::after { content: none; }
+
+/* The title slide's split rule is wide; a section slide's is wide and
+   labeled */
+.deck-theme-holdout.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-holdout .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2)::after {
+  width: 300px;
+  height: 6px;
+  margin-top: 0.32em;
+  background:
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 0 0 / 208px 6px no-repeat,
+    linear-gradient(var(--ho-val), var(--ho-val)) 211px 0 / 42px 6px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 256px 0 / 44px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 256px 5px / 44px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 256px 0 / 1px 6px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 299px 0 / 1px 6px no-repeat,
+    repeating-linear-gradient(135deg, var(--ho-ink) 0 1px, transparent 1px 3.5px) 256px 0 / 44px 6px no-repeat;
+}
+.deck-theme-holdout.px-slide[data-layout=section-header] [data-placeholder=title] h1::after,
+.deck-theme-holdout .px-slide[data-layout=section-header] [data-placeholder=title] h1::after {
+  content: "train 70%                        val    test";
+  width: 360px;
+  height: auto;
+  padding-top: 13px;
+  background:
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 0 0 / 250px 6px no-repeat,
+    linear-gradient(var(--ho-val), var(--ho-val)) 253px 0 / 51px 6px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 307px 0 / 53px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 307px 5px / 53px 1px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 307px 0 / 1px 6px no-repeat,
+    linear-gradient(var(--ho-ink), var(--ho-ink)) 359px 0 / 1px 6px no-repeat,
+    repeating-linear-gradient(135deg, var(--ho-ink) 0 1px, transparent 1px 3.5px) 307px 0 / 53px 6px no-repeat;
+  color: #5a6270;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: left;
+  white-space: pre;
+}
+.deck-theme-holdout.px-slide[data-layout=section-header][data-own-background] [data-placeholder=title] h1::after,
+.deck-theme-holdout .px-slide[data-layout=section-header][data-own-background] [data-placeholder=title] h1::after { color: inherit; }
+
+/* A Heading 4: a kicker in mono capitals */
+.deck-theme-holdout .px-text h4 {
+  margin: 0 0 0.5em !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 0.4em;
+  font-weight: 500;
+  letter-spacing: 0.14em !important;
+  line-height: 1.3;
+  text-transform: uppercase !important;
+  color: #5a6270 !important;
+}
+
+/* Bullets: the class markers in ink, circle, triangle and square in turn,
+   each a shape of the same area; under them, short dashes. */
+.deck-theme-holdout .px-text ul { list-style: none; }
+.deck-theme-holdout .px-text ul > li { position: relative; }
+.deck-theme-holdout .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: 0.58em;
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: currentColor;
+}
+.deck-theme-holdout .px-text ul > li:nth-child(3n+2)::before {
+  top: 0.53em;
+  width: 0.42em;
+  height: 0.4em;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.deck-theme-holdout .px-text ul > li:nth-child(3n)::before { width: 0.32em; height: 0.32em; top: 0.6em; border-radius: 0; }
+.deck-theme-holdout .px-text ul ul > li::before,
+.deck-theme-holdout .px-text ul ul > li:nth-child(n)::before {
+  top: 0.72em;
+  width: 0.4em;
+  height: 0.08em;
+  border-radius: 0;
+  clip-path: none;
+  background: #5a6270;
+}
+.deck-theme-holdout .px-text ol > li::marker { color: #5a6270; font-family: 'Roboto Mono', monospace; font-size: 0.8em; font-weight: 500; }
+
+/* Links in class A's blue */
+.deck-theme-holdout .px-text a { color: var(--px-link, #1d4f91) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: Roboto Mono on the band color */
+.deck-theme-holdout .px-text :not(pre) > code {
+  padding: 0.05em 0.3em;
+  border-radius: 0.15em;
+  background: #e9ece7 !important;
+  color: #161b22;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.82em;
+}
+
+/* Quotes: an ink rule at the edge. One whose first words are bold is a
+   model card, its label in the ink header band. */
+.deck-theme-holdout .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.1em 0 0.1em 0.65em !important;
+  border: 0 !important;
+  border-left: 0.1em solid #161b22 !important;
+  background: none;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-holdout .px-text blockquote:has(> p:first-child > strong:first-child) {
+  overflow: hidden;
+  padding: 0 0.7em 0.45em !important;
+  border: 0.055em solid #161b22 !important;
+  border-radius: 0.1em;
+  background: #ffffff;
+}
+.deck-theme-holdout .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin: 0 -1.2em 0.45em;
+  padding: 0.4em 1.2em 0.35em;
+  background: #161b22;
+  color: #f7f8f6;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.deck-theme-holdout .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Roboto Mono on a white panel with an ink edge, Holdout's own syntax
+   colors whichever code theme the deck uses: the classes' dark tones */
+.deck-theme-holdout :is(pre, pre.hljs) {
+  background: #ffffff !important;
+  color: #161b22;
+  border: 1.5px solid #161b22;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+.deck-theme-holdout :is(pre.hljs, pre code) { font-family: 'Roboto Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-holdout pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-holdout .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.58em; line-height: 1.5; }
+.deck-theme-holdout pre [class*=hljs-] { color: #161b22; font-style: normal; font-weight: 400; }
+.deck-theme-holdout pre :is(.hljs-comment, .hljs-quote) { color: #5a6270; font-style: italic; }
+.deck-theme-holdout pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #1d4f91; font-weight: 500; }
+.deck-theme-holdout pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #985810; }
+.deck-theme-holdout pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #0b5f47; }
+.deck-theme-holdout pre :is(.hljs-title, .hljs-section, .hljs-title.class_) { font-weight: 500; }
+.deck-theme-holdout pre :is(.hljs-meta, .hljs-deletion) { color: #8c4570; }
+
+/* Tables: a model card. An ink edge, an ink header row in mono capitals on
+   paper, white rows with hairlines, the first column in Rubik and the rest
+   in Roboto Mono with tabular figures. */
+.deck-theme-holdout table { border: 1.5px solid #161b22 !important; background: #ffffff; }
+.deck-theme-holdout table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d8dcd6 !important;
+  background: #ffffff !important;
+  color: #161b22 !important;
+  font-family: 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-holdout table tr > :first-child { font-family: Rubik, sans-serif; font-weight: 500; }
+.deck-theme-holdout table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #161b22 !important;
+  color: #f7f8f6 !important;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The Big Number: a figure in Roboto Mono, in ink */
+.deck-theme-holdout.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-holdout .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #161b22) !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-weight: 500;
+  letter-spacing: -0.04em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The footer: the run strip, a hairline above mono type. The page number
+   comes first, as the epoch. With the footer's sections in sequence, each
+   has a rule over it: solid when done, bold with a dot at its end for the
+   current one, dashed for those to come. (The class and the slide both
+   named, to outweigh the presented deck's footer rules.) */
+.deck-theme-holdout.px-slide .px-footer,
+.deck-theme-holdout .px-slide .px-footer {
+  padding: 7px 24px 0;
+  border-top: 1px solid #d8dcd6;
+  color: #5a6270 !important;
+}
+.deck-theme-holdout.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-holdout .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: #5a6270 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  white-space: nowrap;
+}
+.deck-theme-holdout.px-slide .px-footer .px-footer-page,
+.deck-theme-holdout .px-slide .px-footer .px-footer-page { color: #161b22 !important; font-weight: 600 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-holdout.px-slide .px-footer .px-footer-page::before,
+.deck-theme-holdout .px-slide .px-footer .px-footer-page::before { content: "epoch "; color: #5a6270; font-weight: 400; }
+.deck-theme-holdout.px-slide .px-footer[data-footer=sequence] .px-footer-page,
+.deck-theme-holdout .px-slide .px-footer[data-footer=sequence] .px-footer-page { order: -1; margin: 0 28px 0 0 !important; }
+.deck-theme-holdout.px-slide .px-footer .px-footer-sections,
+.deck-theme-holdout .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 16px; }
+.deck-theme-holdout.px-slide .px-footer .px-footer-section,
+.deck-theme-holdout .px-slide .px-footer .px-footer-section {
+  position: relative;
+  padding-top: 6px;
+  color: #161b22 !important;
+  font-family: Rubik, sans-serif !important;
+  font-weight: 500 !important;
+}
+.deck-theme-holdout.px-slide .px-footer .px-footer-section::before,
+.deck-theme-holdout .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  border-top: 1.5px solid currentColor;
+}
+.deck-theme-holdout.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-holdout .px-slide .px-footer .px-footer-section[data-state=current] { font-weight: 700 !important; }
+.deck-theme-holdout.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-holdout .px-slide .px-footer .px-footer-section[data-state=current]::after {
+  content: "";
+  position: absolute;
+  right: -3px; top: -2.5px;
+  width: 5.5px; height: 5.5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.deck-theme-holdout.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-holdout .px-slide .px-footer .px-footer-section[data-state=future] { color: #8a919c !important; font-weight: 400 !important; }
+.deck-theme-holdout.px-slide .px-footer .px-footer-section[data-state=future]::before,
+.deck-theme-holdout .px-slide .px-footer .px-footer-section[data-state=future]::before { border-top-style: dashed; }
+
+/* ...and on a slide with a background of its own, in its text color */
+.deck-theme-holdout.px-slide[data-own-background] .px-footer,
+.deck-theme-holdout .px-slide[data-own-background] .px-footer { border-top-color: transparent; }
+.deck-theme-holdout.px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-holdout .px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-holdout.px-slide[data-own-background] .px-footer .px-footer-page::before,
+.deck-theme-holdout .px-slide[data-own-background] .px-footer .px-footer-page::before { color: var(--px-text) !important; }
+.deck-theme-holdout.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-holdout .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.6; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the split rule under the title */
+.deck-theme-holdout .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 60%;
+  height: 3px;
+  margin: 3px 0 0;
+  background: linear-gradient(90deg, #161b22 0 69%, transparent 69% 71%, #8a919c 71% 84%, transparent 84% 86%, #161b22 86%);
+}

@@ -20,8 +20,12 @@ import transit from '../themes/transit.css?raw'
 import trace from '../themes/trace.css?raw'
 import prompt from '../themes/prompt.css?raw'
 import zenith from '../themes/zenith.css?raw'
+import quincunx from '../themes/quincunx.css?raw'
+import partition from '../themes/partition.css?raw'
+import holdout from '../themes/holdout.css?raw'
+import separatrix from '../themes/separatrix.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {
