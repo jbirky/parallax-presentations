@@ -6484,7 +6484,8 @@ var THEME_LIST = [
   { id: "preprint", label: "Preprint", background: "#fffdf8", text: "#161616", heading: "#161616", link: "#1f4e9c", dark: false, reveal: "white", font: "'Computer Modern Serif', serif", textStyles: { bodySize: 26, h1Size: 46, h2Size: 34, h3Size: 28, headingWeight: 700 }, note: "A typeset paper: Computer Modern Serif, justified paragraphs, quotes as an abstract, booktabs tables, footnotes and figure captions" },
   { id: "transit", label: "Transit", background: "#ffffff", text: "#1b1b1f", heading: "#1b1b1f", link: "#0b62c4", accent: "#e2231a", dark: false, reveal: "white", font: "Barlow, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: "A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables" },
   { id: "trace", label: "Trace", background: "#fcfcfe", backgroundCss: "radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe", text: "#1c1e2e", heading: "#1c1e2e", link: "#4338ca", accent: "#4338ca", dark: false, reveal: "white", font: "Figtree, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 28, headingFont: "Figtree, sans-serif", headingWeight: 800 }, note: "Algorithms: a dot grid, cells and index cells, complexity chips, invariant callouts, code in Fira Code" },
-  { id: "prompt", label: "Prompt", background: "#101317", text: "#dde2de", heading: "#f5f7f3", link: "#5c9cff", accent: "#7ed67a", dark: true, reveal: "black", font: "'Fira Code', monospace", textStyles: { bodySize: 22, h1Size: 56, h2Size: 26, h3Size: 22, headingFont: "'Fira Code', monospace", headingWeight: 600 }, note: "A terminal window: titles typed at a prompt, # comments, man-page sections, a tmux status bar" }
+  { id: "prompt", label: "Prompt", background: "#101317", text: "#dde2de", heading: "#f5f7f3", link: "#5c9cff", accent: "#7ed67a", dark: true, reveal: "black", font: "'Fira Code', monospace", textStyles: { bodySize: 22, h1Size: 56, h2Size: 26, h3Size: 22, headingFont: "'Fira Code', monospace", headingWeight: 600 }, note: "A terminal window: titles typed at a prompt, # comments, man-page sections, a tmux status bar" },
+  { id: "zenith", label: "Zenith", background: "#000000", text: "#f6f6f6", heading: "#ffffff", link: "#ff5c52", accent: "#f64137", dark: true, reveal: "black", font: "'Public Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 72, h2Size: 44, h3Size: 28, headingFont: "Inter, sans-serif", headingWeight: 800 }, note: "Space science, photo-led: a gradient over slide photos, Inter headings, mono labels and red link arrows" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -30381,8 +30382,246 @@ var prompt_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-prompt .theme-swatch-title::after { content: ""; display: inline-block; width: 0.5em; height: 0.95em; margin-left: 0.1em; vertical-align: -0.12em; background: #dde2de; }
 `;
 
+// raw:client/src/themes/zenith.css
+var zenith_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Zenith theme's stylesheet: space science, photo-led, on black.
+   Headings in Inter 800 with tight leading, text in Public Sans, labels in
+   DM Mono capitals, and one red (#f64137) for what you can act on: link
+   buttons, the current section, markers (utils/themes.js: the font and the
+   text sizes, which the Themes panel's Text tab can change). No agency's
+   name or insignia anywhere.
+
+   It's scoped to .deck-theme-zenith, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme.
+
+   A slide with a background of its own (a photograph) gets a 66° gradient
+   from black to clear behind its words, and a fade at its foot. The
+   subtitle of title and section slides is an eyebrow in mono capitals.
+   A Heading 4 is a topic tag, a Heading 5 a mono label, a Heading 6 a
+   caption whose bold words are its credit. A bold link is a link button
+   with a red arrow circle; a big number has a short red rule over it.
+   The footer's sections in sequence are mono capitals, the current one
+   white over a red line. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-zenith {
+  --r-background-color: #000000;
+  --r-main-color: #f6f6f6;
+  --r-heading-color: #ffffff;
+  --r-link-color: #ff5c52;
+  --r-link-color-dark: #f64137;
+  --r-link-color-hover: #ffffff;
+  --r-selection-background-color: #f64137;
+  --r-selection-color: #ffffff;
+}
+
+/* A photograph behind the slide: the gradient behind the words, and a fade
+   at the foot for captions and the footer (drawn under every element) */
+.deck-theme-zenith.px-slide[data-own-background]::before,
+.deck-theme-zenith .px-slide[data-own-background]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(0deg, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0) 24%),
+    linear-gradient(66deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.62) 34%, rgba(0, 0, 0, 0) 72%);
+  pointer-events: none;
+}
+
+/* Text: Public Sans, with room between lines */
+.deck-theme-zenith .px-text { line-height: 1.5; }
+
+/* Headings: Inter 800, tight, slightly negative tracking */
+.deck-theme-zenith .px-text :is(h1, h2, h3) {
+  letter-spacing: -0.02em !important;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.deck-theme-zenith .px-text :is(h1, h2, h3) em { font-style: normal; color: #ff5c52; }
+
+/* Title and section slides: the subtitle is an eyebrow in mono capitals */
+.deck-theme-zenith.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-zenith .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=subtitle] :is(p, li) {
+  font-family: 'DM Mono', ui-monospace, monospace !important;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: #b9b9bb;
+}
+
+/* A Heading 4: a topic tag, outlined in gray with small corners */
+.deck-theme-zenith .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.6em !important;
+  padding: 0.22em 0.5em;
+  border: 1px solid #58585b;
+  border-radius: 4px;
+  font-family: 'Public Sans', sans-serif !important;
+  font-size: 0.55em;
+  font-weight: 400 !important;
+  line-height: 1.3;
+  color: #b9b9bb !important;
+}
+.deck-theme-zenith .px-text h4[style*="center"] { margin-inline: auto !important; }
+.deck-theme-zenith .px-text h4[style*="right"] { margin-left: auto !important; }
+
+/* A Heading 5: a label in mono capitals */
+.deck-theme-zenith .px-text h5 {
+  font-family: 'DM Mono', ui-monospace, monospace !important;
+  font-size: 0.46em;
+  font-weight: 500;
+  letter-spacing: 0.3em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+  color: #b9b9bb !important;
+}
+
+/* A Heading 6: a caption in gray; its bold words are the credit, in white */
+.deck-theme-zenith .px-text h6 {
+  font-family: 'Public Sans', sans-serif !important;
+  font-size: 0.5em;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #b9b9bb !important;
+}
+.deck-theme-zenith .px-text h6 strong { font-weight: 400; color: #ffffff; }
+
+/* Bullets and numbers in gray: red is kept for what you can act on */
+.deck-theme-zenith .px-text li::marker { color: #959599; }
+.deck-theme-zenith .px-text ol > li::marker { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.8em; }
+
+/* Links in the red tint; a bold link is a link button: bold Inter, then a
+   red circle with an arrow, darker on hover */
+.deck-theme-zenith .px-text a { color: #ff5c52 !important; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+.deck-theme-zenith .px-text strong > a:only-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  color: #ffffff !important;
+  font-family: Inter, sans-serif;
+  font-weight: 700;
+  text-decoration: none;
+}
+.deck-theme-zenith .px-text strong > a:only-child::after {
+  content: "";
+  flex: none;
+  width: 1.6em;
+  height: 1.6em;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%2716%27%20fill%3D%27%23f64137%27%2F%3E%3Cpath%20d%3D%27M10%2016h11M16.5%2010.5%2022%2016l-5.5%205.5%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+.deck-theme-zenith .px-text strong > a:only-child:hover::after { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2032%2032%27%3E%3Ccircle%20cx%3D%2716%27%20cy%3D%2716%27%20r%3D%2716%27%20fill%3D%27%23b60109%27%2F%3E%3Cpath%20d%3D%27M10%2016h11M16.5%2010.5%2022%2016l-5.5%205.5%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fsvg%3E"); }
+
+/* Big numbers: a short red rule over the number, in white */
+.deck-theme-zenith.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-zenith .px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-zenith .px-text:not([data-placeholder]) h1 {
+  color: #ffffff !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1;
+}
+.deck-theme-zenith.px-slide[data-layout=big-number] [data-placeholder=title] h1::before,
+.deck-theme-zenith .px-slide[data-layout=big-number] [data-placeholder=title] h1::before,
+.deck-theme-zenith .px-text:not([data-placeholder]) h1::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 3px;
+  margin-bottom: 0.25em;
+  background: #f64137;
+}
+.deck-theme-zenith .px-text h1[style*="center"]::before { margin-inline: auto; }
+.deck-theme-zenith .px-text h1[style*="right"]::before { margin-left: auto; }
+
+/* Quotes: a statement in Inter, its last line the source in mono capitals */
+.deck-theme-zenith .px-text blockquote {
+  border-left: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  padding-left: 0 !important;
+  opacity: 1 !important;
+  font-family: Inter, sans-serif;
+  font-size: 1.1em;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+}
+.deck-theme-zenith .px-text blockquote > p:last-child:not(:first-child) {
+  margin-top: 0.8em !important;
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 0.42em;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #959599;
+}
+
+/* Tables: quick facts, a mono label over each value, hairlines between */
+.deck-theme-zenith .px-text table { border-collapse: collapse; }
+.deck-theme-zenith .px-text :is(th, td) { border: 0 !important; border-bottom: 1px solid #2e2e32 !important; padding: 0.35em 1.2em 0.35em 0 !important; text-align: left; }
+.deck-theme-zenith .px-text th { font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.6em; font-weight: 500; letter-spacing: 0.24em; text-transform: uppercase; color: #959599; }
+.deck-theme-zenith .px-text td { font-family: Inter, sans-serif; font-weight: 600; color: #ffffff; }
+
+/* Code: DM Mono on carbon */
+.deck-theme-zenith .px-text :not(pre) > code { padding: 0.1em 0.35em; border-radius: 4px; background: #17171b !important; color: #f6f6f6; font-family: 'DM Mono', ui-monospace, monospace; font-size: 0.85em; }
+.deck-theme-zenith .px-text pre { background: #17171b !important; border: 1px solid #2e2e32; border-radius: 6px; }
+.deck-theme-zenith .px-text pre code { background: none !important; font-family: 'DM Mono', ui-monospace, monospace; }
+
+/* The footer: mono capitals in gray over a hairline; with its sections in
+   sequence, the current one white over a red line. (The class and the slide
+   both named, to outweigh the presented deck's footer rules.) */
+.deck-theme-zenith.px-slide .px-footer,
+.deck-theme-zenith .px-slide .px-footer {
+  padding-top: 6px;
+  border-top: 1px solid #2e2e32;
+  color: #959599 !important;
+}
+.deck-theme-zenith.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-zenith .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  font-family: 'DM Mono', ui-monospace, monospace !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.deck-theme-zenith.px-slide .px-footer .px-footer-page,
+.deck-theme-zenith .px-slide .px-footer .px-footer-page { color: #ffffff !important; font-variant-numeric: tabular-nums; }
+.deck-theme-zenith.px-slide .px-footer .px-footer-section,
+.deck-theme-zenith .px-slide .px-footer .px-footer-section {
+  padding: 4px 0 3px;
+  border-bottom: 2px solid transparent;
+  color: #959599 !important;
+  white-space: nowrap;
+}
+.deck-theme-zenith.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-zenith .px-slide .px-footer .px-footer-section[data-state=past] { color: #58585b !important; }
+.deck-theme-zenith.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-zenith .px-slide .px-footer .px-footer-section[data-state=current] {
+  color: #ffffff !important;
+  border-bottom-color: var(--px-section-color, #f64137);
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx): a
+   glow of nebula behind the gradient */
+.deck-theme-zenith.theme-swatch {
+  background:
+    linear-gradient(66deg, #000 0%, rgba(0, 0, 0, 0.6) 40%, rgba(0, 0, 0, 0) 75%),
+    radial-gradient(120% 90% at 85% 20%, #7a3b1d 0%, #2a1636 45%, #000 80%) !important;
+}
+.deck-theme-zenith .theme-swatch-title { letter-spacing: -0.02em; }
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -31649,7 +31888,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("@highlightjs/cdn-assets", `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">

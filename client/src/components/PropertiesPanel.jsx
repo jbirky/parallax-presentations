@@ -251,6 +251,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="Manrope, sans-serif">Manrope</option>
         <option value="Geist, sans-serif">Geist</option>
         <option value="Figtree, sans-serif">Figtree</option>
+        <option value="'Public Sans', sans-serif">Public Sans</option>
         <option value="Jost, sans-serif">Jost</option>
         <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
         <option value="'Press Start 2P', monospace">Press Start 2P</option>
@@ -288,6 +289,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'Courier New', monospace">Courier New</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+        <option value="'DM Mono', monospace">DM Mono</option>
         <option value="Inconsolata, monospace">Inconsolata</option>
         <option value="'Roboto Mono', monospace">Roboto Mono</option>
         <option value="'Space Mono', monospace">Space Mono</option>

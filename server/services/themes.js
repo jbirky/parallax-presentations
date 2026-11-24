@@ -6,7 +6,8 @@
 
 // The presentation themes: reveal.js 5's, whose page color, heading color and
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
-// Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt), which
+// Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
+// Zenith), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -46,6 +47,7 @@ const THEME_LIST = [
   { id: 'transit', label: 'Transit', background: '#ffffff', text: '#1b1b1f', heading: '#1b1b1f', link: '#0b62c4', accent: '#e2231a', dark: false, reveal: 'white', font: 'Barlow, sans-serif', textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: 'A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables' },
   { id: 'trace', label: 'Trace', background: '#fcfcfe', backgroundCss: 'radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe', text: '#1c1e2e', heading: '#1c1e2e', link: '#4338ca', accent: '#4338ca', dark: false, reveal: 'white', font: 'Figtree, sans-serif', textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 28, headingFont: 'Figtree, sans-serif', headingWeight: 800 }, note: 'Algorithms: a dot grid, cells and index cells, complexity chips, invariant callouts, code in Fira Code' },
   { id: 'prompt', label: 'Prompt', background: '#101317', text: '#dde2de', heading: '#f5f7f3', link: '#5c9cff', accent: '#7ed67a', dark: true, reveal: 'black', font: "'Fira Code', monospace", textStyles: { bodySize: 22, h1Size: 56, h2Size: 26, h3Size: 22, headingFont: "'Fira Code', monospace", headingWeight: 600 }, note: 'A terminal window: titles typed at a prompt, # comments, man-page sections, a tmux status bar' },
+  { id: 'zenith', label: 'Zenith', background: '#000000', text: '#f6f6f6', heading: '#ffffff', link: '#ff5c52', accent: '#f64137', dark: true, reveal: 'black', font: "'Public Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 72, h2Size: 44, h3Size: 28, headingFont: "Inter, sans-serif", headingWeight: 800 }, note: 'Space science, photo-led: a gradient over slide photos, Inter headings, mono labels and red link arrows' },
 ]
 
 const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

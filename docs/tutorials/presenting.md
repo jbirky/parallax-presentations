@@ -47,7 +47,7 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt, Zenith
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
@@ -76,6 +76,8 @@ Transit looks like a transit map. Slide titles are stops with the line running i
 Trace is for algorithms and data structures: a whiteboard's dot grid, titles in Figtree and code in Fira Code. The title slide's title sits over a row of cells mid-sort, and section titles and the Big Number are cells. A Heading 4 is a complexity chip, such as `O(n log n)`. A quote is a margin note, and one whose first words are **bold** (`> **Invariant.** …`) is a dashed callout. Numbered lists count from 0 in index cells, bullets are small cells, and tables have ink rules. With the footer's sections in sequence, they're a row of cells: done in teal, the current one dashed in amber.
 
 Prompt is a terminal window. Every slide has the window's title bar, slide titles are commands typed after `~/talk $` with a blinking block cursor, and everything is in Fira Code on a dark window. Subtitles and quotes are `#` comments; a quote whose first words are **bold** is a yellow warning, and *italic* a red error. Bullets are `-` lines, numbered lists count as `cat -n` does, a Heading 4 is a command after `$`, and section slides are man pages, with NAME and DESCRIPTION. With the footer's sections in sequence, the footer is a tmux status bar, the current section marked `*`.
+
+Zenith is for space-science talks, and is at its best with photographs. Text is Public Sans on black, headings Inter 800, and red marks what you can act on. Give a slide a background image and Zenith darkens it from the lower left, behind the words, and at the foot for the footer. The subtitle of a title or section slide is a label in spaced mono capitals. A Heading 4 is a topic tag, a Heading 5 a mono label, and a Heading 6 a caption whose **bold** words (the credit) are white. A link that is all **bold** is a link button with a red arrow. A big number gets a short red rule above it, a table's header row is in mono capitals, and a quote's last line is its source. The footer's sections in sequence are mono capitals, the current one over a red line.
 
 Turin, Gutter, Lemma, Beamline, Ledger, Transit and Prompt draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, Ledger's headers and tab, and Transit's route map show only on slides without a background of their own.
 

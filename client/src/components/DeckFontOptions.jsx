@@ -22,6 +22,7 @@ export default function DeckFontOptions() {
         <option value="Geist, sans-serif">Geist</option>
         <option value="'Titillium Web', sans-serif">Titillium Web</option>
         <option value="Figtree, sans-serif">Figtree</option>
+        <option value="'Public Sans', sans-serif">Public Sans</option>
         <option value="Jost, sans-serif">Jost</option>
         <option value="Ubuntu, sans-serif">Ubuntu</option>
         <option value="Rubik, sans-serif">Rubik</option>
@@ -61,6 +62,7 @@ export default function DeckFontOptions() {
         <option value="'Space Mono', monospace">Space Mono</option>
         <option value="VT323, monospace">VT323</option>
         <option value="'B612 Mono', monospace">B612 Mono</option>
+        <option value="'DM Mono', monospace">DM Mono</option>
       </optgroup>
       <optgroup label="Display">
         <option value="Impact, sans-serif">Impact</option>
