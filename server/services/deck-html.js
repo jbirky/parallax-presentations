@@ -6125,6 +6125,8 @@ function findCitations(text, bibliography = []) {
   }
   return hits.sort((a, b) => a.pos - b.pos);
 }
+var CODE_TYPES = /* @__PURE__ */ new Set(["html", "p5", "code", "latex", "tikz"]);
+var citesInContent = (el) => typeof el.content === "string" && el.content !== "" && !CODE_TYPES.has(el.type);
 function citedKeysInPresentationOrder(bibliography, slides) {
   const known = new Set(bibliography.map((e) => e.key));
   const seen = /* @__PURE__ */ new Set();
@@ -6138,7 +6140,7 @@ function citedKeysInPresentationOrder(bibliography, slides) {
   for (const slide of slides || []) {
     const elements = [...slide.elements || []].sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
     for (const el of elements) {
-      const text = [el.content, el.citationText].filter(Boolean).join("\n");
+      const text = [citesInContent(el) && el.content, el.citationText].filter(Boolean).join("\n");
       for (const { key } of findCitations(text, bibliography)) cite(key);
       if ((el.citationText || el.citationLink) && known.has(el.citationKey)) cite(el.citationKey);
     }
@@ -28809,8 +28811,10 @@ var beamline_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-beamline .px-text ul ul > li::marker { content: "\\2013  "; color: #8a99b2; font-size: 1em; }
 .deck-theme-beamline .px-text ol > li::marker { color: #e08a4f; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.85em; }
 
-/* Links: blue, without the underline */
+/* Links: blue, without the underline; citation markers in blue too, over
+   the indigo they're written in */
 .deck-theme-beamline .px-text a { color: var(--px-link, #4fb4ff) !important; text-decoration: none !important; border-bottom: 0.06em solid rgba(79, 180, 255, 0.45); }
+.deck-theme-beamline .px-text sup[data-cite] { color: var(--px-link, #4fb4ff) !important; }
 
 /* Quotes: a readout panel, edged copper to blue; a bold first line is its
    copper label */

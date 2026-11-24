@@ -131,8 +131,10 @@
 .deck-theme-beamline .px-text ul ul > li::marker { content: "\2013  "; color: #8a99b2; font-size: 1em; }
 .deck-theme-beamline .px-text ol > li::marker { color: #e08a4f; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.85em; }
 
-/* Links: blue, without the underline */
+/* Links: blue, without the underline; citation markers in blue too, over
+   the indigo they're written in */
 .deck-theme-beamline .px-text a { color: var(--px-link, #4fb4ff) !important; text-decoration: none !important; border-bottom: 0.06em solid rgba(79, 180, 255, 0.45); }
+.deck-theme-beamline .px-text sup[data-cite] { color: var(--px-link, #4fb4ff) !important; }
 
 /* Quotes: a readout panel, edged copper to blue; a bold first line is its
    copper label */
