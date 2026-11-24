@@ -67,7 +67,7 @@ import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
 import { slidePalette, deckTextStyles, paletteVars } from '../utils/themes'
-import { SLIDE_CLASS, TEXT_CLASS, slideLayout, textPlaceholder } from '../utils/slideHooks'
+import { SLIDE_CLASS, TEXT_CLASS, FOOTER_CLASS, slideLayout, textPlaceholder, footerSectionState } from '../utils/slideHooks'
 import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
@@ -1256,21 +1256,23 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             screen: presenting, it stays at the foot of the screen as the canvas scrolls. */}
         {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && (
           footerMode === 'sequence' && sequenceSections.length > 0 ? (
-            <div style={{
+            <div className={FOOTER_CLASS} data-footer="sequence" style={{
               position: 'absolute', bottom: 6 + CANVAS_H - SLIDE_H, left: 16, right: 16 + CANVAS_W - SLIDE_W, zIndex: 900,
               display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0,
               fontSize: footerFontSize, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
             }}>
               {showTimeWidget && (
-                <span style={{ color: footerColor, marginRight: 12, flexShrink: 0 }}>{timeDisplay}</span>
+                <span className="px-footer-time" style={{ color: footerColor, marginRight: 12, flexShrink: 0 }}>{timeDisplay}</span>
               )}
-              <div style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' }}>
+              <div className="px-footer-sections" style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' }}>
                 {sequenceSections.map((sec, i) => {
                   const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-                  const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : (footerColor || 'rgba(255,255,255,0.9)')
+                  const own = typeof sec === 'object' && sec?.color ? sec.color : ''
+                  const secActiveColor = own || footerColor || 'rgba(255,255,255,0.9)'
                   return (
-                    <span key={i} style={{
+                    <span key={i} className="px-footer-section" data-state={footerSectionState(i, activeSection)} style={{
+                      ...(own ? { '--px-section-color': own } : {}),
                       color: activeSection === i ? secActiveColor : footerInactiveColor,
                       fontWeight: activeSection === i ? 700 : 400,
                       fontSize: footerFontSize,
@@ -1282,20 +1284,20 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
                 })}
               </div>
               {showPageNumbers && pageNumber != null && (
-                <span style={{ color: footerColor, marginLeft: 12, flexShrink: 0 }}>
+                <span className="px-footer-page" style={{ color: footerColor, marginLeft: 12, flexShrink: 0 }}>
                   {pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`}
                 </span>
               )}
             </div>
           ) : (
-            <div style={{
+            <div className={FOOTER_CLASS} data-footer="basic" style={{
               position: 'absolute', bottom: 8 + CANVAS_H - SLIDE_H, left: 16, right: 16 + CANVAS_W - SLIDE_W, zIndex: 900,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               fontSize: footerFontSize, color: footerColor, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
             }}>
-              <span>{showTimeWidget ? timeDisplay : ''}{showTimeWidget && showFooter && sectionName ? ' — ' : ''}{showFooter ? sectionName : ''}</span>
-              <span>{showPageNumbers && pageNumber != null ? (pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`) : ''}</span>
+              <span className="px-footer-label">{showTimeWidget ? timeDisplay : ''}{showTimeWidget && showFooter && sectionName ? ' — ' : ''}{showFooter ? sectionName : ''}</span>
+              <span className="px-footer-page">{showPageNumbers && pageNumber != null ? (pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`) : ''}</span>
             </div>
           )
         )}

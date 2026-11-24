@@ -1,0 +1,202 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Preprint theme's stylesheet: slides set like a paper, in Computer
+   Modern Serif on paper white (utils/themes.js: the font and the text sizes,
+   which the Themes panel's Text tab can change). It's scoped to
+   .deck-theme-preprint, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   Content slides have a running head's rule; body text is justified, and a
+   paragraph after another is indented. The title slide is a title block,
+   with the authors in small capitals; section titles start with §. A quote
+   is an abstract, whose first line in bold is its heading; a Heading 5 is a
+   footnote, under a short rule; a Heading 6 a figure caption. Tables are
+   drawn with booktabs' rules, and page numbers sit at the foot of the page,
+   centered. */
+
+/* reveal.js: links, the arrows and the progress bar in link blue */
+.deck-theme-preprint {
+  --r-background-color: #fffdf8;
+  --r-main-color: #161616;
+  --r-heading-color: #161616;
+  --r-link-color: #1f4e9c;
+  --r-link-color-dark: #15376e;
+  --r-link-color-hover: #15376e;
+  --r-selection-background-color: #c9d8f0;
+  --r-selection-color: #161616;
+}
+
+/* The running head's rule, across the top of content slides */
+.deck-theme-preprint.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-preprint .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 40px; right: 40px; top: 26px;
+  border-top: 1px solid #161616;
+  pointer-events: none;
+}
+
+/* The title slide: a title block, a short rule, the authors in small
+   capitals, and a stamp down the margin */
+.deck-theme-preprint.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-preprint .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 2.4em;
+  margin: 0.4em auto 0;
+  border-top: 0.03em solid currentColor;
+}
+.deck-theme-preprint.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-preprint .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  font-variant: small-caps;
+  letter-spacing: 0.03em;
+}
+.deck-theme-preprint.px-slide[data-layout=title]::before,
+.deck-theme-preprint .px-slide[data-layout=title]::before {
+  content: "Preprint";
+  position: absolute;
+  left: 18px; top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  color: #8c8a84;
+  font-family: 'Computer Modern Typewriter', monospace;
+  font-size: 13px;
+  letter-spacing: 0.24em;
+  pointer-events: none;
+}
+
+/* Section titles start with § */
+.deck-theme-preprint.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-preprint .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before {
+  content: "\00A7\2002";
+  font-weight: 400;
+  color: #8c8a84;
+}
+.deck-theme-preprint.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-preprint .px-slide[data-layout=section-header] [data-placeholder=subtitle] p {
+  font-style: italic;
+}
+
+/* The Big Number, in ink */
+.deck-theme-preprint.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-preprint .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #161616 !important;
+}
+
+/* Body text: justified, and indented after a paragraph, as in a paper */
+.deck-theme-preprint .px-text[data-placeholder=body] p { text-align: justify; }
+.deck-theme-preprint .px-text[data-placeholder=body] p + p { text-indent: 1.4em; }
+
+/* Headings: a Heading 4 is a paragraph heading, a Heading 5 a footnote
+   under a short rule, a Heading 6 a figure caption ("**Figure 2.** …").
+   (!important: the theme's heading weight is set with it.) */
+.deck-theme-preprint .px-text h4 { margin: 0.3em 0 0.15em !important; font-size: 0.85em; font-weight: 700; }
+.deck-theme-preprint .px-text h5 {
+  margin: 0.4em 0 0 !important;
+  font-size: 0.55em;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  text-transform: none !important;
+}
+.deck-theme-preprint .px-text h5::before {
+  content: "";
+  display: block;
+  width: 6em;
+  margin-bottom: 0.4em;
+  border-top: 1px solid #161616;
+}
+.deck-theme-preprint .px-text h6 {
+  margin: 0.3em 0 0 !important;
+  font-size: 0.58em;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  text-align: justify;
+  text-transform: none !important;
+  color: #161616 !important;
+}
+
+/* Lists: LaTeX's bullets and dashes, and (a), (b) inside numbered lists */
+.deck-theme-preprint .px-text ul > li::marker { content: "\2022  "; }
+.deck-theme-preprint .px-text ul ul > li::marker { content: "\2013  "; }
+.deck-theme-preprint .px-text ol ol > li::marker { content: "(" counter(list-item, lower-alpha) ")  "; }
+
+/* Links and citations in link blue, without the underline */
+.deck-theme-preprint .px-text a { color: var(--px-link, #1f4e9c) !important; text-decoration: none !important; }
+
+/* Quotes: an abstract, narrower and smaller; a bold first line is its
+   heading, centered in small capitals */
+.deck-theme-preprint .px-text blockquote {
+  margin: 0.2em 2.2em 0.5em !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-size: 0.86em;
+  font-style: normal;
+  text-align: justify;
+}
+.deck-theme-preprint .px-text blockquote > p:first-child > strong:only-child {
+  display: block;
+  text-align: center;
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+.deck-theme-preprint .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: typewriter, as verbatim */
+.deck-theme-preprint .px-text :not(pre) > code { padding: 0 !important; background: none !important; color: inherit; font-family: 'Computer Modern Typewriter', monospace; font-size: 0.95em; }
+.deck-theme-preprint .px-text pre { background: none !important; border: 0; box-shadow: none !important; padding: 0.2em 1.4em !important; }
+.deck-theme-preprint .px-text pre code { font-family: 'Computer Modern Typewriter', monospace !important; color: #161616; }
+
+/* Tables: booktabs' rules, thick above and below and thin under the head,
+   and nothing between columns */
+.deck-theme-preprint table { border-top: 2px solid #161616 !important; border-bottom: 2px solid #161616 !important; }
+.deck-theme-preprint table :is(td, th) {
+  border: 0 !important;
+  background: transparent !important;
+  color: #161616 !important;
+  font-family: 'Computer Modern Serif', serif;
+}
+.deck-theme-preprint table tr:first-child :is(td, th) { border-bottom: 1px solid #161616 !important; font-weight: 700; }
+
+/* The footer: the page number centered at the foot, the section's name in
+   italics at the left, in the text's serif. (The class and the slide both
+   named, to outweigh the presented deck's footer rules.) */
+.deck-theme-preprint.px-slide .px-footer,
+.deck-theme-preprint .px-slide .px-footer {
+  justify-content: center !important;
+  color: var(--px-text, #161616) !important;
+}
+.deck-theme-preprint.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-preprint .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  font-family: 'Computer Modern Serif', serif !important;
+  font-size: 15px !important;
+}
+.deck-theme-preprint.px-slide .px-footer .px-footer-label,
+.deck-theme-preprint .px-slide .px-footer .px-footer-label {
+  position: absolute;
+  left: 24px;
+  font-style: italic;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the running head's rule over a title, and a short rule under it */
+.deck-theme-preprint.theme-swatch { position: relative; }
+.deck-theme-preprint.theme-swatch::before {
+  content: "";
+  position: absolute;
+  left: 8%; right: 8%; top: 10%;
+  border-top: 1px solid #161616;
+}
+.deck-theme-preprint .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 30%;
+  margin: 0.3em auto 0;
+  border-top: 1px solid #161616;
+}

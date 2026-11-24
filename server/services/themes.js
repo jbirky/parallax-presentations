@@ -6,7 +6,7 @@
 
 // The presentation themes: reveal.js 5's, whose page color, heading color and
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
-// Gutter, Lemma, Beamline, Kourou, Ledger), which
+// Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -42,6 +42,8 @@ const THEME_LIST = [
   { id: 'beamline', label: 'Beamline', background: '#0a0e17', backgroundCss: 'radial-gradient(900px 520px at 72% 46%, #0f1828 0%, #0a0e17 62%)', text: '#e6ebf3', heading: '#ffffff', link: '#4fb4ff', dark: true, reveal: 'black', font: 'Inter, sans-serif', textStyles: { h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Manrope, sans-serif', headingWeight: 800 }, note: 'Particle physics: a beam under slide titles, a collider ring on the title slide, an event display on section slides, numbers in JetBrains Mono' },
   { id: 'kourou', label: 'Kourou', background: '#ffffff', text: '#003247', heading: '#003247', link: '#003247', accent: '#cf1d39', dark: false, reveal: 'white', font: 'Arial, sans-serif', textStyles: { bodySize: 24, h1Size: 60, h2Size: 40, h3Size: 28, headingFont: "'Titillium Web', sans-serif" }, note: 'Space science: a navy strip with a red rule, red tags, a starfield title slide and a timeline for sections, in Titillium Web and Arial' },
   { id: 'ledger', label: 'Ledger', background: '#ffffff', backgroundCss: 'linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px, linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px, #ffffff', text: '#13221b', heading: '#13221b', link: '#2457c5', accent: '#1e6b49', dark: false, reveal: 'white', font: 'Geist, sans-serif', textStyles: { bodySize: 26, h1Size: 72, h2Size: 38, h3Size: 28, headingFont: 'Geist, sans-serif', headingWeight: 700 }, note: 'A spreadsheet, for pitches: gridlines, column letters and row numbers, a formula bar before slide titles, figures in JetBrains Mono' },
+  { id: 'preprint', label: 'Preprint', background: '#fffdf8', text: '#161616', heading: '#161616', link: '#1f4e9c', dark: false, reveal: 'white', font: "'Computer Modern Serif', serif", textStyles: { bodySize: 26, h1Size: 46, h2Size: 34, h3Size: 28, headingWeight: 700 }, note: 'A typeset paper: Computer Modern Serif, justified paragraphs, quotes as an abstract, booktabs tables, footnotes and figure captions' },
+  { id: 'transit', label: 'Transit', background: '#ffffff', text: '#1b1b1f', heading: '#1b1b1f', link: '#0b62c4', accent: '#e2231a', dark: false, reveal: 'white', font: 'Barlow, sans-serif', textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: 'A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables' },
 ]
 
 const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

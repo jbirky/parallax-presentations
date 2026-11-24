@@ -704,6 +704,20 @@ describe('what a deck writes into its page', () => {
     expect(generateRevealHTML(makePresentation())).toContain('.reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }')
   })
 
+  it('marks the footer and its sections, for themes to draw them', () => {
+    const slides = [0, 1, 2].map(i => ({ id: `s${i}`, activeSection: i, elements: [] }))
+    const html = generateRevealHTML(makePresentation({ theme: 'transit', showFooter: true, showPageNumbers: true, footerMode: 'sequence', sequenceSections: [{ label: 'Why', color: '#00a650' }, 'How', 'Next'], slides }))
+    expect(html).toContain('class="reveal-footer px-footer" data-footer="sequence"')
+    expect(html).toContain('<div class="px-footer-sections"')
+    expect(html).toContain('<span class="px-footer-section" data-state="current" style="--px-section-color:#00a650;')
+    expect(html).toContain('<span class="px-footer-section" data-state="past" style="--px-section-color:#00a650;')
+    expect(html).toContain('<span class="px-footer-section" data-state="future" style="color:')
+    expect(html).toContain('class="px-footer-page"')
+    const basic = generateRevealHTML(makePresentation({ theme: 'preprint', showPageNumbers: true }))
+    expect(basic).toContain('class="reveal-footer px-footer" data-footer="basic"')
+    expect(basic).toContain('<span class="px-footer-label"></span><span class="px-footer-page">1 / 1</span>')
+  })
+
   it('keeps themes’ pictures off the background layers reveal.js copies slides’ classes onto', () => {
     expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain('.reveal .backgrounds .px-slide::before, .reveal .backgrounds .px-slide::after { content: none !important; }')
   })

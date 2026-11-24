@@ -21,6 +21,23 @@
 export const SLIDE_CLASS = 'px-slide'
 export const TEXT_CLASS = 'px-text'
 
+// The footer, where a slide shows one (the editor's canvas, the presented
+// deck and the PDF): .px-footer, with data-footer "sequence" (the deck's
+// sections in a row, Settings › Footer) or "basic". In a sequence, each
+// section is a .px-footer-section inside .px-footer-sections, with
+// data-state "past", "current" or "future" from the slide's place in the
+// sequence (slide.activeSection), and its own color, if it has one, as
+// --px-section-color. A basic footer has a .px-footer-label; either can
+// have a .px-footer-time and a .px-footer-page.
+export const FOOTER_CLASS = 'px-footer'
+
+// A section's place in the footer's sequence, for a slide in section active
+// (an index, or none)
+export function footerSectionState(i, active) {
+  if (typeof active !== 'number') return 'future'
+  return i < active ? 'past' : i === active ? 'current' : 'future'
+}
+
 const NAME = /^[\w-]{1,40}$/
 
 // A slide's layout (slideLayouts.js), as its data-layout, or ''

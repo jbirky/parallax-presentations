@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -50,6 +50,9 @@ describe('themes', () => {
     expect(deckTextStyles(null, 'kourou')).toMatchObject({ bodySize: 24, headingFont: "'Titillium Web', sans-serif" })
     expect(themeBackgroundStyle('ledger').background).toMatch(/^linear-gradient.*#ffffff$/)
     expect(slidePalette({}, 'ledger').accent).toBe('#1e6b49')
+    expect(deckTextFont('', 'preprint')).toBe("'Computer Modern Serif', serif")
+    expect(slidePalette({}, 'transit')).toMatchObject({ link: '#0b62c4', accent: '#e2231a' })
+    expect(deckTextStyles(null, 'transit')).toMatchObject({ bodySize: 28, headingWeight: 700 })
   })
 
   it('tells dark colors from light ones', () => {

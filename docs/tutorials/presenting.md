@@ -47,7 +47,7 @@ This is useful for testing HTML embeds, animations, and interactive features wit
 
 Click **Theme** in the toolbar, or choose **Slide › Theme…**, to see the themes beside the slide; clicking one applies it:
 
-- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger
+- Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula, Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit
 
 A theme sets the page, text, heading and link colors of every slide without a background of its own, in the editor and when presenting. A slide with its own background keeps it, with text colors that show on it. Colors you set on text take precedence over the theme's.
 
@@ -69,7 +69,11 @@ Kourou is for space science: navy and red, with a navy strip and a red rule alon
 
 Ledger looks like a spreadsheet, for pitches and anything with a model behind it: gridlines, column letters, row numbers and a sheet tab. Slide titles open with a formula bar's *fx*, the title slide's title and the Big Number are a selected range, and section titles are a sheet's tab. A Heading 1 in a text box is a figure in JetBrains Mono, inline code a cell reference in blue, and a quote a cell's comment whose bold first line is its label. Text is in Geist.
 
-Turin, Gutter, Lemma, Beamline and Ledger draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, and Ledger's headers and tab show only on slides without a background of their own.
+Preprint sets slides like a paper, in Computer Modern Serif on paper white. Content slides have a running head's rule, body text is justified, and a paragraph that follows another is indented. The title slide is a title block with the authors in small capitals, and section titles start with §. A quote is an abstract, narrower and smaller, whose **bold** first line is its centered heading. A Heading 5 is a footnote under a short rule, and a Heading 6 a figure caption. Tables are drawn with booktabs' rules, thick above and below and thin under the first row, and the page number sits centered at the foot of the page.
+
+Transit looks like a transit map. Slide titles are stops with the line running in from the edge, bullets are stops along a line ending at a terminus, and numbered lists count in route bullets of different line colors. Section titles are station signs, the title slide sits on a route map, a quote is a yellow service notice, a table is a timetable and a Heading 4 is a route's tag. Turn on the footer's sections in sequence (**Settings › Footer**) and the footer becomes the route: the sections you've passed, the one you're in, and the ones to come, each in its line's color (a section's own color if you gave it one). Text is in Barlow.
+
+Turin, Gutter, Lemma, Beamline, Ledger and Transit draw their bands and pictures behind what's on the slide, so a full-slide image covers them. Kourou's starfield and timeline, Beamline's ring and event display, Ledger's headers and tab, and Transit's route map show only on slides without a background of their own.
 
 ### Your own colors
 
@@ -86,6 +90,9 @@ The **CSS** tab holds a stylesheet for this deck's slides. It shows on the slide
 | `.px-text` | every text box |
 | `[data-placeholder=title]` | a layout's title, subtitle or body |
 | `var(--px-accent)` | the slide's colors: `--px-bg`, `--px-text`, `--px-heading`, `--px-link`, `--px-accent` |
+| `.px-slide[data-own-background]` | slides with a background of their own |
+| `.px-footer` | the footer, with `data-footer="sequence"` (its sections in a row) or `"basic"`; inside it `.px-footer-label`, `.px-footer-page` and `.px-footer-time` |
+| `.px-footer-section[data-state=current]` | a section in the footer's sequence: `past`, `current` or `future` for this slide, with its color as `var(--px-section-color)` |
 
 ```css
 [data-placeholder=title] h2 { border-bottom: 6px solid var(--px-accent); }

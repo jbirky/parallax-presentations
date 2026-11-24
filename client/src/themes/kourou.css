@@ -296,6 +296,7 @@
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child em { font-style: normal; }
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) :is(h1, h2, h3) { margin: 0 0 0.25em !important; color: #ffffff !important; font-size: 1.7em; }
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) a { color: #ffffff !important; }
 
 /* Inline code */
 .deck-theme-kourou .px-text :not(pre) > code {

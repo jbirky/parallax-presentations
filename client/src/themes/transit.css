@@ -1,0 +1,331 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Transit theme's stylesheet: a transit map and its signs, in Barlow,
+   a typeface after highway signs (utils/themes.js: the font and the text
+   sizes, which the Themes panel's Text tab can change). It's scoped to
+   .deck-theme-transit, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   Slide titles are stops, with the line running in from the edge. Bullets
+   are stops on a line, numbered lists count in route bullets of the
+   lines' colors, section titles are station signs and the title slide sits
+   on a route map. A quote is a service notice, a table a timetable, and a
+   Heading 4 a route's tag. With the footer's sections shown in sequence
+   (Settings › Footer), the footer is the route: the sections passed, the
+   one you're in, and the ones to come, each in its line's color. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-transit {
+  --r-background-color: #ffffff;
+  --r-main-color: #1b1b1f;
+  --r-heading-color: #1b1b1f;
+  --r-link-color: #0b62c4;
+  --r-link-color-dark: #084a94;
+  --r-link-color-hover: #e2231a;
+  --r-selection-background-color: #ffc20e;
+  --r-selection-color: #1b1b1f;
+}
+
+/* Slide titles: a stop, and the line running in from the slide's edge */
+.deck-theme-transit.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-transit .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 66px;
+  width: 54px; height: 9px;
+  background: var(--px-accent, #e2231a);
+  pointer-events: none;
+}
+.deck-theme-transit.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-transit .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: inline-block;
+  width: 0.62em; height: 0.62em;
+  margin-right: 0.36em;
+  box-sizing: border-box;
+  border: 0.15em solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+  vertical-align: -0.04em;
+}
+
+/* The title slide: a route map behind it, but not over a background of its
+   own */
+.deck-theme-transit.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-transit .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Cpath%20d%3D%27M-20%20420H372L410%20382H980%27%20fill%3D%27none%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%20452H470L508%20414H850L908%20356V-20%27%20fill%3D%27none%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%20482H560L598%20448H980%27%20fill%3D%27none%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%2078H96L138%20120H226%27%20fill%3D%27none%27%20stroke%3D%27%23f58220%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M200%20420V407%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M300%20420V407%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M560%20382V369%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M800%20382V369%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M250%20452V465%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M620%20414V427%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M908%20290V277%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M908%20200V187%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M820%20448V461%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M900%20448V461%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M380%20482V469%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%2778%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%27226%27%20cy%3D%27120%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27420%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27452%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27482%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Crect%20x%3D%27424%27%20y%3D%27372%27%20width%3D%2726%27%20height%3D%2790%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3Crect%20x%3D%27677%27%20y%3D%27372%27%20width%3D%2726%27%20height%3D%2786%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3Crect%20x%3D%27895%27%20y%3D%27116%27%20width%3D%2726%27%20height%3D%2726%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Section titles: a station sign, white on black over a band of the line */
+.deck-theme-transit.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-transit .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.18em 0.6em 0.26em;
+  border-radius: 0.1em;
+  background: #1b1b1f;
+  box-shadow: inset 0 -0.14em 0 var(--px-accent, #e2231a);
+  color: #ffffff !important;
+}
+
+/* The Big Number: a route bullet */
+.deck-theme-transit.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-transit .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.02em 0.42em 0.06em;
+  border-radius: 999px;
+  background: var(--px-accent, #e2231a);
+  color: #ffffff !important;
+}
+
+/* Headings: tight; a Heading 4 is a route's tag */
+.deck-theme-transit .px-text :is(h1, h2, h3) { letter-spacing: -0.01em !important; line-height: 1.08; }
+.deck-theme-transit .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.6em;
+  border-radius: 999px;
+  background: var(--px-accent, #e2231a);
+  color: #ffffff !important;
+  font-size: 0.55em;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+/* Bullets: stops on a line, the last a terminus; a list inside one, ticks */
+.deck-theme-transit .px-text ul { list-style: none; padding-left: 1.5em; }
+.deck-theme-transit .px-text ul > li { position: relative; margin: 0 !important; padding-bottom: 0.32em; }
+.deck-theme-transit .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: -1.18em; top: 0.3em;
+  width: 0.62em; height: 0.62em;
+  box-sizing: border-box;
+  border: 0.15em solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+}
+.deck-theme-transit .px-text ul > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: -0.98em; top: 0.61em; bottom: -0.61em;
+  width: 0.22em;
+  background: var(--px-accent, #e2231a);
+}
+.deck-theme-transit .px-text ul > li:last-child::before { border-width: 0.21em; }
+.deck-theme-transit .px-text ul ul { padding-left: 1em; }
+.deck-theme-transit .px-text ul ul > li { padding-bottom: 0.1em; }
+.deck-theme-transit .px-text ul ul > li::before { left: -0.8em; top: 0.58em; width: 0.45em; height: 0.14em; border: 0; border-radius: 0; background: #1b1b1f; }
+.deck-theme-transit .px-text ul ul > li::after { display: none; }
+
+/* Numbered lists: route bullets, a line's color each */
+.deck-theme-transit .px-text ol { list-style: none; padding-left: 1.8em; }
+.deck-theme-transit .px-text ol > li { position: relative; }
+.deck-theme-transit .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.75em; top: 0.18em;
+  width: 1.8em; height: 1.8em;
+  border-radius: 50%;
+  background: #e2231a;
+  color: #ffffff;
+  font-size: 0.66em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.8em;
+  text-align: center;
+}
+.deck-theme-transit .px-text ol > li:nth-child(6n+1)::before { background: #e2231a; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+2)::before { background: #0072ce; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+3)::before { background: #00a650; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+4)::before { background: #f58220; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+5)::before { background: #8e44ad; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+6)::before { background: #ffc20e; color: #1b1b1f; }
+
+/* Links */
+.deck-theme-transit .px-text a { color: var(--px-link, #0b62c4) !important; text-decoration-thickness: 0.08em !important; }
+
+/* Quotes: a service notice, yellow, with a bold first line as its label */
+.deck-theme-transit .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.45em 0.7em !important;
+  border: 0 !important;
+  border-radius: 0.14em;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  background: #ffc20e;
+  color: #1b1b1f;
+  font-style: normal;
+}
+.deck-theme-transit .px-text blockquote > p:first-child > strong:only-child {
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.deck-theme-transit .px-text blockquote > p:first-child > strong:only-child::before {
+  content: "!";
+  display: inline-block;
+  width: 1.25em; height: 1.25em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: #1b1b1f;
+  color: #ffc20e;
+  line-height: 1.25em;
+  text-align: center;
+}
+.deck-theme-transit .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code */
+.deck-theme-transit .px-text :not(pre) > code { padding: 0.05em 0.3em; border-radius: 0.15em; background: #eef0f3 !important; color: #1b1b1f; font-size: 0.86em; }
+
+/* Tables: a timetable, its first row a black header, the rest banded */
+.deck-theme-transit table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d5d7db !important;
+  background: transparent !important;
+  color: #1b1b1f !important;
+  font-family: Barlow, sans-serif;
+}
+.deck-theme-transit table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #1b1b1f !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.deck-theme-transit table tr:nth-child(even) :is(td, th) { background: #f2f3f5 !important; }
+
+/* The footer, with its sections in sequence: the route. Each section is a
+   stop on the line, passed, here (larger, in the line's color) or still to
+   come (gray). (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-transit.px-slide .px-footer[data-footer=sequence],
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] {
+  height: 42px;
+  align-items: stretch !important;
+  color: var(--px-text, #1b1b1f) !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-sections,
+.deck-theme-transit .px-slide .px-footer .px-footer-sections {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section,
+.deck-theme-transit .px-slide .px-footer .px-footer-section {
+  --line: var(--px-section-color, var(--px-accent, #e2231a));
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 23px 4px 0;
+  overflow: hidden;
+  color: var(--px-text, #1b1b1f) !important;
+  font-family: Barlow, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+1),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+1) { --line: var(--px-section-color, #e2231a); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+2),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+2) { --line: var(--px-section-color, #0072ce); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+3),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+3) { --line: var(--px-section-color, #00a650); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+4),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+4) { --line: var(--px-section-color, #f58220); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+5),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+5) { --line: var(--px-section-color, #8e44ad); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+6),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+6) { --line: var(--px-section-color, #ffc20e); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 8px;
+  height: 6px;
+  background: var(--line);
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section:first-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section:first-child::after { left: 50%; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section:last-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section:last-child::after { right: 50%; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 50%; top: 4px;
+  width: 14px; height: 14px;
+  margin-left: -7px;
+  box-sizing: border-box;
+  border: 3px solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future] { color: #8a8f98 !important; font-weight: 500 !important; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future]::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future]::after { background: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future]::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future]::before { border-color: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]::after { background: linear-gradient(90deg, var(--line) 50%, #c9ccd1 50%); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]:first-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]:first-child::after { background: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]:last-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]:last-child::after { background: var(--line); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]::before {
+  top: 1px;
+  width: 20px; height: 20px;
+  margin-left: -10px;
+  border: 4px solid #ffffff;
+  background: var(--line);
+  box-shadow: 0 0 0 2.5px #1b1b1f;
+}
+.deck-theme-transit.px-slide .px-footer :is(.px-footer-page, .px-footer-time, .px-footer-label),
+.deck-theme-transit .px-slide .px-footer :is(.px-footer-page, .px-footer-time, .px-footer-label) {
+  align-self: center;
+  color: var(--px-text, #1b1b1f) !important;
+  font-family: Barlow, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-page:not(:empty),
+.deck-theme-transit .px-slide .px-footer .px-footer-page:not(:empty) {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #1b1b1f;
+  color: #ffffff !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   a line under the title, with its stops */
+.deck-theme-transit.theme-swatch { position: relative; }
+.deck-theme-transit.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 18%;
+  height: 7%;
+  background:
+    radial-gradient(circle, #ffffff 0 30%, #1b1b1f 31% 55%, transparent 56%) 12% 50% / 9% 100% repeat-x,
+    linear-gradient(#e2231a, #e2231a) 0 50% / 100% 45% no-repeat;
+}

@@ -30,7 +30,7 @@ import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
 import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles, deckTheme, cleanThemeColors, paletteVars } from './themes'
-import { SLIDE_CLASS, TEXT_CLASS, slideLayoutAttr, placeholderAttr, ownBackgroundAttr } from './slideHooks'
+import { SLIDE_CLASS, TEXT_CLASS, FOOTER_CLASS, slideLayoutAttr, placeholderAttr, ownBackgroundAttr, footerSectionState } from './slideHooks'
 import { themeCssTag } from './scopeCss'
 import { themeCss, deckThemeClass } from './themeCss'
 import { isEmptyPlaceholder } from './placeholders'
@@ -737,24 +737,25 @@ export function generateRevealHTML(presentation, opts = {}) {
 
     let footerHtml = ''
     if (slide.showSlideFooter !== false && !slide.hideFooter) {
-      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget" style="flex-shrink:0;"></span>` : ''
+      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget px-footer-time" style="flex-shrink:0;"></span>` : ''
       if (footerMode === 'sequence' && sequenceSections.length > 0 && (showFooter || showTimeWidget)) {
         const activeIdx = slide.activeSection
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : (footerColor || 'rgba(255,255,255,0.9)')
+          const own = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : ''
+          const secActiveColor = own || footerColor || 'rgba(255,255,255,0.9)'
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
-          return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
+          return `<span class="px-footer-section" data-state="${footerSectionState(i, activeIdx)}" style="${own ? `--px-section-color:${own};` : ''}color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
         }).join('')
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
+        const pageSpan = pageLabel ? `<span class="px-footer-page" style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
         const timePart = timeSpan ? `${timeSpan}` : ''
-        footerHtml = `      <div class="reveal-footer" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
+        footerHtml = `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="sequence" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div class="px-footer-sections" style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
       } else {
         const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : ''
         const leftContent = [timeSpan, sectionLabel].filter(Boolean).join(' — ')
-        footerHtml = (leftContent || pageLabel) ? `      <div class="reveal-footer" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>` : ''
+        footerHtml = (leftContent || pageLabel) ? `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="basic" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span class="px-footer-label">${leftContent}</span><span class="px-footer-page">${pageLabel}</span></div>` : ''
       }
     }
     const slideShowGrid = slide.showPresentGrid != null ? slide.showPresentGrid : showPresentGrid
@@ -848,11 +849,13 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
     /* reveal.js copies a slide's classes onto its background layer, which has none of the slide's data-*: a theme's bands and pictures belong on the slide, not on that layer as well */
     .reveal .backgrounds .${SLIDE_CLASS}::before, .reveal .backgrounds .${SLIDE_CLASS}::after { content: none !important; }
-    /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
-    /* color only on the container so per-span inline colors (inactive sections) are not overridden */
-    .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
-    .reveal .slides section .reveal-footer,
-    .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Footer: !important so reveal.js themes can't override it, but with
+       little weight (:where), so a theme's or the deck's own stylesheet can,
+       with !important of its own. Color only on the container, so the
+       sections' own (inline) colors hold */
+    :where(.reveal .slides section) .reveal-footer { color: ${footerColor} !important; }
+    :where(.reveal .slides section) .reveal-footer,
+    :where(.reveal .slides section) .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
     /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
       position: fixed; top: 16px; right: 16px; z-index: 9999;
@@ -1724,19 +1727,20 @@ function generatePrintHTML(presentation) {
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : footerColor
+          const own = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : ''
+          const secActiveColor = own || footerColor
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
-          return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
+          return `<span class="px-footer-section" data-state="${footerSectionState(i, activeIdx)}" style="${own ? `--px-section-color:${own};` : ''}color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
         }).join('')
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
-        const timePart = timeLabel ? `<span style="flex-shrink:0;margin-right:12px;">${timeLabel}</span>` : ''
-        footerHtml = `<div style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;font-size:${footerFontSize}px;font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;">${timePart}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
+        const pageSpan = pageLabel ? `<span class="px-footer-page" style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
+        const timePart = timeLabel ? `<span class="px-footer-time" style="flex-shrink:0;margin-right:12px;">${timeLabel}</span>` : ''
+        footerHtml = `<div class="${FOOTER_CLASS}" data-footer="sequence" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;font-size:${footerFontSize}px;font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;">${timePart}<div class="px-footer-sections" style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
       } else {
         const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : ''
         const leftContent = [timeLabel, sectionLabel].filter(Boolean).join(' — ')
         footerHtml = (leftContent || pageLabel)
-          ? `<div style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;font-size:${footerFontSize}px;color:${footerColor};font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>`
+          ? `<div class="${FOOTER_CLASS}" data-footer="basic" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;font-size:${footerFontSize}px;color:${footerColor};font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;"><span class="px-footer-label">${leftContent}</span><span class="px-footer-page">${pageLabel}</span></div>`
           : ''
       }
     }
@@ -1770,7 +1774,7 @@ function generatePrintHTML(presentation) {
 <head>
   <meta charset="utf-8">
   <title>${title} — PDF</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Manrope:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800;900&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Manrope:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800;900&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">

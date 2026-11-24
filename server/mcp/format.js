@@ -360,6 +360,8 @@ function themeText(deck, layouts = []) {
     '- Slide titles are h2 in most layouts and h1 in section-header and big-number; body text is p, and lists ul or ol with li',
     '- `var(--px-bg)`, `var(--px-text)`, `var(--px-heading)`, `var(--px-link)`, `var(--px-accent)`: the slide\'s colors, as above',
     '- `var(--ts-body)`, `var(--ts-h1)`…`var(--ts-h3)`, `var(--ts-heading-font)`: the text styles, when set',
+    '- `.px-slide[data-own-background]`: slides with a background of their own',
+    '- `.px-footer` (with data-footer="sequence" or "basic"), `.px-footer-label`, `.px-footer-page`, `.px-footer-time`: the footer; in a sequence, each `.px-footer-section` has data-state past, current or future for this slide, and its color as var(--px-section-color). The presented deck sets the footer\'s color and font with !important, so a rule that changes them needs !important too',
     '',
     'Allowed: rules, @media, @supports, @font-face, @keyframes, and nested rules written with & (`& h2 { … }`). url() and @import only for uploads, data: URLs and the font hosts decks load (Google Fonts, cdnfonts, jsDelivr). Left out: position: fixed, other at-rules, selectors that reach outside a slide (+ or ~ after .px-slide), and \\ escapes outside strings. Text a person colored or sized by hand keeps it unless a rule uses !important.',
   )

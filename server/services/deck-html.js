@@ -6457,7 +6457,9 @@ var THEME_LIST = [
   { id: "lemma", label: "Lemma", background: "#ffffff", text: "#1d2027", heading: "#26426e", link: "#26426e", dark: false, reveal: "white", font: "'Computer Modern Sans', sans-serif", textStyles: { bodySize: 28, h1Size: 48, h2Size: 32, h3Size: 28, headingWeight: 700 }, note: "Beamer for mathematics: a slate title bar and footline, theorem, example and alert blocks, numbered balls, in Computer Modern Sans" },
   { id: "beamline", label: "Beamline", background: "#0a0e17", backgroundCss: "radial-gradient(900px 520px at 72% 46%, #0f1828 0%, #0a0e17 62%)", text: "#e6ebf3", heading: "#ffffff", link: "#4fb4ff", dark: true, reveal: "black", font: "Inter, sans-serif", textStyles: { h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Manrope, sans-serif", headingWeight: 800 }, note: "Particle physics: a beam under slide titles, a collider ring on the title slide, an event display on section slides, numbers in JetBrains Mono" },
   { id: "kourou", label: "Kourou", background: "#ffffff", text: "#003247", heading: "#003247", link: "#003247", accent: "#cf1d39", dark: false, reveal: "white", font: "Arial, sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 40, h3Size: 28, headingFont: "'Titillium Web', sans-serif" }, note: "Space science: a navy strip with a red rule, red tags, a starfield title slide and a timeline for sections, in Titillium Web and Arial" },
-  { id: "ledger", label: "Ledger", background: "#ffffff", backgroundCss: "linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px, linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px, #ffffff", text: "#13221b", heading: "#13221b", link: "#2457c5", accent: "#1e6b49", dark: false, reveal: "white", font: "Geist, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 38, h3Size: 28, headingFont: "Geist, sans-serif", headingWeight: 700 }, note: "A spreadsheet, for pitches: gridlines, column letters and row numbers, a formula bar before slide titles, figures in JetBrains Mono" }
+  { id: "ledger", label: "Ledger", background: "#ffffff", backgroundCss: "linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px, linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px, #ffffff", text: "#13221b", heading: "#13221b", link: "#2457c5", accent: "#1e6b49", dark: false, reveal: "white", font: "Geist, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 38, h3Size: 28, headingFont: "Geist, sans-serif", headingWeight: 700 }, note: "A spreadsheet, for pitches: gridlines, column letters and row numbers, a formula bar before slide titles, figures in JetBrains Mono" },
+  { id: "preprint", label: "Preprint", background: "#fffdf8", text: "#161616", heading: "#161616", link: "#1f4e9c", dark: false, reveal: "white", font: "'Computer Modern Serif', serif", textStyles: { bodySize: 26, h1Size: 46, h2Size: 34, h3Size: 28, headingWeight: 700 }, note: "A typeset paper: Computer Modern Serif, justified paragraphs, quotes as an abstract, booktabs tables, footnotes and figure captions" },
+  { id: "transit", label: "Transit", background: "#ffffff", text: "#1b1b1f", heading: "#1b1b1f", link: "#0b62c4", accent: "#e2231a", dark: false, reveal: "white", font: "Barlow, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 30, headingWeight: 700 }, note: "A transit map: bullets as stops on a line, the footer’s sections as a route, station signs for sections, timetables for tables" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -22313,6 +22315,11 @@ var ANNOTATION_MESSAGE = "parallax-annotations";
 // client/src/utils/slideHooks.js
 var SLIDE_CLASS = "px-slide";
 var TEXT_CLASS = "px-text";
+var FOOTER_CLASS = "px-footer";
+function footerSectionState(i, active) {
+  if (typeof active !== "number") return "future";
+  return i < active ? "past" : i === active ? "current" : "future";
+}
 var NAME = /^[\w-]{1,40}$/;
 function slideLayout(slide) {
   return typeof slide?.layout === "string" && NAME.test(slide.layout) ? slide.layout : "";
@@ -29144,6 +29151,7 @@ var kourou_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child em { font-style: normal; }
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) :is(h1, h2, h3) { margin: 0 0 0.25em !important; color: #ffffff !important; font-size: 1.7em; }
 .deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) a { color: #ffffff !important; }
 
 /* Inline code */
 .deck-theme-kourou .px-text :not(pre) > code {
@@ -29355,8 +29363,547 @@ var ledger_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-ledger .theme-swatch-title { padding: 0.05em 0.3em; background: #ffffff; box-shadow: inset 0 0 0 2px #1e6b49; }
 `;
 
+// raw:client/src/themes/preprint.css
+var preprint_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Preprint theme's stylesheet: slides set like a paper, in Computer
+   Modern Serif on paper white (utils/themes.js: the font and the text sizes,
+   which the Themes panel's Text tab can change). It's scoped to
+   .deck-theme-preprint, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   Content slides have a running head's rule; body text is justified, and a
+   paragraph after another is indented. The title slide is a title block,
+   with the authors in small capitals; section titles start with §. A quote
+   is an abstract, whose first line in bold is its heading; a Heading 5 is a
+   footnote, under a short rule; a Heading 6 a figure caption. Tables are
+   drawn with booktabs' rules, and page numbers sit at the foot of the page,
+   centered. */
+
+/* reveal.js: links, the arrows and the progress bar in link blue */
+.deck-theme-preprint {
+  --r-background-color: #fffdf8;
+  --r-main-color: #161616;
+  --r-heading-color: #161616;
+  --r-link-color: #1f4e9c;
+  --r-link-color-dark: #15376e;
+  --r-link-color-hover: #15376e;
+  --r-selection-background-color: #c9d8f0;
+  --r-selection-color: #161616;
+}
+
+/* The running head's rule, across the top of content slides */
+.deck-theme-preprint.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-preprint .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 40px; right: 40px; top: 26px;
+  border-top: 1px solid #161616;
+  pointer-events: none;
+}
+
+/* The title slide: a title block, a short rule, the authors in small
+   capitals, and a stamp down the margin */
+.deck-theme-preprint.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-preprint .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 2.4em;
+  margin: 0.4em auto 0;
+  border-top: 0.03em solid currentColor;
+}
+.deck-theme-preprint.px-slide[data-layout=title] [data-placeholder=subtitle] p,
+.deck-theme-preprint .px-slide[data-layout=title] [data-placeholder=subtitle] p {
+  font-variant: small-caps;
+  letter-spacing: 0.03em;
+}
+.deck-theme-preprint.px-slide[data-layout=title]::before,
+.deck-theme-preprint .px-slide[data-layout=title]::before {
+  content: "Preprint";
+  position: absolute;
+  left: 18px; top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  color: #8c8a84;
+  font-family: 'Computer Modern Typewriter', monospace;
+  font-size: 13px;
+  letter-spacing: 0.24em;
+  pointer-events: none;
+}
+
+/* Section titles start with § */
+.deck-theme-preprint.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-preprint .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before {
+  content: "\\00A7\\2002";
+  font-weight: 400;
+  color: #8c8a84;
+}
+.deck-theme-preprint.px-slide[data-layout=section-header] [data-placeholder=subtitle] p,
+.deck-theme-preprint .px-slide[data-layout=section-header] [data-placeholder=subtitle] p {
+  font-style: italic;
+}
+
+/* The Big Number, in ink */
+.deck-theme-preprint.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-preprint .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #161616 !important;
+}
+
+/* Body text: justified, and indented after a paragraph, as in a paper */
+.deck-theme-preprint .px-text[data-placeholder=body] p { text-align: justify; }
+.deck-theme-preprint .px-text[data-placeholder=body] p + p { text-indent: 1.4em; }
+
+/* Headings: a Heading 4 is a paragraph heading, a Heading 5 a footnote
+   under a short rule, a Heading 6 a figure caption ("**Figure 2.** …").
+   (!important: the theme's heading weight is set with it.) */
+.deck-theme-preprint .px-text h4 { margin: 0.3em 0 0.15em !important; font-size: 0.85em; font-weight: 700; }
+.deck-theme-preprint .px-text h5 {
+  margin: 0.4em 0 0 !important;
+  font-size: 0.55em;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  text-transform: none !important;
+}
+.deck-theme-preprint .px-text h5::before {
+  content: "";
+  display: block;
+  width: 6em;
+  margin-bottom: 0.4em;
+  border-top: 1px solid #161616;
+}
+.deck-theme-preprint .px-text h6 {
+  margin: 0.3em 0 0 !important;
+  font-size: 0.58em;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  text-align: justify;
+  text-transform: none !important;
+  color: #161616 !important;
+}
+
+/* Lists: LaTeX's bullets and dashes, and (a), (b) inside numbered lists */
+.deck-theme-preprint .px-text ul > li::marker { content: "\\2022  "; }
+.deck-theme-preprint .px-text ul ul > li::marker { content: "\\2013  "; }
+.deck-theme-preprint .px-text ol ol > li::marker { content: "(" counter(list-item, lower-alpha) ")  "; }
+
+/* Links and citations in link blue, without the underline */
+.deck-theme-preprint .px-text a { color: var(--px-link, #1f4e9c) !important; text-decoration: none !important; }
+
+/* Quotes: an abstract, narrower and smaller; a bold first line is its
+   heading, centered in small capitals */
+.deck-theme-preprint .px-text blockquote {
+  margin: 0.2em 2.2em 0.5em !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-size: 0.86em;
+  font-style: normal;
+  text-align: justify;
+}
+.deck-theme-preprint .px-text blockquote > p:first-child > strong:only-child {
+  display: block;
+  text-align: center;
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+.deck-theme-preprint .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: typewriter, as verbatim */
+.deck-theme-preprint .px-text :not(pre) > code { padding: 0 !important; background: none !important; color: inherit; font-family: 'Computer Modern Typewriter', monospace; font-size: 0.95em; }
+.deck-theme-preprint .px-text pre { background: none !important; border: 0; box-shadow: none !important; padding: 0.2em 1.4em !important; }
+.deck-theme-preprint .px-text pre code { font-family: 'Computer Modern Typewriter', monospace !important; color: #161616; }
+
+/* Tables: booktabs' rules, thick above and below and thin under the head,
+   and nothing between columns */
+.deck-theme-preprint table { border-top: 2px solid #161616 !important; border-bottom: 2px solid #161616 !important; }
+.deck-theme-preprint table :is(td, th) {
+  border: 0 !important;
+  background: transparent !important;
+  color: #161616 !important;
+  font-family: 'Computer Modern Serif', serif;
+}
+.deck-theme-preprint table tr:first-child :is(td, th) { border-bottom: 1px solid #161616 !important; font-weight: 700; }
+
+/* The footer: the page number centered at the foot, the section's name in
+   italics at the left, in the text's serif. (The class and the slide both
+   named, to outweigh the presented deck's footer rules.) */
+.deck-theme-preprint.px-slide .px-footer,
+.deck-theme-preprint .px-slide .px-footer {
+  justify-content: center !important;
+  color: var(--px-text, #161616) !important;
+}
+.deck-theme-preprint.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-preprint .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  font-family: 'Computer Modern Serif', serif !important;
+  font-size: 15px !important;
+}
+.deck-theme-preprint.px-slide .px-footer .px-footer-label,
+.deck-theme-preprint .px-slide .px-footer .px-footer-label {
+  position: absolute;
+  left: 24px;
+  font-style: italic;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the running head's rule over a title, and a short rule under it */
+.deck-theme-preprint.theme-swatch { position: relative; }
+.deck-theme-preprint.theme-swatch::before {
+  content: "";
+  position: absolute;
+  left: 8%; right: 8%; top: 10%;
+  border-top: 1px solid #161616;
+}
+.deck-theme-preprint .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 30%;
+  margin: 0.3em auto 0;
+  border-top: 1px solid #161616;
+}
+`;
+
+// raw:client/src/themes/transit.css
+var transit_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Transit theme's stylesheet: a transit map and its signs, in Barlow,
+   a typeface after highway signs (utils/themes.js: the font and the text
+   sizes, which the Themes panel's Text tab can change). It's scoped to
+   .deck-theme-transit, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages. In the editor and the PDF
+   the slide (.px-slide) carries the class too, so rules about the slide
+   itself name both. The editor loads it with the app (main.jsx); presented
+   decks and the PDF write it into their page (utils/themeCss.js). Presented
+   decks are drawn on reveal.js's white theme.
+
+   Slide titles are stops, with the line running in from the edge. Bullets
+   are stops on a line, numbered lists count in route bullets of the
+   lines' colors, section titles are station signs and the title slide sits
+   on a route map. A quote is a service notice, a table a timetable, and a
+   Heading 4 a route's tag. With the footer's sections shown in sequence
+   (Settings › Footer), the footer is the route: the sections passed, the
+   one you're in, and the ones to come, each in its line's color. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-transit {
+  --r-background-color: #ffffff;
+  --r-main-color: #1b1b1f;
+  --r-heading-color: #1b1b1f;
+  --r-link-color: #0b62c4;
+  --r-link-color-dark: #084a94;
+  --r-link-color-hover: #e2231a;
+  --r-selection-background-color: #ffc20e;
+  --r-selection-color: #1b1b1f;
+}
+
+/* Slide titles: a stop, and the line running in from the slide's edge */
+.deck-theme-transit.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before,
+.deck-theme-transit .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank])::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 66px;
+  width: 54px; height: 9px;
+  background: var(--px-accent, #e2231a);
+  pointer-events: none;
+}
+.deck-theme-transit.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-transit .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: inline-block;
+  width: 0.62em; height: 0.62em;
+  margin-right: 0.36em;
+  box-sizing: border-box;
+  border: 0.15em solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+  vertical-align: -0.04em;
+}
+
+/* The title slide: a route map behind it, but not over a background of its
+   own */
+.deck-theme-transit.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-transit .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Cpath%20d%3D%27M-20%20420H372L410%20382H980%27%20fill%3D%27none%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%20452H470L508%20414H850L908%20356V-20%27%20fill%3D%27none%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%20482H560L598%20448H980%27%20fill%3D%27none%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M-20%2078H96L138%20120H226%27%20fill%3D%27none%27%20stroke%3D%27%23f58220%27%20stroke-width%3D%2711%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%2F%3E%3Cpath%20d%3D%27M200%20420V407%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M300%20420V407%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M560%20382V369%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M800%20382V369%27%20stroke%3D%27%23e2231a%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M250%20452V465%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M620%20414V427%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M908%20290V277%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M908%20200V187%27%20stroke%3D%27%230072ce%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M820%20448V461%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M900%20448V461%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Cpath%20d%3D%27M380%20482V469%27%20stroke%3D%27%2300a650%27%20stroke-width%3D%277%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%2778%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%27226%27%20cy%3D%27120%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27420%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27452%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Ccircle%20cx%3D%2730%27%20cy%3D%27482%27%20r%3D%276.5%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273%27%2F%3E%3Crect%20x%3D%27424%27%20y%3D%27372%27%20width%3D%2726%27%20height%3D%2790%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3Crect%20x%3D%27677%27%20y%3D%27372%27%20width%3D%2726%27%20height%3D%2786%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3Crect%20x%3D%27895%27%20y%3D%27116%27%20width%3D%2726%27%20height%3D%2726%27%20rx%3D%2713.0%27%20fill%3D%27%23fff%27%20stroke%3D%27%231b1b1f%27%20stroke-width%3D%273.5%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Section titles: a station sign, white on black over a band of the line */
+.deck-theme-transit.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-transit .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.18em 0.6em 0.26em;
+  border-radius: 0.1em;
+  background: #1b1b1f;
+  box-shadow: inset 0 -0.14em 0 var(--px-accent, #e2231a);
+  color: #ffffff !important;
+}
+
+/* The Big Number: a route bullet */
+.deck-theme-transit.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-transit .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.02em 0.42em 0.06em;
+  border-radius: 999px;
+  background: var(--px-accent, #e2231a);
+  color: #ffffff !important;
+}
+
+/* Headings: tight; a Heading 4 is a route's tag */
+.deck-theme-transit .px-text :is(h1, h2, h3) { letter-spacing: -0.01em !important; line-height: 1.08; }
+.deck-theme-transit .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.6em;
+  border-radius: 999px;
+  background: var(--px-accent, #e2231a);
+  color: #ffffff !important;
+  font-size: 0.55em;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+/* Bullets: stops on a line, the last a terminus; a list inside one, ticks */
+.deck-theme-transit .px-text ul { list-style: none; padding-left: 1.5em; }
+.deck-theme-transit .px-text ul > li { position: relative; margin: 0 !important; padding-bottom: 0.32em; }
+.deck-theme-transit .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: -1.18em; top: 0.3em;
+  width: 0.62em; height: 0.62em;
+  box-sizing: border-box;
+  border: 0.15em solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+}
+.deck-theme-transit .px-text ul > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: -0.98em; top: 0.61em; bottom: -0.61em;
+  width: 0.22em;
+  background: var(--px-accent, #e2231a);
+}
+.deck-theme-transit .px-text ul > li:last-child::before { border-width: 0.21em; }
+.deck-theme-transit .px-text ul ul { padding-left: 1em; }
+.deck-theme-transit .px-text ul ul > li { padding-bottom: 0.1em; }
+.deck-theme-transit .px-text ul ul > li::before { left: -0.8em; top: 0.58em; width: 0.45em; height: 0.14em; border: 0; border-radius: 0; background: #1b1b1f; }
+.deck-theme-transit .px-text ul ul > li::after { display: none; }
+
+/* Numbered lists: route bullets, a line's color each */
+.deck-theme-transit .px-text ol { list-style: none; padding-left: 1.8em; }
+.deck-theme-transit .px-text ol > li { position: relative; }
+.deck-theme-transit .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.75em; top: 0.18em;
+  width: 1.8em; height: 1.8em;
+  border-radius: 50%;
+  background: #e2231a;
+  color: #ffffff;
+  font-size: 0.66em;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.8em;
+  text-align: center;
+}
+.deck-theme-transit .px-text ol > li:nth-child(6n+1)::before { background: #e2231a; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+2)::before { background: #0072ce; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+3)::before { background: #00a650; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+4)::before { background: #f58220; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+5)::before { background: #8e44ad; }
+.deck-theme-transit .px-text ol > li:nth-child(6n+6)::before { background: #ffc20e; color: #1b1b1f; }
+
+/* Links */
+.deck-theme-transit .px-text a { color: var(--px-link, #0b62c4) !important; text-decoration-thickness: 0.08em !important; }
+
+/* Quotes: a service notice, yellow, with a bold first line as its label */
+.deck-theme-transit .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.45em 0.7em !important;
+  border: 0 !important;
+  border-radius: 0.14em;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  background: #ffc20e;
+  color: #1b1b1f;
+  font-style: normal;
+}
+.deck-theme-transit .px-text blockquote > p:first-child > strong:only-child {
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.deck-theme-transit .px-text blockquote > p:first-child > strong:only-child::before {
+  content: "!";
+  display: inline-block;
+  width: 1.25em; height: 1.25em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: #1b1b1f;
+  color: #ffc20e;
+  line-height: 1.25em;
+  text-align: center;
+}
+.deck-theme-transit .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code */
+.deck-theme-transit .px-text :not(pre) > code { padding: 0.05em 0.3em; border-radius: 0.15em; background: #eef0f3 !important; color: #1b1b1f; font-size: 0.86em; }
+
+/* Tables: a timetable, its first row a black header, the rest banded */
+.deck-theme-transit table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d5d7db !important;
+  background: transparent !important;
+  color: #1b1b1f !important;
+  font-family: Barlow, sans-serif;
+}
+.deck-theme-transit table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #1b1b1f !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.deck-theme-transit table tr:nth-child(even) :is(td, th) { background: #f2f3f5 !important; }
+
+/* The footer, with its sections in sequence: the route. Each section is a
+   stop on the line, passed, here (larger, in the line's color) or still to
+   come (gray). (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-transit.px-slide .px-footer[data-footer=sequence],
+.deck-theme-transit .px-slide .px-footer[data-footer=sequence] {
+  height: 42px;
+  align-items: stretch !important;
+  color: var(--px-text, #1b1b1f) !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-sections,
+.deck-theme-transit .px-slide .px-footer .px-footer-sections {
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section,
+.deck-theme-transit .px-slide .px-footer .px-footer-section {
+  --line: var(--px-section-color, var(--px-accent, #e2231a));
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 23px 4px 0;
+  overflow: hidden;
+  color: var(--px-text, #1b1b1f) !important;
+  font-family: Barlow, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+1),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+1) { --line: var(--px-section-color, #e2231a); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+2),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+2) { --line: var(--px-section-color, #0072ce); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+3),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+3) { --line: var(--px-section-color, #00a650); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+4),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+4) { --line: var(--px-section-color, #f58220); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+5),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+5) { --line: var(--px-section-color, #8e44ad); }
+.deck-theme-transit.px-slide .px-footer-section:nth-child(6n+6),
+.deck-theme-transit .px-slide .px-footer-section:nth-child(6n+6) { --line: var(--px-section-color, #ffc20e); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 8px;
+  height: 6px;
+  background: var(--line);
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section:first-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section:first-child::after { left: 50%; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section:last-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section:last-child::after { right: 50%; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 50%; top: 4px;
+  width: 14px; height: 14px;
+  margin-left: -7px;
+  box-sizing: border-box;
+  border: 3px solid #1b1b1f;
+  border-radius: 50%;
+  background: #ffffff;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future] { color: #8a8f98 !important; font-weight: 500 !important; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future]::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future]::after { background: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=future]::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=future]::before { border-color: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]::after { background: linear-gradient(90deg, var(--line) 50%, #c9ccd1 50%); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]:first-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]:first-child::after { background: #c9ccd1; }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]:last-child::after,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]:last-child::after { background: var(--line); }
+.deck-theme-transit.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-transit .px-slide .px-footer .px-footer-section[data-state=current]::before {
+  top: 1px;
+  width: 20px; height: 20px;
+  margin-left: -10px;
+  border: 4px solid #ffffff;
+  background: var(--line);
+  box-shadow: 0 0 0 2.5px #1b1b1f;
+}
+.deck-theme-transit.px-slide .px-footer :is(.px-footer-page, .px-footer-time, .px-footer-label),
+.deck-theme-transit .px-slide .px-footer :is(.px-footer-page, .px-footer-time, .px-footer-label) {
+  align-self: center;
+  color: var(--px-text, #1b1b1f) !important;
+  font-family: Barlow, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+.deck-theme-transit.px-slide .px-footer .px-footer-page:not(:empty),
+.deck-theme-transit .px-slide .px-footer .px-footer-page:not(:empty) {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #1b1b1f;
+  color: #ffffff !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   a line under the title, with its stops */
+.deck-theme-transit.theme-swatch { position: relative; }
+.deck-theme-transit.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 18%;
+  height: 7%;
+  background:
+    radial-gradient(circle, #ffffff 0 30%, #1b1b1f 31% 55%, transparent 56%) 12% 50% / 9% 100% repeat-x,
+    linear-gradient(#e2231a, #e2231a) 0 50% / 100% 45% no-repeat;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -30550,24 +31097,25 @@ ${content}
     const pageLabel = showPageNumbers && slideHasPageNum ? pageNumberFormat === "c/t" ? `${pageCounter} / ${totalNumberedSlides}` : `${pageCounter}` : "";
     let footerHtml = "";
     if (slide.showSlideFooter !== false && !slide.hideFooter) {
-      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget" style="flex-shrink:0;"></span>` : "";
+      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget px-footer-time" style="flex-shrink:0;"></span>` : "";
       if (footerMode === "sequence" && sequenceSections.length > 0 && (showFooter || showTimeWidget)) {
         const activeIdx = slide.activeSection;
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i;
           const secLabel = typeof sec === "string" ? sec : sec?.label || "";
-          const secActiveColor = typeof sec === "object" && sec?.color ? cssValue(sec.color) : footerColor || "rgba(255,255,255,0.9)";
+          const own = typeof sec === "object" && sec?.color ? cssValue(sec.color) : "";
+          const secActiveColor = own || footerColor || "rgba(255,255,255,0.9)";
           const color2 = isActive ? secActiveColor : footerInactiveColor;
           const weight = isActive ? "font-weight:700;" : "font-weight:400;";
-          return `<span style="color:${color2};${weight}">${escapeHtml(secLabel || `Section ${i + 1}`)}</span>`;
+          return `<span class="px-footer-section" data-state="${footerSectionState(i, activeIdx)}" style="${own ? `--px-section-color:${own};` : ""}color:${color2};${weight}">${escapeHtml(secLabel || `Section ${i + 1}`)}</span>`;
         }).join("");
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : "";
+        const pageSpan = pageLabel ? `<span class="px-footer-page" style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : "";
         const timePart = timeSpan ? `${timeSpan}` : "";
-        footerHtml = `      <div class="reveal-footer" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`;
+        footerHtml = `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="sequence" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div class="px-footer-sections" style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`;
       } else {
         const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : "";
         const leftContent = [timeSpan, sectionLabel].filter(Boolean).join(" — ");
-        footerHtml = leftContent || pageLabel ? `      <div class="reveal-footer" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>` : "";
+        footerHtml = leftContent || pageLabel ? `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="basic" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span class="px-footer-label">${leftContent}</span><span class="px-footer-page">${pageLabel}</span></div>` : "";
       }
     }
     const slideShowGrid = slide.showPresentGrid != null ? slide.showPresentGrid : showPresentGrid;
@@ -30663,11 +31211,13 @@ ${sections}
     .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
     /* reveal.js copies a slide's classes onto its background layer, which has none of the slide's data-*: a theme's bands and pictures belong on the slide, not on that layer as well */
     .reveal .backgrounds .${SLIDE_CLASS}::before, .reveal .backgrounds .${SLIDE_CLASS}::after { content: none !important; }
-    /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
-    /* color only on the container so per-span inline colors (inactive sections) are not overridden */
-    .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
-    .reveal .slides section .reveal-footer,
-    .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* Footer: !important so reveal.js themes can't override it, but with
+       little weight (:where), so a theme's or the deck's own stylesheet can,
+       with !important of its own. Color only on the container, so the
+       sections' own (inline) colors hold */
+    :where(.reveal .slides section) .reveal-footer { color: ${footerColor} !important; }
+    :where(.reveal .slides section) .reveal-footer,
+    :where(.reveal .slides section) .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
     /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
       position: fixed; top: 16px; right: 16px; z-index: 9999;
