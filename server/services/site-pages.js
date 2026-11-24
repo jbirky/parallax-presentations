@@ -80,6 +80,29 @@ function sitemapXml({ origin, examples, templates = [], plugins = [] }) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`
 }
 
+// Light or dark, as the visitor chose on this site (the app keeps the choice
+// in localStorage, utils/theme.js): dark unless light was chosen. Set before
+// the page draws, so it doesn't show the other one first.
+const THEME_EARLY = "try { var t = localStorage.getItem('parallax-theme'); if (t !== 'light' && t !== 'dark') t = localStorage.getItem('editor-theme') === 'light' ? 'light' : null; if (t) document.documentElement.setAttribute('data-theme', t) } catch (e) {}"
+// The header's toggle: a sun to go light, a moon to go dark
+const THEME_BUTTON = `<button type="button" class="theme" id="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme">`
+  + `<svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`
+  + `<svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>`
+const THEME_TOGGLE = `(function () {
+      var root = document.documentElement, button = document.getElementById('theme-toggle')
+      function label() {
+        var next = root.getAttribute('data-theme') === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
+        button.setAttribute('aria-label', next); button.title = next
+      }
+      button.addEventListener('click', function () {
+        var theme = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light'
+        root.setAttribute('data-theme', theme)
+        try { localStorage.setItem('parallax-theme', theme) } catch (e) {}
+        label()
+      })
+      label()
+    })()`
+
 // The site's own pages around `main`: the head (`meta` from pageMeta, the
 // analytics script when it's on), a header with `nav` (links: [href, text,
 // hide on a phone]) and a link home, and the footer. `styles` and `script`
@@ -92,18 +115,20 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     ${meta}
+    <script>${THEME_EARLY}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" />
     ${analytics ? `<script defer src="/stats/script.js" data-website-id="${esc(analytics.websiteId)}" data-do-not-track="true"></script>` : ''}
     <style>
-      :root { color-scheme: dark; --bg: #0f0f17; --raise: #151527; --card: #1c1c36; --line: #2b2b4a; --text: #ececf4; --muted: #a1a2bd; --faint: #8586a6; --accent: #6366f1; --soft: #8f92fa; }
+      :root { color-scheme: dark; --bg: #0f0f17; --raise: #151527; --card: #1c1c36; --line: #2b2b4a; --text: #ececf4; --muted: #a1a2bd; --faint: #8586a6; --accent: #6366f1; --soft: #8f92fa; --nav-bg: rgba(15, 15, 23, 0.9); --chip: rgba(255, 255, 255, 0.05); --ring: rgba(255, 255, 255, 0.18); --stage-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); }
+      :root[data-theme="light"] { color-scheme: light; --bg: #f7f7fb; --raise: #ffffff; --card: #ffffff; --line: #dfe1ec; --text: #23243a; --muted: #52546c; --faint: #656881; --soft: #4f46e5; --nav-bg: rgba(247, 247, 251, 0.9); --chip: rgba(20, 20, 50, 0.045); --ring: rgba(20, 20, 50, 0.16); --stage-shadow: 0 18px 50px rgba(30, 30, 70, 0.16); }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 Inter, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
       a { color: inherit; }
       :focus-visible { outline: 2px solid var(--soft); outline-offset: 3px; border-radius: 6px; }
       .wrap { max-width: 1040px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); }
-      header { border-bottom: 1px solid var(--line); background: rgba(15, 15, 23, 0.9); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
+      header { border-bottom: 1px solid var(--line); background: var(--nav-bg); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
       header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
       .logo { font-weight: 800; font-size: 21px; letter-spacing: -0.5px; text-decoration: none; white-space: nowrap; }
       .logo span { color: var(--accent); }
@@ -115,13 +140,17 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
       .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
       .btn.primary:hover { background: #5458e8; }
       nav .btn { padding: 7px 12px; font-size: 14px; color: var(--text); }
+      .theme { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+      .theme:hover { color: var(--text); background: var(--raise); }
+      .theme svg { width: 17px; height: 17px; }
+      :root[data-theme="light"] .theme .sun, :root:not([data-theme="light"]) .theme .moon { display: none; }
       main { padding-block: clamp(32px, 6vw, 56px) 72px; }
       .label { font: 500 11.5px 'JetBrains Mono', ui-monospace, monospace; letter-spacing: 0.07em; text-transform: uppercase; color: var(--soft); }
       h1 { margin: 10px 0 0; font-size: clamp(30px, 5vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.08; text-wrap: balance; }
       .lead { margin: 14px 0 0; max-width: 62ch; font-size: 18px; color: var(--muted); }
       .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-      .tags span { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: rgba(255, 255, 255, 0.05); }
-      .stage { margin-top: 28px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); background: #111; }
+      .tags span { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: var(--chip); }
+      .stage { margin-top: 28px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--stage-shadow); background: #111; }
       .slide { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
       .slide iframe { position: absolute; left: 0; top: 0; width: 960px; height: 540px; border: 0; transform-origin: 0 0; transform: scale(var(--s, 1)); }
       .hint { margin: 12px 0 0; font-size: 14px; color: var(--faint); }
@@ -138,7 +167,7 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
       <div class="wrap">
         <a class="logo" href="/"><span>P</span>arallax<sup class="beta">Beta</sup></a>
         <nav aria-label="Main">
-          ${[...links, '<a class="btn" href="/">Parallax home</a>'].join('\n          ')}
+          ${[...links, THEME_BUTTON, '<a class="btn" href="/">Parallax home</a>'].join('\n          ')}
         </nav>
       </div>
     </header>
@@ -150,7 +179,8 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
         <span>© 2026 Jess Birky. Licensed under AGPL-3.0.</span>
         <span>Support: <a href="mailto:${SUPPORT}">${SUPPORT}</a></span>
       </div>
-    </footer>${script ? `
+    </footer>
+    <script>${THEME_TOGGLE}</script>${script ? `
     <script>
       ${script.trim()}
     </script>` : ''}
@@ -290,13 +320,13 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       .tp-quiet { font-size: 14px; color: var(--soft); }
       .tp-swatches { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
       .tp-swatches li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 13.5px; line-height: 1.25; }
-      .tp-swatches i { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
+      .tp-swatches i { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--ring); }
       .tp-swatches small { display: block; font: 11px 'JetBrains Mono', ui-monospace, monospace; color: var(--faint); }
       .tp-facts { width: 100%; border-collapse: collapse; font-size: 13.5px; }
       .tp-facts td { padding: 5px 0; border-top: 1px solid var(--line); }
       .tp-facts td:last-child { text-align: right; color: var(--muted); }
       .tp-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-      .tp-chips li { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: rgba(255, 255, 255, 0.05); }
+      .tp-chips li { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; background: var(--chip); }
       .tp-card details summary { cursor: pointer; font-size: 14px; font-weight: 600; }
       .tp-card pre { max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); font: 11.5px/1.5 'JetBrains Mono', ui-monospace, monospace; white-space: pre; }
       .more { margin-top: 56px; }

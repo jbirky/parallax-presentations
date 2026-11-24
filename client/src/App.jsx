@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { useAuth, SignIn, SignedIn, SignedOut } from '@clerk/clerk-react'
 import HomePage from './pages/HomePage'
 import EditorPage from './pages/EditorPage'
@@ -66,7 +66,9 @@ function SignInPage() {
   )
 }
 
-function AuthGateCloud({ children }) {
+// The landing page is outside the sign-in gate; theme and onToggleTheme are
+// its light/dark toggle's
+function AuthGateCloud({ children, theme, onToggleTheme }) {
   const path = window.location.pathname
   const isLanding = path === '/' || path === ''
   const isSignIn = path === '/sign-in'
@@ -75,7 +77,7 @@ function AuthGateCloud({ children }) {
     <>
       <TokenBridge />
       {isLanding ? (
-        <LandingPage onSignIn={() => { window.location.href = '/sign-in' }} />
+        <LandingPage onSignIn={() => { window.location.href = '/sign-in' }} theme={theme} onToggleTheme={onToggleTheme} />
       ) : isSignIn ? (
         <>
           <SignedOut><SignInPage /></SignedOut>
@@ -125,7 +127,8 @@ export default function App() {
     return match ? decodeURIComponent(match[1]) : null
   })
 
-  useEffect(() => {
+  // Before the first paint, so the page doesn't show the other theme first
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
@@ -235,7 +238,7 @@ export default function App() {
   }
 
   return (
-    <AuthGate>
+    <AuthGate theme={theme} onToggleTheme={() => pickTheme(theme === 'dark' ? 'light' : 'dark')}>
       {page === 'home'
         ? <HomePage onOpen={openEditor} theme={theme} onToggleTheme={() => pickTheme(theme === 'dark' ? 'light' : 'dark')} initialSlug={initialSlug} />
         : <EditorPage presentationId={presentationId} isTemplate={isTemplate} onGoHome={goHome} theme={theme} onThemeChange={pickTheme} />

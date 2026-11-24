@@ -7,7 +7,9 @@
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
 // together with Practice Talk to try (PracticeDemo.jsx), the elements by
-// subject, and the plans. The docs open in place of it, at #docs, and the
+// subject, and the plans. It's dark unless light is chosen, with the nav's
+// toggle or the dashboard's (theme, onToggleTheme; utils/theme.js). The docs
+// open in place of it, at #docs, and the
 // templates at #templates: each opens its own page (/templates/<slug>, which
 // the server builds, server/services/site-pages.js), where people copy it
 // into their account (/templates/<slug>/use, TemplateUsePage.jsx). What
@@ -15,7 +17,7 @@
 // has analytics set up.
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
 import SlideFrame from '../components/landing/SlideFrame'
@@ -121,7 +123,7 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
   )
 }
 
-export default function LandingPage({ onSignIn }) {
+export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme }) {
   const [tab, setTab] = useState('home')
   const [docsPage, setDocsPage] = useState(null)
   const [guestEnabled, setGuestEnabled] = useState(false)
@@ -200,6 +202,13 @@ export default function LandingPage({ onSignIn }) {
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
             <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
             <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'nav' })}>GitHub</a>
+            {onToggleTheme && (
+              <button type="button" className="lp-theme" aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                title={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                onClick={() => { track('theme', { to: theme === 'light' ? 'dark' : 'light' }); onToggleTheme() }}>
+                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+              </button>
+            )}
             <button type="button" className="lp-signin" onClick={() => { track('sign-in', { from: 'nav' }); onSignIn() }}>Sign in</button>
           </div>
         </div>

@@ -93,6 +93,18 @@ describe('what link previews and search engines see', () => {
     assert.doesNotMatch(noGuest, /\/try\?example|More templates|What’s in it/)
   })
 
+  it('is dark unless light was chosen, with a toggle that remembers', () => {
+    const html = examplePage({ origin, example, others: [], guestEnabled: false, analytics: null, index: false })
+    // The choice is read before the page draws, in the head
+    const head = html.slice(0, html.indexOf('</head>'))
+    assert.match(head, /localStorage\.getItem\('parallax-theme'\)/)
+    assert.match(head, /:root\[data-theme="light"\] \{ color-scheme: light;/)
+    assert.match(html, /<button type="button" class="theme" id="theme-toggle" aria-label="Switch to light theme"/)
+    assert.match(html, /localStorage\.setItem\('parallax-theme', theme\)/)
+    // The toggle sits in the header, before the link home
+    assert.ok(html.indexOf('id="theme-toggle"') < html.indexOf('>Parallax home</a>'))
+  })
+
   it('escapes what an admin typed', () => {
     const html = examplePage({ origin, example: { ...example, title: '</title><script>alert(1)</script>', desc: '"><img onerror=x>', tags: ['<b>'] }, others: [], guestEnabled: true, analytics: null, index: true })
     assert.doesNotMatch(html, /<script>alert|<img onerror|<b>/)

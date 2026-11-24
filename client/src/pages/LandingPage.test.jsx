@@ -97,6 +97,24 @@ describe('the landing page', () => {
     } finally { server.list = null }
   })
 
+  it('switches between light and dark from the nav', async () => {
+    const onToggleTheme = vi.fn()
+    await mount({ theme: 'dark', onToggleTheme })
+    const toggle = el.querySelector('.lp-theme')
+    expect(toggle.getAttribute('aria-label')).toBe('Switch to light theme')
+    await act(async () => toggle.click())
+    expect(onToggleTheme).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('theme', { to: 'light' })
+    act(() => root.unmount())
+    await mount({ theme: 'light', onToggleTheme })
+    expect(el.querySelector('.lp-theme').getAttribute('aria-label')).toBe('Switch to dark theme')
+  })
+
+  it('has no theme toggle when nothing can change the theme', async () => {
+    await mount()
+    expect(el.querySelector('.lp-theme')).toBeNull()
+  })
+
   it('has no Templates tab until there are templates', async () => {
     await mount()
     expect(button('Templates')).toBeUndefined()
