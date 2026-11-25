@@ -82,6 +82,13 @@ describe('the landing page’s examples', { skip }, () => {
     const card = (await publicList()).examples.at(-1)
     assert.equal(card.slug, added.slug)
     assert.deepEqual(card.background, { type: 'color', color: '#123456' })
+    // A photo background stays in the deck but is left out of the list
+    await t.pool.query(`UPDATE landing_examples SET deck = jsonb_set(deck, '{slides,0,background}', $2::jsonb) WHERE slug = $1`,
+      [added.slug, JSON.stringify({ type: 'image', src: 'data:image/jpeg;base64,' + 'A'.repeat(4000) })])
+    assert.equal((await publicList()).examples.at(-1).background, null)
+    assert.equal((await t.call(null, 'GET', `/api/examples/${added.slug}`)).body.slides[0].background.type, 'image')
+    await t.pool.query(`UPDATE landing_examples SET deck = jsonb_set(deck, '{slides,0,background}', $2::jsonb) WHERE slug = $1`,
+      [added.slug, JSON.stringify({ type: 'color', color: '#123456' })])
     assert.equal(card.thumbnail, null)
     // A thumbnail the server drew is served under a link that names its version
     await t.pool.query('UPDATE landing_examples SET thumbnail = $2, updated_at = NOW() WHERE slug = $1', [added.slug, Buffer.from('ffd8ffe0', 'hex')])

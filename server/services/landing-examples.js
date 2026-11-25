@@ -29,7 +29,8 @@ const columns = () => `slug, field, title, description, tags, builtin, card, her
   ${kindFound ? 'kind' : "'example' AS kind"},
   source_presentation_id, (SELECT p.title FROM presentations p WHERE p.id = source_presentation_id) AS source_title,
   deck IS NOT NULL AS has_deck, thumbnail IS NOT NULL AS has_thumbnail,
-  COALESCE(deck->'slides'->0->'background', 'null'::jsonb) AS background,
+  CASE WHEN deck->'slides'->0->'background'->>'type' IN ('color', 'gradient')
+    THEN deck->'slides'->0->'background' ELSE 'null'::jsonb END AS background,
   deck->>'theme' AS theme_id, deck->'themeSource'->>'name' AS theme_source, updated_at`
 
 let tableFound = false
@@ -44,7 +45,11 @@ async function hasTable(storage) {
   return r.ok
 }
 
-const builtinBackground = slug => deckHtml.exampleDeck(slug)?.slides?.[0]?.background || null
+// A card's placeholder, before its thumbnail is drawn, is its first slide's
+// color or gradient. A photo background is left out: the landing page never
+// draws it, and as a data URI it would make every list hundreds of KB.
+const plainBackground = bg => (bg && (bg.type === 'color' || bg.type === 'gradient') ? bg : null)
+const builtinBackground = slug => plainBackground(deckHtml.exampleDeck(slug)?.slides?.[0]?.background)
 
 function fromRow(r) {
   return {
@@ -64,7 +69,7 @@ function fromRow(r) {
     // A copy of a deck of its own, rather than the one the code builds
     ownDeck: r.has_deck,
     hasThumbnail: r.has_thumbnail,
-    background: r.background || (r.builtin && !r.has_deck ? builtinBackground(r.slug) : null),
+    background: plainBackground(r.background) || (r.builtin && !r.has_deck ? builtinBackground(r.slug) : null),
     // The theme its deck is in, by name: Bauhaus, or a theme of the deck's own
     theme: r.has_deck ? deckHtml.themeName({ theme: r.theme_id, themeSource: r.theme_source ? { name: r.theme_source } : null }) : null,
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at,
