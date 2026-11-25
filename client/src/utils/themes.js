@@ -4,7 +4,7 @@
 // The presentation themes: reveal.js 5's, whose page color, heading color and
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
 // Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
-// Zenith, Quincunx, Partition, Holdout, Separatrix), which
+// Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -51,6 +51,8 @@ export const THEME_LIST = [
   { id: 'partition', label: 'Partition', background: '#f7f7f5', text: '#16191e', heading: '#16191e', link: '#2d55c4', accent: '#d94a1e', dark: false, reveal: 'white', font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 40, h3Size: 28, headingFont: 'Manrope, sans-serif', headingWeight: 800 }, note: 'Slides drawn as partitioned matrices: brackets, a partition line under titles, a basis-vector footer' },
   { id: 'holdout', label: 'Holdout', background: '#f7f8f6', text: '#161b22', heading: '#161b22', link: '#1d4f91', accent: '#1d4f91', dark: false, reveal: 'white', font: 'Rubik, sans-serif', textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Rubik, sans-serif', headingWeight: 600 }, note: 'A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer' },
   { id: 'separatrix', label: 'Separatrix', background: '#eef1ec', text: '#15242a', heading: '#15242a', link: '#1d5fa8', accent: '#cf4f1b', stable: '#1d5fa8', unstable: '#cf4f1b', dark: false, reveal: 'white', font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: 'Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer' },
+  { id: 'runlevel', label: 'Runlevel', background: '#e3e7e8', backgroundCss: 'linear-gradient(#e3e7e8, #e3e7e8) 33.333% 60.227% / 96.25% 83.704% no-repeat, linear-gradient(#062129, #062129) 66.667% 71.591% / 96.25% 83.704% no-repeat, #0f4c5c', text: '#10191c', heading: '#0f4c5c', link: '#0b6178', accent: '#0f4c5c', dark: false, reveal: 'white', font: "'PT Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 52, h2Size: 30, h3Size: 24, headingFont: "'Roboto Mono', monospace", headingWeight: 600 }, note: 'A text-mode configuration screen: a dialog with a hard shadow on a petrol field, titles in its frame, path kickers, a boot-status footer' },
+  { id: 'fanout', label: 'Fanout', background: '#eef2f5', text: '#18222d', heading: '#18222d', link: '#c0237a', accent: '#c0237a', dark: false, reveal: 'white', font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: 'Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

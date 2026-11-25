@@ -6489,7 +6489,9 @@ var THEME_LIST = [
   { id: "quincunx", label: "Quincunx", background: "#f3f6f6", text: "#11262e", heading: "#11262e", link: "#1f5a86", accent: "#e2a23a", dark: false, reveal: "white", font: "Rubik, sans-serif", textStyles: { bodySize: 30, h1Size: 76, h2Size: 44, h3Size: 32, headingFont: "Rubik, sans-serif", headingWeight: 600 }, note: "A Galton board: dark title and section slides with pegs, a tally footer, brass samples, ink models, Space Mono numbers" },
   { id: "partition", label: "Partition", background: "#f7f7f5", text: "#16191e", heading: "#16191e", link: "#2d55c4", accent: "#d94a1e", dark: false, reveal: "white", font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 40, h3Size: 28, headingFont: "Manrope, sans-serif", headingWeight: 800 }, note: "Slides drawn as partitioned matrices: brackets, a partition line under titles, a basis-vector footer" },
   { id: "holdout", label: "Holdout", background: "#f7f8f6", text: "#161b22", heading: "#161b22", link: "#1d4f91", accent: "#1d4f91", dark: false, reveal: "white", font: "Rubik, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Rubik, sans-serif", headingWeight: 600 }, note: "A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer" },
-  { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", stable: "#1d5fa8", unstable: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" }
+  { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", stable: "#1d5fa8", unstable: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" },
+  { id: "runlevel", label: "Runlevel", background: "#e3e7e8", backgroundCss: "linear-gradient(#e3e7e8, #e3e7e8) 33.333% 60.227% / 96.25% 83.704% no-repeat, linear-gradient(#062129, #062129) 66.667% 71.591% / 96.25% 83.704% no-repeat, #0f4c5c", text: "#10191c", heading: "#0f4c5c", link: "#0b6178", accent: "#0f4c5c", dark: false, reveal: "white", font: "'PT Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 52, h2Size: 30, h3Size: 24, headingFont: "'Roboto Mono', monospace", headingWeight: 600 }, note: "A text-mode configuration screen: a dialog with a hard shadow on a petrol field, titles in its frame, path kickers, a boot-status footer" },
+  { id: "fanout", label: "Fanout", background: "#eef2f5", text: "#18222d", heading: "#18222d", link: "#c0237a", accent: "#c0237a", dark: false, reveal: "white", font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: "Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -32056,8 +32058,792 @@ var separatrix_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 .deck-theme-separatrix .theme-swatch-title { position: relative; }
 `;
 
+// raw:client/src/themes/runlevel.css
+var runlevel_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Runlevel theme's stylesheet: Linux systems, drawn as a text-mode
+   configuration screen. Each slide is a pale dialog (#e3e7e8) with a hard
+   shadow (#062129) one cell down and right, on a petrol field (#0f4c5c).
+   Roboto Mono for titles and what the machine says, PT Sans for what the
+   speaker says (utils/themes.js: the font and the text sizes, which the
+   Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-runlevel, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The field, the dialog and its shadow are the theme's page (its
+   backgroundCss) in the editor, the thumbnails and the PDF, and this
+   stylesheet's in presented decks; the dialog's bevel is the slide's
+   ::before. The slide title of a content slide is set into the dialog's
+   top rule. The title slide keeps the field with a smaller dialog, and a
+   section slide's title is a menu entry on the selection bar. A Heading 4
+   is the path kicker, set on the field (put it in a text box above the
+   dialog), and inline code in it is the mode badge at its right.
+   Subtitles are dim help lines, bullets small filled squares, tables have
+   their header row on the field, code sits in a well, and a quote is the
+   ring buffer: kernel log lines on the shadow color, amber when its first
+   words are bold, red when they're italic. With the footer's sections in
+   sequence, the footer is boot status: [  OK  ] for those done, an amber
+   [  *** ] for the one in progress, [      ] for those to come. */
+
+/* reveal.js: links in petrol, the arrows and the progress bar in amber on
+   the field (slides set their own link color), and the field around the
+   slide */
+.deck-theme-runlevel {
+  --r-background-color: #0f4c5c;
+  --r-main-color: #10191c;
+  --r-heading-color: #0f4c5c;
+  --r-link-color: #f2b33d;
+  --r-link-color-dark: #c98f22;
+  --r-link-color-hover: #ffffff;
+  --r-selection-background-color: #0f4c5c;
+  --r-selection-color: #ffffff;
+}
+.deck-theme-runlevel.reveal { background: #0f4c5c; }
+
+/* The field, the dialog and its shadow on presented slides that show the
+   theme's page (the editor and the PDF draw them from the theme's
+   backgroundCss) */
+.deck-theme-runlevel .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#e3e7e8, #e3e7e8) 12px 53px / 924px 452px no-repeat,
+    linear-gradient(#062129, #062129) 24px 63px / 924px 452px no-repeat,
+    #0f4c5c;
+}
+
+/* The dialog's bevel: an inset rule, white on the top and left, gray on
+   the bottom and right */
+.deck-theme-runlevel.px-slide:not([data-layout=title], [data-own-background])::before,
+.deck-theme-runlevel .px-slide:not([data-layout=title], [data-own-background])::before {
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 61px;
+  width: 908px;
+  height: 436px;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-color: #ffffff #6c7f84 #6c7f84 #ffffff;
+  pointer-events: none;
+}
+
+/* The title slide: the field, with a smaller dialog, its shadow and its
+   bevel */
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(#ffffff, #ffffff) 50px 112px / 848px 2px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 50px 112px / 2px 296px no-repeat,
+    linear-gradient(#6c7f84, #6c7f84) 50px 406px / 848px 2px no-repeat,
+    linear-gradient(#6c7f84, #6c7f84) 896px 112px / 2px 296px no-repeat,
+    linear-gradient(#e3e7e8, #e3e7e8) 42px 104px / 864px 312px no-repeat,
+    linear-gradient(#062129, #062129) 54px 114px / 864px 312px no-repeat,
+    #0f4c5c;
+}
+
+/* Headings: Roboto Mono, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-runlevel .px-text :is(h1, h2, h3) { letter-spacing: -0.02em !important; line-height: 1.2; }
+
+/* The title in the frame: a content slide's title sits centered on the
+   dialog's top rule, on a band of the dialog's color. Its first line is
+   centered on the rule whatever its size. */
+.deck-theme-runlevel.px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=image-text], [data-layout=three-column], [data-layout=comparison]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=image-text], [data-layout=three-column], [data-layout=comparison]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: calc(18px - 0.6em) auto 0.35em !important;
+  padding: 0 0.45em;
+  background: #e3e7e8;
+  color: #0f4c5c !important;
+  line-height: 1.2;
+  text-align: center !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=comparison]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=comparison]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { margin-top: calc(28px - 0.6em) !important; }
+
+/* The title slide: a large title in ink inside the dialog, the subtitle a
+   dim help line, and the lines after it (who, where, when) in ink */
+.deck-theme-runlevel.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) {
+  font-size: 2em;
+  letter-spacing: -0.03em !important;
+  line-height: 1.12;
+  color: var(--px-heading, #10191c) !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #10191c !important; }
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p + p,
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p + p { color: #10191c !important; font-size: 0.75em; }
+
+/* A section slide: its title is a menu entry on the selection bar, across
+   the title's box, followed by an arrow */
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1 {
+  position: relative;
+  margin: 0 -12px 0.3em !important;
+  padding: 0.12em 3.2em 0.12em 0.5em;
+  background: #0f4c5c;
+  color: #ffffff !important;
+  line-height: 1.2;
+  text-align: left !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1::after,
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1::after {
+  content: "--->";
+  position: absolute;
+  right: 0.5em;
+  top: 0.12em;
+  color: #f2b33d;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1 :is(strong, em, a, code),
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1 :is(strong, em, a, code) { color: inherit !important; background: none !important; }
+
+/* Subtitles: dim help lines in PT Sans */
+.deck-theme-runlevel [data-placeholder=subtitle] :is(p, li) { color: #4b5b60 !important; }
+.deck-theme-runlevel [data-placeholder=subtitle] :is(strong, b) { color: #10191c; }
+.deck-theme-runlevel.px-slide[data-own-background] [data-placeholder=subtitle] :is(p, li, strong, b),
+.deck-theme-runlevel .px-slide[data-own-background] [data-placeholder=subtitle] :is(p, li, strong, b) { color: var(--px-text) !important; }
+
+/* A Heading 4: the path kicker, light mono on the field. On the field,
+   above the dialog, it reads as the screen's own line; inside the dialog it
+   is a bar of the field. Its bold words are the slide's own name. */
+.deck-theme-runlevel .px-text h4 {
+  display: flow-root;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.5em;
+  background: #0f4c5c;
+  color: #94b9c0 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0.01em !important;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.deck-theme-runlevel .px-text h4 :is(strong, b) { color: #e9f2f3; font-weight: 600; }
+.deck-theme-runlevel .px-text h4 a { color: #e9f2f3 !important; }
+
+/* Bullets: small filled squares in petrol; under them, hollow ones.
+   Numbered lists count 1) 2) 3) in Roboto Mono. */
+/* (reveal.js sets lists inline-block; the editor stacks them) */
+.deck-theme-runlevel .px-text :is(ul, ol) { display: block; }
+.deck-theme-runlevel .px-text ul { list-style: none; }
+.deck-theme-runlevel .px-text ul > li { position: relative; }
+.deck-theme-runlevel .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9em;
+  top: 0.55em;
+  width: 0.32em;
+  height: 0.32em;
+  background: #0f4c5c;
+}
+.deck-theme-runlevel .px-text ul ul > li::before {
+  width: 0.3em;
+  height: 0.3em;
+  box-sizing: border-box;
+  border: 0.07em solid #4b5b60;
+  background: transparent;
+}
+.deck-theme-runlevel .px-text ol > li::marker {
+  content: counter(list-item) ")  ";
+  color: #0f4c5c;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ul > li::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ul > li::before { background: currentColor; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ul ul > li::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ul ul > li::before { border-color: currentColor; background: transparent; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ol > li::marker,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ol > li::marker { color: inherit; }
+
+/* Links: petrol, underlined; focused, inverted onto the field, as the
+   selection bar is */
+.deck-theme-runlevel .px-text a { color: var(--px-link, #0b6178) !important; text-decoration-thickness: 0.07em; text-underline-offset: 0.16em; }
+.deck-theme-runlevel .px-text a:focus-visible { outline: none; background: #0f4c5c; color: #ffffff !important; }
+.deck-theme-runlevel .px-text ::selection { background: #0f4c5c; color: #ffffff; }
+
+/* Inline code: Roboto Mono in a well */
+.deck-theme-runlevel .px-text :not(pre) > code {
+  padding: 0 0.3em;
+  border-radius: 0;
+  background: #d3dadc !important;
+  color: #10191c;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.86em;
+}
+
+/* Inline code in a Heading 4: the mode badge, boxed at its right */
+.deck-theme-runlevel .px-text h4 code {
+  float: right;
+  margin: 0 0 0 1em;
+  padding: 0 0.5em !important;
+  border: 1px solid rgba(233, 242, 243, 0.45);
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #e9f2f3 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+}
+
+/* Code: Roboto Mono in a well, sunk into the dialog (an inset bevel), with
+   Runlevel's own syntax colors whichever code theme the deck uses */
+.deck-theme-runlevel :is(pre, pre.hljs) {
+  background: #d3dadc !important;
+  color: #10191c;
+  border: 0;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 #6c7f84, inset -2px -2px 0 #ffffff !important;
+}
+.deck-theme-runlevel :is(pre.hljs, pre code, pre) { font-family: 'Roboto Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-runlevel pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-runlevel .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.62em; line-height: 1.5; }
+.deck-theme-runlevel pre [class*=hljs-] { color: #10191c; font-style: normal; font-weight: 400; }
+.deck-theme-runlevel pre :is(.hljs-comment, .hljs-quote) { color: #4b5b60; font-style: italic; }
+.deck-theme-runlevel pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #0f4c5c; font-weight: 700; }
+.deck-theme-runlevel pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #7a5000; }
+.deck-theme-runlevel pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #006a4e; }
+.deck-theme-runlevel pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #0b6178; font-weight: 600; }
+.deck-theme-runlevel pre :is(.hljs-meta, .hljs-deletion, .hljs-variable) { color: #9b3f7c; }
+
+/* Quotes: the ring buffer, kernel log lines in Roboto Mono on the shadow
+   color, the newest line white. One whose first words are bold is a
+   warning in amber; italic, an error in red. */
+.deck-theme-runlevel .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.45em 0.8em 0.45em 0.75em !important;
+  border: 0 !important;
+  border-left: 0.25em solid #6f9aa2 !important;
+  background: #062129;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.66em;
+  font-style: normal;
+  line-height: 1.5;
+}
+.deck-theme-runlevel .px-text blockquote :is(p, li) { margin: 0 !important; color: #cfe0e3 !important; }
+.deck-theme-runlevel .px-text blockquote > :last-child { color: #ffffff !important; }
+.deck-theme-runlevel .px-text blockquote :is(strong, b) { color: #ffffff; font-weight: 700; }
+.deck-theme-runlevel .px-text blockquote code { background: transparent !important; color: #8fd3e0; padding: 0; }
+.deck-theme-runlevel .px-text blockquote:has(> p:first-child > strong:first-child) { border-left-color: #f2b33d !important; }
+.deck-theme-runlevel .px-text blockquote > p:first-child > strong:first-child { color: #f2b33d; }
+.deck-theme-runlevel .px-text blockquote:has(> p:first-child > em:first-child) { border-left-color: #ff9378 !important; }
+.deck-theme-runlevel .px-text blockquote > p:first-child > em:first-child { color: #ff9378; font-style: normal; font-weight: 700; }
+
+/* Tables: a header row on the field in white Roboto Mono, hairlines
+   between rows, the first column in mono */
+.deck-theme-runlevel table { border: 2px solid #6c7f84 !important; background: #e3e7e8; }
+.deck-theme-runlevel table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #b6c2c5 !important;
+  background: #e3e7e8 !important;
+  color: #10191c !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-runlevel table tr > :first-child { font-family: 'Roboto Mono', monospace; font-weight: 500; }
+.deck-theme-runlevel table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #0f4c5c !important;
+  color: #ffffff !important;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* The Big Number: Roboto Mono in petrol */
+.deck-theme-runlevel.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-runlevel .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #0f4c5c) !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-weight: 600;
+  letter-spacing: -0.04em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The footer: Roboto Mono on the field. With its sections in sequence, it
+   is boot status, a tag before each section: [  OK  ] in green for those
+   done, [  *** ] in amber for the one in progress, an empty [      ] for
+   those to come. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-runlevel.px-slide .px-footer,
+.deck-theme-runlevel .px-slide .px-footer { padding-inline: 8px !important; color: #94b9c0 !important; }
+.deck-theme-runlevel.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: #94b9c0 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: pre;
+}
+.deck-theme-runlevel.px-slide .px-footer .px-footer-page,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-page { color: #e9f2f3 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-sections,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 4px 16px; flex-wrap: wrap; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section::before {
+  content: "[      ] ";
+  color: #94b9c0;
+  font-weight: 700;
+  opacity: 0.75;
+  white-space: pre;
+}
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=past] { color: #e9f2f3 !important; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=past]::before { content: "[  OK  ] "; color: #74d6ab; opacity: 1; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=current] { color: #ffffff !important; font-weight: 700 !important; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=current]::before { content: "[  *** ] "; color: #f2b33d; opacity: 1; }
+
+/* ...and on a slide with a background of its own, in its text color, the
+   tags' meaning kept by their words */
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer .px-footer-section::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer .px-footer-section::before { color: var(--px-text) !important; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx): a
+   small dialog with its shadow on the field, the title in its frame */
+.deck-theme-runlevel.theme-swatch {
+  background:
+    linear-gradient(#e3e7e8, #e3e7e8) 40% 50% / 84% 70% no-repeat,
+    linear-gradient(#062129, #062129) 60% 62% / 84% 70% no-repeat,
+    #0f4c5c !important;
+}
+.deck-theme-runlevel .theme-swatch-title { padding: 0 0.3em; letter-spacing: -0.02em; }
+`;
+
+// raw:client/src/themes/fanout.css
+var fanout_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Fanout theme's stylesheet: SaaS architecture, drawn as an
+   architecture review's sheets. Ink (#18222d) on a cool canvas (#eef2f5),
+   with request magenta (#c0237a) kept for the current hop and links. Asap
+   Condensed for words and titles, Inconsolata for labels and numbers
+   (utils/themes.js: the font and the text sizes, which the Themes panel's
+   Text tab can change).
+
+   It's scoped to .deck-theme-fanout, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   A subtitle's first line is the view tag, Inconsolata capitals in an ink
+   outline, and its lines after it are Inconsolata labels; a Heading 4 is
+   the same kicker, its bold words the tag, so a content slide can carry
+   one above its title. The title slide has a request's path along its
+   foot, the hop it's at in magenta. A section slide's title starts with
+   the current hop's marker, and inline code in it is the hop number. The
+   Big Number is a metric in Inconsolata, its unit (inline code or italic
+   words in it) a pill. Bullets are sync arrowheads, inline code a version
+   chip, tables have hairlines and tabular figures, a quote is a decision
+   record with an ADR label, and a Heading 6 is an as-of stamp. With the
+   footer's sections in sequence, the footer is the hop path: each section
+   a small box joined to the next by an arrow, solid ink for those served,
+   magenta with a ring for the current one, dashed for those to come. */
+
+/* reveal.js: links, the arrows and the progress bar in request magenta */
+.deck-theme-fanout {
+  --r-background-color: #eef2f5;
+  --r-main-color: #18222d;
+  --r-heading-color: #18222d;
+  --r-link-color: #c0237a;
+  --r-link-color-dark: #9a1c62;
+  --r-link-color-hover: #18222d;
+  --r-selection-background-color: #f4cfe2;
+  --r-selection-color: #18222d;
+  --fo-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 8' width='18' height='8'%3E%3Cpath d='M0 4H12.5' stroke='%23000' stroke-width='1.3'/%3E%3Cpath d='M11.5 0.6L18 4L11.5 7.4Z'/%3E%3C/svg%3E");
+  --fo-arrow-dashed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 8' width='18' height='8'%3E%3Cpath d='M0 4H12' stroke='%23000' stroke-width='1.3' stroke-dasharray='2.6 1.8'/%3E%3Cpath d='M11.5 0.6L18 4L11.5 7.4Z'/%3E%3C/svg%3E");
+}
+
+/* Ink and graphite; on a slide with a background of its own, its text
+   color */
+.deck-theme-fanout.px-slide,
+.deck-theme-fanout .px-slide { --fo-ink: #18222d; --fo-graphite: #566373; --fo-rule: #c9d1da; --fo-card: #ffffff; }
+.deck-theme-fanout.px-slide[data-own-background],
+.deck-theme-fanout .px-slide[data-own-background] { --fo-ink: var(--px-text); --fo-graphite: var(--px-text); --fo-rule: var(--px-text); --fo-card: transparent; }
+
+/* Headings: Asap Condensed, tight, as a diagram's title is. (!important:
+   presented decks set headings' spacing with it.) */
+.deck-theme-fanout .px-text :is(h1, h2, h3) { letter-spacing: -0.012em !important; line-height: 1.06; }
+
+/* The title slide: a large title, and along its foot a request's path
+   through the parts of a system, the hop it's at in magenta, those ahead
+   dashed */
+.deck-theme-fanout.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-fanout .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) {
+  font-size: 2.4em;
+  letter-spacing: -0.02em !important;
+  line-height: 1.02;
+}
+.deck-theme-fanout.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-fanout .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 454 40' width='454' height='40'%3E%3Crect x='1' y='7' width='54' height='26' rx='3' fill='%23ffffff' stroke='%2318222d' stroke-width='1.5'/%3E%3Cpath d='M1 14H55' stroke='%2318222d' stroke-width='1.2'/%3E%3Cpath d='M56 20H92' stroke='%2318222d' stroke-width='1.5'/%3E%3Cpath d='M91 16L98 20L91 24Z' fill='%2318222d'/%3E%3Cpath d='M106 7H146L154 20L146 33H106L98 20Z' fill='%23ffffff' stroke='%2318222d' stroke-width='1.5'/%3E%3Cpath d='M155 20H191' stroke='%2318222d' stroke-width='1.5'/%3E%3Cpath d='M190 16L197 20L190 24Z' fill='%2318222d'/%3E%3Ccircle cx='176' cy='20' r='4' fill='%23c0237a' stroke='%23ffffff' stroke-width='1.5'/%3E%3Cpath d='M205 4H247L255 12V28L247 36H205L197 28V12Z' fill='none' stroke='%23c0237a' stroke-width='1'/%3E%3Cpath d='M207 7H245L252 14V26L245 33H207L200 26V14Z' fill='%23ffffff' stroke='%23c0237a' stroke-width='2'/%3E%3Cpath d='M256 20H292' stroke='%23566373' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3Cpath d='M291 16L298 20L291 24Z' fill='%23566373'/%3E%3Crect x='299' y='7' width='56' height='26' rx='13' fill='none' stroke='%23566373' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3Cpath d='M356 20H392' stroke='%23566373' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3Cpath d='M391 16L398 20L391 24Z' fill='%23566373'/%3E%3Cpath d='M400 10V30C400 34 426 34 426 34C426 34 452 34 452 30V10' fill='none' stroke='%23566373' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3Cellipse cx='426' cy='10' rx='26' ry='4.5' fill='none' stroke='%23566373' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3C/svg%3E") 50% 404px / 454px 40px no-repeat;
+}
+
+/* Subtitles and a Heading 4: the view tag. A subtitle's first line is the
+   tag itself, in an ink outline; its lines after it are labels. In a
+   Heading 4, bold words are the tag and the rest its scope. */
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h5, h6),
+.deck-theme-fanout .px-text h4 {
+  font-family: Inconsolata, monospace !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.08em !important;
+  line-height: 1.4;
+  color: var(--fo-graphite) !important;
+}
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h5, h6) { font-size: 0.62em; }
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, h1, h2, h3, h5, h6):first-child,
+.deck-theme-fanout .px-text h4 { text-transform: uppercase !important; }
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, h1, h2, h3, h5, h6):first-child {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.55em !important;
+  padding: 0.22em 0.5em 0.16em;
+  border: 1px solid var(--fo-ink);
+  border-radius: 2px;
+  color: var(--fo-ink) !important;
+  font-weight: 600 !important;
+}
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, h1, h2, h3, h5, h6):first-child[style*=center] { margin-left: auto !important; margin-right: auto !important; }
+.deck-theme-fanout [data-placeholder=subtitle] :is(p, h1, h2, h3, h5, h6):first-child[style*=right] { margin-left: auto !important; }
+.deck-theme-fanout .px-text h4 { margin: 0 0 0.45em !important; font-size: 0.48em; }
+.deck-theme-fanout .px-text h4 :is(strong, b) {
+  display: inline-block;
+  margin-right: 0.55em;
+  padding: 0.18em 0.45em 0.12em;
+  border: 1px solid var(--fo-ink);
+  border-radius: 2px;
+  color: var(--fo-ink);
+  font-weight: 600;
+}
+
+/* A Heading 6: the as-of stamp, the revision and date a sheet describes,
+   with an ink rule at its right; its bold words in ink */
+.deck-theme-fanout .px-text h6 {
+  margin: 0 0 0.4em !important;
+  padding-right: 0.6em;
+  border-right: 2px solid var(--fo-ink);
+  color: var(--fo-graphite) !important;
+  font-family: Inconsolata, monospace !important;
+  font-size: 0.46em;
+  font-weight: 500 !important;
+  line-height: 1.45;
+  text-align: right;
+}
+.deck-theme-fanout .px-text h6 :is(strong, b) { color: var(--fo-ink); font-weight: 700; }
+
+/* A section slide: its title starts with the current hop's marker, a
+   magenta box in a ring, and inline code in it is the hop number in
+   Inconsolata */
+.deck-theme-fanout.px-slide[data-layout=section-header] [data-placeholder=title] h1::before,
+.deck-theme-fanout .px-slide[data-layout=section-header] [data-placeholder=title] h1::before {
+  content: "";
+  display: inline-block;
+  width: 0.3em;
+  height: 0.3em;
+  margin: 0 0.4em 0 0.1em;
+  vertical-align: 0.14em;
+  border-radius: 0.04em;
+  background: #c0237a;
+  box-shadow: 0 0 0 0.055em var(--px-bg, #eef2f5), 0 0 0 0.09em #c0237a;
+}
+.deck-theme-fanout.px-slide[data-layout=section-header] [data-placeholder=title] h1 code,
+.deck-theme-fanout .px-slide[data-layout=section-header] [data-placeholder=title] h1 code {
+  margin-right: 0.18em;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: var(--fo-graphite);
+  font-family: Inconsolata, monospace !important;
+  font-size: 1em;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+/* Bullets: sync arrowheads in ink; under them, async chevrons in graphite.
+   Numbered lists count 01, 02 in Inconsolata. */
+/* (reveal.js sets lists inline-block; the editor stacks them) */
+.deck-theme-fanout .px-text :is(ul, ol) { display: block; }
+.deck-theme-fanout .px-text ul { list-style: none; }
+.deck-theme-fanout .px-text ul > li { position: relative; }
+.deck-theme-fanout .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.85em;
+  top: 0.44em;
+  width: 0.3em;
+  height: 0.38em;
+  background: var(--fo-ink);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.deck-theme-fanout .px-text ul ul > li::before {
+  top: 0.5em;
+  left: -0.9em;
+  width: 0.24em;
+  height: 0.24em;
+  box-sizing: border-box;
+  border: solid var(--fo-graphite);
+  border-width: 0.07em 0.07em 0 0;
+  background: none;
+  clip-path: none;
+  transform: rotate(45deg);
+}
+.deck-theme-fanout .px-text ol > li::marker {
+  content: counter(list-item, decimal-leading-zero) "  ";
+  color: var(--fo-graphite);
+  font-family: Inconsolata, monospace;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+/* Links: request magenta */
+.deck-theme-fanout .px-text a { color: var(--px-link, #c0237a) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a version chip, Inconsolata on a card with a hairline */
+.deck-theme-fanout .px-text :not(pre) > code {
+  padding: 0.04em 0.32em 0.02em;
+  border: 1px solid var(--fo-rule);
+  border-radius: 2px;
+  background: var(--fo-card) !important;
+  color: var(--fo-ink);
+  font-family: Inconsolata, monospace;
+  font-size: 0.86em;
+  font-weight: 500;
+}
+
+/* Quotes: a decision record, a card in an ink outline headed by an ADR
+   label; its bold first words are the decision */
+.deck-theme-fanout .px-text blockquote {
+  position: relative;
+  margin: 0.15em 0 0.5em !important;
+  padding: 1.25em 0.75em 0.5em !important;
+  border: 1.5px solid var(--fo-ink) !important;
+  border-radius: 2px;
+  background: var(--fo-card);
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-fanout .px-text blockquote::before {
+  content: "ADR";
+  position: absolute;
+  left: 0.75em;
+  top: 0.45em;
+  padding: 0.12em 0.42em 0.06em;
+  border-radius: 1px;
+  background: var(--fo-ink);
+  color: var(--px-bg, #eef2f5);
+  font-family: Inconsolata, monospace;
+  font-size: 0.5em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+}
+.deck-theme-fanout .px-text blockquote > p:first-child > strong:first-child { font-weight: 700; }
+.deck-theme-fanout .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Inconsolata on a card with a hairline, Fanout's own syntax colors
+   whichever code theme the deck uses */
+.deck-theme-fanout :is(pre, pre.hljs) {
+  background: #ffffff !important;
+  color: #18222d;
+  border: 1px solid #c9d1da;
+  border-left: 3px solid #18222d;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+.deck-theme-fanout :is(pre.hljs, pre code, pre) { font-family: Inconsolata, monospace !important; font-variant-ligatures: none; }
+.deck-theme-fanout pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-fanout .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.62em; line-height: 1.45; }
+.deck-theme-fanout pre [class*=hljs-] { color: #18222d; font-style: normal; font-weight: 400; }
+.deck-theme-fanout pre :is(.hljs-comment, .hljs-quote) { color: #566373; font-style: italic; }
+.deck-theme-fanout pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #1f63a8; font-weight: 600; }
+.deck-theme-fanout pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #0b7f5c; }
+.deck-theme-fanout pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #9e6500; }
+.deck-theme-fanout pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { font-weight: 600; }
+.deck-theme-fanout pre :is(.hljs-meta, .hljs-deletion) { color: #6b7581; }
+
+/* Tables: hairline rules, a header row of Inconsolata capitals over an ink
+   rule, tabular figures */
+.deck-theme-fanout table { border: 0 !important; border-top: 1px solid #c9d1da !important; background: transparent; }
+.deck-theme-fanout table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #c9d1da !important;
+  background: transparent !important;
+  color: #18222d !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-fanout table tr:first-child :is(td, th) {
+  border-bottom: 1.5px solid #18222d !important;
+  color: #566373 !important;
+  font-family: Inconsolata, monospace;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.deck-theme-fanout table tr:not(:first-child) > :not(:first-child) { font-family: Inconsolata, monospace; }
+.deck-theme-fanout.px-slide[data-own-background] table :is(td, th),
+.deck-theme-fanout .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; border-bottom-color: var(--px-text) !important; }
+
+/* The Big Number: a metric in Inconsolata, in ink; its unit (inline code
+   or italic words in it) a pill after it */
+.deck-theme-fanout.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-fanout .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #18222d) !important;
+  font-family: Inconsolata, monospace !important;
+  font-weight: 600;
+  letter-spacing: -0.03em !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-fanout.px-slide[data-layout=big-number] [data-placeholder=title] h1:has(code, em),
+.deck-theme-fanout .px-slide[data-layout=big-number] [data-placeholder=title] h1:has(code, em) { word-spacing: -0.3em; }
+.deck-theme-fanout.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-fanout .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: inline-block;
+  padding: 0.14em 0.6em 0.1em !important;
+  border: 1.5px solid var(--fo-ink) !important;
+  border-radius: 999px !important;
+  background: var(--fo-card) !important;
+  color: var(--fo-ink);
+  font-family: Inconsolata, monospace !important;
+  font-size: 0.26em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  word-spacing: normal;
+  line-height: 1.2;
+  vertical-align: 0.9em;
+}
+
+/* The footer: Inconsolata over a hairline. With its sections in sequence,
+   it is the hop path: each section a small box joined to the next by an
+   arrow; served ones solid ink, the current one magenta with a ring, those
+   to come a dashed box and a dashed arrow. The page number is the hop.
+   (The class and the slide both named, to outweigh the presented deck's
+   footer rules.) */
+.deck-theme-fanout.px-slide .px-footer,
+.deck-theme-fanout .px-slide .px-footer {
+  padding: 5px 16px 0 !important;
+  border-top: 1px solid var(--fo-rule);
+  color: var(--fo-graphite) !important;
+}
+.deck-theme-fanout.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-fanout .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--fo-graphite) !important;
+  font-family: Inconsolata, monospace !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+}
+.deck-theme-fanout.px-slide .px-footer .px-footer-page,
+.deck-theme-fanout .px-slide .px-footer .px-footer-page { color: var(--fo-ink) !important; font-weight: 700 !important; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.deck-theme-fanout.px-slide .px-footer .px-footer-page::before,
+.deck-theme-fanout .px-slide .px-footer .px-footer-page::before { content: "hop "; color: var(--fo-graphite); font-weight: 500; }
+.deck-theme-fanout.px-slide .px-footer .px-footer-sections,
+.deck-theme-fanout .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 0; min-width: 0; padding-block: 4px; overflow: hidden; }
+.deck-theme-fanout.px-slide .px-footer .px-footer-section,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: lowercase;
+}
+.deck-theme-fanout.px-slide .px-footer .px-footer-section::before,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.25px dashed var(--fo-graphite);
+  border-radius: 2px;
+}
+.deck-theme-fanout.px-slide .px-footer .px-footer-section:not(:last-child)::after,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section:not(:last-child)::after {
+  content: "";
+  flex: none;
+  width: 18px;
+  height: 8px;
+  margin: 0 5px 0 2px;
+  background: var(--fo-graphite);
+  -webkit-mask: var(--fo-arrow-dashed) center / 18px 8px no-repeat;
+  mask: var(--fo-arrow-dashed) center / 18px 8px no-repeat;
+}
+.deck-theme-fanout.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--fo-ink) !important; }
+.deck-theme-fanout.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=past]::before { border: 1.25px solid var(--fo-ink); background: var(--fo-ink); }
+.deck-theme-fanout.px-slide .px-footer .px-footer-section[data-state=past]:not(:last-child)::after,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=past]:not(:last-child)::after {
+  background: var(--fo-ink);
+  -webkit-mask-image: var(--fo-arrow);
+  mask-image: var(--fo-arrow);
+}
+.deck-theme-fanout.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=current] { color: #c0237a !important; font-weight: 700 !important; }
+.deck-theme-fanout.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=current]::before {
+  margin: 0 2px 0 3px;
+  border: 1.25px solid #c0237a;
+  background: #c0237a;
+  box-shadow: 0 0 0 2px var(--px-bg, #eef2f5), 0 0 0 3.25px #c0237a;
+}
+
+/* ...and on a slide with a background of its own, in its text color, the
+   current hop marked by its weight and ring */
+.deck-theme-fanout.px-slide[data-own-background] .px-footer .px-footer-section[data-state=current],
+.deck-theme-fanout .px-slide[data-own-background] .px-footer .px-footer-section[data-state=current] { color: var(--px-text) !important; }
+.deck-theme-fanout.px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-fanout .px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before { border-color: var(--px-text); background: var(--px-text); box-shadow: 0 0 0 2px transparent, 0 0 0 3.25px var(--px-text); }
+.deck-theme-fanout.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-fanout .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   three hops under the title, the middle one current */
+.deck-theme-fanout .theme-swatch-title { letter-spacing: -0.01em; }
+.deck-theme-fanout .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 60px;
+  height: 10px;
+  margin: 4px auto 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 10' width='60' height='10'%3E%3Crect x='1' y='1' width='8' height='8' rx='1.5' fill='%2318222d'/%3E%3Cpath d='M10 5H21' stroke='%2318222d' stroke-width='1.2'/%3E%3Cpath d='M20 2.5L24 5L20 7.5Z' fill='%2318222d'/%3E%3Crect x='26' y='1' width='8' height='8' rx='1.5' fill='%23c0237a'/%3E%3Cpath d='M35 5H46' stroke='%23566373' stroke-width='1.2' stroke-dasharray='2 1.5'/%3E%3Cpath d='M45 2.5L49 5L45 7.5Z' fill='%23566373'/%3E%3Crect x='51.6' y='1.6' width='6.8' height='6.8' rx='1.5' fill='none' stroke='%23566373' stroke-width='1.2' stroke-dasharray='1.6 1.2'/%3E%3C/svg%3E") center / 60px 10px no-repeat;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }

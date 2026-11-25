@@ -22,6 +22,8 @@ import './themes/quincunx.css'
 import './themes/partition.css'
 import './themes/holdout.css'
 import './themes/separatrix.css'
+import './themes/runlevel.css'
+import './themes/fanout.css'
 import 'katex/dist/katex.min.css'
 // \ce and \pu (chemical equations and units) for every KaTeX the editor
 // draws; decks load the same extension (generateHTML.js)
