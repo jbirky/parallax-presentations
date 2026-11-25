@@ -1,0 +1,417 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Parti theme's stylesheet: architecture, drawn as a set of drawing
+   sheets. Graphite (#161616, text #1f1f1e) on a pale board (#f5f5f2), a
+   warm gray for what's secondary (#63625e), and a redline red (#c92a2a) for
+   links, what's current and the markup an architect adds by hand. Headings
+   and labels in Archivo, its wide cut for drawing titles; hand lettering in
+   Architects Daughter (utils/themes.js: the fonts and the text sizes, which
+   the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-parti, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Titles are drawing titles: a split reference bubble before them and a
+   heavy rule over a fine one under them. The title slide is the cover
+   sheet: a border, the title block down its right edge (project, client,
+   drawing, scale, date, sheet A-000, a north arrow), and a pencil massing
+   sketch of a house stepping down a slope. Section slides are tracing
+   paper over a structural grid, its bubbles lettered and numbered. A
+   Heading 4 is a drawing label in wide capitals; a Heading 6 a note
+   lettered by hand in red. Bullets are legend squares; numbered lists are
+   keynotes in hexagons; inline code is a room tag. A quote is a revision
+   cloud in red with its delta, its bold first words the revision. Tables
+   are schedules, the header row in reverse. The Big Number's unit is set
+   in gray over a dimension string. With the footer's sections in
+   sequence, the footer is a row of level datums: done in graphite, the
+   current one red, those to come pale. */
+
+/* reveal.js: links, the arrows and the progress bar in red */
+.deck-theme-parti {
+  --r-background-color: #f5f5f2;
+  --r-main-color: #1f1f1e;
+  --r-heading-color: #111110;
+  --r-link-color: #c92a2a;
+  --r-link-color-dark: #9e2020;
+  --r-link-color-hover: #111110;
+  --r-selection-background-color: #f3d2d2;
+  --r-selection-color: #1f1f1e;
+  --pa-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60' width='60' height='60'%3E%3Cpath d='M0 10.0a10.0 10.0 0 0 1 20 0M20 10.0a10.0 10.0 0 0 1 20 0M40 10.0a10.0 10.0 0 0 1 20 0M50.0 0a10.0 10.0 0 0 1 0 20M50.0 20a10.0 10.0 0 0 1 0 20M50.0 40a10.0 10.0 0 0 1 0 20M60 50.0a10.0 10.0 0 0 1 -20 0M40 50.0a10.0 10.0 0 0 1 -20 0M20 50.0a10.0 10.0 0 0 1 -20 0M10.0 60a10.0 10.0 0 0 1 0 -20M10.0 40a10.0 10.0 0 0 1 0 -20M10.0 20a10.0 10.0 0 0 1 0 -20' fill='none' stroke='%23c92a2a' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --pa-dimension: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 24' width='320' height='24' preserveAspectRatio='none'%3E%3Cpath d='M0 12.0H320M10 2V22M310 2V22M5 17.0L15 7.0M305 17.0L315 7.0' stroke='%23000' stroke-width='1.4' fill='none'/%3E%3C/svg%3E");
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-parti.px-slide,
+.deck-theme-parti .px-slide { --pa-ink: #111110; --pa-text: #1f1f1e; --pa-muted: #63625e; --pa-red: #c92a2a; --pa-pale: #c9c7c1; --pa-board: #f5f5f2; }
+.deck-theme-parti.px-slide[data-own-background],
+.deck-theme-parti .px-slide[data-own-background] { --pa-ink: var(--px-text); --pa-text: var(--px-text); --pa-muted: var(--px-text); --pa-red: var(--px-text); --pa-pale: var(--px-text); --pa-board: transparent; }
+
+/* Headings: Archivo, a little wide and tight. (!important: presented decks
+   set headings' spacing with it.) */
+.deck-theme-parti .px-text :is(h1, h2, h3) { font-stretch: 108%; letter-spacing: -0.012em !important; line-height: 1.1; }
+
+/* Drawing titles: a split reference bubble before the title, and a heavy
+   rule over a fine one under it. Not on the cover, section slides, Big
+   Numbers or blank ones. */
+.deck-theme-parti.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-parti .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-right: 0.32em;
+  box-sizing: border-box;
+  border: 0.065em solid var(--pa-ink);
+  border-radius: 50%;
+  background: linear-gradient(var(--pa-ink), var(--pa-ink)) center / 100% 0.055em no-repeat;
+  vertical-align: -0.08em;
+}
+.deck-theme-parti.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-parti .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 7px;
+  margin-top: 0.2em;
+  background: linear-gradient(var(--pa-ink), var(--pa-ink)) 0 0 / 100% 3px no-repeat, linear-gradient(var(--pa-ink), var(--pa-ink)) 0 6px / 100% 1px no-repeat;
+}
+
+/* The cover: the sheet's border and title block, and a massing sketch
+   beside the title; the title and subtitle at the left (their widths in
+   percent, so text that shrinks to fit still gets its room) */
+.deck-theme-parti.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-parti .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 330 300' width='330' height='300'%3E%3Cpath d='M123.1 15.3Q231.3 77.6 339.4 139.5M95.4 37.9Q203.1 99.8 309.9 162.6M67.1 59.8Q173.7 122.8 281.5 183.8M36.8 82.7Q144 143.5 251.3 206.2M9.6 105.9Q116 168.4 222.3 229.5M-20 127.6Q87.7 189.6 195.2 252.4M-50 149.5Q59 211.7 167.7 275M-76.4 173.7Q30.8 235.1 138.9 296.9M-107.1 194.8Q-.1 256.9 107.9 319.1' fill='none' stroke='%238c8a85' stroke-width='0.8' stroke-opacity='0.55' stroke-linecap='round'/%3E%3Cpath d='M150 22L253.9 82L194.2 116.5L90.2 56.5Z' fill='%23ffffff'/%3E%3Cpath d='M90.2 104.5L194.2 164.5L194.2 116.5L90.2 56.5Z' fill='%23d9d6cf'/%3E%3Cpath d='M253.9 130L194.2 164.5L194.2 116.5L253.9 82Z' fill='%23eeece6'/%3E%3Cpath d='M101.8 111.2L101.8 63.2M113.3 117.8L113.3 69.8M124.9 124.5L124.9 76.5M136.4 131.2L136.4 83.2M148 137.8L148 89.8M159.5 144.5L159.5 96.5M171.1 151.2L171.1 103.2M182.6 157.8L182.6 109.8' stroke='%23161616' stroke-opacity='0.22' stroke-width='0.7'/%3E%3Cpath d='M87.2 55.4Q141.2 86.4 195.5 117.9M255.3 81Q223.4 99.7 191.2 118M148.6 21.2Q202.6 52 256.6 82.9M151.6 20.5Q120.4 39.3 88.8 57.9M194.2 166.5Q194 139.9 194.2 113.4M90.2 106.7Q89.8 80.2 90.2 53.8M253.9 131.9Q253.7 105.9 253.9 79.9M88.9 103.2Q142.4 134.5 195.8 165.8M256.9 128.8Q224.6 147.8 191.9 166.1' fill='none' stroke='%23161616' stroke-width='1.35' stroke-linecap='round'/%3E%3Cpath d='M118.8 94L215 149.5L160.4 181L64.3 125.5Z' fill='%23ffffff'/%3E%3Cpath d='M64.3 176.5L160.4 232L160.4 181L64.3 125.5Z' fill='%23d9d6cf'/%3E%3Cpath d='M215 200.5L160.4 232L160.4 181L215 149.5Z' fill='%23eeece6'/%3E%3Cpath d='M74.9 182.7L74.9 131.7M85.6 188.8L85.6 137.8M96.3 195L96.3 144M107 201.2L107 150.2M117.7 207.3L117.7 156.3M128.3 213.5L128.3 162.5M139 219.7L139 168.7M149.7 225.8L149.7 174.8' stroke='%23161616' stroke-opacity='0.22' stroke-width='0.7'/%3E%3Cpath d='M61.4 123.9Q111.6 153.3 162.1 181.9M216.5 147.8Q187.1 165.4 157.6 182.3M117.5 92.3Q167.2 121.9 216.6 150.9M121.1 93Q92.1 110.2 62.7 127M160.4 235.2Q160.8 207.1 160.4 179M64.3 178.5Q63.9 151.2 64.3 124M215 202.2Q215.4 174.2 215 146.2M61.8 175.2Q112.1 204.3 161.9 232.7M217.4 198.8Q188.3 215.9 159.1 233.4' fill='none' stroke='%23161616' stroke-width='1.35' stroke-linecap='round'/%3E%3Cpath d='M253.9 4L303.3 32.5L256.5 59.5L207.2 31Z' fill='%23ffffff'/%3E%3Cpath d='M207.2 70L256.5 98.5L256.5 59.5L207.2 31Z' fill='%23d9d6cf'/%3E%3Cpath d='M303.3 71.5L256.5 98.5L256.5 59.5L303.3 32.5Z' fill='%23eeece6'/%3E%3Cpath d='M212.6 73.2L212.6 34.2M218.1 76.3L218.1 37.3M223.6 79.5L223.6 40.5M229.1 82.7L229.1 43.7M234.6 85.8L234.6 46.8M240.1 89L240.1 50M245.6 92.2L245.6 53.2M251 95.3L251 56.3' stroke='%23161616' stroke-opacity='0.22' stroke-width='0.7'/%3E%3Cpath d='M205.4 29.3Q231.5 45.4 257.9 60.8M305.8 31.1Q279.9 46 253.9 61.2M251.1 2.4Q278 18.3 305.3 34M256.3 2.9Q230.8 17.5 204.9 32.3M256.5 101.7Q256.8 79.5 256.5 57.3M207.2 73.2Q206.7 50.6 207.2 28M303.3 73.4Q303.4 51.7 303.3 30.1M205.5 69.3Q232 84.3 258.3 99.9M306.1 70.1Q280.4 85 254.5 100.1' fill='none' stroke='%23161616' stroke-width='1.35' stroke-linecap='round'/%3E%3Cpath d='M239.2 117.3Q220.9 128 203 138.4M239.6 102.4Q221.5 112.4 203.7 123.2' fill='none' stroke='%23161616' stroke-width='1' stroke-linecap='round'/%3E%3Cpath d='M205.9 201.2l0 -16M202.9 201.2l3 -8l3 8M201.9 190.2l8 0' stroke='%23161616' stroke-width='1.1' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='205.9' cy='182.2' r='2.6' fill='none' stroke='%23161616' stroke-width='1.1'/%3E%3Cpath d='M50 76.5L50.5 80.6L46.3 83.2L43.9 85.7L41.9 88.9L38.2 89.9L34.6 90.4L30.9 91.2L26.9 91.1L23.7 88.8L21.5 85.8L17.4 83.8L15.4 80.1L17.3 76L19.5 72.8L21 69.9L20.4 64.9L25.7 65.2L27.9 61.2L31.9 61L35.7 62.3L40.1 61.5L41.6 66.1L44.4 68.1L47.5 70.4L46.8 74.2L50.5 77.7L47.2 80.9' fill='none' stroke='%23161616' stroke-opacity='0.55' stroke-width='0.9'/%3E%3Cpath d='M33.1 98.5l0 -8' stroke='%23161616' stroke-opacity='0.55' stroke-width='1'/%3E%3Cpath d='M333.3 123L332.5 126.2L333.5 130.4L330.6 133L328.1 136.1L324.6 137.9L320.7 139.4L316.4 139.9L312.6 137.8L310.2 134.3L306.7 132.7L305.8 129.1L305.3 125.7L303 122.5L302.6 118.6L306.2 116.1L308.1 113.1L310.8 110.7L313.7 107.8L317.8 107.8L321.7 107.6L325.8 108.1L328.4 111.4L332.5 112.9L335.1 116.1L332.8 120.7L336.7 124.2L335 128' fill='none' stroke='%23161616' stroke-opacity='0.55' stroke-width='0.9'/%3E%3Cpath d='M318.9 145l0 -8' stroke='%23161616' stroke-opacity='0.55' stroke-width='1'/%3E%3C/svg%3E") 438px 112px / 330px 300px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540' preserveAspectRatio='none'%3E%3Crect x='16' y='16' width='928' height='478' fill='none' stroke='%23161616' stroke-width='1.6'/%3E%3Cpath d='M784 16V494' stroke='%23161616' stroke-width='1.6'/%3E%3Ccircle cx='914' cy='378' r='13' fill='none' stroke='%23161616' stroke-width='1.1'/%3E%3Cpath d='M914 361L920 386L914 381L908 386Z' fill='%23161616'/%3E%3Cpath d='M784 108H944M784 160H944M784 212H944M784 252H944M784 292H944M784 332H944' stroke='%23161616' stroke-width='0.9'/%3E%3Cpath d='M793.7 25.6L796 25.6Q797 25.6 797.6 26.1Q798.1 26.5 798.1 27.4Q798.1 28.2 797.6 28.7Q797 29.1 796 29.1L795.1 29.1L795.1 31L793.7 31L793.7 25.6ZM795.1 26.6L795.1 28.1L795.8 28.1Q796.2 28.1 796.5 27.9Q796.7 27.7 796.7 27.4Q796.7 27 796.5 26.8Q796.2 26.6 795.8 26.6L795.1 26.6ZM801.1 28Q801.5 28 801.7 27.8Q801.9 27.7 801.9 27.3Q801.9 26.9 801.7 26.8Q801.5 26.6 801.1 26.6L800.5 26.6L800.5 28L801.1 28ZM800.5 29L800.5 31L799.1 31L799.1 25.6L801.2 25.6Q802.3 25.6 802.8 26Q803.3 26.3 803.3 27.1Q803.3 27.6 803 28Q802.8 28.3 802.2 28.5Q802.5 28.5 802.8 28.8Q803 29 803.2 29.5L804 31L802.5 31L801.8 29.7Q801.6 29.3 801.4 29.1Q801.2 29 800.9 29L800.5 29ZM807.3 26.5Q806.6 26.5 806.3 27Q805.9 27.5 805.9 28.3Q805.9 29.2 806.3 29.6Q806.6 30.1 807.3 30.1Q807.9 30.1 808.3 29.6Q808.6 29.2 808.6 28.3Q808.6 27.5 808.3 27Q807.9 26.5 807.3 26.5ZM807.3 25.5Q808.6 25.5 809.3 26.3Q810 27 810 28.3Q810 29.6 809.3 30.4Q808.6 31.1 807.3 31.1Q806 31.1 805.2 30.4Q804.5 29.6 804.5 28.3Q804.5 27 805.2 26.3Q806 25.5 807.3 25.5ZM811.1 25.6L812.5 25.6L812.5 30.5Q812.5 31.5 811.9 32Q811.4 32.5 810.3 32.5L810 32.5L810 31.4L810.2 31.4Q810.6 31.4 810.9 31.2Q811.1 30.9 811.1 30.5L811.1 25.6ZM813.8 25.6L817.6 25.6L817.6 26.7L815.2 26.7L815.2 27.7L817.5 27.7L817.5 28.7L815.2 28.7L815.2 29.9L817.7 29.9L817.7 31L813.8 31L813.8 25.6ZM823.2 30.7Q822.8 30.9 822.4 31Q822 31.1 821.5 31.1Q820.2 31.1 819.4 30.4Q818.6 29.6 818.6 28.3Q818.6 27 819.4 26.3Q820.2 25.5 821.5 25.5Q822 25.5 822.4 25.6Q822.8 25.7 823.2 25.9L823.2 27Q822.8 26.8 822.4 26.6Q822 26.5 821.6 26.5Q820.9 26.5 820.5 27Q820 27.5 820 28.3Q820 29.1 820.5 29.6Q820.9 30.1 821.6 30.1Q822 30.1 822.4 30Q822.8 29.9 823.2 29.6L823.2 30.7ZM823.7 25.6L828.7 25.6L828.7 26.7L826.9 26.7L826.9 31L825.5 31L825.5 26.7L823.7 26.7L823.7 25.6ZM798 122.7Q797.6 122.9 797.2 123Q796.7 123.1 796.3 123.1Q794.9 123.1 794.2 122.4Q793.4 121.6 793.4 120.3Q793.4 119 794.2 118.3Q794.9 117.5 796.3 117.5Q796.7 117.5 797.2 117.6Q797.6 117.7 798 117.9L798 119Q797.6 118.8 797.2 118.6Q796.8 118.5 796.4 118.5Q795.7 118.5 795.2 119Q794.8 119.5 794.8 120.3Q794.8 121.1 795.2 121.6Q795.7 122.1 796.4 122.1Q796.8 122.1 797.2 122Q797.6 121.9 798 121.6L798 122.7ZM799.1 117.6L800.5 117.6L800.5 121.9L802.9 121.9L802.9 123L799.1 123L799.1 117.6ZM803.8 117.6L805.2 117.6L805.2 123L803.8 123L803.8 117.6ZM806.6 117.6L810.3 117.6L810.3 118.7L808 118.7L808 119.7L810.2 119.7L810.2 120.7L808 120.7L808 121.9L810.4 121.9L810.4 123L806.6 123L806.6 117.6ZM811.6 117.6L813.2 117.6L815.1 121.3L815.1 117.6L816.5 117.6L816.5 123L814.9 123L813 119.3L813 123L811.6 123L811.6 117.6ZM817.2 117.6L822.2 117.6L822.2 118.7L820.4 118.7L820.4 123L819 123L819 118.7L817.2 118.7L817.2 117.6ZM795.1 170.7L795.1 173.9L795.6 173.9Q796.4 173.9 796.9 173.5Q797.3 173.1 797.3 172.3Q797.3 171.5 796.9 171.1Q796.4 170.7 795.6 170.7L795.1 170.7ZM793.7 169.6L795.1 169.6Q796.4 169.6 797 169.8Q797.6 170 798 170.4Q798.4 170.7 798.6 171.2Q798.8 171.7 798.8 172.3Q798.8 172.9 798.6 173.4Q798.4 173.9 798 174.2Q797.6 174.6 797 174.8Q796.4 175 795.1 175L793.7 175L793.7 169.6ZM801.8 172Q802.2 172 802.4 171.8Q802.6 171.7 802.6 171.3Q802.6 170.9 802.4 170.8Q802.2 170.6 801.8 170.6L801.2 170.6L801.2 172L801.8 172ZM801.2 173L801.2 175L799.8 175L799.8 169.6L801.9 169.6Q803 169.6 803.5 170Q804 170.3 804 171.1Q804 171.6 803.7 172Q803.5 172.3 803 172.5Q803.3 172.5 803.5 172.8Q803.7 173 803.9 173.5L804.7 175L803.2 175L802.6 173.7Q802.4 173.3 802.1 173.1Q801.9 173 801.6 173L801.2 173ZM808.8 174L806.6 174L806.3 175L804.9 175L806.9 169.6L808.5 169.6L810.5 175L809.1 175L808.8 174ZM807 173L808.4 173L807.7 170.9L807 173ZM810.5 169.6L811.8 169.6L812.7 173.5L813.6 169.6L815 169.6L815.9 173.5L816.8 169.6L818.2 169.6L816.9 175L815.3 175L814.3 170.9L813.3 175L811.7 175L810.5 169.6ZM819.1 169.6L820.5 169.6L820.5 175L819.1 175L819.1 169.6ZM821.8 169.6L823.4 169.6L825.3 173.3L825.3 169.6L826.7 169.6L826.7 175L825.1 175L823.1 171.3L823.1 175L821.8 175L821.8 169.6ZM832.9 174.6Q832.4 174.9 831.8 175Q831.2 175.1 830.6 175.1Q829.3 175.1 828.5 174.4Q827.7 173.6 827.7 172.3Q827.7 171 828.5 170.3Q829.3 169.5 830.7 169.5Q831.2 169.5 831.7 169.6Q832.2 169.7 832.7 169.9L832.7 171Q832.2 170.8 831.8 170.6Q831.3 170.5 830.9 170.5Q830.1 170.5 829.6 171Q829.2 171.4 829.2 172.3Q829.2 173.2 829.6 173.6Q830 174.1 830.8 174.1Q831 174.1 831.2 174.1Q831.4 174 831.6 174L831.6 172.9L830.7 172.9L830.7 172L832.9 172L832.9 174.6ZM797.4 221.8L797.4 222.9Q797 222.7 796.6 222.6Q796.1 222.5 795.8 222.5Q795.3 222.5 795 222.7Q794.8 222.8 794.8 223.1Q794.8 223.3 795 223.4Q795.1 223.5 795.5 223.6L796.1 223.7Q797 223.9 797.4 224.3Q797.8 224.7 797.8 225.3Q797.8 226.2 797.3 226.7Q796.7 227.1 795.6 227.1Q795.1 227.1 794.6 227Q794.1 226.9 793.6 226.7L793.6 225.5Q794.1 225.8 794.6 226Q795.1 226.1 795.5 226.1Q796 226.1 796.2 225.9Q796.4 225.8 796.4 225.5Q796.4 225.3 796.3 225.1Q796.1 225 795.6 224.9L795.1 224.8Q794.3 224.6 793.9 224.2Q793.5 223.8 793.5 223.2Q793.5 222.4 794.1 221.9Q794.6 221.5 795.5 221.5Q796 221.5 796.5 221.6Q796.9 221.6 797.4 221.8ZM803.3 226.7Q802.9 226.9 802.5 227Q802.1 227.1 801.6 227.1Q800.3 227.1 799.5 226.4Q798.7 225.6 798.7 224.3Q798.7 223 799.5 222.3Q800.3 221.5 801.6 221.5Q802.1 221.5 802.5 221.6Q802.9 221.7 803.3 221.9L803.3 223Q802.9 222.8 802.5 222.6Q802.1 222.5 801.7 222.5Q801 222.5 800.6 223Q800.1 223.5 800.1 224.3Q800.1 225.1 800.6 225.6Q801 226.1 801.7 226.1Q802.1 226.1 802.5 226Q802.9 225.9 803.3 225.6L803.3 226.7ZM807.7 226L805.5 226L805.2 227L803.8 227L805.8 221.6L807.5 221.6L809.5 227L808.1 227L807.7 226ZM805.9 225L807.4 225L806.6 222.9L805.9 225ZM810.2 221.6L811.6 221.6L811.6 225.9L814 225.9L814 227L810.2 227L810.2 221.6ZM814.9 221.6L818.6 221.6L818.6 222.7L816.3 222.7L816.3 223.7L818.5 223.7L818.5 224.7L816.3 224.7L816.3 225.9L818.7 225.9L818.7 227L814.9 227L814.9 221.6ZM795.1 262.7L795.1 265.9L795.6 265.9Q796.4 265.9 796.9 265.5Q797.3 265.1 797.3 264.3Q797.3 263.5 796.9 263.1Q796.4 262.7 795.6 262.7L795.1 262.7ZM793.7 261.6L795.1 261.6Q796.4 261.6 797 261.8Q797.6 262 798 262.4Q798.4 262.7 798.6 263.2Q798.8 263.7 798.8 264.3Q798.8 264.9 798.6 265.4Q798.4 265.9 798 266.2Q797.6 266.6 797 266.8Q796.4 267 795.1 267L793.7 267L793.7 261.6ZM803.1 266L800.9 266L800.6 267L799.2 267L801.2 261.6L802.8 261.6L804.8 267L803.4 267L803.1 266ZM801.3 265L802.7 265L802 262.9L801.3 265ZM804.3 261.6L809.3 261.6L809.3 262.7L807.5 262.7L807.5 267L806.1 267L806.1 262.7L804.3 262.7L804.3 261.6ZM810 261.6L813.8 261.6L813.8 262.7L811.4 262.7L811.4 263.7L813.6 263.7L813.6 264.7L811.4 264.7L811.4 265.9L813.9 265.9L813.9 267L810 267L810 261.6ZM795.1 302.7L795.1 305.9L795.6 305.9Q796.4 305.9 796.9 305.5Q797.3 305.1 797.3 304.3Q797.3 303.5 796.9 303.1Q796.4 302.7 795.6 302.7L795.1 302.7ZM793.7 301.6L795.1 301.6Q796.4 301.6 797 301.8Q797.6 302 798 302.4Q798.4 302.7 798.6 303.2Q798.8 303.7 798.8 304.3Q798.8 304.9 798.6 305.4Q798.4 305.9 798 306.2Q797.6 306.6 797 306.8Q796.4 307 795.1 307L793.7 307L793.7 301.6ZM801.8 304Q802.2 304 802.4 303.8Q802.6 303.7 802.6 303.3Q802.6 302.9 802.4 302.8Q802.2 302.6 801.8 302.6L801.2 302.6L801.2 304L801.8 304ZM801.2 305L801.2 307L799.8 307L799.8 301.6L801.9 301.6Q803 301.6 803.5 302Q804 302.3 804 303.1Q804 303.6 803.7 304Q803.5 304.3 803 304.5Q803.3 304.5 803.5 304.8Q803.7 305 803.9 305.5L804.7 307L803.2 307L802.6 305.7Q802.4 305.3 802.1 305.1Q801.9 305 801.6 305L801.2 305ZM808.8 306L806.6 306L806.3 307L804.9 307L806.9 301.6L808.5 301.6L810.5 307L809.1 307L808.8 306ZM807 305L808.4 305L807.7 302.9L807 305ZM810.5 301.6L811.8 301.6L812.7 305.5L813.6 301.6L815 301.6L815.9 305.5L816.8 301.6L818.2 301.6L816.9 307L815.3 307L814.3 302.9L813.3 307L811.7 307L810.5 301.6ZM819.1 301.6L820.6 301.6L822.6 305.3L822.6 301.6L823.9 301.6L823.9 307L822.4 307L820.4 303.3L820.4 307L819.1 307L819.1 301.6ZM800.7 187.9L800.7 189.2Q800.1 188.6 799.5 188.3Q798.8 188.1 798 188.1Q796.5 188.1 795.7 189Q794.9 189.9 794.9 191.6Q794.9 193.4 795.7 194.3Q796.5 195.2 798 195.2Q798.8 195.2 799.5 194.9Q800.1 194.6 800.7 194.1L800.7 195.3Q800.1 195.7 799.4 196Q798.7 196.2 797.9 196.2Q796 196.2 794.8 195Q793.7 193.7 793.7 191.6Q793.7 189.5 794.8 188.3Q796 187.1 797.9 187.1Q798.7 187.1 799.4 187.3Q800.1 187.5 800.7 187.9ZM805.1 190.2Q804.2 190.2 803.7 190.9Q803.2 191.5 803.2 192.7Q803.2 193.9 803.7 194.6Q804.2 195.3 805.1 195.3Q805.9 195.3 806.4 194.6Q806.9 193.9 806.9 192.7Q806.9 191.6 806.4 190.9Q805.9 190.2 805.1 190.2ZM805.1 189.3Q806.5 189.3 807.3 190.2Q808.1 191.1 808.1 192.7Q808.1 194.3 807.3 195.3Q806.5 196.2 805.1 196.2Q803.6 196.2 802.8 195.3Q802 194.3 802 192.7Q802 191.1 802.8 190.2Q803.6 189.3 805.1 189.3ZM809.1 189.4L810.2 189.4L812.3 194.9L814.3 189.4L815.5 189.4L813 196L811.5 196L809.1 189.4ZM822.6 192.4L822.6 193L817.6 193Q817.7 194.1 818.3 194.7Q818.9 195.3 820 195.3Q820.6 195.3 821.2 195.1Q821.7 195 822.3 194.6L822.3 195.7Q821.7 195.9 821.1 196Q820.5 196.2 819.9 196.2Q818.3 196.2 817.4 195.3Q816.5 194.3 816.5 192.8Q816.5 191.2 817.4 190.2Q818.2 189.3 819.7 189.3Q821 189.3 821.8 190.1Q822.6 191 822.6 192.4ZM821.5 192.1Q821.5 191.2 821 190.7Q820.5 190.2 819.7 190.2Q818.8 190.2 818.3 190.7Q817.7 191.2 817.6 192.1L821.5 192.1ZM828.1 190.4Q828 190.3 827.7 190.3Q827.5 190.2 827.3 190.2Q826.4 190.2 825.9 190.8Q825.4 191.4 825.4 192.5L825.4 196L824.3 196L824.3 189.4L825.4 189.4L825.4 190.5Q825.7 189.9 826.3 189.6Q826.8 189.3 827.6 189.3Q827.7 189.3 827.8 189.3Q828 189.3 828.1 189.3L828.1 190.4ZM794.2 233.3L795.8 233.3L799.7 240.6L799.7 233.3L800.8 233.3L800.8 242L799.2 242L795.3 234.7L795.3 242L794.2 242L794.2 233.3ZM801.9 233.3L809.3 233.3L809.3 234.2L806.2 234.2L806.2 242L805 242L805 234.2L801.9 234.2L801.9 233.3ZM815.7 233.5L815.7 234.7Q815.1 234.4 814.5 234.2Q813.9 234.1 813.3 234.1Q812.3 234.1 811.8 234.4Q811.3 234.8 811.3 235.5Q811.3 236.1 811.6 236.4Q812 236.7 813 236.8L813.7 237Q815 237.2 815.6 237.9Q816.3 238.5 816.3 239.6Q816.3 240.9 815.4 241.5Q814.6 242.2 812.9 242.2Q812.3 242.2 811.6 242Q810.9 241.9 810.1 241.6L810.1 240.4Q810.9 240.8 811.5 241Q812.2 241.2 812.9 241.2Q813.9 241.2 814.5 240.8Q815 240.4 815 239.7Q815 239 814.6 238.7Q814.2 238.3 813.3 238.1L812.6 238Q811.3 237.7 810.7 237.2Q810.1 236.6 810.1 235.6Q810.1 234.4 810.9 233.8Q811.7 233.1 813.2 233.1Q813.8 233.1 814.4 233.2Q815.1 233.3 815.7 233.5ZM797.4 341.8L797.4 342.9Q797 342.7 796.6 342.6Q796.1 342.5 795.8 342.5Q795.3 342.5 795 342.7Q794.8 342.8 794.8 343.1Q794.8 343.3 795 343.4Q795.1 343.5 795.5 343.6L796.1 343.7Q797 343.9 797.4 344.3Q797.8 344.7 797.8 345.3Q797.8 346.2 797.3 346.7Q796.7 347.1 795.6 347.1Q795.1 347.1 794.6 347Q794.1 346.9 793.6 346.7L793.6 345.5Q794.1 345.8 794.6 346Q795.1 346.1 795.5 346.1Q796 346.1 796.2 345.9Q796.4 345.8 796.4 345.5Q796.4 345.3 796.3 345.1Q796.1 345 795.6 344.9L795.1 344.8Q794.3 344.6 793.9 344.2Q793.5 343.8 793.5 343.2Q793.5 342.4 794.1 341.9Q794.6 341.5 795.5 341.5Q796 341.5 796.5 341.6Q796.9 341.6 797.4 341.8ZM799 341.6L800.4 341.6L800.4 343.7L802.5 343.7L802.5 341.6L803.8 341.6L803.8 347L802.5 347L802.5 344.7L800.4 344.7L800.4 347L799 347L799 341.6ZM805.2 341.6L809 341.6L809 342.7L806.6 342.7L806.6 343.7L808.8 343.7L808.8 344.7L806.6 344.7L806.6 345.9L809 345.9L809 347L805.2 347L805.2 341.6ZM810.3 341.6L814 341.6L814 342.7L811.6 342.7L811.6 343.7L813.9 343.7L813.9 344.7L811.6 344.7L811.6 345.9L814.1 345.9L814.1 347L810.3 347L810.3 341.6ZM814.7 341.6L819.6 341.6L819.6 342.7L817.9 342.7L817.9 347L816.5 347L816.5 342.7L814.7 342.7L814.7 341.6ZM809 472L800.2 472L798.8 476L793.1 476L801.2 454.1L808 454.1L816.1 476L810.4 476L809 472ZM801.6 468L807.6 468L804.6 459.3L801.6 468ZM817.8 465.2L827 465.2L827 469.5L817.8 469.5L817.8 465.2ZM842.5 465Q842.5 460.9 841.7 459.3Q840.9 457.6 839.1 457.6Q837.3 457.6 836.5 459.3Q835.7 460.9 835.7 465Q835.7 469.2 836.5 470.9Q837.3 472.6 839.1 472.6Q840.9 472.6 841.7 470.9Q842.5 469.2 842.5 465ZM848.1 465.1Q848.1 470.5 845.8 473.5Q843.4 476.4 839.1 476.4Q834.8 476.4 832.4 473.5Q830.1 470.5 830.1 465.1Q830.1 459.6 832.4 456.7Q834.8 453.7 839.1 453.7Q843.4 453.7 845.8 456.7Q848.1 459.6 848.1 465.1ZM863.3 465Q863.3 460.9 862.6 459.3Q861.8 457.6 860 457.6Q858.2 457.6 857.4 459.3Q856.6 460.9 856.6 465Q856.6 469.2 857.4 470.9Q858.2 472.6 860 472.6Q861.8 472.6 862.6 470.9Q863.3 469.2 863.3 465ZM869 465.1Q869 470.5 866.6 473.5Q864.3 476.4 860 476.4Q855.7 476.4 853.3 473.5Q851 470.5 851 465.1Q851 459.6 853.3 456.7Q855.7 453.7 860 453.7Q864.3 453.7 866.6 456.7Q869 459.6 869 465.1ZM884.2 465Q884.2 460.9 883.4 459.3Q882.7 457.6 880.9 457.6Q879 457.6 878.3 459.3Q877.5 460.9 877.5 465Q877.5 469.2 878.3 470.9Q879 472.6 880.9 472.6Q882.7 472.6 883.4 470.9Q884.2 469.2 884.2 465ZM889.9 465.1Q889.9 470.5 887.5 473.5Q885.2 476.4 880.9 476.4Q876.5 476.4 874.2 473.5Q871.9 470.5 871.9 465.1Q871.9 459.6 874.2 456.7Q876.5 453.7 880.9 453.7Q885.2 453.7 887.5 456.7Q889.9 459.6 889.9 465.1ZM911.1 351.4L912.9 351.4L915.3 355.9L915.3 351.4L916.9 351.4L916.9 358L915 358L912.7 353.5L912.7 358L911.1 358L911.1 351.4Z' fill='%23161616'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-parti.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-parti .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 1.8em; font-stretch: 112%; letter-spacing: -0.025em !important; line-height: 1.02; }
+.deck-theme-parti.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-parti .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 47%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-parti.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-parti .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 3.2em;
+  height: 0.09em;
+  margin-top: 0.22em;
+  background: var(--pa-red);
+}
+.deck-theme-parti.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-parti .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 46%; text-align: left !important; }
+
+/* Subtitles: muted; on the cover, the lines after the first in wide
+   capitals, as a title block letters them */
+.deck-theme-parti [data-placeholder=subtitle] :is(p, li) { color: var(--pa-muted) !important; }
+.deck-theme-parti.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-parti .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { font-size: 0.6em; font-stretch: 125%; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+
+/* Section slides: tracing paper over a structural grid */
+.deck-theme-parti.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-parti .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540' preserveAspectRatio='none'%3E%3Crect width='960' height='540' fill='%23efe6bd'/%3E%3Cpath d='M150 66V484M330 66V484M510 66V484M690 66V484M870 66V484M66 126H936M66 406H936' stroke='%23161616' stroke-opacity='0.42' stroke-width='1' stroke-dasharray='22 5 3 5'/%3E%3Ccircle cx='150' cy='44' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='330' cy='44' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='510' cy='44' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='690' cy='44' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='870' cy='44' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='44' cy='126' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Ccircle cx='44' cy='406' r='17' fill='%23efe6bd' stroke='%23161616' stroke-width='1.3'/%3E%3Cpath d='M152.2 47.5L147.8 47.5L147.1 49.5L144.3 49.5L148.3 38.6L151.7 38.6L155.7 49.5L152.9 49.5L152.2 47.5ZM148.5 45.5L151.5 45.5L150 41.1L148.5 45.5ZM329.9 42.8Q330.5 42.8 330.9 42.5Q331.2 42.2 331.2 41.6Q331.2 41.1 330.9 40.8Q330.5 40.5 329.9 40.5L328.3 40.5L328.3 42.8L329.9 42.8ZM330 47.6Q330.8 47.6 331.3 47.2Q331.7 46.9 331.7 46.1Q331.7 45.4 331.3 45.1Q330.8 44.7 330 44.7L328.3 44.7L328.3 47.6L330 47.6ZM332.6 43.6Q333.5 43.9 334 44.6Q334.5 45.3 334.5 46.4Q334.5 47.9 333.4 48.7Q332.4 49.5 330.2 49.5L325.5 49.5L325.5 38.6L329.7 38.6Q332 38.6 333 39.3Q334.1 39.9 334.1 41.5Q334.1 42.3 333.7 42.8Q333.3 43.4 332.6 43.6ZM514.7 48.9Q513.9 49.3 513 49.5Q512.2 49.7 511.3 49.7Q508.5 49.7 506.9 48.2Q505.3 46.7 505.3 44Q505.3 41.4 506.9 39.9Q508.5 38.4 511.3 38.4Q512.2 38.4 513 38.6Q513.9 38.8 514.7 39.2L514.7 41.4Q513.9 40.9 513.1 40.7Q512.3 40.4 511.5 40.4Q510 40.4 509.1 41.4Q508.3 42.3 508.3 44Q508.3 45.7 509.1 46.7Q510 47.7 511.5 47.7Q512.3 47.7 513.1 47.4Q513.9 47.2 514.7 46.6L514.7 48.9ZM687.7 40.7L687.7 47.4L688.7 47.4Q690.4 47.4 691.3 46.5Q692.2 45.7 692.2 44Q692.2 42.4 691.3 41.5Q690.4 40.7 688.7 40.7L687.7 40.7ZM684.9 38.6L687.8 38.6Q690.3 38.6 691.5 38.9Q692.8 39.3 693.6 40.1Q694.4 40.9 694.8 41.8Q695.1 42.8 695.1 44Q695.1 45.3 694.8 46.2Q694.4 47.2 693.6 47.9Q692.7 48.8 691.5 49.1Q690.3 49.5 687.8 49.5L684.9 49.5L684.9 38.6ZM866.1 38.6L873.7 38.6L873.7 40.7L868.9 40.7L868.9 42.7L873.4 42.7L873.4 44.9L868.9 44.9L868.9 47.4L873.9 47.4L873.9 49.5L866.1 49.5L866.1 38.6ZM40.2 129.6L42.7 129.6L42.7 122.5L40.1 123L40.1 121.1L42.7 120.6L45.4 120.6L45.4 129.6L47.9 129.6L47.9 131.5L40.2 131.5L40.2 129.6ZM43.2 409.4L48 409.4L48 411.5L40 411.5L40 409.4L44 405.9Q44.6 405.4 44.8 405Q45.1 404.5 45.1 404Q45.1 403.2 44.5 402.8Q44 402.3 43.2 402.3Q42.5 402.3 41.7 402.6Q40.9 402.9 40.1 403.4L40.1 401Q41 400.7 41.9 400.5Q42.9 400.4 43.8 400.4Q45.7 400.4 46.8 401.2Q47.9 402.1 47.9 403.6Q47.9 404.5 47.4 405.3Q47 406.1 45.5 407.4L43.2 409.4Z' fill='%23161616'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-parti.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-parti .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1 { font-stretch: 112%; }
+.deck-theme-parti.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-parti .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #4e4c46 !important; }
+.deck-theme-parti.px-slide[data-layout=section-header]:not([data-own-background]),
+.deck-theme-parti .px-slide[data-layout=section-header]:not([data-own-background]) { --pa-board: #efe6bd; --pa-muted: #4e4c46; --pa-pale: #b5ab84; }
+
+/* A Heading 4: a drawing label in wide capitals, its bold words in
+   graphite (Plan · Level 2) */
+.deck-theme-parti .px-text h4 {
+  margin: 0 0 0.45em !important;
+  color: var(--pa-muted) !important;
+  font-size: 0.5em;
+  font-stretch: 125%;
+  font-weight: 600 !important;
+  letter-spacing: 0.16em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-parti .px-text h4 :is(strong, b) { color: var(--pa-ink); font-weight: 800; }
+
+/* A Heading 6: a note lettered by hand in red, after a leader */
+.deck-theme-parti .px-text h6 {
+  margin: 0.25em 0 0.35em !important;
+  color: var(--pa-red) !important;
+  font-family: 'Architects Daughter', 'Segoe Print', 'Bradley Hand', cursive !important;
+  font-size: 0.82em;
+  font-weight: 400 !important;
+  line-height: 1.3;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+.deck-theme-parti .px-text h6::before {
+  content: "";
+  display: inline-block;
+  width: 1.3em;
+  height: 0.55em;
+  margin-right: 0.35em;
+  vertical-align: 0.05em;
+  background:
+    radial-gradient(circle, var(--pa-red) 0.1em, transparent 0.11em) 0 100% / 0.22em 0.22em no-repeat,
+    linear-gradient(to top right, transparent calc(50% - 0.04em), var(--pa-red) calc(50% - 0.04em) calc(50% + 0.04em), transparent calc(50% + 0.04em)) 0.08em 0 / calc(100% - 0.08em) calc(100% - 0.08em) no-repeat;
+}
+
+/* Bullets: legend squares, filled, then open, then a dash. Numbered lists
+   are keynotes, each number in a graphite hexagon. */
+.deck-theme-parti .px-text :is(ul, ol) { display: block; }
+.deck-theme-parti .px-text ul { list-style: none; }
+.deck-theme-parti .px-text ul > li { position: relative; }
+.deck-theme-parti .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.92em;
+  top: 0.4em;
+  width: 0.4em;
+  height: 0.4em;
+  box-sizing: border-box;
+  background: var(--pa-ink);
+}
+.deck-theme-parti .px-text ul ul > li::before { background: transparent; border: 0.07em solid var(--pa-ink); }
+.deck-theme-parti .px-text ul ul ul > li::before { top: 0.62em; width: 0.45em; height: 0; border: 0; border-top: 0.08em solid var(--pa-red); }
+.deck-theme-parti .px-text ol { list-style: none; padding-left: 1.6em; }
+.deck-theme-parti .px-text ol > li { position: relative; list-style: none; }
+.deck-theme-parti .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.45em;
+  top: 0.16em;
+  width: 1.85em;
+  height: 1.6em;
+  background: var(--pa-ink);
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  color: #ffffff;
+  font-size: 0.68em;
+  font-weight: 700;
+  line-height: 1.6em;
+  text-align: center;
+}
+.deck-theme-parti.px-slide[data-own-background] .px-text ol > li::before,
+.deck-theme-parti .px-slide[data-own-background] .px-text ol > li::before { color: var(--px-bg, #000); }
+
+/* Links: red */
+.deck-theme-parti .px-text a { color: var(--px-link, #c92a2a) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a room tag, wide capitals in a graphite box */
+.deck-theme-parti .px-text :not(pre) > code {
+  padding: 0.02em 0.4em 0.04em;
+  border: 0.07em solid var(--pa-ink);
+  border-radius: 0;
+  background: #ffffff !important;
+  color: #111110;
+  font-family: Archivo, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.74em;
+  font-stretch: 112%;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.deck-theme-parti.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-parti .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; color: var(--px-text); }
+
+/* Quotes: a revision cloud in red with its delta at the corner, the note
+   inside lettered by hand; bold first words are the revision (Rev 2) */
+.deck-theme-parti .px-text blockquote {
+  position: relative;
+  margin: 0.4em 0.3em 0.5em !important;
+  padding: 0.2em 0.4em 0.25em !important;
+  border: 20px solid transparent !important;
+  border-image: var(--pa-cloud) 20 round !important;
+  background: transparent;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #c92a2a;
+  font-style: normal;
+}
+.deck-theme-parti .px-text blockquote::after {
+  content: "";
+  position: absolute;
+  right: -1.05em;
+  top: -1.15em;
+  width: 1.1em;
+  height: 0.95em;
+  background: #c92a2a;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.deck-theme-parti .px-text blockquote :is(p, li) { color: #b22424 !important; font-family: 'Architects Daughter', 'Segoe Print', 'Bradley Hand', cursive !important; line-height: 1.35; }
+.deck-theme-parti .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.25em;
+  color: #c92a2a;
+  font-family: Archivo, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.56em;
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-parti .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-parti.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-parti .px-slide[data-own-background] .px-text blockquote { border: 0.07em dashed var(--px-text) !important; border-image: none !important; }
+.deck-theme-parti.px-slide[data-own-background] .px-text blockquote :is(p, li, strong),
+.deck-theme-parti .px-slide[data-own-background] .px-text blockquote :is(p, li, strong) { color: var(--px-text) !important; }
+.deck-theme-parti.px-slide[data-own-background] .px-text blockquote::after,
+.deck-theme-parti .px-slide[data-own-background] .px-text blockquote::after { background: var(--px-text); }
+
+/* Code: on white with a graphite edge, Parti's own syntax colors whichever
+   code theme the deck uses */
+.deck-theme-parti :is(pre, pre.hljs) {
+  background: #ffffff !important;
+  color: #1f1f1e;
+  border: 1px solid #d6d4ce;
+  border-left: 3px solid #111110;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-parti :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-parti pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-parti .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-parti pre [class*=hljs-] { color: #1f1f1e; font-style: normal; font-weight: 400; }
+.deck-theme-parti pre :is(.hljs-comment, .hljs-quote) { color: #63625e; font-style: italic; }
+.deck-theme-parti pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #111110; font-weight: 700; }
+.deck-theme-parti pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #3c6a4a; }
+.deck-theme-parti pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #c92a2a; }
+.deck-theme-parti pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #111110; font-weight: 700; }
+.deck-theme-parti pre :is(.hljs-meta, .hljs-deletion) { color: #63625e; }
+
+/* Tables: a schedule. Every cell ruled, the header row in reverse, wide
+   capitals in it, tabular figures */
+.deck-theme-parti table { border: 0 !important; border-collapse: collapse; outline: 1.5px solid #111110; outline-offset: -0.75px; background: #ffffff; }
+.deck-theme-parti table :is(td, th) {
+  border: 0 !important;
+  border-right: 1px solid #c9c7c1 !important;
+  border-bottom: 1px solid #c9c7c1 !important;
+  background: transparent !important;
+  color: #1f1f1e !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-parti table tr:first-child :is(td, th) {
+  border-right-color: #3a3a38 !important;
+  background: #111110 !important;
+  color: #ffffff !important;
+  font-size: 0.78em;
+  font-stretch: 125%;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-theme-parti.px-slide[data-own-background] table,
+.deck-theme-parti .px-slide[data-own-background] table { background: transparent; outline-color: var(--px-text); }
+.deck-theme-parti.px-slide[data-own-background] table :is(td, th),
+.deck-theme-parti .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; border-color: var(--px-text) !important; }
+
+/* The Big Number: a measure, in Archivo at its heaviest, its unit
+   (inline code or italic words in it) in gray, over a dimension string */
+.deck-theme-parti.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-parti .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #111110) !important;
+  font-stretch: 112%;
+  font-weight: 800;
+  letter-spacing: -0.035em !important;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-parti.px-slide[data-layout=big-number] [data-placeholder=title] h1::after,
+.deck-theme-parti .px-slide[data-layout=big-number] [data-placeholder=title] h1::after {
+  content: "";
+  display: block;
+  width: 320px;
+  max-width: 100%;
+  height: 24px;
+  margin-top: 4px;
+  background: var(--pa-red);
+  -webkit-mask: var(--pa-dimension) 0 0 / 100% 100% no-repeat;
+  mask: var(--pa-dimension) 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-parti.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center]::after,
+.deck-theme-parti .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center]::after { margin-inline: auto; }
+.deck-theme-parti.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-parti .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  margin-left: 0.12em;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: var(--pa-muted);
+  font-family: inherit !important;
+  font-size: 0.42em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* The footer: wide capitals. With its sections in sequence, it is a row of
+   level datums, each a triangle on a line: done in graphite, the current
+   one red, those to come pale. The page number is the sheet's. (The class
+   and the slide both named, to outweigh the presented deck's footer
+   rules.) */
+.deck-theme-parti.px-slide .px-footer,
+.deck-theme-parti .px-slide .px-footer { padding-inline: 14px !important; color: var(--pa-muted) !important; }
+.deck-theme-parti.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-parti .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--pa-muted) !important;
+  font-family: Archivo, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 10.5px !important;
+  font-stretch: 118%;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-parti.px-slide .px-footer .px-footer-page,
+.deck-theme-parti .px-slide .px-footer .px-footer-page { color: var(--pa-ink) !important; font-weight: 800 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-parti.px-slide .px-footer .px-footer-page::before,
+.deck-theme-parti .px-slide .px-footer .px-footer-page::before { content: "Sheet "; font-weight: 600; }
+.deck-theme-parti.px-slide .px-footer .px-footer-sections,
+.deck-theme-parti .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 16px; }
+.deck-theme-parti.px-slide .px-footer .px-footer-section,
+.deck-theme-parti .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 1px; background: linear-gradient(var(--pa-pale), var(--pa-pale)) 0 100% / 100% 1px no-repeat; }
+.deck-theme-parti.px-slide .px-footer .px-footer-section::before,
+.deck-theme-parti .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 9px;
+  background: var(--pa-pale);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.deck-theme-parti.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-parti .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--pa-ink) !important; background-image: linear-gradient(var(--pa-ink), var(--pa-ink)); }
+.deck-theme-parti.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-parti .px-slide .px-footer .px-footer-section[data-state=past]::before { background: var(--pa-ink); }
+.deck-theme-parti.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-parti .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--pa-red) !important; background-image: linear-gradient(var(--pa-red), var(--pa-red)); background-size: 100% 2px; }
+.deck-theme-parti.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-parti .px-slide .px-footer .px-footer-section[data-state=current]::before { width: 13px; height: 11px; background: var(--pa-red); }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the drawing title's double rule */
+.deck-theme-parti .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 86px;
+  height: 5px;
+  margin: 4px auto 0;
+  background: linear-gradient(#111110, #111110) 0 0 / 100% 2px no-repeat, linear-gradient(#111110, #111110) 0 4px / 100% 1px no-repeat;
+}
