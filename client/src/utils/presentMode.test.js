@@ -568,10 +568,10 @@ describe('image citations', () => {
   })
 })
 
-// ── GSAP entry animations ─────────────────────────────────────────────
+// ── Entry animations ──────────────────────────────────────────────────
 
-describe('GSAP entry animations', () => {
-  it('adds data-gsap-enter attributes', () => {
+describe('Entry animations', () => {
+  it('adds data-enter attributes', () => {
     const pres = makePres({
       slides: [{
         id: 's1',
@@ -579,13 +579,13 @@ describe('GSAP entry animations', () => {
       }],
     })
     const doc = parseHTML(generateRevealHTML(pres))
-    const el = doc.querySelector('[data-gsap-enter="fadeUp"]')
+    const el = doc.querySelector('[data-enter="fadeUp"]')
     expect(el).toBeTruthy()
-    expect(el.getAttribute('data-gsap-delay')).toBe('200')
-    expect(el.getAttribute('data-gsap-duration')).toBe('800')
+    expect(el.getAttribute('data-enter-delay')).toBe('200')
+    expect(el.getAttribute('data-enter-duration')).toBe('800')
   })
 
-  it('GSAP preset functions are defined in JS', () => {
+  it('entry presets are defined in JS', () => {
     const html = generateRevealHTML(makePres())
     const presets = ['fadeIn', 'fadeUp', 'fadeDown', 'fadeLeft', 'fadeRight', 'zoomIn', 'zoomOut', 'slideUp', 'slideDown']
     for (const name of presets) {

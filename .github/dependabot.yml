@@ -19,7 +19,6 @@ updates:
       - dependency-name: reveal.js
       - dependency-name: katex
       - dependency-name: "@highlightjs/cdn-assets"
-      - dependency-name: gsap
       - dependency-name: p5
       - dependency-name: marked
       - dependency-name: d3

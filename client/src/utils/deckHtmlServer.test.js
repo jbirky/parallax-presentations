@@ -39,7 +39,7 @@ describe('the pages the server builds', () => {
     expect(html).toContain('transform-style:preserve-3d')
     expect(html).toMatch(/<path d="M 0 0 C [^"]+" stroke="#f00"/)
     expect(html).toContain('data-id="a"')
-    expect(html).toContain('data-gsap-enter="fadeUp"')
+    expect(html).toContain('data-enter="fadeUp"')
     // Uploads keep this site's relative links (exports rewrite them to ./assets/)
     const img = server.generateRevealHTML(deck([{ id: 'i', type: 'image', ...at, src: './assets/x.png' }]))
     expect(img).toContain('<img src="./assets/x.png"')

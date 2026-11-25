@@ -355,8 +355,8 @@ export function generateRevealHTML(presentation, opts = {}) {
         const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
-        const gsapAttrs = (el.animationEnter && el.animationEnter !== 'none')
-          ? ` data-gsap-enter="${sanitizeAttr(el.animationEnter)}" data-gsap-delay="${Number(el.animationDelay) || 0}" data-gsap-duration="${Number(el.animationDuration) || 600}"`
+        const enterAttrs = (el.animationEnter && el.animationEnter !== 'none')
+          ? ` data-enter="${sanitizeAttr(el.animationEnter)}" data-enter-delay="${Number(el.animationDelay) || 0}" data-enter-duration="${Number(el.animationDuration) || 600}"`
           : ''
         const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
@@ -366,13 +366,13 @@ export function generateRevealHTML(presentation, opts = {}) {
           const textHook = (fragClass ? fragClass.replace(/"$/, ` ${TEXT_CLASS}"`) : ` class="${TEXT_CLASS}"`) + placeholderAttr(el)
           // Text that shrinks to fit its box (utils/shrinkFit.js)
           if (el.sizeMode === 'shrink') {
-            return `<div${dataId}${textHook}${fragIdx}${gsapAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+            return `<div${dataId}${textHook}${fragIdx}${enterAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
           }
           // Auto-sized text grows with what it holds, as on the canvas
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${textHook}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
+          return `<div${dataId}${textHook}${fragIdx}${enterAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -393,98 +393,98 @@ export function generateRevealHTML(presentation, opts = {}) {
             const offX = el.imageOffsetX ?? 0
             const offY = el.imageOffsetY ?? 0
             const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}`
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
           }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="display:block;width:100%;height:100%;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="display:block;width:100%;height:100%;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'feynman') {
           // Every part, shown from its step by the deck's Feynman script; labels can reach past its box
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'circuit') {
           // Every part, and every step's current, shown at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${circuitSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${circuitSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'logic') {
           // Every part, and each step's signals, shown at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'freebody') {
           // Every force, drawn in at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'venn') {
           // Every layer, number and caption, each shown at its steps by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'timing') {
           // Every waveform, revealed to each step's cycle by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${timingSvg(el, { deck: fxId })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${timingSvg(el, { deck: fxId })}</div>`
         }
         if (el.type === 'geometry') {
           // The figure as the slide opens, which the deck's geometry script
           // redraws as its steps come and its points are dragged
           const gm = geometryDeckHtml(el)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${gm.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${gm.svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${gm.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${gm.svg}</div>`
         }
         if (el.type === 'periodic') {
           // The table as it rests, which the deck's periodic script makes follow
           // the pointer and the slide's steps
           const pt = periodicDeckHtml(el)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
         }
         if (el.type === 'harmonics') {
           // An empty box the deck's harmonics script draws into, turns and steps
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'graph') {
           const srcdoc = graphPageHtml(el, { ...(deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}), stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
           const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'molecule') {
           const srcdoc = moleculeViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const { citeCaption, capHtml, sup } = citationParts(el, sideCitations)
           const mStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script>${offersData ? EMBED_DATASETS_SCRIPT : ''}</head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
           const codeContent = escapeHtml(el.content || '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
         }
         if (el.type === 'markdown') {
           const md = (el.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('marked', 'lib/marked.umd.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
           const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'timeline') {
           const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
@@ -546,20 +546,20 @@ export function generateRevealHTML(presentation, opts = {}) {
             const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(sanitizeUrl(i.image)) : '' }))).replace(/</g, '\\u003c')
             expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\\/script>`
           }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
         }
         if (el.type === 'callout') {
           const bg = cssValue(el.calloutColor) || '#ef4444'
           const tc = cssValue(el.calloutTextColor) || '#ffffff'
           const fs = el.fontSize || 16
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
         }
         if (el.type === 'icon') {
           const color = sanitizeAttr(el.iconColor) || '#ffffff'
           const sw = Number(el.iconStrokeWidth) || 2
           const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
           const path = iconPaths[el.iconName] || iconPaths['Star']
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
         }
         if (el.type === 'latex') {
           const content = el.content || ''
@@ -570,22 +570,22 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (hasTikz) {
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${tikzInk(content, [el.textColor, palette.text])}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           if (hasTable) {
             const wrapped = content.includes('\\begin{document}') ? content
               : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script><link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
         if (el.type === 'equation') {
           // Drawn by the deck's equation script; its labels can reach past its box
           const eqId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`
         }
         if (el.type === 'video') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -609,7 +609,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             vidScript = `<script>${parts.join(';')}</script>`
           }
           if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${cssValue(el.objectFit) || 'contain'};display:block;background:#000;"></video>${vidScript}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${cssValue(el.objectFit) || 'contain'};display:block;background:#000;"></video>${vidScript}</div>`
         }
         if (el.type === 'audio') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -617,7 +617,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
           if (el.muted) attrs.push('muted')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
         }
         if (el.type === 'table') {
           const data = el.data || [['']]
@@ -635,14 +635,14 @@ export function generateRevealHTML(presentation, opts = {}) {
             }).join('')
             return `<tr>${cells}</tr>`
           }).join('')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
         }
         if (el.type === 'text3d') {
           // Unclipped, for letters turned out of the box, and shadowed around
           // the letters rather than the box
           const shadow = text3dShadowFilter(el)
           const t3Style = style.replace('overflow:hidden;', 'overflow:visible;').replace(shadowStyle, '') + (shadow ? `filter:${shadow};` : '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64
@@ -685,23 +685,23 @@ export function generateRevealHTML(presentation, opts = {}) {
             svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
           }
           const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `rotate:${el.rotation}deg;` : ''}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
         }
         if (el.type === 'drawing') {
           const svgPaths = (el.paths || []).map(path => {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = pluginSandbox(el)
           if (!sandboxHtml) {
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
           }
           const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData })
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         return ''
       })
@@ -993,14 +993,14 @@ ${slidesHtml}
     };
     function runSlideAnimations(slide) {
       if (!slide) return;
-      slide.querySelectorAll('[data-gsap-enter]').forEach(function(el) {
-        var preset = ENTRY_PRESETS[el.getAttribute('data-gsap-enter')];
+      slide.querySelectorAll('[data-enter]').forEach(function(el) {
+        var preset = ENTRY_PRESETS[el.getAttribute('data-enter')];
         if (!preset || !el.animate) return;
         var from = Object.assign({ offset: 0 }, preset[1]);
         if (el._entry) el._entry.cancel();
         el._entry = el.animate(preset[2] ? [from, preset[2]] : [from], {
-          duration: parseFloat(el.getAttribute('data-gsap-duration') || 600),
-          delay: parseFloat(el.getAttribute('data-gsap-delay') || 0),
+          duration: parseFloat(el.getAttribute('data-enter-duration') || 600),
+          delay: parseFloat(el.getAttribute('data-enter-delay') || 0),
           easing: preset[0],
           fill: 'backwards',
         });
@@ -1706,7 +1706,7 @@ function generatePrintHTML(presentation) {
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
       })

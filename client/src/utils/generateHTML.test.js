@@ -787,9 +787,11 @@ describe('what a deck writes into its page', () => {
     expect(html).toMatch(/style="position:absolute;left:0px;top:0px;width:100px;height:auto;z-index:1;overflow:visible;[^"]*"><p>Grows<\/p>/)
   })
 
-  it('runs the differential rotation transition without GSAP, which decks don’t load', () => {
+  // GSAP isn't open source, and its license doesn't fit a paid Parallax, so
+  // nothing a deck ships may load it or name it
+  it('runs the differential rotation transition without GSAP', () => {
     const html = generateRevealHTML(makePresentation({ transition: 'differential-rotation' }))
-    expect(html).not.toContain('gsap.')
+    expect(html).not.toMatch(/gsap/i)
     expect(html).toContain("band.animate([{ transform: 'translateX(0)' }")
   })
 })

@@ -2199,7 +2199,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
       {tab === 'animate' && selectedElement && (
         <div className="prop-section">
           <h3>{elementName(selectedElement)}</h3>
-          {/* Slide entry animation (GSAP) */}
+          {/* Slide entry animation */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Entry animation, as the slide opens</div>
             <select
