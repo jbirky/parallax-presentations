@@ -7,6 +7,7 @@ import GuestPage from './pages/GuestPage'
 import TemplateUsePage from './pages/TemplateUsePage'
 import AdminPage from './pages/AdminPage'
 import InvitePage from './pages/InvitePage'
+import TeamJoinPage from './pages/TeamJoinPage'
 import PluginInstallPage from './pages/PluginInstallPage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
@@ -17,6 +18,8 @@ const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
 // /invite/<token>: a presentation's invite link (cloud only)
 const inviteToken = () => (isCloud && window.location.pathname.match(/^\/invite\/([0-9a-f-]{36})$/i)?.[1]) || null
+// /teams/join/<token>: a team's invite link (cloud only)
+const teamInviteToken = () => (isCloud && window.location.pathname.match(/^\/teams\/join\/([A-Za-z0-9_-]{43})$/)?.[1]) || null
 // /plugins/<slug>/install, from a plugin's page in the gallery
 const pluginToInstall = () => (isCloud && window.location.pathname.match(/^\/plugins\/([a-z0-9][a-z0-9_-]{0,63})\/install$/)?.[1]) || null
 // /templates/<slug>/use, from Use this template on the landing page
@@ -35,7 +38,7 @@ function TokenBridge() {
 // Signing in from an invite link, a plugin's Install button, or a template's
 // Use this template comes back to it
 function SignInPage() {
-  const invited = !!inviteToken()
+  const invited = !!inviteToken() || !!teamInviteToken()
   const installing = !invited && !!pluginToInstall()
   const forking = !invited && !installing && !!templateToUse()
   const comeBack = invited || installing || forking
@@ -225,6 +228,15 @@ export default function App() {
       <AuthGate>
         <InvitePage token={invite} onOpen={(id, title) => openEditor(id, false, title)} />
         {docsOverlay && <DocsOverlay onClose={closeDocs} initialPage={docsOverlay} />}
+      </AuthGate>
+    )
+  }
+
+  const teamInvite = page === 'home' ? teamInviteToken() : null
+  if (teamInvite) {
+    return (
+      <AuthGate>
+        <TeamJoinPage token={teamInvite} />
       </AuthGate>
     )
   }

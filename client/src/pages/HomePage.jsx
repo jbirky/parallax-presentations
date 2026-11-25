@@ -5,13 +5,14 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
 import BeamerImportModal from '../components/BeamerImportModal'
+import TeamsModal from '../components/TeamsModal'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -71,6 +72,16 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [uploadsOpen, setUploadsOpen] = useState(false)
   const [uploadFilter, setUploadFilter] = useState('')
   const [deletingUploadId, setDeletingUploadId] = useState(null)
+  // The teams the person is in (cloud only); /dashboard?team=<id>, where
+  // joining a team lands, opens that team
+  const [teams, setTeams] = useState([])
+  const [teamsOpen, setTeamsOpen] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('team')) || false)
+  const loadTeams = () => api.listTeams().then(r => setTeams(r.teams)).catch(() => {})
+  useEffect(() => {
+    if (!isCloud) return
+    loadTeams()
+    if (new URLSearchParams(window.location.search).has('team')) window.history.replaceState(null, '', window.location.pathname)
+  }, [])
 
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
@@ -463,6 +474,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
+          {teams.length > 0 && (
+            <button className="btn btn-secondary" onClick={() => setTeamsOpen(true)} title="Your teams, their members and invite links"
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Users size={15} />
+              {teams.length === 1 ? teams[0].name : 'Teams'}
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
             disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -856,6 +874,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
           </div>
         </div>
+      )}
+
+      {teamsOpen && teams.length > 0 && (
+        <TeamsModal teams={teams} initialTeamId={typeof teamsOpen === 'string' ? teamsOpen : null}
+          onChange={loadTeams} onClose={() => setTeamsOpen(false)} />
       )}
 
       {showBeamerModal && (

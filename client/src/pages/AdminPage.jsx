@@ -9,6 +9,7 @@ import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
 import PluginReviewPanel from '../components/PluginReviewPanel'
+import AdminTeamsPanel from '../components/AdminTeamsPanel'
 import { formatSize, planSummary } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
@@ -902,6 +903,7 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
         <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />
       )}
 
+      {showExamples && <AdminTeamsPanel />}
       {showExamples && <LandingStatsPanel />}
       {showExamples && <ExamplesPanel />}
       <PluginReviewPanel />

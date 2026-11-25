@@ -35,6 +35,7 @@ const {
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
+const teams = require('./services/teams')
 const aiLinks = require('./services/ai-links')
 const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly } = collaboration
@@ -2178,7 +2179,8 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
 if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
-    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates'],
+    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates',
+    '/api/teams', '/api/team-invites', '/api/admin/teams'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2291,6 +2293,121 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
+
+// --- Teams (cloud only; services/teams.js) ---
+// Members with roles, seats and invite links. Guests can't be in a team.
+
+function teamRoute(handler) {
+  return async (req, res) => {
+    if (req.isGuest || !req.userId) return res.status(403).json({ error: 'Sign in to use teams' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+      console.error('Team error:', err.message)
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+
+const accountEmail = async userId => (await storage.query('SELECT email FROM users WHERE id = $1', [userId])).rows[0]?.email || ''
+const validInviteToken = (req, res, next) => (teams.TOKEN_PATTERN.test(req.params.token)
+  ? next() : res.status(404).json({ error: 'This invite link has expired or been revoked.' }))
+
+// GET /api/teams - the teams the caller belongs to
+app.get('/api/teams', teamRoute(async (req, res) => {
+  res.json({ teams: await teams.listTeams(storage, req.userId) })
+}))
+
+// GET /api/teams/:id - a team, its members and, for owners and admins, its
+// invite links
+app.get('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
+  res.json(await teams.getTeam(storage, req.params.id, req.userId))
+}))
+
+// PATCH /api/teams/:id - rename it: { name }
+app.patch('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
+  res.json(await teams.renameTeam(storage, req.params.id, req.userId, req.body?.name))
+}))
+
+// POST /api/teams/:id/invites - a new invite link: { role, email?, days? }.
+// The answer's token is the only time the link's secret is shown.
+app.post('/api/teams/:id/invites', requireValidId(), teamRoute(async (req, res) => {
+  const { role, email, days } = req.body || {}
+  res.status(201).json(await teams.createInvite(storage, req.params.id, req.userId, { role, email, days }))
+}))
+
+// DELETE /api/teams/:id/invites/:inviteId - revoke an invite link
+app.delete('/api/teams/:id/invites/:inviteId', requireValidId(), requireValidId('inviteId'), teamRoute(async (req, res) => {
+  await teams.revokeInvite(storage, req.params.id, req.userId, req.params.inviteId)
+  res.json({ success: true })
+}))
+
+// PATCH /api/teams/:id/members/:userId - change someone's role: { role }
+app.patch('/api/teams/:id/members/:userId', requireValidId(), requireValidId('userId'), teamRoute(async (req, res) => {
+  res.json(await teams.changeRole(storage, req.params.id, req.userId, req.params.userId, req.body?.role))
+}))
+
+// DELETE /api/teams/:id/members/:userId - remove someone, or leave
+app.delete('/api/teams/:id/members/:userId', requireValidId(), requireValidId('userId'), teamRoute(async (req, res) => {
+  await teams.removeMember(storage, req.params.id, req.userId, req.params.userId)
+  res.json({ success: true })
+}))
+
+// POST /api/teams/:id/transfer - the owner hands the team to an admin: { userId }
+app.post('/api/teams/:id/transfer', requireValidId(), teamRoute(async (req, res) => {
+  if (!isValidUUID(req.body?.userId)) return res.status(400).json({ error: 'Invalid id' })
+  await teams.transferOwnership(storage, req.params.id, req.userId, req.body.userId)
+  res.json({ success: true })
+}))
+
+// GET /api/team-invites/:token - what a team invite link offers the caller
+app.get('/api/team-invites/:token', validInviteToken, teamRoute(async (req, res) => {
+  res.json(await teams.describeInvite(storage, req.params.token, req.userId, await accountEmail(req.userId)))
+}))
+
+// POST /api/team-invites/:token/accept - join that team
+app.post('/api/team-invites/:token/accept', validInviteToken, teamRoute(async (req, res) => {
+  res.json(await teams.acceptInvite(storage, req.params.token, req.userId, await accountEmail(req.userId)))
+}))
+
+// Teams for admins of the site: GET lists them, POST makes one for an
+// account ({ name, ownerEmail, seats, plan }), PUT changes seats, plan or
+// status, DELETE removes one with no presentations. Not found for anyone who
+// isn't an admin.
+function adminTeamRoute(handler) {
+  return async (req, res) => {
+    if (!isAdmin(req)) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+      console.error('Admin team error:', err.message)
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+
+app.get('/api/admin/teams', adminTeamRoute(async (req, res) => {
+  res.json({ teams: await teams.adminListTeams(storage), plans: assignablePlans() })
+}))
+
+app.post('/api/admin/teams', adminTeamRoute(async (req, res) => {
+  const team = await teams.adminCreateTeam(storage, req.body || {}, assignablePlans())
+  console.log(`Admin made team ${team.id}`)
+  res.status(201).json({ team })
+}))
+
+app.put('/api/admin/teams/:id', requireValidId(), adminTeamRoute(async (req, res) => {
+  const { seats, plan, status } = req.body || {}
+  res.json({ team: await teams.adminUpdateTeam(storage, req.params.id, { seats, plan, status }, assignablePlans()) })
+}))
+
+app.delete('/api/admin/teams/:id', requireValidId(), adminTeamRoute(async (req, res) => {
+  await teams.adminDeleteTeam(storage, req.params.id)
+  console.log(`Admin deleted team ${req.params.id}`)
+  res.json({ success: true })
+}))
 
 // --- AI collaborator links (cloud only; services/ai-links.js, server/mcp) ---
 // The owner makes, renews and revokes them. A link is an MCP server at

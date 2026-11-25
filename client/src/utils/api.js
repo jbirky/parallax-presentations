@@ -275,6 +275,18 @@ export const api = {
   removeCollaborator: (id, userId) => authFetch(`${BASE}/presentations/${id}/collaborators/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
+  // Teams (cloud only). An invite's days is 7, 30 or 90, or null for never;
+  // createTeamInvite resolves to { token, invite }, the only time the token is shown.
+  listTeams: () => authFetch(`${BASE}/teams`).then(r => checked(r, 'Could not load your teams')),
+  getTeam: (id) => authFetch(`${BASE}/teams/${id}`).then(r => checked(r, 'Could not load the team')),
+  renameTeam: (id, name) => authFetch(`${BASE}/teams/${id}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the team')),
+  createTeamInvite: (id, { role, email, days }) => authFetch(`${BASE}/teams/${id}/invites`, json('POST', { role, email, days })).then(r => checked(r, 'Could not make the link')),
+  revokeTeamInvite: (id, inviteId) => authFetch(`${BASE}/teams/${id}/invites/${inviteId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not revoke the link')),
+  setTeamRole: (id, userId, role) => authFetch(`${BASE}/teams/${id}/members/${userId}`, json('PATCH', { role })).then(r => checked(r, 'Could not change the role')),
+  removeTeamMember: (id, userId) => authFetch(`${BASE}/teams/${id}/members/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not remove them')),
+  transferTeam: (id, userId) => authFetch(`${BASE}/teams/${id}/transfer`, json('POST', { userId })).then(r => checked(r, 'Could not hand the team over')),
+  getTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}`).then(r => checked(r, 'Could not open the invitation')),
+  acceptTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Could not join the team')),
   // AI collaborator links (cloud only): days is 7, 30 or 90, or null for never
   getAiLinks: (id) => authFetch(`${BASE}/presentations/${id}/ai-links`).then(r => checked(r, 'Failed')),
   createAiLink: (id, { name, days }) => authFetch(`${BASE}/presentations/${id}/ai-links`, json('POST', { name, days })).then(r => checked(r, 'Failed')),
@@ -362,6 +374,11 @@ export const api = {
   }),
   // The landing page's statistics for the last `days` days
   getLandingStats: (days) => authFetch(`${BASE}/admin/stats?days=${days}`).then(adminJson('Could not load the statistics')),
+  // Teams, as /admin makes and changes them
+  getAdminTeams: () => authFetch(`${BASE}/admin/teams`).then(adminJson('Could not load the teams')),
+  createAdminTeam: (data) => authFetch(`${BASE}/admin/teams`, jsonBody('POST', data)).then(adminJson('Could not make the team')),
+  updateAdminTeam: (id, data) => authFetch(`${BASE}/admin/teams/${id}`, jsonBody('PUT', data)).then(adminJson('Could not save the team')),
+  deleteAdminTeam: (id) => authFetch(`${BASE}/admin/teams/${id}`, { method: 'DELETE' }).then(adminJson('Could not delete the team')),
   // The landing page's examples, as /admin edits them
   getAdminExamples: () => authFetch(`${BASE}/admin/examples`).then(adminJson('Could not load the examples')),
   addExample: (data) => authFetch(`${BASE}/admin/examples`, jsonBody('POST', data)).then(adminJson('Could not add the example')),

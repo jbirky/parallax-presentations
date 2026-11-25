@@ -284,4 +284,19 @@ describe('the self-hosted version', () => {
       assert.equal((await call(method, url, body)).status, 404, `${method} ${url}`)
     }
   })
+
+  it('has no teams', async () => {
+    const token = 'A'.repeat(43)
+    for (const [method, url, body] of [
+      ['GET', '/api/teams'],
+      ['GET', '/api/teams/5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c'],
+      ['POST', '/api/teams/5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c/invites', { role: 'member' }],
+      ['GET', `/api/team-invites/${token}`],
+      ['POST', `/api/team-invites/${token}/accept`],
+      ['GET', '/api/admin/teams'],
+      ['POST', '/api/admin/teams', { name: 'Lab', ownerEmail: 'a@b.c' }],
+    ]) {
+      assert.equal((await call(method, url, body)).status, 404, `${method} ${url}`)
+    }
+  })
 })
