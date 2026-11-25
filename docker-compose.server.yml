@@ -1,41 +1,14 @@
-# parallax-presentations.com: prod (parallax-stable, from main) and dev
-# (parallax-dev, from dev) in cloud mode, plus Umami analytics. Needs the
-# server's .env, whose COMPOSE_FILE line makes plain `docker compose` use this
-# file. Self-hosting uses docker-compose.yml instead.
+# dev.parallax-presentations.com on epyc: dev (parallax-dev, from dev) in
+# cloud mode, plus the Umami analytics it reports to. Prod runs on its own
+# server, from docker-compose.prod.yml. Needs epyc's .env, whose COMPOSE_FILE
+# line makes plain `docker compose` use this file. Self-hosting uses
+# docker-compose.yml instead.
 #
 # The project name is pinned because the dev and Umami volumes are named
 # after it.
 name: parallax-presentations
 
 services:
-  parallax-stable:
-    build:
-      context: https://github.com/jbirky/parallax-presentations.git#main
-      args:
-        - VITE_PARALLAX_MODE=cloud
-        - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
-    ports:
-      - "127.0.0.1:3002:3002"
-    volumes:
-      - parallax-data:/app/server/data
-      - parallax-uploads:/app/server/uploads
-    env_file:
-      - .env
-    environment:
-      - PARALLAX_MODE=cloud
-      - PARALLAX_DB=postgres
-      - PARALLAX_LIVE_DATASETS=on
-      - NODE_ENV=production
-      # Umami as this container reaches it, and the site's own website in it
-      # (the landing page's analytics; Umami's own pages stay private)
-      - UMAMI_URL=http://umami:3000
-      - UMAMI_WEBSITE_ID=ca976091-851a-4e54-b53e-6fa9a8bd8b79
-    # A runaway video conversion or PowerPoint import gets this container
-    # restarted instead of starving the rest of the server
-    mem_limit: 4g
-    memswap_limit: 4g
-    restart: unless-stopped
-
   parallax-dev:
     build:
       context: https://github.com/jbirky/parallax-presentations.git#dev
@@ -99,12 +72,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  parallax-data:
-    external: true
-    name: parallax-data
-  parallax-uploads:
-    external: true
-    name: parallax-uploads
   parallax-dev-data:
   parallax-dev-uploads:
   umami-db-data:
