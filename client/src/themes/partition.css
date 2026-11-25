@@ -1,0 +1,288 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Partition theme's stylesheet: linear algebra, every slide drawn as a
+   partitioned matrix. Paper (#f7f7f5) and ink (#16191e), cobalt (#2d55c4)
+   for links and vermilion (#d94a1e) as the accent; headings in Manrope 800,
+   text in Source Sans 3 (utils/themes.js: the fonts and the text sizes,
+   which the Themes panel's Text tab can change). Structure is ink and gray;
+   color is kept for values.
+
+   It's scoped to .deck-theme-partition, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Every slide has a matrix's brackets at its left and right edges, in its
+   text color, so a slide with a dark background of its own gets light ones.
+   A 2 px partition line runs from bracket to bracket under the title of
+   content slides, between the columns of the column layouts, between a
+   title slide's title and subtitle, and through a section slide. The Big
+   Number sits between brackets of its own. A Heading 4 is a kicker in
+   spaced capitals; bullets are small squares; a quote is a check, whose
+   bold first words are its boxed label; tables have hairlines, a partition
+   under the header row and after the first column. With the footer's
+   sections in sequence, the sections are a row of square cells, done gray,
+   the current one ink and named, so the deck reads as a basis vector. */
+
+/* reveal.js: links, the arrows and the progress bar in cobalt */
+.deck-theme-partition {
+  --r-background-color: #f7f7f5;
+  --r-main-color: #16191e;
+  --r-heading-color: #16191e;
+  --r-link-color: #2d55c4;
+  --r-link-color-dark: #20409a;
+  --r-link-color-hover: #16191e;
+  --r-selection-background-color: #c4cad0;
+  --r-selection-color: #16191e;
+}
+
+/* The brackets: the slide is a matrix. Drawn behind everything on the
+   slide, in the slide's text color. */
+.deck-theme-partition.px-slide::before,
+.deck-theme-partition .px-slide::before {
+  content: "";
+  position: absolute;
+  left: 18px; right: 18px; top: 18px; bottom: 42px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left top / 2px 100% no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left top / 13px 2px no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left bottom / 13px 2px no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) right top / 2px 100% no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) right top / 13px 2px no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) right bottom / 13px 2px no-repeat;
+}
+
+/* Partition lines, from bracket to bracket: under the title of content
+   slides (the foot of the title's box), between columns, between a title
+   slide's title and subtitle, and through a section slide's divider */
+.deck-theme-partition.px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=three-column], [data-layout=image-text], [data-layout=title], [data-layout=section-header])::after,
+.deck-theme-partition .px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=three-column], [data-layout=image-text], [data-layout=title], [data-layout=section-header])::after {
+  content: "";
+  position: absolute;
+  left: 18px; right: 18px; top: 136px; bottom: 42px;
+  pointer-events: none;
+  background: linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left top / 100% 2px no-repeat;
+}
+.deck-theme-partition.px-slide[data-layout=two-column]::after,
+.deck-theme-partition .px-slide[data-layout=two-column]::after {
+  background:
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left top / 100% 2px no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) 50% 0 / 2px 100% no-repeat;
+}
+.deck-theme-partition.px-slide[data-layout=three-column]::after,
+.deck-theme-partition .px-slide[data-layout=three-column]::after {
+  background:
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) left top / 100% 2px no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) 303px 0 / 2px 100% no-repeat,
+    linear-gradient(var(--px-text, #16191e), var(--px-text, #16191e)) 618px 0 / 2px 100% no-repeat;
+}
+.deck-theme-partition.px-slide[data-layout=title]::after,
+.deck-theme-partition .px-slide[data-layout=title]::after { top: 275px; }
+.deck-theme-partition.px-slide[data-layout=section-header]::after,
+.deck-theme-partition .px-slide[data-layout=section-header]::after { top: 303px; }
+
+/* Headings: Manrope 800, tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-partition .px-text :is(h1, h2, h3) { letter-spacing: -0.02em !important; line-height: 1.08; }
+.deck-theme-partition.px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-partition .px-slide:is([data-layout=title], [data-layout=section-header]) [data-placeholder=title] :is(h1, h2) { letter-spacing: -0.035em !important; line-height: 0.98; }
+
+/* A Heading 4: a kicker in Manrope capitals, graphite */
+.deck-theme-partition .px-text h4 {
+  margin: 0 0 0.45em !important;
+  font-family: Manrope, sans-serif !important;
+  font-size: 0.46em;
+  font-weight: 700;
+  letter-spacing: 0.14em !important;
+  line-height: 1.3;
+  text-transform: uppercase !important;
+  color: #5b626b !important;
+}
+
+/* Bullets: small ink squares; under them, hollow ones. Numbered lists
+   count in Manrope. */
+.deck-theme-partition .px-text ul { list-style: none; }
+.deck-theme-partition .px-text ul > li { position: relative; }
+.deck-theme-partition .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9em;
+  top: 0.6em;
+  width: 0.3em;
+  height: 0.3em;
+  background: currentColor;
+}
+.deck-theme-partition .px-text ul ul > li::before {
+  box-sizing: border-box;
+  border: 0.07em solid currentColor;
+  background: transparent;
+}
+.deck-theme-partition .px-text ol > li::marker { font-family: Manrope, sans-serif; font-size: 0.85em; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Links in cobalt */
+.deck-theme-partition .px-text a { color: var(--px-link, #2d55c4) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Numbers line up */
+.deck-theme-partition .px-text { font-variant-numeric: tabular-nums; }
+
+/* Inline code: on the zero shade, a little darker than the paper */
+.deck-theme-partition .px-text :not(pre) > code { padding: 0.04em 0.28em; border-radius: 0; background: #e8eae7 !important; color: #16191e; font-size: 0.86em; }
+
+/* Quotes: a check, ink at its edge on the zero shade; bold first words are
+   its label, boxed in Manrope capitals */
+.deck-theme-partition .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.35em 0.65em !important;
+  border: 0 !important;
+  border-left: 0.12em solid #16191e !important;
+  background: #e8eae7;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-partition .px-text blockquote > p:first-child > strong:first-child {
+  display: inline-block;
+  margin-right: 0.4em;
+  padding: 0.1em 0.4em;
+  border: 0.07em solid currentColor;
+  font-family: Manrope, sans-serif;
+  font-size: 0.7em;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  vertical-align: 0.12em;
+}
+.deck-theme-partition .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: ink on the zero shade, a 2 px partition at its edge, Partition's
+   own syntax colors whichever code theme the deck uses: cobalt and
+   vermilion, the values' colors */
+.deck-theme-partition :is(pre, pre.hljs) {
+  background: #eceeeb !important;
+  color: #16191e;
+  border-left: 2px solid #16191e;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-partition pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-partition .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.62em; line-height: 1.5; }
+.deck-theme-partition pre [class*=hljs-] { color: #16191e; font-style: normal; font-weight: 400; }
+.deck-theme-partition pre :is(.hljs-comment, .hljs-quote) { color: #5b626b; font-style: italic; }
+.deck-theme-partition pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #2d55c4; }
+.deck-theme-partition pre :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-number, .hljs-symbol, .hljs-bullet) { color: #b83c14; }
+.deck-theme-partition pre :is(.hljs-title, .hljs-section, .hljs-title.class_) { font-weight: 700; }
+.deck-theme-partition pre :is(.hljs-meta, .hljs-deletion) { color: #5b626b; }
+
+/* Tables: hairlines, tabular figures, and partitions under the header row
+   and after the first column */
+.deck-theme-partition table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #c3c8c7 !important;
+  background: transparent !important;
+  color: #16191e !important;
+  font-family: 'Source Sans 3', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-partition table tr > :first-child { border-right: 2px solid #16191e !important; }
+.deck-theme-partition table tr:first-child :is(td, th) {
+  border-bottom: 2px solid #16191e !important;
+  font-family: Manrope, sans-serif;
+  font-weight: 800;
+}
+
+/* The Big Number: Manrope 800 in ink, between brackets of its own */
+.deck-theme-partition.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-partition .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.04em 0.32em 0.08em;
+  color: var(--px-heading, #16191e) !important;
+  letter-spacing: -0.04em !important;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  background:
+    linear-gradient(currentColor, currentColor) left top / 0.035em 100% no-repeat,
+    linear-gradient(currentColor, currentColor) left top / 0.13em 0.035em no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 0.13em 0.035em no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 0.035em 100% no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 0.13em 0.035em no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 0.13em 0.035em no-repeat;
+}
+
+/* The footer: graphite Source Sans. With its sections in sequence, they are
+   a row of 12 px cells at the right, done in gray, the current one ink and
+   named, those to come outlined: the deck as the basis vector e_k. (The
+   class and the slide both named, to outweigh the presented deck's footer
+   rules.) */
+.deck-theme-partition.px-slide .px-footer,
+.deck-theme-partition .px-slide .px-footer { padding-inline: 30px !important; color: #5b626b !important; }
+.deck-theme-partition.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-partition .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: #5b626b !important;
+  font-family: 'Source Sans 3', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.deck-theme-partition.px-slide .px-footer .px-footer-sections,
+.deck-theme-partition .px-slide .px-footer .px-footer-sections { justify-content: flex-end !important; gap: 3px; }
+.deck-theme-partition.px-slide .px-footer .px-footer-section,
+.deck-theme-partition .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; font-size: 0 !important; }
+.deck-theme-partition.px-slide .px-footer .px-footer-section::before,
+.deck-theme-partition .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid #16191e;
+  background: transparent;
+}
+.deck-theme-partition.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-partition .px-slide .px-footer .px-footer-section[data-state=past]::before { border-color: #5b626b; background: #c4cad0; }
+.deck-theme-partition.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-partition .px-slide .px-footer .px-footer-section[data-state=current]::before { margin-right: 6px; background: #16191e; }
+.deck-theme-partition.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-partition .px-slide .px-footer .px-footer-section[data-state=current] {
+  margin-right: 6px;
+  color: #16191e !important;
+  font-family: Manrope, sans-serif !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.deck-theme-partition.px-slide .px-footer .px-footer-page,
+.deck-theme-partition .px-slide .px-footer .px-footer-page { margin-left: 14px !important; color: #16191e !important; }
+
+/* ...and on a slide with a background of its own, in its text color */
+.deck-theme-partition.px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-partition .px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) { color: var(--px-text) !important; }
+.deck-theme-partition.px-slide[data-own-background] .px-footer .px-footer-section::before,
+.deck-theme-partition .px-slide[data-own-background] .px-footer .px-footer-section::before { border-color: var(--px-text) !important; }
+.deck-theme-partition.px-slide[data-own-background] .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-partition .px-slide[data-own-background] .px-footer .px-footer-section[data-state=past]::before { background: transparent; opacity: 0.55; }
+.deck-theme-partition.px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-partition .px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before { background: var(--px-text); }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the title between a matrix's brackets */
+.deck-theme-partition.theme-swatch {
+  background:
+    linear-gradient(#16191e, #16191e) 8px 7px / 2px calc(100% - 14px) no-repeat,
+    linear-gradient(#16191e, #16191e) 8px 7px / 7px 2px no-repeat,
+    linear-gradient(#16191e, #16191e) 8px calc(100% - 7px) / 7px 2px no-repeat,
+    linear-gradient(#16191e, #16191e) calc(100% - 8px) 7px / 2px calc(100% - 14px) no-repeat,
+    linear-gradient(#16191e, #16191e) calc(100% - 8px) 7px / 7px 2px no-repeat,
+    linear-gradient(#16191e, #16191e) calc(100% - 8px) calc(100% - 7px) / 7px 2px no-repeat,
+    #f7f7f5 !important;
+}
+.deck-theme-partition .theme-swatch-title { letter-spacing: -0.03em; }

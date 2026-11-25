@@ -17,6 +17,46 @@ The embedded HTML is completely self-contained. It works in present mode, export
   <iframe src="/parallax-presentations/demos/d3-scatter.html" style="width:100%;height:220px;border:none"></iframe>
 </div>
 
+### Editable content
+
+An embed can keep its words and numbers in a block of JSON instead of in its script. Parallax then shows that block as a form, so anyone can change the text without reading the code. The Design review template's embeds work this way.
+
+```html
+<script type="application/json" data-parallax-content>
+{
+  "caption": "Parts list",
+  "parts": [
+    { "item": 1, "description": "Payload fairing" },
+    { "item": 2, "description": "Upper stage" }
+  ]
+}
+</script>
+<table id="parts"><caption></caption><tbody></tbody></table>
+<script>
+  const content = JSON.parse(document.querySelector('[data-parallax-content]').textContent)
+  document.querySelector('#parts caption').textContent = content.caption
+  for (const p of content.parts) {
+    const row = document.querySelector('#parts tbody').insertRow()
+    row.insertCell().textContent = p.item
+    row.insertCell().textContent = p.description
+  }
+</script>
+```
+
+Double-click an embed with a content block, or click **Edit Content…** in the right panel, to open the form beside a preview of the embed. The **Code** tab still has the whole page. The form shows:
+
+- each word or sentence as a text box, each number as a number box, and each true or false as a checkbox;
+- a list of words or numbers as one item per line;
+- a list of records, such as `parts` above, as a table: one column per field, with buttons to add, move and remove rows;
+- a group of fields, `{ … }`, as its fields, indented.
+
+Two optional keys tune the form. Keys that start with `$` aren't shown as fields:
+
+- `"$labels": { "dv": "Δv (km/s)" }` names a field. Without a label, `altitudeKm` shows as "Altitude km".
+- `"$choices": { "status": ["Open", "In work", "Closed"] }` turns a field into a menu wherever it appears.
+
+Set text with `textContent`, not `innerHTML`, so a `<` typed into the form shows as itself.
+
 ## p5.js sketches
 
 1. Open **Insert** in the toolbar and, under **Embed**, click **p5.js**.

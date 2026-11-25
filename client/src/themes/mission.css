@@ -1,0 +1,76 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Mission theme's stylesheet: an engineering drawing on top of its
+   colors and fonts (utils/themes.js: IBM Plex Sans for text, Barlow Condensed
+   for headings, which the Themes panel's Text tab can change). It's scoped
+   to .deck-theme-mission, a class on the editor's canvas and thumbnails, the
+   presented deck's .reveal and the PDF's pages, so a slide looks the same in
+   all of them. The editor loads it with the app (main.jsx); presented decks
+   and the PDF write it into their page (utils/themeCss.js). Presented decks
+   are drawn on reveal.js's white theme. The drafting grid is the theme's
+   page (its backgroundCss) in the editor and the PDF. */
+
+/* reveal.js: links, the arrows and the progress bar in telemetry blue */
+.deck-theme-mission {
+  --r-background-color: #f4f6f8;
+  --r-main-color: #0d1b2e;
+  --r-heading-color: #0d1b2e;
+  --r-link-color: #1d6fd1;
+  --r-link-color-dark: #1557a6;
+  --r-link-color-hover: #e4462b;
+  --r-selection-background-color: #1d6fd1;
+  --r-selection-color: #f4f6f8;
+}
+
+/* The drafting grid on presented slides that show the theme's page */
+.deck-theme-mission .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#dde3ea 1px, transparent 1px) 0 0 / 60px 60px,
+    linear-gradient(90deg, #dde3ea 1px, transparent 1px) 0 0 / 60px 60px,
+    linear-gradient(#e9edf2 1px, transparent 1px) 0 0 / 12px 12px,
+    linear-gradient(90deg, #e9edf2 1px, transparent 1px) 0 0 / 12px 12px,
+    #f4f6f8;
+}
+
+/* Headings in capitals, a little tracked, like drawing lettering. (!important:
+   presented decks reset headings' case and spacing with it.) */
+.deck-theme-mission :is(h1, h2, h3, h4, h5, h6) {
+  text-transform: uppercase !important;
+  letter-spacing: 0.01em !important;
+  line-height: 1.05;
+}
+
+/* A hairline under slide titles (Heading 2), the width of their box */
+.deck-theme-mission h2::after {
+  content: "";
+  display: block;
+  height: 1px;
+  margin-top: 0.22em;
+  background: #0d1b2e;
+}
+
+/* Square bullets in signal red */
+.deck-theme-mission ul { list-style-type: square; }
+.deck-theme-mission li::marker { color: #e4462b; }
+
+/* Quotes behind an ink bar */
+.deck-theme-mission blockquote {
+  border-left: 0.12em solid #0d1b2e !important;
+  opacity: 1 !important;
+}
+
+/* Inline code in B612 Mono, the cockpit-display face, on a square gray block */
+.deck-theme-mission :not(pre) > code {
+  font-family: 'B612 Mono', monospace !important;
+  font-size: 0.9em;
+  color: #0d1b2e;
+  background: #e3e9ef !important;
+  border-radius: 0 !important;
+  padding: 0 0.3em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx) */
+.deck-theme-mission .theme-swatch-title {
+  text-transform: uppercase;
+}

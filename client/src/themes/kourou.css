@@ -1,0 +1,320 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Kourou theme's stylesheet: space science, after the look of an agency's
+   science website. Deep navy (#003247) and signal red (#cf1d39), Titillium
+   Web headlines over Arial text (utils/themes.js: the fonts and the text
+   sizes, which the Themes panel's Text tab can change). Every slide but a
+   blank one has a navy strip with a red rule along the top; the title slide
+   is a starfield and section slides sit on a mission timeline. There are no
+   agency logos, names or patches, and the icons are drawn here.
+
+   It's scoped to .deck-theme-kourou, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   In text: a Heading 4 is a red tag, a Heading 5 a small navy label, a
+   Heading 6 a gray caption, a Heading 1 in a text box (and the Big Number)
+   a number that fades from red into navy, and italic words in a heading are
+   red. A plain quote is a headline quote; one whose first line is bold is a
+   blue notice, italic a dark card. A bold link is a button, an italic one an
+   arrow link. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-kourou {
+  --r-background-color: #ffffff;
+  --r-main-color: #003247;
+  --r-heading-color: #003247;
+  --r-link-color: #003247;
+  --r-link-color-dark: #001f2d;
+  --r-link-color-hover: #cf1d39;
+  --r-selection-background-color: #cf1d39;
+  --r-selection-color: #ffffff;
+}
+
+/* Line icons, for links and notices */
+.deck-theme-kourou {
+  --k-arrow: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M4%2012h15M13%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E");
+  --k-info: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23000%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Ccircle%20cx%3D%2712%27%20cy%3D%2712%27%20r%3D%279%27%2F%3E%3Cpath%20d%3D%27M12%2011v6M12%207.6v.2%27%2F%3E%3C%2Fsvg%3E");
+}
+
+/* The header strip: navy, a red rule under it, a red tag with an arrow */
+.deck-theme-kourou.px-slide:not([data-layout=blank])::after,
+.deck-theme-kourou .px-slide:not([data-layout=blank])::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 23px;
+  background:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M4%2012h15M13%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E") 33px 2px / 16px 16px no-repeat,
+    linear-gradient(var(--px-accent), var(--px-accent)) 24px 0 / 34px 20px no-repeat,
+    linear-gradient(#003247 0 20px, var(--px-accent) 20px 23px);
+  pointer-events: none;
+}
+
+/* Headlines: tight, with red highlights (italic words in a heading) */
+.deck-theme-kourou .px-text :is(h1, h2, h3) { letter-spacing: -0.03em !important; line-height: 1.08; }
+.deck-theme-kourou .px-text :is(h1, h2, h3) em { font-style: normal; color: var(--px-accent); }
+
+/* Tags: a Heading 4 is a red tag in capitals, above a title or anywhere */
+.deck-theme-kourou .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.5em !important;
+  padding: 0.14em 0.3em 0.06em;
+  background: var(--px-accent);
+  color: #ffffff !important;
+  font-size: 0.62em;
+  line-height: 1.1;
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+}
+.deck-theme-kourou .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-kourou .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
+
+/* Heading 5: a small navy label in capitals. Heading 6: a gray caption. */
+.deck-theme-kourou .px-text h5 {
+  margin: 0 0 0.3em !important;
+  font-size: 0.66em;
+  line-height: 1.2;
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+}
+.deck-theme-kourou.px-slide[data-layout=big-number] [data-placeholder=subtitle] h5,
+.deck-theme-kourou .px-slide[data-layout=big-number] [data-placeholder=subtitle] h5 { font-size: 0.85em; }
+.deck-theme-kourou .px-text h6 {
+  margin: 0 !important;
+  font-size: 0.56em;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #6b6c7e !important;
+  letter-spacing: 0 !important;
+}
+
+/* Numbers: a Heading 1 in a text box, and the Big Number, fade from red
+   into navy */
+.deck-theme-kourou.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-kourou .px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-kourou .px-text:not([data-placeholder=title], [data-placeholder=subtitle]) h1 {
+  color: transparent !important;
+  background: linear-gradient(0deg, #003247 -42%, var(--px-accent) 61%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  line-height: 1.1;
+}
+
+/* Title page: a starfield, white type (unless the slide has a background of
+   its own) */
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 10% 84%, rgba(255, 255, 255, 0.95) 0 1.3px, transparent 1.9px) 61px 36px / 211px 173px,
+    radial-gradient(circle at 68% 53%, rgba(205, 222, 255, 0.95) 0 1.3px, transparent 1.9px) 87px 172px / 263px 229px,
+    radial-gradient(circle at 70% 53%, rgba(255, 255, 255, 0.95) 0 1.3px, transparent 1.9px) 210px 179px / 307px 281px,
+    radial-gradient(circle at 75% 29%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 56px 111px / 149px 157px,
+    radial-gradient(circle at 66% 14%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 230px 93px / 337px 199px,
+    radial-gradient(circle at 84% 75%, rgba(205, 222, 255, 0.7) 0 0.95px, transparent 1.5px) 22px 124px / 181px 241px,
+    radial-gradient(circle at 84% 65%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 147px 183px / 229px 317px,
+    radial-gradient(circle at 83% 83%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 145px 91px / 389px 271px,
+    radial-gradient(circle at 77% 37%, rgba(255, 255, 255, 0.7) 0 0.95px, transparent 1.5px) 25px 57px / 167px 193px,
+    radial-gradient(circle at 44% 34%, rgba(205, 222, 255, 0.35) 0 0.7px, transparent 1.3px) 265px 193px / 283px 347px,
+    radial-gradient(circle at 68% 80%, rgba(255, 255, 255, 0.35) 0 0.7px, transparent 1.3px) 7px 38px / 127px 139px,
+    radial-gradient(circle at 55% 51%, rgba(255, 255, 255, 0.35) 0 0.7px, transparent 1.3px) 48px 19px / 113px 101px,
+    radial-gradient(circle at 81% 24%, #ffffff 0 1.8px, rgba(170, 200, 255, 0.3) 2.6px, transparent 13px),
+    radial-gradient(circle at 12% 70%, #ffffff 0 1.5px, rgba(170, 200, 255, 0.25) 2.2px, transparent 10px),
+    radial-gradient(ellipse 55% 45% at 74% 26%, rgba(46, 96, 150, 0.34), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 16% 84%, rgba(140, 40, 70, 0.24), transparent 70%),
+    linear-gradient(#02080d, #061019);
+}
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background]) .px-text,
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background]) .px-text,
+.deck-theme-kourou.px-slide[data-layout=title]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5),
+.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5) { color: #ffffff !important; }
+.deck-theme-kourou.px-slide[data-layout=title] [data-placeholder=title] h2,
+.deck-theme-kourou .px-slide[data-layout=title] [data-placeholder=title] h2 { font-size: 52px; }
+.deck-theme-kourou.px-slide[data-layout=title] .px-text h4,
+.deck-theme-kourou .px-slide[data-layout=title] .px-text h4 { font-size: 0.85em; }
+
+/* Section titles: on a mission timeline, over a pale dust cloud */
+.deck-theme-kourou.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-kourou .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, var(--px-accent) 0 9px, #003247 9.5px 13px, #ffffff 13.5px 16px, transparent 16.5px) 50% 288px / 34px 34px no-repeat,
+    radial-gradient(circle, #003247 0 3.5px, transparent 4px) 0 299px / 80px 10px repeat-x,
+    linear-gradient(#003247, #003247) 0 303px / 100% 2px no-repeat,
+    radial-gradient(circle, rgba(0, 50, 71, 0.28) 0 0.8px, transparent 1.3px) 7px 11px / 43px 41px,
+    radial-gradient(circle, rgba(0, 119, 181, 0.32) 0 1.1px, transparent 1.6px) 17px 29px / 71px 67px,
+    radial-gradient(ellipse 42% 52% at 27% 62%, rgba(0, 119, 181, 0.14), transparent 70%),
+    radial-gradient(ellipse 32% 42% at 77% 32%, rgba(0, 119, 181, 0.1), transparent 70%),
+    #f6f9fb;
+}
+
+/* Bullets: red squares */
+.deck-theme-kourou .px-text ul { list-style-type: square; }
+.deck-theme-kourou .px-text ul > li::marker { color: var(--px-accent); }
+.deck-theme-kourou .px-text ul ul > li::marker { content: "\2013  "; color: #003247; }
+.deck-theme-kourou .px-text ol > li::marker { color: var(--px-accent); font-weight: 700; }
+
+/* Links: navy, underlined. An italic link is an arrow link, a bold one a
+   navy button with an arrow. */
+.deck-theme-kourou .px-text a {
+  color: #003247 !important;
+  font-weight: 700;
+  text-decoration: none !important;
+  border-bottom: 0.08em solid currentColor;
+}
+.deck-theme-kourou .px-text em:has(> a:only-child) { font-style: normal; }
+.deck-theme-kourou .px-text :is(em, strong) > a:only-child { display: inline-flex; align-items: center; gap: 0.4em; }
+.deck-theme-kourou .px-text :is(em, strong) > a:only-child::after {
+  content: "";
+  width: 1em;
+  height: 1em;
+  background: currentColor;
+  -webkit-mask: var(--k-arrow) center / contain no-repeat;
+  mask: var(--k-arrow) center / contain no-repeat;
+}
+.deck-theme-kourou .px-text strong > a:only-child {
+  padding: 0.5em 0.7em;
+  border: 0;
+  border-radius: 4px;
+  background: #003247;
+  color: #ffffff !important;
+  font-size: 0.72em;
+  line-height: 1.2;
+}
+
+/* Quotes: a headline with a red opening mark; a last line under it is the
+   attribution */
+.deck-theme-kourou .px-text blockquote {
+  position: relative;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0 0 0 0.85em !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-family: 'Titillium Web', sans-serif;
+  font-size: 1.4em;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #003247;
+}
+.deck-theme-kourou .px-text blockquote::before {
+  content: "\201C";
+  position: absolute;
+  left: 0;
+  top: -0.04em;
+  font-size: 1.5em;
+  line-height: 1;
+  color: var(--px-accent);
+}
+.deck-theme-kourou .px-text blockquote > p { margin: 0 0 0.3em !important; }
+.deck-theme-kourou .px-text blockquote > p:last-child:not(:first-child) {
+  margin: 0.9em 0 0 !important;
+  font-family: Arial, sans-serif;
+  font-size: 0.5em;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* A quote that starts with a bold line is a blue notice with an info mark */
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child) {
+  padding: 0.6em 0.85em 0.65em 2.35em !important;
+  background: #0077b5;
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 0.74em;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child)::before {
+  content: "";
+  left: 0.8em;
+  top: 0.66em;
+  font-size: 1em;
+  width: 1.15em;
+  height: 1.15em;
+  background: #ffffff;
+  -webkit-mask: var(--k-info) center / contain no-repeat;
+  mask: var(--k-info) center / contain no-repeat;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > strong:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+
+/* A quote that starts with an italic line is a dark card: the line is its
+   red tag, and a red button with a chevron sits in the corner */
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) {
+  min-height: 13em;
+  box-sizing: border-box;
+  padding: 0.85em 0.95em 3.4em !important;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.7) 0 0.8px, transparent 1.3px) 9px 13px / 53px 47px,
+    radial-gradient(circle, rgba(255, 255, 255, 0.4) 0 0.6px, transparent 1.1px) 31px 5px / 37px 41px,
+    radial-gradient(ellipse 90% 60% at 90% 105%, rgba(207, 29, 57, 0.3), transparent 70%),
+    linear-gradient(165deg, #0b3d55, #021821);
+  color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 0.72em;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child)::before {
+  content: "";
+  top: auto; left: auto;
+  right: 0.8em;
+  bottom: 0.8em;
+  font-size: 1em;
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 2px;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23fff%27%20stroke-width%3D%271.7%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M9.5%206l6%206-6%206%27%2F%3E%3C%2Fsvg%3E") center / 62% no-repeat, var(--px-accent);
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child {
+  width: fit-content;
+  margin: 0 0 0.55em !important;
+  padding: 0.12em 0.32em 0.04em;
+  background: var(--px-accent);
+  font-family: 'Titillium Web', sans-serif;
+  font-size: 0.82em;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:first-child em { font-style: normal; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) :is(h1, h2, h3) { margin: 0 0 0.25em !important; color: #ffffff !important; font-size: 1.7em; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) > p:last-child:not(:first-child) { margin: 0 !important; font-size: 1em; }
+.deck-theme-kourou .px-text blockquote:has(> p:first-child > em:only-child) a { color: #ffffff !important; }
+
+/* Inline code */
+.deck-theme-kourou .px-text :not(pre) > code {
+  padding: 0.05em 0.3em;
+  border-radius: 2px;
+  background: #e7ecef !important;
+  color: #003247;
+  font-size: 0.86em;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the navy strip and red rule over the page, the title tight */
+.deck-theme-kourou.theme-swatch { position: relative; }
+.deck-theme-kourou.theme-swatch::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 7%;
+  background: linear-gradient(#003247 0 80%, #cf1d39 80%);
+}
+.deck-theme-kourou .theme-swatch-title { letter-spacing: -0.03em; }

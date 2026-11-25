@@ -5,7 +5,9 @@ import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore
 import ContextMenu from './ContextMenu'
 import { Plus, Copy, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2, ChevronDown } from 'lucide-react'
 import { keyLabel } from '../utils/shortcuts'
-import { slidePalette } from '../utils/themes'
+import { slidePalette, deckTextStyles, paletteVars } from '../utils/themes'
+import { SLIDE_CLASS, TEXT_CLASS, slideLayout, textPlaceholder } from '../utils/slideHooks'
+import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
 import { shapeSvgString } from '../utils/shapeUtils'
@@ -31,11 +33,12 @@ import GeometryView from './GeometryView'
 import PeriodicView from './PeriodicView'
 import HarmonicsView from './HarmonicsView'
 import { DEFAULT_DECK_FONT } from '../utils/deckFont'
+import { textStyleVars } from '../utils/textStyles'
 
 const THUMB_W = 150
 
 // A text box in a thumbnail, as on the slide: shrunk to fit when it's set to
-function ThumbText({ el, globalFont, citationLabels }) {
+function ThumbText({ el, globalFont, textStylesKey = '', citationLabels }) {
   const ref = useRef(null)
   const shrink = el.sizeMode === 'shrink'
   useEffect(() => {
@@ -46,7 +49,7 @@ function ThumbText({ el, globalFont, citationLabels }) {
     let live = true
     document.fonts?.ready?.then(() => { if (live) fit() })
     return () => { live = false }
-  }, [shrink, el.content, el.width, el.height, el.lineHeight, globalFont])
+  }, [shrink, el.content, el.width, el.height, el.lineHeight, globalFont, textStylesKey])
   const style = { color: 'var(--slide-text, white)', padding: '8px 12px', boxSizing: 'border-box', fontFamily: globalFont || undefined, lineHeight: el.lineHeight ?? 1.5 }
   const html = { __html: safeHtml(resolveCitationsInHtml(el.content, citationLabels)) }
   if (shrink) return (
@@ -57,9 +60,12 @@ function ThumbText({ el, globalFont, citationLabels }) {
   return <div className="slide-text-content" style={{ ...style, width: '100%', height: '100%', overflow: 'hidden' }} dangerouslySetInnerHTML={html} />
 }
 
-function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, theme }) {
+function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, theme, textStyles, themeColors }) {
   const scale = THUMB_W / slideW
-  const palette = slidePalette(slide, theme)
+  const palette = slidePalette(slide, theme, themeColors)
+  // The deck's text styles (utils/textStyles.js)
+  const textVars = textStyleVars(deckTextStyles(textStyles, theme))
+  const textStylesKey = JSON.stringify(textVars)
   const thumbH = Math.round(THUMB_W * slideH / slideW)
   // A scrolling slide shows its first screen, and a badge for how many it has
   const canvasH = getCanvasHeight(slide, slideH)
@@ -77,12 +83,14 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
         '--slide-text': palette.text,
         '--slide-heading': palette.heading,
         '--slide-link': palette.link,
-      }} className="slide-thumb-canvas">
+        ...paletteVars(palette),
+        ...textVars,
+      }} className={['slide-thumb-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')} data-layout={slideLayout(slide) || undefined} data-own-background={palette.own ? '' : undefined}>
         {(slide.elements || [])
           .filter(el => !isEmptyPlaceholder(el))
           .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
           .map(el => (
-            <div key={el.id} style={{
+            <div key={el.id} className={el.type === 'text' ? TEXT_CLASS : undefined} data-placeholder={textPlaceholder(el) || undefined} style={{
               position: 'absolute',
               left: el.x, top: el.y,
               width: el.width, height: el.height,
@@ -94,7 +102,7 @@ function SlideThumbnail({ slide, slideW, slideH, globalFont, citationLabels, the
                 : undefined,
               filter: el.type === 'text3d' ? text3dShadowFilter(el) || undefined : undefined,
             }}>
-              {el.type === 'text' && <ThumbText el={el} globalFont={globalFont} citationLabels={citationLabels} />}
+              {el.type === 'text' && <ThumbText el={el} globalFont={globalFont} textStylesKey={textStylesKey} citationLabels={citationLabels} />}
               {el.type === 'image' && (() => {
                 const imgFilter = [
                   (el.filterBrightness != null && el.filterBrightness !== 100) ? `brightness(${el.filterBrightness}%)` : '',
@@ -230,7 +238,7 @@ function PresenceDots({ people }) {
   )
 }
 
-export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', notice = null }) {
+export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds = [], onToggleSelect, onMoveMultiple, onAdd, onAddColumn, onDelete, onDuplicate, onMove, onMoveInColumn, onMoveToColumn, slideW = 960, slideH = 540, referencesSlideIndex = -1, referencesCount = 0, presence = null, globalFont = '', citationLabels = {}, viewSwitch = null, onNewSlideAfter, onDeleteMultiple, onBackground, onChangeLayout, theme = 'black', textStyles = null, themeColors = null, notice = null }) {
   // A graph's thumbnail waits for its data lines' rows (graphData.js)
   useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const [dragOverInfo, setDragOverInfo] = useState(null) // { flatIndex, colNum }
@@ -449,7 +457,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                 <div style={{ position: 'absolute', left: 0, top: prevSameGroup ? -1 : '50%', bottom: nextSameGroup ? -1 : '50%', width: 3, background: 'var(--accent)', borderRadius: prevSameGroup && nextSameGroup ? 0 : prevSameGroup ? '0 0 2px 2px' : '2px 2px 0 0', zIndex: 15 }} />
               )}
               <span className="slide-number">{index + 1}</span>
-              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} />
+              <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} themeColors={themeColors} />
               <PresenceDots people={presence?.get(slide.id)} />
               {slide.autoAnimate && (
                 <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>
@@ -587,7 +595,7 @@ export default function SlidePanel({ slides, currentIndex, onSelect, selectedIds
                   onContextMenu={e => openMenu(e, flatIndex)}
                 >
                   <span className="slide-number">{flatIndex + 1}</span>
-                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} />
+                  <SlideThumbnail slide={slide} slideW={slideW} slideH={slideH} globalFont={globalFont} citationLabels={citationLabels} theme={theme} textStyles={textStyles} themeColors={themeColors} />
                   <PresenceDots people={presence?.get(slide.id)} />
                   {slide.autoAnimate && (
                     <div style={{ position: 'absolute', top: 2, right: 2, fontSize: 7, color: '#fff', background: 'rgba(99,102,241,0.85)', padding: '1px 4px', borderRadius: 2, zIndex: 10, fontWeight: 600 }}>M</div>

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 if (!globalThis.window) globalThis.window = {}
 if (!globalThis.window.location) globalThis.window.location = { origin: 'http://localhost:3000' }
 
-import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, defaultGraph3d, graphSnapshotContent, GRAPH_DECK_SCRIPT, GRAPH_FIELDS, setGraphDataSource } from './graphPage'
+import { graphPageHtml, graphConfig, graphSteps, graphStepMarkers, defaultGraph, defaultGraph3d, graphSnapshotContent, graphStability, GRAPH_DECK_SCRIPT, GRAPH_FIELDS, setGraphDataSource } from './graphPage'
 import { generateRevealHTML } from './generateHTML'
 
 const graph = (expressions, extra = {}) => ({
@@ -53,10 +53,40 @@ describe('graph pages', () => {
     const el = graph([{ id: 'a', text: 'y = x' }])
     expect(graphSnapshotContent({ ...el, x: 99 })).toBe(graphSnapshotContent(el))
     expect(graphSnapshotContent({ ...el, theme: 'dark' })).not.toBe(graphSnapshotContent(el))
+    // ...nor in another theme's colors of stability
+    expect(graphSnapshotContent(el, { stable: '#1d5fa8' })).not.toBe(graphSnapshotContent(el))
+    expect(graphSnapshotContent(el, { text: '#222' })).toBe(graphSnapshotContent(el))
+  })
+
+  it('carry a region’s hatched fill to the page, the deck and the PDF', () => {
+    const el = graph([{ id: 'a', text: '0 <= y <= normpdf(x) {x >= z}', fill: 'hatched' }, { id: 'b', text: 'z = 1.5' }])
+    expect(config(graphPageHtml(el)).expressions[0].fill).toBe('hatched')
+    expect(graphSnapshotContent(el)).not.toBe(graphSnapshotContent(graph([{ id: 'a', text: '0 <= y <= normpdf(x) {x >= z}' }, { id: 'b', text: 'z = 1.5' }])))
+    const page = generateRevealHTML(deck([el])).match(/srcdoc="([^"]*)"/)[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    expect(config(page).expressions[0].fill).toBe('hatched')
+  })
+
+  it('take the theme’s colors of stability from the slide, when it has them', () => {
+    const el = graph([{ id: 'a', text: "(x', y') = (y, -sin x)" }])
+    expect(graphConfig(el).stability).toBeUndefined()
+    expect(graphConfig(el, { stability: { text: '#222', link: '#00f' } }).stability).toBeUndefined()
+    expect(graphConfig(el, { stability: { text: '#222', stable: '#1d5fa8', unstable: '#cf4f1b' } }).stability).toEqual({ stable: '#1d5fa8', unstable: '#cf4f1b' })
+    // Only colors: nothing else reaches the page
+    expect(graphStability({ stable: 'red;}</script>', unstable: '#abc' })).toEqual({ unstable: '#abc' })
+    expect(graphStability(null)).toBeNull()
   })
 })
 
 describe('graphs in decks', () => {
+  it('draw fixed points in the theme’s colors of stability, presented and in the PDF', () => {
+    const el = graph([{ id: 'a', text: "(x', y') = (y, -sin x)" }])
+    const pages = html => [...html.matchAll(/srcdoc="([^"]*)"/g)].map(m => m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'))
+    const shown = pages(generateRevealHTML({ ...deck([el]), theme: 'separatrix' }))
+    expect(shown).toHaveLength(1)
+    expect(config(shown[0]).stability).toEqual({ stable: '#1d5fa8', unstable: '#cf4f1b' })
+    expect(config(pages(generateRevealHTML({ ...deck([el]), theme: 'white' }))[0]).stability).toBeUndefined()
+  })
+
   it('are presented in an iframe', () => {
     const html = generateRevealHTML(deck([graph([{ id: 'a', text: 'y = sin x' }])]))
     const srcdoc = html.match(/<iframe srcdoc="([^"]*)" data-graph-id="g1"[^>]*title="Graph"/)[1]
@@ -190,5 +220,18 @@ describe('data lines and log axes', () => {
     } finally {
       setGraphDataSource(null)
     }
+  })
+})
+
+describe('slider names', () => {
+  // The runtime's panel writes a slider named mu as μ; every Greek name the
+  // parser accepts needs its letter there, or the panel shows the spelling
+  it('show every Greek name the parser accepts as its letter', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = f => readFileSync(new URL(f, import.meta.url), 'utf8')
+    const accepted = JSON.parse(src('./graphParser.js').match(/const GREEK = (\[[^\]]*\])/)[1].replace(/'/g, '"'))
+    const letters = src('./graphRuntime.js').match(/const greek = \{([^}]*)\}/)[1]
+    expect(accepted).toContain('mu')
+    for (const name of accepted) expect(letters).toMatch(new RegExp('\\b' + name + ": '"))
   })
 })

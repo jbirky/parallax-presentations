@@ -257,7 +257,7 @@ function DataLine({ ex, index, datasets, rows, palette, open, onUpdate, onToggle
   )
 }
 
-export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave, onClose }) {
+export default function GraphEditorModal({ initial, size, slideBg, stability = null, isNew, onSave, onClose }) {
   const P = useMemo(() => createMathParser(), [])
   const constant = useConstant(P)
   const [graph, setGraph] = useState(() => ({ ...initial, view: { ...DEFAULT_VIEW, ...(initial.view || {}) } }))
@@ -389,10 +389,10 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
   }, [focusId, expressions])
 
   // The preview: the slide's page, loaded once, then sent each change
-  const previewHtml = useMemo(() => graphPageHtml(initial, { editor: true }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const previewHtml = useMemo(() => graphPageHtml(initial, { editor: true, stability }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const sendConfig = useCallback(() => {
     const win = frameRef.current?.contentWindow
-    if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true }) }, '*')
+    if (win) win.postMessage({ source: 'parallax-graph-editor', type: 'config', config: graphConfig(graph, { editor: true, stability }) }, '*')
   }, [graph, dataVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const onPreviewLoad = () => {
     sendConfig()
@@ -621,6 +621,16 @@ export default function GraphEditorModal({ initial, size, slideBg, isNew, onSave
                               </select>
                               <select value={ex.width || 2.5} onChange={e => updateExpr(ex.id, { width: +e.target.value })} style={{ ...inputStyle, width: 70 }} title="Thickness">
                                 {[1.5, 2.5, 3.5, 5].map(w => <option key={w} value={w}>{w === 2.5 ? 'Normal' : w < 2.5 ? 'Thin' : w === 3.5 ? 'Thick' : 'Heavy'}</option>)}
+                              </select>
+                            </div>
+                          )}
+                          {it.kind === 'region' && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...smallLabel, width: 44 }}>Fill</span>
+                              <select value={ex.fill === 'hatched' ? 'hatched' : 'solid'} onChange={e => updateExpr(ex.id, { fill: e.target.value === 'hatched' ? 'hatched' : undefined })} style={{ ...inputStyle, flex: 1 }}
+                                title="Hatched: diagonal lines over a lighter tint, which still read in grayscale">
+                                <option value="solid">Solid</option>
+                                <option value="hatched">Hatched</option>
                               </select>
                             </div>
                           )}

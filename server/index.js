@@ -267,9 +267,9 @@ app.get('/robots.txt', (req, res) => {
 })
 app.get('/sitemap.xml', async (req, res) => {
   try {
-    const { examples: cards } = await examples.landingExamples(storage)
+    const { examples: cards, templates } = await examples.landingExamples(storage)
     const plugins = SEARCH_INDEXING ? (await communityPlugins.galleryPlugins(storage)).map(p => p.slug) : []
-    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [], plugins }))
+    res.type('application/xml').send(sitePages.sitemapXml({ origin: siteOrigin(req), examples: SEARCH_INDEXING ? cards : [], templates: SEARCH_INDEXING && IS_CLOUD ? templates : [], plugins }))
   } catch (err) {
     res.status(500).type('text/plain').send('Sitemap unavailable')
   }
@@ -287,6 +287,9 @@ const exampleData = require('./services/example-datasets')
 const { renderFirstSlide, chromiumPath, ThumbnailError } = require('./services/slide-thumbnail')
 const EXAMPLE_SLUG = /^[a-z0-9-]{1,64}$/
 const exampleHtml = new Map()
+// An example's deck page is built again when the deck changes, or the data
+// it plots (services/example-datasets.js)
+const exampleDeckVersion = async found => `${found.version}|${await exampleData.exampleDataVersion(found.deck, { localDir: DATA_DIR })}`
 app.get('/api/examples', async (req, res) => {
   try {
     res.json(await examples.landingExamples(storage))
@@ -299,13 +302,12 @@ app.get('/examples/:slug/deck', deckPageLimiter, async (req, res, next) => {
     const { slug } = req.params
     const found = EXAMPLE_SLUG.test(slug) && await examples.getExampleDeck(storage, slug)
     if (!found) return next()
-    // Built again when the deck changes, or the data it plots
-    // (services/example-datasets.js)
-    const version = `${found.version}|${await exampleData.exampleDataVersion(found.deck, { localDir: DATA_DIR })}`
+    const version = await exampleDeckVersion(found)
     let page = exampleHtml.get(slug)
     if (!page || page.version !== version) {
       const deckData = await exampleData.exampleDeckData(found.deck, { localDir: DATA_DIR, pluginSandbox: await pluginSandboxes(found.deck) })
-      page = { version, html: localizeLibraries(await generateRevealHTML(found.deck, { notes: false, deckData })) }
+      // A template's own page moves its deck (the deck's bridge)
+      page = { version, html: localizeLibraries(await generateRevealHTML(found.deck, { notes: false, deckData, bridge: true })) }
       exampleHtml.set(slug, page)
     }
     sendDeckPage(res, page.html)
@@ -333,6 +335,57 @@ app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+// ---- Landing page templates' own pages (public, before auth) ----
+// A template on the landing page's Templates tab as a page of its own
+// (services/site-pages.js): its deck, live, with every slide drawn small to
+// jump to (services/template-slides.js), each slide's contents, its theme,
+// and Use this template, which the app's /templates/<slug>/use answers.
+// Cloud only, as templates are.
+const templateSlides = require('./services/template-slides').createTemplateSlides({ dir: path.join(DATA_DIR, 'template-slides') })
+// A template on the Templates tab, its deck, and the tab's others; or null
+async function shownTemplate(slug) {
+  if (!IS_CLOUD || !EXAMPLE_SLUG.test(slug)) return null
+  const { templates } = await examples.landingExamples(storage)
+  const template = templates.find(e => e.slug === slug)
+  const found = template && await examples.getExampleDeck(storage, slug)
+  return found ? { template, found, others: templates.filter(e => e.slug !== slug) } : null
+}
+app.get('/templates/:slug', deckPageLimiter, async (req, res, next) => {
+  try {
+    const shown = await shownTemplate(req.params.slug)
+    if (!shown) return next()
+    res.type('html').send(sitePages.templatePage({
+      origin: siteOrigin(req), template: shown.template, facts: deckHtml.templateFacts(shown.found.deck), others: shown.others,
+      guestEnabled: isGuestModeEnabled(), analytics: analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null, index: SEARCH_INDEXING,
+    }))
+  } catch (err) {
+    next(err)
+  }
+})
+// Whether its slides are drawn yet, and where they are; the first to ask
+// has them drawn
+app.get('/templates/:slug/slides.json', deckPageLimiter, async (req, res) => {
+  try {
+    const shown = await shownTemplate(req.params.slug)
+    if (!shown) return res.status(404).json({ error: 'No such template' })
+    const { slug } = req.params
+    const s = templateSlides.status(slug, await exampleDeckVersion(shown.found), `http://127.0.0.1:${req.socket.localPort}/examples/${slug}/deck`)
+    res.setHeader('Cache-Control', 'no-store')
+    res.json(s.ready ? { ready: true, count: s.count, path: `/templates/${slug}/slides/${s.key}/` } : { ready: false, drawing: s.drawing })
+  } catch (err) {
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+// A slide, drawn small; its path names the deck's version, so it never changes
+app.get('/templates/:slug/slides/:key/:n.jpg', (req, res, next) => {
+  const { slug, key, n } = req.params
+  const jpeg = EXAMPLE_SLUG.test(slug) && /^\d{1,3}$/.test(n) && templateSlides.image(slug, key, Number(n))
+  if (!jpeg) return next()
+  res.setHeader('Content-Type', 'image/jpeg')
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+  res.send(jpeg)
 })
 
 // ---- The plugin gallery (public, before auth) ----
@@ -1159,9 +1212,17 @@ app.post('/api/admin/examples', exampleRoute(async (req, res) => {
 app.put('/api/admin/examples/order', exampleRoute(async (req, res) => {
   res.json({ examples: await examples.setOrder(storage, req.body?.slugs) })
 }))
-// { field, title, description, tags, card, hero }, each optional
+// { field, title, description, tags, card, hero, kind }, each optional. A
+// card made a template takes its speaker notes from the presentation it came
+// from, when that's the admin's
 app.put('/api/admin/examples/:slug', exampleRoute(async (req, res) => {
-  res.json({ example: await examples.updateExample(storage, req.params.slug, req.body || {}) })
+  const before = await examples.getRow(storage, req.params.slug)
+  let example = await examples.updateExample(storage, req.params.slug, req.body || {})
+  if (before.kind !== 'template' && example.kind === 'template' && isValidUUID(example.sourcePresentationId)) {
+    const source = await storage.getPresentation(example.sourcePresentationId, req.userId)
+    if (source) example = await examples.refreshExample(storage, req.params.slug, source)
+  }
+  res.json({ example })
 }))
 // The deck copied again from the presentation it came from
 app.post('/api/admin/examples/:slug/refresh', exampleRoute(async (req, res) => {
@@ -1867,6 +1928,62 @@ app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
     )
     if (!rows.length) return res.status(404).json({ error: 'Font not found' })
     if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
+    res.json({ success: true })
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// --- Theme library ---
+// Each person's saved themes (client/src/utils/customTheme.js, checked by
+// cleanThemeDoc from the client's bundle). A deck keeps its own copy of the
+// theme it used, so changing a saved theme never changes a deck until its
+// owner takes the update in the Themes panel.
+
+const themeDocs = require('./mcp/shared')
+
+// The document a request body describes, or a 400 saying what's wrong
+function themeDocFrom(req, res) {
+  try {
+    return themeDocs.cleanThemeDoc(req.body)
+  } catch (err) {
+    if (err instanceof themeDocs.ThemeDocError) { res.status(400).json({ error: err.message }); return null }
+    throw err
+  }
+}
+
+// GET /api/themes - the person's saved themes, by name
+app.get('/api/themes', async (req, res) => {
+  try {
+    res.json(await storage.listThemes(req.userId))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// POST /api/themes - save a theme (Save as theme, Import)
+app.post('/api/themes', async (req, res) => {
+  try {
+    const doc = themeDocFrom(req, res)
+    if (!doc) return
+    if ((await storage.listThemes(req.userId)).length >= themeDocs.MAX_LIBRARY_THEMES) {
+      return res.status(400).json({ error: `You can save up to ${themeDocs.MAX_LIBRARY_THEMES} themes. Delete one to save another.` })
+    }
+    res.status(201).json(await storage.createTheme(doc, req.userId))
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// PUT /api/themes/:id - replace a saved theme (Save changes), a new version
+app.put('/api/themes/:id', requireValidId(), async (req, res) => {
+  try {
+    const doc = themeDocFrom(req, res)
+    if (!doc) return
+    const theme = await storage.updateTheme(req.params.id, doc, req.userId)
+    if (!theme) return res.status(404).json({ error: 'Theme not found' })
+    res.json(theme)
+  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+})
+
+// DELETE /api/themes/:id - decks that used it keep their copy
+app.delete('/api/themes/:id', requireValidId(), async (req, res) => {
+  try {
+    if (!(await storage.deleteTheme(req.params.id, req.userId))) return res.status(404).json({ error: 'Theme not found' })
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })

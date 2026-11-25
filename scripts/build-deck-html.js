@@ -8,7 +8,9 @@
 // client/src/utils/deckData.js works out of the data a deck's slides read
 // (for services/deck-data.js), and how a plugin element's page is given its
 // data (client/src/plugins/pluginEmbed.js, for the plugin gallery's live
-// previews). Run after changing them or anything they import:
+// previews), and what a template's own page says about its deck
+// (client/src/utils/templateFacts.js). Run after changing them or anything
+// they import:
 //
 //   node scripts/build-deck-html.js
 //
@@ -29,6 +31,7 @@ const CATALOG = 'client/src/examples/catalog.js'
 const DECK_DATA = 'client/src/utils/deckData.js'
 const EXAMPLE_DATA = 'client/src/examples/datasets.js'
 const PLUGIN_EMBED = 'client/src/plugins/pluginEmbed.js'
+const TEMPLATE_FACTS = 'client/src/utils/templateFacts.js'
 const TARGET = path.join(root, 'server/services/deck-html.js')
 
 const HEADER = `// SPDX-License-Identifier: AGPL-3.0-or-later
@@ -46,6 +49,11 @@ const serverSide = {
     // WaveDrom's renderer, as client/vite.config.js names it
     build.onResolve({ filter: /^wavedrom-render-any$/ }, () => ({ path: path.join(path.dirname(require.resolve('wavedrom/package.json')), 'lib/render-any.js') }))
     build.onResolve({ filter: /\/PluginRegistry$/ }, () => ({ path: 'plugin-registry', namespace: 'server' }))
+    // A file imported as text (`./x.css?raw`), as Vite has it: the themes'
+    // stylesheets (utils/themeCss.js), named from the repository's root so the
+    // bundle is the same on every checkout
+    build.onResolve({ filter: /\?raw$/ }, args => ({ path: path.relative(root, path.join(args.resolveDir, args.path.replace(/\?raw$/, ''))), namespace: 'raw' }))
+    build.onLoad({ filter: /.*/, namespace: 'raw' }, args => ({ contents: fs.readFileSync(path.join(root, args.path), 'utf8'), loader: 'text' }))
     build.onLoad({ filter: /.*/, namespace: 'server' }, () => ({
       contents: 'export default { getSandboxHtml: () => null, sandboxFor: () => null }', loader: 'js',
     }))
@@ -55,7 +63,7 @@ const serverSide = {
 async function bundle() {
   const esbuild = require('esbuild')
   const result = await esbuild.build({
-    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'\nexport { buildStaticPluginSrcdoc } from './${PLUGIN_EMBED}'`, resolveDir: root, sourcefile: 'deck-html.js' },
+    stdin: { contents: `export { generateRevealHTML } from './${SOURCE}'\nexport { MAX_ROWS, dataGraphs, graphNeeds, graphRowsFrom, findDataset, hasEmbeds, embedDatasetNames, datasetSummary, carriedData } from './${DECK_DATA}'\nexport { EXAMPLE_SOURCES, EXAMPLE_DATASETS, exampleDatasetNames } from './${EXAMPLE_DATA}'\nexport { exampleDeck, EXAMPLE_SLUGS, SHOWCASE_SLUGS } from './${EXAMPLES}'\nexport { EXAMPLES, HERO_EXAMPLE } from './${CATALOG}'\nexport { buildStaticPluginSrcdoc } from './${PLUGIN_EMBED}'\nexport { templateFacts, themeName } from './${TEMPLATE_FACTS}'`, resolveDir: root, sourcefile: 'deck-html.js' },
     absWorkingDir: root,
     bundle: true,
     format: 'cjs',

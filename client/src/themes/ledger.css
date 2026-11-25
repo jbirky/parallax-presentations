@@ -1,0 +1,185 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Ledger theme's stylesheet: a spreadsheet, for pitches and anything
+   with a model behind it. Gridlines, column letters and row numbers, and a
+   sheet tab along the bottom; text in Geist, figures in JetBrains Mono, in
+   ledger green (#1e6b49) with inputs in blue (#2457c5), the modeler's habit
+   (utils/themes.js: the fonts and the text sizes, which the Themes panel's
+   Text tab can change). Slide titles open with a formula bar's fx; the title
+   slide's title and the Big Number are a selected range, with its fill
+   handle; section titles are a sheet's tab.
+
+   It's scoped to .deck-theme-ledger, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The sheet's headers and tab show on slides that show the theme's page,
+   not on ones with a background of their own. In text: a Heading 1 in a
+   text box is a figure in JetBrains Mono, inline code a cell reference in
+   input blue, and a quote a cell's comment, whose first line in bold is its
+   label. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-ledger {
+  --r-background-color: #ffffff;
+  --r-main-color: #13221b;
+  --r-heading-color: #13221b;
+  --r-link-color: #2457c5;
+  --r-link-color-dark: #1a3f8f;
+  --r-link-color-hover: #1e6b49;
+  --r-selection-background-color: #d3e9dc;
+  --r-selection-color: #13221b;
+}
+
+/* The gridlines on presented slides that show the theme's page (the editor
+   draws them from the theme's backgroundCss) */
+.deck-theme-ledger .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#eef1ef 1px, transparent 1px) 0 19px / 80px 30px,
+    linear-gradient(90deg, #eef1ef 1px, transparent 1px) 27px 0 / 80px 30px,
+    #ffffff;
+}
+
+/* Column letters, row numbers and the sheet's tab, behind everything */
+.deck-theme-ledger.px-slide:not([data-layout=blank], [data-own-background])::before,
+.deck-theme-ledger .px-slide:not([data-layout=blank], [data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20960%20540%27%20width%3D%27960%27%20height%3D%27540%27%3E%3Crect%20x%3D%270%27%20y%3D%270%27%20width%3D%27960%27%20height%3D%2719%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%270%27%20width%3D%2727%27%20height%3D%27518%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Crect%20x%3D%270%27%20y%3D%27518%27%20width%3D%27960%27%20height%3D%2722%27%20fill%3D%27%23f3f5f4%27%2F%3E%3Cpath%20d%3D%27M0%2019.5H960M27.5%200V518M0%20518.5H960%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Cpath%20d%3D%27M21%2014L21%206L13%2014Z%27%20fill%3D%27%23c6cfca%27%2F%3E%3Ctext%20x%3D%2768%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EA%3C%2Ftext%3E%3Ctext%20x%3D%27148%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EB%3C%2Ftext%3E%3Ctext%20x%3D%27228%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EC%3C%2Ftext%3E%3Ctext%20x%3D%27308%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3ED%3C%2Ftext%3E%3Ctext%20x%3D%27388%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EE%3C%2Ftext%3E%3Ctext%20x%3D%27468%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EF%3C%2Ftext%3E%3Ctext%20x%3D%27548%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EG%3C%2Ftext%3E%3Ctext%20x%3D%27628%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EH%3C%2Ftext%3E%3Ctext%20x%3D%27708%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EI%3C%2Ftext%3E%3Ctext%20x%3D%27788%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EJ%3C%2Ftext%3E%3Ctext%20x%3D%27868%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EK%3C%2Ftext%3E%3Ctext%20x%3D%27948%27%20y%3D%2713%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3EL%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2738%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2768%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%2798%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27128%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E4%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27158%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27188%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27218%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27248%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E8%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27278%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E9%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27308%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E10%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27338%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E11%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27368%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E12%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27398%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E13%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27428%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E14%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27458%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E15%3C%2Ftext%3E%3Ctext%20x%3D%2714%27%20y%3D%27488%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%279.5%27%20fill%3D%27%237b8781%27%20text-anchor%3D%27middle%27%3E16%3C%2Ftext%3E%3Cpath%20d%3D%27M107.5%200V19M187.5%200V19M267.5%200V19M347.5%200V19M427.5%200V19M507.5%200V19M587.5%200V19M667.5%200V19M747.5%200V19M827.5%200V19M907.5%200V19M987.5%200V19M0%2049.5H27M0%2079.5H27M0%20109.5H27M0%20139.5H27M0%20169.5H27M0%20199.5H27M0%20229.5H27M0%20259.5H27M0%20289.5H27M0%20319.5H27M0%20349.5H27M0%20379.5H27M0%20409.5H27M0%20439.5H27M0%20469.5H27M0%20499.5H27%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Cpath%20d%3D%27M10%20529H18M14%20525V533%27%20stroke%3D%27%237b8781%27%20stroke-width%3D%271.3%27%2F%3E%3Crect%20x%3D%2728%27%20y%3D%27519%27%20width%3D%27104%27%20height%3D%2721%27%20fill%3D%27%23ffffff%27%2F%3E%3Crect%20x%3D%2728%27%20y%3D%27518%27%20width%3D%27104%27%20height%3D%272%27%20fill%3D%27%231e6b49%27%2F%3E%3Cpath%20d%3D%27M132.5%20519V540%27%20stroke%3D%27%23d7ddd9%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2748%27%20y%3D%27527%27%20width%3D%2764%27%20height%3D%275%27%20rx%3D%272.5%27%20fill%3D%27%231e6b49%27%20fill-opacity%3D%27.35%27%2F%3E%3C%2Fsvg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/* Slide titles open with a formula bar's fx */
+.deck-theme-ledger.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-ledger .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "fx";
+  display: inline-block;
+  margin-right: 0.45em;
+  padding-right: 0.45em;
+  border-right: 1px solid #cfd7d2;
+  color: #7b8781;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.6em;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  vertical-align: 0.18em;
+}
+
+/* The title slide's title and the Big Number: a selected range, with its
+   fill handle. (!important: presented decks set headings' margins with it.) */
+.deck-theme-ledger.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-ledger .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto 0.15em !important;
+  padding: 0.1em 0.4em;
+  background: rgba(30, 107, 73, 0.06);
+  box-shadow: inset 0 0 0 2px #1e6b49;
+}
+.deck-theme-ledger.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-ledger .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1::after,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1::after {
+  content: "";
+  position: absolute;
+  right: -4px; bottom: -4px;
+  width: 7px; height: 7px;
+  border: 1.5px solid #ffffff;
+  background: #1e6b49;
+}
+.deck-theme-ledger.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #1e6b49 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: -0.03em !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-ledger.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p,
+.deck-theme-ledger .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p { color: #5c6a63; font-family: 'JetBrains Mono', monospace; font-size: 0.6em; }
+
+/* Section titles: a sheet's tab, white with a green edge */
+.deck-theme-ledger.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-ledger .px-slide[data-layout=section-header] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.12em 0.6em 0.16em;
+  border: 1px solid #d7ddd9;
+  background: #ffffff;
+  box-shadow: inset 0 0.08em 0 #1e6b49;
+  color: #1e6b49 !important;
+}
+
+/* Headings: tight */
+.deck-theme-ledger .px-text :is(h1, h2, h3) { letter-spacing: -0.025em !important; line-height: 1.08; }
+
+/* Figures: a Heading 1 in a text box, in JetBrains Mono */
+.deck-theme-ledger .px-text:not([data-placeholder=title], [data-placeholder=subtitle]) h1 {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em !important;
+}
+.deck-theme-ledger .px-text table { font-variant-numeric: tabular-nums; }
+
+/* Bullets: green squares; numbers in JetBrains Mono */
+.deck-theme-ledger .px-text ul { list-style-type: square; }
+.deck-theme-ledger .px-text ul > li::marker { color: var(--px-accent, #1e6b49); }
+.deck-theme-ledger .px-text ul ul > li::marker { content: "\2013  "; color: #7b8781; }
+.deck-theme-ledger .px-text ol > li::marker { color: var(--px-accent, #1e6b49); font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.85em; }
+
+/* Inline code: a cell reference, in input blue */
+.deck-theme-ledger .px-text :not(pre) > code { padding: 0.04em 0.3em; border: 1px solid #c9d6f0; border-radius: 2px; background: #eef3fc !important; color: #2457c5; font-family: 'JetBrains Mono', monospace; font-size: 0.82em; }
+.deck-theme-ledger .px-text pre { background: #f7f8f8 !important; border: 1px solid #cfd7d2; border-radius: 2px; box-shadow: none !important; }
+.deck-theme-ledger :is(pre.hljs, pre code) { font-family: 'JetBrains Mono', monospace !important; }
+
+/* Quotes: a cell's comment, with the red mark in its corner; a bold first
+   line is its label */
+.deck-theme-ledger .px-text blockquote {
+  position: relative;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.5em 0.8em !important;
+  border: 1px solid #13221b !important;
+  border-radius: 0;
+  opacity: 1 !important;
+  box-shadow: 3px 3px 0 rgba(19, 34, 27, 0.12) !important;
+  background: #fffbe6;
+  font-style: normal;
+}
+.deck-theme-ledger .px-text blockquote::before {
+  content: "";
+  position: absolute;
+  top: 0; right: 0;
+  border-top: 0.45em solid #c8372d;
+  border-left: 0.45em solid transparent;
+}
+.deck-theme-ledger .px-text blockquote > p:first-child > strong:only-child {
+  color: #7b8781;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-theme-ledger .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   gridlines with the column header, the title a selected range */
+.deck-theme-ledger.theme-swatch {
+  position: relative;
+  background:
+    linear-gradient(#f3f5f4, #f3f5f4) 0 0 / 100% 8% no-repeat,
+    linear-gradient(#e3e8e5 1px, transparent 1px) 0 0 / 25% 16%,
+    linear-gradient(90deg, #e3e8e5 1px, transparent 1px) 0 0 / 25% 16%,
+    #ffffff !important;
+}
+.deck-theme-ledger .theme-swatch-title { padding: 0.05em 0.3em; background: #ffffff; box-shadow: inset 0 0 0 2px #1e6b49; }

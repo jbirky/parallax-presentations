@@ -35,6 +35,7 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 |------|--------------|
 | `get_deck` | Reads the outline: each slide's number, title, layout, minutes, what's on it, and its outline and speaker notes in short |
 | `get_slide` | Reads one slide in full: every element with its position and size, its text, what clicking on it does, and warnings for anything past the slide's edges or overlapping |
+| `get_theme` | Reads the theme: its colors, fonts and text styles, the deck's stylesheet with any rules left out, and what a stylesheet can target |
 | `render_slide` | Sees a slide as a picture, as it looks when presenting with all its steps shown, to check how its changes came out |
 | `show_deck` | Shows you the presentation in the chat, live, in apps that can (below); elsewhere, gives you a link to open it in the editor |
 | `list_datasets` | Reads the datasets linked to the presentation (**Tools › Datasets…**): their columns, sizes and first rows |
@@ -43,7 +44,7 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 | `add_element`, `update_element`, `delete_element` | Adds a text box, shape, graph, equation, table, code block, LaTeX or TikZ picture, timeline, HTML embed or diagram; moves, resizes or deletes any element; changes what's in one |
 | `get_element_guide` | Reads how to describe a graph or diagram: its fields, templates and an example |
 | `update_outline` | Changes a slide's outline notes, minutes and section, never what's on the slide |
-| `update_deck` | Changes the title, theme, font, transition and talk length |
+| `update_deck` | Changes the title, theme, font, text styles (the size of titles, headings and body text, and the headings' font and weight), the deck's own colors and stylesheet (as the Themes panel's Customize and CSS tabs set them), transition and talk length |
 | `import_beamer` | Turns LaTeX Beamer source into slides, as **File › Import › LaTeX Beamer…** does, with the references it cites |
 | `apply_edits` | Makes several of these changes at once, all or nothing |
 

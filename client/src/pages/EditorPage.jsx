@@ -43,7 +43,11 @@ import LayoutPicker from '../components/LayoutPicker'
 import GettingStarted from '../components/GettingStarted'
 import { useChecklist, showChecklist, tickStep, reopenChecklist } from '../utils/gettingStarted'
 import { ThemePanel } from '../components/ThemeGallery'
-import { slidePalette, ownBackground, themeOf, isLegacyBackground, newSlideBackground } from '../utils/themes'
+import { setDocumentThemeCss } from '../utils/scopeCss'
+import { applyThemeDoc } from '../utils/customTheme'
+import DeckFontOptions from '../components/DeckFontOptions'
+import { deckFontName } from '../utils/deckFont'
+import { slidePalette, ownBackground, themeOf, deckTheme, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
 import { pickFile } from '../utils/pickFile'
 import KeyboardShortcuts from '../components/KeyboardShortcuts'
@@ -54,6 +58,7 @@ import PracticeRunsModal from '../components/PracticeRunsModal'
 import { practiceInWindow, PRACTICE_MESSAGE, upsertPracticeRun, removePracticeRun, minutesFromRun } from '../utils/practice'
 import SlideCanvas, { editLabelFor } from '../components/SlideCanvas'
 import PropertiesPanel from '../components/PropertiesPanel'
+import HtmlEmbedModal from '../components/HtmlEmbedModal'
 import FindReplaceBar from '../components/FindReplaceBar'
 import TransitionPreview from '../components/TransitionPreview'
 import AnimationTimeline from '../components/AnimationTimeline'
@@ -69,7 +74,7 @@ import { setGraphDataPresentation, refreshGraphData, loadGraphData, loadEmbedDat
 import datasetManager from '../datasets/DatasetManager'
 import { installEmbedDatasets } from '../datasets/embedBridge'
 import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
-import { defaultGraph, defaultGraph3d, GRAPH_FIELDS } from '../utils/graphPage'
+import { defaultGraph, defaultGraph3d, GRAPH_FIELDS, graphStability } from '../utils/graphPage'
 import EquationEditorModal from '../components/EquationEditorModal'
 import FeynmanEditorModal from '../components/FeynmanEditorModal'
 import CircuitEditorModal from '../components/CircuitEditorModal'
@@ -109,7 +114,7 @@ import ImportSlideModal from '../components/ImportSlideModal'
 import BeamerImportModal from '../components/BeamerImportModal'
 import DatasetPanel from '../components/DatasetPanel'
 import EquationPalette from '../components/EquationPalette'
-import { parseAuthors, formatAuthorsFull, webLink, pageRange } from '../utils/bibtexParser'
+import { formatAuthorLine, webLink, pageRange } from '../utils/bibtexParser'
 import { workFinder } from '../utils/bibDuplicates'
 import { buildCitationIndex, nextCitationLabel, applyCitationNumbering, countStaleMarkers, resolveCitationsInHtml } from '../utils/citationIndex'
 import { MathNode } from '../extensions/MathExtension'
@@ -264,6 +269,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   const [inspectorTab, setInspectorTab] = useState('format')
   // The themes panel, in the inspector's place (components/ThemeGallery.jsx)
   const [showThemes, setShowThemes] = useState(false)
+  // The Themes panel's tab: its colors, or the deck's text styles
+  const [themeTab, setThemeTab] = useState('colors')
   // The slide whose layout is being changed (Slide › Change layout…)
   const [layoutChangeIndex, setLayoutChangeIndex] = useState(null)
   // The getting-started checklist (utils/gettingStarted.js), and asking the
@@ -273,7 +280,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
   // A PDF's pages, to pick which go on the slide as images
   const [pdfPages, setPdfPages] = useState(null)
   const [plotImport, setPlotImport] = useState(null) // { file }: a figure to import; { source, figure }: one kept as it is, opened again
-  const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content }
+  const [htmlEditorState, setHtmlEditorState] = useState(null) // { elementId, content, width, height, mode }
   const [p5EditorState, setP5EditorState] = useState(null) // { elementId, content }
   const [codeEditorState, setCodeEditorState] = useState(null) // { elementId, content, language }
   const [latexEditorState, setLatexEditorState] = useState(null) // { elementId, content }
@@ -1166,7 +1173,7 @@ svg.selectAll('circle').data(data).join('circle')
       }
     })
     setSelectedElementIds([newEl.id])
-    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_HTML })
+    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_HTML, width: newEl.width, height: newEl.height, mode: 'code' })
   }, [DEFAULT_HTML])
 
   const addD3Element = useCallback(() => {
@@ -1186,7 +1193,7 @@ svg.selectAll('circle').data(data).join('circle')
       }
     })
     setSelectedElementIds([newEl.id])
-    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_D3 })
+    setHtmlEditorState({ elementId: newEl.id, content: DEFAULT_D3, width: newEl.width, height: newEl.height, mode: 'code' })
   }, [DEFAULT_D3])
 
   const insertKineticText = useCallback((html, width, height) => {
@@ -1212,15 +1219,17 @@ svg.selectAll('circle').data(data).join('circle')
     setShowKineticModal(false)
   }, [slideW])
 
-  const openHtmlEditor = useCallback((elementId) => {
+  // mode: 'content' or 'code'; left out, an embed with a content block opens
+  // on its form (utils/embedContent.js) and any other on its code
+  const openHtmlEditor = useCallback((elementId, mode) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'html' || heldByOther(elementId)) return
-    setHtmlEditorState({ elementId, content: element.content || '' })
+    setHtmlEditorState({ elementId, content: element.content || '', width: element.width, height: element.height, mode })
   }, [presentation])
 
-  const commitHtmlEdit = useCallback(() => {
+  const commitHtmlEdit = useCallback((content) => {
     if (!htmlEditorState) return
-    updateElement(htmlEditorState.elementId, { content: htmlEditorState.content })
+    updateElement(htmlEditorState.elementId, { content })
     setHtmlEditorState(null)
   }, [htmlEditorState, updateElement])
 
@@ -1359,7 +1368,7 @@ function draw() {
   // so the diagram looks there as it will on the slide
   const slideIsDark = useCallback(() => {
     // The slide's own background, or the theme's (utils/themes.js)
-    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme).dark
+    return slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme, presentation?.themeColors).dark
   }, [presentation])
 
   const openTikzEditor = useCallback((elementId) => {
@@ -1373,24 +1382,26 @@ function draw() {
     const slide = presentation?.slides[currentSlideIndexRef.current]
     const bg = slide?.background
     if (bg?.type === 'color' && bg.color) return bg.color
-    if (!ownBackground(bg)) return themeOf(presentation?.theme).background
+    if (!ownBackground(bg)) return deckTheme(presentation?.theme, presentation?.themeColors).background
     return slideIsDark() ? '#1e1e2e' : '#ffffff'
   }, [presentation, slideIsDark])
+  // The slide's theme's colors of stability, for a graph's fixed points
+  const slideStability = useCallback(() => graphStability(slidePalette(presentation?.slides[currentSlideIndexRef.current], presentation?.theme, presentation?.themeColors)), [presentation])
 
   const addGraph = useCallback(() => {
-    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
-  }, [slideIsDark, slideBackdrop])
+    setGraphEditor({ elementId: null, graph: defaultGraph(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [slideIsDark, slideBackdrop, slideStability])
   const addGraph3d = useCallback(() => {
-    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop() })
-  }, [slideIsDark, slideBackdrop])
+    setGraphEditor({ elementId: null, graph: defaultGraph3d(slideIsDark()), size: GRAPH_SIZE, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [slideIsDark, slideBackdrop, slideStability])
 
   const openGraphEditor = useCallback((elementId) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'graph' || heldByOther(elementId)) return
     const graph = {}
     for (const key of GRAPH_FIELDS) if (element[key] !== undefined) graph[key] = element[key]
-    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop() })
-  }, [presentation, slideBackdrop])
+    setGraphEditor({ elementId, graph, size: { w: element.width, h: element.height }, slideBg: slideBackdrop(), stability: slideStability() })
+  }, [presentation, slideBackdrop, slideStability])
 
   const saveGraph = useCallback((graph) => {
     const elementId = graphEditor?.elementId
@@ -2874,7 +2885,9 @@ function draw() {
   // old dark default takes the theme's page instead (one undo step)
   const applyTheme = (id) => {
     tickStep('theme')
-    setPresentation(prev => ({
+    setPresentation(({ themeColors, themeSource, ...prev }) => ({
+      // A new theme brings its own colors: the deck's Customize ones go, and
+      // the deck no longer has the saved theme it came from
       ...prev,
       theme: id,
       slides: prev.slides.map(slide => {
@@ -2884,6 +2897,48 @@ function draw() {
       }),
     }))
   }
+
+  // The deck's text styles (utils/textStyles.js), from the Themes panel's
+  // Text tab; none when they're back at the defaults
+  const applyTextStyles = (styles) => {
+    setPresentation(prev => {
+      const { textStyles, ...rest } = prev
+      return styles ? { ...rest, textStyles: styles } : rest
+    })
+  }
+
+  // The deck's own colors over its theme's (Themes panel › Customize) and its
+  // stylesheet (the CSS tab, utils/scopeCss.js); none when cleared
+  const applyThemeColors = (colors) => {
+    setPresentation(({ themeColors, ...rest }) => (colors ? { ...rest, themeColors: colors } : rest))
+  }
+  const applyThemeCss = (css) => {
+    setPresentation(({ themeCss, ...rest }) => (css && css.trim() ? { ...rest, themeCss: css } : rest))
+  }
+
+  // A saved theme (Themes panel › My themes, utils/customTheme.js): its base,
+  // colors, font, text styles and stylesheet replace the deck's, and the deck
+  // remembers which theme and version it has. Slides with the old dark
+  // default take the theme's page, as applyTheme does.
+  const applySavedTheme = (doc, source) => {
+    tickStep('theme')
+    setPresentation(prev => {
+      const next = applyThemeDoc(prev, doc, source)
+      return { ...next, slides: next.slides.map(slide => {
+        if (!isLegacyBackground(slide.background)) return slide
+        const { background, ...rest } = slide
+        return rest
+      }) }
+    })
+  }
+  const setThemeSource = (source) => {
+    setPresentation(({ themeSource, ...rest }) => (source ? { ...rest, themeSource: source } : rest))
+  }
+
+  // The deck's stylesheet on the editor's own page, where the canvas and
+  // thumbnails read it; gone when the editor closes
+  useEffect(() => { setDocumentThemeCss(presentation?.themeCss || '') }, [presentation?.themeCss])
+  useEffect(() => () => setDocumentThemeCss(''), [])
 
   const addColumn = () => {
     const slides = presentation?.slides || []
@@ -3444,7 +3499,8 @@ function draw() {
       { label: 'Change layout', title: 'Move this slide’s title and text into another layout', disabled: isViewingReferences, items: Object.entries(SLIDE_TEMPLATES).map(([key, layout]) => ({ label: layout.label, radio: true, checked: currentSlide?.layout === key, action: () => changeSlideLayout(currentSlideIndex, key) })) },
       { label: 'Background…', action: () => openBackground(), disabled: isViewingReferences },
       { label: 'Transition…', title: 'How the slide comes in, in the inspector’s Animate tab', action: () => { setShowThemes(false); setInspectorTab('animate') } },
-      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => setShowThemes(true) },
+      { label: 'Theme…', title: 'The page, text and heading colors of the presentation', action: () => { setThemeTab('colors'); setShowThemes(true) } },
+      { label: 'Text styles…', title: 'The size and font of every slide’s titles, headings and body text', action: () => { setThemeTab('text'); setShowThemes(true) } },
       { label: 'Footer and page numbers…', action: () => setShowDefaultSettings(true) },
       '-',
       { label: 'New vertical section', title: 'A column of slides reached with ↓ when presenting', action: addColumn },
@@ -3729,63 +3785,8 @@ function draw() {
                 <select className="prop-input" value={presentation.globalFont || ''}
                   onChange={e => setPresentation(prev => ({ ...prev, globalFont: e.target.value || null }))}
                   style={{ width: '100%', padding: '6px 8px' }}>
-                  <option value="">Default (Arial)</option>
-                  <optgroup label="Sans-serif">
-                    <option value="Arial, sans-serif">Arial</option>
-                    <option value="'Helvetica Neue', sans-serif">Helvetica</option>
-                    <option value="Inter, sans-serif">Inter</option>
-                    <option value="'Inter Tight', sans-serif">Inter Tight</option>
-                    <option value="Roboto, sans-serif">Roboto</option>
-                    <option value="'Open Sans', sans-serif">Open Sans</option>
-                    <option value="'Source Sans 3', sans-serif">Source Sans 3</option>
-                    <option value="'Fira Sans', sans-serif">Fira Sans</option>
-                    <option value="'IBM Plex Sans', sans-serif">IBM Plex Sans</option>
-                    <option value="Manrope, sans-serif">Manrope</option>
-                    <option value="Geist, sans-serif">Geist</option>
-                    <option value="Figtree, sans-serif">Figtree</option>
-                    <option value="Ubuntu, sans-serif">Ubuntu</option>
-                    <option value="Rubik, sans-serif">Rubik</option>
-                    <option value="'PT Sans', sans-serif">PT Sans</option>
-                    <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
-                    <option value="Questrial, sans-serif">Questrial</option>
-                    <option value="Barlow, sans-serif">Barlow</option>
-                  </optgroup>
-                  <optgroup label="Rounded">
-                    <option value="Comfortaa, sans-serif">Comfortaa</option>
-                    <option value="Nunito, sans-serif">Nunito</option>
-                    <option value="'Nunito Sans', sans-serif">Nunito Sans</option>
-                    <option value="Quicksand, sans-serif">Quicksand</option>
-                    <option value="Dosis, sans-serif">Dosis</option>
-                    <option value="'M PLUS Rounded 1c', sans-serif">M PLUS Rounded 1c</option>
-                    <option value="Jura, sans-serif">Jura</option>
-                  </optgroup>
-                  <optgroup label="Condensed">
-                    <option value="'Barlow Condensed', sans-serif">Barlow Condensed</option>
-                    <option value="'Asap Condensed', sans-serif">Asap Condensed</option>
-                    <option value="'Roboto Condensed', sans-serif">Roboto Condensed</option>
-                  </optgroup>
-                  <optgroup label="Serif">
-                    <option value="Georgia, serif">Georgia</option>
-                    <option value="'Times New Roman', serif">Times New Roman</option>
-                    <option value="'Playfair Display', serif">Playfair Display</option>
-                    <option value="Merriweather, serif">Merriweather</option>
-                  </optgroup>
-                  <optgroup label="Monospace">
-                    <option value="'Courier New', monospace">Courier New</option>
-                    <option value="'Fira Code', monospace">Fira Code</option>
-                    <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                    <option value="Inconsolata, monospace">Inconsolata</option>
-                    <option value="'Roboto Mono', monospace">Roboto Mono</option>
-                    <option value="'Space Mono', monospace">Space Mono</option>
-                  </optgroup>
-                  <optgroup label="Display">
-                    <option value="Impact, sans-serif">Impact</option>
-                    <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
-                    <option value="Codystar, sans-serif">Codystar</option>
-                    <option value="'National Park', sans-serif">National Park</option>
-                    <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
-                    <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
-                  </optgroup>
+                  <option value="">Default ({deckFontName(deckTextFont('', presentation.theme))})</option>
+                  <DeckFontOptions />
                 </select>
               </div>
 
@@ -4816,7 +4817,8 @@ function draw() {
         <SlidePanel
           viewSwitch={<PanelViewSwitch view="slides" onChange={chooseLeftView} />}
           slides={presentation.slides}
-          globalFont={presentation.globalFont || ''}
+          globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
+          textStyles={presentation.textStyles || null}
           citationLabels={citationIndex.labelByKey}
           presence={presenceBySlide}
           currentIndex={currentSlideIndex}
@@ -4832,6 +4834,7 @@ function draw() {
           onBackground={openBackground}
           onChangeLayout={index => setLayoutChangeIndex(index)}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
           notice={!isTemplate && showChecklist(checklist, { guest: !!guest }) ? <GettingStarted onStep={checklistStep} /> : null}
           onDuplicate={duplicateSlide}
           onMove={moveSlide}
@@ -4876,6 +4879,7 @@ function draw() {
             customFonts={customFonts}
             onManageFonts={() => setShowFontManager(true)}
             theme={presentation.theme || 'black'}
+            themeColors={presentation.themeColors || null}
             onTheme={() => setShowThemes(v => !v)}
             themesOpen={showThemes}
           />
@@ -4937,8 +4941,7 @@ function draw() {
                   <h2 style={{ fontSize: 22, margin: '0 0 16px', color: 'rgba(255,255,255,0.95)', fontWeight: 700 }}>References</h2>
                   <div style={{ columns: referencedEntries.length > 8 ? 2 : 1, columnGap: 24 }}>
                     {referencedEntries.map((entry, i) => {
-                      const authors = parseAuthors(entry.author)
-                      const authorStr = formatAuthorsFull(authors)
+                      const authorStr = formatAuthorLine(entry.author)
                       return (
                         <div key={entry.key} style={{ marginBottom: 8, lineHeight: 1.5, fontSize: 12, color: 'rgba(255,255,255,0.85)', breakInside: 'avoid' }}>
                           <span style={{ color: 'var(--accent)', fontWeight: 700, marginRight: 6 }}>[{citationIndex.numberByKey[entry.key]}]</span>
@@ -5032,6 +5035,7 @@ function draw() {
               onCanvasCommand={canvasCommand}
               request={canvasRequest}
               theme={presentation.theme || 'black'}
+              themeColors={presentation.themeColors || null}
               onStopEdit={stopEditingElement}
               onUpdateElement={updateElement}
               onUpdateElements={updateElements}
@@ -5062,7 +5066,8 @@ function draw() {
               slideH={slideH}
               drawTool={drawTool}
               onAddDrawingStroke={addDrawingStroke}
-              globalFont={presentation.globalFont || ''}
+              globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
+              textStyles={presentation.textStyles || null}
               onUpdateAxisLines={(axisLines) => updateCurrentSlide({ axisLines })}
             />}
           </div>
@@ -5073,7 +5078,13 @@ function draw() {
         </div>
 
         {showThemes ? (
-          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)} />
+          <ThemePanel value={presentation.theme || 'black'} font={presentation.globalFont || ''} onChange={applyTheme} onClose={() => setShowThemes(false)}
+            tab={themeTab} onTab={setThemeTab}
+            textStyles={presentation.textStyles || null} onTextStyles={applyTextStyles}
+            onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))}
+            themeColors={presentation.themeColors || null} onThemeColors={applyThemeColors}
+            themeCss={presentation.themeCss || ''} onThemeCss={applyThemeCss}
+            deck={presentation} onApplyThemeDoc={applySavedTheme} onThemeSource={setThemeSource} />
         ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}
@@ -5093,7 +5104,7 @@ function draw() {
           onDeleteElement={() => selectedElementId && deleteElement(selectedElementId)}
           onBringForward={() => selectedElementId && bringElementForward(selectedElementId)}
           onSendBackward={() => selectedElementId && sendElementBackward(selectedElementId)}
-          onEditHtml={() => selectedElementId && openHtmlEditor(selectedElementId)}
+          onEditHtml={mode => selectedElementId && openHtmlEditor(selectedElementId, mode)}
           onEditP5={() => selectedElementId && openP5Editor(selectedElementId)}
           onEditCode={() => selectedElementId && openCodeEditor(selectedElementId)}
           onEditLatex={() => selectedElementId && openLatexEditor(selectedElementId)}
@@ -5122,41 +5133,20 @@ function draw() {
           tab={inspectorTab}
           onTabChange={setInspectorTab}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
         />}
 
-      {/* HTML / D3 Code Editor Modal */}
+      {/* HTML / D3 embed: its code, and its content block as a form */}
       {htmlEditorState && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onKeyDown={e => { if (e.key === 'Escape') setHtmlEditorState(null) }}
-        >
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, width: '78vw', maxWidth: 960, height: '78vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <span style={{ fontWeight: 600, fontSize: 14 }}>HTML / D3 Embed</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>D3, plain HTML, or any JavaScript — renders in an iframe</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => setHtmlEditorState(null)}>Cancel</button>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={commitHtmlEdit}>Apply</button>
-              </div>
-            </div>
-            <textarea
-              value={htmlEditorState.content}
-              onChange={e => setHtmlEditorState(s => ({ ...s, content: e.target.value }))}
-              style={{ flex: 1, background: '#0d0d1a', color: '#e2e8f0', fontFamily: "'Fira Code', 'JetBrains Mono', monospace", fontSize: 13, padding: '16px 20px', border: 'none', outline: 'none', resize: 'none', borderRadius: '0 0 12px 12px', lineHeight: 1.6, tabSize: 2 }}
-              spellCheck={false}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Tab') {
-                  e.preventDefault()
-                  const { selectionStart: s, selectionEnd: end, value } = e.target
-                  const next = value.substring(0, s) + '  ' + value.substring(end)
-                  e.target.value = next
-                  setHtmlEditorState(st => ({ ...st, content: next }))
-                  requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = s + 2 })
-                }
-              }}
-            />
-          </div>
-        </div>
+        <HtmlEmbedModal
+          content={htmlEditorState.content}
+          width={htmlEditorState.width}
+          height={htmlEditorState.height}
+          initialMode={htmlEditorState.mode}
+          background={slidePalette(currentSlide, presentation.theme, presentation.themeColors).background}
+          onApply={commitHtmlEdit}
+          onCancel={() => setHtmlEditorState(null)}
+        />
       )}
 
       {/* p5.js Sketch Editor Modal */}
@@ -5470,6 +5460,7 @@ function draw() {
           initial={graphEditor.graph}
           size={graphEditor.size}
           slideBg={graphEditor.slideBg}
+          stability={graphEditor.stability}
           isNew={!graphEditor.elementId}
           onSave={saveGraph}
           onClose={() => setGraphEditor(null)}
@@ -5701,6 +5692,7 @@ function draw() {
         <LayoutPicker
           layouts={SLIDE_TEMPLATES}
           theme={presentation.theme || 'black'}
+          themeColors={presentation.themeColors || null}
           slideW={slideW}
           slideH={slideH}
           title={layoutChangeIndex !== null ? 'Change layout' : 'New slide'}
@@ -5750,8 +5742,8 @@ function draw() {
           slideW={presentation.slideWidth || 960}
           slideH={presentation.slideHeight || 540}
           bibliography={presentation.bibliography || []}
-          globalFont={presentation.globalFont || ''}
-          dark={slidePalette(currentSlide, presentation.theme).dark}
+          globalFont={deckTextFont(presentation.globalFont, presentation.theme)}
+          dark={slidePalette(currentSlide, presentation.theme, presentation.themeColors).dark}
           onInsert={insertBeamerSlides}
           onClose={() => setShowBeamerModal(false)}
         />

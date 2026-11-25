@@ -98,6 +98,13 @@ function uploadTo(url, file) {
   })
 }
 
+// A theme library reply, or its error as an Error
+async function themeReply(r) {
+  const body = await safeJson(r)
+  if (!r.ok) throw new Error(body?.error || 'The theme library couldn’t be reached')
+  return body
+}
+
 export const api = {
   getPresentations: () => authFetch(`${BASE}/presentations`).then(safeJson),
   getPresentation: (id) => authFetch(`${BASE}/presentations/${id}`).then(safeJson).then(deck => noteVersion(id, deck)),
@@ -234,6 +241,13 @@ export const api = {
     body: JSON.stringify({ familyName }),
   }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),
   deleteFont: (id) => authFetch(`${BASE}/fonts/${id}`, { method: 'DELETE' }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Failed'); return b }),
+
+  // The theme library (utils/customTheme.js): each call throws the server's
+  // message when it fails
+  listThemes: () => authFetch(`${BASE}/themes`).then(themeReply),
+  createTheme: (doc) => authFetch(`${BASE}/themes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
+  updateTheme: (id, doc) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
+  deleteTheme: (id) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(themeReply),
 
   // Datasets
   getDatasets: () => authFetch(`${BASE}/datasets`).then(safeJson),

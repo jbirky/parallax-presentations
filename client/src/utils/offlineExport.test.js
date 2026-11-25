@@ -41,7 +41,7 @@ describe('offline HTML', () => {
     // replacement string would expand into the page itself
     const altered = [...served].filter(([, text]) => !html.includes(text)).map(([url]) => url)
     expect(altered).toEqual([])
-    expect(html).not.toMatch(/<script[^>]*\ssrc=["']https:\/\/cdn\.jsdelivr\.net\/npm\/(reveal\.js|katex|gsap)@/)
+    expect(html).not.toMatch(/<script[^>]*\ssrc=["']https:\/\/cdn\.jsdelivr\.net\/npm\/(reveal\.js|katex)@/)
   })
 
   it('fetches uploads to inline, but nothing outside /uploads/', async () => {

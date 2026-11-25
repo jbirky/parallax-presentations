@@ -68,6 +68,16 @@ describe('buildCitationIndex — what gets indexed', () => {
     expect(buildCitationIndex({}).entries).toEqual([])
   })
 
+  it('reads code for no citations: an embed’s bb[1] and a p5 sketch’s Smith are code', () => {
+    const embed = { id: 'h1', type: 'html', x: 0, y: 0, width: 400, height: 300, content: '<script>var bb = [0, 1]; draw(bb[1], bb[2]); // Smith</script>', citationText: `Data from ${marker('ames2021', '[1]')}` }
+    const sketch = { id: 'p1', type: 'p5', x: 0, y: 300, width: 400, height: 200, content: 'let Smith = [3]; ellipse(Smith[0], 0, 9)' }
+    const index = buildCitationIndex(pres([
+      { id: 's1', elements: [embed, sketch, text('e1', `body ${marker('doe2019', '[2]')}`, { y: 520 })] },
+    ]))
+    // the caption cites, the code doesn't
+    expect(index.entries.map(e => e.key)).toEqual(['ames2021', 'doe2019'])
+  })
+
   it('drops a citation whose entry has left the library', () => {
     const index = buildCitationIndex(pres(
       [{ id: 's1', elements: [text('e1', marker('gone2000', '[1]'))] }],
@@ -249,6 +259,19 @@ describe('applyCitationNumbering', () => {
     expect(out.slides[0].elements[0].content).toBe(
       `<p>first <strong>${marker('ames2021', '[1]').replace(' style="color:#6366f1"', ' style="color:#6366f1;cursor:default"')}</strong>, then ${marker('smith2020', '[2]').replace(' style="color:#6366f1"', ' style="color:#6366f1;cursor:default"')} by hand</p>`)
     expect(out.slides[1].elements[0].content).toBe('<p>and <sup data-cite="ames2021">[1]</sup> again, but not [9]</p>')
+    expect(countStaleMarkers(out)).toEqual({ stale: 0, unlinked: 0 })
+  })
+
+  it('leaves code alone, even when linking plain numbers', () => {
+    const code = '<script>var bb = [0, 1]; f(bb[1], bb[2]);</script><sup data-cite="doe2019">[7]</sup>'
+    const deck = pres([{ id: 's1', elements: [
+      { id: 'h1', type: 'html', x: 0, y: 0, width: 400, height: 300, content: code },
+      { id: 'c1', type: 'code', x: 0, y: 300, width: 400, height: 100, content: 'xs[1] = xs[2]' },
+      text('e1', `<p>${marker('smith2020', '[1]')}</p>`, { y: 420 }),
+    ] }])
+    const out = applyCitationNumbering(deck, { linkLegacy: true })
+    expect(out.slides[0].elements[0].content).toBe(code)
+    expect(out.slides[0].elements[1].content).toBe('xs[1] = xs[2]')
     expect(countStaleMarkers(out)).toEqual({ stale: 0, unlinked: 0 })
   })
 

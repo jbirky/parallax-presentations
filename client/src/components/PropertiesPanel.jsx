@@ -26,6 +26,8 @@ import PeriodicProperties from './PeriodicProperties'
 import HarmonicsProperties from './HarmonicsProperties'
 import BackgroundEditor from './BackgroundEditor'
 import { deckFont } from '../utils/deckFont'
+import { deckTextFont } from '../utils/themes'
+import { hasEmbedContent } from '../utils/embedContent'
 
 const CODE_LANGUAGES = [
   { id: 'plaintext', label: 'Plain Text' },
@@ -249,12 +251,22 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="Manrope, sans-serif">Manrope</option>
         <option value="Geist, sans-serif">Geist</option>
         <option value="Figtree, sans-serif">Figtree</option>
+        <option value="'Public Sans', sans-serif">Public Sans</option>
+        <option value="Jost, sans-serif">Jost</option>
+        <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
+        <option value="'Press Start 2P', monospace">Press Start 2P</option>
+        <option value="VT323, monospace">VT323</option>
         <option value="Ubuntu, sans-serif">Ubuntu</option>
         <option value="Rubik, sans-serif">Rubik</option>
         <option value="'PT Sans', sans-serif">PT Sans</option>
         <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
         <option value="Questrial, sans-serif">Questrial</option>
         <option value="Barlow, sans-serif">Barlow</option>
+        <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
+        <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
+        <option value="Lexend, sans-serif">Lexend</option>
+        <option value="Archivo, sans-serif">Archivo</option>
+        <option value="Saira, sans-serif">Saira</option>
       </optgroup>
       <optgroup label="Rounded">
         <option value="Comfortaa, sans-serif">Comfortaa</option>
@@ -275,13 +287,17 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'Times New Roman', serif">Times New Roman</option>
         <option value="'Playfair Display', serif">Playfair Display</option>
         <option value="Merriweather, serif">Merriweather</option>
+        <option value="'STIX Two Text', serif">STIX Two Text</option>
         <option value="'Computer Modern Serif', serif">Computer Modern</option>
         <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
       </optgroup>
       <optgroup label="Monospace">
         <option value="'Courier New', monospace">Courier New</option>
+        <option value="'Courier Prime', monospace">Courier Prime</option>
+        <option value="'Martian Mono', monospace">Martian Mono</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+        <option value="'DM Mono', monospace">DM Mono</option>
         <option value="Inconsolata, monospace">Inconsolata</option>
         <option value="'Roboto Mono', monospace">Roboto Mono</option>
         <option value="'Space Mono', monospace">Space Mono</option>
@@ -293,6 +309,8 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'National Park', sans-serif">National Park</option>
         <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
         <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+        <option value="Caveat, cursive">Caveat</option>
+        <option value="'Architects Daughter', cursive">Architects Daughter</option>
       </optgroup>
     </select>
   )
@@ -313,7 +331,7 @@ export function elementName(el) {
   return ELEMENT_NAMES[el?.type] || (el?.type ? el.type.charAt(0).toUpperCase() + el.type.slice(1) : 'Element')
 }
 
-export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black' }) {
+export default function PropertiesPanel({ slide, selectedElement, pluginInfo = null, onUpdatePlugin, onUpdateSlide, onUpdateElement, onUpdateWithGroup, onSelectElement, onDeleteElement, onBringForward, onSendBackward, onEditHtml, onEditCode, onEditLatex, onEditTikz, onEditGraph, onEditEquation, onEditFeynman, onEditCircuit, onEditLogic, onEditFreebody, onEditVenn, onEditTiming, onEditGeometry, onEditMolecule, onCiteElement, onEditP5, presentation, onUpdatePresentation, selectedElementIds, onDeleteSelectedElements, isTemplate = false, activeMathNode, onUpdateMathNode, onCloseMathNode, onPreviewSlide, currentSlideIndex, recordingState = null, onRecordState, tab: tabProp, onTabChange, theme = 'black', themeColors = null }) {
   // The inspector's tab, Format, Animate or Slide, as in Keynote; the editor
   // can choose it (Slide › Transition… opens Animate)
   const [ownTab, setOwnTab] = useState('format')
@@ -525,18 +543,36 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           )}
 
           {/* HTML embed options */}
-          {selectedElement.type === 'html' && (
+          {selectedElement.type === 'html' && (hasEmbedContent(selectedElement.content) ? (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
+                onClick={() => onEditHtml('content')}
+              >
+                Edit Content…
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
+                onClick={() => onEditHtml('code')}
+              >
+                Edit HTML / D3 Code
+              </button>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Its words and numbers are a form: double-click the element to open it</p>
+            </div>
+          ) : (
             <div style={{ marginBottom: 10 }}>
               <button
                 className="btn btn-secondary"
                 style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 6 }}
-                onClick={onEditHtml}
+                onClick={() => onEditHtml('code')}
               >
                 Edit HTML / D3 Code
               </button>
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open code editor</p>
             </div>
-          )}
+          ))}
 
           {selectedElement.type === 'p5' && (
             <div style={{ marginBottom: 10 }}>
@@ -883,7 +919,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
-                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={deckTextFont(presentation?.globalFont, presentation?.theme)} />
               </div>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Color</div>
@@ -1089,7 +1125,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               )}
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>Font Family</div>
-                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={presentation?.globalFont} />
+                <FontFamilySelect value={selectedElement.fontFamily} onChange={fontFamily => onUpdateElement({ fontFamily })} globalFont={deckTextFont(presentation?.globalFont, presentation?.theme)} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 8 }}>
                 <div>
@@ -2154,7 +2190,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
           <h3>Slide {(currentSlideIndex ?? 0) + 1}</h3>
           <p className="prop-hint">Select something on the slide to format it.</p>
           <h4 className="prop-subhead">Background</h4>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
         </div>
       )}
 
@@ -2163,7 +2199,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
       {tab === 'animate' && selectedElement && (
         <div className="prop-section">
           <h3>{elementName(selectedElement)}</h3>
-          {/* Slide entry animation (GSAP) */}
+          {/* Slide entry animation */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Entry animation, as the slide opens</div>
             <select
@@ -2727,7 +2763,7 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
       {tab === 'slide' && (<>
         <div className="prop-section">
           <h3>Background</h3>
-          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+          <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
         </div>
         {/* Slide Section + Footer Style */}
         <div className="prop-section">

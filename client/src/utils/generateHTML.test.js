@@ -161,7 +161,7 @@ describe('generateRevealHTML', () => {
       }],
     })
     const html = generateRevealHTML(pres)
-    expect(html).toContain('class="fragment fade-up"')
+    expect(html).toContain('class="fragment fade-up px-text"')
     expect(html).toContain('data-fragment-index="0"')
   })
 
@@ -355,9 +355,36 @@ describe('generateRevealHTML', () => {
     })
     const html = generateRevealHTML(pres)
     expect(html).toContain('>References<')
-    expect(html).toContain('Smith, John')
+    expect(html).toContain('John Smith (2020)')
     expect(html).toContain('A Paper')
     expect(html).toContain('<em>Nature</em>')
+  })
+
+  it('lists authors by name, with et al. where BibTeX says "and others"', () => {
+    const pres = makePresentation({
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: '<p>See <sup>[1]</sup> and <sup>[2]</sup></p>' }] }],
+      bibliography: [
+        { key: 'atlas', type: 'article', author: 'Aad, Georges and others', title: 'Observation', year: '2012' },
+        { key: 'pair', type: 'article', author: 'Doe, Jane and Roe, Rick', title: 'Pairs', year: '2019' },
+      ],
+    })
+    const html = generateRevealHTML(pres)
+    expect(html).toContain('Georges Aad et al. (2012)')
+    expect(html).toContain('Jane Doe and Rick Roe (2019)')
+    expect(html).not.toContain('and others')
+  })
+
+  it('numbers references in the theme’s link color and sets them in the deck’s font', () => {
+    const pres = makePresentation({
+      theme: 'preprint',
+      slides: [{ id: 's1', elements: [{ id: 'e1', type: 'text', x: 0, y: 0, width: 400, height: 60, zIndex: 1, content: '<p>See <sup>[1]</sup></p>' }] }],
+      bibliography: [{ key: 'smith2020', type: 'article', author: 'Smith, John', title: 'A Paper', year: '2020' }],
+    })
+    const html = generateRevealHTML(pres)
+    // not the footer's color, which is a faint white unless the deck sets one
+    expect(html).toContain('<span style="color:#1f4e9c;font-weight:700;margin-right:6px">[1]</span>')
+    expect(html).toContain("column-gap:30px;font-family:'Computer Modern Serif', serif\">")
+    expect(html).toContain('color:rgba(0,0,0,0.95)">References</h2>')
   })
 
   it('generates a references slide for entries cited via image citationText', () => {
@@ -641,6 +668,114 @@ describe('what a deck writes into its page', () => {
     expect(html).toContain(`var _globalTransition = "slide';x();'";`)
   })
 
+  it('links the reveal.js theme Bauhaus is drawn on, and writes in its stylesheet', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'bauhaus', customCSS: '.mine { color: red }' }))
+    expect(html).toContain('dist/theme/white.css')
+    expect(html).not.toContain('dist/theme/bauhaus.css')
+    expect(html).toContain('<div class="reveal deck-theme-bauhaus">')
+    expect(html).toContain(':root { --r-background-color: #f7f6f2; }')
+    const sheet = html.indexOf('.deck-theme-bauhaus :is(h1, h2, h3, h4, h5, h6)')
+    expect(sheet).toBeGreaterThan(html.indexOf('.reveal h1 { font-size'))
+    expect(sheet).toBeLessThan(html.indexOf('.mine { color: red }'))
+    expect(html).toContain('family=Jost')
+  })
+
+  it('draws Mission on reveal’s white, with its grid on slides that show its page', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'mission' }))
+    expect(html).toContain('dist/theme/white.css')
+    expect(html).toContain('<div class="reveal deck-theme-mission">')
+    expect(html).toContain('.deck-theme-mission .slides > section:not([data-background-color])')
+    expect(html).toContain("font-family: 'Barlow Condensed', sans-serif; font-weight: 600;")
+    expect(html).toContain('family=B612+Mono')
+  })
+
+  it('draws Turin and Gutter on reveal’s white, with their bands on the slides', () => {
+    const turin = generateRevealHTML(makePresentation({ theme: 'turin' }))
+    expect(turin).toContain('dist/theme/white.css')
+    expect(turin).toContain('<div class="reveal deck-theme-turin">')
+    expect(turin).toContain('.deck-theme-turin .px-slide::after')
+    expect(turin).toMatch(/class="px-slide"/)
+    const gutter = generateRevealHTML(makePresentation({ theme: 'gutter' }))
+    expect(gutter).toContain('<div class="reveal deck-theme-gutter">')
+    expect(gutter).toContain('.deck-theme-gutter .px-slide::before')
+    expect(gutter).toContain('@keyframes gutter-caret')
+    expect(gutter).toContain('family=JetBrains+Mono')
+  })
+
+  it('draws Lemma, Beamline, Kourou and Ledger, and marks slides with a background of their own', () => {
+    const kourou = generateRevealHTML(makePresentation({ theme: 'kourou', slides: [
+      { id: 's1', layout: 'title', elements: [], background: { type: 'color', color: '#1e1e2e' } },
+      { id: 's2', layout: 'title', elements: [] },
+    ] }))
+    expect(kourou).toContain('dist/theme/white.css')
+    expect(kourou).toContain('class="px-slide" data-layout="title" data-own-background>')
+    expect(kourou).toContain('class="px-slide" data-layout="title">')
+    expect(kourou).toContain('.deck-theme-kourou .px-slide[data-layout=title]:not([data-own-background])::before')
+    expect(kourou).toContain('family=Titillium+Web')
+    expect(generateRevealHTML(makePresentation({ theme: 'lemma' }))).toContain('<div class="reveal deck-theme-lemma">')
+    const beamline = generateRevealHTML(makePresentation({ theme: 'beamline' }))
+    expect(beamline).toContain('dist/theme/black.css')
+    expect(beamline).toContain('@keyframes beamline-bunch')
+    expect(generateRevealHTML(makePresentation({ theme: 'ledger' }))).toContain('.deck-theme-ledger .slides > section:not([data-background-color])')
+  })
+
+  it('sets text in the theme’s body size until the deck has its own, as the editor does', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain("font-family:'Computer Modern Sans', sans-serif;font-size:28px;")
+    expect(generateRevealHTML(makePresentation({ theme: 'turin', textStyles: { bodySize: 40 } }))).toContain('font-size:40px;')
+    expect(generateRevealHTML(makePresentation({ theme: 'pixel' }))).toContain('font-size:32px;')
+    // a theme without text styles leaves text boxes at the slide's size
+    expect(generateRevealHTML(makePresentation({ theme: 'black' }))).toContain('padding:8px 12px; color:#ffffff;line-height:1.5;')
+  })
+
+  it('keeps a quote’s paragraphs blocks, as the editor has them, over reveal.js’s inline ones', () => {
+    expect(generateRevealHTML(makePresentation())).toContain('.reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }')
+  })
+
+  it('marks the footer and its sections, for themes to draw them', () => {
+    const slides = [0, 1, 2].map(i => ({ id: `s${i}`, activeSection: i, elements: [] }))
+    const html = generateRevealHTML(makePresentation({ theme: 'transit', showFooter: true, showPageNumbers: true, footerMode: 'sequence', sequenceSections: [{ label: 'Why', color: '#00a650' }, 'How', 'Next'], slides }))
+    expect(html).toContain('class="reveal-footer px-footer" data-footer="sequence"')
+    expect(html).toContain('<div class="px-footer-sections"')
+    expect(html).toContain('<span class="px-footer-section" data-state="current" style="--px-section-color:#00a650;')
+    expect(html).toContain('<span class="px-footer-section" data-state="past" style="--px-section-color:#00a650;')
+    expect(html).toContain('<span class="px-footer-section" data-state="future" style="color:')
+    expect(html).toContain('class="px-footer-page"')
+    const basic = generateRevealHTML(makePresentation({ theme: 'preprint', showPageNumbers: true }))
+    expect(basic).toContain('class="reveal-footer px-footer" data-footer="basic"')
+    expect(basic).toContain('<span class="px-footer-label"></span><span class="px-footer-page">1 / 1</span>')
+  })
+
+  it('keeps themes’ pictures off the background layers reveal.js copies slides’ classes onto', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'turin' }))).toContain('.reveal .backgrounds .px-slide::before, .reveal .backgrounds .px-slide::after { content: none !important; }')
+  })
+
+  it('sets Pixel’s headings in its heading font, on reveal’s black', () => {
+    const html = generateRevealHTML(makePresentation({ theme: 'pixel' }))
+    expect(html).toContain('dist/theme/black.css')
+    expect(html).toContain(':root { --r-background-color: #14112e; }')
+    expect(html).toContain('.reveal .slides section h2 { font-size: 1.125em; }')
+    expect(html).toContain("font-family: 'Press Start 2P', monospace; font-weight: 400;")
+    expect(html).toContain("font-family:'Pixelify Sans', sans-serif;")
+    expect(html).toContain('family=Press+Start+2P')
+    const own = generateRevealHTML(makePresentation({ theme: 'pixel', textStyles: { headingFont: 'Georgia, serif' } }))
+    expect(own).toContain('font-family: Georgia, serif; font-weight: 400;')
+  })
+
+  it('lets embeds and videos fill their boxes, past reveal’s 95% cap', () => {
+    expect(generateRevealHTML(makePresentation())).toContain('.reveal iframe, .reveal video { max-width: none !important; max-height: none !important; }')
+  })
+
+  it('sets text in the theme’s font until the deck has one of its own', () => {
+    expect(generateRevealHTML(makePresentation({ theme: 'bauhaus' }))).toContain('font-family:Jost, sans-serif;')
+    const own = generateRevealHTML(makePresentation({ theme: 'bauhaus', globalFont: 'Georgia, serif' }))
+    expect(own).toContain('font-family:Georgia, serif;')
+    expect(own).not.toContain('font-family:Jost, sans-serif;')
+    const plain = generateRevealHTML(makePresentation())
+    expect(plain).toContain('<div class="reveal deck-theme-black">')
+    expect(plain).not.toContain('.deck-theme-bauhaus')
+    expect(plain).not.toContain('--r-background-color: #')
+  })
+
   it('keeps a deck’s own CSS inside its <style>, @import and all', () => {
     const html = generateRevealHTML(makePresentation({ customCSS: "@import url('https://fonts.example/x.css');\n.a{color:red}</style><script>x()</script>" }))
     expect(html).toContain("@import url('https://fonts.example/x.css');")
@@ -652,9 +787,11 @@ describe('what a deck writes into its page', () => {
     expect(html).toMatch(/style="position:absolute;left:0px;top:0px;width:100px;height:auto;z-index:1;overflow:visible;[^"]*"><p>Grows<\/p>/)
   })
 
-  it('runs the differential rotation transition without GSAP, which decks don’t load', () => {
+  // GSAP isn't open source, and its license doesn't fit a paid Parallax, so
+  // nothing a deck ships may load it or name it
+  it('runs the differential rotation transition without GSAP', () => {
     const html = generateRevealHTML(makePresentation({ transition: 'differential-rotation' }))
-    expect(html).not.toContain('gsap.')
+    expect(html).not.toMatch(/gsap/i)
     expect(html).toContain("band.animate([{ transform: 'translateX(0)' }")
   })
 })

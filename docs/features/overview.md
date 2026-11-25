@@ -48,7 +48,7 @@ The footer system lets you define a **section sequence** shown at the bottom of 
 
 ## Themes & Templates
 
-- **11 built-in reveal.js themes**: Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon, Dracula
+- **40 built-in themes**: reveal.js’s Black, White, League, Beige, Sky, Night, Serif, Simple, Solarized, Moon and Dracula, plus Bauhaus, Pixel, Mission, Turin, Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt, Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout, Cell, Graticule, Eigenstate, Mise, Valence, Quadrille, Inspiral, Parti and Downforce
 - **Custom templates**: Save any slide as a reusable template to re-use across presentations
 - **Template gallery** (hosted version): The landing page's Templates tab has decks to start from. **Use this template** asks you to sign in, then copies the deck into your presentations, yours to change
 - **Per-slide overrides**: Change the background image or color on individual slides without affecting the rest of the deck

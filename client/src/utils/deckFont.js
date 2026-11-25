@@ -12,3 +12,8 @@ export const DEFAULT_DECK_FONT = 'Arial, sans-serif'
 export function deckFont(globalFont) {
   return (typeof globalFont === 'string' && globalFont.trim()) || DEFAULT_DECK_FONT
 }
+
+// The name of a deck's font, for a menu: "Jost" for "Jost, sans-serif"
+export function deckFontName(globalFont) {
+  return deckFont(globalFont).split(',')[0].replace(/['"]/g, '').trim()
+}

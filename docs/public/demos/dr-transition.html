@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1e1e2e;overflow:hidden;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#fff;cursor:pointer;user-select:none}
@@ -26,8 +25,9 @@ document.addEventListener("click",function(){
     if(i<N-1)band.style.borderBottom="1.5px solid "+B[i%3];
     ov.appendChild(band);
     var lat=Math.PI*((i+0.5)/N-0.5),c2=Math.cos(lat);c2*=c2;
-    gsap.to(band,{x:vw+20,duration:0.4+1.0*(1-c2),ease:"none",
-      onComplete:function(){pending--;if(pending<=0){ov.remove();running=false}}});
+    band.animate([{transform:"translateX(0)"},{transform:"translateX("+(vw+20)+"px)"}],
+      {duration:(0.4+1.0*(1-c2))*1000,easing:"linear",fill:"forwards"})
+      .onfinish=function(){pending--;if(pending<=0){ov.remove();running=false}};
   }
   document.body.appendChild(ov);
 });

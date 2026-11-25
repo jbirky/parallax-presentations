@@ -29,7 +29,9 @@ const columns = () => `slug, field, title, description, tags, builtin, card, her
   ${kindFound ? 'kind' : "'example' AS kind"},
   source_presentation_id, (SELECT p.title FROM presentations p WHERE p.id = source_presentation_id) AS source_title,
   deck IS NOT NULL AS has_deck, thumbnail IS NOT NULL AS has_thumbnail,
-  COALESCE(deck->'slides'->0->'background', 'null'::jsonb) AS background, updated_at`
+  CASE WHEN deck->'slides'->0->'background'->>'type' IN ('color', 'gradient')
+    THEN deck->'slides'->0->'background' ELSE 'null'::jsonb END AS background,
+  deck->>'theme' AS theme_id, deck->'themeSource'->>'name' AS theme_source, updated_at`
 
 let tableFound = false
 let kindFound = false
@@ -43,7 +45,11 @@ async function hasTable(storage) {
   return r.ok
 }
 
-const builtinBackground = slug => deckHtml.exampleDeck(slug)?.slides?.[0]?.background || null
+// A card's placeholder, before its thumbnail is drawn, is its first slide's
+// color or gradient. A photo background is left out: the landing page never
+// draws it, and as a data URI it would make every list hundreds of KB.
+const plainBackground = bg => (bg && (bg.type === 'color' || bg.type === 'gradient') ? bg : null)
+const builtinBackground = slug => plainBackground(deckHtml.exampleDeck(slug)?.slides?.[0]?.background)
 
 function fromRow(r) {
   return {
@@ -63,7 +69,9 @@ function fromRow(r) {
     // A copy of a deck of its own, rather than the one the code builds
     ownDeck: r.has_deck,
     hasThumbnail: r.has_thumbnail,
-    background: r.background || (r.builtin && !r.has_deck ? builtinBackground(r.slug) : null),
+    background: plainBackground(r.background) || (r.builtin && !r.has_deck ? builtinBackground(r.slug) : null),
+    // The theme its deck is in, by name: Bauhaus, or a theme of the deck's own
+    theme: r.has_deck ? deckHtml.themeName({ theme: r.theme_id, themeSource: r.theme_source ? { name: r.theme_source } : null }) : null,
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : r.updated_at,
   }
 }
@@ -73,10 +81,10 @@ function builtins() {
   const cards = deckHtml.EXAMPLES.map((e, i) => ({
     slug: e.slug, field: e.field, title: e.title, description: e.desc, tags: e.tags,
     builtin: true, card: true, hero: false, kind: 'example', sortOrder: i + 1,
-    sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: builtinBackground(e.slug), updatedAt: null,
+    sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: builtinBackground(e.slug), theme: null, updatedAt: null,
   }))
   const hero = { slug: deckHtml.HERO_EXAMPLE, field: '', title: 'Parallax', description: 'A galaxy rotation curve, a Feynman diagram and a geometry construction', tags: [],
-    builtin: true, card: false, hero: true, kind: 'example', sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, updatedAt: null }
+    builtin: true, card: false, hero: true, kind: 'example', sortOrder: 0, sourcePresentationId: null, sourceTitle: null, ownDeck: false, hasThumbnail: false, background: null, theme: null, updatedAt: null }
   return [hero, ...cards]
 }
 
@@ -94,7 +102,7 @@ function thumbnailUrl(e) {
 }
 
 // What the landing page shows: the deck at the top, the example cards, and
-// the template cards on its Templates tab
+// the template cards on its Templates tab, each with its theme's name
 async function landingExamples(storage) {
   const all = await listExamples(storage)
   const hero = all.find(e => e.hero) || all.find(e => e.slug === deckHtml.HERO_EXAMPLE)
@@ -105,7 +113,7 @@ async function landingExamples(storage) {
   return {
     hero: hero ? hero.slug : null,
     examples: all.filter(e => e.card && e.kind !== 'template').map(card),
-    templates: all.filter(e => e.card && e.kind === 'template').map(card),
+    templates: all.filter(e => e.card && e.kind === 'template').map(e => ({ ...card(e), theme: e.theme })),
   }
 }
 
@@ -137,10 +145,13 @@ async function getThumbnail(storage, slug) {
 }
 
 // A presentation as anyone may see it on the landing page: without its
-// present-mode ink, practice runs, speaker notes or outline notes
-function publicCopy(presentation) {
+// present-mode ink, practice runs or outline notes, and an example without its
+// speaker notes. A template keeps them (keepNotes): they're written for
+// whoever starts from it (what to click, how to change it), and Use this
+// template copies them. Presented decks never show notes.
+function publicCopy(presentation, { keepNotes = false } = {}) {
   const { id, createdAt, updatedAt, expiresAt, version, annotationSets, practiceRuns, ...deck } = presentation
-  deck.slides = (deck.slides || []).map(({ notes, outlineNotes, ...slide }) => ({ ...slide, notes: '' }))
+  deck.slides = (deck.slides || []).map(({ notes, outlineNotes, ...slide }) => ({ ...slide, notes: keepNotes && typeof notes === 'string' ? notes : '' }))
   return deck
 }
 
@@ -201,7 +212,7 @@ async function createExample(storage, presentation, input) {
   await storage.query(
     `INSERT INTO landing_examples (slug, field, title, description, tags, deck, source_presentation_id, builtin, card, hero, sort_order${kindFound ? ', kind' : ''})
      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE, FALSE, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM landing_examples)${kindFound ? ', $8' : ''})`,
-    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation)), presentation.id, ...(kindFound ? [fields.kind] : [])]
+    [slug, fields.field, fields.title, fields.description, JSON.stringify(fields.tags), JSON.stringify(publicCopy(presentation, { keepNotes: fields.kind === 'template' })), presentation.id, ...(kindFound ? [fields.kind] : [])]
   )
   return getRow(storage, slug)
 }
@@ -225,6 +236,12 @@ async function updateExample(storage, slug, input) {
   }
   if (input.card !== undefined) { params.push(!!input.card); sets.push(`card = $${params.length}`) }
   if (sets.length) await storage.query(`UPDATE landing_examples SET ${sets.join(', ')}, updated_at = NOW() WHERE slug = $1`, params)
+  // A template made an example again loses its speaker notes. (One made a
+  // template gets them back from its presentation: the admin route refreshes it.)
+  if (before.kind === 'template' && kind === 'example') {
+    const { rows: [r] } = await storage.query('SELECT deck FROM landing_examples WHERE slug = $1', [slug])
+    if (r?.deck) await storage.query('UPDATE landing_examples SET deck = $2 WHERE slug = $1', [slug, JSON.stringify(publicCopy(r.deck))])
+  }
   if (input.hero === true) {
     // One statement, so the page always has exactly one
     await storage.query('UPDATE landing_examples SET hero = (slug = $1), updated_at = NOW() WHERE hero OR slug = $1', [slug])
@@ -248,8 +265,9 @@ async function setOrder(storage, slugs) {
 // The deck copied again from the presentation it came from
 async function refreshExample(storage, slug, presentation) {
   await needTable(storage)
+  const { kind } = await getRow(storage, slug)
   await storage.query('UPDATE landing_examples SET deck = $2, source_presentation_id = $3, updated_at = NOW() WHERE slug = $1',
-    [slug, JSON.stringify(publicCopy(presentation)), presentation.id])
+    [slug, JSON.stringify(publicCopy(presentation, { keepNotes: kind === 'template' })), presentation.id])
   return getRow(storage, slug)
 }
 

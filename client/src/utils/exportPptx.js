@@ -1,5 +1,5 @@
 import pptxgen from 'pptxgenjs'
-import { slidePalette, ownBackground, themeOf } from './themes'
+import { slidePalette, ownBackground, deckTheme } from './themes'
 import { isEmptyPlaceholder } from './placeholders'
 import { sanitizeSvg } from './tikzDiagram'
 import { feynmanSvg } from './feynmanDiagram'
@@ -53,11 +53,11 @@ export function exportToPptx(presentation) {
 
     // Background: the slide's own color, or the theme's page
     const bg = slide.background
-    const palette = slidePalette(slide, presentation.theme)
+    const palette = slidePalette(slide, presentation.theme, presentation.themeColors)
     if (bg?.type === 'color' && bg.color) {
       pptSlide.background = { color: bg.color.replace('#', '') }
     } else if (!ownBackground(bg)) {
-      pptSlide.background = { color: themeOf(presentation.theme).background.replace('#', '') }
+      pptSlide.background = { color: deckTheme(presentation.theme, presentation.themeColors).background.replace('#', '') }
     }
 
     // Sort elements by zIndex; an empty placeholder never shows

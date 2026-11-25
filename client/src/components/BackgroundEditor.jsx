@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { Upload } from 'lucide-react'
 import { api } from '../utils/api'
 import { pickFile } from '../utils/pickFile'
-import { ownBackground, themeOf, themeBackgroundStyle } from '../utils/themes'
+import { ownBackground, themeOf, deckTheme, themeBackgroundStyle } from '../utils/themes'
 
 export const DEFAULT_BG = '#1e1e2e'
 
@@ -29,25 +29,25 @@ const GRADIENT_PRESETS = [
 
 // A small square showing the background (the theme's, for a slide without
 // one of its own), for a button
-export function BackgroundSwatch({ background, theme }) {
+export function BackgroundSwatch({ background, theme, colors = null }) {
   const own = ownBackground(background)
   return (
     <span aria-hidden="true" style={{
       display: 'inline-block', width: 14, height: 14, borderRadius: 3, flexShrink: 0,
       border: '1px solid rgba(128,128,128,0.5)',
-      ...(own ? { ...own.style, backgroundSize: 'cover' } : themeBackgroundStyle(theme)),
+      ...(own ? { ...own.style, backgroundSize: 'cover' } : themeBackgroundStyle(theme, colors)),
     }} />
   )
 }
 
-export default function BackgroundEditor({ slide, onUpdateSlide, theme }) {
+export default function BackgroundEditor({ slide, onUpdateSlide, theme, colors = null }) {
   const [uploading, setUploading] = useState(false)
   // A slide without a background of its own shows the theme's (None)
   const bg = slide?.background || { type: 'none' }
   const bgType = bg.type || 'color'
   const update = background => onUpdateSlide({ background })
   // A color starts as the page it replaces
-  const setType = type => update({ ...bg, type, ...(type === 'color' && !bg.color ? { color: themeOf(theme).background } : {}), ...(type === 'gradient' && !bg.gradient ? { gradient: GRADIENT_PRESETS[0] } : {}) })
+  const setType = type => update({ ...bg, type, ...(type === 'color' && !bg.color ? { color: deckTheme(theme, colors).background } : {}), ...(type === 'gradient' && !bg.gradient ? { gradient: GRADIENT_PRESETS[0] } : {}) })
   const setColor = color => update({ ...bg, type: 'color', color })
   const setGradient = gradient => update({ ...bg, type: 'gradient', gradient })
   const setImage = image => update({ ...bg, type: 'image', image, size: bg.size || 'cover', position: bg.position || 'center' })

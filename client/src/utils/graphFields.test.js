@@ -124,3 +124,36 @@ describe('streamlines', () => {
     expect(G.streamlines((px, py, o) => { o[0] = NaN; o[1] = 1 }, W, H, dsep)).toEqual([])
   })
 })
+
+describe('glyphs', () => {
+  const colors = { stable: '#1d5fa8', unstable: '#cf4f1b', neutral: '#222', bg: '#fff' }
+  const shapes = kind => G.glyph(kind, 7, colors)
+
+  it('name every kind of equilibrium', () => {
+    const kinds = { 'stable node': 'stable', 'stable spiral': 'stable', 'stable degenerate node': 'stable', 'unstable node': 'unstable', 'unstable spiral': 'unstable', 'unstable degenerate node': 'unstable', saddle: 'saddle', center: 'center', degenerate: 'degenerate' }
+    for (const [kind, glyph] of Object.entries(kinds)) expect(G.glyphOf(kind)).toBe(glyph)
+    // classify's own kinds, all of them named
+    const cases = [[[-1, 0], [0, -2]], [[-1, -2], [2, -1]], [[1, 0], [0, 2]], [[1, -2], [2, 1]], [[1, 0], [0, -1]], [[0, -1], [1, 0]], [[0, 0], [0, 0]], [[-1, 1], [0, -1]]]
+    for (const J of cases) expect(['stable', 'unstable', 'saddle', 'center', 'degenerate']).toContain(G.glyphOf(G.classify(J).kind))
+  })
+
+  it('carry their meaning in their shape: filled, open, half, ring and dot, diamond', () => {
+    expect(shapes('stable spiral')).toEqual([{ shape: 'disc', r: 7, fill: '#1d5fa8', stroke: '#fff', width: 1.5 }])
+    expect(shapes('unstable node')).toEqual([{ shape: 'disc', r: 6, fill: '#fff', stroke: '#cf4f1b', width: 2 }])
+    // A saddle: the stable color fills half, inside an unstable ring
+    expect(shapes('saddle')).toEqual([{ shape: 'disc', r: 6, fill: '#fff' }, { shape: 'half', r: 6, fill: '#1d5fa8' }, { shape: 'disc', r: 6, stroke: '#cf4f1b', width: 2 }])
+    expect(shapes('center').map(s => [s.shape, s.fill, s.stroke])).toEqual([['disc', '#fff', '#222'], ['disc', '#222', undefined]])
+    expect(shapes('center')[1].r).toBeCloseTo(2.52)
+    expect(shapes('degenerate')).toEqual([{ shape: 'diamond', r: 6, fill: '#fff', stroke: '#222', width: 1.7 }])
+  })
+
+  it('draw a stable manifold solid and an unstable one dashed', () => {
+    expect(G.manifoldStyle({ unstable: false }, colors)).toEqual({ color: '#1d5fa8', dash: null })
+    expect(G.manifoldStyle({ unstable: true }, colors)).toEqual({ color: '#cf4f1b', dash: [7, 6] })
+    // A saddle's four: two of each
+    const F = sys((x, y) => y, (x, y) => -Math.sin(x))
+    const saddle = G.equilibria(F, env, box).find(q => q.kind === 'saddle')
+    const seps = G.separatrices(F, env, saddle, box)
+    expect(seps.map(sep => G.manifoldStyle(sep, colors).dash ? 'dashed' : 'solid').sort()).toEqual(['dashed', 'dashed', 'solid', 'solid'])
+  })
+})

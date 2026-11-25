@@ -82,6 +82,13 @@ describe('the landing page’s examples', { skip }, () => {
     const card = (await publicList()).examples.at(-1)
     assert.equal(card.slug, added.slug)
     assert.deepEqual(card.background, { type: 'color', color: '#123456' })
+    // A photo background stays in the deck but is left out of the list
+    await t.pool.query(`UPDATE landing_examples SET deck = jsonb_set(deck, '{slides,0,background}', $2::jsonb) WHERE slug = $1`,
+      [added.slug, JSON.stringify({ type: 'image', src: 'data:image/jpeg;base64,' + 'A'.repeat(4000) })])
+    assert.equal((await publicList()).examples.at(-1).background, null)
+    assert.equal((await t.call(null, 'GET', `/api/examples/${added.slug}`)).body.slides[0].background.type, 'image')
+    await t.pool.query(`UPDATE landing_examples SET deck = jsonb_set(deck, '{slides,0,background}', $2::jsonb) WHERE slug = $1`,
+      [added.slug, JSON.stringify({ type: 'color', color: '#123456' })])
     assert.equal(card.thumbnail, null)
     // A thumbnail the server drew is served under a link that names its version
     await t.pool.query('UPDATE landing_examples SET thumbnail = $2, updated_at = NOW() WHERE slug = $1', [added.slug, Buffer.from('ffd8ffe0', 'hex')])
@@ -151,14 +158,47 @@ describe('the landing page’s examples', { skip }, () => {
   })
 
   it('shows a template on the Templates tab, which anyone signed in can copy', async () => {
-    const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: deck, title: 'Journal club', field: 'Talks', description: 'A paper in ten slides', kind: 'template' })
+    // A template's speaker notes are for whoever starts from it
+    const talk = await t.createDeck(admin, `Journal club ${t.run}`, {
+      slides: [{ id: 's1', notes: 'Click the figure to show the method', outlineNotes: [{ text: 'my plan', level: 0 }],
+        elements: [{ id: 'e1', type: 'text', x: 60, y: 60, width: 600, height: 100, content: '<h2>Meiosis</h2>' }] }],
+    })
+    const res = await t.call(admin, 'POST', '/api/admin/examples', { presentationId: talk, title: 'Journal club', field: 'Talks', description: 'A paper in ten slides', kind: 'template' })
     assert.equal(res.status, 201, JSON.stringify(res.body))
     const template = res.body.example
     assert.equal(template.kind, 'template')
     let list = await publicList()
     assert.deepEqual(list.templates.map(e => e.slug), [template.slug])
     assert.equal(list.templates[0].desc, 'A paper in ten slides')
+    // A template's card names its deck's theme; an example's doesn't
+    assert.equal(typeof list.templates[0].theme, 'string')
+    assert.ok(list.templates[0].theme.length > 0)
+    assert.ok(list.examples.every(e => e.theme === undefined))
     assert.ok(!list.examples.some(e => e.slug === template.slug), 'not among the examples')
+
+    // Its own page: the deck, its slides, its theme, and Use this template
+    const own = await fetch(`${t.base}/templates/${template.slug}`)
+    assert.equal(own.status, 200)
+    const ownHtml = await own.text()
+    assert.match(ownHtml, /<title>Journal club · Parallax templates<\/title>/)
+    assert.match(ownHtml, new RegExp(`<iframe id="deck" src="/examples/${template.slug}/deck"`))
+    assert.match(ownHtml, new RegExp(`href="/templates/${template.slug}/use"`))
+    assert.match(ownHtml, /aria-label="Slide 1: Meiosis"/)
+    assert.match(ownHtml, /content="A paper in ten slides\. A Parallax template/)
+    // The deck answers the page that frames it
+    assert.match(await (await fetch(`${t.base}/examples/${template.slug}/deck`)).text(), /parallax-deck-go/)
+    // Its slides wait for a Chromium, which this server hasn't
+    const chromium = process.env.PARALLAX_CHROMIUM
+    process.env.PARALLAX_CHROMIUM = '/no/such/chromium'
+    try {
+      assert.deepEqual((await t.call(null, 'GET', `/templates/${template.slug}/slides.json`)).body, { ready: false, drawing: false })
+    } finally {
+      if (chromium === undefined) delete process.env.PARALLAX_CHROMIUM; else process.env.PARALLAX_CHROMIUM = chromium
+    }
+    assert.equal((await t.call(null, 'GET', `/templates/${template.slug}/slides/${template.slug}-000000000000/1.jpg`)).status, 404)
+    // An example, or a name it doesn't have, has no template page
+    assert.equal((await t.call(null, 'GET', '/templates/venn/slides.json')).status, 404)
+    assert.notEqual((await fetch(`${t.base}/templates/venn`)).status, 200)
 
     // The top of the page is an example
     assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { hero: true })).status, 400)
@@ -167,13 +207,19 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal((await t.call(admin, 'PUT', '/api/admin/examples/logic', { kind: 'template' })).status, 400)
     assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'poster' })).status, 400)
 
-    // Someone signed in copies it: a presentation of theirs, without the notes
+    // Someone signed in copies it: a presentation of theirs, with the speaker
+    // notes but not the outline's
     const used = await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)
     assert.equal(used.status, 201, JSON.stringify(used.body))
     assert.equal(used.body.title, 'Journal club')
     const copy = (await t.call(someone, 'GET', `/api/presentations/${used.body.id}`)).body
     assert.match(copy.slides[0].elements[0].content, /Meiosis/)
-    assert.equal(copy.slides[0].notes, '')
+    assert.equal(copy.slides[0].notes, 'Click the figure to show the method')
+    assert.equal(copy.slides[0].outlineNotes, undefined)
+    // The presented deck doesn't show them
+    const page = await (await fetch(`${t.base}/examples/${template.slug}/deck`)).text()
+    assert.match(page, /Meiosis/)
+    assert.ok(!page.includes('Click the figure'), 'no notes in the deck page')
     assert.ok((await t.call(someone, 'GET', '/api/presentations')).body.some(p => p.id === used.body.id))
     assert.equal((await t.call(admin, 'GET', `/api/presentations/${used.body.id}`)).status, 404, 'theirs, not the admin’s')
 
@@ -195,11 +241,15 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal(last.status, 403)
     assert.match(last.body.message, /limited to \d+ presentations/)
 
-    // Back to an example
+    // Back to an example, without the notes; a template again, with them
     await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })
     list = await publicList()
     assert.deepEqual(list.templates, [])
     assert.ok(list.examples.some(e => e.slug === template.slug))
+    assert.equal((await t.call(null, 'GET', `/api/examples/${template.slug}`)).body.slides[0].notes, '')
+    assert.equal((await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'template' })).status, 200)
+    assert.equal((await t.call(null, 'GET', `/api/examples/${template.slug}`)).body.slides[0].notes, 'Click the figure to show the method')
+    await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })
     assert.equal((await t.call(admin, 'DELETE', `/api/admin/examples/${template.slug}`)).status, 200)
   })
 

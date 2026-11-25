@@ -171,6 +171,13 @@ export function findCitations(text, bibliography = []) {
   return hits.sort((a, b) => a.pos - b.pos)
 }
 
+// Elements whose content is source code (an HTML embed, a p5 sketch, a code
+// block, LaTeX or TikZ), where "[1]" is an index and a name is an identifier,
+// not a citation: their content is neither read for citations nor rewritten.
+// Their captions still cite.
+const CODE_TYPES = new Set(['html', 'p5', 'code', 'latex', 'tikz'])
+const citesInContent = el => typeof el.content === 'string' && el.content !== '' && !CODE_TYPES.has(el.type)
+
 // Reading order: slide by slide, and within a slide top to bottom, left to right.
 // A caption cites what its text names, and the entry it was made from
 // (citationKey), whatever its text says: "PubChem CID 2519" names no author.
@@ -183,7 +190,7 @@ function citedKeysInPresentationOrder(bibliography, slides) {
     const elements = [...(slide.elements || [])]
       .sort((a, b) => ((a.y || 0) - (b.y || 0)) || ((a.x || 0) - (b.x || 0)))
     for (const el of elements) {
-      const text = [el.content, el.citationText].filter(Boolean).join('\n')
+      const text = [citesInContent(el) && el.content, el.citationText].filter(Boolean).join('\n')
       for (const { key } of findCitations(text, bibliography)) cite(key)
       if ((el.citationText || el.citationLink) && known.has(el.citationKey)) cite(el.citationKey)
     }
@@ -292,7 +299,7 @@ export function applyCitationNumbering(presentation, { linkLegacy = false } = {}
   const slides = (presentation.slides || []).map(slide => {
     let slideChanged = false
     const elements = (slide.elements || []).map(el => {
-      if (typeof el.content !== 'string' || !el.content) return el
+      if (!citesInContent(el)) return el
       const linked = linkLegacy ? linkLegacyMarkers(el.content, bibliography) : el.content
       const resolved = resolveCitationsInHtml(linked, labelByKey)
       if (resolved === el.content) return el
@@ -316,7 +323,7 @@ export function countStaleMarkers(presentation) {
 
   for (const slide of presentation?.slides || []) {
     for (const el of slide.elements || []) {
-      if (typeof el.content !== 'string' || !el.content) continue
+      if (!citesInContent(el)) continue
       for (const m of keyedMarkers(el.content)) {
         const label = labelByKey[m.key]
         if (label && el.content.slice(m.inner[0], m.inner[1]) !== escapeText(label)) stale++

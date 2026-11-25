@@ -21,7 +21,6 @@ module.exports = {
     // mhchem adds \ce and \pu, for chemical equations and units
     katex: { files: ['dist/katex.min.js', 'dist/katex.min.css', 'dist/fonts/*.woff2', 'dist/contrib/mhchem.min.js'] },
     '@highlightjs/cdn-assets': { files: ['highlight.min.js', 'styles/*.min.css'] },
-    gsap: { files: ['dist/gsap.min.js'] },
     p5: { files: ['lib/p5.min.js'] },
     marked: { files: ['lib/marked.umd.js'], main: 'lib/marked.umd.js' },
     d3: { files: ['dist/d3.min.js'], main: 'dist/d3.min.js' },

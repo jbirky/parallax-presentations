@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1e1e2e;display:flex;align-items:center;justify-content:center;height:100vh;gap:24px;font-family:sans-serif;color:#fff;cursor:pointer;user-select:none}
@@ -13,12 +12,23 @@ body{background:#1e1e2e;display:flex;align-items:center;justify-content:center;h
 <div class="box" id="b4" style="background:#10b981">Slide Left</div>
 <div id="msg">Click to replay</div>
 <script>
+// The same Web Animations presets presented decks use
+var OUT2="cubic-bezier(0.25, 0.46, 0.45, 0.94)",OUT3="cubic-bezier(0.215, 0.61, 0.355, 1)",BACK="cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+var BOXES=[
+  ["b1",OUT3,[{opacity:0,translate:"0 48px"}],0],
+  ["b2",BACK,[{opacity:0,scale:"0.7"}],150],
+  ["b3",OUT2,[{opacity:0,transform:"perspective(600px) rotateX(90deg)"},{transform:"perspective(600px) rotateX(0deg)"}],300],
+  ["b4",OUT3,[{translate:"200px 0"}],450]
+];
 function run(){
-  gsap.fromTo("#b1",{opacity:0,y:40},{opacity:1,y:0,duration:0.6,ease:"power3.out"});
-  gsap.fromTo("#b2",{opacity:0,scale:0.5},{opacity:1,scale:1,duration:0.6,delay:0.15,ease:"back.out(1.4)"});
-  gsap.fromTo("#b3",{opacity:0,rotationX:90,transformPerspective:600},{opacity:1,rotationX:0,duration:0.6,delay:0.3,ease:"power2.out"});
-  gsap.fromTo("#b4",{x:200},{x:0,duration:0.6,delay:0.45,ease:"power3.out"});
+  BOXES.forEach(function(b){
+    var el=document.getElementById(b[0]);
+    if(el._entry)el._entry.cancel();
+    var frames=b[2].slice();
+    frames[0]=Object.assign({offset:0},frames[0]);
+    el._entry=el.animate(frames,{duration:600,delay:b[3],easing:b[1],fill:"backwards"});
+  });
 }
 run();
-document.addEventListener("click",function(){run()});
+document.addEventListener("click",run);
 </script></body></html>

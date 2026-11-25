@@ -41,7 +41,7 @@ const without = (obj, keys) => Object.fromEntries(Object.entries(obj).filter(([k
 
 // ── Graph ──
 
-const GRAPH_LINE_KEYS = ['id', 'text', 'color', 'hidden', 'step', 'style', 'width', 'label', 'showCoords', 'min', 'max', 'uMin', 'uMax', 'vMin', 'vMax',
+const GRAPH_LINE_KEYS = ['id', 'text', 'color', 'hidden', 'step', 'style', 'width', 'fill', 'label', 'showCoords', 'min', 'max', 'uMin', 'uMax', 'vMin', 'vMax',
   'slider', 'field', 'traj', 'surface', 'volume', 'data']
 const DATA_KEYS = ['dataset', 'x', 'y', 'mark', 'colorBy', 'sizeBy', 'label', 'x2', 'xErr', 'yErr', 'size', 'opacity']
 const RESERVED_2D = 'x, y, t, θ (theta) and r'
@@ -77,6 +77,7 @@ function graphLine(line, i, used) {
   if (line.step !== undefined) out.step = int(line.step, `${name}.step`, 1, 1000)
   if (line.style !== undefined) out.style = oneOf(line.style, `${name}.style`, ['solid', 'dashed', 'dotted'])
   if (line.width !== undefined) out.width = num(line.width, `${name}.width`, 0.5, 10)
+  if (line.fill !== undefined && oneOf(line.fill, `${name}.fill`, ['solid', 'hatched']) === 'hatched') out.fill = 'hatched'
   if (line.label !== undefined) out.label = str(line.label, `${name}.label`, 100)
   if (line.showCoords !== undefined) out.showCoords = bool(line.showCoords, `${name}.showCoords`)
   for (const key of ['min', 'max', 'uMin', 'uMax', 'vMin', 'vMax']) if (line[key] !== undefined) out[key] = num(line[key], `${name}.${key}`, -1e6, 1e6)
@@ -161,7 +162,7 @@ function makeGraph(spec, cx, template, size, kept = {}) {
 function readGraph(el) {
   const lines = (el.expressions || []).slice(0, 30).map(e => {
     const what = e.data ? `data: ${json(e.data)}` : json(e.text || '')
-    const extra = [e.color && `color ${e.color}`, e.step && `step ${e.step}`, e.slider && `slider ${e.slider.min} to ${e.slider.max}`, e.hidden && 'hidden'].filter(Boolean)
+    const extra = [e.color && `color ${e.color}`, e.step && `step ${e.step}`, e.slider && `slider ${e.slider.min} to ${e.slider.max}`, e.fill === 'hatched' && 'hatched', e.hidden && 'hidden'].filter(Boolean)
     return `   - \`${e.id}\` ${what}${extra.length ? ` (${extra.join(', ')})` : ''}`
   })
   const v = el.view || {}
@@ -496,7 +497,7 @@ const GUIDES = {
     make: makeGraph, size: () => ({ w: 560, h: 400 }), fit: { cap: 1, fw: 0.92, fh: 0.85 }, read: readGraph,
     text: `spec: { "expressions": [lines], and optional view, xLabel, yLabel, xScale, yScale, dims, grid, axes, axisNumbers, equalScale, showSliders, theme, background, camera, spin }.
 
-Each line is { "text": "…" } with optional color, step (the slide step it appears at), style (solid, dashed, dotted), width, label, hidden. Line kinds, by example:
+Each line is { "text": "…" } with optional color, step (the slide step it appears at), style (solid, dashed, dotted), width, fill ("hatched" for a region: diagonal lines that read in grayscale), label, hidden. Line kinds, by example:
 - explicit: "y = x^2 - 2", "x = sin y"; function: "f(x) = e^(-x^2)"
 - implicit: "x^2 + y^2 = 9"; region: "y < 0.5x + 1", "1 < x^2 + y^2 < 4"
 - polar: "r = 2 + 2cos θ"; parametric: "(3cos t, 2sin t)" with min and max for t
@@ -506,6 +507,7 @@ Each line is { "text": "…" } with optional color, step (the slide step it appe
 - vector field: "F(x, y) = (-y, x)"; system: "(x', y') = (y, -sin x - 0.3y)"; slope field: "dy/dx = x - y" with a solution "y(0) = 1"; trajectory: "(x, y)(0) = (1, 0)"
 - data: { "data": { "dataset": "planets", "x": "period", "y": "mass", "mark": "points" } }, with optional colorBy, sizeBy, label, xErr, yErr (columns), from list_datasets
 Variables are ${RESERVED_2D}; any other name needs a slider or value line. Implicit multiplication (2x), sin^2 x, |x|, a_1, π and √ work.
+Functions: sin cos tan sec csc cot arcsin arccos arctan sinh cosh tanh sqrt cbrt exp ln log abs floor ceil round sign min max mod, and for probability erf, erfc, normcdf(x) or normcdf(x, μ, σ), normpdf (the same), gamma, lgamma (log Γ), beta(a, b) and nCr(n, k) (through Γ between whole numbers). Written out with parentheses, beta(…) and gamma(…) are B and Γ; β and γ are sliders. A Beta density: "y = x^(a-1)(1-x)^(b-1)/beta(a, b)"; a normal tail: "0 <= y <= normpdf(x) {x >= z}" with fill "hatched".
 
 3D ("dims": 3, variables ${RESERVED_3D}): surface "z = sin x cos y", implicit "x^2 + y^2 + z^2 = 36", parametric surface "((6+2cos v)cos u, (6+2cos v)sin u, 2sin v)", curve "(5cos t, 5sin t, t/2)", point "(2, 3, 4)", volume "w = sin x + sin y + sin z". camera: { "turn": 35, "tilt": 25 }.
 
@@ -557,7 +559,9 @@ Example: { "op": "add_element", "slide": 2, "type": "timeline", "x": 40, "y": 16
     make: makeHtml, size: () => ({ w: 840, h: 400 }), fit: { cap: 1, fw: 0.9, fh: 0.8 }, read: readHtml,
     text: `spec: { "content": "HTML" }.
 
-The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${'JSXGraph 1.11.1, D3 7, three.js, p5.js, GSAP, anime.js, KaTeX'}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank, so check it with render_slide. For plots of functions, a graph element is simpler and follows the theme.
+The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${'JSXGraph 1.11.1, D3 7, three.js, p5.js, anime.js, KaTeX'}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank, so check it with render_slide. For plots of functions, a graph element is simpler and follows the theme.
+
+Put the words and numbers a person may want to change (labels, table rows, list items, settings) in a content block instead of the script: <script type="application/json" data-parallax-content>{ "caption": "Parts list", "parts": [{ "item": 1, "description": "Fairing" }] }</script>, read with JSON.parse(document.querySelector('[data-parallax-content]').textContent), and set as textContent. The editor shows that block as a form (lists of records become tables), so the text changes without the code. Optional "$labels": { "key": "Label" } names fields and "$choices": { "key": ["A", "B"] } makes menus. To change an embed that has one, change its JSON and keep the rest of the content as it is.
 
 Example, an interactive JSXGraph plot with two sliders: { "op": "add_element", "slide": 5, "type": "html", "x": 60, "y": 110, "width": 840, "height": 400, "spec": { "content": "<div id=\\"board\\" style=\\"width:100%;height:100%\\"></div>\\n<link rel=\\"stylesheet\\" href=\\"https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraph.css\\">\\n<script src=\\"https://cdn.jsdelivr.net/npm/jsxgraph@1.11.1/distrib/jsxgraphcore.js\\"></script>\\n<script>\\nconst board = JXG.JSXGraph.initBoard('board', { boundingbox: [-7, 4, 7, -4], axis: true, showCopyright: false, showNavigation: false })\\nconst a = board.create('slider', [[-6, 3.2], [-2, 3.2], [0, 2, 3]], { name: 'a' })\\nconst b = board.create('slider', [[-6, 2.5], [-2, 2.5], [0.2, 1, 3]], { name: 'b' })\\nboard.create('functiongraph', [x => a.Value() * Math.sin(b.Value() * x)], { strokeColor: '#f97316', strokeWidth: 3 })\\n</script>" } }`,
   },

@@ -1,0 +1,374 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Runlevel theme's stylesheet: Linux systems, drawn as a text-mode
+   configuration screen. Each slide is a pale dialog (#e3e7e8) with a hard
+   shadow (#062129) one cell down and right, on a petrol field (#0f4c5c).
+   Roboto Mono for titles and what the machine says, PT Sans for what the
+   speaker says (utils/themes.js: the font and the text sizes, which the
+   Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-runlevel, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The field, the dialog and its shadow are the theme's page (its
+   backgroundCss) in the editor, the thumbnails and the PDF, and this
+   stylesheet's in presented decks; the dialog's bevel is the slide's
+   ::before. The slide title of a content slide is set into the dialog's
+   top rule. The title slide keeps the field with a smaller dialog, and a
+   section slide's title is a menu entry on the selection bar. A Heading 4
+   is the path kicker, set on the field (put it in a text box above the
+   dialog), and inline code in it is the mode badge at its right.
+   Subtitles are dim help lines, bullets small filled squares, tables have
+   their header row on the field, code sits in a well, and a quote is the
+   ring buffer: kernel log lines on the shadow color, amber when its first
+   words are bold, red when they're italic. With the footer's sections in
+   sequence, the footer is boot status: [  OK  ] for those done, an amber
+   [  *** ] for the one in progress, [      ] for those to come. */
+
+/* reveal.js: links in petrol, the arrows and the progress bar in amber on
+   the field (slides set their own link color), and the field around the
+   slide */
+.deck-theme-runlevel {
+  --r-background-color: #0f4c5c;
+  --r-main-color: #10191c;
+  --r-heading-color: #0f4c5c;
+  --r-link-color: #f2b33d;
+  --r-link-color-dark: #c98f22;
+  --r-link-color-hover: #ffffff;
+  --r-selection-background-color: #0f4c5c;
+  --r-selection-color: #ffffff;
+}
+.deck-theme-runlevel.reveal { background: #0f4c5c; }
+
+/* The field, the dialog and its shadow on presented slides that show the
+   theme's page (the editor and the PDF draw them from the theme's
+   backgroundCss) */
+.deck-theme-runlevel .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(#e3e7e8, #e3e7e8) 12px 53px / 924px 452px no-repeat,
+    linear-gradient(#062129, #062129) 24px 63px / 924px 452px no-repeat,
+    #0f4c5c;
+}
+
+/* The dialog's bevel: an inset rule, white on the top and left, gray on
+   the bottom and right */
+.deck-theme-runlevel.px-slide:not([data-layout=title], [data-own-background])::before,
+.deck-theme-runlevel .px-slide:not([data-layout=title], [data-own-background])::before {
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 61px;
+  width: 908px;
+  height: 436px;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-color: #ffffff #6c7f84 #6c7f84 #ffffff;
+  pointer-events: none;
+}
+
+/* The title slide: the field, with a smaller dialog, its shadow and its
+   bevel */
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(#ffffff, #ffffff) 50px 112px / 848px 2px no-repeat,
+    linear-gradient(#ffffff, #ffffff) 50px 112px / 2px 296px no-repeat,
+    linear-gradient(#6c7f84, #6c7f84) 50px 406px / 848px 2px no-repeat,
+    linear-gradient(#6c7f84, #6c7f84) 896px 112px / 2px 296px no-repeat,
+    linear-gradient(#e3e7e8, #e3e7e8) 42px 104px / 864px 312px no-repeat,
+    linear-gradient(#062129, #062129) 54px 114px / 864px 312px no-repeat,
+    #0f4c5c;
+}
+
+/* Headings: Roboto Mono, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-runlevel .px-text :is(h1, h2, h3) { letter-spacing: -0.02em !important; line-height: 1.2; }
+
+/* The title in the frame: a content slide's title sits centered on the
+   dialog's top rule, on a band of the dialog's color. Its first line is
+   centered on the rule whatever its size. */
+.deck-theme-runlevel.px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=image-text], [data-layout=three-column], [data-layout=comparison]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide:is([data-layout=title-content], [data-layout=two-column], [data-layout=image-text], [data-layout=three-column], [data-layout=comparison]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: calc(18px - 0.6em) auto 0.35em !important;
+  padding: 0 0.45em;
+  background: #e3e7e8;
+  color: #0f4c5c !important;
+  line-height: 1.2;
+  text-align: center !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=comparison]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=comparison]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { margin-top: calc(28px - 0.6em) !important; }
+
+/* The title slide: a large title in ink inside the dialog, the subtitle a
+   dim help line, and the lines after it (who, where, when) in ink */
+.deck-theme-runlevel.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) {
+  font-size: 2em;
+  letter-spacing: -0.03em !important;
+  line-height: 1.12;
+  color: var(--px-heading, #10191c) !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #10191c !important; }
+.deck-theme-runlevel.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p + p,
+.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] p + p { color: #10191c !important; font-size: 0.75em; }
+
+/* A section slide: its title is a menu entry on the selection bar, across
+   the title's box, followed by an arrow */
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1 {
+  position: relative;
+  margin: 0 -12px 0.3em !important;
+  padding: 0.12em 3.2em 0.12em 0.5em;
+  background: #0f4c5c;
+  color: #ffffff !important;
+  line-height: 1.2;
+  text-align: left !important;
+}
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1::after,
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1::after {
+  content: "--->";
+  position: absolute;
+  right: 0.5em;
+  top: 0.12em;
+  color: #f2b33d;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.deck-theme-runlevel.px-slide[data-layout=section-header] [data-placeholder=title] h1 :is(strong, em, a, code),
+.deck-theme-runlevel .px-slide[data-layout=section-header] [data-placeholder=title] h1 :is(strong, em, a, code) { color: inherit !important; background: none !important; }
+
+/* Subtitles: dim help lines in PT Sans */
+.deck-theme-runlevel [data-placeholder=subtitle] :is(p, li) { color: #4b5b60 !important; }
+.deck-theme-runlevel [data-placeholder=subtitle] :is(strong, b) { color: #10191c; }
+.deck-theme-runlevel.px-slide[data-own-background] [data-placeholder=subtitle] :is(p, li, strong, b),
+.deck-theme-runlevel .px-slide[data-own-background] [data-placeholder=subtitle] :is(p, li, strong, b) { color: var(--px-text) !important; }
+
+/* A Heading 4: the path kicker, light mono on the field. On the field,
+   above the dialog, it reads as the screen's own line; inside the dialog it
+   is a bar of the field. Its bold words are the slide's own name. */
+.deck-theme-runlevel .px-text h4 {
+  display: flow-root;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.5em;
+  background: #0f4c5c;
+  color: #94b9c0 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0.01em !important;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.deck-theme-runlevel .px-text h4 :is(strong, b) { color: #e9f2f3; font-weight: 600; }
+.deck-theme-runlevel .px-text h4 a { color: #e9f2f3 !important; }
+
+/* Bullets: small filled squares in petrol; under them, hollow ones.
+   Numbered lists count 1) 2) 3) in Roboto Mono. */
+/* (reveal.js sets lists inline-block; the editor stacks them) */
+.deck-theme-runlevel .px-text :is(ul, ol) { display: block; }
+.deck-theme-runlevel .px-text ul { list-style: none; }
+.deck-theme-runlevel .px-text ul > li { position: relative; }
+.deck-theme-runlevel .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9em;
+  top: 0.55em;
+  width: 0.32em;
+  height: 0.32em;
+  background: #0f4c5c;
+}
+.deck-theme-runlevel .px-text ul ul > li::before {
+  width: 0.3em;
+  height: 0.3em;
+  box-sizing: border-box;
+  border: 0.07em solid #4b5b60;
+  background: transparent;
+}
+.deck-theme-runlevel .px-text ol > li::marker {
+  content: counter(list-item) ")  ";
+  color: #0f4c5c;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ul > li::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ul > li::before { background: currentColor; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ul ul > li::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ul ul > li::before { border-color: currentColor; background: transparent; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-text ol > li::marker,
+.deck-theme-runlevel .px-slide[data-own-background] .px-text ol > li::marker { color: inherit; }
+
+/* Links: petrol, underlined; focused, inverted onto the field, as the
+   selection bar is */
+.deck-theme-runlevel .px-text a { color: var(--px-link, #0b6178) !important; text-decoration-thickness: 0.07em; text-underline-offset: 0.16em; }
+.deck-theme-runlevel .px-text a:focus-visible { outline: none; background: #0f4c5c; color: #ffffff !important; }
+.deck-theme-runlevel .px-text ::selection { background: #0f4c5c; color: #ffffff; }
+
+/* Inline code: Roboto Mono in a well */
+.deck-theme-runlevel .px-text :not(pre) > code {
+  padding: 0 0.3em;
+  border-radius: 0;
+  background: #d3dadc !important;
+  color: #10191c;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.86em;
+}
+
+/* Inline code in a Heading 4: the mode badge, boxed at its right */
+.deck-theme-runlevel .px-text h4 code {
+  float: right;
+  margin: 0 0 0 1em;
+  padding: 0 0.5em !important;
+  border: 1px solid rgba(233, 242, 243, 0.45);
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #e9f2f3 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+}
+
+/* Code: Roboto Mono in a well, sunk into the dialog (an inset bevel), with
+   Runlevel's own syntax colors whichever code theme the deck uses */
+.deck-theme-runlevel :is(pre, pre.hljs) {
+  background: #d3dadc !important;
+  color: #10191c;
+  border: 0;
+  border-radius: 0 !important;
+  box-shadow: inset 2px 2px 0 #6c7f84, inset -2px -2px 0 #ffffff !important;
+}
+.deck-theme-runlevel :is(pre.hljs, pre code, pre) { font-family: 'Roboto Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-runlevel pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-runlevel .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.62em; line-height: 1.5; }
+.deck-theme-runlevel pre [class*=hljs-] { color: #10191c; font-style: normal; font-weight: 400; }
+.deck-theme-runlevel pre :is(.hljs-comment, .hljs-quote) { color: #4b5b60; font-style: italic; }
+.deck-theme-runlevel pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #0f4c5c; font-weight: 700; }
+.deck-theme-runlevel pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #7a5000; }
+.deck-theme-runlevel pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #006a4e; }
+.deck-theme-runlevel pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #0b6178; font-weight: 600; }
+.deck-theme-runlevel pre :is(.hljs-meta, .hljs-deletion, .hljs-variable) { color: #9b3f7c; }
+
+/* Quotes: the ring buffer, kernel log lines in Roboto Mono on the shadow
+   color, the newest line white. One whose first words are bold is a
+   warning in amber; italic, an error in red. */
+.deck-theme-runlevel .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.45em 0.8em 0.45em 0.75em !important;
+  border: 0 !important;
+  border-left: 0.25em solid #6f9aa2 !important;
+  background: #062129;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.66em;
+  font-style: normal;
+  line-height: 1.5;
+}
+.deck-theme-runlevel .px-text blockquote :is(p, li) { margin: 0 !important; color: #cfe0e3 !important; }
+.deck-theme-runlevel .px-text blockquote > :last-child { color: #ffffff !important; }
+.deck-theme-runlevel .px-text blockquote :is(strong, b) { color: #ffffff; font-weight: 700; }
+.deck-theme-runlevel .px-text blockquote code { background: transparent !important; color: #8fd3e0; padding: 0; }
+.deck-theme-runlevel .px-text blockquote:has(> p:first-child > strong:first-child) { border-left-color: #f2b33d !important; }
+.deck-theme-runlevel .px-text blockquote > p:first-child > strong:first-child { color: #f2b33d; }
+.deck-theme-runlevel .px-text blockquote:has(> p:first-child > em:first-child) { border-left-color: #ff9378 !important; }
+.deck-theme-runlevel .px-text blockquote > p:first-child > em:first-child { color: #ff9378; font-style: normal; font-weight: 700; }
+
+/* Tables: a header row on the field in white Roboto Mono, hairlines
+   between rows, the first column in mono */
+.deck-theme-runlevel table { border: 2px solid #6c7f84 !important; background: #e3e7e8; }
+.deck-theme-runlevel table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #b6c2c5 !important;
+  background: #e3e7e8 !important;
+  color: #10191c !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-runlevel table tr > :first-child { font-family: 'Roboto Mono', monospace; font-weight: 500; }
+.deck-theme-runlevel table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #0f4c5c !important;
+  color: #ffffff !important;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* The Big Number: Roboto Mono in petrol */
+.deck-theme-runlevel.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-runlevel .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #0f4c5c) !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-weight: 600;
+  letter-spacing: -0.04em !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The footer: Roboto Mono on the field. With its sections in sequence, it
+   is boot status, a tag before each section: [  OK  ] in green for those
+   done, [  *** ] in amber for the one in progress, an empty [      ] for
+   those to come. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-runlevel.px-slide .px-footer,
+.deck-theme-runlevel .px-slide .px-footer { padding-inline: 8px !important; color: #94b9c0 !important; }
+.deck-theme-runlevel.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: #94b9c0 !important;
+  font-family: 'Roboto Mono', monospace !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: pre;
+}
+.deck-theme-runlevel.px-slide .px-footer .px-footer-page,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-page { color: #e9f2f3 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-sections,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 4px 16px; flex-wrap: wrap; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section::before {
+  content: "[      ] ";
+  color: #94b9c0;
+  font-weight: 700;
+  opacity: 0.75;
+  white-space: pre;
+}
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=past] { color: #e9f2f3 !important; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=past]::before { content: "[  OK  ] "; color: #74d6ab; opacity: 1; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=current] { color: #ffffff !important; font-weight: 700 !important; }
+.deck-theme-runlevel.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-runlevel .px-slide .px-footer .px-footer-section[data-state=current]::before { content: "[  *** ] "; color: #f2b33d; opacity: 1; }
+
+/* ...and on a slide with a background of its own, in its text color, the
+   tags' meaning kept by their words */
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer .px-footer-section::before,
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer .px-footer-section::before { color: var(--px-text) !important; }
+.deck-theme-runlevel.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-runlevel .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx): a
+   small dialog with its shadow on the field, the title in its frame */
+.deck-theme-runlevel.theme-swatch {
+  background:
+    linear-gradient(#e3e7e8, #e3e7e8) 40% 50% / 84% 70% no-repeat,
+    linear-gradient(#062129, #062129) 60% 62% / 84% 70% no-repeat,
+    #0f4c5c !important;
+}
+.deck-theme-runlevel .theme-swatch-title { padding: 0 0.3em; letter-spacing: -0.02em; }

@@ -17,7 +17,9 @@ function snapshotScript(key) {
   return `<script>(function(){var K=${JSON.stringify(key)},sent='';function post(u){if(!u||u===sent)return;sent=u;try{parent.postMessage({source:'parallax-embed',type:'snapshot',key:K,dataUrl:u},'*')}catch(e){}}function grab(){try{var c=document.querySelector('canvas');if(c&&c.width>0&&c.height>0){post(c.toDataURL('image/png'));return}var s=document.querySelector('svg');if(!s)return;var r=s.getBoundingClientRect();if(!r.width||!r.height)return;var n=s.cloneNode(true);n.setAttribute('xmlns','http://www.w3.org/2000/svg');if(!n.getAttribute('viewBox')&&s.viewBox&&s.viewBox.baseVal){var v=s.viewBox.baseVal;if(v.width&&v.height)n.setAttribute('viewBox',v.x+' '+v.y+' '+v.width+' '+v.height)}if(!n.getAttribute('viewBox'))n.setAttribute('viewBox','0 0 '+Math.round(r.width)+' '+Math.round(r.height));n.setAttribute('width',Math.round(r.width));n.setAttribute('height',Math.round(r.height));post('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(n)))}catch(e){}}setTimeout(grab,900);setTimeout(grab,2600);})();<\/script>`
 }
 
-function buildHtmlEmbed(userHtml, embedW, embedH, snapKey) {
+// An HTML embed's page: its own HTML with the sizing, reset and data scripts
+// every embed gets. Also the content form's preview (HtmlEmbedModal)
+export function buildHtmlEmbed(userHtml, embedW, embedH, snapKey) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
   const injection = initScript + resetStyle + snapshotScript(snapKey) + EMBED_DATASETS_SCRIPT
@@ -58,17 +60,20 @@ const clickChangesStatesOnly = action => action.type === 'visibility' && !['show
 import { libUrl, localizeLibraries } from '../utils/libraries'
 import { modelViewerHtml, modelSnapshotContent } from '../utils/modelViewer'
 import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeViewer'
-import { graphPageHtml, graphSnapshotContent } from '../utils/graphPage'
+import { graphPageHtml, graphSnapshotContent, graphStability } from '../utils/graphPage'
 import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
 import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
-import { slidePalette } from '../utils/themes'
+import { slidePalette, deckTextStyles, paletteVars } from '../utils/themes'
+import { SLIDE_CLASS, TEXT_CLASS, FOOTER_CLASS, slideLayout, textPlaceholder, footerSectionState } from '../utils/slideHooks'
+import { deckThemeClass } from '../utils/themeCss'
 import { isEmptyPlaceholder, placeholderHint, withHint } from '../utils/placeholders'
 import { fitScale, applyScale } from '../utils/shrinkFit'
 import { TEXT3D_DEFAULTS, text3dHtml, text3dShadowFilter, text3dTilt } from '../utils/text3d'
 import { DEFAULT_DECK_FONT, deckFont } from '../utils/deckFont'
+import { textStyleVars } from '../utils/textStyles'
 
 function highlightCode(code, language) {
   try {
@@ -261,9 +266,15 @@ export function editLabelFor(type) {
   return EDIT_LABELS[type] || null
 }
 
-export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black' }) {
+export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, selectedElementIds, editingElementId, showGrid, gridSize = 40, showFooter, showPageNumbers, footerTimeMode = 'none', timerDuration = 20, pageNumberFormat, pageNumber, totalSlides, sectionName, footerFontSize = 14, footerFontFamily = '-apple-system,sans-serif', footerColor = 'rgba(255,255,255,0.65)', footerInactiveColor = 'rgba(255,255,255,0.25)', smartGuidesEnabled = true, footerMode = 'basic', sequenceSections = [], activeSection = null, showRulers = false, persistentGuides = [], onAddGuide, onRemoveGuide, onUpdateGuide, onToggleSelectElement, onStartEdit, onStopEdit, onUpdateElement, onUpdateElements, onDeleteElement, onDeleteSelectedElements, onAddImage, onOpenHtmlEditor, onOpenCodeEditor, onOpenLatexEditor, onOpenTikzEditor, onOpenGraphEditor, onOpenEquationEditor, onOpenFeynmanEditor, onOpenCircuitEditor, onOpenLogicEditor, onOpenFreebodyEditor, onOpenVennEditor, onOpenTimingEditor, onOpenGeometryEditor, onOpenP5Editor, slideW = 960, slideH = 540, drawTool = null, onAddDrawingStroke, globalFont = '', onUpdateAxisLines, onAddFigure, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {}, remoteUse = null, onElementCommand, onCanvasCommand, request = null, theme = 'black', textStyles = null, themeColors = null }) {
   // The slide's colors: its background, or the theme's (utils/themes.js)
-  const palette = slidePalette(slide, theme)
+  const palette = slidePalette(slide, theme, themeColors)
+  // Graphs' fixed points and separatrices, in the theme's colors of stability
+  const stability = useMemo(() => graphStability(palette), [palette.stable, palette.unstable]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The deck's text styles, as variables index.css reads; their text, for
+  // shrinking text to fit again when they change
+  const textVars = useMemo(() => textStyleVars(deckTextStyles(textStyles, theme)), [textStyles, theme])
+  const textStylesKey = JSON.stringify(textVars)
   const SLIDE_W = slideW
   const SLIDE_H = slideH
   // A scrolling slide is laid out on a canvas taller or wider than the screen,
@@ -925,7 +936,9 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       )}
       <div
         ref={canvasRef}
-        className="slide-canvas"
+        className={['slide-canvas', SLIDE_CLASS, deckThemeClass(theme)].filter(Boolean).join(' ')}
+        data-layout={slideLayout(slide) || undefined}
+        data-own-background={palette.own ? '' : undefined}
         style={{
           width: CANVAS_W, height: CANVAS_H,
           transform: `scale(${scale})`, transformOrigin: 'center center',
@@ -936,6 +949,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           '--slide-text': palette.text,
           '--slide-heading': palette.heading,
           '--slide-link': palette.link,
+          ...paletteVars(palette),
+          ...textVars,
         }}
         onMouseDown={(e) => {
           if (!drawToolRef.current || editingElementId || cropMode) return
@@ -1147,6 +1162,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             key={element.id}
             element={element}
             slideText={palette.text}
+            slideStability={stability}
             canvasScale={scale}
             faded={!!fadedIds?.has(element.id)}
             unseen={!!unseenIds?.has(element.id)}
@@ -1214,6 +1230,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
             }}
             onCommitCrop={commitCrop}
             globalFont={globalFont}
+            textStylesKey={textStylesKey}
             citationFontSize={citationFontSize}
             citationLabels={citationLabels}
             citationFontFamily={citationFontFamily}
@@ -1240,23 +1257,25 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
 
         {/* Footer overlay. On a scrolling slide it's at the foot of the first
             screen: presenting, it stays at the foot of the screen as the canvas scrolls. */}
-        {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && (
+        {(showFooter || showPageNumbers || showTimeWidget) && !slide?.hideFooter && slide?.showSlideFooter !== false && (
           footerMode === 'sequence' && sequenceSections.length > 0 ? (
-            <div style={{
+            <div className={FOOTER_CLASS} data-footer="sequence" style={{
               position: 'absolute', bottom: 6 + CANVAS_H - SLIDE_H, left: 16, right: 16 + CANVAS_W - SLIDE_W, zIndex: 900,
               display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0,
               fontSize: footerFontSize, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
             }}>
               {showTimeWidget && (
-                <span style={{ color: footerColor, marginRight: 12, flexShrink: 0 }}>{timeDisplay}</span>
+                <span className="px-footer-time" style={{ color: footerColor, marginRight: 12, flexShrink: 0 }}>{timeDisplay}</span>
               )}
-              <div style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' }}>
+              <div className="px-footer-sections" style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' }}>
                 {sequenceSections.map((sec, i) => {
                   const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-                  const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : (footerColor || 'rgba(255,255,255,0.9)')
+                  const own = typeof sec === 'object' && sec?.color ? sec.color : ''
+                  const secActiveColor = own || footerColor || 'rgba(255,255,255,0.9)'
                   return (
-                    <span key={i} style={{
+                    <span key={i} className="px-footer-section" data-state={footerSectionState(i, activeSection)} style={{
+                      ...(own ? { '--px-section-color': own } : {}),
                       color: activeSection === i ? secActiveColor : footerInactiveColor,
                       fontWeight: activeSection === i ? 700 : 400,
                       fontSize: footerFontSize,
@@ -1268,20 +1287,20 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
                 })}
               </div>
               {showPageNumbers && pageNumber != null && (
-                <span style={{ color: footerColor, marginLeft: 12, flexShrink: 0 }}>
+                <span className="px-footer-page" style={{ color: footerColor, marginLeft: 12, flexShrink: 0 }}>
                   {pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`}
                 </span>
               )}
             </div>
           ) : (
-            <div style={{
+            <div className={FOOTER_CLASS} data-footer="basic" style={{
               position: 'absolute', bottom: 8 + CANVAS_H - SLIDE_H, left: 16, right: 16 + CANVAS_W - SLIDE_W, zIndex: 900,
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               fontSize: footerFontSize, color: footerColor, fontFamily: footerFontFamily,
               pointerEvents: 'none', boxSizing: 'border-box'
             }}>
-              <span>{showTimeWidget ? timeDisplay : ''}{showTimeWidget && showFooter && sectionName ? ' — ' : ''}{showFooter ? sectionName : ''}</span>
-              <span>{showPageNumbers && pageNumber != null ? (pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`) : ''}</span>
+              <span className="px-footer-label">{showTimeWidget ? timeDisplay : ''}{showTimeWidget && showFooter && sectionName ? ' — ' : ''}{showFooter ? sectionName : ''}</span>
+              <span className="px-footer-page">{showPageNumbers && pageNumber != null ? (pageNumberFormat === 'c/t' ? `${pageNumber} / ${totalSlides}` : `${pageNumber}`) : ''}</span>
             </div>
           )
         )}
@@ -1424,12 +1443,12 @@ function CitationCaption({ element, fontSize, fontFamily }) {
 
 // A graph's page, with its data lines' rows once the editor has them (they
 // come later than the graph: graphData.js), and built again only then or
-// when the graph changes
-function GraphFrame({ element, scale }) {
+// when the graph or the theme's colors of stability change
+function GraphFrame({ element, scale, stability }) {
   const dataVersion = useSyncExternalStore(subscribeGraphData, graphDataVersion)
   const srcDoc = useMemo(
-    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element)), showAll: true }),
-    [element, dataVersion], // eslint-disable-line react-hooks/exhaustive-deps
+    () => graphPageHtml(element, { snapshotKey: snapshotKey(element.id, graphSnapshotContent(element, stability)), showAll: true, stability }),
+    [element, dataVersion, stability], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
     <ScaledFrame
@@ -1442,7 +1461,7 @@ function GraphFrame({ element, scale }) {
   )
 }
 
-export function CanvasElement({ element, slideText, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
+export function CanvasElement({ element, slideText, slideStability = null, canvasScale = 1, faded, unseen, isSelected, isEditing, remote, isCropping, cropState, isTilting, isDragging, editor, onPointerDown, onClick, onDoubleClick, onContextMenu, onStopEdit, onCropHandleDown, onCommitCrop, onAutoResize, onUpdateContent, onUpdateFields, globalFont, textStylesKey = '', citationFontSize = 10, citationFontFamily = '-apple-system,sans-serif', citationLabels = {} }) {
   const contentRef = useRef(null)
   const outerRef = useRef(null)
   const lastAutoHeightRef = useRef(null)
@@ -1476,7 +1495,7 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
     let live = true
     document.fonts?.ready?.then(() => { if (live) fit() })
     return () => { live = false }
-  }, [isShrink, isEditing, element.content, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont, emptyPlaceholder])
+  }, [isShrink, isEditing, element.content, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont, textStylesKey, emptyPlaceholder])
 
   // …and while it's being typed in
   useEffect(() => {
@@ -1489,7 +1508,7 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
     const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit) })
     observer.observe(inner.querySelector('.ProseMirror') || inner)
     return () => { observer.disconnect(); cancelAnimationFrame(frame) }
-  }, [isShrink, isEditing, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont])
+  }, [isShrink, isEditing, element.width, element.height, element.lineHeight, element.letterSpacing, element.wordSpacing, globalFont, textStylesKey])
 
   // Sync auto-fit height back to element data so drag, export, etc. stay consistent
   useEffect(() => {
@@ -1509,6 +1528,8 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
     <div
       ref={outerRef}
       data-element-id={element.id}
+      className={element.type === 'text' ? TEXT_CLASS : undefined}
+      data-placeholder={textPlaceholder(element) || undefined}
       data-tilting={isTilting || undefined}
       style={{
         position: 'absolute',
@@ -1691,7 +1712,7 @@ export function CanvasElement({ element, slideText, canvasScale = 1, faded, unse
         {element.type === 'graph' && (
           // Edited in its own window (double-click), so the canvas never takes
           // its clicks: dragging moves it
-          <GraphFrame key={element.id} element={element} scale={canvasScale} />
+          <GraphFrame key={element.id} element={element} scale={canvasScale} stability={slideStability} />
         )}
         {element.type === 'model' && (
           <ScaledFrame

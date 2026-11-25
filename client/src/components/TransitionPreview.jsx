@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { X, Play, RotateCcw } from 'lucide-react'
 import { libUrl, localizeLibraries } from '../utils/libraries'
+import { revealTheme } from '../utils/themes'
 
 const TRANSITIONS = ['none', 'fade', 'slide', 'convex', 'concave', 'zoom', 'differential-rotation']
 
@@ -39,7 +40,7 @@ export default function TransitionPreview({ presentation, fromIndex, onClose, sl
 <meta charset="utf-8">
 <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
 <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-<link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${presentation.theme || 'black'}.css`)}">
+<link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${revealTheme(presentation.theme || 'black')}.css`)}">
 <style>
   html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000;}
   .reveal .slides section{padding:0!important;text-align:left!important;font-family:-apple-system,sans-serif;}
@@ -57,7 +58,6 @@ export default function TransitionPreview({ presentation, fromIndex, onClose, sl
 </div>
 </div>
 <script src="${libUrl('reveal.js', 'dist/reveal.js')}"><\/script>
-<script src="${libUrl('gsap', 'dist/gsap.min.js')}"><\/script>
 <script>
 var _ct=['differential-rotation'],_gt='${transition}',_gc=_ct.indexOf(_gt)!==-1;
 Reveal.initialize({
@@ -79,8 +79,9 @@ Reveal.on('slidechanged',function(){
       if(i<N-1)b.style.borderBottom='1.5px solid '+C[i%3];
       o.appendChild(b);
       var lat=Math.PI*((i+0.5)/N-0.5),c2=Math.cos(lat);c2*=c2;
-      gsap.to(b,{x:vw+20,duration:0.4+1.0*(1-c2),ease:'none',
-        onComplete:function(){p--;if(p<=0)o.remove();}});
+      b.animate([{transform:'translateX(0)'},{transform:'translateX('+(vw+20)+'px)'}],
+        {duration:(0.4+1.0*(1-c2))*1000,easing:'linear',fill:'forwards'})
+        .onfinish=function(){p--;if(p<=0)o.remove();};
     }
     document.body.appendChild(o);
   }

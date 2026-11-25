@@ -202,7 +202,7 @@ export default function Toolbar({
   drawTool, onSetDrawTool,
   customFonts = [], onManageFonts,
   request = null,
-  theme = 'black', onTheme, themesOpen = false,
+  theme = 'black', themeColors = null, onTheme, themesOpen = false,
 }) {
   // The insert tools' dropdown that's open: 'image', 'shape', 'table',
   // 'insert', 'science', 'align' or 'background'
@@ -547,15 +547,15 @@ export default function Toolbar({
         <span className="toolbar-divider" />
         {/* The deck's theme, in a panel beside the slide */}
         {onTheme && (
-          <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
+          <button className={`btn-icon toolbar-labeled ${themesOpen ? 'active' : ''}`} title="Themes: the presentation's colors and text styles" aria-label="Theme" aria-pressed={themesOpen} onClick={onTheme}>
             <Palette size={14} /> <span className="tl-text tl-minor">Theme</span>
           </button>
         )}
         {/* The slide's background */}
         {slide && onUpdateSlide && (
-          <ToolMenu id="background" minor open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} />} label="Background" title="The slide's background" width={260}>
+          <ToolMenu id="background" minor open={openMenu === 'background'} {...menuProps} icon={<BackgroundSwatch background={slide.background} theme={theme} colors={themeColors} />} label="Background" title="The slide's background" width={260}>
             <div style={{ padding: 8 }}>
-              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} />
+              <BackgroundEditor slide={slide} onUpdateSlide={onUpdateSlide} theme={theme} colors={themeColors} />
             </div>
           </ToolMenu>
         )}
@@ -642,6 +642,11 @@ export default function Toolbar({
               <option value="Manrope, sans-serif">Manrope</option>
               <option value="Geist, sans-serif">Geist</option>
               <option value="Figtree, sans-serif">Figtree</option>
+              <option value="'Public Sans', sans-serif">Public Sans</option>
+              <option value="Jost, sans-serif">Jost</option>
+              <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
+              <option value="'Press Start 2P', monospace">Press Start 2P</option>
+              <option value="VT323, monospace">VT323</option>
               <option value="Ubuntu, sans-serif">Ubuntu</option>
               <option value="Rubik, sans-serif">Rubik</option>
               <option value="'PT Sans', sans-serif">PT Sans</option>
@@ -649,6 +654,11 @@ export default function Toolbar({
               <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
               <option value="Questrial, sans-serif">Questrial</option>
               <option value="Barlow, sans-serif">Barlow</option>
+              <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
+              <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
+              <option value="Lexend, sans-serif">Lexend</option>
+              <option value="Archivo, sans-serif">Archivo</option>
+              <option value="Saira, sans-serif">Saira</option>
               <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
               <option value="'Humanist 777 BT', 'Gill Sans', 'Gill Sans MT', Calibri, sans-serif">Humanist 777</option>
             </optgroup>
@@ -671,13 +681,17 @@ export default function Toolbar({
               <option value="'Times New Roman', serif">Times New Roman</option>
               <option value="'Playfair Display', serif">Playfair Display</option>
               <option value="Merriweather, serif">Merriweather</option>
+              <option value="'STIX Two Text', serif">STIX Two Text</option>
               <option value="'Computer Modern Serif', serif">Computer Modern</option>
               <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
             </optgroup>
             <optgroup label="Monospace">
               <option value="'Courier New', monospace">Courier New</option>
+              <option value="'Courier Prime', monospace">Courier Prime</option>
+              <option value="'Martian Mono', monospace">Martian Mono</option>
               <option value="'Fira Code', monospace">Fira Code</option>
               <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+              <option value="'DM Mono', monospace">DM Mono</option>
               <option value="Inconsolata, monospace">Inconsolata</option>
               <option value="'Roboto Mono', monospace">Roboto Mono</option>
               <option value="'Space Mono', monospace">Space Mono</option>
@@ -689,6 +703,8 @@ export default function Toolbar({
               <option value="'National Park', sans-serif">National Park</option>
               <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
               <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+              <option value="Caveat, cursive">Caveat</option>
+              <option value="'Architects Daughter', cursive">Architects Daughter</option>
             </optgroup>
           </select>
           {onManageFonts && (

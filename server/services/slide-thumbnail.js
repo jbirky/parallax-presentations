@@ -8,6 +8,8 @@
 // - renderFirstSlide(url): a deck's first slide, for the landing page's
 //   example cards. The deck's own page (/examples/<slug>, from this server)
 //   is opened, and the first slide is stepped through so all of it shows.
+// - renderAllSlides(url): every slide of such a page, smaller, for a
+//   landing page template's own page (services/template-slides.js).
 // - renderSlide({ html, origin, slideId }): any slide of a deck page the
 //   server built, for AI collaborator links (server/mcp). Anyone's deck can
 //   be drawn this way, and a deck runs its author's code, so the browser
@@ -37,6 +39,8 @@ const LOCAL_FILES = /^\/(?:vendor|uploads|examples)\/|^\/api\/plugins\/[a-z0-9-]
 const MAX_FILE_BYTES = 25 * 1024 * 1024
 // A deck page's sandbox, as the server sends it (index.js's sendDeckPage)
 const DECK_PAGE_SANDBOX = 'sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-downloads allow-pointer-lock'
+// The most slides drawn for one deck
+const MAX_SLIDES = 60
 const HIDE_CONTROLS = '#fs-btn, #overview-toggle, #overview-panel, .reveal .controls, .reveal .progress { display: none !important; }'
 
 // The Chromium to use, or null when this server has none. playwright-core
@@ -65,6 +69,12 @@ const queueLength = () => waiting
 // The JPEG of the deck at `url`'s first slide; throws a ThumbnailError
 function renderFirstSlide(url) {
   return queued(() => drawFirst(url))
+}
+
+// JPEGs of every slide of the deck at `url`, in order, `scale` times its
+// size; throws a ThumbnailError
+function renderAllSlides(url, { scale = 0.5 } = {}) {
+  return queued(() => drawAll(url, scale))
 }
 
 // The JPEG of one slide of a deck page: html, the page as the server builds
@@ -111,6 +121,32 @@ async function drawFirst(url) {
     return await page.screenshot({ type: 'jpeg', quality: 82 })
   } catch (err) {
     throw err instanceof ThumbnailError ? err : new ThumbnailError(`The first slide couldn’t be drawn: ${err.message.split('\n')[0]}`)
+  } finally {
+    await browser?.close()
+  }
+}
+
+async function drawAll(url, scale) {
+  let browser = null
+  try {
+    browser = await launch()
+    const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: scale })
+    await page.goto(url, { waitUntil: 'load', timeout: 30000 })
+    await page.waitForFunction(() => window.Reveal && window.Reveal.isReady(), null, { timeout: 20000 })
+    await page.addStyleTag({ content: HIDE_CONTROLS })
+    await page.waitForTimeout(1500)
+    const total = await page.evaluate(() => window.Reveal.getSlides().length)
+    const shots = []
+    for (let i = 0; i < Math.min(total, MAX_SLIDES); i++) {
+      await page.evaluate(n => { const at = window.Reveal.getIndices(window.Reveal.getSlides()[n]); window.Reveal.slide(at.h, at.v, -1) }, i)
+      await page.waitForTimeout(400)
+      await stepToEnd(page)
+      await page.waitForTimeout(1200)
+      shots.push(await page.screenshot({ type: 'jpeg', quality: 80 }))
+    }
+    return shots
+  } catch (err) {
+    throw err instanceof ThumbnailError ? err : new ThumbnailError(`The slides couldn’t be drawn: ${err.message.split('\n')[0]}`)
   } finally {
     await browser?.close()
   }
@@ -190,4 +226,4 @@ async function drawSlide({ html, origin, slideId, width, height, fetchOutside })
   }
 }
 
-module.exports = { renderFirstSlide, renderSlide, chromiumPath, queueLength, ThumbnailError, LOCAL_FILES, NO_NETWORK }
+module.exports = { renderFirstSlide, renderAllSlides, renderSlide, chromiumPath, queueLength, ThumbnailError, LOCAL_FILES, NO_NETWORK }

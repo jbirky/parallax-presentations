@@ -4,7 +4,7 @@
 import { shapeSvgString } from './shapeUtils'
 import { pointsToPath } from './drawingUtils'
 import { buildCitationIndex, resolveCitationsInHtml, CITATION_CSS } from './citationIndex'
-import { webLink, pageRange } from './bibtexParser'
+import { webLink, pageRange, formatAuthorLine } from './bibtexParser'
 import registry from '../plugins/PluginRegistry'
 import { buildStaticPluginSrcdoc } from '../plugins/pluginEmbed'
 import { libUrl, localizeLibraries } from './libraries'
@@ -29,12 +29,16 @@ import { text3dHtml, text3dShadowFilter } from './text3d'
 import { DEFAULT_DECK_FONT, deckFont } from './deckFont'
 import { installAnnotations, relayAnnotations } from './annotationOverlay'
 import { ANNOTATION_MESSAGE, backupKey } from './annotations'
-import { slidePalette, cssText, themeBackgroundStyle } from './themes'
+import { slidePalette, cssText, themeBackgroundStyle, themeOf, revealTheme, deckTextFont, deckTextStyles, deckTheme, cleanThemeColors, paletteVars } from './themes'
+import { SLIDE_CLASS, TEXT_CLASS, FOOTER_CLASS, slideLayoutAttr, placeholderAttr, ownBackgroundAttr, footerSectionState } from './slideHooks'
+import { themeCssTag } from './scopeCss'
+import { themeCss, deckThemeClass } from './themeCss'
 import { isEmptyPlaceholder } from './placeholders'
 import { SHRINK_FIT_SCRIPT } from './shrinkFit'
 import { clickActionAttrs, slideIdAttr, visibilityTargets, statesCss, shapeSvg, stepMarkers, statesAtStep, stateSteps, withState, hiddenByState, printActionLinks, printSlideLinks, CLICK_ACTION_CSS, CLICK_ACTION_SCRIPT } from './clickActions'
 import { getCanvasHeight, getCanvasWidth, scrollAxis, getScreenCount, isPinned, hasScrollingSlides, canvasBackgroundStyle, scrollingSlideBody, printScreenBody, SCROLLING_CSS, SCROLLING_SCRIPT } from './scrollingSlides'
 import { latinModernFaces } from './latinModern'
+import { bodySizeStyle, textStyleCss } from './textStyles'
 
 // In an embed: the deck's resize, sent when its slide is shown (notifyIframes)
 // where the deck can't reach into the embed, as in a sandbox
@@ -211,13 +215,31 @@ const CUSTOM_TRANSITIONS = ['differential-rotation']
 // read ({ graphs: { element id: rows by line id }, datasets: { list, data } },
 // deckData.js), which the server reads for the decks it builds (the editor's
 // store, graphData.js, otherwise)
-// Reveal's light themes, whose page shows behind the references slide
-const LIGHT_THEMES = new Set(['white', 'beige', 'serif', 'simple', 'solarized', 'sky'])
+
+// A theme's stylesheet (utils/themeCss.js) as a <style> for a page's head,
+// after the page's own styles and before the deck's custom CSS, or ''. A
+// theme of Parallax's own also gets its page color, which reveal.js would
+// otherwise paint from the theme it's drawn on.
+function themeStyleTag(themeId, colors = null) {
+  const t = themeOf(themeId)
+  const own = cleanThemeColors(colors)
+  let page = t.id === themeId && t.reveal ? `:root { --r-background-color: ${t.background}; }\n` : ''
+  // The deck's own colors (deck.themeColors) for what reveal.js paints: its
+  // page (over a theme's gradient too), and text outside text boxes
+  if (own) {
+    const d = deckTheme(themeId, own)
+    page += `:root { --r-background-color: ${d.background}; --r-main-color: ${d.text}; --r-heading-color: ${d.heading}; --r-link-color: ${d.link}; }\n`
+    if (own.background) page += `.reveal-viewport { background: ${d.background}; }\n`
+  }
+  const css = page + themeCss(themeId)
+  return css ? `\n  <style>\n${css.replace(/<\/style/gi, '<\\/style')}\n  </style>` : ''
+}
 
 // The references slide's heading and list: the entries the deck cites, in the
-// order and with the numbers the citation index gives them. light: dark text,
-// for a light page
-function referencesHtml(citations, markerColor, light = false) {
+// order and with the numbers the citation index gives them. markerColor: the
+// numbers' (the theme's link color); light: dark text, for a light page; font:
+// the deck's text font
+function referencesHtml(citations, markerColor, light = false, font = '') {
   const ink = alpha => light ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`
   const items = citations.entries.map(entry => {
     const year = entry.year || ''
@@ -226,8 +248,8 @@ function referencesHtml(citations, markerColor, light = false) {
     const pages = pageRange(entry.pages)
     const doi = entry.doi || ''
     let line = `<span style="color:${markerColor};font-weight:700;margin-right:6px">[${citations.numberByKey[entry.key]}]</span>`
-    // An organisation's name is braced, as BibTeX writes one
-    line += `${escapeHtml(String(entry.author || '').replace(/[{}]/g, ''))}`
+    // "Ada Ames, Jane Doe and Rick Roe", or et al. (bibtexParser.js)
+    line += escapeHtml(formatAuthorLine(entry.author))
     if (year) line += ` (${escapeHtml(year)})`
     line += `. ${escapeHtml(entry.title || '')}.`
     if (journal) line += ` <em>${escapeHtml(journal)}</em>`
@@ -239,7 +261,7 @@ function referencesHtml(citations, markerColor, light = false) {
     return `<div style="margin-bottom:8px;line-height:1.5;font-size:14px;color:${ink(0.85)}">${line}</div>`
   }).join('\n          ')
   return `<h2 style="font-size:28px;margin:0 0 20px;color:${ink(0.95)}">References</h2>
-        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px">
+        <div style="columns:${citations.entries.length > 8 ? 2 : 1};column-gap:30px${font ? `;font-family:${font}` : ''}">
           ${items}
         </div>`
 }
@@ -252,7 +274,12 @@ export function generateRevealHTML(presentation, opts = {}) {
   // Numbers: they're written into pages' scripts and styles
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
-  const globalFont = cssValue(presentation.globalFont)
+  // The deck's font, or its theme's (utils/themes.js)
+  const globalFont = cssValue(deckTextFont(presentation.globalFont, presentation.theme))
+  // The deck's text styles, else its theme's (utils/textStyles.js): text
+  // boxes' body size, and rules for the headings after the page's own
+  const bodySize = bodySizeStyle(deckTextStyles(presentation.textStyles, presentation.theme))
+  const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.reveal .slides section')
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
   const footerTimeMode = presentation.footerTimeMode || 'none'
@@ -299,7 +326,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const bgAttrs = getBackgroundAttrs(slide.background)
     // Its text and heading colors: the theme's, or for a background of its
     // own, ones that show on it (utils/themes.js)
-    const palette = slidePalette(slide, theme)
+    const palette = slidePalette(slide, theme, presentation.themeColors)
     const notes = slide.notes && opts.notes !== false ? `<aside class="notes">${slide.notes}</aside>` : ''
 
     const sideCitations = (slide.elements || [])
@@ -328,22 +355,24 @@ export function generateRevealHTML(presentation, opts = {}) {
         const dataId = slide.autoAnimate ? ` data-id="${el.id}"` : ''
         const fragClass = el.fragment ? ` class="fragment ${sanitizeAttr(el.fragmentAnimation || 'fade-in')}"` : ''
         const fragIdx = el.fragment && el.fragmentIndex != null ? ` data-fragment-index="${sanitizeAttr(el.fragmentIndex)}"` : ''
-        const gsapAttrs = (el.animationEnter && el.animationEnter !== 'none')
-          ? ` data-gsap-enter="${sanitizeAttr(el.animationEnter)}" data-gsap-delay="${Number(el.animationDelay) || 0}" data-gsap-duration="${Number(el.animationDuration) || 600}"`
+        const enterAttrs = (el.animationEnter && el.animationEnter !== 'none')
+          ? ` data-enter="${sanitizeAttr(el.animationEnter)}" data-enter-delay="${Number(el.animationDelay) || 0}" data-enter-duration="${Number(el.animationDuration) || 600}"`
           : ''
         const actionAttrs = clickActionAttrs(el, clickTargets)
         if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
+          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${cssValue(el.lineHeight ?? 1.5)};${el.letterSpacing ? `letter-spacing:${cssValue(el.letterSpacing)}px;` : ''}${el.wordSpacing ? `word-spacing:${cssValue(el.wordSpacing)}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
+          // .px-text, with its placeholder, for themes' stylesheets (slideHooks.js)
+          const textHook = (fragClass ? fragClass.replace(/"$/, ` ${TEXT_CLASS}"`) : ` class="${TEXT_CLASS}"`) + placeholderAttr(el)
           // Text that shrinks to fit its box (utils/shrinkFit.js)
           if (el.sizeMode === 'shrink') {
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+            return `<div${dataId}${textHook}${fragIdx}${enterAttrs}${actionAttrs} data-fit="shrink" style="${style} color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
           }
           // Auto-sized text grows with what it holds, as on the canvas
           const textStyle = el.sizeMode === 'auto'
             ? `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:auto;z-index:${el.zIndex || 1};overflow:visible;box-sizing:border-box;${shadowStyle}${rotationStyle}`
             : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
+          return `<div${dataId}${textHook}${fragIdx}${enterAttrs}${actionAttrs} style="${textStyle} padding:8px 12px; color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -364,98 +393,98 @@ export function generateRevealHTML(presentation, opts = {}) {
             const offX = el.imageOffsetX ?? 0
             const offY = el.imageOffsetY ?? 0
             const imgStyle = `position:absolute;left:${offX}px;top:${offY}px;width:${el.imageW}px;height:${el.imageH}px;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}`
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="${imgStyle}" />${clipClose}${capHtml}${sup}</div>`
           }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="display:block;width:100%;height:100%;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${expandAttr}${popupAttr} style="${cStyle}${interactiveCursor}">${clipOpen}<img src="${src}" alt="${sanitizeAttr(el.alt||'')}" style="display:block;width:100%;height:100%;object-fit:${cssValue(el.objectFit)||'contain'};${filterStyle}" />${clipClose}${capHtml}${sup}</div>`
         }
         if (el.type === 'shape') {
           const opacityStyle = el.opacity !== undefined && el.opacity !== 1 ? `opacity:${el.opacity};` : ''
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}${opacityStyle}">${shapeSvg(el)}</div>`
         }
         if (el.type === 'tikz') {
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}">${tikzDiagramSvg(el)}</div>`
         }
         if (el.type === 'feynman') {
           // Every part, shown from its step by the deck's Feynman script; labels can reach past its box
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast === false ? 0 : 1}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${feynmanSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'circuit') {
           // Every part, and every step's current, shown at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${circuitSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${circuitSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'logic') {
           // Every part, and each step's signals, shown at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${logicSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'freebody') {
           // Every force, drawn in at its step by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${freebodySvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'venn') {
           // Every layer, number and caption, each shown at its steps by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="${el.dimPast ? 1 : 0}" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${vennSvg(el, { deck: fxId, labels: 'deck' })}</div>`
         }
         if (el.type === 'timing') {
           // Every waveform, revealed to each step's cycle by the same script
           const fxId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${timingSvg(el, { deck: fxId })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-fx="${fxId}" data-fx-dim="0" style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${timingSvg(el, { deck: fxId })}</div>`
         }
         if (el.type === 'geometry') {
           // The figure as the slide opens, which the deck's geometry script
           // redraws as its steps come and its points are dragged
           const gm = geometryDeckHtml(el)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${gm.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${gm.svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${gm.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${gm.svg}</div>`
         }
         if (el.type === 'periodic') {
           // The table as it rests, which the deck's periodic script makes follow
           // the pointer and the slide's steps
           const pt = periodicDeckHtml(el)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${pt.attrs} style="${style.replace('overflow:hidden;', 'overflow:visible;')}">${pt.svg}</div>`
         }
         if (el.type === 'harmonics') {
           // An empty box the deck's harmonics script draws into, turns and steps
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
         }
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'graph') {
-          const srcdoc = graphPageHtml(el, deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, { ...(deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}), stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const graphId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-graph-id="${graphId}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
           const srcdoc = modelViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="3D model"></iframe></div>`
         }
         if (el.type === 'molecule') {
           const srcdoc = moleculeViewerHtml(el, { src: absoluteSrc(el.src) }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           const { citeCaption, capHtml, sup } = citationParts(el, sideCitations)
           const mStyle = citeCaption ? style.replace('overflow:hidden;', 'overflow:visible;') : style
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${mStyle}"><iframe srcdoc="${srcdoc}" data-deck-scale style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="${escapeHtml(el.name || 'Molecule')}"></iframe>${capHtml}${sup}</div>`
         }
         if (el.type === 'p5') {
           const p5Doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;overflow:hidden;}canvas{display:block;}</style><script src="${libUrl('p5', 'lib/p5.min.js')}"><\/script><script>${EMBED_RESIZE_LISTENER}<\/script>${offersData ? EMBED_DATASETS_SCRIPT : ''}</head><body><script>${el.content || ''}<\/script></body></html>`
           const srcdoc = p5Doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'code') {
           const lang = el.language || 'plaintext'
           const codeContent = escapeHtml(el.content || '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><pre style="margin:0;padding:10px 14px;width:100%;height:100%;overflow:hidden;box-sizing:border-box;font-family:'Fira Code','JetBrains Mono','Courier New',monospace;font-size:${el.fontSize || 14}px;line-height:1.5;"><code class="language-${lang}" data-trim>${codeContent}</code></pre></div>`
         }
         if (el.type === 'markdown') {
           const md = (el.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('marked', 'lib/marked.umd.js')}"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{background:transparent;color:white;font-family:-apple-system,sans-serif;font-size:18px;line-height:1.6;padding:8px 12px;overflow:auto}h1,h2,h3,h4{margin:0 0 .4em}p{margin:0 0 .4em}ul,ol{padding-left:1.5em;margin:0 0 .4em}a{color:#60a5fa}pre{background:rgba(0,0,0,0.3);padding:10px 14px;border-radius:6px;overflow:auto;font-size:13px}code{font-family:'Fira Code',monospace}</style></head><body><div id="out"></div><script>document.getElementById('out').innerHTML=marked.parse(${JSON.stringify(el.content || '')});<\/script></body></html>`
           const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         if (el.type === 'timeline') {
           const w = el.width, h = el.height, pad = 30, lineY = h * 0.5
@@ -517,20 +546,20 @@ export function generateRevealHTML(presentation, opts = {}) {
             const itemsJson = JSON.stringify(expandItems.map(i => ({ id: i.id, label: i.label, date: itemDateLabel(i.date), description: i.description, detailedDescription: i.detailedDescription, image: i.image ? absoluteSrc(sanitizeUrl(i.image)) : '' }))).replace(/</g, '\\u003c')
             expandData = `<div class="tl-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);border-radius:6px;z-index:10;cursor:pointer;padding:16px;align-items:center;justify-content:center;gap:16px"></div><script>(function(){var el=document.currentScript.parentElement;var overlay=el.querySelector('.tl-overlay');var items=${itemsJson};el.querySelectorAll('.tl-event').forEach(function(g){g.addEventListener('click',function(e){e.stopPropagation();var id=g.getAttribute('data-tl-id');var item=items.find(function(i){return i.id===id});if(!item)return;var h='';if(item.image)h+='<img src="'+item.image+'" style="max-width:'+(item.detailedDescription?'45%':'80%')+';max-height:85%;object-fit:contain;border-radius:6px;flex-shrink:0">';h+='<div style="flex:'+(item.image?1:'none')+';max-width:'+(item.image?'45%':'80%')+';overflow:auto;max-height:85%">';h+='<div style="color:${tc};font-weight:700;font-size:${fs+4}px;margin-bottom:4px">'+item.label+'<\\/div>';h+='<div style="color:${tc};opacity:0.5;font-size:${fs-1}px;margin-bottom:8px">'+item.date+'<\\/div>';if(item.description)h+='<div style="color:${tc};opacity:0.7;font-size:${fs}px;margin-bottom:8px">'+item.description+'<\\/div>';if(item.detailedDescription)h+='<div style="color:${tc};opacity:0.85;font-size:${fs+1}px;line-height:1.5;white-space:pre-wrap">'+item.detailedDescription+'<\\/div>';h+='<\\/div>';overlay.innerHTML=h;overlay.style.display='flex';})});overlay.addEventListener('click',function(){overlay.style.display='none'});}());<\\/script>`
           }
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><div style="position:relative;width:100%;height:100%;">${svg}${expandData}</div></div>`
         }
         if (el.type === 'callout') {
           const bg = cssValue(el.calloutColor) || '#ef4444'
           const tc = cssValue(el.calloutTextColor) || '#ffffff'
           const fs = el.fontSize || 16
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;color:${tc};font-size:${fs}px;font-weight:700;font-family:-apple-system,sans-serif;line-height:1;">${el.calloutNumber || 1}</div>`
         }
         if (el.type === 'icon') {
           const color = sanitizeAttr(el.iconColor) || '#ffffff'
           const sw = Number(el.iconStrokeWidth) || 2
           const iconPaths = { Star:'<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>', Heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>', Check:'<polyline points="20,6 9,17 4,12"/>', X:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', Zap:'<polygon points="13,2 3,14 12,14 11,22 21,10 12,10"/>', Target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' }
           const path = iconPaths[el.iconName] || iconPaths['Star']
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>`
         }
         if (el.type === 'latex') {
           const content = el.content || ''
@@ -541,22 +570,22 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (hasTikz) {
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css"><script src="https://tikzjax.com/v1/tikzjax.js"><\/script><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;overflow:auto;color:${lc}}body{transform:scale(${sc});transform-origin:center center}svg{max-width:${100 / sc}vw;max-height:${100 / sc}vh}</style></head><body><script type="text/tikz">${tikzInk(content, [el.textColor, palette.text])}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           if (hasTable) {
             const wrapped = content.includes('\\begin{document}') ? content
               : `\\documentclass{article}\n\\usepackage{booktabs}\n\\usepackage{array}\n\\begin{document}\n${content}\n\\end{document}`
             const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><script src="${libUrl('latex.js', 'dist/latex.js')}"><\/script><link rel="stylesheet" href="${libUrl('latex.js', 'dist/css/base.css')}"><style>*{box-sizing:border-box}html,body{margin:0;padding:8px;background:transparent;color:${lc}!important;width:100%;height:100%;overflow:auto;font-family:'Computer Modern',Georgia,serif;transform:scale(${sc});transform-origin:top left}table{border-collapse:collapse;color:${lc}}td,th{padding:3px 10px;color:${lc}!important}p,span,div{color:${lc}!important}</style></head><body><div id="out"></div><script>try{var generator=new HtmlGenerator({hyphenate:false});var doc=parse(${JSON.stringify(wrapped)},{generator:generator});document.getElementById('out').appendChild(doc.domFragment())}catch(e){document.getElementById('out').innerHTML='<span style="color:#f87171">Error: '+e.message+'<\\/span>'}<\/script></body></html>`
             const escaped = srcdoc.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${escaped}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
           }
           const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-latex-block="${escaped}" style="${style}display:flex;align-items:center;justify-content:center;overflow:hidden;"><span class="katex-block" style="font-size:${Math.round(sc * 22)}px;color:${lc};"></span></div>`
         }
         if (el.type === 'equation') {
           // Drawn by the deck's equation script; its labels can reach past its box
           const eqId = String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} data-eq="${eqId}" data-eq-config="${equationConfigAttr(el)}" style="${style}overflow:visible;"></div>`
         }
         if (el.type === 'video') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -580,7 +609,7 @@ export function generateRevealHTML(presentation, opts = {}) {
             vidScript = `<script>${parts.join(';')}</script>`
           }
           if (hasClip && el.loop) attrs.splice(attrs.indexOf('loop'), attrs.indexOf('loop') >= 0 ? 1 : 0)
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${cssValue(el.objectFit) || 'contain'};display:block;background:#000;"></video>${vidScript}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><video src="${src}" ${attrs.join(' ')}${posterAttr} style="width:100%;height:100%;object-fit:${cssValue(el.objectFit) || 'contain'};display:block;background:#000;"></video>${vidScript}</div>`
         }
         if (el.type === 'audio') {
           const src = absoluteSrc(sanitizeUrl(el.src))
@@ -588,7 +617,7 @@ export function generateRevealHTML(presentation, opts = {}) {
           if (el.autoplay) attrs.push('autoplay')
           if (el.loop) attrs.push('loop')
           if (el.muted) attrs.push('muted')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;"><audio src="${src}" ${attrs.join(' ')} style="width:90%;"></audio></div>`
         }
         if (el.type === 'table') {
           const data = el.data || [['']]
@@ -606,14 +635,14 @@ export function generateRevealHTML(presentation, opts = {}) {
             }).join('')
             return `<tr>${cells}</tr>`
           }).join('')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}overflow:auto;"><table style="width:100%;height:100%;border-collapse:collapse;">${rows}</table></div>`
         }
         if (el.type === 'text3d') {
           // Unclipped, for letters turned out of the box, and shadowed around
           // the letters rather than the box
           const shadow = text3dShadowFilter(el)
           const t3Style = style.replace('overflow:hidden;', 'overflow:visible;').replace(shadowStyle, '') + (shadow ? `filter:${shadow};` : '')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${t3Style}">${text3dHtml(el, { fontFamily: globalFont })}</div>`
         }
         if (el.type === 'textpath') {
           const fontSize = el.fontSize || 64
@@ -656,23 +685,23 @@ export function generateRevealHTML(presentation, opts = {}) {
             svg = `<svg width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}" xmlns="http://www.w3.org/2000/svg" overflow="visible"><defs><path id="${pathId}" d="${pathD}"/></defs><text ${baseTextAttrs}${dyAttr}><textPath href="#${pathId}" startOffset="${el.startOffset || 0}%" textAnchor="${el.textAnchor || 'start'}" side="${tpSide}">${escapeHtml(el.content || '')}</textPath></text></svg>`
           }
           const elStyle = `position:absolute;left:${el.x}px;top:${el.y}px;width:${w}px;height:${svgH}px;z-index:${el.zIndex || 1};overflow:visible;${el.rotation ? `rotate:${el.rotation}deg;` : ''}`
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${elStyle}">${svg}</div>`
         }
         if (el.type === 'drawing') {
           const svgPaths = (el.paths || []).map(path => {
             const d = pointsToPath(path.points, el.smooth !== false)
             return `<path d="${d}" stroke="${path.color || '#ffffff'}" stroke-width="${path.strokeWidth || 3}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${path.opacity ?? 1}"/>`
           }).join('')
-          return `<svg${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
+          return `<svg${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="position:absolute;left:0;top:0;width:${canvasW}px;height:${canvasH}px;overflow:visible;pointer-events:none;z-index:${el.zIndex || 1};">${svgPaths}</svg>`
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const sandboxHtml = pluginSandbox(el)
           if (!sandboxHtml) {
-            return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
+            return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div>`
           }
           const srcdoc = buildStaticPluginSrcdoc(sandboxHtml, { data: el.pluginData, width: el.width, height: el.height, datasets: offersData })
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
         }
         return ''
       })
@@ -709,24 +738,25 @@ export function generateRevealHTML(presentation, opts = {}) {
 
     let footerHtml = ''
     if (slide.showSlideFooter !== false && !slide.hideFooter) {
-      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget" style="flex-shrink:0;"></span>` : ''
+      const timeSpan = showTimeWidget ? `<span class="reveal-time-widget px-footer-time" style="flex-shrink:0;"></span>` : ''
       if (footerMode === 'sequence' && sequenceSections.length > 0 && (showFooter || showTimeWidget)) {
         const activeIdx = slide.activeSection
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : (footerColor || 'rgba(255,255,255,0.9)')
+          const own = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : ''
+          const secActiveColor = own || footerColor || 'rgba(255,255,255,0.9)'
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
-          return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
+          return `<span class="px-footer-section" data-state="${footerSectionState(i, activeIdx)}" style="${own ? `--px-section-color:${own};` : ''}color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
         }).join('')
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
+        const pageSpan = pageLabel ? `<span class="px-footer-page" style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
         const timePart = timeSpan ? `${timeSpan}` : ''
-        footerHtml = `      <div class="reveal-footer" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
+        footerHtml = `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="sequence" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;pointer-events:none;box-sizing:border-box;">${timePart}<div class="px-footer-sections" style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
       } else {
         const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : ''
         const leftContent = [timeSpan, sectionLabel].filter(Boolean).join(' — ')
-        footerHtml = (leftContent || pageLabel) ? `      <div class="reveal-footer" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>` : ''
+        footerHtml = (leftContent || pageLabel) ? `      <div class="reveal-footer ${FOOTER_CLASS}" data-footer="basic" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;pointer-events:none;box-sizing:border-box;"><span class="px-footer-label">${leftContent}</span><span class="px-footer-page">${pageLabel}</span></div>` : ''
       }
     }
     const slideShowGrid = slide.showPresentGrid != null ? slide.showPresentGrid : showPresentGrid
@@ -743,7 +773,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
     const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
-    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};">\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
+    slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
 
@@ -763,7 +793,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     // clips the list, so the slide showed empty
     slidesHtml += `\n    <section data-slide-id="references" style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:auto;z-index:1">
-        ${referencesHtml(citations, footerColor, LIGHT_THEMES.has(theme))}
+        ${referencesHtml(citations, deckTheme(theme, presentation.themeColors).link, !deckTheme(theme, presentation.themeColors).dark, globalFont)}
       </div>
     </section>`
   }
@@ -776,12 +806,12 @@ export function generateRevealHTML(presentation, opts = {}) {
   <title>${escapeHtml(presentation.title || 'Presentation')}</title>
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reset.css')}">
   <link rel="stylesheet" href="${libUrl('reveal.js', 'dist/reveal.css')}">
-  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${theme}.css`)}">
+  <link rel="stylesheet" href="${libUrl('reveal.js', `dist/theme/${revealTheme(theme)}.css`)}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
@@ -804,21 +834,29 @@ export function generateRevealHTML(presentation, opts = {}) {
     .reveal h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; }
     .reveal h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; }
     .reveal h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; }
-    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }
+    .reveal h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; }${headingCss ? `\n    ${headingCss.replace(/\n/g, '\n    ')}` : ''}
     .reveal ul, .reveal ol { padding-left: 1.5em; margin: 0 0 0.4em; }
     .reveal li { margin-bottom: 0.2em; line-height: inherit; }
     .reveal span { line-height: inherit; }
     .reveal a { text-decoration: underline; }
     .reveal img { margin: 0 !important; border: none !important; background: none !important; box-shadow: none !important; max-width: none !important; max-height: none !important; }
+    /* Embeds and videos fill their boxes, as in the editor: reveal.js themes cap them at 95% */
+    .reveal iframe, .reveal video { max-width: none !important; max-height: none !important; }
     .reveal code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-family: monospace; }
     .reveal pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 6px; margin: 0 0 0.4em !important; overflow: auto; width: auto !important; box-shadow: none !important; }
     .reveal pre code { background: none; padding: 0; }
     .reveal blockquote { border-left: 3px solid rgba(255,255,255,0.3); padding-left: 16px; opacity: 0.8; margin: 0 0 0.4em !important; width: auto !important; box-shadow: none !important; font-style: normal; }
-    /* Footer — explicit CSS rule with high specificity so reveal.js theme cannot override */
-    /* color only on the container so per-span inline colors (inactive sections) are not overridden */
-    .reveal .slides section .reveal-footer { color: ${footerColor} !important; }
-    .reveal .slides section .reveal-footer,
-    .reveal .slides section .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
+    /* reveal.js themes set a quote's first and last paragraphs inline, which puts them on one line and list markers on a list item's last line */
+    .reveal blockquote p:first-child, .reveal blockquote p:last-child { display: block; }
+    /* reveal.js copies a slide's classes onto its background layer, which has none of the slide's data-*: a theme's bands and pictures belong on the slide, not on that layer as well */
+    .reveal .backgrounds .${SLIDE_CLASS}::before, .reveal .backgrounds .${SLIDE_CLASS}::after { content: none !important; }
+    /* Footer: !important so reveal.js themes can't override it, but with
+       little weight (:where), so a theme's or the deck's own stylesheet can,
+       with !important of its own. Color only on the container, so the
+       sections' own (inline) colors hold */
+    :where(.reveal .slides section) .reveal-footer { color: ${footerColor} !important; }
+    :where(.reveal .slides section) .reveal-footer,
+    :where(.reveal .slides section) .reveal-footer * { font-family: ${footerFontFamily} !important; font-size: ${footerFontSize}px !important; }
     /* Top right, across from Overview: reveal's arrows have the bottom right */
     #fs-btn {
       position: fixed; top: 16px; right: 16px; z-index: 9999;
@@ -874,11 +912,11 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb:hover { border-color:rgba(99,102,241,0.5);box-shadow:0 0 8px rgba(99,102,241,0.2); }
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
-  </style>${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
+  </style>${themeStyleTag(theme, presentation.themeColors)}${themeCssTag(presentation.themeCss)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 ${offersData ? deckDatasetsScript(deckData.datasets) : ''}
 </head>
 <body>
-  <div class="reveal">
+  <div class="${['reveal', deckThemeClass(theme)].filter(Boolean).join(' ')}">
     <div class="slides">
 ${slidesHtml}
     </div>
@@ -955,14 +993,14 @@ ${slidesHtml}
     };
     function runSlideAnimations(slide) {
       if (!slide) return;
-      slide.querySelectorAll('[data-gsap-enter]').forEach(function(el) {
-        var preset = ENTRY_PRESETS[el.getAttribute('data-gsap-enter')];
+      slide.querySelectorAll('[data-enter]').forEach(function(el) {
+        var preset = ENTRY_PRESETS[el.getAttribute('data-enter')];
         if (!preset || !el.animate) return;
         var from = Object.assign({ offset: 0 }, preset[1]);
         if (el._entry) el._entry.cancel();
         el._entry = el.animate(preset[2] ? [from, preset[2]] : [from], {
-          duration: parseFloat(el.getAttribute('data-gsap-duration') || 600),
-          delay: parseFloat(el.getAttribute('data-gsap-delay') || 0),
+          duration: parseFloat(el.getAttribute('data-enter-duration') || 600),
+          delay: parseFloat(el.getAttribute('data-enter-delay') || 0),
           easing: preset[0],
           fill: 'backwards',
         });
@@ -1378,8 +1416,8 @@ export function previewSlideInWindow(presentation, slideIndex) {
 // ─── PDF export (print-ready HTML, one page per fragment state) ───────────────
 
 // A page's background: the slide's own, or the theme's
-function getBgPrintStyle(bg, theme) {
-  const themed = cssText(themeBackgroundStyle(theme))
+function getBgPrintStyle(bg, theme, colors = null) {
+  const themed = cssText(themeBackgroundStyle(theme, colors))
   if (!bg || bg.type === 'none') return themed
   if (bg.type === 'color') return bg.color ? `background-color:${bg.color};` : themed
   if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
@@ -1394,7 +1432,10 @@ function generatePrintHTML(presentation) {
   // Numbers: they're written into pages' scripts and styles
   const slideW = Number(presentation.slideWidth) || 960
   const slideH = Number(presentation.slideHeight) || 540
-  const globalFont = presentation.globalFont || ''
+  const globalFont = deckTextFont(presentation.globalFont, presentation.theme)
+  const bodySize = bodySizeStyle(deckTextStyles(presentation.textStyles, presentation.theme))
+  const headingCss = textStyleCss(deckTextStyles(presentation.textStyles, presentation.theme), '.slide-page')
+  const pageClass = ['slide-page', SLIDE_CLASS, deckThemeClass(presentation.theme)].filter(Boolean).join(' ')
   const theme = presentation.theme || 'black'
   const showFooter = presentation.showFooter || false
   const showPageNumbers = presentation.showPageNumbers || false
@@ -1458,8 +1499,8 @@ function generatePrintHTML(presentation) {
     const axis = scrollAxis(slide, slideW, slideH)
     const scrolling = axis !== null
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
-    const bgStyle = canvasBg ? getBgPrintStyle(null, theme) : getBgPrintStyle(slide.background, theme)
-    const palette = slidePalette(slide, theme)
+    const bgStyle = canvasBg ? getBgPrintStyle(null, theme, presentation.themeColors) : getBgPrintStyle(slide.background, theme, presentation.themeColors)
+    const palette = slidePalette(slide, theme, presentation.themeColors)
 
     const sortedElements = (slide.elements || [])
       .filter(el => !isEmptyPlaceholder(el))
@@ -1473,10 +1514,11 @@ function generatePrintHTML(presentation) {
         const style = `position:absolute;left:${el.x}px;top:${el.y}px;width:${el.width}px;height:${el.height}px;z-index:${el.zIndex || 1};overflow:hidden;box-sizing:border-box;${borderRadiusStyleP}${rotationStyleP}`
         const vis = isHidden ? 'visibility:hidden;' : ''
         if (el.type === 'text') {
-          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
+          const spacingStyle = `${globalFont ? `font-family:${globalFont};` : ''}${bodySize}line-height:${el.lineHeight ?? 1.5};${el.letterSpacing ? `letter-spacing:${el.letterSpacing}px;` : ''}${el.wordSpacing ? `word-spacing:${el.wordSpacing}px;` : ''}`
           const content = resolveCitationsInHtml(el.content || '', citations.labelByKey)
-          if (el.sizeMode === 'shrink') return `<div data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
-          return `<div style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
+          const textHook = ` class="${TEXT_CLASS}"${placeholderAttr(el)}`
+          if (el.sizeMode === 'shrink') return `<div${textHook} data-fit="shrink" style="${style}${vis}color:${palette.text};${spacingStyle}"><div style="position:relative;padding:8px 12px;box-sizing:border-box;transform-origin:0 0;">${content}</div></div>`
+          return `<div${textHook} style="${style}${vis}padding:8px 12px;color:${palette.text};${spacingStyle}">${content}</div>`
         }
         if (el.type === 'image') {
           const src = absoluteSrc(el.src)
@@ -1550,7 +1592,7 @@ function generatePrintHTML(presentation) {
         }
         if (el.type === 'graph') {
           // Finished: every expression, no controls
-          const srcdoc = graphPageHtml(el, { print: true }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          const srcdoc = graphPageHtml(el, { print: true, stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
           return `<div style="${style}${vis}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" title="Graph"></iframe></div>`
         }
         if (el.type === 'model') {
@@ -1664,7 +1706,7 @@ function generatePrintHTML(presentation) {
         }
         if (el.type && el.type.startsWith('plugin:')) {
           const data = JSON.stringify(el.pluginData || {}).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${gsapAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs} style="${style}" data-plugin-type="${el.type}" data-plugin-id="${el.pluginId || ''}" data-plugin-data="${data}"><div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.4);font-family:sans-serif;font-size:14px;">Plugin: ${escapeHtml(el.type.replace('plugin:', ''))}</div></div>`
         }
         return ''
       })
@@ -1686,19 +1728,20 @@ function generatePrintHTML(presentation) {
         const seqSpans = sequenceSections.map((sec, i) => {
           const isActive = activeIdx === i
           const secLabel = typeof sec === 'string' ? sec : (sec?.label || '')
-          const secActiveColor = typeof sec === 'object' && sec?.color ? sec.color : footerColor
+          const own = typeof sec === 'object' && sec?.color ? cssValue(sec.color) : ''
+          const secActiveColor = own || footerColor
           const color = isActive ? secActiveColor : footerInactiveColor
           const weight = isActive ? 'font-weight:700;' : 'font-weight:400;'
-          return `<span style="color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
+          return `<span class="px-footer-section" data-state="${footerSectionState(i, activeIdx)}" style="${own ? `--px-section-color:${own};` : ''}color:${color};${weight}">${escapeHtml(secLabel || `Section ${i+1}`)}</span>`
         }).join('')
-        const pageSpan = pageLabel ? `<span style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
-        const timePart = timeLabel ? `<span style="flex-shrink:0;margin-right:12px;">${timeLabel}</span>` : ''
-        footerHtml = `<div style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;font-size:${footerFontSize}px;font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;">${timePart}<div style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
+        const pageSpan = pageLabel ? `<span class="px-footer-page" style="margin-left:12px;flex-shrink:0;">${pageLabel}</span>` : ''
+        const timePart = timeLabel ? `<span class="px-footer-time" style="flex-shrink:0;margin-right:12px;">${timeLabel}</span>` : ''
+        footerHtml = `<div class="${FOOTER_CLASS}" data-footer="sequence" style="position:absolute;bottom:6px;left:16px;right:16px;z-index:900;display:flex;justify-content:center;align-items:center;font-size:${footerFontSize}px;font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;">${timePart}<div class="px-footer-sections" style="display:flex;flex:1;justify-content:space-evenly;align-items:center;">${seqSpans}</div>${pageSpan}</div>`
       } else {
         const sectionLabel = showFooter && slide.section ? escapeHtml(slide.section) : ''
         const leftContent = [timeLabel, sectionLabel].filter(Boolean).join(' — ')
         footerHtml = (leftContent || pageLabel)
-          ? `<div style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;font-size:${footerFontSize}px;color:${footerColor};font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;"><span>${leftContent}</span><span>${pageLabel}</span></div>`
+          ? `<div class="${FOOTER_CLASS}" data-footer="basic" style="position:absolute;bottom:8px;left:16px;right:16px;z-index:900;display:flex;justify-content:space-between;align-items:center;font-size:${footerFontSize}px;color:${footerColor};font-family:${footerFontFamily};pointer-events:none;box-sizing:border-box;"><span class="px-footer-label">${leftContent}</span><span class="px-footer-page">${pageLabel}</span></div>`
           : ''
       }
     }
@@ -1716,12 +1759,12 @@ function generatePrintHTML(presentation) {
         pinnedHtml: `${printSlideLinks(pinnedHtml)}\n${printActionLinks(presentation.slides, slideIndex, el => hiddenOnPage(el) || !isPinned(el))}`,
       })
     }
-    return `<div class="slide-page"${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};">\n${bodyHtml}\n${footerHtml}\n</div>`
+    return `<div class="${pageClass}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}${anchor} style="${bgStyle}font-size:42px;--slide-heading:${palette.heading};--slide-link:${palette.link};${cssText(paletteVars(palette))}">\n${bodyHtml}\n${footerHtml}\n</div>`
   }).join('\n') + (citations.entries.length > 0
     // The references, last, as the presented deck has them
-    ? `\n<div class="slide-page" style="${getBgPrintStyle(null)}font-size:42px;">
+    ? `\n<div class="slide-page" style="${getBgPrintStyle(null, theme, presentation.themeColors)}font-size:42px;">
       <div style="position:absolute;left:40px;top:30px;width:${slideW - 80}px;height:${slideH - 60}px;overflow:hidden;z-index:1">
-        ${referencesHtml(citations, footerColor)}
+        ${referencesHtml(citations, deckTheme(theme, presentation.themeColors).link, !deckTheme(theme, presentation.themeColors).dark, cssValue(globalFont))}
       </div>
 </div>`
     : '')
@@ -1732,7 +1775,7 @@ function generatePrintHTML(presentation) {
 <head>
   <meta charset="utf-8">
   <title>${title} — PDF</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Manrope:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800;900&family=Figtree:wght@300;400;500;600;700;800;900&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Rubik:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Roboto+Mono:wght@300;400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Inconsolata:wght@300;400;500;600;700;800;900&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&family=Asap+Condensed:wght@400;500;600;700;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Didact+Gothic&family=Questrial&display=swap">
   <link rel="stylesheet" href="${libUrl('latex.js', 'dist/fonts/cmu.css')}">
   <link rel="stylesheet" href="${libUrl('katex', 'dist/katex.min.css')}">
   <link rel="stylesheet" href="${libUrl('@highlightjs/cdn-assets', `styles/${codeTheme}.min.css`)}">
@@ -1753,7 +1796,7 @@ function generatePrintHTML(presentation) {
     .slide-page h1 { font-size: 2.5em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h2 { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
     .slide-page h3 { font-size: 1.3em; font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
-    .slide-page h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }
+    .slide-page h4 { font-size: 1em;   font-weight: bold; line-height: 1.2; margin: 0 0 0.4em; }${headingCss ? `\n    ${headingCss.replace(/\n/g, '\n    ')}` : ''}
     .slide-page p  { margin: 0 0 0.4em; }
     .slide-page ul, .slide-page ol { padding-left: 1.5em; margin: 0 0 0.4em; }
     .slide-page li { margin-bottom: 0.2em; }
@@ -1770,7 +1813,7 @@ function generatePrintHTML(presentation) {
     #print-bar button:hover { background: #5254cc; }
     #print-bar .hint { color: rgba(255,255,255,0.5); font-size: 12px; }
     @media print { #print-bar { display: none; } body { margin-top: 0; } }${hasCitationMarkers(presentation) ? CITATION_CSS : ''}
-  </style>${presentation.customCSS ? `\n  <style>\n${presentation.customCSS}\n  </style>` : ''}
+  </style>${themeStyleTag(presentation.theme, presentation.themeColors)}${themeCssTag(presentation.themeCss)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
 </head>
 <body>
   <div id="print-bar">
@@ -1877,9 +1920,10 @@ export function openDeckWindow(deckHtml, options) {
   return win
 }
 
-// In a deck framed by one of those pages (opts.bridge): tells the page which
-// slide is shown, as its index in Reveal.getSlides() and its slide's id, and
-// goes to the slide it asks for. Only the page around the deck is heard.
+// In a deck framed by one of those pages, or by a landing page template's
+// own page (opts.bridge): tells the page which slide is shown, as its index
+// in Reveal.getSlides() and its slide's id, and goes to the slide it asks for
+// or a step forward or back. Only the page around the deck is heard.
 const DECK_BRIDGE_SCRIPT = `  <script>
   (function () {
     function send() {
@@ -1888,6 +1932,9 @@ const DECK_BRIDGE_SCRIPT = `  <script>
     }
     window.addEventListener('message', function (e) {
       if (e.source !== window.parent || !e.data || e.data.type !== 'parallax-deck-go') return;
+      // A step forward or back, builds included, or a slide by its index
+      if (e.data.step === 1) return Reveal.next();
+      if (e.data.step === -1) return Reveal.prev();
       var s = Reveal.getSlides()[e.data.slide];
       if (s) { var i = Reveal.getIndices(s); Reveal.slide(i.h, i.v); }
     });
@@ -1968,7 +2015,7 @@ export function generatePresenterHTML(presentation) {
     // Escaped: this page has this site's origin
     const bgStyle = escapeHtml((() => {
       const bg = slide.background
-      const themed = cssText(themeBackgroundStyle(presentation.theme))
+      const themed = cssText(themeBackgroundStyle(presentation.theme, presentation.themeColors))
       if (!bg) return themed
       if (bg.type === 'color') return bg.color ? `background:${bg.color};` : themed
       if (bg.type === 'gradient') return bg.gradient ? `background:${bg.gradient};` : themed
@@ -1981,7 +2028,7 @@ export function generatePresenterHTML(presentation) {
       .slice(0, 3)
       .map(el => {
         const plain = (el.content || '').replace(/<[^>]*>/g, '').trim()
-        return plain ? `<div style="font-size:7px;color:${slidePalette(slide, presentation.theme).text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
+        return plain ? `<div style="font-size:7px;color:${slidePalette(slide, presentation.theme, presentation.themeColors).text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;">${escapeHtml(plain.substring(0, 60))}</div>` : ''
       }).join('')
     return `<div class="pv-thumb" data-idx="${i}" style="width:140px;height:${thumbH}px;${bgStyle}">${textEls}<span class="pv-thumb-num">${i + 1}</span></div>`
   }).join('\n          ')

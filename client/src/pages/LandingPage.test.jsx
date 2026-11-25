@@ -97,14 +97,32 @@ describe('the landing page', () => {
     } finally { server.list = null }
   })
 
+  it('switches between light and dark from the nav', async () => {
+    const onToggleTheme = vi.fn()
+    await mount({ theme: 'dark', onToggleTheme })
+    const toggle = el.querySelector('.lp-theme')
+    expect(toggle.getAttribute('aria-label')).toBe('Switch to light theme')
+    await act(async () => toggle.click())
+    expect(onToggleTheme).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('theme', { to: 'light' })
+    act(() => root.unmount())
+    await mount({ theme: 'light', onToggleTheme })
+    expect(el.querySelector('.lp-theme').getAttribute('aria-label')).toBe('Switch to dark theme')
+  })
+
+  it('has no theme toggle when nothing can change the theme', async () => {
+    await mount()
+    expect(el.querySelector('.lp-theme')).toBeNull()
+  })
+
   it('has no Templates tab until there are templates', async () => {
     await mount()
     expect(button('Templates')).toBeUndefined()
   })
 
-  it('lists the templates on their own tab, with a way to copy one into an account', async () => {
+  it('lists the templates on their own tab, each opening its own page', async () => {
     const template = (slug, title, field) => ({ slug, title, field, desc: `${title}, ready to fill in`, tags: ['Outline'], thumbnail: null, background: { type: 'color', color: '#202040' } })
-    server.list = { hero: 'hero', examples: [], templates: [template('journal-club', 'Journal club', 'Talks'), template('lecture', 'Lecture', 'Teaching')] }
+    server.list = { hero: 'hero', examples: [], templates: [{ ...template('journal-club', 'Journal club', 'Talks'), theme: 'Preprint' }, template('lecture', 'Lecture', 'Teaching')] }
     try {
       await mount()
       await act(async () => button('Templates').click())
@@ -116,16 +134,16 @@ describe('the landing page', () => {
       expect(cards()).toEqual(['Lecture'])
       await act(async () => button('All').click())
 
-      await act(async () => el.querySelector('button.lp-card').click())
-      const viewer = el.querySelectorAll('.lp-viewer')[1]
-      expect(viewer.querySelector('iframe').getAttribute('src')).toBe('/examples/journal-club/deck')
-      const links = [...viewer.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href')])
-      expect(links).toContainEqual(['Use this template', '/templates/journal-club/use'])
-      expect(links).toContainEqual(['Try it without an account', '/try?example=journal-club'])
-      expect(links.some(([, href]) => href === '/examples/journal-club'), 'no page of its own').toBe(false)
-      await act(async () => viewer.querySelector('[aria-label="Next template"]').click())
-      expect(viewer.querySelector('h3').textContent).toBe('Lecture')
-      expect(track).toHaveBeenCalledWith('open-template', { template: 'lecture', from: 'viewer' })
+      // Each card is a link to the template's own page, which Use this template is on,
+      // its picture labeled with its theme
+      const links = [...el.querySelectorAll('a.lp-card')]
+      expect(links.map(a => a.querySelector('.lp-thumb span').textContent)).toEqual(['Preprint', 'Preview'])
+      expect(links[0].getAttribute('aria-label')).toBe('Journal club, Talks, in the Preprint theme: open the template')
+      expect(links.map(a => a.getAttribute('href'))).toEqual(['/templates/journal-club', '/templates/lecture'])
+      links[1].addEventListener('click', e => e.preventDefault())
+      await act(async () => links[1].click())
+      expect(track).toHaveBeenCalledWith('open-template', { template: 'lecture', from: 'card' })
+      expect(el.querySelectorAll('.lp-viewer')).toHaveLength(1)
     } finally { server.list = null }
   })
 

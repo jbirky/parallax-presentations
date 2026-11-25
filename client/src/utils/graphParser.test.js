@@ -62,6 +62,82 @@ describe('reading expressions as Desmos does', () => {
   })
 })
 
+describe('the special functions of probability', () => {
+  // Relative error
+  const near = (got, want, tol = 1e-12) => expect(Math.abs(got - want) / Math.abs(want)).toBeLessThan(tol)
+
+  it('compute erf and erfc to near a double’s precision, in the tails too', () => {
+    near(at('erf(x)', 1), 0.8427007929497149)
+    near(at('erf(x)', 0.1), 0.1124629160182849)
+    near(at('erf(x)', 2.4), 0.999311486103355)
+    near(at('erf(x)', -0.5), -0.5204998778130465)
+    near(at('erfc(x)', 2.5), 4.069520174449590e-4, 1e-11)
+    near(at('erfc(x)', 3), 2.209049699858544e-5, 1e-11)
+    near(at('erfc(x)', 5), 1.537459794428035e-12, 1e-11)
+    near(at('erfc(x)', -1), 1.842700792949715)
+    expect(at('erf(x)', 0)).toBe(0)
+    expect(at('erf(x)', 30)).toBe(1)
+    expect(at('erfc(x)', 30)).toBe(0)
+    expect(at('erf x', 1)).toBeCloseTo(0.8427007929, 9) // without parentheses, as sin x
+  })
+
+  it('give the normal distribution’s CDF and density, standard or with μ and σ', () => {
+    near(at('normcdf(x)', 1.96), 0.9750021048517795)
+    near(at('normcdf(x)', -3), 0.0013498980316301, 1e-11)
+    expect(at('normcdf(x)', 0)).toBe(0.5)
+    near(at('normcdf(x, 100, 15)', 130), 0.9772498680518208)
+    near(at('normpdf(x)', 0), 1 / Math.sqrt(2 * Math.PI))
+    near(at('normpdf(x, 1, 2)', 3), Math.exp(-0.5) / (2 * Math.sqrt(2 * Math.PI)))
+    expect(at('normcdf(x, 0, 0)', 1)).toBeNaN()
+    expect(() => at('normcdf(x, 0, 1, 2)', 1)).toThrow(/normcdf takes 1 or 3 values/)
+  })
+
+  it('compute Γ, log Γ and B by Lanczos, exactly on whole numbers', () => {
+    expect(at('gamma(x)', 5)).toBe(24)
+    expect(at('gamma(x)', 1)).toBe(1)
+    near(at('gamma(x)', 0.5), Math.sqrt(Math.PI))
+    near(at('gamma(x)', -0.5), -2 * Math.sqrt(Math.PI))
+    near(at('gamma(x)', -1.5), 4 * Math.sqrt(Math.PI) / 3)
+    expect(at('gamma(x)', 0)).toBeNaN()
+    expect(at('gamma(x)', -2)).toBeNaN()
+    expect(at('gamma(x)', 172)).toBe(Infinity)
+    near(at('lgamma(x)', 10.5), 13.940625219403763)
+    near(at('lgamma(x)', 1000), 5905.220423209181)
+    expect(at('lgamma(x)', 1)).toBeCloseTo(0, 14)
+    near(at('beta(2, 3)', 0), 1 / 12)
+    near(at('beta(0.5, 0.5)', 0), Math.PI)
+    near(at('beta(x, 300)', 200), Math.exp(-337.98011306546467), 1e-10) // no overflow on the way
+    // A Beta(3, 5) density integrates to 1
+    let sum = 0
+    for (let i = 0; i < 1000; i++) { const x = (i + 0.5) / 1000; sum += at('x^(a - 1)(1 - x)^(b - 1)/beta(a, b)', x, ['a = 3', 'b = 5']) / 1000 }
+    expect(sum).toBeCloseTo(1, 6)
+  })
+
+  it('count n choose k exactly, and through Γ between whole numbers', () => {
+    expect(at('nCr(52, 5)', 0)).toBe(2598960)
+    expect(at('nCr(10, x)', 3)).toBe(120)
+    expect(at('nCr(60, 30)', 0)).toBe(118264581564861424)
+    expect(at('nCr(5, 7)', 0)).toBe(0)
+    expect(at('nCr(5, -1)', 0)).toBe(0)
+    near(at('nCr(1000, 500)', 0), 2.702882409454366e299, 1e-12)
+    expect(at('nCr(100000, 50000)', 0)).toBe(Infinity) // too big for a double
+    near(at('nCr(1000.5, 500)', 0), 3.8210212414521277e+299, 1e-11) // through log Γ, without overflow
+    near(at('nCr(4, x)', 1.5), 5.4324887242033608, 1e-12) // through Γ between whole numbers
+    near(at('nCr(n, x) p^x (1 - p)^(n - x)', 4, ['n = 10', 'p = 0.3']), 0.2001209489, 1e-9)
+  })
+
+  it('keep β and γ, and beta or gamma with no parenthesis after, for sliders', () => {
+    expect(at('β x', 3, ['β = 2'])).toBe(6)
+    expect(at('γ(x + 1)', 1, ['γ = 2'])).toBe(4)
+    expect(at('beta x', 3, ['beta = 2'])).toBe(6)
+    expect(at('gamma_1 x', 3, ['gamma_1 = 2'])).toBe(6)
+    expect(read('y = γ(x + 1)').missing).toEqual(['gamma'])
+    expect(read('y = gamma(x + 1)').missing).toEqual([])
+    expect(at('gamma (x)', 4)).toBe(6)
+    expect(() => at('beta(x)', 1)).toThrow(/beta takes 2 values/)
+  })
+})
+
 describe('what each expression draws', () => {
   const kinds = [
     ['y = x^2', 'explicit', { axis: 'y' }],

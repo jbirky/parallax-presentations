@@ -4,6 +4,8 @@ import {
   parseAuthors,
   formatAuthorsShort,
   formatAuthorsFull,
+  formatAuthorsReference,
+  formatAuthorLine,
   formatCitation,
   formatReference,
   pageRange,
@@ -171,6 +173,33 @@ describe('formatAuthorsShort', () => {
       { first: 'B', last: 'Doe' },
       { first: 'C', last: 'Lee' },
     ])).toBe('Smith et al.')
+  })
+
+  it('reads BibTeX’s "and others" as et al., not as an author', () => {
+    expect(formatAuthorsShort(parseAuthors('Smith, John and others'))).toBe('Smith et al.')
+    expect(formatAuthorsShort(parseAuthors('others'))).toBe('')
+  })
+})
+
+describe('formatAuthorsReference', () => {
+  it('lists up to six authors, the last after "and"', () => {
+    expect(formatAuthorsReference(parseAuthors('Smith, John'))).toBe('John Smith')
+    expect(formatAuthorsReference(parseAuthors('Doe, Jane and Roe, Rick'))).toBe('Jane Doe and Rick Roe')
+    expect(formatAuthorsReference(parseAuthors('Ames, Ada and Doe, Jane and Roe, Rick'))).toBe('Ada Ames, Jane Doe and Rick Roe')
+    expect(formatAuthorsReference(parseAuthors('{Planck Collaboration}'))).toBe('Planck Collaboration')
+  })
+
+  it('cuts a list short with et al. where BibTeX did, or past six names', () => {
+    expect(formatAuthorsReference(parseAuthors('Aad, Georges and others'))).toBe('Georges Aad et al.')
+    expect(formatAuthorsReference(parseAuthors('A, A and B, B and C, C and D, D and E, E and F, F and G, G'))).toBe('A A et al.')
+    expect(formatAuthorsReference([])).toBe('')
+  })
+
+  it('keeps a role written after the names at the end', () => {
+    expect(formatAuthorLine('Evans, Lyndon and Bryant, Philip (eds.)')).toBe('Lyndon Evans and Philip Bryant (eds.)')
+    expect(formatAuthorLine('Damerau, Heiko and others (eds.)')).toBe('Heiko Damerau et al. (eds.)')
+    expect(formatAuthorLine('{CMS Collaboration (CERN)}')).toBe('CMS Collaboration (CERN)')
+    expect(formatAuthorLine('')).toBe('')
   })
 
   it('returns empty string for empty array', () => {

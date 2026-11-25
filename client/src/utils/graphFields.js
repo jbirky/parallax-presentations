@@ -4,8 +4,9 @@
 // The numerics behind Graph's fields (graphParser reads their lines):
 // paths by Dormand–Prince 5(4) with error control, evenly spaced
 // streamlines (Jobard and Lefer), equilibria by Newton's method from a grid
-// of guesses, classified from the Jacobian, and saddles' separatrices.
-// (Nullclines use graphRuntime's contours.) Like createMathParser it has nothing from outside it:
+// of guesses, classified from the Jacobian, and saddles' separatrices; and
+// the glyphs and line styles they are drawn with. (Nullclines use
+// graphRuntime's contours.) Like createMathParser it has nothing from outside it:
 // the graph page embeds its source (graphPage.js).
 
 export function graphFields() {
@@ -292,8 +293,41 @@ export function graphFields() {
     return lines
   }
 
+  // ── How fixed points and separatrices are drawn. The shape carries the
+  // meaning, so a graph reads in grayscale: a filled disc attracts, an open
+  // ring repels, a saddle is half filled (in the stable color) inside an
+  // unstable ring, a center is a ring with a dot, and a degenerate point an
+  // open diamond. Lines follow the same code: a stable manifold is solid, an
+  // unstable one dashed, so a separatrix that is both (one saddle's way out,
+  // another's way in) is a solid line under a dash.
+
+  // The glyph for a kind of equilibrium (classify's kinds)
+  function glyphOf(kind) {
+    if (/^stable/.test(kind)) return 'stable'
+    if (/^unstable/.test(kind)) return 'unstable'
+    if (kind === 'saddle' || kind === 'center') return kind
+    return 'degenerate'
+  }
+  // A glyph as shapes to draw in order, centered on the point, r its
+  // radius: discs (r, fill, stroke, width), the left half of a disc, and a
+  // diamond (r to its corners). colors: stable, unstable, neutral (centers
+  // and degenerate points) and bg (what the open ones are filled with).
+  function glyph(kind, r, colors) {
+    var c = colors, q = r - 1, g = glyphOf(kind)
+    if (g === 'stable') return [{ shape: 'disc', r: r, fill: c.stable, stroke: c.bg, width: 1.5 }]
+    if (g === 'unstable') return [{ shape: 'disc', r: q, fill: c.bg, stroke: c.unstable, width: 2 }]
+    if (g === 'saddle') return [{ shape: 'disc', r: q, fill: c.bg }, { shape: 'half', r: q, fill: c.stable }, { shape: 'disc', r: q, stroke: c.unstable, width: 2 }]
+    if (g === 'center') return [{ shape: 'disc', r: q, fill: c.bg, stroke: c.neutral, width: 1.7 }, { shape: 'disc', r: r * 0.36, fill: c.neutral }]
+    return [{ shape: 'diamond', r: q, fill: c.bg, stroke: c.neutral, width: 1.7 }]
+  }
+  // A separatrix's line: a stable manifold solid, an unstable one dashed
+  function manifoldStyle(sep, colors) {
+    return sep.unstable ? { color: colors.unstable, dash: [7, 6] } : { color: colors.stable, dash: null }
+  }
+
   return {
     dopri: dopri, trajectory: trajectory, solution: solution, jacobian: jacobian, classify: classify,
     equilibria: equilibria, separatrices: separatrices, streamlines: streamlines,
+    glyphOf: glyphOf, glyph: glyph, manifoldStyle: manifoldStyle,
   }
 }

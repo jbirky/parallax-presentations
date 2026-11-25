@@ -769,7 +769,7 @@ export function ExamplesPanel() {
           <p style={styles.sub}>
             The deck at the top of the landing page, the example cards under it, and the cards on its Templates tab, in
             this order. Each is a copy of one of your presentations: change the presentation, then use Update from
-            presentation to show it. People copy a template into their account to start from; its speaker notes stay out.
+            presentation to show it. People copy a template into their account to start from, with its speaker notes, so write them for whoever starts from it; an example’s speaker notes stay private.
             {canDraw ? ' The server draws each card’s thumbnail from the first slide.' : ' This server has no Chromium, so it can’t draw thumbnails; new cards show a placeholder.'}
           </p>
         </div>

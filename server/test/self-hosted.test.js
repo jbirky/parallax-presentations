@@ -245,6 +245,22 @@ describe('the self-hosted version', () => {
     assert.equal((await call('POST', '/api/plugin-repos/lookup', { url: 'someone/lorenz' })).status, 404)
   })
 
+  it('keeps a theme library in a file of its own', async () => {
+    const empty = await call('GET', '/api/themes')
+    assert.deepEqual([empty.status, empty.body], [200, []])
+    const saved = await call('POST', '/api/themes', { name: 'Lab talks', base: 'white', colors: { accent: '#d62828' } })
+    assert.equal(saved.status, 201)
+    assert.deepEqual([saved.body.name, saved.body.base, saved.body.version, saved.body.colors], ['Lab talks', 'white', 1, { accent: '#d62828' }])
+    const changed = await call('PUT', `/api/themes/${saved.body.id}`, { name: 'Lab talks', base: 'night', css: 'h2 { color: red }' })
+    assert.deepEqual([changed.status, changed.body.version, changed.body.base, changed.body.colors, changed.body.css], [200, 2, 'night', undefined, 'h2 { color: red }'])
+    assert.equal((await call('POST', '/api/themes', { name: 'x', base: 'neon' })).status, 400)
+    assert.match((await call('POST', '/api/themes', { name: 'x', base: 'neon' })).body.error, /base must be one of/)
+    assert.deepEqual((await call('GET', '/api/themes')).body.map(t => t.name), ['Lab talks'])
+    assert.equal((await call('DELETE', `/api/themes/${saved.body.id}`)).status, 200)
+    assert.equal((await call('DELETE', `/api/themes/${saved.body.id}`)).status, 404)
+    assert.equal((await call('PUT', `/api/themes/${saved.body.id}`, { name: 'x', base: 'white' })).status, 404)
+  })
+
   it('has no editing with others', async () => {
     const { id } = (await call('POST', '/api/presentations', { title: 'Another' })).body
     for (const [method, url] of [

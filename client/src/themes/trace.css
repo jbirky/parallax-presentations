@@ -1,0 +1,202 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Trace theme's stylesheet: algorithms, drawn as a careful trace on a
+   whiteboard. A dot grid, ink and a pointer indigo (#4338ca), titles in
+   Figtree and code, indices and complexity in Fira Code (utils/themes.js:
+   the fonts and the text sizes, which the Themes panel's Text tab can
+   change). The state colors are the demo's: comparing amber, done teal.
+
+   It's scoped to .deck-theme-trace, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide's title sits over a row of cells mid-sort; section titles
+   and the Big Number are cells. A Heading 4 is a complexity chip; a quote is
+   a margin note, and one whose first words are bold (**Invariant.**) a
+   dashed callout. Numbered lists count from 0 in index cells, bullets are
+   small cells, tables have ink rules and tabular figures, and the footer's
+   sections in sequence are a row of cells: done teal, the current one
+   dashed amber. */
+
+/* reveal.js: links, the arrows and the progress bar in indigo */
+.deck-theme-trace {
+  --r-background-color: #fcfcfe;
+  --r-main-color: #1c1e2e;
+  --r-heading-color: #1c1e2e;
+  --r-link-color: #4338ca;
+  --r-link-color-dark: #3730a3;
+  --r-link-color-hover: #1c1e2e;
+  --r-selection-background-color: #ffe98a;
+  --r-selection-color: #1c1e2e;
+}
+
+/* The dot grid on presented slides that show the theme's page (the editor
+   draws it from the theme's backgroundCss) */
+.deck-theme-trace .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: radial-gradient(circle, #d6dae6 1.15px, transparent 1.6px) 0 0 / 24px 24px, #fcfcfe;
+}
+
+/* Headings: tight */
+.deck-theme-trace .px-text :is(h1, h2, h3) { letter-spacing: -0.02em !important; line-height: 1.08; }
+
+/* The title slide: its title over a row of cells, two being compared */
+.deck-theme-trace.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-trace .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 356px;
+  max-width: 100%;
+  height: 74px;
+  margin: 0.45em auto 0;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%20356%2074%27%20width%3D%27356%27%20height%3D%2774%27%3E%3Crect%20x%3D%272%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%2312917c%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%2722%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%23ffffff%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Ctext%20x%3D%2722%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E0%3C%2Ftext%3E%3Crect%20x%3D%2746%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%2312917c%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%2766%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%23ffffff%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Ctext%20x%3D%2766%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Crect%20x%3D%2790%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23fff6e0%27%20stroke%3D%27%23f2a11f%27%20stroke-width%3D%272.5%27%20stroke-dasharray%3D%275%203%27%2F%3E%3Ctext%20x%3D%27110%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E8%3C%2Ftext%3E%3Ctext%20x%3D%27110%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E2%3C%2Ftext%3E%3Crect%20x%3D%27134%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23fff6e0%27%20stroke%3D%27%23f2a11f%27%20stroke-width%3D%272.5%27%20stroke-dasharray%3D%275%203%27%2F%3E%3Ctext%20x%3D%27154%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Ctext%20x%3D%27154%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Crect%20x%3D%27178%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27198%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E1%3C%2Ftext%3E%3Ctext%20x%3D%27198%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E4%3C%2Ftext%3E%3Crect%20x%3D%27222%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27242%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E9%3C%2Ftext%3E%3Ctext%20x%3D%27242%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E5%3C%2Ftext%3E%3Crect%20x%3D%27266%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27286%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E3%3C%2Ftext%3E%3Ctext%20x%3D%27286%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E6%3C%2Ftext%3E%3Crect%20x%3D%27310%27%20y%3D%272%27%20width%3D%2740%27%20height%3D%2740%27%20rx%3D%273%27%20fill%3D%27%23ffffff%27%20stroke%3D%27%231c1e2e%27%20stroke-width%3D%272%27%2F%3E%3Ctext%20x%3D%27330%27%20y%3D%2729%27%20font-family%3D%27ui-sans-serif%2Csystem-ui%2Csans-serif%27%20font-size%3D%2719%27%20font-weight%3D%27700%27%20fill%3D%27%231c1e2e%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Ctext%20x%3D%27330%27%20y%3D%2758%27%20font-family%3D%27ui-monospace%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2711%27%20fill%3D%27%235d6276%27%20text-anchor%3D%27middle%27%3E7%3C%2Ftext%3E%3Cpath%20d%3D%27M110%2064l6%206h-12z%27%20fill%3D%27%234338ca%27%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+/* Section titles and the Big Number: a cell. (!important: presented decks
+   set headings' margins with it.) */
+.deck-theme-trace.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-trace .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2),
+.deck-theme-trace.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-trace .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 0.08em 0.45em 0.12em;
+  border: 0.05em solid #1c1e2e;
+  border-radius: 0.08em;
+  background: #ffffff;
+  box-shadow: 0.1em 0.1em 0 #4338ca;
+}
+.deck-theme-trace.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-trace .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: #1c1e2e !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A Heading 4 is a complexity chip: O(n log n) */
+.deck-theme-trace .px-text h4 {
+  width: fit-content;
+  margin: 0 0 0.45em !important;
+  padding: 0.12em 0.65em;
+  border: 2px solid #4338ca;
+  border-radius: 999px;
+  color: #4338ca !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 0.5em;
+  font-weight: 500;
+  font-variant-ligatures: none;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.deck-theme-trace .px-text h4:is([style*="text-align: center"], [style*="text-align:center"]) { margin-inline: auto !important; }
+.deck-theme-trace .px-text h4:is([style*="text-align: right"], [style*="text-align:right"]) { margin-left: auto !important; }
+
+/* Bullets: small cells */
+.deck-theme-trace .px-text ul > li::marker { content: "\25A1  "; color: #4338ca; font-size: 0.85em; }
+.deck-theme-trace .px-text ul ul > li::marker { content: "\2013  "; color: #5d6276; font-size: 1em; }
+
+/* Numbered lists count from 0, in index cells */
+.deck-theme-trace .px-text ol { list-style: none; padding-left: 1.8em; counter-reset: trace-index -1; }
+.deck-theme-trace .px-text ol > li { position: relative; counter-increment: trace-index; }
+.deck-theme-trace .px-text ol > li::before {
+  content: counter(trace-index);
+  position: absolute;
+  left: -2.85em; top: 0.22em;
+  width: 1.9em; height: 1.9em;
+  box-sizing: border-box;
+  border: 0.12em solid #1c1e2e;
+  border-radius: 0.15em;
+  background: #ffffff;
+  color: #1c1e2e;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.6em;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1.66em;
+  text-align: center;
+}
+
+/* Links */
+.deck-theme-trace .px-text a { color: var(--px-link, #4338ca) !important; }
+
+/* Quotes: a margin note; one whose first words are bold, a dashed callout
+   (a loop invariant, say) */
+.deck-theme-trace .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.1em 0 0.1em 0.65em !important;
+  border: 0 !important;
+  border-left: 0.12em solid #4338ca !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  font-style: normal;
+}
+.deck-theme-trace .px-text blockquote:has(> p:first-child > strong:first-child) {
+  padding: 0.45em 0.75em !important;
+  border: 0.07em dashed #4338ca !important;
+  border-radius: 0.2em;
+  background: #e9e8fb;
+}
+.deck-theme-trace .px-text blockquote > p:first-child > strong:first-child {
+  margin-right: 0.35em;
+  color: #4338ca;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.deck-theme-trace .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Fira Code on white, without ligatures, which would hide ≤ and → */
+.deck-theme-trace .px-text :not(pre) > code { padding: 0.04em 0.3em; border-radius: 0.2em; background: #e9e8fb !important; color: #3730a3; font-family: 'Fira Code', monospace; font-size: 0.85em; font-variant-ligatures: none; }
+.deck-theme-trace :is(pre, pre.hljs) { background: #ffffff !important; border: 1px solid #c7ccdb; border-radius: 8px !important; box-shadow: none !important; }
+.deck-theme-trace :is(pre.hljs, pre code) { font-family: 'Fira Code', monospace !important; font-variant-ligatures: none; }
+.deck-theme-trace pre > code.hljs { background: transparent !important; }
+.deck-theme-trace .px-text mark { border-radius: 0.1em; }
+
+/* Tables: ink rules and tabular figures, for traces and cost tables */
+.deck-theme-trace table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #c7ccdb !important;
+  background: transparent !important;
+  color: #1c1e2e !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-trace table tr:first-child :is(td, th) { border-bottom: 2px solid #1c1e2e !important; font-weight: 700; }
+
+/* The footer's sections in sequence: a row of cells, done teal, the current
+   one dashed amber. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-trace.px-slide .px-footer .px-footer-sections,
+.deck-theme-trace .px-slide .px-footer .px-footer-sections { justify-content: center !important; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section,
+.deck-theme-trace .px-slide .px-footer .px-footer-section {
+  padding: 2px 12px;
+  margin-left: -2px;
+  border: 2px solid #1c1e2e;
+  background: #ffffff;
+  color: #1c1e2e !important;
+  font-family: Figtree, sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=past] { background: #12917c; color: #ffffff !important; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=current] { position: relative; border-style: dashed; border-color: #f2a11f; background: #fff6e0; }
+.deck-theme-trace.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-trace .px-slide .px-footer .px-footer-section[data-state=future] { color: #5d6276 !important; font-weight: 500 !important; }
+.deck-theme-trace.px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time),
+.deck-theme-trace .px-slide .px-footer :is(.px-footer-page, .px-footer-label, .px-footer-time) {
+  color: #5d6276 !important;
+  font-family: 'Fira Code', monospace !important;
+  font-size: 12px !important;
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the dot grid, and the title in a cell */
+.deck-theme-trace.theme-swatch { background: radial-gradient(circle, #d6dae6 1px, transparent 1.4px) 0 0 / 10px 10px, #fcfcfe !important; }
+.deck-theme-trace .theme-swatch-title { padding: 0.05em 0.35em; border: 2px solid #1c1e2e; background: #ffffff; box-shadow: 2px 2px 0 #4338ca; }
