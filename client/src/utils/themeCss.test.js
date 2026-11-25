@@ -31,9 +31,11 @@ describe('the themes’ stylesheets', () => {
     expect(themeCss('runlevel')).toContain('.deck-theme-runlevel .px-slide[data-layout=title]:not([data-own-background])::before')
     expect(themeCss('fanout')).toContain('.deck-theme-fanout .px-slide .px-footer .px-footer-section[data-state=past]:not(:last-child)::after')
     expect(themeCss('fanout')).toContain('content: "ADR"')
+    expect(themeCss('cell')).toContain('.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background])::before')
+    expect(themeCss('cell')).toContain('content: "10 \\00B5m"')
     // every rule is inside the theme's class, so the editor can load them all for every deck
     // (at-rules and keyframe steps aside)
-    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout']) {
+    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell']) {
       const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim()).filter(s => !/^(@|from$|to$|[\d.]+%)/.test(s))
       expect(selectors.length).toBeGreaterThan(4)
       for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(new RegExp(`^\\.deck-theme-${id}\\b`))
@@ -43,6 +45,6 @@ describe('the themes’ stylesheets', () => {
   it('is empty for themes without one', () => {
     expect(themeCss('black')).toBe('')
     expect(themeCss('constructor')).toBe('')
-    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout'])
+    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell'])
   })
 })

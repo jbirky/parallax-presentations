@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -77,6 +77,9 @@ describe('themes', () => {
     expect(themeBackgroundStyle('runlevel').background).toMatch(/^linear-gradient\(#e3e7e8, #e3e7e8\) 33\.333% 60\.227% \/ 96\.25% 83\.704% no-repeat, .*#0f4c5c$/)
     expect(deckTextFont('', 'fanout')).toBe("'Asap Condensed', sans-serif")
     expect(slidePalette({}, 'fanout')).toMatchObject({ link: '#c0237a', accent: '#c0237a', dark: false })
+    expect(deckTextFont('', 'cell')).toBe("'Nunito Sans', sans-serif")
+    expect(deckTextStyles(null, 'cell')).toMatchObject({ headingFont: 'Merriweather, serif', headingWeight: 700, h2Size: 38 })
+    expect(slidePalette({}, 'cell')).toMatchObject({ text: '#2e1c45', heading: '#3b1f5e', link: '#b8325f', dark: false })
     // Colors of stability: Separatrix's, kept on a light background of a slide's own, and no other theme's
     expect(slidePalette({}, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })
     expect(slidePalette({ background: { type: 'color', color: '#f0f0e8' } }, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })

@@ -6491,7 +6491,8 @@ var THEME_LIST = [
   { id: "holdout", label: "Holdout", background: "#f7f8f6", text: "#161b22", heading: "#161b22", link: "#1d4f91", accent: "#1d4f91", dark: false, reveal: "white", font: "Rubik, sans-serif", textStyles: { bodySize: 28, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Rubik, sans-serif", headingWeight: 600 }, note: "A figure page: ink for structure, class-marker bullets, a train/val/test split rule, model-card tables and a run-strip footer" },
   { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", stable: "#1d5fa8", unstable: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" },
   { id: "runlevel", label: "Runlevel", background: "#e3e7e8", backgroundCss: "linear-gradient(#e3e7e8, #e3e7e8) 33.333% 60.227% / 96.25% 83.704% no-repeat, linear-gradient(#062129, #062129) 66.667% 71.591% / 96.25% 83.704% no-repeat, #0f4c5c", text: "#10191c", heading: "#0f4c5c", link: "#0b6178", accent: "#0f4c5c", dark: false, reveal: "white", font: "'PT Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 52, h2Size: 30, h3Size: 24, headingFont: "'Roboto Mono', monospace", headingWeight: 600 }, note: "A text-mode configuration screen: a dialog with a hard shadow on a petrol field, titles in its frame, path kickers, a boot-status footer" },
-  { id: "fanout", label: "Fanout", background: "#eef2f5", text: "#18222d", heading: "#18222d", link: "#c0237a", accent: "#c0237a", dark: false, reveal: "white", font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: "Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer" }
+  { id: "fanout", label: "Fanout", background: "#eef2f5", text: "#18222d", heading: "#18222d", link: "#c0237a", accent: "#c0237a", dark: false, reveal: "white", font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: "Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer" },
+  { id: "cell", label: "Cell", background: "#faf7f5", text: "#2e1c45", heading: "#3b1f5e", link: "#b8325f", accent: "#b8325f", dark: false, reveal: "white", font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Merriweather, serif", headingWeight: 700 }, note: "Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -32842,8 +32843,427 @@ var fanout_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/cell.css
+var cell_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Cell theme's stylesheet: cell biology on a stained slide. Slide
+   glass (#faf7f5) in hematoxylin (#3b1f5e, text #2e1c45), eosin pink
+   (#b8325f, #d9487a in drawings) for links and the current phase, and a
+   DAPI blue (#2457b8) for figure labels and counts. Headings in
+   Merriweather, text in Nunito Sans (utils/themes.js: the fonts and the
+   text sizes, which the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-cell, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Under content titles is a membrane: a phospholipid bilayer with one
+   protein across it. The title slide has the slide's frosted label at its
+   left end and a cell in cross-section at its right (membrane, nucleus and
+   nucleolus, ER, mitochondria, Golgi), its title and subtitle beside it.
+   Section slides turn to fluorescence: a dark field with nuclei in blue,
+   cytoplasm in green and puncta in magenta, and a scale bar. A Heading 4
+   is a figure-panel label, its bold words in blue; a Heading 6 a figure
+   caption. The Big Number's unit (inline code or italic words in it) is a
+   scale bar under the figure. Bullets are cells, under them mitochondria;
+   a quote is a textbook box, its bold first words the box's title. With
+   the footer's sections in sequence, the footer is the cell cycle: phases
+   done filled, the current one a dividing cell in eosin, those to come
+   outlined. */
+
+/* reveal.js: links, the arrows and the progress bar in eosin */
+.deck-theme-cell {
+  --r-background-color: #faf7f5;
+  --r-main-color: #2e1c45;
+  --r-heading-color: #3b1f5e;
+  --r-link-color: #b8325f;
+  --r-link-color-dark: #8f2549;
+  --r-link-color-hover: #3b1f5e;
+  --r-selection-background-color: #f6dbe6;
+  --r-selection-color: #2e1c45;
+  --cl-bilayer: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 14' width='8' height='14'%3E %3Cg fill='%233b1f5e'%3E%3Ccircle cx='4' cy='2.2' r='2'/%3E%3Ccircle cx='4' cy='11.8' r='2'/%3E%3C/g%3E %3Cg stroke='%238f78ad' stroke-width='0.8' fill='none'%3E%3Cpath d='M3.2 4V6.6M4.8 4V6.4M3.2 10V7.4M4.8 10V7.6'/%3E%3C/g%3E%3C/svg%3E");
+  --cl-bilayer-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 14' width='8' height='14'%3E %3Ccircle cx='4' cy='2.2' r='2'/%3E%3Ccircle cx='4' cy='11.8' r='2'/%3E %3Cpath d='M3.2 4V6.6M4.8 4V6.4M3.2 10V7.4M4.8 10V7.6' stroke='%23000' stroke-width='0.8' fill='none' opacity='0.6'/%3E%3C/svg%3E");
+  --cl-protein: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18' width='14' height='18'%3E%3Crect x='1' y='1' width='12' height='16' rx='5' fill='%23d9487a' stroke='%23c0426f' stroke-width='1'/%3E%3Cpath d='M7 3V15' stroke='%23ffffff' stroke-width='1.4' stroke-linecap='round' opacity='0.7'/%3E%3C/svg%3E");
+  --cl-dividing: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 12' width='22' height='12'%3E %3Cpath d='M11 2.4C9.4 0.6 6.8 0.6 5.6 0.6C2.6 0.6 0.6 3 0.6 6C0.6 9 2.6 11.4 5.6 11.4C6.8 11.4 9.4 11.4 11 9.6C12.6 11.4 15.2 11.4 16.4 11.4C19.4 11.4 21.4 9 21.4 6C21.4 3 19.4 0.6 16.4 0.6C15.2 0.6 12.6 0.6 11 2.4Z' fill='%23d9487a' stroke='%23c0426f' stroke-width='1'/%3E %3Cg fill='%233b1f5e'%3E%3Ccircle cx='5.8' cy='6' r='2.4'/%3E%3Ccircle cx='16.2' cy='6' r='2.4'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* The stains; on a slide with a background of its own, its text color */
+.deck-theme-cell.px-slide,
+.deck-theme-cell .px-slide { --cl-ink: #3b1f5e; --cl-muted: #6b5c80; --cl-eosin: #b8325f; --cl-dapi: #2457b8; }
+.deck-theme-cell.px-slide[data-own-background],
+.deck-theme-cell .px-slide[data-own-background] { --cl-ink: var(--px-text); --cl-muted: var(--px-text); --cl-eosin: var(--px-text); --cl-dapi: var(--px-text); }
+
+/* Headings: Merriweather, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-cell .px-text :is(h1, h2, h3) { letter-spacing: -0.012em !important; line-height: 1.16; }
+
+/* The membrane under content titles: a bilayer of heads and tails, a
+   protein across it, fading out at its end */
+.deck-theme-cell.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-cell .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: 18px;
+  margin-top: 0.32em;
+  background: var(--cl-protein) 66px 0 / 14px 18px no-repeat, var(--cl-bilayer) 0 2px / 8px 14px repeat-x;
+  -webkit-mask-image: linear-gradient(90deg, #000 72%, transparent);
+  mask-image: linear-gradient(90deg, #000 72%, transparent);
+}
+.deck-theme-cell [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; -webkit-mask-image: linear-gradient(90deg, transparent, #000 18% 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18% 82%, transparent); }
+.deck-theme-cell [data-placeholder=title] :is(h1, h2)[style*=right]::after { margin-left: auto; -webkit-mask-image: linear-gradient(270deg, #000 72%, transparent); mask-image: linear-gradient(270deg, #000 72%, transparent); }
+.deck-theme-cell.px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-cell .px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  background: currentColor;
+  -webkit-mask: var(--cl-bilayer-mask) 0 2px / 8px 14px repeat-x;
+  mask: var(--cl-bilayer-mask) 0 2px / 8px 14px repeat-x;
+}
+
+/* The title slide: the slide's frosted label at its left end, and a cell
+   in cross-section at its right, with the title and subtitle set at the
+   left beside it (their widths in percent, so text that shrinks to fit
+   still gets its room) */
+.deck-theme-cell.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-cell .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 260' width='320' height='260'%3E %3Cpath d='M160 8C232 6 300 46 310 116C320 188 262 248 176 252C92 256 18 214 10 138C2 62 82 10 160 8Z' fill='%23f6dbe6' stroke='%23c0426f' stroke-width='5'/%3E %3Cpath d='M160 8C232 6 300 46 310 116C320 188 262 248 176 252C92 256 18 214 10 138C2 62 82 10 160 8Z' fill='none' stroke='%23f6dbe6' stroke-width='1.6'/%3E %3Cpath d='M118 92C150 78 196 88 206 118C216 150 188 176 150 176C112 176 88 154 92 124C94 108 102 98 118 92Z' fill='%23d9cdea' stroke='%233b1f5e' stroke-width='3'/%3E %3Cg fill='%236a4c8f'%3E%3Ccircle cx='122' cy='112' r='3'/%3E%3Ccircle cx='176' cy='104' r='2.6'/%3E%3Ccircle cx='188' cy='140' r='3'/%3E%3Ccircle cx='118' cy='150' r='2.4'/%3E%3Ccircle cx='160' cy='164' r='2.6'/%3E%3Ccircle cx='136' cy='100' r='2'/%3E%3C/g%3E %3Ccircle cx='156' cy='130' r='13' fill='%233b1f5e'/%3E %3Cg fill='none' stroke='%238f78ad' stroke-width='3' stroke-linecap='round'%3E %3Cpath d='M216 104C232 112 230 128 242 134C254 140 252 156 264 162'/%3E %3Cpath d='M222 92C240 100 238 118 252 124C266 130 264 148 278 154'/%3E %3Cpath d='M210 120C222 128 220 140 230 146C240 152 238 166 250 172'/%3E%3C/g%3E %3Cg fill='%238f78ad'%3E%3Ccircle cx='231' cy='120' r='1.8'/%3E%3Ccircle cx='244' cy='112' r='1.8'/%3E%3Ccircle cx='258' cy='140' r='1.8'/%3E%3Ccircle cx='238' cy='150' r='1.8'/%3E%3Ccircle cx='270' cy='136' r='1.8'/%3E%3C/g%3E %3Cg stroke='%23c0426f' stroke-width='2.4' fill='%23f2bfd2'%3E %3Crect x='54' y='176' width='54' height='24' rx='12' transform='rotate(-18 81 188)'/%3E %3Crect x='206' y='196' width='50' height='22' rx='11' transform='rotate(12 231 207)'/%3E %3Crect x='70' y='62' width='44' height='20' rx='10' transform='rotate(-34 92 72)'/%3E%3C/g%3E %3Cg fill='none' stroke='%23c0426f' stroke-width='1.6' stroke-linejoin='round'%3E %3Cpath d='M62 192L68 182L74 194L80 182L86 194L92 182L98 190' transform='rotate(-18 81 188)'/%3E %3Cpath d='M212 208L218 200L224 212L230 200L236 212L242 200L248 208' transform='rotate(12 231 207)'/%3E %3Cpath d='M76 74L82 66L88 78L94 66L100 78L106 70' transform='rotate(-34 92 72)'/%3E%3C/g%3E %3Cg fill='none' stroke='%236a4c8f' stroke-width='3' stroke-linecap='round'%3E %3Cpath d='M150 204C162 212 182 212 194 204'/%3E%3Cpath d='M146 214C160 224 184 224 198 214'/%3E%3Cpath d='M152 224C164 232 180 232 192 224'/%3E%3C/g%3E %3Cg fill='%23d9487a'%3E%3Ccircle cx='206' cy='226' r='4'/%3E%3Ccircle cx='138' cy='232' r='3.4'/%3E%3Ccircle cx='50' cy='130' r='4'/%3E%3Ccircle cx='268' cy='70' r='3.6'/%3E%3Ccircle cx='60' cy='106' r='2.8'/%3E%3C/g%3E %3C/svg%3E") right 28px top 132px / 300px 244px no-repeat,
+    linear-gradient(#ddd2e4, #ddd2e4) 92px 0 / 1px 100% no-repeat,
+    repeating-linear-gradient(135deg, rgba(59, 31, 94, 0.07) 0 1px, transparent 1px 5px) 0 0 / 92px 100% no-repeat,
+    linear-gradient(#f0eaf2, #f0eaf2) 0 0 / 92px 100% no-repeat;
+}
+.deck-theme-cell.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-cell .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 1.9em; letter-spacing: -0.018em !important; line-height: 1.12; }
+.deck-theme-cell.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-cell .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 65%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-cell.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-cell .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 67%; text-align: left !important; }
+
+/* Subtitles: muted; on the title slide, the lines after the first smaller */
+.deck-theme-cell [data-placeholder=subtitle] :is(p, li) { color: var(--cl-muted) !important; }
+.deck-theme-cell.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-cell .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { font-size: 0.78em; }
+
+/* Section slides: fluorescence. A dark field with cells in three
+   channels, nuclei in blue, cytoplasm in green, puncta in magenta, kept to
+   the edges, and a scale bar */
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(5px 5px at 168px 384px, rgba(255, 110, 215, 0.95), transparent),
+    radial-gradient(4px 4px at 92px 452px, rgba(255, 110, 215, 0.9), transparent),
+    radial-gradient(5px 5px at 812px 140px, rgba(255, 110, 215, 0.95), transparent),
+    radial-gradient(4px 4px at 892px 62px, rgba(255, 110, 215, 0.9), transparent),
+    radial-gradient(4px 4px at 884px 430px, rgba(255, 110, 215, 0.85), transparent),
+    radial-gradient(40px 31px at 120px 420px, rgba(120, 165, 255, 0.95), rgba(60, 110, 255, 0.55) 55%, transparent),
+    radial-gradient(118px 92px at 128px 414px, transparent 38%, rgba(70, 215, 125, 0.3) 58%, rgba(70, 215, 125, 0.1) 84%, transparent),
+    radial-gradient(36px 30px at 850px 100px, rgba(120, 165, 255, 0.95), rgba(60, 110, 255, 0.55) 55%, transparent),
+    radial-gradient(110px 88px at 846px 104px, transparent 38%, rgba(70, 215, 125, 0.3) 58%, rgba(70, 215, 125, 0.1) 84%, transparent),
+    radial-gradient(30px 26px at 950px 400px, rgba(120, 165, 255, 0.8), rgba(60, 110, 255, 0.45) 55%, transparent),
+    radial-gradient(96px 84px at 948px 404px, transparent 38%, rgba(70, 215, 125, 0.24) 58%, rgba(70, 215, 125, 0.08) 84%, transparent),
+    radial-gradient(26px 22px at 24px 70px, rgba(120, 165, 255, 0.7), rgba(60, 110, 255, 0.4) 55%, transparent),
+    radial-gradient(84px 70px at 26px 72px, transparent 38%, rgba(70, 215, 125, 0.2) 58%, transparent),
+    #0d0b14;
+}
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background])::after,
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background])::after {
+  content: "10 \\00B5m";
+  position: absolute;
+  right: 44px;
+  bottom: 52px;
+  width: 64px;
+  padding-bottom: 5px;
+  border-bottom: 4px solid #ffffff;
+  color: #ffffff;
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #ece8f6 !important; }
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1 { color: #ffffff !important; }
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #c9c2e0 !important; }
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]) .px-text a,
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) .px-text a { color: #ff8cc6 !important; }
+.deck-theme-cell.px-slide[data-layout=section-header]:not([data-own-background]),
+.deck-theme-cell .px-slide[data-layout=section-header]:not([data-own-background]) { --cl-ink: #ece8f6; --cl-muted: #c9c2e0; --cl-eosin: #ff8cc6; --cl-dapi: #8fb3ff; }
+
+/* A Heading 4: a figure-panel label in small capitals, its bold words in
+   DAPI blue (Fig. 2B) */
+.deck-theme-cell .px-text h4 {
+  margin: 0 0 0.5em !important;
+  color: var(--cl-muted) !important;
+  font-family: 'Nunito Sans', sans-serif !important;
+  font-size: 0.54em;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.35;
+  text-transform: uppercase !important;
+}
+.deck-theme-cell .px-text h4 :is(strong, b) { color: var(--cl-dapi); font-weight: 800; }
+
+/* A Heading 6: a figure caption; its bold words (Figure 1.) in ink */
+.deck-theme-cell .px-text h6 {
+  margin: 0.2em 0 0.4em !important;
+  color: var(--cl-muted) !important;
+  font-family: 'Nunito Sans', sans-serif !important;
+  font-size: 0.6em;
+  font-weight: 400 !important;
+  line-height: 1.4;
+}
+.deck-theme-cell .px-text h6 :is(strong, b) { color: var(--cl-ink); font-weight: 800; }
+
+/* Bullets: cells, a nucleus in hematoxylin in eosin cytoplasm; under them,
+   mitochondria. Numbered lists count in Merriweather, in blue. */
+.deck-theme-cell .px-text :is(ul, ol) { display: block; }
+.deck-theme-cell .px-text ul { list-style: none; }
+.deck-theme-cell .px-text ul > li { position: relative; }
+.deck-theme-cell .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: 0.5em;
+  width: 0.44em;
+  height: 0.44em;
+  box-sizing: border-box;
+  border: 0.065em solid var(--cl-ink);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cl-ink) 0 0.075em, #f6dbe6 0.09em);
+}
+.deck-theme-cell .px-text ul ul > li::before {
+  top: 0.62em;
+  width: 0.52em;
+  height: 0.26em;
+  border: 0.06em solid #c0426f;
+  border-radius: 0.13em;
+  background: #f2bfd2;
+}
+.deck-theme-cell .px-text ol > li::marker { color: var(--cl-dapi); font-family: Merriweather, serif; font-size: 0.84em; font-weight: 700; }
+.deck-theme-cell.px-slide[data-own-background] .px-text ul > li::before,
+.deck-theme-cell .px-slide[data-own-background] .px-text ul > li::before { border-color: currentColor; background: radial-gradient(circle, currentColor 0 0.075em, transparent 0.09em); }
+.deck-theme-cell.px-slide[data-own-background] .px-text ul ul > li::before,
+.deck-theme-cell .px-slide[data-own-background] .px-text ul ul > li::before { border-color: currentColor; background: transparent; }
+
+/* Links: eosin */
+.deck-theme-cell .px-text a { color: var(--px-link, #b8325f) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: JetBrains Mono on a hematoxylin tint */
+.deck-theme-cell .px-text :not(pre) > code {
+  padding: 0.04em 0.3em;
+  border-radius: 3px;
+  background: #ede7f4 !important;
+  color: #2e1c45;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+}
+
+/* Quotes: a textbook box on an eosin tint, under an eosin rule; bold first
+   words are the box's title, on a line of their own */
+.deck-theme-cell .px-text blockquote {
+  margin: 0.15em 0 0.5em !important;
+  padding: 0.55em 0.8em 0.6em !important;
+  border: 0 !important;
+  border-top: 0.14em solid #d9487a !important;
+  border-radius: 0 0 0.2em 0.2em;
+  background: #fbecf2;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #2e1c45;
+  font-style: normal;
+}
+.deck-theme-cell .px-text blockquote :is(p, li) { color: #2e1c45 !important; }
+.deck-theme-cell .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.4em;
+  color: #a3325e;
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 0.62em;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.deck-theme-cell .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: JetBrains Mono on a hematoxylin tint with a DAPI edge, Cell's own
+   syntax colors whichever code theme the deck uses */
+.deck-theme-cell :is(pre, pre.hljs) {
+  background: #f3eff7 !important;
+  color: #2e1c45;
+  border: 0;
+  border-left: 3px solid #2457b8;
+  border-radius: 0 4px 4px 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-cell :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-cell pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-cell .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-cell pre [class*=hljs-] { color: #2e1c45; font-style: normal; font-weight: 400; }
+.deck-theme-cell pre :is(.hljs-comment, .hljs-quote) { color: #6b5c80; font-style: italic; }
+.deck-theme-cell pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #2457b8; font-weight: 600; }
+.deck-theme-cell pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #a3325e; }
+.deck-theme-cell pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #6a4c8f; }
+.deck-theme-cell pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #3b1f5e; font-weight: 700; }
+.deck-theme-cell pre :is(.hljs-meta, .hljs-deletion) { color: #6b5c80; }
+
+/* Tables: a journal table, an ink rule above, the header row on a
+   hematoxylin tint, hairlines, tabular figures */
+.deck-theme-cell table { border: 0 !important; border-top: 2px solid #3b1f5e !important; border-bottom: 2px solid #3b1f5e !important; background: transparent; }
+.deck-theme-cell table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #e2d8ea !important;
+  background: transparent !important;
+  color: #2e1c45 !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-cell table tr:first-child :is(td, th) {
+  border-bottom: 1px solid #3b1f5e !important;
+  background: #ede7f4 !important;
+  color: #3b1f5e !important;
+  font-family: 'Nunito Sans', sans-serif;
+  font-weight: 800;
+}
+.deck-theme-cell.px-slide[data-own-background] table,
+.deck-theme-cell .px-slide[data-own-background] table { border-color: var(--px-text) !important; }
+.deck-theme-cell.px-slide[data-own-background] table :is(td, th),
+.deck-theme-cell .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; }
+
+/* The Big Number: Merriweather in hematoxylin; its unit (inline code or
+   italic words in it) a scale bar under the figure, the unit under the bar */
+.deck-theme-cell.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-cell .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #3b1f5e) !important;
+  font-family: Merriweather, serif !important;
+  font-weight: 900;
+  letter-spacing: -0.02em !important;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-cell.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-cell .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: block;
+  width: fit-content;
+  min-width: 5.5em;
+  margin: 0.25em 0 0;
+  padding: 0.35em 0 0 !important;
+  border: 0 !important;
+  border-top: 0.42em solid var(--cl-ink) !important;
+  border-radius: 0 !important;
+  background: none !important;
+  color: var(--cl-ink);
+  font-family: 'Nunito Sans', sans-serif !important;
+  font-size: 0.17em;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: center;
+}
+.deck-theme-cell.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center] :is(code, em),
+.deck-theme-cell .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center] :is(code, em) { margin-inline: auto; }
+.deck-theme-cell.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] :is(code, em),
+.deck-theme-cell .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] :is(code, em) { margin-left: auto; }
+
+/* The footer: Nunito Sans. With its sections in sequence, it is the cell
+   cycle: a cell before each phase, filled for those done, a dividing cell
+   in eosin for the current one, outlined for those to come. (The class
+   and the slide both named, to outweigh the presented deck's footer
+   rules.) */
+.deck-theme-cell.px-slide .px-footer,
+.deck-theme-cell .px-slide .px-footer { padding-inline: 14px !important; color: var(--cl-muted) !important; }
+.deck-theme-cell.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-cell .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--cl-muted) !important;
+  font-family: 'Nunito Sans', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+.deck-theme-cell.px-slide .px-footer .px-footer-page,
+.deck-theme-cell .px-slide .px-footer .px-footer-page { color: var(--cl-ink) !important; font-weight: 800 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-cell.px-slide .px-footer .px-footer-sections,
+.deck-theme-cell .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 0; }
+.deck-theme-cell.px-slide .px-footer .px-footer-section,
+.deck-theme-cell .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; }
+.deck-theme-cell.px-slide .px-footer .px-footer-section::before,
+.deck-theme-cell .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.4px solid var(--cl-muted);
+  border-radius: 50%;
+}
+.deck-theme-cell.px-slide .px-footer .px-footer-section:not(:last-child)::after,
+.deck-theme-cell .px-slide .px-footer .px-footer-section:not(:last-child)::after {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 0;
+  margin: 0 8px 0 2px;
+  border-top: 1.4px dotted var(--cl-muted);
+  opacity: 0.7;
+}
+.deck-theme-cell.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-cell .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--cl-ink) !important; }
+.deck-theme-cell.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-cell .px-slide .px-footer .px-footer-section[data-state=past]::before { border-color: var(--cl-ink); background: var(--cl-ink); }
+.deck-theme-cell.px-slide .px-footer .px-footer-section[data-state=past]:not(:last-child)::after,
+.deck-theme-cell .px-slide .px-footer .px-footer-section[data-state=past]:not(:last-child)::after { border-top-style: solid; border-color: var(--cl-ink); opacity: 1; }
+.deck-theme-cell.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-cell .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--cl-eosin) !important; font-weight: 800 !important; }
+.deck-theme-cell.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-cell .px-slide .px-footer .px-footer-section[data-state=current]::before {
+  width: 20px;
+  height: 11px;
+  border: 0;
+  border-radius: 0;
+  background: var(--cl-dividing) center / 20px 11px no-repeat;
+}
+
+/* ...and on a slide with a background of its own, in its text color */
+.deck-theme-cell.px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-cell .px-slide[data-own-background] .px-footer .px-footer-section[data-state=current]::before { background: currentColor; -webkit-mask: var(--cl-dividing) center / 20px 11px no-repeat; mask: var(--cl-dividing) center / 20px 11px no-repeat; }
+.deck-theme-cell.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-cell .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the membrane under the title */
+.deck-theme-cell .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 76px;
+  height: 9px;
+  margin: 4px auto 0;
+  background: var(--cl-protein) 24px 0 / 7px 9px no-repeat, var(--cl-bilayer) 0 1px / 4px 7px repeat-x;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
