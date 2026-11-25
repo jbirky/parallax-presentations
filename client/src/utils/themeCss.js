@@ -34,8 +34,9 @@ import valence from '../themes/valence.css?raw'
 import quadrille from '../themes/quadrille.css?raw'
 import inspiral from '../themes/inspiral.css?raw'
 import parti from '../themes/parti.css?raw'
+import downforce from '../themes/downforce.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence, quadrille, inspiral, parti }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence, quadrille, inspiral, parti, downforce }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

@@ -266,6 +266,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
         <option value="Lexend, sans-serif">Lexend</option>
         <option value="Archivo, sans-serif">Archivo</option>
+        <option value="Saira, sans-serif">Saira</option>
       </optgroup>
       <optgroup label="Rounded">
         <option value="Comfortaa, sans-serif">Comfortaa</option>
@@ -293,6 +294,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
       <optgroup label="Monospace">
         <option value="'Courier New', monospace">Courier New</option>
         <option value="'Courier Prime', monospace">Courier Prime</option>
+        <option value="'Martian Mono', monospace">Martian Mono</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
         <option value="'DM Mono', monospace">DM Mono</option>

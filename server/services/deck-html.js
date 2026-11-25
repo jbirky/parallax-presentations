@@ -6499,7 +6499,8 @@ var THEME_LIST = [
   { id: "valence", label: "Valence", background: "#f7f9fb", backgroundCss: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 34.64 60%27 width=%2734.64%27 height=%2760%27%3E%3Cpath d=%27M-8.66 10L8.66 20M-8.66 50L8.66 40M8.66 20L8.66 40M8.66 20L25.98 10M8.66 40L25.98 50M25.98 -10L25.98 10M25.98 10L43.3 20M25.98 50L25.98 70M25.98 50L43.3 40%27 fill=%27none%27 stroke=%27%23e1e7ee%27 stroke-width=%271%27/%3E%3C/svg%3E') 0 0 / 3.6084% 11.1111%, #f7f9fb", text: "#1f262e", heading: "#1f262e", link: "#2a5bd7", accent: "#c8362b", dark: false, reveal: "white", font: "'Didact Gothic', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'M PLUS Rounded 1c', sans-serif", headingWeight: 700 }, note: "Introductory chemistry on hexagonal graph paper: protons red with a plus, neutrons gray, electrons blue with a minus; a Bohr atom on the title slide, the periodic table behind section titles, element-tile kickers and an orbital-box footer, in M PLUS Rounded 1c and Didact Gothic" },
   { id: "quadrille", label: "Quadrille", background: "#fcfdfe", backgroundCss: "linear-gradient(#bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(90deg, #bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(#dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, linear-gradient(90deg, #dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, #fcfdfe", text: "#262b35", heading: "#1b2230", link: "#1f62c4", accent: "#cc2f24", dark: false, reveal: "white", font: "Lexend, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Lexend, sans-serif", headingWeight: 600 }, note: "High school geometry on graph paper: a ruler under titles, a protractor title, coordinate-plane sections, theorem boxes, two-column proofs, a number-line footer" },
   { id: "inspiral", label: "Inspiral", background: "#f8f9fb", text: "#1d2433", heading: "#101828", link: "#0072b2", accent: "#b14d00", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Questrial, sans-serif", headingWeight: 400 }, note: "Gravitational waves: black holes spiraling in a spacetime funnel on the title slide, moving when presented; a strain trace under titles, spectrogram section slides, a chirp footer" },
-  { id: "parti", label: "Parti", background: "#f5f5f2", text: "#1f1f1e", heading: "#111110", link: "#c92a2a", accent: "#c92a2a", dark: false, reveal: "white", font: "Archivo, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Archivo, sans-serif", headingWeight: 700 }, note: "Architecture as drawing sheets: drawing titles, a title block and massing sketch, structural-grid sections, revision clouds, keynotes, schedules" }
+  { id: "parti", label: "Parti", background: "#f5f5f2", text: "#1f1f1e", heading: "#111110", link: "#c92a2a", accent: "#c92a2a", dark: false, reveal: "white", font: "Archivo, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Archivo, sans-serif", headingWeight: 700 }, note: "Architecture as drawing sheets: drawing titles, a title block and massing sketch, structural-grid sections, revision clouds, keynotes, schedules" },
+  { id: "downforce", label: "Downforce", background: "#0f1115", backgroundCss: "radial-gradient(118% 115% at 88% -12%, #1c2232 0%, rgba(15, 17, 21, 0) 62%), #0f1115", text: "#e8ebf0", heading: "#ffffff", link: "#ff5a4f", accent: "#b98cff", dark: true, reveal: "black", font: "Saira, sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Saira, sans-serif", headingWeight: 700 }, note: "Race-car engineering as a timing screen: kerbs under titles, a circuit in sectors, start lights for sections, radio-message quotes, a sector footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -36219,8 +36220,408 @@ var parti_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/downforce.css
+var downforce_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Downforce theme's stylesheet: race-car engineering, drawn as a
+   timing screen. Dark, because the screens a pit wall and a broadcast read
+   lap times from are dark and their colors carry meaning only on dark: an
+   asphalt base (#0f1115) under a faint glow, panels a step lighter
+   (#181b21) with hairline borders, white headings and #e8ebf0 text. The
+   colors are the timing screen's: purple (#b98cff) is the fastest, so it
+   marks what's current; green (#3ddc84) is done or improved; yellow
+   (#ffd23f) is slower; a racing red (#ff5a4f) for links and the kerbs.
+   Every text color is 6:1 or more on the base. Headings and text in Saira,
+   a little wide; numbers and readouts in Martian Mono (utils/themes.js:
+   the fonts and the text sizes, which the Themes panel's Text tab can
+   change).
+
+   It's scoped to .deck-theme-downforce, a class on the editor's canvas
+   and thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's black theme.
+
+   Under titles is a kerb, red and white. The title slide has a made-up
+   circuit at its right: three sectors in the timing colors, turn numbers,
+   the start line, a DRS zone and a car. Section slides are the start:
+   five lights lit on a gantry, a chequered band fading in above the foot.
+   A Heading 4 is a timing chip, its bold words a purple tag (S2 · Aero);
+   a Heading 6 a caption in mono. Bullets are red speed stripes; numbered
+   lists are positions on a timing tower; inline code is a telemetry
+   readout. A quote is a radio message, its bold first words the speaker.
+   Tables are timing tables. The Big Number is a speed readout, its unit a
+   red chip. With the footer's sections in sequence, the footer is the
+   lap's sectors: done green, the current one purple, those to come gray. */
+
+/* reveal.js: links, the arrows and the progress bar */
+.deck-theme-downforce {
+  --r-background-color: #0f1115;
+  --r-main-color: #e8ebf0;
+  --r-heading-color: #ffffff;
+  --r-link-color: #ff5a4f;
+  --r-link-color-dark: #ff8a82;
+  --r-link-color-hover: #ffffff;
+  --r-selection-background-color: #5b3fa0;
+  --r-selection-color: #ffffff;
+  --df-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 16' width='34' height='16'%3E%3Cpath d='M1.5 6v4M4.3 3.5v9M7.1 1v14M9.9 4.5v7M12.7 2.5v11M15.5 0v16M18.3 4v8M21.1 2v12M23.9 5.5v5M26.7 3v10M29.5 5v6M32.3 6.5v3' stroke='%23000' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* The glow on presented slides that show the theme's page (the editor and
+   the PDF draw it from the theme's backgroundCss) */
+.deck-theme-downforce .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: radial-gradient(1100px 620px at 88% -12%, #1c2232 0%, rgba(15, 17, 21, 0) 62%), #0f1115;
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-downforce.px-slide,
+.deck-theme-downforce .px-slide { --df-ink: #ffffff; --df-text: #e8ebf0; --df-muted: #9aa2ad; --df-red: #ff5a4f; --df-purple: #b98cff; --df-green: #3ddc84; --df-pale: #3a404a; --df-panel: #181b21; --df-line: #2a2f38; }
+.deck-theme-downforce.px-slide[data-own-background],
+.deck-theme-downforce .px-slide[data-own-background] { --df-ink: var(--px-text); --df-text: var(--px-text); --df-muted: var(--px-text); --df-red: var(--px-text); --df-purple: var(--px-text); --df-green: var(--px-text); --df-pale: var(--px-text); --df-panel: transparent; --df-line: var(--px-text); }
+
+/* Headings: Saira, a little wide and tight. (!important: presented decks
+   set headings' spacing with it.) */
+.deck-theme-downforce .px-text :is(h1, h2, h3) { font-stretch: 112%; letter-spacing: -0.015em !important; line-height: 1.06; }
+
+/* A kerb under titles: red and white blocks, cut at a slant. Not on
+   section slides, Big Numbers or blank ones. */
+.deck-theme-downforce.px-slide:not([data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-downforce .px-slide:not([data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 252px;
+  max-width: 100%;
+  height: 8px;
+  margin-top: 0.24em;
+  background: repeating-linear-gradient(90deg, #ff3b30 0 18px, #f2f3f5 18px 36px);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+.deck-theme-downforce [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; }
+.deck-theme-downforce [data-placeholder=title] :is(h1, h2)[style*=right]::after { margin-left: auto; }
+.deck-theme-downforce.px-slide[data-own-background] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-downforce .px-slide[data-own-background] [data-placeholder=title] :is(h1, h2)::after { background: repeating-linear-gradient(90deg, currentColor 0 18px, transparent 18px 36px); }
+
+/* The title slide: a circuit at its right, the title and subtitle at the
+   left beside it (their widths in percent, so text that shrinks to fit
+   still gets its room) */
+.deck-theme-downforce.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-downforce .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 300' width='420' height='300'%3E%3Cpath d='M70 246L78.1 247.9L88.4 249.4L100.4 250.5L113.8 251.3L128.1 251.8L143 252L158 252.1L172.8 252.1L186.9 252L200 252L212.6 252L225.5 251.9L238.5 251.6L251.4 251.3L264.1 250.9L276.4 250.3L288.1 249.5L299.1 248.5L309.1 247.4L318 246L325.8 244.4L332.8 242.6L338.9 240.6L344.3 238.5L349 236.1L353.2 233.6L356.9 230.9L360.2 228.1L363.2 225.1L366 222L368.5 218.6L370.5 214.7L372.1 210.6L373.3 206.3L374.1 201.9L374.5 197.5L374.5 193.2L374 189.1L373.2 185.3L372 182L370.3 178.9L368.2 176L365.6 173.1L362.6 170.5L359.2 168L355.5 165.8L351.5 163.8L347.2 162.2L342.7 160.9L338 160L332.8 159.7L327 160.2L320.8 161.1L314.2 162.5L307.4 164L300.6 165.5L293.9 166.9L287.4 167.8L281.4 168.3L276 168L270.9 167.1L265.7 165.8L260.7 164.1L255.8 162.1L251.2 159.9L247.1 157.4L243.3 154.7L240.2 151.9L237.7 149L236 146L235 142.7L234.4 139L234.4 135L234.9 130.8L236 126.5L237.6 122.2L239.8 118.1L242.6 114.3L246 110.9L250 108L255 105.7L261 103.9L268 102.5L275.7 101.3L283.8 100.4L292 99.5L300.2 98.5L308.1 97.3L315.4 95.9L322 94L328.2 91.8L334.5 89.4L340.8 86.8L346.9 84.1L352.8 81.2L358.1 78.3L362.8 75.3L366.8 72.2L369.9 69.1L372 66L373.1 62.7L373.5 59.1L373.2 55.2L372.1 51.3L370.4 47.4L368 43.6L364.9 40L361.2 36.8L356.9 34.1L352 32L346.3 30.4L339.5 29.3L331.9 28.6L323.7 28.2L314.9 28.1L305.7 28.3L296.2 28.6L286.7 29L277.3 29.5L268 30L258.6 30.6L248.7 31.3L238.4 32.2L228 33.2L217.5 34.4L207.1 35.7L197 37.1L187.4 38.6L178.3 40.3L170 42L162.3 43.9L155 45.8L148.1 47.9L141.5 50.1L135.4 52.4L129.6 54.8L124.2 57.4L119.1 60.1L114.4 63L110 66L105.9 69.2L102 72.7L98.4 76.4L95.1 80.2L92.2 84.1L89.8 88.1L88 92.2L86.6 96.2L86 100.1L86 104L87.1 107.8L89.6 111.5L93 115.3L97.1 119L101.5 122.8L106 126.5L110.2 130.3L113.8 134.1L116.5 138L118 142L118.5 146.1L118.3 150.4L117.5 154.9L116.2 159.4L114.5 163.9L112.4 168.3L110.1 172.6L107.5 176.7L104.8 180.5L102 184L98.8 187.1L94.8 189.7L90.3 192.1L85.4 194.2L80.5 196.2L75.7 198.3L71.2 200.3L67.3 202.6L64.2 205.1L62 208L60.3 211.4L58.6 215.2L57 219.4L55.9 223.7L55.4 228.1L55.7 232.4L57.1 236.5L59.8 240.2L64 243.4L70 246Z' fill='none' stroke='%232b3038' stroke-width='13' stroke-linejoin='round'/%3E%3Cpath d='M70 246L78.1 247.9L88.4 249.4L100.4 250.5L113.8 251.3L128.1 251.8L143 252L158 252.1L172.8 252.1L186.9 252L200 252L212.6 252L225.5 251.9L238.5 251.6L251.4 251.3L264.1 250.9L276.4 250.3L288.1 249.5L299.1 248.5L309.1 247.4L318 246L325.8 244.4L332.8 242.6L338.9 240.6L344.3 238.5L349 236.1L353.2 233.6L356.9 230.9L360.2 228.1L363.2 225.1L366 222L368.5 218.6L370.5 214.7L372.1 210.6L373.3 206.3L374.1 201.9L374.5 197.5L374.5 193.2L374 189.1L373.2 185.3L372 182L370.3 178.9L368.2 176L365.6 173.1L362.6 170.5L359.2 168L355.5 165.8L351.5 163.8L347.2 162.2L342.7 160.9L338 160L332.8 159.7L327 160.2L320.8 161.1L314.2 162.5L307.4 164L300.6 165.5L293.9 166.9L287.4 167.8L281.4 168.3L276 168L270.9 167.1L265.7 165.8L260.7 164.1L255.8 162.1L251.2 159.9L247.1 157.4L243.3 154.7L240.2 151.9L237.7 149L236 146L235 142.7L234.4 139L234.4 135L234.9 130.8L236 126.5L237.6 122.2L239.8 118.1L242.6 114.3L246 110.9L250 108L255 105.7L261 103.9L268 102.5L275.7 101.3L283.8 100.4L292 99.5L300.2 98.5L308.1 97.3L315.4 95.9L322 94L328.2 91.8L334.5 89.4L340.8 86.8L346.9 84.1L352.8 81.2L358.1 78.3L362.8 75.3L366.8 72.2L369.9 69.1L372 66L373.1 62.7L373.5 59.1L373.2 55.2L372.1 51.3L370.4 47.4L368 43.6L364.9 40L361.2 36.8L356.9 34.1L352 32L346.3 30.4L339.5 29.3L331.9 28.6L323.7 28.2L314.9 28.1L305.7 28.3L296.2 28.6L286.7 29L277.3 29.5L268 30L258.6 30.6L248.7 31.3L238.4 32.2L228 33.2L217.5 34.4L207.1 35.7L197 37.1L187.4 38.6L178.3 40.3L170 42L162.3 43.9L155 45.8L148.1 47.9L141.5 50.1L135.4 52.4L129.6 54.8L124.2 57.4L119.1 60.1L114.4 63L110 66L105.9 69.2L102 72.7L98.4 76.4L95.1 80.2L92.2 84.1L89.8 88.1L88 92.2L86.6 96.2L86 100.1L86 104L87.1 107.8L89.6 111.5L93 115.3L97.1 119L101.5 122.8L106 126.5L110.2 130.3L113.8 134.1L116.5 138L118 142L118.5 146.1L118.3 150.4L117.5 154.9L116.2 159.4L114.5 163.9L112.4 168.3L110.1 172.6L107.5 176.7L104.8 180.5L102 184L98.8 187.1L94.8 189.7L90.3 192.1L85.4 194.2L80.5 196.2L75.7 198.3L71.2 200.3L67.3 202.6L64.2 205.1L62 208L60.3 211.4L58.6 215.2L57 219.4L55.9 223.7L55.4 228.1L55.7 232.4L57.1 236.5L59.8 240.2L64 243.4L70 246Z' fill='none' stroke='%234a525e' stroke-width='1' stroke-linejoin='round'/%3E%3Cpath d='M70 246L78.1 247.9L88.4 249.4L100.4 250.5L113.8 251.3L128.1 251.8L143 252L158 252.1L172.8 252.1L186.9 252L200 252L212.6 252L225.5 251.9L238.5 251.6L251.4 251.3L264.1 250.9L276.4 250.3L288.1 249.5L299.1 248.5L309.1 247.4L318 246L325.8 244.4L332.8 242.6L338.9 240.6L344.3 238.5L349 236.1L353.2 233.6L356.9 230.9L360.2 228.1L363.2 225.1L366 222L368.5 218.6L370.5 214.7L372.1 210.6L373.3 206.3L374.1 201.9L374.5 197.5L374.5 193.2L374 189.1L373.2 185.3L372 182L370.3 178.9L368.2 176L365.6 173.1L362.6 170.5L359.2 168L355.5 165.8L351.5 163.8L347.2 162.2L342.7 160.9L338 160L332.8 159.7L327 160.2' fill='none' stroke='%23ffd23f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M320.8 161.1L314.2 162.5L307.4 164L300.6 165.5L293.9 166.9L287.4 167.8L281.4 168.3L276 168L270.9 167.1L265.7 165.8L260.7 164.1L255.8 162.1L251.2 159.9L247.1 157.4L243.3 154.7L240.2 151.9L237.7 149L236 146L235 142.7L234.4 139L234.4 135L234.9 130.8L236 126.5L237.6 122.2L239.8 118.1L242.6 114.3L246 110.9L250 108L255 105.7L261 103.9L268 102.5L275.7 101.3L283.8 100.4L292 99.5L300.2 98.5L308.1 97.3L315.4 95.9L322 94L328.2 91.8L334.5 89.4L340.8 86.8L346.9 84.1L352.8 81.2L358.1 78.3L362.8 75.3L366.8 72.2L369.9 69.1L372 66L373.1 62.7L373.5 59.1L373.2 55.2L372.1 51.3L370.4 47.4L368 43.6L364.9 40L361.2 36.8L356.9 34.1L352 32L346.3 30.4L339.5 29.3L331.9 28.6L323.7 28.2L314.9 28.1L305.7 28.3L296.2 28.6L286.7 29L277.3 29.5L268 30' fill='none' stroke='%233ddc84' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M322.8 170.9L318.8 151.3' stroke='%23ffffff' stroke-width='1.6'/%3E%3Cpath d='M258.6 30.6L248.7 31.3L238.4 32.2L228 33.2L217.5 34.4L207.1 35.7L197 37.1L187.4 38.6L178.3 40.3L170 42L162.3 43.9L155 45.8L148.1 47.9L141.5 50.1L135.4 52.4L129.6 54.8L124.2 57.4L119.1 60.1L114.4 63L110 66L105.9 69.2L102 72.7L98.4 76.4L95.1 80.2L92.2 84.1L89.8 88.1L88 92.2L86.6 96.2L86 100.1L86 104L87.1 107.8L89.6 111.5L93 115.3L97.1 119L101.5 122.8L106 126.5L110.2 130.3L113.8 134.1L116.5 138L118 142L118.5 146.1L118.3 150.4L117.5 154.9L116.2 159.4L114.5 163.9L112.4 168.3L110.1 172.6L107.5 176.7L104.8 180.5L102 184L98.8 187.1L94.8 189.7L90.3 192.1L85.4 194.2L80.5 196.2L75.7 198.3L71.2 200.3L67.3 202.6L64.2 205.1L62 208L60.3 211.4L58.6 215.2L57 219.4L55.9 223.7L55.4 228.1L55.7 232.4L57.1 236.5L59.8 240.2L64 243.4L70 246' fill='none' stroke='%23b98cff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M259.3 40.6L257.9 20.6' stroke='%23ffffff' stroke-width='1.6'/%3E%3Cpath d='M71.3 239.1L68.7 252.9' stroke='%23ffffff' stroke-width='6'/%3E%3Cpath d='M68.2 239.1l2.9 0.6l-0.6 3.2l-2.9 -0.6ZM67.1 245.4l2.9 0.6l-0.6 3.2l-2.9 -0.6ZM70.6 242.8l2.9 0.6l-0.6 3.2l-2.9 -0.6ZM69.4 249.2l2.9 0.6l-0.6 3.2l-2.9 -0.6Z' fill='%230f1115'/%3E%3Cpath d='M100.4 263.5L113.8 264.3L128.1 264.8L143 265L158 265.1L172.8 265.1L186.9 265L200 265L212.6 265L225.5 264.9L238.5 264.6L251.4 264.3L264.1 263.9' fill='none' stroke='%233ddc84' stroke-width='2' stroke-dasharray='6 4' stroke-linecap='round'/%3E%3Ccircle cx='392.3' cy='191.2' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='357.7' cy='163.3' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='251.6' cy='163.3' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='254.7' cy='92.9' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='389.6' cy='56.5' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='66.7' cy='98.9' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='98' cy='142' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='83' cy='190.2' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Ccircle cx='39.6' cy='246.1' r='7' fill='%230f1115' stroke='%234a525e' stroke-width='1'/%3E%3Cpath d='M265.2 222.7L265.2 224.3Q264.6 224 264.1 223.9Q263.5 223.7 263 223.7Q262.3 223.7 262 223.9Q261.7 224.1 261.7 224.5Q261.7 224.8 261.9 225Q262.1 225.1 262.7 225.2L263.5 225.4Q264.7 225.6 265.2 226.1Q265.7 226.6 265.7 227.6Q265.7 228.8 265 229.4Q264.3 229.9 262.8 229.9Q262.1 229.9 261.4 229.8Q260.7 229.7 260 229.4L260 227.8Q260.7 228.2 261.4 228.4Q262 228.6 262.6 228.6Q263.3 228.6 263.6 228.4Q263.9 228.2 263.9 227.8Q263.9 227.4 263.7 227.3Q263.5 227.1 262.8 226.9L262.1 226.8Q261 226.5 260.5 226Q260 225.5 260 224.6Q260 223.6 260.7 223Q261.4 222.4 262.7 222.4Q263.3 222.4 263.9 222.5Q264.6 222.6 265.2 222.7ZM267.6 228.5L269.3 228.5L269.3 223.8L267.6 224.1L267.6 222.9L269.3 222.5L271.1 222.5L271.1 228.5L272.7 228.5L272.7 229.8L267.6 229.8L267.6 228.5Z' fill='%23ffd23f'/%3E%3Cpath d='M291.6 104.8L291.6 106.3Q291 106 290.4 105.9Q289.9 105.8 289.3 105.8Q288.7 105.8 288.4 105.9Q288 106.1 288 106.5Q288 106.8 288.2 107Q288.5 107.1 289 107.3L289.8 107.4Q291.1 107.7 291.6 108.2Q292.1 108.7 292.1 109.6Q292.1 110.8 291.4 111.4Q290.6 112 289.2 112Q288.5 112 287.8 111.8Q287.1 111.7 286.4 111.4L286.4 109.9Q287.1 110.2 287.7 110.4Q288.4 110.6 289 110.6Q289.6 110.6 289.9 110.4Q290.3 110.2 290.3 109.8Q290.3 109.5 290 109.3Q289.8 109.1 289.2 108.9L288.4 108.8Q287.3 108.6 286.8 108Q286.3 107.5 286.3 106.7Q286.3 105.6 287 105Q287.7 104.4 289 104.4Q289.7 104.4 290.3 104.5Q290.9 104.6 291.6 104.8ZM295.7 110.4L298.9 110.4L298.9 111.8L293.6 111.8L293.6 110.4L296.3 108.1Q296.6 107.8 296.8 107.5Q297 107.2 297 106.8Q297 106.3 296.6 106Q296.3 105.7 295.7 105.7Q295.3 105.7 294.7 105.9Q294.2 106.1 293.6 106.4L293.6 104.8Q294.3 104.6 294.9 104.5Q295.5 104.4 296.1 104.4Q297.4 104.4 298.1 105Q298.9 105.6 298.9 106.6Q298.9 107.2 298.5 107.7Q298.2 108.2 297.2 109.1L295.7 110.4Z' fill='%233ddc84'/%3E%3Cpath d='M110.4 100.5L110.4 102Q109.8 101.8 109.2 101.6Q108.6 101.5 108.1 101.5Q107.4 101.5 107.1 101.7Q106.8 101.9 106.8 102.2Q106.8 102.5 107 102.7Q107.2 102.9 107.8 103L108.6 103.1Q109.8 103.4 110.3 103.9Q110.9 104.4 110.9 105.3Q110.9 106.5 110.1 107.1Q109.4 107.7 107.9 107.7Q107.3 107.7 106.6 107.6Q105.9 107.4 105.2 107.2L105.2 105.6Q105.9 105.9 106.5 106.1Q107.2 106.3 107.8 106.3Q108.4 106.3 108.7 106.1Q109 105.9 109 105.5Q109 105.2 108.8 105Q108.6 104.8 107.9 104.7L107.2 104.5Q106.1 104.3 105.6 103.8Q105.1 103.3 105.1 102.4Q105.1 101.3 105.8 100.7Q106.5 100.1 107.8 100.1Q108.4 100.1 109.1 100.2Q109.7 100.3 110.4 100.5ZM116.2 103.6Q117 103.8 117.4 104.3Q117.7 104.7 117.7 105.5Q117.7 106.6 116.9 107.1Q116.1 107.7 114.5 107.7Q113.9 107.7 113.4 107.6Q112.8 107.5 112.3 107.3L112.3 105.9Q112.8 106.1 113.3 106.3Q113.8 106.4 114.3 106.4Q115.1 106.4 115.5 106.1Q115.9 105.9 115.9 105.4Q115.9 104.9 115.5 104.7Q115 104.4 114.3 104.4L113.5 104.4L113.5 103.2L114.3 103.2Q115 103.2 115.3 103Q115.7 102.7 115.7 102.3Q115.7 101.9 115.4 101.6Q115 101.4 114.4 101.4Q114 101.4 113.5 101.5Q113 101.6 112.6 101.8L112.6 100.4Q113.1 100.3 113.7 100.2Q114.2 100.1 114.7 100.1Q116.2 100.1 116.9 100.6Q117.6 101.1 117.6 102Q117.6 102.6 117.2 103Q116.9 103.4 116.2 103.6Z' fill='%23b98cff'/%3E%3Cpath d='M179.4 273L179.4 276.8L179.9 276.8Q180.9 276.8 181.4 276.3Q182 275.9 182 274.9Q182 274 181.4 273.5Q180.9 273 179.9 273L179.4 273ZM177.8 271.8L179.5 271.8Q180.9 271.8 181.6 272Q182.3 272.2 182.7 272.7Q183.2 273.1 183.4 273.7Q183.6 274.2 183.6 274.9Q183.6 275.6 183.4 276.2Q183.2 276.7 182.7 277.1Q182.3 277.6 181.6 277.8Q180.9 278 179.5 278L177.8 278L177.8 271.8ZM187.1 274.6Q187.6 274.6 187.8 274.4Q188 274.2 188 273.8Q188 273.4 187.8 273.2Q187.6 273 187.1 273L186.4 273L186.4 274.6L187.1 274.6ZM186.4 275.7L186.4 278L184.8 278L184.8 271.8L187.3 271.8Q188.5 271.8 189.1 272.2Q189.6 272.7 189.6 273.5Q189.6 274.2 189.3 274.6Q189 274.9 188.4 275.1Q188.8 275.2 189 275.5Q189.3 275.7 189.6 276.3L190.4 278L188.7 278L188 276.5Q187.7 276 187.5 275.9Q187.3 275.7 186.9 275.7L186.4 275.7ZM195.7 272L195.7 273.3Q195.2 273.1 194.7 273Q194.2 272.9 193.8 272.9Q193.2 272.9 192.9 273Q192.7 273.2 192.7 273.5Q192.7 273.8 192.8 273.9Q193 274.1 193.5 274.2L194.2 274.3Q195.2 274.5 195.7 274.9Q196.1 275.3 196.1 276.1Q196.1 277.1 195.5 277.7Q194.9 278.2 193.6 278.2Q193 278.2 192.4 278Q191.9 277.9 191.3 277.7L191.3 276.4Q191.9 276.7 192.4 276.8Q193 277 193.5 277Q194 277 194.3 276.8Q194.6 276.6 194.6 276.3Q194.6 276 194.4 275.9Q194.2 275.7 193.6 275.6L193 275.5Q192.1 275.3 191.6 274.8Q191.2 274.4 191.2 273.6Q191.2 272.7 191.8 272.2Q192.4 271.7 193.5 271.7Q194 271.7 194.6 271.8Q195.1 271.9 195.7 272ZM390.4 192.9L391.7 192.9L391.7 189.4L390.4 189.6L390.4 188.7L391.7 188.4L393 188.4L393 192.9L394.3 192.9L394.3 193.9L390.4 193.9L390.4 192.9ZM357.3 165L359.7 165L359.7 166L355.7 166L355.7 165L357.7 163.2Q358 163 358.1 162.7Q358.3 162.5 358.3 162.3Q358.3 161.9 358 161.6Q357.7 161.4 357.3 161.4Q357 161.4 356.6 161.6Q356.2 161.7 355.8 162L355.8 160.8Q356.2 160.6 356.7 160.5Q357.2 160.4 357.6 160.4Q358.6 160.4 359.1 160.9Q359.7 161.3 359.7 162.1Q359.7 162.5 359.4 162.9Q359.2 163.3 358.5 164L357.3 165ZM252.6 163.1Q253.1 163.2 253.4 163.6Q253.7 163.9 253.7 164.5Q253.7 165.3 253.1 165.7Q252.4 166.2 251.3 166.2Q250.8 166.2 250.4 166.1Q250 166 249.6 165.9L249.6 164.8Q250 165 250.4 165.1Q250.7 165.2 251.1 165.2Q251.7 165.2 252 165Q252.3 164.8 252.3 164.4Q252.3 164.1 252 163.9Q251.7 163.7 251.1 163.7L250.5 163.7L250.5 162.8L251.1 162.8Q251.6 162.8 251.9 162.6Q252.2 162.4 252.2 162.1Q252.2 161.8 251.9 161.6Q251.6 161.4 251.2 161.4Q250.8 161.4 250.5 161.5Q250.2 161.6 249.8 161.7L249.8 160.7Q250.2 160.6 250.6 160.5Q251 160.5 251.4 160.5Q252.5 160.5 253 160.8Q253.6 161.2 253.6 161.9Q253.6 162.4 253.3 162.7Q253.1 163 252.6 163.1ZM254.9 91.3L253.3 93.6L254.9 93.6L254.9 91.3ZM254.6 90.1L256.2 90.1L256.2 93.6L257 93.6L257 94.6L256.2 94.6L256.2 95.6L254.9 95.6L254.9 94.6L252.5 94.6L252.5 93.4L254.6 90.1ZM387.8 53.7L391.3 53.7L391.3 54.8L388.9 54.8L388.9 55.6Q389.1 55.6 389.2 55.6Q389.4 55.5 389.6 55.5Q390.6 55.5 391.1 56Q391.7 56.5 391.7 57.4Q391.7 58.3 391.1 58.8Q390.5 59.3 389.4 59.3Q388.9 59.3 388.5 59.2Q388 59.1 387.5 59L387.5 57.8Q388 58.1 388.4 58.2Q388.8 58.4 389.2 58.4Q389.7 58.4 390 58.1Q390.3 57.9 390.3 57.4Q390.3 57 390 56.7Q389.7 56.5 389.2 56.5Q388.8 56.5 388.5 56.6Q388.2 56.7 387.8 56.8L387.8 53.7ZM66.7 98.9Q66.4 98.9 66.2 99.2Q66 99.4 66 99.9Q66 100.4 66.2 100.6Q66.4 100.8 66.7 100.8Q67.1 100.8 67.3 100.6Q67.5 100.4 67.5 99.9Q67.5 99.4 67.3 99.2Q67.1 98.9 66.7 98.9ZM68.5 96.3L68.5 97.3Q68.1 97.1 67.8 97.1Q67.5 97 67.2 97Q66.6 97 66.2 97.3Q65.9 97.7 65.8 98.4Q66.1 98.2 66.3 98.1Q66.6 98 67 98Q67.8 98 68.3 98.5Q68.8 99 68.8 99.8Q68.8 100.7 68.3 101.2Q67.7 101.7 66.7 101.7Q65.6 101.7 65.1 101Q64.5 100.3 64.5 99Q64.5 97.6 65.2 96.8Q65.8 96.1 67 96.1Q67.4 96.1 67.8 96.1Q68.1 96.2 68.5 96.3ZM95.9 139.2L100.1 139.2L100.1 140L97.9 144.7L96.6 144.7L98.6 140.3L95.9 140.3L95.9 139.2ZM83 190.4Q82.6 190.4 82.4 190.7Q82.2 190.9 82.2 191.3Q82.2 191.7 82.4 191.9Q82.6 192.1 83 192.1Q83.4 192.1 83.6 191.9Q83.8 191.7 83.8 191.3Q83.8 190.9 83.6 190.7Q83.4 190.4 83 190.4ZM82 190Q81.5 189.8 81.2 189.5Q81 189.2 81 188.7Q81 188.1 81.5 187.7Q82 187.3 83 187.3Q84 187.3 84.5 187.7Q85 188 85 188.7Q85 189.2 84.8 189.5Q84.5 189.8 84 190Q84.6 190.1 84.8 190.5Q85.1 190.8 85.1 191.4Q85.1 192.2 84.6 192.6Q84.1 193 83 193Q81.9 193 81.4 192.6Q80.8 192.2 80.8 191.4Q80.8 190.8 81.1 190.5Q81.4 190.1 82 190ZM82.3 188.9Q82.3 189.2 82.5 189.4Q82.7 189.6 83 189.6Q83.3 189.6 83.5 189.4Q83.7 189.2 83.7 188.9Q83.7 188.6 83.5 188.4Q83.3 188.2 83 188.2Q82.7 188.2 82.5 188.4Q82.3 188.6 82.3 188.9ZM37.7 248.6L37.7 247.6Q38.1 247.8 38.4 247.9Q38.7 247.9 39 247.9Q39.6 247.9 40 247.6Q40.3 247.2 40.4 246.6Q40.1 246.7 39.9 246.8Q39.6 246.9 39.2 246.9Q38.4 246.9 37.9 246.4Q37.4 245.9 37.4 245.2Q37.4 244.3 37.9 243.7Q38.5 243.2 39.5 243.2Q40.6 243.2 41.1 243.9Q41.7 244.6 41.7 246Q41.7 247.3 41 248.1Q40.4 248.9 39.2 248.9Q38.8 248.9 38.4 248.8Q38.1 248.8 37.7 248.6ZM39.5 246Q39.8 246 40 245.8Q40.2 245.5 40.2 245.1Q40.2 244.6 40 244.3Q39.8 244.1 39.5 244.1Q39.1 244.1 38.9 244.3Q38.7 244.6 38.7 245.1Q38.7 245.5 38.9 245.8Q39.1 246 39.5 246Z' fill='%23e8ebf0'/%3E%3Ccircle cx='352' cy='32' r='11' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='352' cy='32' r='4.6' fill='%23ff3b30' stroke='%23ffffff' stroke-width='1.4'/%3E%3C/svg%3E") right 22px top 104px / 420px 300px no-repeat;
+}
+.deck-theme-downforce.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-downforce .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 1.8em; font-stretch: 118%; font-weight: 800; letter-spacing: -0.03em !important; line-height: 0.98; }
+.deck-theme-downforce.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-downforce .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 54%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-downforce.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-downforce .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::after { margin-inline: 0; }
+.deck-theme-downforce.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-downforce .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 54%; text-align: left !important; }
+
+/* Subtitles: muted; on the title slide, the lines after the first in mono */
+.deck-theme-downforce [data-placeholder=subtitle] :is(p, li) { color: var(--df-muted) !important; }
+.deck-theme-downforce.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-downforce .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { font-family: 'Martian Mono', monospace !important; font-size: 0.56em; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* Section slides: the start. Five lights lit on a gantry, a chequered band
+   fading in above the footer */
+.deck-theme-downforce.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-downforce .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 440 112' width='440' height='112'%3E%3Crect x='0' y='8' width='440' height='8' rx='3' fill='%231d2128'/%3E%3Crect x='21' y='0' width='62' height='112' rx='10' fill='%2314171c' stroke='%232a2f38' stroke-width='1.2'/%3E%3Ccircle cx='52' cy='30' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='52' cy='30' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='47' cy='25' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='52' cy='76' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='52' cy='76' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='47' cy='71' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Crect x='105' y='0' width='62' height='112' rx='10' fill='%2314171c' stroke='%232a2f38' stroke-width='1.2'/%3E%3Ccircle cx='136' cy='30' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='136' cy='30' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='131' cy='25' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='136' cy='76' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='136' cy='76' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='131' cy='71' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Crect x='189' y='0' width='62' height='112' rx='10' fill='%2314171c' stroke='%232a2f38' stroke-width='1.2'/%3E%3Ccircle cx='220' cy='30' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='220' cy='30' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='215' cy='25' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='220' cy='76' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='220' cy='76' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='215' cy='71' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Crect x='273' y='0' width='62' height='112' rx='10' fill='%2314171c' stroke='%232a2f38' stroke-width='1.2'/%3E%3Ccircle cx='304' cy='30' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='304' cy='30' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='299' cy='25' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='304' cy='76' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='304' cy='76' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='299' cy='71' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Crect x='357' y='0' width='62' height='112' rx='10' fill='%2314171c' stroke='%232a2f38' stroke-width='1.2'/%3E%3Ccircle cx='388' cy='30' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='388' cy='30' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='383' cy='25' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='388' cy='76' r='20' fill='%23ff3b30' fill-opacity='0.22'/%3E%3Ccircle cx='388' cy='76' r='15' fill='%23ff3b30'/%3E%3Ccircle cx='383' cy='71' r='4' fill='%23ffffff' fill-opacity='0.35'/%3E%3C/svg%3E") center 20px / 352px 90px no-repeat,
+    radial-gradient(700px 300px at 50% 0%, rgba(255, 59, 48, 0.16), transparent 70%),
+    linear-gradient(#0f1115, rgba(15, 17, 21, 0.5) 70%, rgba(15, 17, 21, 0.72)) left 0 bottom 34px / 100% 64px no-repeat,
+    conic-gradient(#e9ebee 25%, #0f1115 0 50%, #e9ebee 0 75%, #0f1115 0) left 0 bottom 34px / 32px 32px repeat-x,
+    conic-gradient(#e9ebee 25%, #0f1115 0 50%, #e9ebee 0 75%, #0f1115 0) left 0 bottom 66px / 32px 32px repeat-x;
+}
+.deck-theme-downforce.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-downforce .px-slide[data-layout=section-header] [data-placeholder=title] h1 { font-stretch: 118%; font-weight: 800; letter-spacing: -0.025em !important; }
+
+/* A Heading 4: a timing chip in wide capitals, its bold words a purple tag
+   (S2 · Aerodynamics) */
+.deck-theme-downforce .px-text h4 {
+  margin: 0 0 0.45em !important;
+  color: var(--df-muted) !important;
+  font-size: 0.52em;
+  font-stretch: 118%;
+  font-weight: 600 !important;
+  letter-spacing: 0.14em !important;
+  line-height: 1.5;
+  text-transform: uppercase !important;
+}
+.deck-theme-downforce .px-text h4 :is(strong, b) {
+  display: inline-block;
+  margin-right: 0.55em;
+  padding: 0.06em 0.55em;
+  border-radius: 0.35em;
+  background: var(--df-purple);
+  color: #0f1115;
+  font-family: 'Martian Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.deck-theme-downforce.px-slide[data-own-background] .px-text h4 :is(strong, b),
+.deck-theme-downforce .px-slide[data-own-background] .px-text h4 :is(strong, b) { background: transparent; color: var(--px-text); box-shadow: inset 0 0 0 0.09em var(--px-text); }
+
+/* A Heading 6: a caption in mono; its bold words in white */
+.deck-theme-downforce .px-text h6 {
+  margin: 0.2em 0 0.4em !important;
+  color: var(--df-muted) !important;
+  font-family: 'Martian Mono', monospace !important;
+  font-size: 0.5em;
+  font-weight: 400 !important;
+  line-height: 1.5;
+  letter-spacing: 0.01em !important;
+}
+.deck-theme-downforce .px-text h6 :is(strong, b) { color: var(--df-ink); font-weight: 700; }
+
+/* Bullets: red speed stripes, slanted; then hollow ones; then a dash.
+   Numbered lists are positions on a timing tower: white tiles. */
+.deck-theme-downforce .px-text :is(ul, ol) { display: block; }
+.deck-theme-downforce .px-text ul { list-style: none; }
+.deck-theme-downforce .px-text ul > li { position: relative; }
+.deck-theme-downforce .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.05em;
+  top: 0.5em;
+  width: 0.6em;
+  height: 0.24em;
+  background: var(--df-red);
+  clip-path: polygon(0.12em 0, 100% 0, calc(100% - 0.12em) 100%, 0 100%);
+}
+.deck-theme-downforce .px-text ul ul > li::before { background: transparent; box-shadow: inset 0 0 0 0.06em var(--df-muted); clip-path: none; transform: skewX(-24deg); }
+.deck-theme-downforce .px-text ul ul ul > li::before { top: 0.6em; width: 0.4em; height: 0.07em; transform: none; background: var(--df-muted); box-shadow: none; }
+.deck-theme-downforce .px-text ol { list-style: none; padding-left: 1.6em; }
+.deck-theme-downforce .px-text ol > li { position: relative; list-style: none; }
+.deck-theme-downforce .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.3em;
+  top: 0.14em;
+  width: 1.75em;
+  height: 1.5em;
+  border-radius: 0.22em;
+  background: #ffffff;
+  color: #0f1115;
+  font-size: 0.7em;
+  font-stretch: 112%;
+  font-weight: 800;
+  line-height: 1.5em;
+  text-align: center;
+  box-shadow: inset 0.22em 0 0 var(--df-red);
+  padding-left: 0.12em;
+  box-sizing: border-box;
+}
+.deck-theme-downforce.px-slide[data-own-background] .px-text ol > li::before,
+.deck-theme-downforce .px-slide[data-own-background] .px-text ol > li::before { background: transparent; color: var(--px-text); box-shadow: inset 0 0 0 0.09em var(--px-text); }
+
+/* Links: red */
+.deck-theme-downforce .px-text a { color: var(--px-link, #ff5a4f) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a telemetry readout, Martian Mono in green on a panel */
+.deck-theme-downforce .px-text :not(pre) > code {
+  padding: 0.06em 0.36em;
+  border: 1px solid #2f3540;
+  border-radius: 0.3em;
+  background: #161a20 !important;
+  color: #3ddc84;
+  font-family: 'Martian Mono', monospace;
+  font-size: 0.74em;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-downforce.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-downforce .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; border-color: var(--px-text); color: var(--px-text); }
+
+/* Quotes: a radio message on a panel, a waveform at its corner; bold first
+   words are the speaker (Race engineer) */
+.deck-theme-downforce .px-text blockquote {
+  position: relative;
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.6em 0.85em 0.65em 2.2em !important;
+  border: 1px solid var(--df-line) !important;
+  border-radius: 0.45em;
+  background: linear-gradient(90deg, rgba(255, 90, 79, 0.1), rgba(255, 90, 79, 0) 40%), var(--df-panel);
+  opacity: 1 !important;
+  box-shadow: 0 0.4em 1.2em -0.6em rgba(0, 0, 0, 0.6) !important;
+  color: #e8ebf0;
+  font-style: normal;
+}
+.deck-theme-downforce .px-text blockquote::before {
+  content: "";
+  position: absolute;
+  left: 0.6em;
+  top: 0.78em;
+  width: 1.15em;
+  height: 0.55em;
+  background: var(--df-red);
+  -webkit-mask: var(--df-wave) center / contain no-repeat;
+  mask: var(--df-wave) center / contain no-repeat;
+}
+.deck-theme-downforce .px-text blockquote :is(p, li) { color: #e8ebf0 !important; }
+.deck-theme-downforce .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.3em;
+  color: var(--df-red);
+  font-size: 0.56em;
+  font-stretch: 118%;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-downforce .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-downforce.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-downforce .px-slide[data-own-background] .px-text blockquote { background: transparent; box-shadow: none !important; }
+.deck-theme-downforce.px-slide[data-own-background] .px-text blockquote :is(p, li),
+.deck-theme-downforce .px-slide[data-own-background] .px-text blockquote :is(p, li) { color: var(--px-text) !important; }
+
+/* Code: a telemetry console, Martian Mono on near black, Downforce's own
+   syntax colors whichever code theme the deck uses */
+.deck-theme-downforce :is(pre, pre.hljs) {
+  background: #0a0c0f !important;
+  color: #e8ebf0;
+  border: 1px solid #2a2f38;
+  border-radius: 0.45em !important;
+  box-shadow: none !important;
+}
+.deck-theme-downforce :is(pre.hljs, pre code, pre) { font-family: 'Martian Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-downforce pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-downforce .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.56em; line-height: 1.55; }
+.deck-theme-downforce pre [class*=hljs-] { color: #e8ebf0; font-style: normal; font-weight: 400; }
+.deck-theme-downforce pre :is(.hljs-comment, .hljs-quote) { color: #8a929d; font-style: italic; }
+.deck-theme-downforce pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #b98cff; }
+.deck-theme-downforce pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #3ddc84; }
+.deck-theme-downforce pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #ffd23f; }
+.deck-theme-downforce pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #ffffff; font-weight: 600; }
+.deck-theme-downforce pre :is(.hljs-meta, .hljs-deletion) { color: #ff8a82; }
+
+/* Tables: a timing table. Hairlines between rows, the header small, wide
+   and gray over a red rule (left in its own case, so units keep theirs),
+   the first column white and heavy, figures tabular */
+.deck-theme-downforce table { border: 0 !important; border-collapse: collapse; background: transparent; }
+.deck-theme-downforce table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #2a2f38 !important;
+  background: transparent !important;
+  color: #e8ebf0 !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-downforce table tr:nth-child(even) :is(td, th) { background: rgba(255, 255, 255, 0.025) !important; }
+.deck-theme-downforce table :is(td, th):first-child { color: #ffffff !important; font-weight: 700; }
+.deck-theme-downforce table tr:first-child :is(td, th) {
+  border-bottom: 2px solid #ff3b30 !important;
+  background: transparent !important;
+  color: #9aa2ad !important;
+  font-size: 0.78em;
+  font-stretch: 118%;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.deck-theme-downforce.px-slide[data-own-background] table :is(td, th),
+.deck-theme-downforce .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; border-color: var(--px-text) !important; background: transparent !important; }
+
+/* The Big Number: a speed readout, Saira wide and slanted; its unit
+   (inline code or italic words in it) a red chip in mono */
+.deck-theme-downforce.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-downforce .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #ffffff) !important;
+  font-stretch: 125%;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -0.03em !important;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-downforce.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-downforce .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: inline-block;
+  margin-left: 0.25em;
+  padding: 0.16em 0.5em !important;
+  border: 0 !important;
+  border-radius: 0.3em;
+  background: #d7261e !important;
+  color: #ffffff;
+  font-family: 'Martian Mono', monospace !important;
+  font-size: 0.2em;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: 0.9em;
+}
+
+/* The footer: wide capitals. With its sections in sequence, it is the
+   lap's sectors: a bar before each, done green, the current one purple,
+   those to come gray. The page number is the lap. (The class and the slide
+   both named, to outweigh the presented deck's footer rules.) */
+.deck-theme-downforce.px-slide .px-footer,
+.deck-theme-downforce .px-slide .px-footer { padding-inline: 14px !important; color: var(--df-muted) !important; }
+.deck-theme-downforce.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-downforce .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--df-muted) !important;
+  font-family: Saira, sans-serif !important;
+  font-size: 11px !important;
+  font-stretch: 118%;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-downforce.px-slide .px-footer .px-footer-page,
+.deck-theme-downforce .px-slide .px-footer .px-footer-page { color: var(--df-ink) !important; font-family: 'Martian Mono', monospace !important; font-weight: 700 !important; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-page::before,
+.deck-theme-downforce .px-slide .px-footer .px-footer-page::before { content: "Lap "; color: var(--df-muted); font-weight: 400; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-sections,
+.deck-theme-downforce .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 14px; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-section,
+.deck-theme-downforce .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 7px; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-section::before,
+.deck-theme-downforce .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 24px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--df-pale);
+}
+.deck-theme-downforce.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-downforce .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--df-text) !important; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-downforce .px-slide .px-footer .px-footer-section[data-state=past]::before { background: var(--df-green); }
+.deck-theme-downforce.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-downforce .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--df-purple) !important; font-weight: 700 !important; }
+.deck-theme-downforce.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-downforce .px-slide .px-footer .px-footer-section[data-state=current]::before { background: var(--df-purple); box-shadow: 0 0 8px rgba(185, 140, 255, 0.7); }
+.deck-theme-downforce.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-downforce .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.6; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the kerb under the title */
+.deck-theme-downforce .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 84px;
+  height: 5px;
+  margin: 5px auto 0;
+  background: repeating-linear-gradient(90deg, #ff3b30 0 7px, #f2f3f5 7px 14px);
+  clip-path: polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%);
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default, downforce: downforce_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -37488,7 +37889,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">

@@ -34,6 +34,7 @@ export default function DeckFontOptions() {
         <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
         <option value="Lexend, sans-serif">Lexend</option>
         <option value="Archivo, sans-serif">Archivo</option>
+        <option value="Saira, sans-serif">Saira</option>
         <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
       </optgroup>
       <optgroup label="Rounded">
@@ -61,6 +62,7 @@ export default function DeckFontOptions() {
       <optgroup label="Monospace">
         <option value="'Courier New', monospace">Courier New</option>
         <option value="'Courier Prime', monospace">Courier Prime</option>
+        <option value="'Martian Mono', monospace">Martian Mono</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
         <option value="Inconsolata, monospace">Inconsolata</option>
