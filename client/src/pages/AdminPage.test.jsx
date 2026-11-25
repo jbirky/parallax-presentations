@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AdminDashboard, planChangeSummary, toPlanForm, fromPlanForm, planEditEffects } from './AdminPage'
+import { AdminDashboard, AdminTabs, adminTabs, planChangeSummary, toPlanForm, fromPlanForm, planEditEffects } from './AdminPage'
 import { niceTicks } from '../components/AdminCharts'
 
 const MB = 1024 * 1024
@@ -54,29 +54,44 @@ describe('niceTicks', () => {
   })
 })
 
+const render = (tab, data = overview()) => renderToStaticMarkup(<AdminDashboard data={data} tab={tab} />)
+
 describe('AdminDashboard', () => {
-  it('shows accounts, storage status and processing jobs', () => {
-    const html = renderToStaticMarkup(<AdminDashboard data={overview()} />)
+  it('shows accounts, sign-ups, storage and the server at a glance', () => {
+    const html = render('overview')
     expect(html).toContain('5 free · 1 pro')
     expect(html).toContain('Guest sessions now')
     expect(html).toContain('339 MB')
+    expect(html).toContain('of 4.0 GB limit')
+    expect(html).toContain('Last 12 weeks · 17 in total')
+    // The other tabs' panels aren't drawn
+    expect(html).not.toContain('near@example.com')
+    expect(html).not.toContain('Processing jobs')
+  })
+
+  it('lists accounts with their storage and processing', () => {
+    const html = render('accounts')
     expect(html).toContain('Over limit')
     expect(html).toContain('Near limit')
     expect(html).toContain('near@example.com')
     expect(html).toContain('3 min 5 s')
+    expect(html).not.toContain('Guest sessions now')
+  })
+
+  it('shows the server’s CPU, memory and processing jobs', () => {
+    const html = render('server')
+    expect(html).toContain('Container CPU')
     expect(html).toContain('Video conversion')
-    expect(html).toContain('of 4.0 GB limit')
-    expect(html).toContain('Last 12 weeks · 17 in total')
   })
 
   it('explains what is missing when migrations have not run', () => {
-    const html = renderToStaticMarkup(<AdminDashboard data={overview({ jobs: null, guestsActive: null })} />)
-    expect(html).toContain('Job tracking starts once migration 012 has run')
-    expect(html).toContain('Guest mode isn’t set up here')
+    const data = overview({ jobs: null, guestsActive: null })
+    expect(render('server', data)).toContain('Job tracking starts once migration 012 has run')
+    expect(render('overview', data)).toContain('Guest mode isn’t set up here')
   })
 
   it('offers to end guest sessions only while some are active', () => {
-    const endAll = guestsActive => renderToStaticMarkup(<AdminDashboard data={overview({ guestsActive })} />).includes('>End all</button>')
+    const endAll = guestsActive => render('overview', overview({ guestsActive })).includes('>End all</button>')
     expect(endAll(3)).toBe(true)
     expect(endAll(0)).toBe(false)
     expect(endAll(null)).toBe(false)
@@ -85,19 +100,37 @@ describe('AdminDashboard', () => {
   it('says it is collecting before there are two CPU readings', () => {
     const data = overview()
     data.system = { ...data.system, samples: [], cpuPercent: null }
-    const html = renderToStaticMarkup(<AdminDashboard data={data} />)
-    expect(html).toContain('Collecting. Readings are taken every 60 seconds')
+    expect(render('server', data)).toContain('Collecting. Readings are taken every 60 seconds')
   })
 
   it('lets an admin pick each account’s plan once the server lists the plans', () => {
-    const picker = renderToStaticMarkup(<AdminDashboard data={overview({ plans: PLANS })} />)
+    const picker = render('accounts', overview({ plans: PLANS }))
     expect(picker).toContain('aria-label="Plan for pro@example.com"')
     expect(picker).toMatch(/<option value="pro" selected="">Pro<\/option>/)
     expect(picker).toContain('<option value="team">Team</option>')
     expect(picker).not.toContain('value="guest"')
 
-    const badge = renderToStaticMarkup(<AdminDashboard data={overview()} />)
-    expect(badge).not.toContain('aria-label="Plan for')
+    expect(render('accounts')).not.toContain('aria-label="Plan for')
+  })
+
+  it('shows Overview for a tab it doesn’t have', () => {
+    expect(render('teams')).toContain('Guest sessions now')
+    expect(render('no-such-tab')).toContain('Guest sessions now')
+  })
+})
+
+describe('the admin tabs', () => {
+  it('lists the cloud version’s tabs only when the server has plans', () => {
+    expect(adminTabs(overview()).map(t => t.id)).toEqual(['overview', 'accounts', 'plugins', 'server'])
+    expect(adminTabs(overview({ plans: PLANS })).map(t => t.label))
+      .toEqual(['Overview', 'Accounts', 'Teams', 'Plans', 'Analytics', 'Examples', 'Templates', 'Plugins', 'Server'])
+  })
+
+  it('marks the open tab for screen readers and the keyboard', () => {
+    const html = renderToStaticMarkup(<AdminTabs tabs={adminTabs(overview({ plans: PLANS }))} active="templates" onChange={() => {}} />)
+    expect(html).toContain('role="tablist"')
+    expect(html).toMatch(/id="admin-tab-templates" role="tab" type="button" aria-selected="true" aria-controls="admin-panel-templates" tabindex="0"/)
+    expect(html).toMatch(/id="admin-tab-examples" role="tab" type="button" aria-selected="false"[^>]*tabindex="-1"/)
   })
 })
 
@@ -165,7 +198,7 @@ describe('plan editor', () => {
   })
 
   it('shows a card per plan, with delete only for plans that can go', () => {
-    const html = renderToStaticMarkup(<AdminDashboard data={overview({ plans: PLANS })} />)
+    const html = render('plans', overview({ plans: PLANS }))
     expect(html).toContain('<h2 style="margin:0 0 2px;font-size:14px;font-weight:600">Plans</h2>')
     expect(html).toContain('Billing is switched off')
     expect(html).toContain('5 accounts')

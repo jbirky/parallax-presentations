@@ -40,12 +40,13 @@ beforeEach(() => {
 })
 afterEach(() => { act(() => root.unmount()); el.remove() })
 
-async function mount() {
+async function mount(kind) {
   el = document.createElement('div')
   document.body.appendChild(el)
   root = createRoot(el)
-  await act(async () => root.render(<ExamplesPanel />))
+  await act(async () => root.render(<ExamplesPanel kind={kind} />))
 }
+const titles = () => [...el.querySelectorAll('strong')].map(s => s.textContent)
 const row = title => [...el.querySelectorAll('strong')].find(s => s.textContent === title).closest('div[style*="grid-template-columns"]')
 const button = (scope, text) => [...scope.querySelectorAll('button')].find(b => b.textContent === text)
 const type = (input, value) => {
@@ -55,10 +56,11 @@ const type = (input, value) => {
   input.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-describe('the landing page examples, in /admin', () => {
+describe('the landing page examples and templates, in /admin', () => {
   it('lists them in order, saying where each one’s slides come from', async () => {
     await mount()
-    expect([...el.querySelectorAll('strong')].map(s => s.textContent)).toEqual(['Parallax', 'Venn diagrams', 'Cells'])
+    expect(el.querySelector('h2').textContent).toBe('Landing page examples')
+    expect(titles()).toEqual(['Parallax', 'Venn diagrams', 'Cells'])
     expect(row('Parallax').textContent).toContain('At the top')
     expect(row('Venn diagrams').textContent).toContain('Built in')
     expect(row('Cells').querySelector('a[href="/dashboard/cell-division"]')).not.toBeNull()
@@ -73,7 +75,7 @@ describe('the landing page examples, in /admin', () => {
 
   it('adds one from the admin’s own presentations, and says if the thumbnail wasn’t drawn', async () => {
     await mount()
-    await act(async () => button(el, 'Add an example or template').click())
+    await act(async () => button(el, 'Add an example').click())
     const select = el.querySelector('select')
     expect([...select.options].map(o => o.textContent)).toEqual(['Choose one of your presentations…', 'Cell division'])
     await act(async () => type(select, 'p1'))
@@ -100,26 +102,51 @@ describe('the landing page examples, in /admin', () => {
     expect(el.textContent).not.toContain('Cells')
   })
 
-  it('adds a template, for the landing page’s Templates tab', async () => {
-    await mount()
-    await act(async () => button(el, 'Add an example or template').click())
+  it('adds a template from the Templates tab', async () => {
+    await mount('template')
+    expect(el.querySelector('h2').textContent).toBe('Templates')
+    expect(el.textContent).toContain('No templates yet.')
+    await act(async () => button(el, 'Add a template').click())
     await act(async () => type(el.querySelector('select'), 'p1'))
-    await act(async () => type(el.querySelector('select[aria-label="Shown as"]'), 'template'))
+    expect(el.querySelector('select[aria-label="Shown as"]')).toBeNull()
     expect(button(el, 'Add template')).toBeDefined()
     await act(async () => el.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(api.addExample).toHaveBeenCalledWith(expect.objectContaining({ presentationId: 'p1', kind: 'template' }))
   })
 
-  it('turns an example with a deck of its own into a template, and back', async () => {
+  it('lists examples and templates on separate tabs, and moves one between them', async () => {
     state.list[2] = { ...state.list[2], kind: 'template' }
-    await mount()
-    expect(row('Cells').textContent).toContain('Template')
-    // A template isn't the top of the page; a built-in example needs a copy of its own first
-    expect(button(row('Cells'), 'Put at the top')).toBeUndefined()
+    await mount('example')
+    expect(titles()).toEqual(['Parallax', 'Venn diagrams'])
+    // A built-in example needs a copy of its own before it can be a template
     expect(button(row('Venn diagrams'), 'Make a template')).toBeUndefined()
     expect(button(row('Parallax'), 'Make a template')).toBeUndefined()
+    act(() => root.unmount())
+    el.remove()
+
+    await mount('template')
+    expect(titles()).toEqual(['Cells'])
+    // A template isn't the top of the page
+    expect(button(row('Cells'), 'Put at the top')).toBeUndefined()
+    state.list[2] = { ...state.list[2], kind: 'example' }
     await act(async () => button(row('Cells'), 'Make an example').click())
     expect(api.saveExample).toHaveBeenLastCalledWith('cells', { kind: 'example' })
+    expect(titles()).toEqual([])
+    expect(el.querySelector('[role="status"]').textContent).toBe('Moved “Cells” to Examples.')
+  })
+
+  it('reorders the cards on one tab without moving the other tab\'s', async () => {
+    state.list = [
+      example('hero', { title: 'Parallax', card: false, hero: true }),
+      example('t1', { title: 'Lecture', kind: 'template', builtin: false, ownDeck: true }),
+      example('venn', { title: 'Venn diagrams' }),
+      example('t2', { title: 'Seminar', kind: 'template', builtin: false, ownDeck: true }),
+    ]
+    await mount('template')
+    expect(titles()).toEqual(['Lecture', 'Seminar'])
+    await act(async () => row('Seminar').querySelector('[aria-label="Move Seminar up"]').click())
+    expect(api.orderExamples).toHaveBeenCalledWith(['hero', 't2', 'venn', 't1'])
+    expect(titles()).toEqual(['Seminar', 'Lecture'])
   })
 
   it('makes an editable copy of a built-in one, and links to it', async () => {
