@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -85,6 +85,9 @@ describe('themes', () => {
     expect(slidePalette({}, 'graticule')).toMatchObject({ link: '#1d5f96', accent: '#b54d00', dark: false })
     // Graticule's grid is its page, in proportion, so it fits a thumbnail too
     expect(themeBackgroundStyle('graticule').background).toMatch(/12\.5% 22\.222%.*#f3f5f2$/)
+    expect(deckTextFont('', 'eigenstate')).toBe("'Libre Franklin', sans-serif")
+    expect(deckTextStyles(null, 'eigenstate')).toMatchObject({ headingFont: "'STIX Two Text', serif", headingWeight: 600, h2Size: 38 })
+    expect(slidePalette({}, 'eigenstate')).toMatchObject({ text: '#22233a', heading: '#1d1f4f', link: '#5a35b5', dark: false })
     // Colors of stability: Separatrix's, kept on a light background of a slide's own, and no other theme's
     expect(slidePalette({}, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })
     expect(slidePalette({ background: { type: 'color', color: '#f0f0e8' } }, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })

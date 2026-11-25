@@ -654,6 +654,7 @@ export default function Toolbar({
               <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
               <option value="Questrial, sans-serif">Questrial</option>
               <option value="Barlow, sans-serif">Barlow</option>
+              <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
               <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
               <option value="'Humanist 777 BT', 'Gill Sans', 'Gill Sans MT', Calibri, sans-serif">Humanist 777</option>
             </optgroup>
@@ -676,6 +677,7 @@ export default function Toolbar({
               <option value="'Times New Roman', serif">Times New Roman</option>
               <option value="'Playfair Display', serif">Playfair Display</option>
               <option value="Merriweather, serif">Merriweather</option>
+              <option value="'STIX Two Text', serif">STIX Two Text</option>
               <option value="'Computer Modern Serif', serif">Computer Modern</option>
               <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
             </optgroup>

@@ -262,6 +262,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'Didact Gothic', sans-serif">Didact Gothic</option>
         <option value="Questrial, sans-serif">Questrial</option>
         <option value="Barlow, sans-serif">Barlow</option>
+        <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
       </optgroup>
       <optgroup label="Rounded">
         <option value="Comfortaa, sans-serif">Comfortaa</option>
@@ -282,6 +283,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'Times New Roman', serif">Times New Roman</option>
         <option value="'Playfair Display', serif">Playfair Display</option>
         <option value="Merriweather, serif">Merriweather</option>
+        <option value="'STIX Two Text', serif">STIX Two Text</option>
         <option value="'Computer Modern Serif', serif">Computer Modern</option>
         <option value="'Latin Modern Roman', serif">Latin Modern Roman</option>
       </optgroup>
