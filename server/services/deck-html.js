@@ -6495,7 +6495,8 @@ var THEME_LIST = [
   { id: "cell", label: "Cell", background: "#faf7f5", text: "#2e1c45", heading: "#3b1f5e", link: "#b8325f", accent: "#b8325f", dark: false, reveal: "white", font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Merriweather, serif", headingWeight: 700 }, note: "Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer" },
   { id: "graticule", label: "Graticule", background: "#f3f5f2", backgroundCss: "linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, #f3f5f2", text: "#1c2321", heading: "#1c2321", link: "#1d5f96", accent: "#b54d00", dark: false, reveal: "white", font: "'Open Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'Roboto Condensed', sans-serif", headingWeight: 700 }, note: "Maps and spatial data on a topographic sheet: a neatline with degree bars, a graticule, contours, water in blue italics, a scale-bar footer" },
   { id: "eigenstate", label: "Eigenstate", background: "#f6f6fb", text: "#22233a", heading: "#1d1f4f", link: "#5a35b5", accent: "#5a35b5", dark: false, reveal: "white", font: "'Libre Franklin', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'STIX Two Text', serif", headingWeight: 600 }, note: "Quantum mechanics in wave functions: a packet under titles, oscillator eigenstates, tunneling section slides, bra-ket kickers, a standing-wave footer" },
-  { id: "mise", label: "Mise", background: "#fdfdfb", backgroundCss: "linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 6.6667%, #fdfdfb", text: "#2a2723", heading: "#1c1a17", link: "#c0392b", accent: "#c0392b", dark: false, reveal: "white", font: "'Bricolage Grotesque', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "'Bricolage Grotesque', sans-serif", headingWeight: 800 }, note: "Recipes on an index card: blue rules, a red line under titles, tick-box ingredients, numbered steps, sticky-note tips in ballpoint, a recipe-box footer" }
+  { id: "mise", label: "Mise", background: "#fdfdfb", backgroundCss: "linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 6.6667%, #fdfdfb", text: "#2a2723", heading: "#1c1a17", link: "#c0392b", accent: "#c0392b", dark: false, reveal: "white", font: "'Bricolage Grotesque', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "'Bricolage Grotesque', sans-serif", headingWeight: 800 }, note: "Recipes on an index card: blue rules, a red line under titles, tick-box ingredients, numbered steps, sticky-note tips in ballpoint, a recipe-box footer" },
+  { id: "valence", label: "Valence", background: "#f7f9fb", backgroundCss: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 34.64 60%27 width=%2734.64%27 height=%2760%27%3E%3Cpath d=%27M-8.66 10L8.66 20M-8.66 50L8.66 40M8.66 20L8.66 40M8.66 20L25.98 10M8.66 40L25.98 50M25.98 -10L25.98 10M25.98 10L43.3 20M25.98 50L25.98 70M25.98 50L43.3 40%27 fill=%27none%27 stroke=%27%23e1e7ee%27 stroke-width=%271%27/%3E%3C/svg%3E') 0 0 / 3.6084% 11.1111%, #f7f9fb", text: "#1f262e", heading: "#1f262e", link: "#2a5bd7", accent: "#c8362b", dark: false, reveal: "white", font: "'Didact Gothic', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'M PLUS Rounded 1c', sans-serif", headingWeight: 700 }, note: "Introductory chemistry on hexagonal graph paper: protons red with a plus, neutrons gray, electrons blue with a minus; a Bohr atom on the title slide, the periodic table behind section titles, element-tile kickers and an orbital-box footer, in M PLUS Rounded 1c and Didact Gothic" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -34492,8 +34493,453 @@ var mise_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/valence.css
+var valence_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Valence theme's stylesheet: introductory chemistry, on the
+   hexagonal graph paper skeletal formulas are drawn on. Carbon charcoal
+   (#1f262e) on a cool white (#f7f9fb), with one particle code throughout,
+   each with a second cue besides its color: a proton is red (#c8362b) with
+   a plus, a neutron gray (#8a929b) with no sign, an electron blue
+   (#2a5bd7), small, with a minus. Links are electron blue and what's
+   current proton red, both 4.9:1 or more on the page. Headings in M PLUS
+   Rounded 1c, text in Didact Gothic (utils/themes.js: the fonts and the
+   text sizes, which the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-valence, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The hexagonal paper is the theme's page (its backgroundCss) in the
+   editor, the thumbnails and the PDF, and this stylesheet's in presented
+   decks; title and section slides cover it. Under content titles is a
+   valence shell, four electrons on a line. The title slide has a Bohr
+   model of carbon at its right: six protons and six neutrons in the
+   nucleus, two electrons in the first shell and four in the second, with
+   the title and subtitle set at the left beside it. Section slides sit on
+   the periodic table's outline, its s, p, d and f blocks in four pale
+   tints (Okabe and Ito's sky blue, orange, bluish green and reddish
+   purple), each labeled with its letter. A Heading 4 is an element tile,
+   its bold words in the tile (#### **C** Carbon, Z = 6); a Heading 6 a
+   caption. Bullets are particles: an electron, then a proton, then a
+   neutron. Inline code is a formula or unit chip, a quote a key-idea box
+   whose bold first words are its label on the box's edge, and tables a
+   data table with tabular figures. The Big Number is an element tile, its
+   unit (inline code or italic words in it) under the figure as its name.
+   With the footer's sections in sequence, the footer fills in as orbitals
+   do: a box for each section, those done holding a pair of electrons, the
+   current one a single red electron, those to come empty. */
+
+/* reveal.js: links, the arrows and the progress bar in electron blue */
+.deck-theme-valence {
+  --r-background-color: #f7f9fb;
+  --r-main-color: #1f262e;
+  --r-heading-color: #1f262e;
+  --r-link-color: #2a5bd7;
+  --r-link-color-dark: #1f47ab;
+  --r-link-color-hover: #1f262e;
+  --r-selection-background-color: #d5e1fa;
+  --r-selection-color: #1f262e;
+  --va-atom: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 380 380' width='380' height='380'%3E%3Cdefs%3E%3Cg id='p'%3E%3Ccircle r='14' fill='%23c8362b' stroke='%239b2a21' stroke-width='1.2'/%3E%3Cpath d='M-5 0h10M0-5v10' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3C/g%3E%3Cg id='n'%3E%3Ccircle r='14' fill='%23a2aab3' stroke='%237d8690' stroke-width='1.2'/%3E%3C/g%3E%3Cg id='e'%3E%3Ccircle r='9' fill='%232a5bd7' stroke='%231f47ab' stroke-width='1.2'/%3E%3Cpath d='M-3.6 0h7.2' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/g%3E%3C/defs%3E%3Ccircle cx='190' cy='190' r='44' fill='%23eef2f6'/%3E%3Cg fill='none' stroke='%23a9b4c0' stroke-width='1.6'%3E%3Ccircle cx='190' cy='190' r='82'/%3E%3Ccircle cx='190' cy='190' r='160'/%3E%3C/g%3E%3Cuse href='%23n' x='177.81' y='156.51'/%3E%3Cuse href='%23n' x='202.19' y='156.51'/%3E%3Cuse href='%23p' x='159.13' y='172.18'/%3E%3Cuse href='%23p' x='220.87' y='172.18'/%3E%3Cuse href='%23n' x='154.9' y='196.19'/%3E%3Cuse href='%23n' x='225.1' y='196.19'/%3E%3Cuse href='%23p' x='212.91' y='217.3'/%3E%3Cuse href='%23p' x='167.09' y='217.3'/%3E%3Cuse href='%23n' x='190' y='225.64'/%3E%3Cuse href='%23p' x='201' y='183.65'/%3E%3Cuse href='%23n' x='179' y='183.65'/%3E%3Cuse href='%23p' x='190' y='202.7'/%3E%3Cuse href='%23e' x='272' y='190'/%3E%3Cuse href='%23e' x='108' y='190'/%3E%3Cuse href='%23e' x='303.14' y='303.14'/%3E%3Cuse href='%23e' x='76.86' y='303.14'/%3E%3Cuse href='%23e' x='76.86' y='76.86'/%3E%3Cuse href='%23e' x='303.14' y='76.86'/%3E%3C/svg%3E");
+  --va-table: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 792 415.8' width='792' height='415.8'%3E%3Cdefs%3E%3Cpattern id='s' width='44' height='44' y='0' patternUnits='userSpaceOnUse'%3E%3Crect x='3' y='3' width='38' height='38' rx='5' fill='%23cde5f5'/%3E%3C/pattern%3E%3Cpattern id='p' width='44' height='44' y='0' patternUnits='userSpaceOnUse'%3E%3Crect x='3' y='3' width='38' height='38' rx='5' fill='%23f7deb0'/%3E%3C/pattern%3E%3Cpattern id='d' width='44' height='44' y='0' patternUnits='userSpaceOnUse'%3E%3Crect x='3' y='3' width='38' height='38' rx='5' fill='%23c3e6d8'/%3E%3C/pattern%3E%3Cpattern id='f' width='44' height='44' y='327.8' patternUnits='userSpaceOnUse'%3E%3Crect x='3' y='3' width='38' height='38' rx='5' fill='%23efd3e3'/%3E%3C/pattern%3E%3C/defs%3E%3Crect x='0' y='0' width='44' height='308' fill='url(%23s)'/%3E%3Crect x='44' y='44' width='44' height='264' fill='url(%23s)'/%3E%3Crect x='748' y='0' width='44' height='44' fill='url(%23s)'/%3E%3Crect x='528' y='44' width='264' height='264' fill='url(%23p)'/%3E%3Crect x='88' y='132' width='440' height='176' fill='url(%23d)'/%3E%3Crect x='132' y='327.8' width='616' height='88' fill='url(%23f)'/%3E%3Cg font-family='Arial, Helvetica, sans-serif' font-size='26' font-weight='700' text-anchor='middle' dominant-baseline='central'%3E%3Ctext x='66' y='22' fill='%233f7ea8'%3Es%3C/text%3E%3Ctext x='660' y='22' fill='%23a8700a'%3Ep%3C/text%3E%3Ctext x='308' y='22' fill='%232d7d63'%3Ed%3C/text%3E%3Ctext x='88' y='371.8' fill='%239a4c79'%3Ef%3C/text%3E%3C/g%3E%3C/svg%3E");
+  --va-pair: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cpath d='M5.3 13.6V5.4' stroke='%23000' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M5.3 2.2L8.2 6.4H2.4Z'/%3E%3Cpath d='M10.7 2.4V10.6' stroke='%23000' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M10.7 13.8L13.6 9.6H7.8Z'/%3E%3C/svg%3E");
+  --va-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cpath d='M5.3 13.6V5.4' stroke='%23000' stroke-width='1.5' stroke-linecap='round'/%3E%3Cpath d='M5.3 2.2L8.2 6.4H2.4Z'/%3E%3C/svg%3E");
+}
+
+/* The particles' colors; on a slide with a background of its own, its
+   text color */
+.deck-theme-valence.px-slide,
+.deck-theme-valence .px-slide { --va-ink: #1f262e; --va-muted: #56606b; --va-proton: #c8362b; --va-electron: #2a5bd7; --va-neutron: #8a929b; --va-line: #c4cdd7; --va-tile: #ffffff; }
+.deck-theme-valence.px-slide[data-own-background],
+.deck-theme-valence .px-slide[data-own-background] { --va-ink: var(--px-text); --va-muted: var(--px-text); --va-proton: var(--px-text); --va-electron: var(--px-text); --va-neutron: var(--px-text); --va-line: var(--px-text); --va-tile: transparent; }
+
+/* The hexagonal paper on presented slides that show the theme's page (the
+   editor and the PDF draw it from the theme's backgroundCss) */
+.deck-theme-valence .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34.64 60' width='34.64' height='60'%3E%3Cpath d='M-8.66 10L8.66 20M-8.66 50L8.66 40M8.66 20L8.66 40M8.66 20L25.98 10M8.66 40L25.98 50M25.98 -10L25.98 10M25.98 10L43.3 20M25.98 50L25.98 70M25.98 50L43.3 40' fill='none' stroke='%23e1e7ee' stroke-width='1'/%3E%3C/svg%3E") 0 0 / 34.641px 60px, #f7f9fb;
+}
+
+/* Headings: M PLUS Rounded 1c, a little tight. (!important: presented
+   decks set headings' spacing with it.) */
+.deck-theme-valence .px-text :is(h1, h2, h3) { letter-spacing: -0.008em !important; line-height: 1.16; }
+
+/* A valence shell under content titles: four electrons on a line that
+   fades out at its end */
+.deck-theme-valence.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-valence .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 120px;
+  max-width: 100%;
+  height: 10px;
+  margin-top: 0.26em;
+  background:
+    radial-gradient(circle, var(--va-electron) 3.4px, transparent 4.1px) -10px 0 / 30px 10px repeat-x,
+    linear-gradient(var(--va-line), var(--va-line)) 0 4.25px / 100% 1.5px no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent);
+  mask-image: linear-gradient(90deg, #000 84%, transparent);
+}
+.deck-theme-valence [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; background-position: 0 0, 0 4.25px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 8% 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8% 92%, transparent); }
+.deck-theme-valence [data-placeholder=title] :is(h1, h2)[style*=right]::after { margin-left: auto; background-position: 10px 0, 0 4.25px; -webkit-mask-image: linear-gradient(270deg, #000 84%, transparent); mask-image: linear-gradient(270deg, #000 84%, transparent); }
+
+/* The title slide: a Bohr model of carbon at its right, and the title and
+   subtitle set at the left beside it (their widths in percent, so text
+   that shrinks to fit still gets its room). It covers the paper. */
+.deck-theme-valence.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-valence .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--va-atom) right 24px top 74px / 344px 344px no-repeat, #f7f9fb;
+}
+.deck-theme-valence.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-valence .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 2em; letter-spacing: -0.014em !important; line-height: 1.1; }
+.deck-theme-valence.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-valence .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 63%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-valence.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-valence .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 65%; text-align: left !important; }
+
+/* Subtitles: muted; on the title slide, the lines after the first smaller */
+.deck-theme-valence [data-placeholder=subtitle] :is(p, li) { color: var(--va-muted) !important; }
+.deck-theme-valence.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-valence .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { font-size: 0.78em; }
+
+/* Section slides: the periodic table's outline, faint, its blocks in their
+   tints and letters, with the title large over it. It covers the paper. */
+.deck-theme-valence.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-valence .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(247, 249, 251, 0.38), rgba(247, 249, 251, 0.38)),
+    var(--va-table) 84px 36px / 792px 415.8px no-repeat,
+    #f7f9fb;
+}
+.deck-theme-valence.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-valence .px-slide[data-layout=section-header] [data-placeholder=title] h1 { font-size: 2.7em; letter-spacing: -0.016em !important; line-height: 1.1; }
+.deck-theme-valence.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder] :is(h1, p),
+.deck-theme-valence .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder] :is(h1, p) { text-shadow: 0 0 6px #f7f9fb, 0 0 14px #f7f9fb, 0 0 22px #f7f9fb; }
+
+/* A Heading 4: an element tile and its label. Its bold words are set in
+   the tile, a symbol or a section's number (#### **C** Carbon, Z = 6,
+   #### **2** The nucleus), and the rest is a quiet label, in its own case
+   (pH stays pH) */
+.deck-theme-valence .px-text h4 {
+  margin: 0 0 0.3em !important;
+  color: var(--va-muted) !important;
+  font-family: 'Didact Gothic', sans-serif !important;
+  font-size: 0.62em;
+  font-weight: 400 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1.5;
+  text-transform: none !important;
+}
+.deck-theme-valence .px-text h4 :is(strong, b) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6em;
+  height: 1.6em;
+  box-sizing: border-box;
+  margin-right: 0.5em;
+  padding: 0 0.26em;
+  border: 0.085em solid var(--va-ink);
+  border-radius: 0.18em;
+  background: var(--va-tile);
+  color: var(--va-ink);
+  font-family: 'M PLUS Rounded 1c', sans-serif;
+  font-size: 1.3em;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* A Heading 6: a caption; its bold words (Figure 1.) in ink */
+.deck-theme-valence .px-text h6 {
+  margin: 0.2em 0 0.4em !important;
+  color: var(--va-muted) !important;
+  font-family: 'Didact Gothic', sans-serif !important;
+  font-size: 0.6em;
+  font-weight: 400 !important;
+  line-height: 1.4;
+  text-transform: none !important;
+}
+.deck-theme-valence .px-text h6 :is(strong, b) { color: var(--va-ink); font-weight: 700; }
+
+/* Bullets: particles. An electron (small, blue, a minus), under it a
+   proton (red, a plus), under that a neutron (gray, hollow, no sign).
+   Numbered lists count in M PLUS Rounded, in red. */
+.deck-theme-valence .px-text :is(ul, ol) { display: block; }
+.deck-theme-valence .px-text ul { list-style: none; }
+.deck-theme-valence .px-text ul > li { position: relative; }
+.deck-theme-valence .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.92em;
+  top: 0.55em;
+  width: 0.42em;
+  height: 0.42em;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: linear-gradient(#ffffff, #ffffff) center / 0.2em 0.065em no-repeat, var(--va-electron);
+}
+.deck-theme-valence .px-text ul ul > li::before {
+  top: 0.51em;
+  width: 0.5em;
+  height: 0.5em;
+  background:
+    linear-gradient(#ffffff, #ffffff) center / 0.26em 0.065em no-repeat,
+    linear-gradient(#ffffff, #ffffff) center / 0.065em 0.26em no-repeat,
+    var(--va-proton);
+}
+.deck-theme-valence .px-text ul ul ul > li::before {
+  border: 0.07em solid var(--va-neutron);
+  background: transparent;
+}
+.deck-theme-valence .px-text ol > li::marker { color: var(--va-proton); font-family: 'M PLUS Rounded 1c', sans-serif; font-size: 0.9em; font-weight: 700; }
+.deck-theme-valence.px-slide[data-own-background] .px-text ul > li::before,
+.deck-theme-valence .px-slide[data-own-background] .px-text ul > li::before { border: 0.06em solid currentColor; background: linear-gradient(currentColor, currentColor) center / 0.2em 0.065em no-repeat; }
+.deck-theme-valence.px-slide[data-own-background] .px-text ul ul > li::before,
+.deck-theme-valence .px-slide[data-own-background] .px-text ul ul > li::before { background: linear-gradient(currentColor, currentColor) center / 0.26em 0.065em no-repeat, linear-gradient(currentColor, currentColor) center / 0.065em 0.26em no-repeat; }
+.deck-theme-valence.px-slide[data-own-background] .px-text ul ul ul > li::before,
+.deck-theme-valence .px-slide[data-own-background] .px-text ul ul ul > li::before { background: transparent; }
+
+/* Links: electron blue */
+.deck-theme-valence .px-text a { color: var(--px-link, #2a5bd7) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a formula or unit chip, in M PLUS Rounded on a pale tile */
+.deck-theme-valence .px-text :not(pre) > code {
+  padding: 0.02em 0.32em 0.04em;
+  border: 1px solid #cdd6e0;
+  border-radius: 0.3em;
+  background: #edf1f6 !important;
+  color: #1f262e;
+  font-family: 'M PLUS Rounded 1c', sans-serif;
+  font-size: 0.86em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quotes: a key-idea box, an ink outline on white; bold first words are
+   its label, on the box's top edge as a lab notebook's tab */
+.deck-theme-valence .px-text blockquote {
+  margin: 0.55em 0 0.5em !important;
+  padding: 0.6em 0.85em 0.55em !important;
+  border: 0.075em solid var(--va-ink) !important;
+  border-radius: 0.32em;
+  background: #ffffff;
+  opacity: 1 !important;
+  box-shadow: 0.14em 0.14em 0 #dfe5ec !important;
+  color: #1f262e;
+  font-style: normal;
+}
+.deck-theme-valence .px-text blockquote :is(p, li) { color: #1f262e !important; }
+.deck-theme-valence .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  width: fit-content;
+  margin: -1.55em 0 0.35em -0.5em;
+  padding: 0.12em 0.55em 0.1em;
+  border-radius: 0.35em;
+  background: #1f262e;
+  color: #ffffff;
+  font-family: 'M PLUS Rounded 1c', sans-serif;
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.3;
+}
+.deck-theme-valence .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-valence.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-valence .px-slide[data-own-background] .px-text blockquote { background: transparent; box-shadow: none !important; color: var(--px-text); }
+.deck-theme-valence.px-slide[data-own-background] .px-text blockquote :is(p, li),
+.deck-theme-valence .px-slide[data-own-background] .px-text blockquote :is(p, li) { color: var(--px-text) !important; }
+.deck-theme-valence.px-slide[data-own-background] .px-text blockquote > p:first-child > strong:first-child,
+.deck-theme-valence .px-slide[data-own-background] .px-text blockquote > p:first-child > strong:first-child { margin-top: 0; padding-inline: 0; background: transparent; color: var(--px-text) !important; }
+
+/* Code: JetBrains Mono on a cool tint with an electron-blue edge, Valence's
+   own syntax colors whichever code theme the deck uses */
+.deck-theme-valence :is(pre, pre.hljs) {
+  background: #edf1f6 !important;
+  color: #1f262e;
+  border: 0;
+  border-left: 3px solid #2a5bd7;
+  border-radius: 0 4px 4px 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-valence :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-valence pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-valence .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-valence pre [class*=hljs-] { color: #1f262e; font-style: normal; font-weight: 400; }
+.deck-theme-valence pre :is(.hljs-comment, .hljs-quote) { color: #56606b; font-style: italic; }
+.deck-theme-valence pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #2150c4; font-weight: 600; }
+.deck-theme-valence pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #b02f25; }
+.deck-theme-valence pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #8a5800; }
+.deck-theme-valence pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #1f262e; font-weight: 700; }
+.deck-theme-valence pre :is(.hljs-meta, .hljs-deletion) { color: #56606b; }
+
+/* Tables: a data table, the header row in charcoal, hairlines and faint
+   bands, tabular figures */
+.deck-theme-valence table { border: 0 !important; border-bottom: 2px solid #1f262e !important; background: transparent; }
+.deck-theme-valence table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d3dae2 !important;
+  background: transparent !important;
+  color: #1f262e !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-valence table tr:nth-child(odd):not(:first-child) :is(td, th) { background: #eef2f6 !important; }
+.deck-theme-valence table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #1f262e !important;
+  color: #ffffff !important;
+  font-family: 'M PLUS Rounded 1c', sans-serif;
+  font-weight: 700;
+}
+.deck-theme-valence.px-slide[data-own-background] table,
+.deck-theme-valence .px-slide[data-own-background] table { border-color: var(--px-text) !important; }
+.deck-theme-valence.px-slide[data-own-background] table :is(td, th),
+.deck-theme-valence .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; border-color: var(--px-text) !important; }
+
+/* The Big Number: an element tile, the figure in M PLUS Rounded in an ink
+   outline, its unit (inline code or italic words in it) under the figure
+   as the element's name */
+.deck-theme-valence.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-valence .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  display: table;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding: 0.1em 0.3em 0.14em !important;
+  border: 0.03em solid var(--va-ink);
+  border-radius: 0.1em;
+  background: var(--va-tile);
+  color: var(--px-heading, #1f262e) !important;
+  font-family: 'M PLUS Rounded 1c', sans-serif !important;
+  font-weight: 700;
+  letter-spacing: -0.02em !important;
+  line-height: 1.12;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-valence.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center],
+.deck-theme-valence .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center] { margin-inline: auto !important; }
+.deck-theme-valence.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right],
+.deck-theme-valence .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] { margin-left: auto !important; }
+.deck-theme-valence.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-valence .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: block;
+  margin: 0.08em 0 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: var(--va-muted);
+  font-family: 'M PLUS Rounded 1c', sans-serif !important;
+  font-size: 0.2em;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* The footer: M PLUS Rounded. With its sections in sequence, it fills in
+   as orbitals do, in order: a box before each section, a pair of
+   electrons, up and down, in those done, one red electron in the current
+   one, whose name is bold, and those to come empty. The page number is in
+   a small tile. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-valence.px-slide .px-footer,
+.deck-theme-valence .px-slide .px-footer { padding-inline: 14px !important; color: var(--va-muted) !important; }
+.deck-theme-valence.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-valence .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--va-muted) !important;
+  font-family: 'M PLUS Rounded 1c', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+}
+/* ...clear of a presented deck's arrows (only there is the slide inside
+   the class) */
+.deck-theme-valence .px-slide .px-footer { padding-right: 78px !important; }
+.deck-theme-valence.px-slide .px-footer .px-footer-page,
+.deck-theme-valence .px-slide .px-footer .px-footer-page {
+  padding: 0 5px;
+  border: 1.2px solid var(--va-ink);
+  border-radius: 3px;
+  background: var(--va-tile);
+  color: var(--va-ink) !important;
+  font-weight: 700 !important;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-valence.px-slide .px-footer .px-footer-sections,
+.deck-theme-valence .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 14px; }
+.deck-theme-valence.px-slide .px-footer .px-footer-section,
+.deck-theme-valence .px-slide .px-footer .px-footer-section { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.deck-theme-valence.px-slide .px-footer .px-footer-section::before,
+.deck-theme-valence .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1.3px solid var(--va-muted);
+  border-radius: 2px;
+  background: var(--va-tile);
+}
+.deck-theme-valence.px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current])::after,
+.deck-theme-valence .px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current])::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  background: var(--va-ink);
+  -webkit-mask: var(--va-pair) center / 16px 16px no-repeat;
+  mask: var(--va-pair) center / 16px 16px no-repeat;
+}
+.deck-theme-valence.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-valence .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--va-ink) !important; }
+.deck-theme-valence.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-valence .px-slide .px-footer .px-footer-section[data-state=past]::before { border-color: var(--va-ink); }
+.deck-theme-valence.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-valence .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--va-ink) !important; font-weight: 700 !important; }
+.deck-theme-valence.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-valence .px-slide .px-footer .px-footer-section[data-state=current]::before { border-color: var(--va-ink); }
+.deck-theme-valence.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-valence .px-slide .px-footer .px-footer-section[data-state=current]::after { background: var(--va-proton); -webkit-mask-image: var(--va-up); mask-image: var(--va-up); }
+.deck-theme-valence.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-valence .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the valence shell under the title */
+.deck-theme-valence .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 62px;
+  height: 6px;
+  margin: 4px auto 0;
+  background:
+    radial-gradient(circle, #2a5bd7 2px, transparent 2.5px) 3px 0 / 14px 6px repeat-x,
+    linear-gradient(#c4cdd7, #c4cdd7) 0 2.5px / 100% 1px no-repeat;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
