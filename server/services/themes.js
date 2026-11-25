@@ -7,7 +7,8 @@
 // The presentation themes: reveal.js 5's, whose page color, heading color and
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
 // Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
-// Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout, Cell), which
+// Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout, Cell,
+// Graticule), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -57,6 +58,7 @@ const THEME_LIST = [
   { id: 'runlevel', label: 'Runlevel', background: '#e3e7e8', backgroundCss: 'linear-gradient(#e3e7e8, #e3e7e8) 33.333% 60.227% / 96.25% 83.704% no-repeat, linear-gradient(#062129, #062129) 66.667% 71.591% / 96.25% 83.704% no-repeat, #0f4c5c', text: '#10191c', heading: '#0f4c5c', link: '#0b6178', accent: '#0f4c5c', dark: false, reveal: 'white', font: "'PT Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 52, h2Size: 30, h3Size: 24, headingFont: "'Roboto Mono', monospace", headingWeight: 600 }, note: 'A text-mode configuration screen: a dialog with a hard shadow on a petrol field, titles in its frame, path kickers, a boot-status footer' },
   { id: 'fanout', label: 'Fanout', background: '#eef2f5', text: '#18222d', heading: '#18222d', link: '#c0237a', accent: '#c0237a', dark: false, reveal: 'white', font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: 'Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer' },
   { id: 'cell', label: 'Cell', background: '#faf7f5', text: '#2e1c45', heading: '#3b1f5e', link: '#b8325f', accent: '#b8325f', dark: false, reveal: 'white', font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: 'Merriweather, serif', headingWeight: 700 }, note: 'Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer' },
+  { id: 'graticule', label: 'Graticule', background: '#f3f5f2', backgroundCss: 'linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, #f3f5f2', text: '#1c2321', heading: '#1c2321', link: '#1d5f96', accent: '#b54d00', dark: false, reveal: 'white', font: "'Open Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'Roboto Condensed', sans-serif", headingWeight: 700 }, note: 'Maps and spatial data on a topographic sheet: a neatline with degree bars, a graticule, contours, water in blue italics, a scale-bar footer' },
 ]
 
 const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

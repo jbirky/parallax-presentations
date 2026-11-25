@@ -6492,7 +6492,8 @@ var THEME_LIST = [
   { id: "separatrix", label: "Separatrix", background: "#eef1ec", text: "#15242a", heading: "#15242a", link: "#1d5fa8", accent: "#cf4f1b", stable: "#1d5fa8", unstable: "#cf4f1b", dark: false, reveal: "white", font: "'Fira Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 36, h3Size: 26, headingFont: "'Fira Sans', sans-serif", headingWeight: 600 }, note: "Phase portraits in fading ink: a flow-field frame, night section dividers, streamlet bullets, a time-ribbon footer" },
   { id: "runlevel", label: "Runlevel", background: "#e3e7e8", backgroundCss: "linear-gradient(#e3e7e8, #e3e7e8) 33.333% 60.227% / 96.25% 83.704% no-repeat, linear-gradient(#062129, #062129) 66.667% 71.591% / 96.25% 83.704% no-repeat, #0f4c5c", text: "#10191c", heading: "#0f4c5c", link: "#0b6178", accent: "#0f4c5c", dark: false, reveal: "white", font: "'PT Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 52, h2Size: 30, h3Size: 24, headingFont: "'Roboto Mono', monospace", headingWeight: 600 }, note: "A text-mode configuration screen: a dialog with a hard shadow on a petrol field, titles in its frame, path kickers, a boot-status footer" },
   { id: "fanout", label: "Fanout", background: "#eef2f5", text: "#18222d", heading: "#18222d", link: "#c0237a", accent: "#c0237a", dark: false, reveal: "white", font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: "Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer" },
-  { id: "cell", label: "Cell", background: "#faf7f5", text: "#2e1c45", heading: "#3b1f5e", link: "#b8325f", accent: "#b8325f", dark: false, reveal: "white", font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Merriweather, serif", headingWeight: 700 }, note: "Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer" }
+  { id: "cell", label: "Cell", background: "#faf7f5", text: "#2e1c45", heading: "#3b1f5e", link: "#b8325f", accent: "#b8325f", dark: false, reveal: "white", font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Merriweather, serif", headingWeight: 700 }, note: "Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer" },
+  { id: "graticule", label: "Graticule", background: "#f3f5f2", backgroundCss: "linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, #f3f5f2", text: "#1c2321", heading: "#1c2321", link: "#1d5f96", accent: "#b54d00", dark: false, reveal: "white", font: "'Open Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'Roboto Condensed', sans-serif", headingWeight: 700 }, note: "Maps and spatial data on a topographic sheet: a neatline with degree bars, a graticule, contours, water in blue italics, a scale-bar footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -33262,8 +33263,443 @@ var cell_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/graticule.css
+var graticule_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Graticule theme's stylesheet: maps and spatial data, drawn as a
+   printed topographic sheet. Near-black ink (#1c2321) on a cool map white
+   (#f3f5f2), hydrography blue (#1d5f96) for links and water, contour
+   brown (#8a4f22) for relief, vegetation green (#3f6e2e) sparingly, and a
+   vermilion (#b54d00) for what's current, which stays apart from the blue
+   for colorblind viewers. Headings and labels in Roboto Condensed, text in
+   Open Sans, water names in a serif italic (utils/themes.js: the fonts and
+   the text sizes, which the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-graticule, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The graticule, a faint grid every 120 px, is the theme's page (its
+   backgroundCss) in the editor, the thumbnails and the PDF, and this
+   stylesheet's in presented decks. Every slide has the sheet's neatline:
+   a frame whose border bars alternate black and white, half a grid cell
+   each, as degree ticks do, with the bottom margin left for the footer.
+   The title slide has contours of two summits at its right, every fifth
+   an index contour, and a north arrow; its title and subtitle sit at the
+   left. Section slides are a night basemap: dark relief, a lake and pale
+   contours. A Heading 4 is a sheet reference in small capitals, italics
+   are water names in blue, inline code is a CRS chip, bullets are map
+   symbols, tables are attribute tables and a quote is a legend box. The
+   Big Number's unit is a scale bar. With the footer's sections in
+   sequence, the footer is a scale bar: a segment per section, those done
+   alternating black and white, the current one vermilion under a pin,
+   those to come pale; the page number is the sheet. */
+
+/* reveal.js: links, the arrows and the progress bar in hydrography blue */
+.deck-theme-graticule {
+  --r-background-color: #f3f5f2;
+  --r-main-color: #1c2321;
+  --r-heading-color: #1c2321;
+  --r-link-color: #1d5f96;
+  --r-link-color-dark: #154873;
+  --r-link-color-hover: #1c2321;
+  --r-selection-background-color: #cfe3ef;
+  --r-selection-color: #1c2321;
+  --gt-contours: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 400' width='420' height='400'%3E%3Cg fill='none' stroke-linejoin='round'%3E%3Cpath d='M39 0 38 4 36 4 33 0M201 0 213 18 228 28 248 34 292 39 302 42 309 48 327 76 344 89 352 91 360 90 382 80 390 78 398 79 405 84 411 96 411 112 407 124 391 156 388 172 387 190 390 204 396 214 418 233M332 0 330 12 326 16 322 17 316 12 317 0M418 346 380 370 354 398M168 398 155 360 146 344 132 332 103 316 94 306 88 290 79 246 72 231 62 222 40 216 30 210 25 200 23 186 29 126 33 114 40 104 60 82 80 66 94 59 128 49 142 41 153 26 163 0' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M418 326 402 343 344 387 328 395 320 396 310 394 278 377 264 374 254 375 216 387 202 387 190 384 178 372 154 333 142 321 114 300 106 290 101 278 95 248 96 222 102 209 122 192 125 184 122 176 117 170 108 166 76 164 64 160 58 155 53 146 49 128 51 116 57 106 67 94 80 84 102 74 149 62 186 39 196 37 208 38 276 51 296 62 329 96 360 118 368 126 372 134 374 144 376 192 379 210 387 224 410 246 418 256' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M212 52 230 51 250 53 266 57 280 63 296 74 348 126 357 138 363 152 367 202 372 218 380 231 405 256 413 270 417 284 417 298 414 312 408 324 399 334 386 345 352 368 336 377 324 380 312 379 274 361 260 357 248 358 220 370 210 371 199 368 186 358 158 320 123 290 112 272 108 252 110 233 118 221 138 209 142 204 145 194 143 182 136 166 124 154 112 150 84 145 72 138 66 126 68 114 78 101 94 91 108 87 150 81 192 57 212 52ZM192 237 187 242 186 250 189 262 196 272 204 280 212 284 220 285 226 282 231 276 234 266 234 258 231 250 224 244 214 239 202 236 192 237Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M222 60 252 61 266 65 278 70 296 84 340 130 350 144 355 158 358 174 359 208 363 222 371 234 397 260 405 274 408 286 408 298 405 310 399 322 376 343 340 365 324 368 310 366 262 342 248 338 240 340 220 353 212 354 204 352 192 344 166 312 134 284 123 268 121 252 125 238 136 230 150 230 156 233 162 239 184 280 200 297 214 305 226 308 234 305 240 296 251 262 250 251 245 242 237 236 226 230 184 219 172 213 163 202 146 161 136 145 122 135 94 128 89 124 88 120 91 112 100 106 110 104 134 103 146 99 196 68 208 63 222 60Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M220 68 236 66 252 68 266 72 280 79 296 93 325 124 337 138 345 152 350 172 351 212 353 224 361 236 393 268 399 280 401 292 398 308 388 324 370 339 346 353 328 358 310 357 288 346 266 330 257 318 254 306 256 290 265 256 265 248 262 242 255 234 244 228 198 212 184 205 172 194 163 178 149 138 148 128 150 120 162 106 187 84 204 74 220 68ZM142 256 148 256 154 261 159 272 158 278 152 278 143 270 140 262 142 256Z' stroke='%238a4f22' stroke-width='1.8'/%3E%3Cpath d='M224 74 238 72 252 74 266 78 278 85 292 96 312 118 329 138 337 152 343 176 341 218 343 230 351 240 383 268 389 278 392 290 390 306 382 320 368 333 348 345 330 350 314 349 297 342 280 330 270 316 266 302 269 284 281 252 281 244 278 238 268 230 257 224 208 208 192 200 180 190 170 174 164 158 161 142 161 130 165 120 175 106 192 90 208 80 224 74Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M225 80 238 78 252 80 264 83 276 90 290 102 305 118 321 138 330 152 335 168 336 186 333 202 325 228 325 234 330 240 358 257 372 268 380 278 384 290 383 302 377 314 366 326 350 336 330 342 312 340 293 330 280 314 277 302 278 288 284 274 302 246 303 240 301 236 288 228 270 220 202 197 188 187 177 172 172 158 169 144 170 132 175 120 185 106 197 94 212 85 225 80Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M239 84 260 88 278 98 300 119 320 146 328 166 329 184 323 202 312 214 302 217 288 216 222 199 198 187 184 171 178 156 177 142 180 128 186 116 196 104 210 93 224 86 239 84ZM320 258 336 258 354 265 368 276 374 288 374 302 367 314 353 326 336 333 320 334 306 329 294 319 288 306 288 292 294 278 306 265 320 258Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M234 90 254 91 272 100 290 115 308 138 318 156 321 174 318 191 308 202 298 206 284 207 236 197 208 186 198 178 191 170 186 158 184 146 185 134 190 122 198 110 210 100 222 93 234 90ZM324 270 336 269 348 273 358 280 364 290 364 300 359 310 348 320 336 325 324 325 312 322 303 314 298 304 299 294 303 284 312 275 324 270Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M232 96 250 96 266 102 282 114 296 130 308 150 313 166 312 182 304 193 296 197 284 199 250 194 218 184 208 178 200 170 194 160 191 148 192 136 195 126 202 115 211 106 222 99 232 96ZM331 282 338 282 346 286 351 292 351 298 348 306 342 311 334 314 326 314 315 308 312 298 318 288 331 282Z' stroke='%238a4f22' stroke-width='1.8'/%3E%3Cpath d='M232 102 246 101 260 105 274 114 288 128 300 146 305 162 304 176 298 185 290 189 280 191 252 189 224 180 214 175 206 167 201 160 198 150 198 140 200 130 206 120 213 112 222 106 232 102Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M233 108 246 107 258 110 270 117 282 129 292 144 296 158 296 170 290 178 283 182 274 184 250 182 228 176 212 164 207 156 205 148 207 132 218 116 233 108Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M237 114 248 114 258 117 269 124 278 134 285 146 287 156 286 166 281 172 268 176 248 175 230 169 218 159 213 146 215 132 224 120 237 114Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M237 122 246 121 254 123 262 127 269 134 274 142 277 152 277 158 273 164 263 168 250 168 236 164 226 156 222 146 222 136 228 127 237 122Z' stroke='%23c49a74' stroke-width='0.9'/%3E%3Cpath d='M243 132 254 134 261 140 264 148 260 155 248 157 241 154 236 150 234 140 238 134 243 132Z' stroke='%238a4f22' stroke-width='1.8'/%3E%3C/g%3E%3Cg fill='%238a4f22'%3E%3Cpath d='M250 142L256 152H244Z'/%3E%3Cpath d='M331 293L337 303H325Z'/%3E%3C/g%3E%3C/svg%3E");
+  --gt-north: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 52' width='24' height='52'%3E %3Cpath d='M12 2L20 30L12 25Z' fill='%231c2321'/%3E%3Cpath d='M12 2L4 30L12 25Z' fill='none' stroke='%231c2321' stroke-width='1.2' stroke-linejoin='round'/%3E %3Cpath d='M7 50V36L17 50V36' fill='none' stroke='%231c2321' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --gt-lake: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 160' width='300' height='160'%3E %3Cpath d='M10 120C30 70 80 52 130 60C170 66 190 30 236 34C282 38 296 92 270 118C246 142 196 132 160 146C118 162 60 156 30 146C14 140 6 132 10 120Z' fill='%2316324a' stroke='%232f5d80' stroke-width='1.4'/%3E %3Cpath d='M40 128C70 112 104 116 132 108M150 96C176 86 206 84 236 70' fill='none' stroke='%232a4f6e' stroke-width='1.2'/%3E%3C/svg%3E");
+  --gt-ringed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12'%3E%3Ccircle cx='6' cy='6' r='4.6' fill='none' stroke='%23000' stroke-width='1.6'/%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3C/svg%3E");
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-graticule.px-slide,
+.deck-theme-graticule .px-slide { --gt-ink: #1c2321; --gt-muted: #56625c; --gt-water: #1d5f96; --gt-brown: #8a4f22; --gt-green: #3f6e2e; --gt-pale: #b7c2bb; --gt-bar: #ffffff; }
+.deck-theme-graticule.px-slide[data-own-background],
+.deck-theme-graticule .px-slide[data-own-background] { --gt-ink: var(--px-text); --gt-muted: var(--px-text); --gt-water: var(--px-text); --gt-brown: var(--px-text); --gt-green: var(--px-text); --gt-pale: var(--px-text); --gt-bar: transparent; }
+
+/* The graticule on presented slides that show the theme's page (the editor
+   and the PDF draw it from the theme's backgroundCss) */
+.deck-theme-graticule .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background:
+    linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 120px 120px,
+    linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 120px 120px,
+    #f3f5f2;
+}
+
+/* The neatline: an outer rule, border bars alternating black and white
+   every 60 px from the slide's corner (half a grid cell, so they meet the
+   graticule), and an inner rule. The bottom margin holds the footer. */
+.deck-theme-graticule.px-slide:not([data-own-background])::before,
+.deck-theme-graticule .px-slide:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  right: 10px;
+  bottom: 38px;
+  border: 1px solid var(--gt-frame, #1c2321);
+  pointer-events: none;
+  background:
+    linear-gradient(var(--gt-frame, #1c2321), var(--gt-frame, #1c2321)) 3px 3px / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(var(--gt-frame, #1c2321), var(--gt-frame, #1c2321)) 3px calc(100% - 3px) / calc(100% - 6px) 1px no-repeat,
+    linear-gradient(var(--gt-frame, #1c2321), var(--gt-frame, #1c2321)) 3px 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(var(--gt-frame, #1c2321), var(--gt-frame, #1c2321)) calc(100% - 3px) 3px / 1px calc(100% - 6px) no-repeat,
+    linear-gradient(90deg, var(--gt-frame, #1c2321) 50%, var(--gt-gap, #ffffff) 50%) -11px 0 / 120px 3px repeat-x,
+    linear-gradient(90deg, var(--gt-frame, #1c2321) 50%, var(--gt-gap, #ffffff) 50%) -11px 100% / 120px 3px repeat-x,
+    linear-gradient(var(--gt-frame, #1c2321) 50%, var(--gt-gap, #ffffff) 50%) 0 -11px / 3px 120px repeat-y,
+    linear-gradient(var(--gt-frame, #1c2321) 50%, var(--gt-gap, #ffffff) 50%) 100% -11px / 3px 120px repeat-y,
+    var(--gt-basemap, transparent);
+}
+
+/* The title slide: contours of two summits at its right, fading out
+   toward the title and the top, under a north arrow; the title and
+   subtitle at the left (their widths in percent, so text that shrinks to
+   fit still gets its room) */
+.deck-theme-graticule.px-slide[data-layout=title]:not([data-own-background])::after,
+.deck-theme-graticule .px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 17px;
+  width: 470px;
+  bottom: 45px;
+  pointer-events: none;
+  background: var(--gt-contours) right -36px top 24px / 450px 429px no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 34%), linear-gradient(transparent 4%, #000 28%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, transparent, #000 34%), linear-gradient(transparent 4%, #000 28%);
+  mask-composite: intersect;
+}
+.deck-theme-graticule.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-graticule .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 2.1em; line-height: 1.06; }
+.deck-theme-graticule.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-graticule .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 62%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-graticule.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-graticule .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 64%; text-align: left !important; }
+
+/* ...and its north arrow, on the neatline's layer, past the fade */
+.deck-theme-graticule.px-slide[data-layout=title]:not([data-own-background]),
+.deck-theme-graticule .px-slide[data-layout=title]:not([data-own-background]) { --gt-basemap: var(--gt-north) right 18px top 16px / 20px 43px no-repeat, transparent; }
+
+/* Section slides: a night basemap, dark relief in pale contours with a
+   lake, inside a pale neatline */
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]),
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) {
+  --gt-frame: #c9d6cf;
+  --gt-gap: #15201e;
+  --gt-basemap: linear-gradient(90deg, rgba(201, 214, 207, 0.07) 1px, transparent 1px) -11px -11px / 120px 120px, linear-gradient(rgba(201, 214, 207, 0.07) 1px, transparent 1px) -11px -11px / 120px 120px, var(--gt-lake) -24px calc(100% + 36px) / 270px 144px no-repeat, #15201e;
+  --gt-ink: #f1f5f2; --gt-muted: #c9d6cf; --gt-water: #8cc4ea; --gt-pale: #5d7068; --gt-bar: #15201e;
+}
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background])::before { box-shadow: 0 0 0 48px #15201e; }
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background])::after,
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  right: 17px;
+  top: 17px;
+  width: 520px;
+  bottom: 45px;
+  pointer-events: none;
+  background: #6f8f84;
+  -webkit-mask: var(--gt-contours) right -60px top -40px / 480px 457px no-repeat, linear-gradient(90deg, transparent, #000 40%);
+  -webkit-mask-composite: source-in;
+  mask: var(--gt-contours) right -60px top -40px / 480px 457px no-repeat, linear-gradient(90deg, transparent, #000 40%);
+  mask-composite: intersect;
+  opacity: 0.75;
+}
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) .px-text,
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #e4ece7 !important; }
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1 { color: #ffffff !important; letter-spacing: 0.01em !important; }
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #c9d6cf !important; }
+.deck-theme-graticule.px-slide[data-layout=section-header]:not([data-own-background]) .px-text a,
+.deck-theme-graticule .px-slide[data-layout=section-header]:not([data-own-background]) .px-text a { color: #8cc4ea !important; }
+
+/* Headings: Roboto Condensed, as map labels are, a little tight */
+.deck-theme-graticule .px-text :is(h1, h2, h3) { letter-spacing: -0.005em !important; line-height: 1.12; }
+
+/* A Heading 4: a sheet reference or coordinates in small capitals, its
+   bold words (the sheet) in ink */
+.deck-theme-graticule .px-text h4 {
+  margin: 0 0 0.5em !important;
+  color: var(--gt-muted) !important;
+  font-family: 'Roboto Condensed', sans-serif !important;
+  font-size: 0.56em;
+  font-weight: 400 !important;
+  letter-spacing: 0.14em !important;
+  line-height: 1.35;
+  text-transform: uppercase !important;
+}
+.deck-theme-graticule .px-text h4 :is(strong, b) { color: var(--gt-ink); font-weight: 700; }
+
+/* Italics: water names, in blue serif italic, as on printed sheets */
+.deck-theme-graticule .px-text em { color: var(--gt-water); font-family: Georgia, 'Times New Roman', serif; font-style: italic; }
+
+/* Bullets: map symbols, a ringed dot (a place); under them a summit's
+   triangle in contour brown, then a dot in vegetation green. Numbered
+   lists count in condensed figures. */
+.deck-theme-graticule .px-text :is(ul, ol) { display: block; }
+.deck-theme-graticule .px-text ul { list-style: none; }
+.deck-theme-graticule .px-text ul > li { position: relative; }
+.deck-theme-graticule .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: 0.5em;
+  width: 0.44em;
+  height: 0.44em;
+  background: var(--gt-ink);
+  -webkit-mask: var(--gt-ringed) center / contain no-repeat;
+  mask: var(--gt-ringed) center / contain no-repeat;
+}
+.deck-theme-graticule .px-text ul ul > li::before {
+  top: 0.52em;
+  width: 0.42em;
+  height: 0.38em;
+  background: var(--gt-brown);
+  -webkit-mask: none;
+  mask: none;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.deck-theme-graticule .px-text ul ul ul > li::before {
+  top: 0.62em;
+  width: 0.26em;
+  height: 0.26em;
+  border-radius: 50%;
+  background: var(--gt-green);
+  clip-path: none;
+}
+.deck-theme-graticule .px-text ol > li::marker { color: var(--gt-muted); font-family: 'Roboto Condensed', sans-serif; font-weight: 700; }
+
+/* Links: hydrography blue */
+.deck-theme-graticule .px-text a { color: var(--px-link, #1d5f96) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a CRS chip, EPSG:4326 */
+.deck-theme-graticule .px-text :not(pre) > code {
+  padding: 0.04em 0.34em;
+  border: 1px solid #9aa79f;
+  border-radius: 2px;
+  background: #e6ece7 !important;
+  color: #1c2321;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.78em;
+  letter-spacing: 0.02em;
+}
+
+/* Quotes: a legend box, a card in a double rule as an inset map's frame;
+   its bold first words are the legend's title */
+.deck-theme-graticule .px-text blockquote {
+  margin: 0.25em 4px 0.6em !important;
+  padding: 0.5em 0.75em 0.55em !important;
+  border: 1px solid #1c2321 !important;
+  background: #fbfcfa;
+  outline: 1px solid #1c2321;
+  outline-offset: 2px;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #1c2321;
+  font-style: normal;
+}
+.deck-theme-graticule .px-text blockquote :is(p, li) { color: #1c2321 !important; }
+.deck-theme-graticule .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.4em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid #b7c2bb;
+  font-family: 'Roboto Condensed', sans-serif;
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.deck-theme-graticule .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: Roboto Mono on a pale card with a water-blue edge, Graticule's own
+   syntax colors whichever code theme the deck uses */
+.deck-theme-graticule :is(pre, pre.hljs) {
+  background: #fbfcfa !important;
+  color: #1c2321;
+  border: 1px solid #c5cfc8;
+  border-left: 3px solid #1d5f96;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+.deck-theme-graticule :is(pre.hljs, pre code, pre) { font-family: 'Roboto Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-graticule pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-graticule .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-graticule pre [class*=hljs-] { color: #1c2321; font-style: normal; font-weight: 400; }
+.deck-theme-graticule pre :is(.hljs-comment, .hljs-quote) { color: #56625c; font-style: italic; }
+.deck-theme-graticule pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #1d5f96; font-weight: 600; }
+.deck-theme-graticule pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #8a4f22; }
+.deck-theme-graticule pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #3f6e2e; }
+.deck-theme-graticule pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { font-weight: 600; }
+.deck-theme-graticule pre :is(.hljs-meta, .hljs-deletion) { color: #b54d00; }
+
+/* Tables: an attribute table, a header band in condensed type, hairline
+   rows shaded in turn, tabular figures */
+.deck-theme-graticule table { border: 1px solid #9aa79f !important; background: #fbfcfa; }
+.deck-theme-graticule table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #d3dbd5 !important;
+  background: #fbfcfa !important;
+  color: #1c2321 !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-graticule table tr:nth-child(odd):not(:first-child) :is(td, th) { background: #eef2ee !important; }
+.deck-theme-graticule table tr:first-child :is(td, th) {
+  border-bottom: 1px solid #1c2321 !important;
+  background: #dfe6e1 !important;
+  font-family: 'Roboto Condensed', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.deck-theme-graticule.px-slide[data-own-background] table,
+.deck-theme-graticule .px-slide[data-own-background] table { border-color: var(--px-text) !important; background: transparent; }
+.deck-theme-graticule.px-slide[data-own-background] table :is(td, th),
+.deck-theme-graticule .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; }
+
+/* The Big Number: condensed figures in ink; its unit (inline code or
+   italic words in it) a scale bar under the figure, 0 at its start and the
+   unit at its end */
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #1c2321) !important;
+  font-family: 'Roboto Condensed', sans-serif !important;
+  font-weight: 700;
+  letter-spacing: -0.01em !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  position: relative;
+  display: block;
+  width: fit-content;
+  min-width: 8em;
+  margin: 0.1em 0 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  color: var(--gt-ink);
+  font-family: 'Roboto Condensed', sans-serif !important;
+  font-size: 0.18em;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: right;
+}
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em)::before,
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em)::before {
+  content: "";
+  display: block;
+  height: 0.5em;
+  margin-bottom: 0.3em;
+  border: 1px solid var(--gt-ink);
+  background: linear-gradient(90deg, var(--gt-ink) 25%, var(--gt-bar) 25% 50%, var(--gt-ink) 50% 75%, var(--gt-bar) 75%);
+}
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em)::after,
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em)::after { content: "0"; position: absolute; left: 0; bottom: 0; }
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center] :is(code, em),
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=center] :is(code, em) { margin-inline: auto; }
+.deck-theme-graticule.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] :is(code, em),
+.deck-theme-graticule .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] :is(code, em) { margin-left: auto; }
+
+/* The footer, in the margin under the neatline: Roboto Condensed. With
+   its sections in sequence, it is a scale bar, a segment of equal length
+   per section with its name under it: those done alternate black and
+   white, the current one is vermilion under a pin, those to come are
+   pale. The page number is the sheet's. (The class and the slide both
+   named, to outweigh the presented deck's footer rules.) */
+.deck-theme-graticule.px-slide .px-footer,
+.deck-theme-graticule .px-slide .px-footer { left: 12px !important; right: 12px !important; bottom: 4px !important; padding: 9px 0 0 !important; color: var(--gt-muted) !important; }
+.deck-theme-graticule.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-graticule .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--gt-muted) !important;
+  font-family: 'Roboto Condensed', sans-serif !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.deck-theme-graticule.px-slide .px-footer .px-footer-page,
+.deck-theme-graticule .px-slide .px-footer .px-footer-page { color: var(--gt-ink) !important; font-weight: 700 !important; font-variant-numeric: tabular-nums; margin-left: auto !important; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-page::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-page::before { content: "Sheet "; color: var(--gt-muted); font-weight: 400; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-sections,
+.deck-theme-graticule .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; align-items: flex-start !important; gap: 0; max-width: 720px; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 9px 4px 0 2px;
+  text-align: left;
+}
+.deck-theme-graticule.px-slide .px-footer .px-footer-section::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--gt-pale);
+  border-right-width: 0;
+  background: transparent;
+}
+.deck-theme-graticule.px-slide .px-footer .px-footer-section:last-child::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section:last-child::before { border-right-width: 1px; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=future]:nth-child(odd)::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=future]:nth-child(odd)::before { background: var(--gt-pale); }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--gt-ink) !important; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=past]::before { border-color: var(--gt-ink); background: var(--gt-bar); }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=past]:nth-child(odd)::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=past]:nth-child(odd)::before { background: var(--gt-ink); }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--gt-ink) !important; font-weight: 700 !important; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=current]::before { border-color: var(--gt-ink); border-right-width: 1px; background: #d55e00; }
+.deck-theme-graticule.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-graticule .px-slide .px-footer .px-footer-section[data-state=current]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border: 1.5px solid var(--px-bg, #f3f5f2);
+  border-radius: 50% 50% 50% 0;
+  background: #d55e00;
+  transform: rotate(-45deg);
+}
+.deck-theme-graticule.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-graticule .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.65; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the neatline inside the edge */
+.deck-theme-graticule.theme-swatch { box-shadow: inset 0 0 0 5px #f3f5f2, inset 0 0 0 6px #1c2321, inset 0 0 0 8px #f3f5f2, inset 0 0 0 9px #1c2321; }
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
