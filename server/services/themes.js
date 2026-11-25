@@ -8,7 +8,7 @@
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
 // Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
 // Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout, Cell,
-// Graticule, Eigenstate), which
+// Graticule, Eigenstate, Mise), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -60,6 +60,7 @@ const THEME_LIST = [
   { id: 'cell', label: 'Cell', background: '#faf7f5', text: '#2e1c45', heading: '#3b1f5e', link: '#b8325f', accent: '#b8325f', dark: false, reveal: 'white', font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: 'Merriweather, serif', headingWeight: 700 }, note: 'Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer' },
   { id: 'graticule', label: 'Graticule', background: '#f3f5f2', backgroundCss: 'linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, #f3f5f2', text: '#1c2321', heading: '#1c2321', link: '#1d5f96', accent: '#b54d00', dark: false, reveal: 'white', font: "'Open Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'Roboto Condensed', sans-serif", headingWeight: 700 }, note: 'Maps and spatial data on a topographic sheet: a neatline with degree bars, a graticule, contours, water in blue italics, a scale-bar footer' },
   { id: 'eigenstate', label: 'Eigenstate', background: '#f6f6fb', text: '#22233a', heading: '#1d1f4f', link: '#5a35b5', accent: '#5a35b5', dark: false, reveal: 'white', font: "'Libre Franklin', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'STIX Two Text', serif", headingWeight: 600 }, note: 'Quantum mechanics in wave functions: a packet under titles, oscillator eigenstates, tunneling section slides, bra-ket kickers, a standing-wave footer' },
+  { id: 'mise', label: 'Mise', background: '#fdfdfb', backgroundCss: 'linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 6.6667%, #fdfdfb', text: '#2a2723', heading: '#1c1a17', link: '#c0392b', accent: '#c0392b', dark: false, reveal: 'white', font: "'Bricolage Grotesque', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "'Bricolage Grotesque', sans-serif", headingWeight: 800 }, note: 'Recipes on an index card: blue rules, a red line under titles, tick-box ingredients, numbered steps, sticky-note tips in ballpoint, a recipe-box footer' },
 ]
 
 const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))

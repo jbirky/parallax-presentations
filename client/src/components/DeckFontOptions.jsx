@@ -31,6 +31,7 @@ export default function DeckFontOptions() {
         <option value="Questrial, sans-serif">Questrial</option>
         <option value="Barlow, sans-serif">Barlow</option>
         <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
+        <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
         <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
       </optgroup>
       <optgroup label="Rounded">
@@ -57,6 +58,7 @@ export default function DeckFontOptions() {
       </optgroup>
       <optgroup label="Monospace">
         <option value="'Courier New', monospace">Courier New</option>
+        <option value="'Courier Prime', monospace">Courier Prime</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
         <option value="Inconsolata, monospace">Inconsolata</option>
@@ -73,6 +75,7 @@ export default function DeckFontOptions() {
         <option value="'National Park', sans-serif">National Park</option>
         <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
         <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+        <option value="Caveat, cursive">Caveat</option>
         <option value="'Press Start 2P', monospace">Press Start 2P</option>
         <option value="'Pixelify Sans', sans-serif">Pixelify Sans</option>
       </optgroup>

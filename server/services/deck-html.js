@@ -6494,7 +6494,8 @@ var THEME_LIST = [
   { id: "fanout", label: "Fanout", background: "#eef2f5", text: "#18222d", heading: "#18222d", link: "#c0237a", accent: "#c0237a", dark: false, reveal: "white", font: "'Asap Condensed', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 38, h3Size: 28, headingFont: "'Asap Condensed', sans-serif", headingWeight: 600 }, note: "Architecture reviews: view tags, version chips, decision-record quotes, metrics in Inconsolata, a request-hop footer" },
   { id: "cell", label: "Cell", background: "#faf7f5", text: "#2e1c45", heading: "#3b1f5e", link: "#b8325f", accent: "#b8325f", dark: false, reveal: "white", font: "'Nunito Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Merriweather, serif", headingWeight: 700 }, note: "Cell biology on a stained slide: hematoxylin and eosin, a membrane under titles, fluorescence section slides, a cell-cycle footer" },
   { id: "graticule", label: "Graticule", background: "#f3f5f2", backgroundCss: "linear-gradient(90deg, #dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, linear-gradient(#dde4de 1px, transparent 1px) 0 0 / 12.5% 22.222%, #f3f5f2", text: "#1c2321", heading: "#1c2321", link: "#1d5f96", accent: "#b54d00", dark: false, reveal: "white", font: "'Open Sans', sans-serif", textStyles: { bodySize: 24, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'Roboto Condensed', sans-serif", headingWeight: 700 }, note: "Maps and spatial data on a topographic sheet: a neatline with degree bars, a graticule, contours, water in blue italics, a scale-bar footer" },
-  { id: "eigenstate", label: "Eigenstate", background: "#f6f6fb", text: "#22233a", heading: "#1d1f4f", link: "#5a35b5", accent: "#5a35b5", dark: false, reveal: "white", font: "'Libre Franklin', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'STIX Two Text', serif", headingWeight: 600 }, note: "Quantum mechanics in wave functions: a packet under titles, oscillator eigenstates, tunneling section slides, bra-ket kickers, a standing-wave footer" }
+  { id: "eigenstate", label: "Eigenstate", background: "#f6f6fb", text: "#22233a", heading: "#1d1f4f", link: "#5a35b5", accent: "#5a35b5", dark: false, reveal: "white", font: "'Libre Franklin', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'STIX Two Text', serif", headingWeight: 600 }, note: "Quantum mechanics in wave functions: a packet under titles, oscillator eigenstates, tunneling section slides, bra-ket kickers, a standing-wave footer" },
+  { id: "mise", label: "Mise", background: "#fdfdfb", backgroundCss: "linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 6.6667%, #fdfdfb", text: "#2a2723", heading: "#1c1a17", link: "#c0392b", accent: "#c0392b", dark: false, reveal: "white", font: "'Bricolage Grotesque', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "'Bricolage Grotesque', sans-serif", headingWeight: 800 }, note: "Recipes on an index card: blue rules, a red line under titles, tick-box ingredients, numbered steps, sticky-note tips in ballpoint, a recipe-box footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -34101,8 +34102,398 @@ var eigenstate_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/mise.css
+var mise_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Mise theme's stylesheet: recipes and cooking, drawn as a well-used
+   recipe index card. White card stock (#fdfdfb) ruled in faint blue (the
+   theme's page, utils/themes.js), a printed red line (#c0392b) under every
+   title, ink (#2a2723, headings #1c1a17) in Bricolage Grotesque, quantities
+   typed in Courier Prime, and the cook's notes handwritten in ballpoint blue
+   (#24489c) in Caveat (utils/themes.js: the fonts and the text sizes, which
+   the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-mise, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide is the card's face: "Recipe" printed in red over a red
+   rule, a ring left by a pan or a cup in its corner, and the subtitle's
+   second line handwritten under a printed "From the kitchen of". Section
+   slides are a divider card in a recipe box, its tab raised, the tabs of
+   two dividers behind it. A Heading 4 is a typed line for servings and
+   times, its bold words in red; a Heading 6 a note in the margin, in
+   ballpoint. Bullets are boxes to tick off; numbered lists are a method's
+   steps, each number in a red disc. Inline code is a quantity, typed. A
+   quote is a cook's note on a sticky note, taped to the card, its bold
+   first words the note's label. Tables are a nutrition panel: heavy rules
+   above and below, a bar under the header row. The Big Number's unit
+   (inline code or italic words in it) is set in an oven dial. With the
+   footer's sections in sequence, the footer is a row of index tabs: done
+   in ink, current in red and raised, those to come pale; the page number
+   is the card's. */
+
+/* reveal.js: links, the arrows and the progress bar in red */
+.deck-theme-mise {
+  --r-background-color: #fdfdfb;
+  --r-main-color: #2a2723;
+  --r-heading-color: #1c1a17;
+  --r-link-color: #c0392b;
+  --r-link-color-dark: #962d22;
+  --r-link-color-hover: #1c1a17;
+  --r-selection-background-color: #fbe0dc;
+  --r-selection-color: #2a2723;
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-mise.px-slide,
+.deck-theme-mise .px-slide { --mi-ink: #1c1a17; --mi-text: #2a2723; --mi-muted: #6b655d; --mi-red: #c0392b; --mi-pen: #24489c; --mi-pale: #c9d3de; }
+.deck-theme-mise.px-slide[data-own-background],
+.deck-theme-mise .px-slide[data-own-background] { --mi-ink: var(--px-text); --mi-text: var(--px-text); --mi-muted: var(--px-text); --mi-red: var(--px-text); --mi-pen: var(--px-text); --mi-pale: var(--px-text); }
+
+/* The card's blue rules on presented slides that show the theme's page
+   (the editor and the PDF draw them from the theme's backgroundCss) */
+.deck-theme-mise .slides > section:not([data-background-color]):not([data-background-image]):not([data-background-gradient]) {
+  background: linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 36px, #fdfdfb;
+}
+
+/* Caveat's letters run small for its size, so wherever the theme writes in
+   it, its x-height is matched to the text's (font-size-adjust); the label
+   inside a note is typed, and keeps its own size. */
+
+/* Headings: Bricolage Grotesque, tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-mise .px-text :is(h1, h2, h3) { letter-spacing: -0.018em !important; line-height: 1.08; }
+
+/* The printed red line under titles, the card's width. Not on the title
+   slide (its line is the card's header), section slides or blank ones. */
+.deck-theme-mise.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-mise .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 2px;
+  margin-top: 0.2em;
+  background: var(--mi-red);
+}
+
+/* The title slide: the card's face. "Recipe" printed in red over a red
+   rule across the card, and a ring stain in its top right corner */
+.deck-theme-mise.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-mise .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 220' width='220' height='220'%3E%3Cpath d='M91.5 32.9 L94.6 32.4 L97.7 32.1 L100.7 31.6 L103.8 31.1 L106.9 30.6 L110 30.1 L113.2 29.7 L116.3 29.7 L119.5 29.8 L122.6 30.3 L125.7 30.9 L128.8 31.6 L131.9 32.4 L134.9 33.4 L137.8 34.6 L140.6 36.1 L143.2 38 L145.6 40.1 L147.9 42.4 L150 44.8 L152 47.1 L154.1 49.3 L156.2 51.4 L158.4 53.3 L160.6 55.2 L162.8 57.2 L164.9 59.3 L166.8 61.5 L168.7 63.7 L170.5 66 L172.4 68.3 L174.3 70.6 L176.2 73 L177.9 75.4 L179.6 77.9 L180.9 80.6 L182.1 83.4 L183.1 86.3 L184 89.1 L185 92 L186.1 94.9 L187.3 97.8 L188.4 100.7 L189.5 103.7 L190.2 106.8 L190.7 110 L190.8 113.2 L190.6 116.3 L190.3 119.5 L189.8 122.6 L189.1 125.7 L188.3 128.8 L187.3 131.8 L186.1 134.7 L184.6 137.5 L182.9 140.2 L181.1 142.8 L179.4 145.3 L177.7 147.9 L176.1 150.5 L174.7 153.2 L173.3 156 L171.7 158.6 L170 161.2 L168 163.6 L165.8 165.8 L163.5 167.9 L161.1 169.8 L158.7 171.7 L156.2 173.5 L153.6 175.3 L151 176.9 L148.2 178.2 L145.3 179.4 L142.4 180.3 L139.4 181.1 L136.5 181.9 L133.6 182.7 L130.8 183.6 L127.9 184.6 L125 185.4 L122.1 186.1 L119.1 186.6 L116 186.6 L113 186.5 L110 186.1 L107 185.6 L104.1 185.2 L101.2 184.8 L98.2 184.3 L95.3 183.9 L92.4 183.3 L89.5 182.6 L86.7 181.8 L83.8 181 L80.9 180.3 L77.9 179.6 L74.8 179.1 L71.6 178.5 L68.5 177.8 L65.3 176.8 L62.4 175.5 L59.7 173.9 L57.1 171.9 L54.7 169.8 L52.5 167.5 L50.3 165.2 L48.2 162.8 L46.2 160.3 L44.3 157.7 L42.7 155 L41.3 152.1 L40 149.2 L38.9 146.2 L37.9 143.2 L36.8 140.3 L35.7 137.4 L34.7 134.5 L33.9 131.5 L33.3 128.4 L33.1 125.3 L33.2 122.2 L33.5 119.1 L33.9 116 L34.4 113 L34.7 110 L34.9 107.1 L35.1 104.1 L35.4 101.2 L35.7 98.2 L36.1 95.3 L36.6 92.4 L37.2 89.5 L37.8 86.5 L38.3 83.5 L38.8 80.5 L39.5 77.5 L40.4 74.5 L41.6 71.7 L43.1 69 L45 66.6 L46.7 67.7 L44.9 70.1 L43.4 72.7 L42.2 75.5 L41.4 78.4 L40.7 81.3 L40.3 84.3 L39.8 87.2 L39.3 90.1 L38.8 92.9 L38.3 95.7 L38 98.6 L37.7 101.4 L37.5 104.3 L37.4 107.1 L37.3 110 L37 112.9 L36.6 115.8 L36.3 118.7 L36 121.7 L36 124.7 L36.3 127.7 L37 130.6 L37.9 133.4 L39 136.2 L40.1 138.9 L41.3 141.7 L42.4 144.5 L43.5 147.2 L44.8 149.9 L46.3 152.6 L48 155.1 L49.8 157.4 L51.9 159.7 L54 161.8 L56.1 163.9 L58.4 165.9 L60.7 167.7 L63.2 169.4 L65.8 170.8 L68.7 171.8 L71.7 172.5 L74.8 172.9 L77.8 173.2 L80.7 173.5 L83.6 173.8 L86.3 174.3 L88.9 174.8 L91.6 175.3 L94.2 175.8 L96.8 176.2 L99.5 176.4 L102.1 176.6 L104.7 176.8 L107.4 177.1 L110 177.4 L112.7 177.7 L115.3 177.7 L118 177.5 L120.6 177.1 L123.2 176.3 L125.7 175.4 L128.2 174.5 L130.7 173.6 L133.2 172.8 L135.7 172.1 L138.3 171.4 L140.9 170.6 L143.4 169.6 L145.8 168.4 L148.1 167 L150.3 165.5 L152.5 163.9 L154.6 162.2 L156.7 160.6 L158.8 158.8 L160.7 156.9 L162.5 154.8 L164 152.6 L165.4 150.2 L166.6 147.8 L167.9 145.5 L169.4 143.2 L171 141.1 L172.7 138.9 L174.4 136.7 L176.1 134.4 L177.6 132 L178.9 129.4 L179.9 126.8 L180.7 124.1 L181.5 121.3 L182.1 118.5 L182.6 115.7 L182.9 112.9 L183 110 L182.7 107.1 L182.1 104.3 L181.3 101.6 L180.3 98.9 L179.4 96.2 L178.6 93.5 L177.8 90.9 L177.1 88.2 L176.4 85.5 L175.5 82.9 L174.4 80.3 L173 77.9 L171.5 75.6 L169.9 73.3 L168.3 71.1 L166.6 68.8 L165.1 66.6 L163.4 64.4 L161.7 62.2 L159.9 60.1 L157.9 58.2 L155.9 56.2 L153.9 54.3 L152 52.2 L150.1 50 L148.2 47.6 L146.3 45.2 L144.2 42.9 L141.9 40.7 L139.5 38.8 L136.8 37.3 L134 36 L131.2 35 L128.2 34.1 L125.3 33.3 L122.2 32.7 L119.2 32.2 L116.1 32 L113.1 32 L110 32.3 L107 32.8 L104 33.3 L101 33.7 L98 34.1 L95 34.5 L92 34.9Z' fill='%238a5a2e' fill-opacity='0.22'/%3E%3Cpath d='M91.5 32.9 L94.6 32.4 L97.7 32.1 L100.7 31.6 L103.8 31.1 L106.9 30.6 L110 30.1 L113.2 29.7 L116.3 29.7 L119.5 29.8 L122.6 30.3 L125.7 30.9 L128.8 31.6 L131.9 32.4 L134.9 33.4 L137.8 34.6 L140.6 36.1 L143.2 38 L145.6 40.1 L147.9 42.4 L150 44.8 L152 47.1 L154.1 49.3 L156.2 51.4 L158.4 53.3 L160.6 55.2 L162.8 57.2 L164.9 59.3 L166.8 61.5 L168.7 63.7 L170.5 66 L172.4 68.3 L174.3 70.6 L176.2 73 L177.9 75.4 L179.6 77.9 L180.9 80.6 L182.1 83.4 L183.1 86.3 L184 89.1 L185 92 L186.1 94.9 L187.3 97.8 L188.4 100.7 L189.5 103.7 L190.2 106.8 L190.7 110 L190.8 113.2 L190.6 116.3 L190.3 119.5 L189.8 122.6 L189.1 125.7 L188.3 128.8 L187.3 131.8 L186.1 134.7 L184.6 137.5 L182.9 140.2 L181.1 142.8 L179.4 145.3 L177.7 147.9 L176.1 150.5 L174.7 153.2 L173.3 156 L171.7 158.6 L170 161.2 L168 163.6 L165.8 165.8 L163.5 167.9 L161.1 169.8 L158.7 171.7 L156.2 173.5 L153.6 175.3 L151 176.9 L148.2 178.2 L145.3 179.4 L142.4 180.3 L139.4 181.1 L136.5 181.9 L133.6 182.7 L130.8 183.6 L127.9 184.6 L125 185.4 L122.1 186.1 L119.1 186.6 L116 186.6 L113 186.5 L110 186.1 L107 185.6 L104.1 185.2 L101.2 184.8 L98.2 184.3 L95.3 183.9 L92.4 183.3 L89.5 182.6 L86.7 181.8 L83.8 181 L80.9 180.3 L77.9 179.6 L74.8 179.1 L71.6 178.5 L68.5 177.8 L65.3 176.8 L62.4 175.5 L59.7 173.9 L57.1 171.9 L54.7 169.8 L52.5 167.5 L50.3 165.2 L48.2 162.8 L46.2 160.3 L44.3 157.7 L42.7 155 L41.3 152.1 L40 149.2 L38.9 146.2 L37.9 143.2 L36.8 140.3 L35.7 137.4 L34.7 134.5 L33.9 131.5 L33.3 128.4 L33.1 125.3 L33.2 122.2 L33.5 119.1 L33.9 116 L34.4 113 L34.7 110 L34.9 107.1 L35.1 104.1 L35.4 101.2 L35.7 98.2 L36.1 95.3 L36.6 92.4 L37.2 89.5 L37.8 86.5 L38.3 83.5 L38.8 80.5 L39.5 77.5 L40.4 74.5 L41.6 71.7 L43.1 69 L45 66.6' fill='none' stroke='%237a4a22' stroke-opacity='0.4' stroke-width='1.1' stroke-linecap='round'/%3E%3Ccircle cx='189.3' cy='171.9' r='2.9' fill='%238a5a2e' fill-opacity='0.22'/%3E%3Ccircle cx='197' cy='79.5' r='3.1' fill='%238a5a2e' fill-opacity='0.22'/%3E%3Ccircle cx='172.9' cy='32.9' r='3' fill='%238a5a2e' fill-opacity='0.22'/%3E%3Ccircle cx='198.9' cy='134.6' r='1.8' fill='%238a5a2e' fill-opacity='0.22'/%3E%3Ccircle cx='201' cy='85.5' r='2.3' fill='%238a5a2e' fill-opacity='0.22'/%3E%3C/svg%3E") right -36px top -44px / 236px 236px no-repeat;
+}
+.deck-theme-mise.px-slide[data-layout=title]:not([data-own-background])::after,
+.deck-theme-mise .px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "Recipe";
+  position: absolute;
+  left: 60px;
+  right: 60px;
+  top: 52px;
+  padding-bottom: 7px;
+  border-bottom: 2px solid #c0392b;
+  color: #c0392b;
+  font: 700 15px/1 'Courier Prime', 'Courier New', monospace;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.deck-theme-mise.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-mise .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 1.9em; letter-spacing: -0.025em !important; line-height: 1.02; }
+.deck-theme-mise.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-mise .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { box-sizing: border-box; max-width: 82%; padding-left: 60px; text-align: left !important; }
+.deck-theme-mise.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-mise .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { text-align: left !important; }
+
+/* Subtitles: muted. On the title slide the second line is handwritten, in
+   ballpoint, under a printed "From the kitchen of". */
+.deck-theme-mise [data-placeholder=subtitle] :is(p, li) { color: var(--mi-muted) !important; }
+.deck-theme-mise.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-mise .px-slide[data-layout=title] [data-placeholder=subtitle] p + p {
+  margin-top: 0.55em;
+  color: var(--mi-pen) !important;
+  font-family: Caveat, 'Segoe Print', 'Bradley Hand', cursive !important;
+  font-size: 1.2em;
+  font-size-adjust: 0.52;
+  font-weight: 500;
+  line-height: 1.1;
+}
+.deck-theme-mise.px-slide[data-layout=title] [data-placeholder=subtitle] p + p::before,
+.deck-theme-mise .px-slide[data-layout=title] [data-placeholder=subtitle] p + p::before {
+  content: "From the kitchen of";
+  display: block;
+  margin-bottom: 0.1em;
+  color: var(--mi-red);
+  font: 700 0.56em/1.2 'Courier Prime', 'Courier New', monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Section slides: a divider card in a recipe box, its tab raised, two
+   other dividers' tabs behind it */
+.deck-theme-mise.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-mise .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540' preserveAspectRatio='none'%3E%3Crect width='960' height='540' fill='%23e2e6ea'/%3E%3Cpath d='M0 72Q0 62 10 62H142Q150 62 152 54L157 27Q159 18 168 18H312Q321 18 323 27L328 54Q330 62 338 62H950Q960 62 960 72V540H0Z' fill='%23f3cdc6' stroke='%23000' stroke-opacity='0.1' stroke-width='1'/%3E%3Cpath d='M0 72Q0 62 10 62H372Q380 62 382 54L387 35Q389 26 398 26H542Q551 26 553 35L558 54Q560 62 568 62H950Q960 62 960 72V540H0Z' fill='%23f3e3a3' stroke='%23000' stroke-opacity='0.1' stroke-width='1'/%3E%3Cpath d='M0 72Q0 62 10 62H632Q640 62 642 54L647 21Q649 12 658 12H812Q821 12 823 21L828 54Q830 62 838 62H950Q960 62 960 72V540H0Z' fill='%23d6e6cc' stroke='%23000' stroke-opacity='0.14' stroke-width='1'/%3E%3Cpath d='M0 63H960' stroke='%23000' stroke-opacity='0.05' stroke-width='3'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-mise.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-mise .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] h1 { color: #1f3a1c !important; }
+.deck-theme-mise.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-mise .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #3d5a37 !important; }
+.deck-theme-mise.px-slide[data-layout=section-header]:not([data-own-background]),
+.deck-theme-mise .px-slide[data-layout=section-header]:not([data-own-background]) { --mi-ink: #1f3a1c; --mi-text: #1f3a1c; --mi-muted: #3d5a37; --mi-pale: #a9c19d; }
+
+/* A Heading 4: a typed line for servings and times, its bold words red
+   (Serves 4 · Prep 15 min · Cook 25 min) */
+.deck-theme-mise .px-text h4 {
+  margin: 0 0 0.4em !important;
+  color: var(--mi-muted) !important;
+  font-family: 'Courier Prime', 'Courier New', monospace !important;
+  font-size: 0.56em;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.35;
+  text-transform: uppercase !important;
+}
+.deck-theme-mise .px-text h4 :is(strong, b) { color: var(--mi-red); font-weight: 700; }
+
+/* A Heading 6: a note in the margin, in ballpoint */
+.deck-theme-mise .px-text h6 {
+  margin: 0.2em 0 0.3em !important;
+  color: var(--mi-pen) !important;
+  font-family: Caveat, 'Segoe Print', 'Bradley Hand', cursive !important;
+  font-size: 0.95em;
+  font-size-adjust: 0.52;
+  font-weight: 500 !important;
+  line-height: 1.12;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+/* Bullets: boxes to tick off; under them, a dash. Numbered lists are a
+   method's steps, each number typed in a red disc. */
+.deck-theme-mise .px-text :is(ul, ol) { display: block; }
+.deck-theme-mise .px-text ul { list-style: none; }
+.deck-theme-mise .px-text ul > li { position: relative; }
+.deck-theme-mise .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.02em;
+  top: 0.3em;
+  width: 0.56em;
+  height: 0.56em;
+  box-sizing: border-box;
+  border: 0.075em solid var(--mi-ink);
+  border-radius: 0.07em;
+}
+.deck-theme-mise .px-text ul ul > li::before { top: 0.66em; width: 0.42em; height: 0; border: 0; border-top: 0.08em solid var(--mi-red); border-radius: 0; }
+.deck-theme-mise .px-text ol { list-style: none; padding-left: 1.55em; }
+.deck-theme-mise .px-text ol > li { position: relative; list-style: none; }
+.deck-theme-mise .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.25em;
+  top: 0.12em;
+  width: 1.62em;
+  height: 1.62em;
+  border-radius: 50%;
+  background: var(--mi-red);
+  color: #ffffff;
+  font: 700 0.68em/1.62em 'Courier Prime', 'Courier New', monospace;
+  text-align: center;
+}
+.deck-theme-mise.px-slide[data-own-background] .px-text ol > li::before,
+.deck-theme-mise .px-slide[data-own-background] .px-text ol > li::before { background: transparent; color: var(--px-text); box-shadow: inset 0 0 0 0.09em var(--px-text); }
+
+/* Links: red */
+.deck-theme-mise .px-text a { color: var(--px-link, #c0392b) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a quantity, typed in Courier Prime on a blue tint */
+.deck-theme-mise .px-text :not(pre) > code {
+  padding: 0.02em 0.28em;
+  border-radius: 3px;
+  background: #eaf1f8 !important;
+  color: #1c1a17;
+  font-family: 'Courier Prime', 'Courier New', monospace;
+  font-size: 0.95em;
+  font-weight: 700;
+}
+
+/* Quotes: a cook's note on a sticky note, taped to the card, written in
+   ballpoint; bold first words are its label, typed in red */
+.deck-theme-mise .px-text blockquote {
+  position: relative;
+  margin: 0.55em 0.3em 0.6em !important;
+  padding: 0.6em 0.85em 0.65em !important;
+  border: 0 !important;
+  border-radius: 1px;
+  background: #fff3a8;
+  opacity: 1 !important;
+  box-shadow: 0 0.08em 0.22em rgba(70, 55, 20, 0.22) !important;
+  transform: rotate(-0.7deg);
+  color: #24489c;
+  font-style: normal;
+}
+.deck-theme-mise .px-text blockquote::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -0.38em;
+  width: 3.4em;
+  height: 0.72em;
+  margin-left: -1.7em;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  transform: rotate(2.2deg);
+}
+.deck-theme-mise .px-text blockquote :is(p, li) { color: #24489c !important; font-family: Caveat, 'Segoe Print', 'Bradley Hand', cursive !important; font-size-adjust: 0.52; line-height: 1.12; }
+.deck-theme-mise .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.3em;
+  color: #b03226;
+  font: 700 0.46em/1.2 'Courier Prime', 'Courier New', monospace;
+  font-size-adjust: none;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-mise .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: typed on a pale blue card with a red edge, Mise's own syntax
+   colors whichever code theme the deck uses */
+.deck-theme-mise :is(pre, pre.hljs) {
+  background: #f1f5f9 !important;
+  color: #2a2723;
+  border: 0;
+  border-left: 3px solid #c0392b;
+  border-radius: 0 4px 4px 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-mise :is(pre.hljs, pre code, pre) { font-family: 'Courier Prime', 'Courier New', monospace !important; font-variant-ligatures: none; }
+.deck-theme-mise pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-mise .px-text pre { padding: 0.5em 0.75em !important; font-size: 0.62em; line-height: 1.45; }
+.deck-theme-mise pre [class*=hljs-] { color: #2a2723; font-style: normal; font-weight: 400; }
+.deck-theme-mise pre :is(.hljs-comment, .hljs-quote) { color: #24489c; font-style: italic; }
+.deck-theme-mise pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #b03226; font-weight: 700; }
+.deck-theme-mise pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #2f5a2a; }
+.deck-theme-mise pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #8a5a2e; }
+.deck-theme-mise pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #1c1a17; font-weight: 700; }
+.deck-theme-mise pre :is(.hljs-meta, .hljs-deletion) { color: #6b655d; }
+
+/* Tables: a nutrition panel. A heavy rule above, a lighter one below, a bar
+   under the header row, rules between the rows, tabular figures */
+.deck-theme-mise table { border: 0 !important; border-top: 9px solid #1c1a17 !important; border-bottom: 4px solid #1c1a17 !important; background: transparent; }
+.deck-theme-mise table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid #1c1a17 !important;
+  background: transparent !important;
+  color: #2a2723 !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-mise table tr:first-child :is(td, th) {
+  border-bottom: 5px solid #1c1a17 !important;
+  color: #1c1a17 !important;
+  font-weight: 800;
+}
+.deck-theme-mise table tr:last-child :is(td, th) { border-bottom: 0 !important; }
+.deck-theme-mise.px-slide[data-own-background] table,
+.deck-theme-mise .px-slide[data-own-background] table { border-color: var(--px-text) !important; }
+.deck-theme-mise.px-slide[data-own-background] table :is(td, th),
+.deck-theme-mise .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; border-color: var(--px-text) !important; }
+
+/* The Big Number: Bricolage Grotesque at its heaviest; its unit (inline
+   code or italic words in it) typed in a red oven dial */
+.deck-theme-mise.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-mise .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #1c1a17) !important;
+  font-weight: 800;
+  letter-spacing: -0.035em !important;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-mise.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-mise .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: inline-grid;
+  place-items: center;
+  width: 2.3em;
+  height: 2.3em;
+  margin-left: 0.3em;
+  padding: 0 !important;
+  border: 0.13em solid var(--mi-red) !important;
+  border-radius: 50% !important;
+  background: none !important;
+  color: var(--mi-red);
+  font: 700 0.28em/1 'Courier Prime', 'Courier New', monospace !important;
+  letter-spacing: 0;
+  vertical-align: 0.55em;
+}
+
+/* The footer: typed in Courier Prime. With its sections in sequence, it is
+   a row of index tabs: done in ink, the current one red and raised, those
+   to come pale. The page number is the card's. (The class and the slide
+   both named, to outweigh the presented deck's footer rules.) */
+.deck-theme-mise.px-slide .px-footer,
+.deck-theme-mise .px-slide .px-footer { padding-inline: 14px !important; color: var(--mi-muted) !important; }
+.deck-theme-mise.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-mise .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--mi-muted) !important;
+  font-family: 'Courier Prime', 'Courier New', monospace !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.deck-theme-mise.px-slide .px-footer .px-footer-page,
+.deck-theme-mise .px-slide .px-footer .px-footer-page { color: var(--mi-ink) !important; font-variant-numeric: tabular-nums; }
+.deck-theme-mise.px-slide .px-footer .px-footer-page::before,
+.deck-theme-mise .px-slide .px-footer .px-footer-page::before { content: "Card "; font-weight: 400; }
+.deck-theme-mise.px-slide .px-footer .px-footer-sections,
+.deck-theme-mise .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 14px; }
+.deck-theme-mise.px-slide .px-footer .px-footer-section,
+.deck-theme-mise .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; }
+.deck-theme-mise.px-slide .px-footer .px-footer-section::before,
+.deck-theme-mise .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 18px;
+  height: 9px;
+  background: var(--mi-pale);
+  clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
+}
+.deck-theme-mise.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-mise .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--mi-ink) !important; }
+.deck-theme-mise.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-mise .px-slide .px-footer .px-footer-section[data-state=past]::before { background: var(--mi-ink); }
+.deck-theme-mise.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-mise .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--mi-red) !important; }
+.deck-theme-mise.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-mise .px-slide .px-footer .px-footer-section[data-state=current]::before { height: 13px; margin-top: -4px; background: var(--mi-red); }
+.deck-theme-mise.px-slide[data-own-background] .px-footer .px-footer-section[data-state=future],
+.deck-theme-mise .px-slide[data-own-background] .px-footer .px-footer-section[data-state=future] { opacity: 0.6; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the red line under the title, and the card's first blue rule */
+.deck-theme-mise .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 90px;
+  height: 7px;
+  margin: 4px auto 0;
+  background: linear-gradient(#c0392b, #c0392b) 0 0 / 100% 2px no-repeat, linear-gradient(#c9dcef, #c9dcef) 0 6px / 100% 1px no-repeat;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -35370,7 +35761,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">

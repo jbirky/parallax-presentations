@@ -263,6 +263,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="Questrial, sans-serif">Questrial</option>
         <option value="Barlow, sans-serif">Barlow</option>
         <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
+        <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
       </optgroup>
       <optgroup label="Rounded">
         <option value="Comfortaa, sans-serif">Comfortaa</option>
@@ -289,6 +290,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
       </optgroup>
       <optgroup label="Monospace">
         <option value="'Courier New', monospace">Courier New</option>
+        <option value="'Courier Prime', monospace">Courier Prime</option>
         <option value="'Fira Code', monospace">Fira Code</option>
         <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
         <option value="'DM Mono', monospace">DM Mono</option>
@@ -303,6 +305,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="'National Park', sans-serif">National Park</option>
         <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
         <option value="'Bauhaus 93', Impact, sans-serif">Bauhaus 93</option>
+        <option value="Caveat, cursive">Caveat</option>
       </optgroup>
     </select>
   )

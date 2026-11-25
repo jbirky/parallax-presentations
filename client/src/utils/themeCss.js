@@ -29,8 +29,9 @@ import fanout from '../themes/fanout.css?raw'
 import cell from '../themes/cell.css?raw'
 import graticule from '../themes/graticule.css?raw'
 import eigenstate from '../themes/eigenstate.css?raw'
+import mise from '../themes/mise.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

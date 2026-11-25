@@ -25,7 +25,7 @@ describe('ThemeGallery', () => {
     const onChange = vi.fn()
     await render(<ThemeGallery value="moon" onChange={onChange} />)
     const radios = [...el.querySelectorAll('[role=radio]')]
-    expect(radios).toHaveLength(34)
+    expect(radios).toHaveLength(35)
     expect(radios.filter(r => r.getAttribute('aria-checked') === 'true').map(r => r.textContent)).toEqual(['Presentation titleSubtitleMoon'])
     const moon = radios.find(r => r.textContent.endsWith('Moon')).querySelector('.theme-swatch')
     expect(moon.style.backgroundColor).toMatch(/#002b36|rgb\(0, 43, 54\)/)
