@@ -32,6 +32,7 @@ export default function DeckFontOptions() {
         <option value="Barlow, sans-serif">Barlow</option>
         <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
         <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
+        <option value="Lexend, sans-serif">Lexend</option>
         <option value="'Computer Modern Sans', sans-serif">Computer Modern Sans</option>
       </optgroup>
       <optgroup label="Rounded">

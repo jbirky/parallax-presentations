@@ -31,8 +31,9 @@ import graticule from '../themes/graticule.css?raw'
 import eigenstate from '../themes/eigenstate.css?raw'
 import mise from '../themes/mise.css?raw'
 import valence from '../themes/valence.css?raw'
+import quadrille from '../themes/quadrille.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence, quadrille }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

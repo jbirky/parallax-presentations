@@ -29,6 +29,7 @@ import './themes/graticule.css'
 import './themes/eigenstate.css'
 import './themes/mise.css'
 import './themes/valence.css'
+import './themes/quadrille.css'
 import 'katex/dist/katex.min.css'
 // \ce and \pu (chemical equations and units) for every KaTeX the editor
 // draws; decks load the same extension (generateHTML.js)

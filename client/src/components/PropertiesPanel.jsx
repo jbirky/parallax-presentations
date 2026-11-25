@@ -264,6 +264,7 @@ function FontFamilySelect({ value, onChange, globalFont }) {
         <option value="Barlow, sans-serif">Barlow</option>
         <option value="'Libre Franklin', sans-serif">Libre Franklin</option>
         <option value="'Bricolage Grotesque', sans-serif">Bricolage Grotesque</option>
+        <option value="Lexend, sans-serif">Lexend</option>
       </optgroup>
       <optgroup label="Rounded">
         <option value="Comfortaa, sans-serif">Comfortaa</option>
