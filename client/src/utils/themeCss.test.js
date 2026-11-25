@@ -43,9 +43,19 @@ describe('the themes’ stylesheets', () => {
     expect(themeCss('valence')).toContain('.deck-theme-valence .px-slide[data-layout=section-header]:not([data-own-background])::before')
     expect(themeCss('quadrille')).toContain('.deck-theme-quadrille .px-slide[data-layout=section-header]:not([data-own-background])::before')
     expect(themeCss('quadrille')).toContain('table :is(td, th) + :is(td, th)')
+    // Inspiral's title drawing moves only in presented decks: the moving SVG is used only under
+    // .reveal, and is swapped for the still frame in print, under reduced motion and in the overview
+    const inspiral = themeCss('inspiral').replace(/\/\*[\s\S]*?\*\//g, '')
+    const moving = inspiral.match(/[^{}]+\{[^{}]*var\(--ip-binary\)[^{}]*\}/g)
+    expect(moving).toHaveLength(1)
+    expect(moving[0].trim()).toMatch(/^\.deck-theme-inspiral\.reveal \.slides section\.px-slide\[data-layout=title\]:not\(\[data-own-background\]\)::after \{/)
+    expect(inspiral).toMatch(/@media print, \(prefers-reduced-motion: reduce\) \{\s*\.deck-theme-inspiral\.reveal \.slides section\.px-slide\[data-layout=title\]:not\(\[data-own-background\]\)::after \{ background-image: var\(--ip-still\); \}/)
+    expect(inspiral).toContain('.deck-theme-inspiral.reveal.overview .slides section.px-slide[data-layout=title]:not([data-own-background])::after { background-image: var(--ip-still); }')
+    expect(inspiral).toContain('.deck-theme-inspiral .px-slide[data-layout=title]:not([data-own-background])::before {')
+    expect(inspiral).toContain('.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(n+9)::before')
     // every rule is inside the theme's class, so the editor can load them all for every deck
     // (at-rules and keyframe steps aside)
-    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille']) {
+    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral']) {
       const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim()).filter(s => !/^(@|from$|to$|[\d.]+%)/.test(s))
       expect(selectors.length).toBeGreaterThan(4)
       for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(new RegExp(`^\\.deck-theme-${id}\\b`))
@@ -55,6 +65,6 @@ describe('the themes’ stylesheets', () => {
   it('is empty for themes without one', () => {
     expect(themeCss('black')).toBe('')
     expect(themeCss('constructor')).toBe('')
-    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille'])
+    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral'])
   })
 })

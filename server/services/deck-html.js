@@ -6497,7 +6497,8 @@ var THEME_LIST = [
   { id: "eigenstate", label: "Eigenstate", background: "#f6f6fb", text: "#22233a", heading: "#1d1f4f", link: "#5a35b5", accent: "#5a35b5", dark: false, reveal: "white", font: "'Libre Franklin', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'STIX Two Text', serif", headingWeight: 600 }, note: "Quantum mechanics in wave functions: a packet under titles, oscillator eigenstates, tunneling section slides, bra-ket kickers, a standing-wave footer" },
   { id: "mise", label: "Mise", background: "#fdfdfb", backgroundCss: "linear-gradient(#d5e3f1 1px, transparent 1px) 0 0 / 100% 6.6667%, #fdfdfb", text: "#2a2723", heading: "#1c1a17", link: "#c0392b", accent: "#c0392b", dark: false, reveal: "white", font: "'Bricolage Grotesque', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "'Bricolage Grotesque', sans-serif", headingWeight: 800 }, note: "Recipes on an index card: blue rules, a red line under titles, tick-box ingredients, numbered steps, sticky-note tips in ballpoint, a recipe-box footer" },
   { id: "valence", label: "Valence", background: "#f7f9fb", backgroundCss: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 34.64 60%27 width=%2734.64%27 height=%2760%27%3E%3Cpath d=%27M-8.66 10L8.66 20M-8.66 50L8.66 40M8.66 20L8.66 40M8.66 20L25.98 10M8.66 40L25.98 50M25.98 -10L25.98 10M25.98 10L43.3 20M25.98 50L25.98 70M25.98 50L43.3 40%27 fill=%27none%27 stroke=%27%23e1e7ee%27 stroke-width=%271%27/%3E%3C/svg%3E') 0 0 / 3.6084% 11.1111%, #f7f9fb", text: "#1f262e", heading: "#1f262e", link: "#2a5bd7", accent: "#c8362b", dark: false, reveal: "white", font: "'Didact Gothic', sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "'M PLUS Rounded 1c', sans-serif", headingWeight: 700 }, note: "Introductory chemistry on hexagonal graph paper: protons red with a plus, neutrons gray, electrons blue with a minus; a Bohr atom on the title slide, the periodic table behind section titles, element-tile kickers and an orbital-box footer, in M PLUS Rounded 1c and Didact Gothic" },
-  { id: "quadrille", label: "Quadrille", background: "#fcfdfe", backgroundCss: "linear-gradient(#bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(90deg, #bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(#dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, linear-gradient(90deg, #dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, #fcfdfe", text: "#262b35", heading: "#1b2230", link: "#1f62c4", accent: "#cc2f24", dark: false, reveal: "white", font: "Lexend, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Lexend, sans-serif", headingWeight: 600 }, note: "High school geometry on graph paper: a ruler under titles, a protractor title, coordinate-plane sections, theorem boxes, two-column proofs, a number-line footer" }
+  { id: "quadrille", label: "Quadrille", background: "#fcfdfe", backgroundCss: "linear-gradient(#bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(90deg, #bcd4e6 1px, transparent 1px) 0 0 / 12.5% 22.2222%, linear-gradient(#dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, linear-gradient(90deg, #dde9f2 1px, transparent 1px) 0 0 / 2.5% 4.4444%, #fcfdfe", text: "#262b35", heading: "#1b2230", link: "#1f62c4", accent: "#cc2f24", dark: false, reveal: "white", font: "Lexend, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Lexend, sans-serif", headingWeight: 600 }, note: "High school geometry on graph paper: a ruler under titles, a protractor title, coordinate-plane sections, theorem boxes, two-column proofs, a number-line footer" },
+  { id: "inspiral", label: "Inspiral", background: "#f8f9fb", text: "#1d2433", heading: "#101828", link: "#0072b2", accent: "#b14d00", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Questrial, sans-serif", headingWeight: 400 }, note: "Gravitational waves: black holes spiraling in a spacetime funnel on the title slide, moving when presented; a strain trace under titles, spectrogram section slides, a chirp footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -35332,8 +35333,473 @@ var quadrille_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/inspiral.css
+var inspiral_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Inspiral theme's stylesheet: gravitational-wave astronomy. Content
+   slides are a paper's data figures: ink (#101828, text #1d2433) on a cool
+   white (#f8f9fb), with two detectors' colors from the Okabe-Ito palette,
+   which colorblind readers can tell apart: vermilion (#d55e00; #b14d00 for
+   text) and blue (#0072b2, the links). The title and section slides are
+   the night sky, a deep blue-gray (#0d1626) where the pair turns to orange
+   (#e69f00) and sky blue (#56b4e9). Headings in Questrial, a geometric
+   sans whose round letters echo the orbits; text in IBM Plex Sans;
+   designations, parameters and code in JetBrains Mono (utils/themes.js:
+   the fonts and the text sizes, which the Themes panel's Text tab can
+   change).
+
+   It's scoped to .deck-theme-inspiral, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide: a binary black hole at the bottom of a funnel of curved
+   spacetime, seen with its orbital plane tilted, and gravitational waves
+   climbing out of it as rings, twice an orbit. In a presented deck it moves
+   (an SVG with SMIL and CSS animation, in the slide's ::after): over a 12 s
+   loop the orbit shrinks by half as its frequency rises 2.8 times, at the
+   leading post-Newtonian rate, and the waves come closer and stronger; near
+   contact the pair fades, and the loop starts again. Everywhere else (the
+   editor, thumbnails, the PDF, print, reduced motion, reveal's overview)
+   it is one still frame of the same drawing.
+
+   Under content titles is a strain trace, h(t): a chirp in vermilion and
+   its twin in blue, a few milliseconds later and of opposite sign, as two
+   detectors far apart see it. Section slides are a spectrogram: the chirp's
+   track sweeping up across the noise to the merger. A Heading 4 is an
+   event label, its bold word a designation in a box (**GW** Binary black
+   hole); a Heading 6 a figure caption. Bullets are a binary on its orbit,
+   then a wave, then a dot; inline code is a parameter chip; a quote is an
+   observing-log entry, its bold first words its label; tables are
+   parameter tables; the Big Number is a detector's readout, its unit
+   (inline code or italic words in it) a boxed tag. With the footer's
+   sections in sequence, the footer is the chirp: each section a piece of
+   it, faster and stronger to the right, the last the merger and ringdown;
+   those done in ink, the current one in vermilion with a dot where it has
+   got to, those to come faint. The pictures are SVG computed from the
+   physics, written into this file as data URIs, and stay off slides with a
+   background of their own. */
+
+/* reveal.js: links, the arrows and the progress bar in blue */
+.deck-theme-inspiral {
+  --r-background-color: #f8f9fb;
+  --r-main-color: #1d2433;
+  --r-heading-color: #101828;
+  --r-link-color: #0072b2;
+  --r-link-color-dark: #005a8c;
+  --r-link-color-hover: #101828;
+  --r-selection-background-color: #d3e7f4;
+  --r-selection-color: #1d2433;
+  --ip-mesh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 560 460' width='560' height='460'%3E%3Cdefs%3E%3ClinearGradient id='f' gradientUnits='userSpaceOnUse' x2='318'%3E%3Cstop offset='.2' stop-color='%23a9c2e4' stop-opacity='.55'/%3E%3Cstop offset='1' stop-color='%23a9c2e4' stop-opacity='.04'/%3E%3C/linearGradient%3E%3Cpath id='p' d='M22 151.5C23.3 150.3 27 147.3 30 144.4C33 141.4 36.3 137.9 40 133.9C43.7 129.9 47.7 125.3 52 120.5C56.3 115.7 60.7 110.6 66 105.1C71.3 99.5 77.3 93.2 84 87.2C90.7 81.1 98 74.8 106 68.9C114 63 122.2 57.5 132 52C141.8 46.5 152.8 41 165 36C177.2 31 190 26.5 205 22.2C220 17.9 236.2 13.9 255 10.2C273.8 6.5 307.5 1.7 318 0' fill='none' stroke='url(%23f)' vector-effect='non-scaling-stroke'/%3E%3ClinearGradient id='l' gradientUnits='userSpaceOnUse' x1='10' x2='230'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23fff'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Cpath d='M0 0H560V460H0z' fill='url(%23l)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)'%3E%3Cg transform='translate(338 144)'%3E%3Cuse href='%23p' transform='matrix(.991 .047 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.924 .138 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.793 .219 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.609 .286 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.383 .333 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.131 .357 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.131 .357 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.383 .333 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.609 .286 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.793 .219 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.924 .138 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.991 .047 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.991 -.047 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.924 -.138 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.793 -.219 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.609 -.286 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.383 -.333 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(-.131 -.357 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.131 -.357 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.383 -.333 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.609 -.286 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.793 -.219 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.924 -.138 0 1 0 0)'/%3E%3Cuse href='%23p' transform='matrix(.991 -.047 0 1 0 0)'/%3E%3C/g%3E%3Cg fill='none' stroke='%23a9c2e4'%3E%3Cellipse cx='338' cy='260' rx='56' ry='20.2' stroke-opacity='.52'/%3E%3Cellipse cx='338' cy='234.9' rx='80' ry='28.8' stroke-opacity='.46'/%3E%3Cellipse cx='338' cy='211.4' rx='108' ry='38.9' stroke-opacity='.39'/%3E%3Cellipse cx='338' cy='190.6' rx='142' ry='51.1' stroke-opacity='.33'/%3E%3Cellipse cx='338' cy='173.5' rx='182' ry='65.5' stroke-opacity='.27'/%3E%3Cellipse cx='338' cy='160.1' rx='228' ry='82.1' stroke-opacity='.21'/%3E%3Cellipse cx='338' cy='150.3' rx='276' ry='99.4' stroke-opacity='.14'/%3E%3Cellipse cx='338' cy='144' rx='318' ry='114.5' stroke-opacity='.08'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  --ip-binary: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 560 460' width='560' height='460'%3E%3Cstyle%3E@keyframes w%7B0%25%7Btransform:translate(0,122.7px) scale(50);stroke-opacity:.9%7D5.88%25%7Btransform:translate(0,70.7px) scale(103.6);stroke-opacity:.68%7D11.75%25%7Btransform:translate(0,39.3px) scale(157.2);stroke-opacity:.48%7D17.63%25%7Btransform:translate(0,20.5px) scale(210.8);stroke-opacity:.29%7D23.51%25%7Btransform:translate(0,8.4px) scale(264.4);stroke-opacity:.12%7D29.39%25%7Btransform:translate(0,0px) scale(318);stroke-opacity:0%7Dto%7Btransform:translate(0,0) scale(318);stroke-opacity:0%7D%7D.w%7Bstroke-opacity:0;animation:w 12s linear infinite%7D%3C/style%3E%3Cdefs%3E%3CradialGradient id='h'%3E%3Cstop offset='.55' stop-color='%23cfe2ff' stop-opacity='0'/%3E%3Cstop offset='.64' stop-color='%23eef4ff' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23cfe2ff' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cg id='o'%3E%3Ccircle r='1.8' fill='url(%23h)'/%3E%3Ccircle r='1' fill='%2302050d'/%3E%3Ccircle r='1.07' fill='none' stroke='%23fff4dd' stroke-width='.08'/%3E%3C/g%3E%3C/defs%3E%3Cg transform='translate(338 144)'%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%236e7e92' style='animation-delay:-12s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%23718196' style='animation-delay:-10.53s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%2374859a' style='animation-delay:-9.13s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%2378899e' style='animation-delay:-7.81s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%237d8ea3' style='animation-delay:-6.55s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%238293a8' style='animation-delay:-5.37s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%238899af' style='animation-delay:-4.27s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%238fa1b7' style='animation-delay:-3.25s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%2397aac1' style='animation-delay:-2.32s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%23a3b6cd' style='animation-delay:-1.48s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%23b2c7de' style='animation-delay:-.74s'/%3E%3Cellipse class='w' rx='1' ry='.36' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%23c8dff8' style='animation-delay:-.12s'/%3E%3Cg%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;.965;1' dur='12s' repeatCount='indefinite'/%3E%3CanimateTransform attributeName='transform' type='translate' values='0 125;0 125.8;0 126.6;0 127.5;0 128.3;0 129.2;0 130.1;0 131;0 131.9;0 132.9;0 133.9;0 134.9;0 136;0 137.1;0 138.2;0 139.4;0 140.6;0 141.8;0 143.1;0 144.5;0 145.9;0 147.4;0 149;0 149.7' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Cg transform='scale(1 .36)'%3E%3Cg%3E%3CanimateTransform attributeName='transform' type='rotate' values='0;90;180;270;360;450;540;630;720;810;900;990;1080;1170;1260;1350;1440;1530;1620;1710;1800;1890;1980;2019.5' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Cdefs%3E%3Cg id='a'%3E%3CanimateTransform attributeName='transform' type='translate' values='42.7;42;41.4;40.7;40.1;39.4;38.6;37.9;37.2;36.4;35.6;34.7;33.9;33;32;31;30;28.9;27.8;26.6;25.2;23.8;22.2;21.5' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Ccircle r='30.4' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.34'/%3E%3Ccircle r='47.5' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.16'/%3E%3Cg%3E%3CanimateTransform attributeName='transform' type='rotate' values='0;-90;-180;-270;-360;-450;-540;-630;-720;-810;-900;-990;-1080;-1170;-1260;-1350;-1440;-1530;-1620;-1710;-1800;-1890;-1980;-2019.5' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Cuse href='%23o' transform='scale(19 52.78)'/%3E%3C/g%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23a'%3E%3Canimate attributeName='visibility' values='hidden;visible;hidden;visible;hidden;visible;hidden;visible;hidden;visible;hidden;visible' keyTimes='0;.122;.239;.35;.454;.553;.644;.729;.807;.877;.938;.99' calcMode='discrete' dur='12s' repeatCount='indefinite'/%3E%3C/use%3E%3Cg id='b'%3E%3CanimateTransform attributeName='transform' type='translate' values='-53.3;-52.5;-51.7;-50.9;-50.1;-49.2;-48.3;-47.4;-46.4;-45.5;-44.5;-43.4;-42.3;-41.2;-40;-38.8;-37.5;-36.2;-34.7;-33.2;-31.5;-29.7;-27.8;-26.8' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Ccircle r='24.8' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.34'/%3E%3Ccircle r='38.8' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.16'/%3E%3Cg%3E%3CanimateTransform attributeName='transform' type='rotate' values='0;-90;-180;-270;-360;-450;-540;-630;-720;-810;-900;-990;-1080;-1170;-1260;-1350;-1440;-1530;-1620;-1710;-1800;-1890;-1980;-2019.5' dur='12s' repeatCount='indefinite' keyTimes='0;.062;.122;.181;.239;.295;.35;.403;.454;.504;.553;.599;.644;.688;.729;.769;.807;.843;.877;.908;.938;.965;.99;1'/%3E%3Cuse href='%23o' transform='scale(15.5 43.06)'/%3E%3C/g%3E%3C/g%3E%3Cuse href='%23a'%3E%3Canimate attributeName='visibility' values='visible;hidden;visible;hidden;visible;hidden;visible;hidden;visible;hidden;visible;hidden' keyTimes='0;.122;.239;.35;.454;.553;.644;.729;.807;.877;.938;.99' calcMode='discrete' dur='12s' repeatCount='indefinite'/%3E%3C/use%3E%3C/g%3E%3C/g%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  --ip-still: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 560 460' width='560' height='460'%3E%3Cdefs%3E%3CradialGradient id='h'%3E%3Cstop offset='.55' stop-color='%23cfe2ff' stop-opacity='0'/%3E%3Cstop offset='.64' stop-color='%23eef4ff' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23cfe2ff' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cg id='o'%3E%3Ccircle r='1.8' fill='url(%23h)'/%3E%3Ccircle r='1' fill='%2302050d'/%3E%3Ccircle r='1.07' fill='none' stroke='%23fff4dd' stroke-width='.08'/%3E%3C/g%3E%3C/defs%3E%3Cg transform='translate(338 144)'%3E%3Cellipse cy='4.1' rx='289.4' ry='104.2' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%237d8ea3' stroke-opacity='.06'/%3E%3Cellipse cy='23.8' rx='199.6' ry='71.9' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%238293a8' stroke-opacity='.32'/%3E%3Cellipse cy='61.9' rx='115.9' ry='41.7' fill='none' stroke-width='1.6' vector-effect='non-scaling-stroke' stroke='%238899af' stroke-opacity='.63'/%3E%3Cg transform='translate(0 137.8) scale(1 .36) rotate(1232.3)'%3E%3Cg transform='translate(-40.4 0)'%3E%3Ccircle r='24.8' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.34'/%3E%3Ccircle r='38.8' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.16'/%3E%3Cuse href='%23o' transform='rotate(-1232.3) scale(15.5 43.06)'/%3E%3C/g%3E%3Cg transform='translate(32.3 0)'%3E%3Ccircle r='30.4' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.34'/%3E%3Ccircle r='47.5' fill='none' stroke='%23b7dbff' vector-effect='non-scaling-stroke' stroke-opacity='.16'/%3E%3Cuse href='%23o' transform='rotate(-1232.3) scale(19 52.78)'/%3E%3C/g%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  --ip-trace: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 26' width='240' height='26'%3E%3Cpath d='M0 13H240' stroke='%238a94a6' stroke-width='.8' opacity='.45'/%3E%3Cpath d='M5 13c6.4 6.5 8.7 6.5 15.1 0c6.2 -6.7 8.4 -6.7 14.6 0c6 6.8 8.1 6.8 14.1 0c5.8 -7 7.9 -7 13.6 0c5.6 7.1 7.6 7.1 13.1 0c5.4 -7.3 7.3 -7.3 12.6 0c5.1 7.6 7 7.6 12.1 0c4.9 -7.8 6.6 -7.8 11.5 0c4.7 8.1 6.3 8.1 11 0c4.4 -8.4 6 -8.4 10.4 0c4.1 8.7 5.6 8.7 9.8 0c3.9 -9.1 5.3 -9.1 9.1 0c3.6 9.6 4.9 9.6 8.4 0c3.3 -10.2 4.5 -10.2 7.7 0c3 10.9 4 10.9 7 0c2.6 -11.8 3.6 -11.8 6.2 0c2.2 13.1 3 13.1 5.3 0c2.6 -12.6 3.5 -12.6 6.1 0c2.6 5.9 3.5 5.9 6.1 0c2.6 -2.5 3.5 -2.5 6.1 0c2.6 1 3.5 1 6.1 0' fill='none' stroke='%230072b2' stroke-width='1.3' stroke-opacity='.6' stroke-linejoin='round'/%3E%3Cpath d='M2 13c6.4 -6.5 8.7 -6.5 15.1 0c6.2 6.7 8.4 6.7 14.6 0c6 -6.8 8.1 -6.8 14.1 0c5.8 7 7.9 7 13.6 0c5.6 -7.1 7.6 -7.1 13.1 0c5.4 7.3 7.3 7.3 12.6 0c5.1 -7.6 7 -7.6 12.1 0c4.9 7.8 6.6 7.8 11.5 0c4.7 -8.1 6.3 -8.1 11 0c4.4 8.4 6 8.4 10.4 0c4.1 -8.7 5.6 -8.7 9.8 0c3.9 9.1 5.3 9.1 9.1 0c3.6 -9.6 4.9 -9.6 8.4 0c3.3 10.2 4.5 10.2 7.7 0c3 -10.9 4 -10.9 7 0c2.6 11.8 3.6 11.8 6.2 0c2.2 -13.1 3 -13.1 5.3 0c2.6 12.6 3.5 12.6 6.1 0c2.6 -5.9 3.5 -5.9 6.1 0c2.6 2.5 3.5 2.5 6.1 0c2.6 -1 3.5 -1 6.1 0' fill='none' stroke='%23d55e00' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-orbit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12' width='24' height='12'%3E%3Cellipse cx='12' cy='6' rx='10.6' ry='4.4' fill='none' stroke='%23000' stroke-width='1.1'/%3E%3Ccircle cx='7.6' cy='9.9' r='2.1'/%3E%3Ccircle cx='16.4' cy='2.1' r='1.65'/%3E%3C/svg%3E");
+  --ip-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12' width='24' height='12'%3E%3Cpath d='M1 6c2.3 -3.4 3.2 -3.4 5.5 0c2.3 4.6 3.2 4.6 5.5 0c2.3 -5.8 3.2 -5.8 5.5 0c2.3 6.1 3.2 6.1 5.5 0' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ip-seg1: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c6.8 -2.4 9.2 -2.4 16 0c6.8 2.5 9.2 2.5 16 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c4.5 -2.7 6.1 -2.7 10.7 0c4.5 2.8 6.1 2.8 10.7 0c4.5 -2.9 6.1 -2.9 10.7 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg3: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c3.4 -3.2 4.6 -3.2 8 0c3.4 3.3 4.6 3.3 8 0c3.4 -3.4 4.6 -3.4 8 0c3.4 3.5 4.6 3.5 8 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg4: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c2.7 -3.7 3.7 -3.7 6.4 0c2.7 3.8 3.7 3.8 6.4 0c2.7 -3.9 3.7 -3.9 6.4 0c2.7 3.9 3.7 3.9 6.4 0c2.7 -4 3.7 -4 6.4 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg5: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c2.3 -4.3 3.1 -4.3 5.3 0c2.3 4.3 3.1 4.3 5.3 0c2.3 -4.4 3.1 -4.4 5.3 0c2.3 4.5 3.1 4.5 5.3 0c2.3 -4.6 3.1 -4.6 5.3 0c2.3 4.6 3.1 4.6 5.3 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg6: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c1.9 -4.8 2.6 -4.8 4.6 0c1.9 4.9 2.6 4.9 4.6 0c1.9 -5 2.6 -5 4.6 0c1.9 5 2.6 5 4.6 0c1.9 -5.1 2.6 -5.1 4.6 0c1.9 5.2 2.6 5.2 4.6 0c1.9 -5.3 2.6 -5.3 4.6 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg7: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c1.7 -5.4 2.3 -5.4 4 0c1.7 5.5 2.3 5.5 4 0c1.7 -5.6 2.3 -5.6 4 0c1.7 5.7 2.3 5.7 4 0c1.7 -5.7 2.3 -5.7 4 0c1.7 5.8 2.3 5.8 4 0c1.7 -5.9 2.3 -5.9 4 0c1.7 6 2.3 6 4 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg8: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c1.5 -6.1 2 -6.1 3.6 0c1.5 6.2 2 6.2 3.6 0c1.5 -6.3 2 -6.3 3.6 0c1.5 6.4 2 6.4 3.6 0c1.5 -6.4 2 -6.4 3.6 0c1.5 6.5 2 6.5 3.6 0c1.5 -6.6 2 -6.6 3.6 0c1.5 6.7 2 6.7 3.6 0c1.5 -6.7 2 -6.7 3.6 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ip-seg9: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 14' width='34' height='14'%3E%3Cpath d='M1 7c1.9 -4.2 2.6 -4.2 4.6 0c1.8 4.4 2.4 4.4 4.2 0c1.6 -4.7 2.2 -4.7 3.8 0c1.4 5.1 1.9 5.1 3.4 0c1.2 -5.7 1.7 -5.7 2.9 0c1 6.5 1.4 6.5 2.4 0c1.2 -7 1.6 -7 2.7 0c1.2 3.2 1.6 3.2 2.7 0c1.2 -1.4 1.6 -1.4 2.7 0c1.2 .6 1.6 .6 2.7 0' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* The colors; on a slide with a background of its own, its text color */
+.deck-theme-inspiral.px-slide,
+.deck-theme-inspiral .px-slide { --ip-ink: #101828; --ip-text: #1d2433; --ip-muted: #5a6578; --ip-mark: #d55e00; --ip-mark-text: #b14d00; --ip-blue: #0072b2; --ip-rule: #dde2ea; }
+.deck-theme-inspiral.px-slide[data-own-background],
+.deck-theme-inspiral .px-slide[data-own-background] { --ip-ink: var(--px-text); --ip-text: var(--px-text); --ip-muted: var(--px-text); --ip-mark: var(--px-text); --ip-mark-text: var(--px-text); --ip-blue: var(--px-text); --ip-rule: var(--px-text); }
+/* The title and section slides are dark */
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]),
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) { --ip-ink: #ffffff; --ip-text: #e6ebf3; --ip-muted: #a3b1c6; --ip-mark: #e69f00; --ip-mark-text: #e69f00; --ip-blue: #56b4e9; --ip-rule: rgba(163, 177, 198, 0.35); }
+
+/* Headings: Questrial, a little tight. (!important: presented decks set
+   headings' spacing with it.) */
+.deck-theme-inspiral .px-text :is(h1, h2, h3) { letter-spacing: -0.012em !important; line-height: 1.12; }
+
+/* The strain trace under titles, quiet at its start. Not on the title,
+   section, big-number or blank slides. */
+.deck-theme-inspiral.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-inspiral .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: 26px;
+  margin-top: 4px;
+  background: var(--ip-trace) 0 0 / 240px 26px no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%);
+  mask-image: linear-gradient(90deg, transparent, #000 14%);
+}
+.deck-theme-inspiral [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; }
+.deck-theme-inspiral [data-placeholder=title] :is(h1, h2)[style*=right]::after { margin-left: auto; }
+.deck-theme-inspiral.px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-inspiral .px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2)::after {
+  background: currentColor;
+  -webkit-mask: var(--ip-trace) 0 0 / 240px 26px no-repeat;
+  mask: var(--ip-trace) 0 0 / 240px 26px no-repeat;
+}
+
+/* The title slide: the night sky, the funnel and, at its bottom, the
+   binary; the title and subtitle set at the left beside it (their widths
+   in percent, so text that shrinks to fit still gets its room). The
+   drawing is in a 560 x 460 box at (400, 26). */
+.deck-theme-inspiral.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-inspiral .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    var(--ip-still) 400px 26px / 560px 460px no-repeat,
+    var(--ip-mesh) 400px 26px / 560px 460px no-repeat,
+    radial-gradient(ellipse 440px 300px at 77% 50%, #172541, rgba(13, 22, 38, 0) 72%),
+    #0d1626;
+}
+/* Presented, the binary moves: the still frame leaves the ::before, and
+   the moving one is the ::after, under the slide's text, in its own box and
+   compositing layer (will-change), so a frame repaints only the drawing and
+   not the funnel under it. (Its waves fade by stroke-opacity, not opacity,
+   which would paint each through a layer of its own every frame.) */
+.deck-theme-inspiral.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::before {
+  background:
+    var(--ip-mesh) 400px 26px / 560px 460px no-repeat,
+    radial-gradient(ellipse 440px 300px at 77% 50%, #172541, rgba(13, 22, 38, 0) 72%),
+    #0d1626;
+}
+.deck-theme-inspiral.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  left: 400px;
+  top: 26px;
+  width: 560px;
+  height: 460px;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--ip-binary) 0 0 / 560px 460px no-repeat;
+  will-change: transform;
+}
+/* Still for those who'd rather, on paper, and in reveal's overview */
+.deck-theme-inspiral.reveal.overview .slides section.px-slide[data-layout=title]:not([data-own-background])::after { background-image: var(--ip-still); }
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-inspiral.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::after { background-image: var(--ip-still); }
+}
+.deck-theme-inspiral.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-inspiral .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { font-size: 2.1em; letter-spacing: -0.018em !important; line-height: 1.06; }
+.deck-theme-inspiral.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-inspiral .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 56%;
+  box-sizing: border-box;
+  padding-left: 60px;
+  text-align: left !important;
+}
+.deck-theme-inspiral.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-inspiral .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 62%; text-align: left !important; }
+
+/* Subtitles: muted; on the title slide, the lines after the first smaller */
+.deck-theme-inspiral [data-placeholder=subtitle] :is(p, li) { color: var(--ip-muted) !important; }
+.deck-theme-inspiral.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-inspiral .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { font-size: 0.78em; }
+
+/* Section slides: a spectrogram, the chirp's track sweeping up across the
+   noise to the merger, along the foot of the night sky */
+.deck-theme-inspiral.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-inspiral .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 240' width='960' height='240'%3E%3Cdefs%3E%3ClinearGradient id='g' gradientUnits='userSpaceOnUse' x1='0' x2='900'%3E%3Cstop offset='0' stop-color='%230072b2' stop-opacity='0'/%3E%3Cstop offset='.45' stop-color='%233a9ad6' stop-opacity='.7'/%3E%3Cstop offset='.8' stop-color='%2356b4e9'/%3E%3Cstop offset='.93' stop-color='%23e69f00'/%3E%3Cstop offset='1' stop-color='%23fff1c9'/%3E%3C/linearGradient%3E%3Cfilter id='n' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.018 .1' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 .34 0 0 0 0 .52 0 0 0 0 .86 0 0 0 2.4 -1.05'/%3E%3C/filter%3E%3ClinearGradient id='v' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='.9'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Cpath d='M0 0H960V240H0z' fill='url(%23v)'/%3E%3C/mask%3E%3Cpath id='t' d='M-10 186C1.1 185.6 35 184.3 56.7 183.4C78.5 182.6 99.8 181.7 120.6 180.8C141.4 179.8 161.7 178.9 181.5 178C201.4 177 220.8 176.1 239.6 175.1C258.5 174.1 277 173.1 294.9 172.1C312.9 171.1 330.4 170 347.4 168.9C364.4 167.9 381 166.8 397 165.7C413.1 164.5 428.8 163.4 444 162.2C459.1 161.1 473.9 159.9 488.1 158.6C502.4 157.4 516.2 156.1 529.6 154.8C543 153.5 555.9 152.2 568.4 150.8C580.9 149.4 593 148 604.6 146.6C616.2 145.1 627.4 143.6 638.1 142.1C648.9 140.5 659.2 138.9 669.1 137.3C679 135.6 688.5 133.9 697.5 132.1C706.6 130.4 715.2 128.5 723.4 126.6C731.6 124.7 739.5 122.7 746.9 120.7C754.3 118.6 761.3 116.4 767.9 114.2C774.5 111.9 780.7 109.6 786.5 107.1C792.4 104.6 797.8 102.1 802.8 99.3C807.9 96.6 812.6 93.7 816.9 90.7C821.2 87.7 825.1 84.5 828.7 81.1C832.3 77.7 835.5 74.1 838.4 70.3C841.3 66.5 843.8 62.4 846 58.2C848.2 54 850.1 49.5 851.6 45.1C853.2 40.7 854.4 35.8 855.4 31.9C856.4 28 857 23.9 857.4 21.6C857.9 19.3 855.9 18.1 858 18C860.1 17.9 868 20.5 870 21'/%3E%3C/defs%3E%3Cpath d='M0 0H960V240H0z' filter='url(%23n)' mask='url(%23m)' opacity='.5'/%3E%3Cg stroke='%23a3b1c6' stroke-opacity='.14' stroke-width='1'%3E%3Cpath d='M0 166.7H960'/%3E%3Cpath d='M0 126.2H960'/%3E%3Cpath d='M0 77.8H960'/%3E%3Cpath d='M0 31.3H960'/%3E%3C/g%3E%3Cg stroke='%23a3b1c6' stroke-opacity='.35' stroke-width='1'%3E%3Cpath d='M40 232v8'/%3E%3Cpath d='M120 232v8'/%3E%3Cpath d='M200 232v8'/%3E%3Cpath d='M280 232v8'/%3E%3Cpath d='M360 232v8'/%3E%3Cpath d='M440 232v8'/%3E%3Cpath d='M520 232v8'/%3E%3Cpath d='M600 232v8'/%3E%3Cpath d='M680 232v8'/%3E%3Cpath d='M760 232v8'/%3E%3Cpath d='M840 232v8'/%3E%3Cpath d='M920 232v8'/%3E%3C/g%3E%3Cg fill='none' stroke='url(%23g)' stroke-linecap='round'%3E%3Cuse href='%23t' stroke-width='26' stroke-opacity='.08'/%3E%3Cuse href='%23t' stroke-width='11' stroke-opacity='.2'/%3E%3Cuse href='%23t' stroke-width='3.2'/%3E%3C/g%3E%3C/svg%3E") 0 300px / 960px 240px no-repeat,
+    radial-gradient(ellipse 560px 280px at 50% 40%, #16243d, rgba(13, 22, 38, 0) 72%),
+    #0d1626;
+}
+.deck-theme-inspiral.px-slide[data-layout=section-header] [data-placeholder=title] h1,
+.deck-theme-inspiral .px-slide[data-layout=section-header] [data-placeholder=title] h1 { letter-spacing: -0.02em !important; }
+
+/* Text on the dark slides (the editor's text boxes set their own color, so
+   the rule reaches their divs too) */
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #e6ebf3 !important; }
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #ffffff !important; }
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #a3b1c6 !important; }
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a,
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a { color: #56b4e9 !important; }
+
+/* A Heading 4: an event label in small capitals, its bold word a
+   designation in a box (**GW** Binary black hole) */
+.deck-theme-inspiral .px-text h4 {
+  margin: 0 0 0.5em !important;
+  color: var(--ip-muted) !important;
+  font-family: 'IBM Plex Sans', sans-serif !important;
+  font-size: 0.54em;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-inspiral .px-text h4 :is(strong, b) {
+  display: inline-block;
+  margin-right: 0.6em;
+  padding: 0.1em 0.42em 0.06em;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  color: var(--ip-mark-text);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+/* A Heading 6: a figure caption; its bold words (Figure 1.) in ink */
+.deck-theme-inspiral .px-text h6 {
+  margin: 0.2em 0 0.4em !important;
+  color: var(--ip-muted) !important;
+  font-family: 'IBM Plex Sans', sans-serif !important;
+  font-size: 0.6em;
+  font-weight: 400 !important;
+  line-height: 1.4;
+}
+.deck-theme-inspiral .px-text h6 :is(strong, b) { color: var(--ip-ink); font-weight: 600; }
+
+/* Bullets: a binary on its orbit, then one wave, then a dot. Numbered
+   lists count in JetBrains Mono. */
+.deck-theme-inspiral .px-text :is(ul, ol) { display: block; }
+.deck-theme-inspiral .px-text ul { list-style: none; }
+.deck-theme-inspiral .px-text ul > li { position: relative; }
+.deck-theme-inspiral .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.3em;
+  top: 0.42em;
+  width: 1em;
+  height: 0.5em;
+  background: var(--ip-mark);
+  -webkit-mask: var(--ip-orbit) center / contain no-repeat;
+  mask: var(--ip-orbit) center / contain no-repeat;
+}
+.deck-theme-inspiral .px-text ul ul > li::before { background: var(--ip-blue); -webkit-mask-image: var(--ip-wave); mask-image: var(--ip-wave); }
+.deck-theme-inspiral .px-text ul ul ul > li::before { left: -0.95em; top: 0.52em; width: 0.32em; height: 0.32em; border-radius: 50%; background: var(--ip-muted); -webkit-mask: none; mask: none; }
+.deck-theme-inspiral .px-text ol > li::marker {
+  content: counter(list-item) "\\00A0\\00A0";
+  color: var(--ip-mark-text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+/* Links: blue */
+.deck-theme-inspiral .px-text a { color: var(--px-link, #0072b2) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: a parameter chip (m1 = 36 M_sun) */
+.deck-theme-inspiral .px-text :not(pre) > code {
+  padding: 0.04em 0.34em;
+  border: 1px solid #c3dbeb;
+  border-radius: 3px;
+  background: #ebf4fa !important;
+  color: #0b4f7c;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8em;
+}
+.deck-theme-inspiral.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :not(pre) > code,
+.deck-theme-inspiral .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :not(pre) > code { border-color: rgba(86, 180, 233, 0.45); background: rgba(86, 180, 233, 0.14) !important; color: #cfe6ff; }
+.deck-theme-inspiral.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-inspiral .px-slide[data-own-background] .px-text :not(pre) > code { border-color: currentColor; background: transparent !important; color: inherit; }
+
+/* Quotes: an observing-log entry on white, a vermilion edge; bold first
+   words are its label, in JetBrains Mono on a line of their own */
+.deck-theme-inspiral .px-text blockquote {
+  margin: 0.2em 0 0.5em !important;
+  padding: 0.55em 0.85em 0.6em 0.95em !important;
+  border: 1px solid #d3dae4 !important;
+  border-left: 3px solid #d55e00 !important;
+  border-radius: 0 3px 3px 0;
+  background: #ffffff;
+  opacity: 1 !important;
+  box-shadow: none !important;
+  color: #1d2433;
+  font-style: normal;
+}
+.deck-theme-inspiral .px-text blockquote :is(p, li) { color: #1d2433 !important; }
+.deck-theme-inspiral .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.35em;
+  color: #b14d00;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.deck-theme-inspiral .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-inspiral.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-inspiral .px-slide[data-own-background] .px-text blockquote { border-color: var(--px-text) !important; background: transparent; color: var(--px-text); }
+.deck-theme-inspiral.px-slide[data-own-background] .px-text blockquote :is(p, li),
+.deck-theme-inspiral .px-slide[data-own-background] .px-text blockquote :is(p, li),
+.deck-theme-inspiral.px-slide[data-own-background] .px-text blockquote > p:first-child > strong:first-child,
+.deck-theme-inspiral .px-slide[data-own-background] .px-text blockquote > p:first-child > strong:first-child { color: var(--px-text) !important; }
+
+/* Code: JetBrains Mono on the night sky, the detectors' colors for its
+   syntax whichever code theme the deck uses */
+.deck-theme-inspiral :is(pre, pre.hljs) {
+  background: #111b2c !important;
+  color: #e6ebf3;
+  border: 0;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.deck-theme-inspiral :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-inspiral pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-inspiral .px-text pre { padding: 0.55em 0.8em !important; font-size: 0.6em; line-height: 1.5; }
+.deck-theme-inspiral pre [class*=hljs-] { color: #e6ebf3; font-style: normal; font-weight: 400; }
+.deck-theme-inspiral pre :is(.hljs-comment, .hljs-quote) { color: #8a9ab0; font-style: italic; }
+.deck-theme-inspiral pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #56b4e9; }
+.deck-theme-inspiral pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #e69f00; }
+.deck-theme-inspiral pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #f0e442; }
+.deck-theme-inspiral pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-attr) { color: #ffffff; font-weight: 600; }
+.deck-theme-inspiral pre :is(.hljs-meta, .hljs-deletion) { color: #a3b1c6; }
+
+/* Tables: a parameter table, an ink rule above and below, the header row
+   in small capitals, shaded rows, tabular figures */
+.deck-theme-inspiral table { border: 0 !important; border-top: 2px solid #101828 !important; border-bottom: 2px solid #101828 !important; background: transparent; }
+.deck-theme-inspiral table :is(td, th) {
+  border: 0 !important;
+  background: transparent !important;
+  color: #1d2433 !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-inspiral table tr:nth-child(odd):not(:first-child) :is(td, th) { background: #eef2f6 !important; }
+.deck-theme-inspiral table tr:first-child :is(td, th) {
+  border-bottom: 1px solid #101828 !important;
+  color: #5a6578 !important;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.deck-theme-inspiral.px-slide[data-own-background] table,
+.deck-theme-inspiral .px-slide[data-own-background] table { border-color: var(--px-text) !important; }
+.deck-theme-inspiral.px-slide[data-own-background] table :is(td, th),
+.deck-theme-inspiral .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; }
+
+/* The Big Number: a detector's readout, in tabular figures; its unit
+   (inline code or italic words in it) a boxed tag in blue after it */
+.deck-theme-inspiral.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-inspiral .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #101828) !important;
+  font-family: Questrial, sans-serif !important;
+  font-weight: 400;
+  letter-spacing: -0.02em !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-inspiral.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-inspiral .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  display: inline-block;
+  margin-left: 0.35em;
+  padding: 0.18em 0.45em 0.14em !important;
+  border: 0.06em solid currentColor !important;
+  border-radius: 3px;
+  background: none !important;
+  color: var(--ip-blue);
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.2em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  vertical-align: 0.9em;
+}
+
+/* The footer: IBM Plex Sans, the page number in JetBrains Mono. With its
+   sections in sequence, it is the chirp: each section a piece of it,
+   faster and stronger to the right (counted from the last, which is the
+   merger and ringdown), those done in ink, the current one in vermilion
+   with a dot where it has got to, those to come faint. (The class and the
+   slide both named, to outweigh the presented deck's footer rules.) */
+.deck-theme-inspiral.px-slide .px-footer,
+.deck-theme-inspiral .px-slide .px-footer { padding-inline: 14px !important; color: var(--ip-muted) !important; }
+.deck-theme-inspiral.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-inspiral .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--ip-muted) !important;
+  font-family: 'IBM Plex Sans', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+}
+.deck-theme-inspiral.px-slide .px-footer .px-footer-page,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-page { color: var(--ip-ink) !important; font-family: 'JetBrains Mono', monospace !important; font-size: 11px !important; font-variant-numeric: tabular-nums; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section::before,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section::before {
+  content: "";
+  flex: none;
+  width: 34px;
+  height: 14px;
+  background: var(--ip-muted);
+  -webkit-mask: var(--ip-seg9) center / 34px 14px no-repeat;
+  mask: var(--ip-seg9) center / 34px 14px no-repeat;
+}
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(2)::before { -webkit-mask-image: var(--ip-seg8); mask-image: var(--ip-seg8); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(3)::before { -webkit-mask-image: var(--ip-seg7); mask-image: var(--ip-seg7); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(4)::before { -webkit-mask-image: var(--ip-seg6); mask-image: var(--ip-seg6); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(5)::before { -webkit-mask-image: var(--ip-seg5); mask-image: var(--ip-seg5); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(6)::before { -webkit-mask-image: var(--ip-seg4); mask-image: var(--ip-seg4); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(7)::before { -webkit-mask-image: var(--ip-seg3); mask-image: var(--ip-seg3); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(8)::before { -webkit-mask-image: var(--ip-seg2); mask-image: var(--ip-seg2); }
+.deck-theme-inspiral .px-footer .px-footer-section:nth-last-child(n+9)::before { -webkit-mask-image: var(--ip-seg1); mask-image: var(--ip-seg1); }
+/* Seven sections or more: shorter pieces, so the labels keep their room */
+.deck-theme-inspiral .px-footer .px-footer-section:first-child:nth-last-child(n+7)::before,
+.deck-theme-inspiral .px-footer .px-footer-section:first-child:nth-last-child(n+7) ~ .px-footer-section::before { width: 26px; -webkit-mask-size: 26px 14px; mask-size: 26px 14px; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--ip-ink) !important; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=past]::before { background: var(--ip-ink); }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--ip-mark-text) !important; font-weight: 700 !important; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=current]::before { background: var(--ip-mark); }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=current]::after,
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=current]::after {
+  content: "";
+  position: absolute;
+  left: 30px;
+  top: calc(50% - 3.5px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ip-mark);
+}
+.deck-theme-inspiral .px-footer .px-footer-section:first-child:nth-last-child(n+7)[data-state=current]::after,
+.deck-theme-inspiral .px-footer .px-footer-section:first-child:nth-last-child(n+7) ~ .px-footer-section[data-state=current]::after { left: 22px; }
+.deck-theme-inspiral.px-slide .px-footer .px-footer-section[data-state=future],
+.deck-theme-inspiral .px-slide .px-footer .px-footer-section[data-state=future] { opacity: 0.55; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the strain trace under the title */
+.deck-theme-inspiral .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 84px;
+  height: 9px;
+  margin: 4px auto 0;
+  background: var(--ip-trace) center / contain no-repeat;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
