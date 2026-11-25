@@ -159,7 +159,7 @@ export function graphRuntime(P, G, G3, config) {
     return String(parseFloat(v.toPrecision(4))).replace('-', '−')
   }
   function prettyName(name) {
-    const greek = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', lambda: 'λ', sigma: 'σ', omega: 'ω', phi: 'φ', rho: 'ρ', theta: 'θ' }
+    const greek = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', lambda: 'λ', sigma: 'σ', omega: 'ω', phi: 'φ', rho: 'ρ', theta: 'θ', mu: 'μ', nu: 'ν', kappa: 'κ', eta: 'η' }
     const i = name.indexOf('_')
     const base = i < 0 ? name : name.slice(0, i)
     return { base: greek[base] || base, sub: i < 0 ? '' : name.slice(i + 1) }

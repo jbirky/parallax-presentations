@@ -8342,7 +8342,7 @@ function graphRuntime(P, G2, G3, config) {
     return String(parseFloat(v.toPrecision(4))).replace("-", "−");
   }
   function prettyName(name50) {
-    const greek = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", lambda: "λ", sigma: "σ", omega: "ω", phi: "φ", rho: "ρ", theta: "θ" };
+    const greek = { alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", lambda: "λ", sigma: "σ", omega: "ω", phi: "φ", rho: "ρ", theta: "θ", mu: "μ", nu: "ν", kappa: "κ", eta: "η" };
     const i = name50.indexOf("_");
     const base3 = i < 0 ? name50 : name50.slice(0, i);
     return { base: greek[base3] || base3, sub: i < 0 ? "" : name50.slice(i + 1) };

@@ -222,3 +222,16 @@ describe('data lines and log axes', () => {
     }
   })
 })
+
+describe('slider names', () => {
+  // The runtime's panel writes a slider named mu as μ; every Greek name the
+  // parser accepts needs its letter there, or the panel shows the spelling
+  it('show every Greek name the parser accepts as its letter', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = f => readFileSync(new URL(f, import.meta.url), 'utf8')
+    const accepted = JSON.parse(src('./graphParser.js').match(/const GREEK = (\[[^\]]*\])/)[1].replace(/'/g, '"'))
+    const letters = src('./graphRuntime.js').match(/const greek = \{([^}]*)\}/)[1]
+    expect(accepted).toContain('mu')
+    for (const name of accepted) expect(letters).toMatch(new RegExp('\\b' + name + ": '"))
+  })
+})
