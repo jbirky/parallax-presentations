@@ -285,6 +285,13 @@ export const api = {
   setTeamRole: (id, userId, role) => authFetch(`${BASE}/teams/${id}/members/${userId}`, json('PATCH', { role })).then(r => checked(r, 'Could not change the role')),
   removeTeamMember: (id, userId) => authFetch(`${BASE}/teams/${id}/members/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not remove them')),
   transferTeam: (id, userId) => authFetch(`${BASE}/teams/${id}/transfer`, json('POST', { userId })).then(r => checked(r, 'Could not hand the team over')),
+  // A team's folders and presentations, and its storage: { team, folders, presentations, storage }
+  getTeamSpace: (id) => authFetch(`${BASE}/teams/${id}/space`).then(r => checked(r, 'Could not load the team')),
+  createTeamFolder: (id, name) => authFetch(`${BASE}/teams/${id}/folders`, json('POST', { name })).then(r => checked(r, 'Could not make the folder')),
+  renameTeamFolder: (id, folderId, name) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the folder')),
+  deleteTeamFolder: (id, folderId) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
+  // Moves a presentation: teamId null for the caller's own presentations
+  moveDeck: (id, { teamId, folderId }) => authFetch(`${BASE}/presentations/${id}/location`, json('PUT', { teamId, folderId })).then(r => checked(r, 'Could not move the presentation')),
   getTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}`).then(r => checked(r, 'Could not open the invitation')),
   acceptTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Could not join the team')),
   // AI collaborator links (cloud only): days is 7, 30 or 90, or null for never

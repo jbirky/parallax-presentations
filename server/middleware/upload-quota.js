@@ -19,11 +19,14 @@ function formatSize(bytes) {
 }
 
 // Bytes a user stores: each file once (a duplicated presentation shares its
-// files with the original) plus every kept version of their datasets
+// files with the original) plus every kept version of their datasets. Files
+// in a team's decks count against the team instead (teamStorageUsedBytes).
 async function storageUsedBytes(storage, userId) {
   const { rows } = await storage.query(
     `SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM (
-               SELECT DISTINCT ON (storage_key) size_bytes FROM uploads WHERE user_id = $1) files)
+               SELECT DISTINCT ON (u.storage_key) u.size_bytes FROM uploads u
+                 LEFT JOIN presentations p ON p.id = u.presentation_id
+                WHERE u.user_id = $1 AND p.team_id IS NULL) files)
           + (SELECT COALESCE(SUM(v.byte_size), 0) FROM dataset_versions v
                JOIN datasets d ON d.id = v.dataset_id WHERE d.user_id = $1) AS used`,
     [userId]
@@ -31,16 +34,35 @@ async function storageUsedBytes(storage, userId) {
   return Number(rows[0].used)
 }
 
+// Bytes a team's decks store, each file once
+async function teamStorageUsedBytes(storage, teamId) {
+  const { rows } = await storage.query(
+    `SELECT COALESCE(SUM(size_bytes), 0) AS used FROM (
+       SELECT DISTINCT ON (u.storage_key) u.size_bytes FROM uploads u
+         JOIN presentations p ON p.id = u.presentation_id
+        WHERE p.team_id = $1) files`,
+    [teamId]
+  )
+  return Number(rows[0].used)
+}
+
+// A team's storage: its plan's allowance for each seat. Infinity when the
+// plan has no limit.
+function teamStorageBytes(plan, seats) {
+  return plan.storageBytes ? plan.storageBytes * Math.max(1, seats || 1) : Infinity
+}
+
 // Returns { status, error } when the upload can't be taken, or null.
 // `messages` words the refusals: { fileTooBig(limit), storageFull(limit) }.
-// The file goes on userId's storage, the uploader's own unless given.
-async function checkUpload(storage, req, { maxFileBytes, storageBytes }, messages, userId = req.userId) {
+// The file goes on userId's storage, the uploader's own unless given; `used`
+// counts the bytes it goes on, when that's a team's.
+async function checkUpload(storage, req, { maxFileBytes, storageBytes }, messages, userId = req.userId, used = () => storageUsedBytes(storage, userId)) {
   const length = Number(req.get('content-length'))
   if (!length) return { status: 411, error: 'Upload size is required' }
   if (maxFileBytes && length > maxFileBytes + MULTIPART_OVERHEAD) {
     return { status: 413, error: messages.fileTooBig(formatSize(maxFileBytes)) }
   }
-  if (storageBytes && await storageUsedBytes(storage, userId) + length > storageBytes + MULTIPART_OVERHEAD) {
+  if (storageBytes && storageBytes !== Infinity && await used() + length > storageBytes + MULTIPART_OVERHEAD) {
     return { status: 413, error: messages.storageFull(formatSize(storageBytes)) }
   }
   return null
@@ -68,6 +90,22 @@ function refuseUpload(req, res, { status, error }) {
 function uploadQuota(storage) {
   return async (req, res, next) => {
     if (!storage.query || !req.userId || req.isGuest) return next()
+    // A team deck's files go on the team's shared storage
+    if (req.deck?.teamId) {
+      const plan = planFor(req.deck.ownerPlan)
+      const limits = { maxFileBytes: plan.maxFileBytes, storageBytes: teamStorageBytes(plan, req.deck.seats) }
+      const messages = {
+        fileTooBig: limit => `Files are limited to ${limit} each on the team's ${plan.name} plan.`,
+        storageFull: limit => `The team's storage is full (${limit}). Ask its owner for more seats, or delete some files.`,
+      }
+      try {
+        const problem = await checkUpload(storage, req, limits, messages, req.deck.ownerId, () => teamStorageUsedBytes(storage, req.deck.teamId))
+        if (problem) return refuseUpload(req, res, problem)
+        return next()
+      } catch (err) {
+        return next(err)
+      }
+    }
     const forOwner = req.deck && req.deck.role !== 'owner'
     const plan = planFor(forOwner ? req.deck.ownerPlan : req.userPlan)
     const messages = forOwner ? {
@@ -89,4 +127,4 @@ function uploadQuota(storage) {
   }
 }
 
-module.exports = { storageUsedBytes, checkUpload, refuseUpload, uploadQuota }
+module.exports = { storageUsedBytes, teamStorageUsedBytes, teamStorageBytes, checkUpload, refuseUpload, uploadQuota }

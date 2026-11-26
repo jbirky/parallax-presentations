@@ -19,6 +19,9 @@ export default function EditorsModal({ presentationId, access, onChange, onClose
   const [copied, setCopied] = useState(false)
   const owner = access.role === 'owner'
   const ownerPerson = access.people.find(p => p.role === 'owner')
+  // Someone reaching it through a team, rather than its invite link: they
+  // leave the team, not the presentation
+  const throughTeam = !!access.teamRole
   const nameOf = p => p.name || p.email
 
   const act = async (fn) => {
@@ -47,7 +50,9 @@ export default function EditorsModal({ presentationId, access, onChange, onClose
           <>
             <p style={muted}>
               Anyone who opens the invite link while signed in can change this presentation.
-              Their uploads count against your storage. Deleting it, share links, presenting live, and GitHub stay with you.
+              {access.teamId
+                ? ' Their uploads count against your team’s storage. Everyone in the team can open it already.'
+                : ' Their uploads count against your storage. Deleting it, share links, presenting live, and GitHub stay with you.'}
             </p>
             {access.inviteToken ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -76,6 +81,13 @@ export default function EditorsModal({ presentationId, access, onChange, onClose
               </button>
             )}
           </>
+        ) : access.role === 'viewer' ? (
+          <p style={muted}>This presentation belongs to your team. As a viewer, you can look through it and present it, but not change it.</p>
+        ) : throughTeam ? (
+          <p style={muted}>
+            This presentation belongs to your team{ownerPerson ? `, and ${nameOf(ownerPerson)} made it` : ''}. You can change it and upload to it;
+            uploads count against the team’s storage. Deleting it, share links and presenting live stay with whoever made it and the team’s owner and admins.
+          </p>
         ) : (
           <p style={muted}>
             {ownerPerson ? `${nameOf(ownerPerson)} owns this presentation. ` : ''}
@@ -111,7 +123,7 @@ export default function EditorsModal({ presentationId, access, onChange, onClose
         </ul>
         {owner && access.people.length === 1 && <p style={muted}>No one else edits this presentation yet.</p>}
 
-        {!owner && (
+        {!owner && !throughTeam && (
           <button className="btn btn-danger" disabled={busy} style={{ justifyContent: 'center' }}
             onClick={() => {
               if (!confirm('Leave this presentation? You won\'t be able to open it again unless the owner invites you.')) return

@@ -228,7 +228,11 @@ const migrateSlide = (slide) => {
 
 export default function EditorPage({ presentationId, isTemplate = false, onGoHome, guest = null, theme, onThemeChange }) {
   // The deck lives in a Yjs document; setPresentation works like a useState setter
-  const { deck: presentation, setDeck: setPresentation, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo, stopCapturing } = useDeckDoc()
+  const { deck: presentation, setDeck, resetDeck, attachDeck, undo: undoDeck, redo: redoDeck, canUndo, canRedo, stopCapturing } = useDeckDoc()
+  // A viewer of a team's presentation looks through it and presents it; their
+  // edits go nowhere (the server refuses them too). Set once their access loads.
+  const viewOnlyRef = useRef(false)
+  const setPresentation = update => { if (!viewOnlyRef.current) setDeck(update) }
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [selectedSlideIds, setSelectedSlideIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -485,7 +489,7 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
           api.updatePresentation(migrated.id, migrated).catch(err => console.error('Saving recovered annotations failed', err))
         }
       }
-      setPresentation(migrated)
+      setDeck(migrated)
       opened(migrated)
     }
     const openLive = saved => {
@@ -634,6 +638,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       }
     }).catch(() => {})
   }, [])
+
+  useEffect(() => { viewOnlyRef.current = access?.role === 'viewer' }, [access])
 
   // Load who edits it
   useEffect(() => {
@@ -3564,7 +3570,10 @@ function draw() {
         />
         <MenuBar menus={menus} />
         <div className="header-controls">
-          {live?.synced && (live.status !== 'connected'
+          {access?.role === 'viewer' && (
+            <span className="save-indicator" style={{ color: '#f59e0b' }} title="You’re a viewer of this team presentation: you can look through it and present it, but not change it">View only</span>
+          )}
+          {access?.role !== 'viewer' && live?.synced && (live.status !== 'connected'
             ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
             : <span className="save-indicator" style={live.unsent ? undefined : { color: 'var(--success)' }} title="Saved as you go; everyone editing sees your changes">{live.unsent ? 'Saving…' : 'Saved'}</span>)}
           {saveStatus === 'saving' && <span className="save-indicator">Saving...</span>}

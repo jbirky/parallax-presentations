@@ -5,7 +5,7 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary } from '../utils/plans'
 
@@ -13,6 +13,8 @@ import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
+import TeamSpaceView from '../components/TeamSpaceView'
+import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -75,13 +77,32 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // The teams the person is in (cloud only); /dashboard?team=<id>, where
   // joining a team lands, opens that team
   const [teams, setTeams] = useState([])
+  const [teamsLoaded, setTeamsLoaded] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('team')) || false)
-  const loadTeams = () => api.listTeams().then(r => setTeams(r.teams)).catch(() => {})
+  const loadTeams = () => api.listTeams().then(r => setTeams(r.teams)).catch(() => {}).finally(() => setTeamsLoaded(true))
   useEffect(() => {
     if (!isCloud) return
     loadTeams()
     if (new URLSearchParams(window.location.search).has('team')) window.history.replaceState(null, '', window.location.pathname)
   }, [])
+  // Whose presentations are shown: 'personal', or a team's id (remembered on
+  // this device), and the team's folder ('all' or a folder's id)
+  const [space, setSpaceState] = useState(() => { try { return window.localStorage.getItem('parallax.space') || 'personal' } catch { return 'personal' } })
+  const setSpace = next => {
+    setSpaceState(next)
+    try { window.localStorage.setItem('parallax.space', next) } catch {}
+  }
+  const [teamFolder, setTeamFolder] = useState('all')
+  const [teamReload, setTeamReload] = useState(0)
+  const [movingDeck, setMovingDeck] = useState(null)
+  const [createTarget, setCreateTarget] = useState(null) // { teamId, folderId } for a new team presentation
+  const team = space !== 'personal' ? teams.find(t => t.id === space) || null : null
+  // A team they've left, or one from another account on this device
+  useEffect(() => {
+    if (teamsLoaded && space !== 'personal' && !team) setSpace('personal')
+  }, [teamsLoaded, space, team])
+  const canAddToTeam = !!team && teamsToAddTo(teams).some(t => t.id === team.id)
+  const currentTarget = () => (team ? { teamId: team.id, folderId: teamFolder !== 'all' ? teamFolder : null } : null)
 
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
@@ -252,7 +273,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     e.preventDefault()
     setCreating(true)
     try {
-      const pres = await api.createPresentation(form)
+      const pres = await api.createPresentation({ ...form, ...(createTarget || {}) })
       setShowModal(false)
       setForm({ title: '', theme: 'black', transition: 'slide', templateId: null })
       onOpen(pres.id, false, pres.title)
@@ -267,7 +288,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // A new deck of slides made from LaTeX Beamer (BeamerImportModal)
   async function handleCreateFromBeamer({ title, slides, bibliography, slideWidth, slideHeight, theme }) {
     const deck = applyCitationNumbering({ title, theme, transition: 'slide', slideWidth, slideHeight, slides, bibliography })
-    const pres = await api.createPresentation(deck)
+    const pres = await api.createPresentation({ ...deck, ...(currentTarget() || {}) })
     setShowBeamerModal(false)
     onOpen(pres.id, false, pres.title)
   }
@@ -284,22 +305,25 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  async function handleDuplicate(e, id) {
+  // reload: for a team's presentation, loads the team's space again
+  async function handleDuplicate(e, id, reload) {
     e.stopPropagation()
     try {
       await api.duplicatePresentation(id)
-      loadData()
+      if (reload) reload()
+      else loadData()
     } catch (err) {
-      console.error('Failed to duplicate', err)
+      alert(err.message)
     }
   }
 
-  async function handleDelete(e, id) {
+  async function handleDelete(e, id, reload) {
     e.stopPropagation()
     if (!confirm('Delete this presentation? This cannot be undone.')) return
     try {
       await api.deletePresentation(id)
-      setPresentations(prev => prev.filter(p => p.id !== id))
+      if (reload) reload()
+      else setPresentations(prev => prev.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to delete presentation', err)
     }
@@ -355,8 +379,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  // A presentation's card; one shared with this user names its owner and can be left
-  function presentationCard(pres) {
+  // A presentation's card; one shared with this user names its owner and can
+  // be left. A team's (with teamId) names who made it, and offers what the
+  // person's role on it allows; reload loads the team's space again.
+  function presentationCard(pres, { reload } = {}) {
     // Its first slide's background, or its theme's page
     const bg = getCardBg(pres.thumbnail)
     const bgProp = !ownBackground(pres.thumbnail)
@@ -364,7 +390,15 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       : isGradientOrImage(pres.thumbnail)
         ? { background: bg }
         : { backgroundColor: bg }
-    const shared = pres.role === 'editor'
+    const inTeam = !!pres.teamId
+    const shared = !inTeam && pres.role === 'editor'
+    const viewOnly = pres.role === 'viewer'
+    const canMove = inTeam ? pres.role === 'owner' : !shared && teamsToAddTo(teams).length > 0
+    const canDelete = inTeam ? pres.role === 'owner' : !shared
+    const move = e => {
+      e.stopPropagation()
+      setMovingDeck({ id: pres.id, title: pres.title, teamId: pres.teamId || null, folderId: pres.folderId || null, creatorId: pres.creatorId || null })
+    }
 
     return (
       <div
@@ -383,6 +417,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           {shared && pres.ownerName && (
             <p style={{ fontSize: 11, margin: '2px 0 0' }}>Owned by {pres.ownerName}</p>
           )}
+          {inTeam && (pres.creatorName || pres.folderName) && (
+            <p style={{ fontSize: 11, margin: '2px 0 0' }}>
+              {pres.creatorName && `By ${pres.creatorName}`}{pres.creatorName && pres.folderName && ' · '}{pres.folderName && `in ${pres.folderName}`}
+            </p>
+          )}
           {isCloud && pres.expiresAt && (() => {
             const days = Math.ceil((new Date(pres.expiresAt) - Date.now()) / 86400000)
             return (
@@ -395,11 +434,16 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         <div className="card-actions">
           <button
             className="btn-icon"
-            title="Edit"
+            title={viewOnly ? 'View' : 'Edit'}
             onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
           >
-            <Pencil size={14} />
+            {viewOnly ? <Eye size={14} /> : <Pencil size={14} />}
           </button>
+          {canMove && (
+            <button className="btn-icon" title={inTeam ? 'Move' : 'Move to a team'} onClick={move}>
+              <FolderInput size={14} />
+            </button>
+          )}
           {shared ? (
             <button
               className="btn-icon"
@@ -411,21 +455,25 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </button>
           ) : (
             <>
-              <button
-                className="btn-icon"
-                title="Duplicate"
-                onClick={(e) => handleDuplicate(e, pres.id)}
-              >
-                <Copy size={14} />
-              </button>
-              <button
-                className="btn-icon"
-                title="Delete"
-                onClick={(e) => handleDelete(e, pres.id)}
-                style={{ color: 'var(--danger)' }}
-              >
-                <Trash2 size={14} />
-              </button>
+              {!viewOnly && (
+                <button
+                  className="btn-icon"
+                  title="Duplicate"
+                  onClick={(e) => handleDuplicate(e, pres.id, reload)}
+                >
+                  <Copy size={14} />
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  className="btn-icon"
+                  title="Delete"
+                  onClick={(e) => handleDelete(e, pres.id, reload)}
+                  style={{ color: 'var(--danger)' }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -433,7 +481,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     )
   }
 
-  function handleOpenModal() {
+  // target: { teamId, folderId } for a team's presentation; otherwise where
+  // the dashboard is showing
+  function handleOpenModal(target) {
+    setCreateTarget(target === undefined ? currentTarget() : target)
     setForm({ title: '', theme: 'black', transition: 'slide', templateId: null })
     setShowModal(true)
   }
@@ -481,23 +532,27 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
               {teams.length === 1 ? teams[0].name : 'Teams'}
             </button>
           )}
-          <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
-            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <GitFork size={15} />
-            Fork from Git
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
-            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <FileCode size={15} />
-            From Beamer
-          </button>
-          <button className="btn btn-primary" onClick={handleOpenModal} disabled={atLimit}
-            title={atLimit ? 'Presentation limit reached' : ''}>
-            <Plus size={16} />
-            New Presentation
-          </button>
+          {!team && (
+            <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
+              disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <GitFork size={15} />
+              Fork from Git
+            </button>
+          )}
+          {(!team || canAddToTeam) && (<>
+            <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
+              disabled={!team && atLimit} title={team ? `Make a presentation in ${team.name} from LaTeX Beamer source` : atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FileCode size={15} />
+              From Beamer
+            </button>
+            <button className="btn btn-primary" onClick={() => handleOpenModal()} disabled={!team && atLimit}
+              title={team ? `A new presentation in ${team.name}` : atLimit ? 'Presentation limit reached' : ''}>
+              <Plus size={16} />
+              New Presentation
+            </button>
+          </>)}
           {isCloud && (
             <UserButton appearance={{ elements: { avatarBox: { width: 32, height: 32 } } }}>
               {planInfo?.billing && (
@@ -511,6 +566,27 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       </div>
 
       <div className="home-content">
+       <div className={teams.length ? 'home-spaces' : undefined}>
+        {teams.length > 0 && (
+          <nav className="spaces-nav" aria-label="Presentations">
+            <button type="button" className={`spaces-item${!team ? ' active' : ''}`} aria-current={!team ? 'true' : undefined} onClick={() => setSpace('personal')}>
+              <User size={14} /> <span>My presentations</span>
+            </button>
+            <div className="spaces-heading">Teams</div>
+            {teams.map(t => (
+              <button key={t.id} type="button" className={`spaces-item${team?.id === t.id ? ' active' : ''}`} aria-current={team?.id === t.id ? 'true' : undefined}
+                onClick={() => { setSpace(t.id); setTeamFolder('all') }}>
+                <Users size={14} /> <span>{t.name}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+        <div style={{ minWidth: 0 }}>
+        {team ? (
+          <TeamSpaceView team={team} folder={teamFolder} onFolder={setTeamFolder} reloadKey={teamReload}
+            renderCard={presentationCard} onNew={folderId => handleOpenModal({ teamId: team.id, folderId })}
+            onManage={() => setTeamsOpen(team.id)} />
+        ) : (<>
         {atLimit && (
           <div style={{
             background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
@@ -530,7 +606,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
         ) : (
           <div className="presentations-grid">
-            <div className="new-card" onClick={handleOpenModal}>
+            <div className="new-card" onClick={() => handleOpenModal(null)}>
               <Plus size={32} />
               <span>New Presentation</span>
             </div>
@@ -777,12 +853,21 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )}
           </>
         )}
+        </>)}
+        </div>
+       </div>
       </div>
+
+      {movingDeck && (
+        <MoveDeckModal deck={movingDeck} teams={teams} you={planInfo?.id}
+          onClose={() => setMovingDeck(null)}
+          onMoved={() => { setMovingDeck(null); loadData(); setTeamReload(k => k + 1) }} />
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h2>New Presentation</h2>
+            <h2>{createTarget ? `New presentation in ${teams.find(t => t.id === createTarget.teamId)?.name || 'the team'}` : 'New Presentation'}</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Title</label>

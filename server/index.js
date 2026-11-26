@@ -36,9 +36,10 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
+const teamSpace = require('./services/team-space')
 const aiLinks = require('./services/ai-links')
 const { createMcpRoute } = require('./mcp')
-const { deckAccess: deckAccessFor, ownerOnly } = collaboration
+const { deckAccess: deckAccessFor, ownerOnly, canEdit } = collaboration
 const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
 const { normalizeTransforms } = require('./services/dataset-transforms')
@@ -751,7 +752,7 @@ async function checkPresentationQuota(req, res) {
   const limits = planFor(req.userPlan)
   if (limits.maxPresentations === Infinity) return true
   const { rows } = await storage.query(
-    'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
+    'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
     [req.userId]
   )
   if (rows[0].count >= limits.maxPresentations) {
@@ -773,10 +774,11 @@ app.get('/api/me', async (req, res) => {
   try {
     const limits = planFor(req.userPlan)
     const { rows } = await storage.query(
-      'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
+      'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
       [req.userId]
     )
     res.json({
+      id: req.userId,
       plan: limits.id,
       planName: limits.name,
       presentationCount: rows[0].count,
@@ -1052,7 +1054,7 @@ function escapeHtml(str) {
 app.get('/api/presentations', async (req, res) => {
   try {
     const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
-    const own = await storage.listPresentations(req.userId, { excludeExpired })
+    const own = await storage.listPresentations(req.userId, { excludeExpired, personalOnly: true })
     const shared = IS_CLOUD && storage.query && !req.isGuest
       ? await collaboration.listSharedPresentations(storage, req.userId)
       : []
@@ -1063,10 +1065,23 @@ app.get('/api/presentations', async (req, res) => {
 })
 
 // POST /api/presentations - create new (optionally from template)
+// With { teamId, folderId? }, it's made in that team (cloud only), for its
+// owner, admins and members; team decks don't count toward a personal plan.
 app.post('/api/presentations', async (req, res) => {
   try {
-    if (!(await checkPresentationQuota(req, res))) return
-    const { title, theme, transition, templateId, slides: providedSlides, ...extraFields } = req.body
+    const { teamId, folderId, ...body } = req.body || {}
+    let team = null
+    if (teamId !== undefined && teamId !== null) {
+      if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
+      if (!isValidUUID(teamId) || (folderId && !isValidUUID(folderId))) return res.status(400).json({ error: 'Invalid id' })
+      try {
+        team = await teamSpace.deckTarget(storage, req.userId, teamId, folderId || null)
+      } catch (err) {
+        if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+        throw err
+      }
+    } else if (!(await checkPresentationQuota(req, res))) return
+    const { title, theme, transition, templateId, slides: providedSlides, ...extraFields } = body
     const now = new Date().toISOString()
     let presentation
 
@@ -1142,10 +1157,14 @@ app.post('/api/presentations', async (req, res) => {
     }
 
     const limits = planFor(req.userPlan)
-    const expiresAt = limits.expirationDays
+    const expiresAt = !team && limits.expirationDays
       ? new Date(Date.now() + limits.expirationDays * 86400000).toISOString()
       : null
     const created = await storage.createPresentation(presentation, req.userId, expiresAt)
+    if (team) {
+      await storage.query('UPDATE presentations SET team_id = $2, folder_id = $3 WHERE id = $1', [created.id, team.teamId, team.folderId])
+      Object.assign(created, team)
+    }
     res.status(201).json(created)
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
@@ -1334,7 +1353,7 @@ app.get('/api/presentations/:id', requireValidId(), deckAccess(), async (req, re
 
 // PUT /api/presentations/:id - update. A body with the version it was made
 // from is refused (409) when someone has saved a newer one since.
-app.put('/api/presentations/:id', requireValidId(), deckAccess(), async (req, res) => {
+app.put('/api/presentations/:id', requireValidId(), deckAccess(), canEdit, async (req, res) => {
   try {
     const updated = await storage.updatePresentation(req.params.id, req.body, req.deck.ownerId, { baseVersion: req.body?.version })
     if (!updated) return res.status(404).json({ error: 'Not found' })
@@ -1687,7 +1706,7 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
 // A presentation's datasets are its owner's.
-app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
+app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), canEdit, async (req, res) => {
   const { pid } = req.params
   const { datasetId, alias } = req.body
   if (!datasetId) return res.status(400).json({ error: 'datasetId is required' })
@@ -1707,7 +1726,7 @@ app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('
 const ownsDeck = async (req, pid) => !!(await storage.getPresentation(pid, req.deck.ownerId))
 
 // DELETE /api/presentations/:pid/datasets/:did — unlink a dataset
-app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), async (req, res) => {
+app.delete('/api/presentations/:pid/datasets/:did', requireValidId('pid'), deckAccess('pid'), canEdit, async (req, res) => {
   try {
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     await storage.unlinkDatasetFromPresentation(req.params.pid, req.params.did)
@@ -1744,7 +1763,7 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
 // PUT /api/presentations/:pid/datasets/:did/pin — hold a dataset at one
 // version for this deck ({ versionId }), or follow the current one again
 // ({ versionId: null })
-app.put('/api/presentations/:pid/datasets/:did/pin', requireValidId('pid'), requireValidId('did'), deckAccess('pid'), async (req, res) => {
+app.put('/api/presentations/:pid/datasets/:did/pin', requireValidId('pid'), requireValidId('did'), deckAccess('pid'), canEdit, async (req, res) => {
   try {
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     const linked = await storage.getPresentationDatasets(req.params.pid)
@@ -1990,9 +2009,9 @@ app.delete('/api/themes/:id', requireValidId(), async (req, res) => {
 })
 
 // DELETE /api/presentations/:id
-app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
+app.delete('/api/presentations/:id', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
   try {
-    const deleted = await deletePresentationAndFiles(storage, req.params.id, req.userId)
+    const deleted = await deletePresentationAndFiles(storage, req.params.id, req.deck.ownerId)
     if (!deleted) return res.status(404).json({ error: 'Not found' })
     collab?.closeDocument(req.params.id)
     res.json({ success: true })
@@ -2002,11 +2021,23 @@ app.delete('/api/presentations/:id', requireValidId(), async (req, res) => {
 })
 
 // POST /api/presentations/:id/duplicate
-app.post('/api/presentations/:id/duplicate', requireValidId(), async (req, res) => {
+// A personal presentation is copied by its owner; a team's by its owner,
+// admins and members, into the same team and folder.
+app.post('/api/presentations/:id/duplicate', requireValidId(), deckAccess(), canEdit, async (req, res) => {
   try {
-    if (!(await checkPresentationQuota(req, res))) return
-    const copy = await storage.duplicatePresentation(req.params.id, req.userId)
+    const { teamId, teamRole } = req.deck
+    if (teamId ? !['owner', 'admin', 'member'].includes(teamRole) : req.deck.role !== 'owner') {
+      return res.status(403).json({ error: 'Only the owner can copy this presentation' })
+    }
+    if (!teamId && !(await checkPresentationQuota(req, res))) return
+    const copy = await storage.duplicatePresentation(req.params.id, req.userId, { readAs: req.deck.ownerId })
     if (!copy) return res.status(404).json({ error: 'Not found' })
+    if (teamId) {
+      const { rows } = await storage.query('SELECT folder_id FROM presentations WHERE id = $1', [req.params.id])
+      await storage.query('UPDATE presentations SET team_id = $2, folder_id = $3, expires_at = NULL WHERE id = $1', [copy.id, teamId, rows[0]?.folder_id || null])
+      Object.assign(copy, { teamId, folderId: rows[0]?.folder_id || null })
+      delete copy.expiresAt
+    }
     res.status(201).json(copy)
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
@@ -2038,7 +2069,7 @@ app.post('/api/upload', uploadLimiter, storageQuota, upload.single('file'), vali
 })
 
 // POST /api/presentations/:id/upload (per-presentation upload)
-app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
+app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), canEdit, uploadLimiter, storageQuota, upload.single('file'), validateUpload, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   try {
     const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
@@ -2064,7 +2095,7 @@ app.post('/api/presentations/:id/upload', requireValidId(), deckAccess(), upload
 })
 
 // POST /api/presentations/:id/import-pptx — convert PPTX to per-slide PNG images
-app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
+app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), canEdit, uploadLimiter, storageQuota, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
   const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
   if (!pres) { fs.removeSync(req.file.path); return res.status(404).json({ error: 'Not found' }) }
@@ -2100,7 +2131,7 @@ app.post('/api/presentations/:id/import-pptx', requireValidId(), deckAccess(), u
     // The slide images can be much bigger than the file: they have to fit in
     // the storage left on the owner's plan, as the file had to
     if (isR2Enabled() && storage.query) {
-      const plan = planFor(req.deck.role === 'owner' ? req.userPlan : req.deck.ownerPlan)
+      const plan = planFor(req.deck.role === 'owner' && !req.deck.teamId ? req.userPlan : req.deck.ownerPlan)
       const bytes = pngFiles.reduce((sum, f) => sum + fs.statSync(path.join(tmpDir, f)).size, 0)
       if (plan.storageBytes && await storageUsedBytes(storage, req.deck.ownerId) + bytes > plan.storageBytes) {
         return res.status(413).json({ error: `The slides as images (${Math.round(bytes / (1024 * 1024))} MB) don't fit in the storage left on the ${plan.name} plan.` })
@@ -2180,7 +2211,7 @@ if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
     '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates',
-    '/api/teams', '/api/team-invites', '/api/admin/teams'],
+    '/api/teams', '/api/team-invites', '/api/admin/teams', '/api/presentations/:id/location'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2188,9 +2219,9 @@ if (!IS_CLOUD) {
 
 
 // POST /api/presentations/:id/share - enable sharing, return token
-app.post('/api/presentations/:id/share', requireValidId(), async (req, res) => {
+app.post('/api/presentations/:id/share', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
   try {
-    const result = await storage.createShareToken(req.params.id, req.userId)
+    const result = await storage.createShareToken(req.params.id, req.deck.ownerId)
     if (!result) return res.status(404).json({ error: 'Not found' })
     res.json(result)
   } catch (err) {
@@ -2199,18 +2230,20 @@ app.post('/api/presentations/:id/share', requireValidId(), async (req, res) => {
 })
 
 // DELETE /api/presentations/:id/share - disable sharing
-app.delete('/api/presentations/:id/share', requireValidId(), async (req, res) => {
+app.delete('/api/presentations/:id/share', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
   try {
-    res.json(await storage.deleteShareToken(req.params.id, req.userId))
+    res.json(await storage.deleteShareToken(req.params.id, req.deck.ownerId))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
 })
 
 // GET /api/presentations/:id/share - get share status
-app.get('/api/presentations/:id/share', requireValidId(), async (req, res) => {
+app.get('/api/presentations/:id/share', requireValidId(), deckAccess(), async (req, res) => {
   try {
-    res.json(await storage.getShareStatus(req.params.id, req.userId))
+    // Only its owners see its share link
+    if (req.deck.role !== 'owner') return res.json({ shared: false, token: null })
+    res.json(await storage.getShareStatus(req.params.id, req.deck.ownerId))
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2230,7 +2263,7 @@ app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), 
     if (req.deck.role !== 'owner') {
       people = people.map(p => (p.role === 'owner' || p.id === req.userId ? p : { ...p, email: collaboration.emailHint(p.email) }))
     }
-    res.json({ role: req.deck.role, you: req.userId, people, inviteToken })
+    res.json({ role: req.deck.role, you: req.userId, people, inviteToken, teamId: req.deck.teamId || null, teamRole: req.deck.teamRole || null })
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2343,15 +2376,67 @@ app.delete('/api/teams/:id/invites/:inviteId', requireValidId(), requireValidId(
   res.json({ success: true })
 }))
 
+// Closes userId's live editing of the team's decks (everyone's, without
+// userId), so it reconnects with the rights they have now, or not at all
+async function reconnectTeamDecks(teamId, userId = null) {
+  if (!collab) return
+  for (const id of await teamSpace.teamDeckIds(storage, teamId)) {
+    if (userId) collab.disconnectUser(id, userId)
+    else collab.closeDocument(id)
+  }
+}
+
 // PATCH /api/teams/:id/members/:userId - change someone's role: { role }
 app.patch('/api/teams/:id/members/:userId', requireValidId(), requireValidId('userId'), teamRoute(async (req, res) => {
-  res.json(await teams.changeRole(storage, req.params.id, req.userId, req.params.userId, req.body?.role))
+  const result = await teams.changeRole(storage, req.params.id, req.userId, req.params.userId, req.body?.role)
+  await reconnectTeamDecks(req.params.id, req.params.userId)
+  res.json(result)
 }))
 
-// DELETE /api/teams/:id/members/:userId - remove someone, or leave
+// DELETE /api/teams/:id/members/:userId - remove someone, or leave. Their
+// decks stay with the team; the AI collaborator links they made on its
+// decks are revoked.
 app.delete('/api/teams/:id/members/:userId', requireValidId(), requireValidId('userId'), teamRoute(async (req, res) => {
   await teams.removeMember(storage, req.params.id, req.userId, req.params.userId)
+  await reconnectTeamDecks(req.params.id, req.params.userId)
+  for (const linkId of await teamSpace.revokeTeamLinks(storage, req.params.id, req.params.userId)) mcpRoute?.leave(linkId)
   res.json({ success: true })
+}))
+
+// GET /api/teams/:id/space - the team's folders and presentations, and its storage
+app.get('/api/teams/:id/space', requireValidId(), teamRoute(async (req, res) => {
+  res.json(await teamSpace.listTeamSpace(storage, req.params.id, req.userId))
+}))
+
+// POST /api/teams/:id/folders - a new folder: { name, parentId? }
+app.post('/api/teams/:id/folders', requireValidId(), teamRoute(async (req, res) => {
+  const parentId = req.body?.parentId || null
+  if (parentId && !isValidUUID(parentId)) return res.status(400).json({ error: 'Invalid id' })
+  res.status(201).json(await teamSpace.createFolder(storage, req.params.id, req.userId, { name: req.body?.name, parentId }))
+}))
+
+// PATCH /api/teams/:id/folders/:folderId - rename it: { name }
+app.patch('/api/teams/:id/folders/:folderId', requireValidId(), requireValidId('folderId'), teamRoute(async (req, res) => {
+  res.json(await teamSpace.renameFolder(storage, req.params.id, req.userId, req.params.folderId, req.body?.name))
+}))
+
+// DELETE /api/teams/:id/folders/:folderId - delete it; its presentations
+// move to the team's top level
+app.delete('/api/teams/:id/folders/:folderId', requireValidId(), requireValidId('folderId'), teamRoute(async (req, res) => {
+  await teamSpace.deleteFolder(storage, req.params.id, req.userId, req.params.folderId)
+  res.json({ success: true })
+}))
+
+// PUT /api/presentations/:id/location - move a presentation: { teamId,
+// folderId }, teamId null for the caller's own space
+app.put('/api/presentations/:id/location', requireValidId(), teamRoute(async (req, res) => {
+  const teamId = req.body?.teamId || null
+  const folderId = req.body?.folderId || null
+  if ((teamId && !isValidUUID(teamId)) || (folderId && !isValidUUID(folderId))) return res.status(400).json({ error: 'Invalid id' })
+  const moved = await teamSpace.moveDeck(storage, req.params.id, req.userId, req.userPlan, { teamId, folderId })
+  // Who can open it changed: everyone reconnects
+  collab?.closeDocument(req.params.id)
+  res.json(moved)
 }))
 
 // POST /api/teams/:id/transfer - the owner hands the team to an admin: { userId }
@@ -2400,7 +2485,9 @@ app.post('/api/admin/teams', adminTeamRoute(async (req, res) => {
 
 app.put('/api/admin/teams/:id', requireValidId(), adminTeamRoute(async (req, res) => {
   const { seats, plan, status } = req.body || {}
-  res.json({ team: await teams.adminUpdateTeam(storage, req.params.id, { seats, plan, status }, assignablePlans()) })
+  const team = await teams.adminUpdateTeam(storage, req.params.id, { seats, plan, status }, assignablePlans())
+  if (status !== undefined) await reconnectTeamDecks(req.params.id)
+  res.json({ team })
 }))
 
 app.delete('/api/admin/teams/:id', requireValidId(), adminTeamRoute(async (req, res) => {
@@ -2421,11 +2508,15 @@ const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: s
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
+// Who makes a deck's AI collaborator links: its owner, and on a team deck the
+// team's members as well (not viewers, nor people invited to the deck alone)
+const aiLinkMakers = (req, res, next) => (req.deck?.role === 'owner' || (req.deck?.teamRole === 'member' && req.deck.role === 'editor')
+  ? next() : res.status(403).json({ error: 'Only the owner can do this' }))
 const aiLinkUrl = (req, secret) => `${siteOrigin(req)}/mcp/${secret}`
 
 // GET /api/presentations/:id/ai-links - the presentation's links, without
 // their secrets
-app.get('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+app.get('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), aiLinkMakers, signedInOnly, async (req, res) => {
   try {
     res.json({ links: await aiLinks.listLinks(storage, req.params.id) })
   } catch (err) {
@@ -2435,7 +2526,7 @@ app.get('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), owner
 
 // POST /api/presentations/:id/ai-links { name, days } - a new link, with its
 // URL, which isn't given again; days is 7, 30 or 90, or null for never
-app.post('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+app.post('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), aiLinkMakers, signedInOnly, async (req, res) => {
   try {
     const { secret, ...link } = await aiLinks.createLink(storage, {
       presentationId: req.params.id, userId: req.userId, name: req.body?.name, days: req.body?.days,
@@ -2448,7 +2539,7 @@ app.post('/api/presentations/:id/ai-links', requireValidId(), deckAccess(), owne
 
 // POST /api/presentations/:id/ai-links/:linkId/renew { days } - the link
 // lasts `days` from now, with the same URL
-app.post('/api/presentations/:id/ai-links/:linkId/renew', requireValidId(), requireValidId('linkId'), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+app.post('/api/presentations/:id/ai-links/:linkId/renew', requireValidId(), requireValidId('linkId'), deckAccess(), aiLinkMakers, signedInOnly, async (req, res) => {
   try {
     const link = await aiLinks.renewLink(storage, req.params.id, req.params.linkId, req.body?.days)
     if (!link) return res.status(404).json({ error: 'No such AI collaborator link' })
@@ -2459,7 +2550,7 @@ app.post('/api/presentations/:id/ai-links/:linkId/renew', requireValidId(), requ
 })
 
 // DELETE /api/presentations/:id/ai-links/:linkId - the link stops working
-app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireValidId('linkId'), deckAccess(), ownerOnly, signedInOnly, async (req, res) => {
+app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireValidId('linkId'), deckAccess(), aiLinkMakers, signedInOnly, async (req, res) => {
   try {
     if (!(await aiLinks.revokeLink(storage, req.params.id, req.params.linkId))) return res.status(404).json({ error: 'No such AI collaborator link' })
     mcpRoute?.leave(req.params.linkId)
@@ -2497,9 +2588,9 @@ function generateSessionCode() {
 }
 
 // POST /api/presentations/:id/live/start
-app.post('/api/presentations/:id/live/start', requireValidId(), async (req, res) => {
+app.post('/api/presentations/:id/live/start', requireValidId(), deckAccess(), ownerOnly, async (req, res) => {
   try {
-    const presentation = await storage.getPresentation(req.params.id, req.userId)
+    const presentation = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!presentation) return res.status(404).json({ error: 'Not found' })
 
     let sessionId
@@ -2691,7 +2782,7 @@ app.get('/live/:id', deckPageLimiter, async (req, res) => {
 // --- Version History ---
 
 // POST /api/presentations/:id/snapshot
-app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), async (req, res) => {
+app.post('/api/presentations/:id/snapshot', requireValidId(), deckAccess(), canEdit, async (req, res) => {
   try {
     if (!await belowLimit(res, 'SELECT COUNT(*)::int AS count FROM snapshots WHERE presentation_id = $1', [req.params.id],
       MAX_VERSIONS, `A presentation can keep up to ${MAX_VERSIONS} saved versions. Delete one in History to save another.`)) return
@@ -2709,7 +2800,7 @@ app.get('/api/presentations/:id/snapshots', requireValidId(), deckAccess(), asyn
 })
 
 // POST /api/presentations/:id/restore/:snapshotId - restore a snapshot
-app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), async (req, res) => {
+app.post('/api/presentations/:id/restore/:snapshotId', requireValidId(), requireValidId('snapshotId'), deckAccess(), canEdit, async (req, res) => {
   try {
     const restored = await storage.restoreSnapshot(req.params.id, req.params.snapshotId, req.deck.ownerId)
     if (!restored) return res.status(404).json({ error: 'Snapshot or presentation not found' })
@@ -3715,7 +3806,7 @@ app.get('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async 
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
-app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async (req, res) => {
+app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), canEdit, async (req, res) => {
   try {
     const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })
@@ -3725,7 +3816,7 @@ app.post('/api/presentations/:id/plugins', requireValidId(), deckAccess(), async
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
-app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), async (req, res) => {
+app.delete('/api/presentations/:id/plugins/:pluginId', requireValidId(), deckAccess(), canEdit, async (req, res) => {
   try {
     const pres = await storage.getPresentation(req.params.id, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Not found' })

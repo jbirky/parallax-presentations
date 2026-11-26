@@ -136,12 +136,14 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
     quiet: true,
     debounce,
     maxDebounce,
-    async onAuthenticate({ token, documentName }) {
+    async onAuthenticate({ token, documentName, connectionConfig }) {
       if (!isValidUUID(documentName)) throw Forbidden
       const userId = token ? await userIdForToken(token).catch(() => null) : null
       if (!userId) throw Forbidden
       const access = await presentationAccess(storage, documentName, userId)
       if (!access) throw Forbidden
+      // A viewer (of a team deck) follows along; the server drops their changes
+      if (access.role === 'viewer') connectionConfig.readOnly = true
       return { userId, role: access.role }
     },
     async onLoadDocument({ documentName, document }) {

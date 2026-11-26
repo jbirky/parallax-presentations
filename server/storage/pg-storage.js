@@ -35,6 +35,8 @@ class PgStorage extends StorageInterface {
     const params = []
     if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`) }
     if (opts.excludeExpired) { conditions.push('(expires_at IS NULL OR expires_at > NOW())') }
+    // Leaves out team decks (services/team-space.js lists those)
+    if (opts.personalOnly) { conditions.push('team_id IS NULL') }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     const { rows } = await this.query(`
       SELECT id, title,
@@ -120,8 +122,10 @@ class PgStorage extends StorageInterface {
     return rowCount > 0
   }
 
-  async duplicatePresentation(id, userId) {
-    const orig = await this.getPresentation(id, userId)
+  // A copy of presentation id for userId. readAs is whose it is, when that's
+  // someone else (a team deck's maker): the copy is still userId's.
+  async duplicatePresentation(id, userId, { readAs = userId } = {}) {
+    const orig = await this.getPresentation(id, readAs)
     if (!orig) return null
     const copy = { ...JSON.parse(JSON.stringify(orig)), title: (orig.title || 'Untitled') + ' (copy)' }
     delete copy.id
