@@ -101,4 +101,18 @@ describe('the Editors dialog', () => {
     expect(el.querySelector('[role="alert"]').textContent).toBe('Only the owner can do this')
     act(() => root.unmount())
   })
+  it('tells a team member they edit through the team, with nothing to leave', () => {
+    const { el, button, root } = render({ access: { role: 'editor', you: 'u-ed', teamId: 't1', teamRole: 'member', inviteToken: null, people: [ownerPerson, editorPerson] } })
+    expect(el.textContent).toContain('This presentation belongs to your team, and Ada Owner made it.')
+    expect(el.textContent).toContain('uploads count against the team’s storage')
+    expect(button('Leave presentation')).toBeUndefined()
+    act(() => root.unmount())
+  })
+
+  it('tells a team viewer they can look but not change it', () => {
+    const { el, button, root } = render({ access: { role: 'viewer', you: 'u-v', teamId: 't1', teamRole: 'viewer', inviteToken: null, people: [ownerPerson] } })
+    expect(el.textContent).toContain('As a viewer, you can look through it and present it, but not change it.')
+    expect(button('Leave presentation')).toBeUndefined()
+    act(() => root.unmount())
+  })
 })

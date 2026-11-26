@@ -99,6 +99,15 @@ function snapWithRef(rawX, rawY, w, h, ref, snapFn) {
 
 const MIN_SIZE = 40
 
+// While something on the canvas is being dragged, embeds' frames (a selected
+// HTML, p5, model or molecule element takes the mouse) let the mouse through,
+// so the button coming up is heard here and ends the drag (.px-frames-held
+// in index.css). The canvas's mouseup lets go, as does a move with no button
+// down or the window losing focus.
+const FRAMES_HELD = 'px-frames-held'
+export function holdFrames() { globalThis.document?.documentElement.classList.add(FRAMES_HELD) }
+export function releaseFrames() { globalThis.document?.documentElement.classList.remove(FRAMES_HELD) }
+
 function textPathGeometry(width, angle, fontSize, pathShape, height) {
   const angleRad = ((angle || 0) * Math.PI) / 180
   const pad = Math.ceil((fontSize || 64) * 1.2)
@@ -376,6 +385,8 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
   useEffect(() => {
     const onMouseMove = (e) => {
       if (!drawingActiveRef.current) return
+      // Let go where this page couldn't hear it: the stroke ends there
+      if (e.buttons === 0) { onMouseUp(); return }
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const x = Math.max(0, Math.min(canvasWRef.current, (e.clientX - rect.left) / scaleRef.current))
@@ -386,6 +397,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     const onMouseUp = () => {
       if (!drawingActiveRef.current) return
       drawingActiveRef.current = false
+      releaseFrames()
       const pts = drawPointsRef.current
       drawPointsRef.current = []
       setLiveStroke(null)
@@ -508,6 +520,13 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     }
 
     const onMouseMove = (e) => {
+      // The button came up where this page couldn't hear it (over an embed's
+      // frame, or outside the window): the drag is over
+      if (e.buttons === 0 && (pendingDragRef.current || draggingRef.current || draggingGuideRef.current || draggingAxisRef.current || tiltDragRef.current || cropDragRef.current)) {
+        onMouseUp()
+        return
+      }
+
       // Guide drag
       if (draggingGuideRef.current && canvasRef.current) {
         const dg = draggingGuideRef.current
@@ -682,14 +701,34 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       tiltDragRef.current = null
       pendingDragRef.current = null
       draggingRef.current = null
+      releaseFrames()
       setActiveGuides([])
       forceUpdate(n => n + 1)
     }
+    // Escape while moving, resizing or turning something puts it back
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape' || !(draggingRef.current || pendingDragRef.current)) return
+      const drag = draggingRef.current
+      if (drag?.type === 'move' && drag.startEls?.length > 1) {
+        onUpdateElements(drag.startEls.map(({ id, x, y }) => ({ id, x, y })))
+      } else if (drag) {
+        const { x, y, width, height, rotation } = drag.startEl
+        onUpdateElement(drag.elementId, drag.type === 'rotate' ? { rotation: rotation ?? 0 } : { x, y, width, height })
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      onMouseUp()
+    }
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('blur', onMouseUp)
     return () => {
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('blur', onMouseUp)
+      releaseFrames()
     }
   }, [onUpdateElement, onUpdateElements])
 
@@ -757,9 +796,10 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       startClientX: e.clientX, startClientY: e.clientY,
       startMouseX: (e.clientX - rect.left) / scale,
       startMouseY: (e.clientY - rect.top) / scale,
-      startEl: { x: element.x, y: element.y, width: element.width, height: element.height, snapRef: element.snapRef },
+      startEl: { x: element.x, y: element.y, width: element.width, height: element.height, rotation: element.rotation, snapRef: element.snapRef },
       startEls: allSelected.map(el => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height }))
     }
+    holdFrames()
   }
 
   const startCrop = (elementId) => {
@@ -871,7 +911,15 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
     const getPos = (me) => axis === 'x'
       ? (me.clientX - rect.left) / scaleRef.current
       : (me.clientY - rect.top) / scaleRef.current
+    const stop = () => {
+      setPreviewGuide(null)
+      releaseFrames()
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
     const onMove = (me) => {
+      // Let go where this page couldn't hear it: no guide
+      if (me.buttons === 0) { stop(); return }
       const pos = getPos(me)
       if (pos >= 0 && pos <= (axis === 'x' ? CANVAS_W : CANVAS_H)) {
         setPreviewGuide({ axis, position: Math.round(pos) })
@@ -882,10 +930,9 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
       if (pos >= 0 && pos <= (axis === 'x' ? CANVAS_W : CANVAS_H)) {
         onAddGuide?.({ axis, position: Math.round(pos) })
       }
-      setPreviewGuide(null)
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      stop()
     }
+    holdFrames()
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }
@@ -960,6 +1007,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
           const x = Math.max(0, Math.min(canvasWRef.current, (e.clientX - rect.left) / scaleRef.current))
           const y = Math.max(0, Math.min(canvasHRef.current, (e.clientY - rect.top) / scaleRef.current))
           drawingActiveRef.current = true
+          holdFrames()
           drawPointsRef.current = [{ x, y }]
           setLiveStroke({ ...drawToolRef.current, points: [{ x, y }] })
           e.stopPropagation()
@@ -1065,7 +1113,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
-            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingGuideRef.current = { index: i, axis: 'x' } }}
+            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingGuideRef.current = { index: i, axis: 'x' }; holdFrames() }}
             onDoubleClick={() => onRemoveGuide?.(i)}
             title={`Vertical guide x=${guide.position} — drag to move, double-click to delete`}
             >
@@ -1080,7 +1128,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               marginTop: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'row-resize',
             }}
-            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingGuideRef.current = { index: i, axis: 'y' } }}
+            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingGuideRef.current = { index: i, axis: 'y' }; holdFrames() }}
             onDoubleClick={() => onRemoveGuide?.(i)}
             title={`Horizontal guide y=${guide.position} — drag to move, double-click to delete`}
             >
@@ -1100,7 +1148,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               marginLeft: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'col-resize',
             }}
-            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingAxisRef.current = { id: axisLine.id, axis: 'x' } }}
+            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingAxisRef.current = { id: axisLine.id, axis: 'x' }; holdFrames() }}
             onDoubleClick={() => {
               const updated = (slide?.axisLines || []).filter(a => a.id !== axisLine.id)
               onUpdateAxisLines?.(updated)
@@ -1118,7 +1166,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               marginTop: -4,
               background: 'transparent', zIndex: 998, pointerEvents: 'auto', cursor: 'row-resize',
             }}
-            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingAxisRef.current = { id: axisLine.id, axis: 'y' } }}
+            onMouseDown={e => { e.stopPropagation(); e.preventDefault(); draggingAxisRef.current = { id: axisLine.id, axis: 'y' }; holdFrames() }}
             onDoubleClick={() => {
               const updated = (slide?.axisLines || []).filter(a => a.id !== axisLine.id)
               onUpdateAxisLines?.(updated)
@@ -1182,7 +1230,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
               // In tilt mode, dragging the text tilts it rather than moving it
               if (tiltId === element.id && type === 'move') {
                 e.stopPropagation(); e.preventDefault()
-                if (e.button === 0) tiltDragRef.current = { elementId: element.id, startX: e.clientX, startY: e.clientY, start: { rotateX: element.rotateX, rotateY: element.rotateY } }
+                if (e.button === 0) { tiltDragRef.current = { elementId: element.id, startX: e.clientX, startY: e.clientY, start: { rotateX: element.rotateX, rotateY: element.rotateY } }; holdFrames() }
                 return
               }
               e.stopPropagation()
@@ -1227,6 +1275,7 @@ export default function SlideCanvas({ editor, slide, fadedIds, unseenIds, select
                 elW: el.width,
                 elH: el.height
               }
+              holdFrames()
             }}
             onCommitCrop={commitCrop}
             globalFont={globalFont}

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 const path = require('path')
+const { tileFields } = require('./deck-tile')
 const fs = require('fs-extra')
 const { v4: uuidv4 } = require('uuid')
 const StorageInterface = require('./interface')
@@ -18,6 +19,8 @@ class FileStorage extends StorageInterface {
     this.historyDir = path.join(dataDir, 'history')
     // The theme library: one person's, as self-hosted has one
     this.themesFile = path.join(dataDir, 'themes.json')
+    // Folders, and which folder each presentation is in: { folders, placements }
+    this.foldersFile = path.join(dataDir, 'folders.json')
 
     fs.ensureDirSync(dataDir)
     fs.ensureDirSync(this.historyDir)
@@ -34,12 +37,14 @@ class FileStorage extends StorageInterface {
   async _readTokens() { return fs.readJson(this.shareFile) }
   async _writeTokens(data) { return fs.writeJson(this.shareFile, data, { spaces: 2 }) }
 
+  // What a list shows of a presentation, with what its card draws (deck-tile.js)
   _summary(p) {
-    return { id: p.id, title: p.title, theme: p.theme, transition: p.transition, slideCount: (p.slides || []).length, updatedAt: p.updatedAt, createdAt: p.createdAt, thumbnail: (p.slides && p.slides[0]) ? p.slides[0].background : null }
+    return { id: p.id, title: p.title, theme: p.theme, transition: p.transition, slideCount: (p.slides || []).length, updatedAt: p.updatedAt, createdAt: p.createdAt, thumbnail: (p.slides && p.slides[0]) ? p.slides[0].background : null, ...tileFields(p) }
   }
 
   async listPresentations() {
-    return (await this._readAll()).map(p => this._summary(p))
+    const { placements } = await this._readFolders()
+    return (await this._readAll()).map(p => ({ ...this._summary(p), folderId: placements[p.id] || null }))
   }
   async getPresentation(id) {
     return (await this._readAll()).find(p => p.id === id) || null
@@ -66,6 +71,7 @@ class FileStorage extends StorageInterface {
     if (i === -1) return false
     all.splice(i, 1)
     await this._writeAll(all)
+    await this.setPresentationFolder(id, null)
     return true
   }
   async duplicatePresentation(id) {
@@ -77,6 +83,75 @@ class FileStorage extends StorageInterface {
     all.push(copy)
     await this._writeAll(all)
     return copy
+  }
+
+  // --- Folders ---
+  // One person's, as self-hosted has one: the place is ignored.
+  // services/folders.js checks names and nesting.
+
+  async _readFolders() {
+    const stored = fs.existsSync(this.foldersFile) ? await fs.readJson(this.foldersFile) : {}
+    return { folders: stored.folders || [], placements: stored.placements || {} }
+  }
+  async _writeFolders(data) { return fs.writeJson(this.foldersFile, data, { spaces: 2 }) }
+
+  async listFolders() {
+    const { folders } = await this._readFolders()
+    return [...folders].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  }
+
+  // Throws an error with code 23505, as Postgres does, for a name already in
+  // the same folder
+  async createFolder(place, { name, parentId = null }) {
+    const data = await this._readFolders()
+    if (data.folders.some(f => (f.parentId || null) === (parentId || null) && f.name.toLowerCase() === name.toLowerCase())) {
+      throw Object.assign(new Error('Duplicate folder name'), { code: '23505' })
+    }
+    const folder = { id: uuidv4(), name, parentId: parentId || null, createdAt: new Date().toISOString() }
+    data.folders.push(folder)
+    await this._writeFolders(data)
+    return folder
+  }
+
+  async updateFolder(place, id, { name, parentId }) {
+    const data = await this._readFolders()
+    const folder = data.folders.find(f => f.id === id)
+    if (!folder) return null
+    const next = { ...folder, ...(name != null && { name }), ...(parentId !== undefined && { parentId: parentId || null }) }
+    if (data.folders.some(f => f.id !== id && (f.parentId || null) === next.parentId && f.name.toLowerCase() === next.name.toLowerCase())) {
+      throw Object.assign(new Error('Duplicate folder name'), { code: '23505' })
+    }
+    Object.assign(folder, next)
+    await this._writeFolders(data)
+    return folder
+  }
+
+  // Its presentations and folders move up into its parent
+  async deleteFolder(place, id) {
+    const data = await this._readFolders()
+    const folder = data.folders.find(f => f.id === id)
+    if (!folder) return false
+    for (const [deck, f] of Object.entries(data.placements)) {
+      if (f !== id) continue
+      if (folder.parentId) data.placements[deck] = folder.parentId
+      else delete data.placements[deck]
+    }
+    for (const f of data.folders) if (f.parentId === id) f.parentId = folder.parentId || null
+    data.folders = data.folders.filter(f => f.id !== id)
+    await this._writeFolders(data)
+    return true
+  }
+
+  async getPresentationFolder(id) {
+    return (await this._readFolders()).placements[id] || null
+  }
+
+  async setPresentationFolder(id, folderId) {
+    const data = await this._readFolders()
+    if ((data.placements[id] || null) === (folderId || null)) return
+    if (folderId) data.placements[id] = folderId
+    else delete data.placements[id]
+    await this._writeFolders(data)
   }
 
   // --- Theme library ---

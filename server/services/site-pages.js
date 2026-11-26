@@ -65,7 +65,7 @@ function robotsTxt({ origin, index }) {
   return [
     'User-agent: *',
     'Allow: /',
-    ...['/api/', '/dashboard', '/admin', '/try', '/share/', '/live/', '/invite/', '/uploads/', '/stats/'].map(p => `Disallow: ${p}`),
+    ...['/api/', '/dashboard', '/admin', '/try', '/share/', '/live/', '/invite/', '/teams/', '/uploads/', '/stats/'].map(p => `Disallow: ${p}`),
     '',
     `Sitemap: ${origin}/sitemap.xml`,
     '',

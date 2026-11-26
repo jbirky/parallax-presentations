@@ -58,6 +58,19 @@ describe('the self-hosted version', () => {
     assert.ok((await call('GET', '/api/presentations')).body.some(p => p.id === id))
   })
 
+  it('lists each presentation with its first slide for its card, without notes', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'Card' })).body
+    await call('PUT', `/api/presentations/${id}`, {
+      themeColors: { background: '#102030' }, globalFont: 'Jost',
+      slides: [{ id: 's1', notes: 'secret', background: { type: 'color', color: '#abcdef' }, elements: [{ id: 'e1', type: 'text', content: 'Hi' }] }],
+    })
+    const card = (await call('GET', '/api/presentations')).body.find(p => p.id === id)
+    assert.deepEqual(card.thumbnail, { type: 'color', color: '#abcdef' })
+    assert.deepEqual(card.firstSlide, { id: 's1', elements: [{ id: 'e1', type: 'text', content: 'Hi' }] })
+    assert.deepEqual(card.themeColors, { background: '#102030' })
+    assert.equal(card.globalFont, 'Jost')
+  })
+
   it('makes a presentation from a template under new ids, with its links and show/hide following them', async () => {
     const template = (await call('POST', '/api/templates', { title: 'Menu', slides: [
       { id: 'menu', elements: [
@@ -280,6 +293,42 @@ describe('the self-hosted version', () => {
       ['POST', `/api/presentations/${id}/ai-links`, { name: 'Claude' }],
       ['GET', `/mcp/plx_${'A'.repeat(43)}`],
       ['POST', `/mcp/plx_${'A'.repeat(43)}`, { jsonrpc: '2.0', id: 1, method: 'tools/list' }],
+    ]) {
+      assert.equal((await call(method, url, body)).status, 404, `${method} ${url}`)
+    }
+  })
+
+  it('keeps folders for its one person, in its data folder', async () => {
+    const talks = await call('POST', '/api/folders', { name: 'Talks' })
+    assert.equal(talks.status, 201)
+    const year = (await call('POST', '/api/folders', { name: '2026', parentId: talks.body.id })).body
+    assert.equal((await call('POST', '/api/folders', { name: 'TALKS' })).status, 409)
+    const made = await call('POST', '/api/presentations', { title: 'Filed talk', folderId: talks.body.id })
+    assert.equal(made.body.folderId, talks.body.id)
+    const folderOf = async title => (await call('GET', '/api/presentations')).body.find(p => p.title === title).folderId
+
+    assert.equal((await call('PUT', `/api/presentations/${made.body.id}/location`, { folderId: year.id })).status, 200)
+    assert.equal(await folderOf('Filed talk'), year.id)
+    assert.equal((await call('PUT', `/api/presentations/${made.body.id}/location`, { teamId: '5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c' })).status, 404)
+    assert.equal((await call('POST', `/api/presentations/${made.body.id}/duplicate`)).body.folderId, year.id)
+    assert.equal((await call('PATCH', `/api/folders/${talks.body.id}`, { parentId: year.id })).status, 400)
+
+    // Deleting 2026 moves its talks up into Talks
+    assert.equal((await call('DELETE', `/api/folders/${year.id}`)).status, 200)
+    assert.equal(await folderOf('Filed talk'), talks.body.id)
+    assert.deepEqual((await call('GET', '/api/folders')).body.folders.map(f => f.name), ['Talks'])
+  })
+
+  it('has no teams', async () => {
+    const token = 'A'.repeat(43)
+    for (const [method, url, body] of [
+      ['GET', '/api/teams'],
+      ['GET', '/api/teams/5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c'],
+      ['POST', '/api/teams/5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c/invites', { role: 'member' }],
+      ['GET', `/api/team-invites/${token}`],
+      ['POST', `/api/team-invites/${token}/accept`],
+      ['GET', '/api/admin/teams'],
+      ['POST', '/api/admin/teams', { name: 'Lab', ownerEmail: 'a@b.c' }],
     ]) {
       assert.equal((await call(method, url, body)).status, 404, `${method} ${url}`)
     }

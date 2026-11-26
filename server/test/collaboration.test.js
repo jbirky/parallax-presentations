@@ -130,10 +130,10 @@ describe('editing a presentation with others', { skip }, () => {
 
   it('keeps deleting, sharing, presenting live and the invite link with the owner', async () => {
     const ownerRoutes = [
-      ['DELETE', `/api/presentations/${deck}`, undefined, 404],
-      ['POST', `/api/presentations/${deck}/duplicate`, undefined, 404],
-      ['POST', `/api/presentations/${deck}/share`, undefined, 404],
-      ['POST', `/api/presentations/${deck}/live/start`, undefined, 404],
+      ['DELETE', `/api/presentations/${deck}`, undefined, 403],
+      ['POST', `/api/presentations/${deck}/duplicate`, undefined, 403],
+      ['POST', `/api/presentations/${deck}/share`, undefined, 403],
+      ['POST', `/api/presentations/${deck}/live/start`, undefined, 403],
       ['POST', `/api/presentations/${deck}/save-as-template`, {}, 404],
       ['POST', `/api/presentations/${deck}/invite`, undefined, 403],
       ['DELETE', `/api/presentations/${deck}/invite`, undefined, 403],

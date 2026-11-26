@@ -9,7 +9,8 @@ import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
 import PluginReviewPanel from '../components/PluginReviewPanel'
-import { formatSize, planSummary } from '../utils/plans'
+import AdminTeamsPanel from '../components/AdminTeamsPanel'
+import { formatSize, planSummary, priceText } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
 
@@ -80,6 +81,8 @@ const styles = {
   td: { padding: '9px 10px', borderBottom: '1px solid var(--border)', fontSize: 13, verticalAlign: 'top' },
   num: { fontVariantNumeric: 'tabular-nums', textAlign: 'right', whiteSpace: 'nowrap' },
   details: { marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' },
+  tabs: { display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', overflowX: 'auto', scrollbarWidth: 'thin' },
+  tab: { background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, padding: '8px 12px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
 }
 
 function Stat({ label, value, note, first, children }) {
@@ -203,6 +206,8 @@ export function toPlanForm(plan) {
     sortOrder: String(plan.sortOrder ?? 0),
     liveDatasets: String(plan.liveDatasets ?? 0),
     minRefresh: plan.minRefresh || 'daily',
+    perSeat: !!plan.perSeat,
+    minSeats: plan.minSeats == null ? '' : String(plan.minSeats),
   }
 }
 
@@ -222,6 +227,8 @@ export function fromPlanForm(form) {
     sortOrder: form.sortOrder.trim() === '' ? 0 : Number(form.sortOrder),
     liveDatasets: form.liveDatasets.trim() === '' ? 0 : Number(form.liveDatasets),
     minRefresh: form.minRefresh,
+    perSeat: !!form.perSeat,
+    minSeats: form.perSeat && String(form.minSeats ?? '').trim() !== '' ? Number(form.minSeats) : null,
   }
 }
 
@@ -322,9 +329,9 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
           </select>
         </Field>
         <Field label="Order"><input style={fieldInput} type="number" min="0" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></Field>
-        {!builtIn && (
-          <Field label="Stripe price ID" hint="blank: not for sale">
-            <input style={{ ...fieldInput, fontFamily: 'monospace' }} value={form.stripePriceId} onChange={set('stripePriceId')} placeholder="price_…" spellCheck={false} />
+        {!builtIn && form.perSeat && (
+          <Field label="Fewest seats" hint="blank: 1">
+            <input style={fieldInput} type="number" min="1" max="1000" step="1" value={form.minSeats} onChange={set('minSeats')} />
           </Field>
         )}
         {plan.id !== 'guest' && (
@@ -338,6 +345,11 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
           <input type="checkbox" checked={form.public} onChange={set('public')} /> Listed for people choosing a plan
         </label>
       )}
+      {!builtIn && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <input type="checkbox" checked={form.perSeat} onChange={set('perSeat')} /> Sold to teams, by the seat
+        </label>
+      )}
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '5px 12px', fontSize: 13 }}>
@@ -346,6 +358,61 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
         <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => onDone?.(null)} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
       </div>
     </form>
+  )
+}
+
+// A plan's Stripe prices: each to stop selling at, and one more to add by its
+// ID. Where Stripe is set up, the server asks it for the interval and amount.
+function PlanPrices({ plan, onChanged }) {
+  const [form, setForm] = useState(null) // { priceId, interval, amount }
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const act = async fn => {
+    setBusy(true)
+    setError(null)
+    try { await fn(); await onChanged?.() } catch (err) { setError(err.message) }
+    setBusy(false)
+  }
+  const add = e => {
+    e.preventDefault()
+    const amount = form.amount.trim()
+    act(async () => {
+      await api.addPlanPrice(plan.id, { priceId: form.priceId.trim(), interval: form.interval, amountCents: amount === '' ? null : Math.round(Number(amount) * 100) })
+      setForm(null)
+    })
+  }
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {plan.prices?.length ? plan.prices.map(p => (
+        <div key={p.priceId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', minWidth: 0 }}>
+          <span style={{ flexShrink: 0 }}>{p.interval === 'year' ? 'Yearly' : 'Monthly'}: {priceText(p, { perSeat: plan.perSeat })}</span>
+          <code style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.priceId}</code>
+          <button type="button" className="btn btn-ghost" disabled={busy} aria-label={`Stop selling at ${p.priceId}`} title="Stop selling at this price; subscriptions on it carry on"
+            style={{ marginLeft: 'auto', padding: '1px 6px', fontSize: 12, color: 'var(--danger)' }}
+            onClick={() => confirm(`Stop selling ${plan.name} at ${p.priceId}? Subscriptions already on it carry on.`) && act(() => api.removePlanPrice(plan.id, p.priceId))}>
+            Remove
+          </button>
+        </div>
+      )) : <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{plan.priceLabel || 'Not for sale'}</div>}
+      {form ? (
+        <form onSubmit={add} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <input style={{ ...fieldInput, flex: '1 1 160px', width: 'auto', fontFamily: 'monospace' }} required placeholder="price_…" spellCheck={false}
+            aria-label="Stripe price ID" value={form.priceId} onChange={e => setForm(f => ({ ...f, priceId: e.target.value }))} />
+          <select className="select-sm" aria-label="Billed" value={form.interval} onChange={e => setForm(f => ({ ...f, interval: e.target.value }))}>
+            <option value="month">Monthly</option><option value="year">Yearly</option>
+          </select>
+          <input style={{ ...fieldInput, width: 90 }} type="number" min="0" step="0.01" placeholder={plan.perSeat ? '$ a seat' : '$'} aria-label="Amount in dollars"
+            value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ padding: '3px 10px', fontSize: 12 }}>Add</button>
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setForm(null)} style={{ padding: '3px 10px', fontSize: 12 }}>Cancel</button>
+          <div style={{ flexBasis: '100%', fontSize: 11, color: 'var(--text-muted)' }}>Where Stripe is set up, how often and how much come from the price itself.</div>
+        </form>
+      ) : (
+        <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setForm({ priceId: '', interval: 'month', amount: '' })}
+          style={{ justifySelf: 'start', padding: '2px 8px', fontSize: 12 }}>Add a price</button>
+      )}
+      {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+    </div>
   )
 }
 
@@ -389,11 +456,10 @@ function PlanCard({ plan, accounts, onChanged }) {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             {planSummary(plan).map(line => <div key={line}>{line}</div>)}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
-            {plan.stripePriceId
-              ? <>{plan.priceLabel || 'Priced'} · <code>{plan.stripePriceId}</code></>
-              : plan.priceLabel || (builtIn ? '—' : 'Not for sale')}
-          </div>
+          {plan.perSeat && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Sold to teams by the seat{plan.minSeats > 1 ? `, at least ${plan.minSeats}` : ''}</div>}
+          {builtIn
+            ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{plan.priceLabel || '—'}</div>
+            : <PlanPrices plan={plan} onChanged={onChanged} />}
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="btn btn-secondary" onClick={() => { setMessage(null); setEditing(true) }} style={{ padding: '3px 10px', fontSize: 12 }}>Edit</button>
             {!builtIn && (
@@ -420,8 +486,8 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
           <p style={styles.sub}>
             Limits apply as soon as you save.{' '}
             {billingEnabled
-              ? 'Listed plans with a Stripe price can be bought from the dashboard.'
-              : 'Billing is switched off, so Stripe prices take effect once it’s on.'}
+              ? 'Listed plans with a price can be bought from the dashboard, and plans sold by the seat by people creating a team.'
+              : 'Billing is switched off (PARALLAX_BILLING), so prices take effect once it’s on.'}
           </p>
         </div>
         {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add a plan</button>}
@@ -587,10 +653,10 @@ function ExampleFields({ form, set, fields }) {
   )
 }
 
-function AddExample({ fields, onAdded, onCancel }) {
+function AddExample({ kind, fields, onAdded, onCancel }) {
   const [presentations, setPresentations] = useState(null)
   const [presentationId, setPresentationId] = useState('')
-  const [form, setForm] = useState({ field: '', title: '', description: '', tags: '', kind: 'example' })
+  const [form, setForm] = useState({ field: '', title: '', description: '', tags: '', kind })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
@@ -621,12 +687,6 @@ function AddExample({ fields, onAdded, onCancel }) {
           <select className="select-sm" value={presentationId} onChange={choose} required disabled={!presentations}>
             <option value="">{presentations ? 'Choose one of your presentations…' : 'Loading…'}</option>
             {presentations?.map(p => <option key={p.id} value={p.id}>{p.title || 'Untitled'}</option>)}
-          </select>
-        </Field>
-        <Field label="Shown as" hint="a template is copied into people’s accounts">
-          <select className="select-sm" value={form.kind} onChange={set('kind')} aria-label="Shown as">
-            <option value="example">An example, on the home tab</option>
-            <option value="template">A template, on the Templates tab</option>
           </select>
         </Field>
       </div>
@@ -663,7 +723,6 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
           <strong style={{ fontSize: 14 }}>{e.title}</strong>
           {e.field && <span style={chip}>{e.field}</span>}
           {e.hero && <span style={{ ...chip, background: 'var(--accent)', color: '#fff' }}>At the top</span>}
-          {e.kind === 'template' && <span style={{ ...chip, background: 'rgba(16, 185, 129, 0.18)', color: '#34d399' }}>Template</span>}
           {!e.card && !e.hero && <span style={chip}>Hidden</span>}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             {e.sourcePresentationId
@@ -691,7 +750,7 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
             {!e.hero && (e.kind === 'template' || e.ownDeck || !e.builtin) && (
               <button className="btn btn-secondary" style={smallBtn} disabled={working}
                 title={e.kind === 'template' ? 'Show it with the examples, to look at' : 'Show it on the Templates tab, for people to copy'}
-                onClick={() => onAct(e, () => api.saveExample(e.slug, { kind: e.kind === 'template' ? 'example' : 'template' }))}>
+                onClick={() => onAct(e, () => api.saveExample(e.slug, { kind: e.kind === 'template' ? 'example' : 'template' }), { moved: true })}>
                 {e.kind === 'template' ? 'Make an example' : 'Make a template'}
               </button>
             )}
@@ -700,7 +759,7 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
               : <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.copyExample(e.slug))} title="Make a presentation of yours from it, to change its slides">Make an editable copy</button>}
             <button className="btn btn-secondary" style={smallBtn} disabled={working} onClick={() => onAct(e, () => api.redrawExampleThumbnail(e.slug))}>Redraw thumbnail</button>
             {!e.builtin && !e.hero && <button className="btn btn-secondary" style={smallBtn} disabled={working}
-              onClick={() => confirm(`Delete the example “${e.title}”? The presentation it came from stays.`) && onAct(e, () => api.deleteExample(e.slug), { removed: true })}>Delete</button>}
+              onClick={() => confirm(`Delete the ${e.kind === 'template' ? 'template' : 'example'} “${e.title}”? The presentation it came from stays.`) && onAct(e, () => api.deleteExample(e.slug), { removed: true })}>Delete</button>}
           </div>
         </>)}
         {working && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Working…</div>}
@@ -709,19 +768,39 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
   )
 }
 
-// The deck at the top of the landing page and the example cards under it
-export function ExamplesPanel() {
-  const [list, setList] = useState(null)
+const kindOf = e => (e.kind === 'template' ? 'template' : 'example')
+
+const PANEL_WORDS = {
+  example: {
+    title: 'Landing page examples',
+    about: 'The deck at the top of the landing page and the example cards under it, in this order. Each is a copy of one of your presentations: change the presentation, then use Update from presentation to show it. An example’s speaker notes stay private.',
+    add: 'Add an example',
+    none: 'No examples yet.',
+  },
+  template: {
+    title: 'Templates',
+    about: 'The cards on the landing page’s Templates tab, in this order. People copy a template into their account to start from, with its speaker notes, so write them for whoever starts from it. Each is a copy of one of your presentations: change the presentation, then use Update from presentation to show it.',
+    add: 'Add a template',
+    none: 'No templates yet.',
+  },
+}
+
+// The landing page's examples (kind "example": the deck at the top and the
+// cards under it) or its templates (kind "template", on its Templates tab)
+export function ExamplesPanel({ kind = 'example' }) {
+  const [all, setAll] = useState(null)
   const [canDraw, setCanDraw] = useState(true)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState(null)
   const [notice, setNotice] = useState(null)
+  const words = PANEL_WORDS[kind]
+  const list = all && all.filter(e => kindOf(e) === kind)
 
   const load = useCallback(async () => {
     try {
       const r = await api.getAdminExamples()
-      setList(r.examples)
+      setAll(r.examples)
       setCanDraw(r.thumbnails)
       setError(null)
     } catch (err) {
@@ -730,15 +809,16 @@ export function ExamplesPanel() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  // Runs a change to one example; true when it went through
-  const act = useCallback(async (e, change, { removed = false } = {}) => {
+  // Runs a change to one card; true when it went through
+  const act = useCallback(async (e, change, { removed = false, moved = false } = {}) => {
     setBusy(e.slug)
     setNotice(null)
     try {
       const r = await change()
-      if (removed) setList(l => l.filter(x => x.slug !== e.slug))
+      if (removed) setAll(l => l.filter(x => x.slug !== e.slug))
       else await load()
       const parts = []
+      if (moved) parts.push(`Moved “${e.title}” to ${kindOf(e) === 'template' ? 'Examples' : 'Templates'}.`)
       if (r?.presentation) parts.push(`Made “${r.presentation.title}” in your presentations; change its slides there, then use Update from presentation.`)
       if (r?.thumbnailError) parts.push(`The thumbnail wasn’t drawn: ${r.thumbnailError}`)
       if (parts.length) setNotice({ slug: e.slug, text: parts.join(' '), link: r?.presentation ? `/dashboard/${slugify(r.presentation.title)}` : null })
@@ -751,37 +831,39 @@ export function ExamplesPanel() {
     }
   }, [load])
 
+  // Swaps e with the next card of its kind up or down; the other kind's
+  // cards keep their places
   const move = useCallback(async (e, dir) => {
-    const slugs = list.map(x => x.slug)
-    const at = slugs.indexOf(e.slug)
-    ;[slugs[at], slugs[at + dir]] = [slugs[at + dir], slugs[at]]
+    const at = list.indexOf(e)
+    const other = list.at(at + dir)
+    const slugs = all.map(x => (x.slug === e.slug ? other.slug : x.slug === other.slug ? e.slug : x.slug))
     setBusy(e.slug)
-    try { setList((await api.orderExamples(slugs)).examples) } catch (err) { setNotice({ slug: e.slug, text: err.message }) } finally { setBusy(null) }
-  }, [list])
+    try { setAll((await api.orderExamples(slugs)).examples) } catch (err) { setNotice({ slug: e.slug, text: err.message }) } finally { setBusy(null) }
+  }, [all, list])
 
-  const fields = [...new Set(['Physics', 'Astronomy', 'Chemistry', 'Mathematics', 'Engineering and CS', ...(list || []).map(e => e.field).filter(Boolean)])]
+  const fields = [...new Set(['Physics', 'Astronomy', 'Chemistry', 'Mathematics', 'Engineering and CS', ...(all || []).map(e => e.field).filter(Boolean)])]
+  const headingId = `admin-${kind}s`
 
   return (
-    <section style={styles.panel} aria-labelledby="admin-examples">
+    <section style={styles.panel} aria-labelledby={headingId}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={styles.h2} id="admin-examples">Landing page examples and templates</h2>
+        <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+          <h2 style={styles.h2} id={headingId}>{words.title}</h2>
           <p style={styles.sub}>
-            The deck at the top of the landing page, the example cards under it, and the cards on its Templates tab, in
-            this order. Each is a copy of one of your presentations: change the presentation, then use Update from
-            presentation to show it. People copy a template into their account to start from, with its speaker notes, so write them for whoever starts from it; an example’s speaker notes stay private.
+            {words.about}
             {canDraw ? ' The server draws each card’s thumbnail from the first slide.' : ' This server has no Chromium, so it can’t draw thumbnails; new cards show a placeholder.'}
           </p>
         </div>
-        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add an example or template</button>}
+        {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>{words.add}</button>}
       </div>
-      {adding && <AddExample fields={fields} onCancel={() => setAdding(false)} onAdded={async r => {
+      {adding && <AddExample kind={kind} fields={fields} onCancel={() => setAdding(false)} onAdded={async r => {
         setAdding(false)
         await load()
         if (r.thumbnailError) setNotice({ slug: r.example.slug, text: `Added, but the thumbnail wasn’t drawn: ${r.thumbnailError}` })
       }} />}
-      {error && <p style={{ fontSize: 13, margin: '8px 0 0' }}>Couldn’t load the examples: {error}</p>}
+      {error && <p style={{ fontSize: 13, margin: '8px 0 0' }}>Couldn’t load the {kind}s: {error}</p>}
       {notice && !list?.some(e => e.slug === notice.slug) && <div role="status" style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0' }}>{notice.text}</div>}
+      {list && !list.length && !adding && <p style={{ ...styles.muted, fontSize: 13, margin: '8px 0 0' }}>{words.none}</p>}
       {list && list.map((e, i) => (
         <div key={e.slug}>
           <ExampleRow example={e} first={i === 0} last={i === list.length - 1} fields={fields} busy={busy} onAct={act} onMove={move} />
@@ -844,7 +926,52 @@ function StorageMeter({ used, limit }) {
 }
 
 // The dashboard itself, rendered from the overview data
-export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded, onPlanChanged, showExamples = false }) {
+// The admin page's tabs, in order, as { id, label }. Those for the cloud
+// version's tables (plans, teams, the landing page) need the server to list
+// its plans.
+export function adminTabs(data) {
+  const cloud = data?.plans?.length > 0
+  return [
+    { id: 'overview', label: 'Overview' },
+    { id: 'accounts', label: 'Accounts' },
+    cloud && { id: 'teams', label: 'Teams' },
+    cloud && { id: 'plans', label: 'Plans' },
+    cloud && { id: 'analytics', label: 'Analytics' },
+    cloud && { id: 'examples', label: 'Examples' },
+    cloud && { id: 'templates', label: 'Templates' },
+    { id: 'plugins', label: 'Plugins' },
+    { id: 'server', label: 'Server' },
+  ].filter(Boolean)
+}
+
+// The tab row; arrow keys, Home and End move between tabs
+export function AdminTabs({ tabs, active, onChange }) {
+  const move = (e, i) => {
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key]
+    if (next === undefined) return
+    e.preventDefault()
+    const tab = tabs.at(next % tabs.length)
+    onChange(tab.id)
+    document.getElementById(`admin-tab-${tab.id}`)?.focus()
+  }
+  return (
+    <div role="tablist" aria-label="Admin sections" style={styles.tabs}>
+      {tabs.map((t, i) => {
+        const on = t.id === active
+        return (
+          <button key={t.id} id={`admin-tab-${t.id}`} role="tab" type="button" aria-selected={on} aria-controls={`admin-panel-${t.id}`}
+            tabIndex={on ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={e => move(e, i)}
+            style={{ ...styles.tab, color: on ? 'var(--text-primary)' : 'var(--text-muted)', borderBottomColor: on ? 'var(--accent)' : 'transparent', fontWeight: on ? 600 : 500 }}>
+            {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// One tab of the admin page (adminTabs), Overview when `tab` isn't one of them
+export function AdminDashboard({ data, tab = 'overview', refreshing = false, onGuestSessionsEnded, onPlanChanged }) {
   const system = data.system
   const samples = system?.samples || []
   const cpuPoints = samples.map(s => ({ t: s.t, value: s.cpuPercent }))
@@ -858,8 +985,9 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
     ? `Collecting. Readings are taken every ${system.intervalSeconds} seconds; the chart appears after two.`
     : 'Collecting.'
 
-  return (
-    <div style={{ display: 'grid', gap: 20, opacity: refreshing ? 0.6 : 1, transition: 'opacity 150ms' }}>
+  const shown = adminTabs(data).some(t => t.id === tab) ? tab : 'overview'
+  const panels = {
+    overview: <>
       <section style={{ ...styles.panel, display: 'flex', flexWrap: 'wrap', rowGap: 14, padding: '14px 0' }}>
         <Stat first label="Accounts" value={data.accounts.total.toLocaleString()}
           note={plans.length ? plans.map(([plan, n]) => `${n} ${plan}`).join(' · ') : 'None yet'} />
@@ -881,31 +1009,8 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
         table={<SimpleTable columns={['Week of', 'Sign-ups']} rows={[...weeks].reverse().map(w => [w.label, w.value])} />}>
         <ColumnChart data={weeks} integer ariaLabel="Sign-ups per week, last 12 weeks" />
       </ChartPanel>
-
-      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-        <ChartPanel title="Container CPU" subtitle={`Last 24 hours · 100% = one core${system.source === 'process' ? ' · this process only' : ''} · starts over when the server restarts`}
-          table={samples.length > 1 && <SimpleTable columns={['Hour', 'Average', 'Peak']}
-            rows={hourlyRows(samples, 'cpuPercent').map(r => [formatClock(r.t), `${r.average.toFixed(1)}%`, `${r.peak.toFixed(1)}%`])} />}>
-          <LineChart points={cpuPoints} formatValue={v => `${Math.round(v * 10) / 10}%`} formatTime={formatClock}
-            ariaLabel="Container CPU over the last 24 hours" emptyText={collecting} />
-        </ChartPanel>
-        <ChartPanel title="Container memory"
-          subtitle={`Last 24 hours · ${system.memoryLimitBytes ? `limit ${formatBytes(system.memoryLimitBytes)}` : 'no limit set'} · starts over when the server restarts`}
-          table={samples.length > 1 && <SimpleTable columns={['Hour', 'Average', 'Peak']}
-            rows={hourlyRows(samples, 'memBytes').map(r => [formatClock(r.t), formatBytes(r.average), formatBytes(r.peak)])} />}>
-          <LineChart points={memPoints} formatValue={v => `${Math.round(v)} MB`} formatTime={formatClock}
-            ariaLabel="Container memory over the last 24 hours" emptyText={collecting} />
-        </ChartPanel>
-      </div>
-
-      {data.plans?.length > 0 && (
-        <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />
-      )}
-
-      {showExamples && <LandingStatsPanel />}
-      {showExamples && <ExamplesPanel />}
-      <PluginReviewPanel />
-
+    </>,
+    accounts: <>
       <section style={styles.panel}>
         <h2 style={styles.h2}>Accounts</h2>
         <p style={styles.sub}>Sorted by storage used · processing counts video conversion and PowerPoint import over the last 30 days</p>
@@ -950,6 +1055,29 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
           </table>
         </div>
       </section>
+    </>,
+    teams: <AdminTeamsPanel />,
+    plans: <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />,
+    analytics: <LandingStatsPanel />,
+    examples: <ExamplesPanel kind="example" />,
+    templates: <ExamplesPanel kind="template" />,
+    plugins: <PluginReviewPanel />,
+    server: <>
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
+        <ChartPanel title="Container CPU" subtitle={`Last 24 hours · 100% = one core${system.source === 'process' ? ' · this process only' : ''} · starts over when the server restarts`}
+          table={samples.length > 1 && <SimpleTable columns={['Hour', 'Average', 'Peak']}
+            rows={hourlyRows(samples, 'cpuPercent').map(r => [formatClock(r.t), `${r.average.toFixed(1)}%`, `${r.peak.toFixed(1)}%`])} />}>
+          <LineChart points={cpuPoints} formatValue={v => `${Math.round(v * 10) / 10}%`} formatTime={formatClock}
+            ariaLabel="Container CPU over the last 24 hours" emptyText={collecting} />
+        </ChartPanel>
+        <ChartPanel title="Container memory"
+          subtitle={`Last 24 hours · ${system.memoryLimitBytes ? `limit ${formatBytes(system.memoryLimitBytes)}` : 'no limit set'} · starts over when the server restarts`}
+          table={samples.length > 1 && <SimpleTable columns={['Hour', 'Average', 'Peak']}
+            rows={hourlyRows(samples, 'memBytes').map(r => [formatClock(r.t), formatBytes(r.average), formatBytes(r.peak)])} />}>
+          <LineChart points={memPoints} formatValue={v => `${Math.round(v)} MB`} formatTime={formatClock}
+            ariaLabel="Container memory over the last 24 hours" emptyText={collecting} />
+        </ChartPanel>
+      </div>
 
       <section style={styles.panel}>
         <h2 style={styles.h2}>Processing jobs</h2>
@@ -969,12 +1097,27 @@ export function AdminDashboard({ data, refreshing = false, onGuestSessionsEnded,
           </div>
         )}
       </section>
+    </>,
+  }
+
+  return (
+    <div role="tabpanel" id={`admin-panel-${shown}`} aria-labelledby={`admin-tab-${shown}`}
+      style={{ display: 'grid', gap: 20, opacity: refreshing ? 0.6 : 1, transition: 'opacity 150ms' }}>
+      {panels[shown]}
     </div>
   )
 }
 
+// The tab in the address (/admin#teams), so a reload or a link opens it
+const tabFromHash = () => window.location.hash.replace(/^#/, '') || 'overview'
+
 export default function AdminPage() {
   const [data, setData] = useState(undefined) // undefined: loading, null: not an admin
+  const [tab, setTab] = useState(tabFromHash)
+  const pickTab = id => {
+    setTab(id)
+    window.history.replaceState(null, '', id === 'overview' ? window.location.pathname : `#${id}`)
+  }
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -1037,7 +1180,14 @@ export default function AdminPage() {
           </p>
         )}
 
-        {data && <AdminDashboard data={data} refreshing={refreshing} onGuestSessionsEnded={load} onPlanChanged={load} showExamples={data.plans?.length > 0} />}
+        {data && (() => {
+          const tabs = adminTabs(data)
+          const active = tabs.some(t => t.id === tab) ? tab : 'overview'
+          return <>
+            <AdminTabs tabs={tabs} active={active} onChange={pickTab} />
+            <AdminDashboard data={data} tab={active} refreshing={refreshing} onGuestSessionsEnded={load} onPlanChanged={load} />
+          </>
+        })()}
       </div>
     </div>
   )

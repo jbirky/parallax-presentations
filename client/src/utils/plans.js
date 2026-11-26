@@ -23,3 +23,16 @@ export function planSummary(limits) {
   lines.push(expirationDays ? `Presentations expire after ${expirationDays} day${expirationDays === 1 ? '' : 's'}` : 'No expiration')
   return lines
 }
+
+// A price as people read it: "$10 a month", "$12 a seat a month" for a plan
+// sold by the seat, or "$144 a month" for `seats` of them. Stripe's price is
+// { amountCents, currency, interval }; without an amount, just how often.
+export function priceText({ amountCents, currency = 'usd', interval }, { perSeat = false, seats = null } = {}) {
+  const per = interval === 'year' ? 'year' : 'month'
+  if (amountCents === null || amountCents === undefined) return `by the ${per}`
+  const cents = seats ? amountCents * seats : amountCents
+  const amount = (cents / 100).toLocaleString('en-US', {
+    style: 'currency', currency: String(currency).toUpperCase(), minimumFractionDigits: cents % 100 ? 2 : 0,
+  })
+  return `${amount}${perSeat && !seats ? ' a seat' : ''} a ${per}`
+}

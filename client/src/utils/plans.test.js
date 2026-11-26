@@ -31,3 +31,14 @@ describe('planSummary', () => {
     expect(planSummary(null)).toEqual([])
   })
 })
+
+describe('priceText', () => {
+  it('says what a price costs and how often', async () => {
+    const { priceText } = await import('./plans')
+    expect(priceText({ amountCents: 1000, currency: 'usd', interval: 'month' })).toBe('$10 a month')
+    expect(priceText({ amountCents: 9600, currency: 'usd', interval: 'year' })).toBe('$96 a year')
+    expect(priceText({ amountCents: 1200, interval: 'month' }, { perSeat: true })).toBe('$12 a seat a month')
+    expect(priceText({ amountCents: 1250, interval: 'month' }, { perSeat: true, seats: 3 })).toBe('$37.50 a month')
+    expect(priceText({ amountCents: null, interval: 'year' })).toBe('by the year')
+  })
+})

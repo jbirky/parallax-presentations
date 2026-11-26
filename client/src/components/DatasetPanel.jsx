@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Trash2, Link, Unlink, ChevronDown, ChevronRight, Database, Table2, X, Check, Search, RefreshCw, Globe, Telescope, Plus } from 'lucide-react'
+import { Upload, Trash2, Link, Unlink, ChevronDown, ChevronRight, Database, Table2, X, Check, Search, RefreshCw, Globe, Telescope, Plus, Users } from 'lucide-react'
 import { api } from '../utils/api'
 import { LiveSourceForm, SourceTab, VersionsTab, TransformsTab, RowsTable, scheduleLabel, relativeTime } from './LiveDatasets'
 
@@ -86,7 +86,13 @@ const tabButton = active => ({
   background: active ? 'var(--accent)' : 'var(--bg-card)', color: active ? '#fff' : 'var(--text-secondary)',
 })
 
-export default function DatasetPanel({ presentationId, onClose }) {
+// In a team's deck (team: { id, role, you }), the team's datasets are listed
+// too, marked Team. Linking one of your own to the deck gives it to the team,
+// as Give to team does; the team's owner and admins change or delete any of
+// the team's, and members those they gave.
+const TEAM_ADDERS = ['owner', 'admin', 'member']
+
+export default function DatasetPanel({ presentationId, onClose, team = null }) {
   const [datasets, setDatasets] = useState([])
   const [linkedIds, setLinkedIds] = useState(new Set())
   const [pins, setPins] = useState({})
@@ -104,13 +110,17 @@ export default function DatasetPanel({ presentationId, onClose }) {
   const [renaming, setRenaming] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [teamNote, setTeamNote] = useState(null)
   const fileInputRef = useRef(null)
+  const teamId = team?.id || null
+  const canGive = !!teamId && TEAM_ADDERS.includes(team.role)
+  const canChange = ds => !ds.teamId || team?.role === 'owner' || team?.role === 'admin' || (team?.role === 'member' && ds.creatorId === team.you)
 
   async function refresh() {
     setLoading(true)
     try {
       const [all, linked] = await Promise.all([
-        api.getDatasets(),
+        api.getDatasets(teamId || undefined),
         presentationId ? api.getPresentationDatasets(presentationId) : Promise.resolve([]),
       ])
       setDatasets(Array.isArray(all) ? all : [])
@@ -127,7 +137,7 @@ export default function DatasetPanel({ presentationId, onClose }) {
     try { setSources(await api.getDatasetSources()) } catch { setSources({ enabled: false }) }
   }
 
-  useEffect(() => { refresh(); loadSources() }, [presentationId])
+  useEffect(() => { refresh(); loadSources() }, [presentationId, teamId])
 
   const replace = ds => setDatasets(list => list.map(d => (d.id === ds.id ? { ...d, ...ds } : d)))
 
@@ -139,7 +149,8 @@ export default function DatasetPanel({ presentationId, onClose }) {
     try {
       const ds = await api.uploadDataset(file)
       if (presentationId) {
-        await api.linkDataset(presentationId, ds.id)
+        const linked = await api.linkDataset(presentationId, ds.id)
+        if (linked?.movedToTeam) setTeamNote(`“${ds.name}” is the team’s now, for everyone in the team to use.`)
       }
       await refresh()
     } catch (err) {
@@ -151,8 +162,29 @@ export default function DatasetPanel({ presentationId, onClose }) {
 
   async function handleLink(datasetId) {
     if (!presentationId) return
-    await api.linkDataset(presentationId, datasetId)
-    setLinkedIds(prev => new Set([...prev, datasetId]))
+    try {
+      const linked = await api.linkDataset(presentationId, datasetId)
+      setLinkedIds(prev => new Set([...prev, datasetId]))
+      if (linked?.movedToTeam) {
+        const ds = datasets.find(d => d.id === datasetId)
+        setTeamNote(`“${ds?.name || 'The dataset'}” is the team’s now, for everyone in the team to use.`)
+        await refresh()
+      }
+    } catch (err) {
+      setUploadError(err.message)
+    }
+  }
+
+  async function handleGive(ds) {
+    if (!window.confirm(`Give “${ds.name}” to the team? Everyone in the team can then use it, and it counts against the team’s storage instead of yours.`)) return
+    try {
+      await api.shareDatasetWithTeam(ds.id, teamId)
+      setTeamNote(`“${ds.name}” is the team’s now, for everyone in the team to use.`)
+      await refresh()
+      loadSources()
+    } catch (err) {
+      setUploadError(err.message)
+    }
   }
 
   async function handleUnlink(datasetId) {
@@ -274,6 +306,14 @@ export default function DatasetPanel({ presentationId, onClose }) {
           </div>
         )}
 
+        {teamNote && (
+          <div role="status" style={{ margin: '8px 20px 0', padding: '8px 12px', borderRadius: 6, fontSize: 12, background: 'rgba(99,102,241,0.12)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Users size={14} />
+            {teamNote}
+            <button onClick={() => setTeamNote(null)} aria-label="Dismiss" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>&times;</button>
+          </div>
+        )}
+
         {/* A new live dataset, or the list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: adding ? 0 : '8px 12px' }}>
           {adding ? (
@@ -337,11 +377,17 @@ export default function DatasetPanel({ presentationId, onClose }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                             <div
                               style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                              onDoubleClick={e => { e.stopPropagation(); setRenaming(ds.id); setRenameValue(ds.name) }}
-                              title="Double-click to rename"
+                              onDoubleClick={canChange(ds) ? e => { e.stopPropagation(); setRenaming(ds.id); setRenameValue(ds.name) } : undefined}
+                              title={canChange(ds) ? 'Double-click to rename' : undefined}
                             >
                               {ds.name}
                             </div>
+                            {ds.teamId && (
+                              <span title={ds.creatorName ? `The team’s, from ${ds.creatorName}` : 'The team’s'}
+                                style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(99,102,241,0.15)', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                                Team
+                              </span>
+                            )}
                             {isLive && (
                               <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(34,197,94,0.12)', color: '#22c55e', whiteSpace: 'nowrap' }}>
                                 Live · {scheduleLabel(ds.schedule).toLowerCase()}
@@ -376,6 +422,15 @@ export default function DatasetPanel({ presentationId, onClose }) {
                             {refreshing === ds.id ? 'Fetching' : 'Refresh'}
                           </button>
                         )}
+                        {canGive && !ds.teamId && (
+                          <button
+                            onClick={() => handleGive(ds)}
+                            title="Give it to the team, for everyone in the team to use"
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}
+                          >
+                            <Users size={11} /> Give to team
+                          </button>
+                        )}
                         {presentationId && (
                           <button
                             onClick={() => isLinked ? handleUnlink(ds.id) : handleLink(ds.id)}
@@ -385,7 +440,7 @@ export default function DatasetPanel({ presentationId, onClose }) {
                             {isLinked ? <><Unlink size={11} /> Linked</> : <><Link size={11} /> Link</>}
                           </button>
                         )}
-                        {deleteConfirm === ds.id ? (
+                        {!canChange(ds) ? null : deleteConfirm === ds.id ? (
                           <div style={{ display: 'flex', gap: 2 }}>
                             <button onClick={() => handleDelete(ds.id)} style={{ padding: '4px 8px', borderRadius: 4, border: 'none', background: 'rgba(239,68,68,0.2)', color: '#ef4444', cursor: 'pointer', fontSize: 10, fontWeight: 500 }}>Delete</button>
                             <button onClick={() => setDeleteConfirm(null)} style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 10 }}>Cancel</button>
@@ -443,7 +498,7 @@ export default function DatasetPanel({ presentationId, onClose }) {
 
         {/* Footer */}
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Linked datasets are available to plugins via ctx.datasets.query()</span>
+          <span>{teamId ? 'Datasets you link to a team presentation become the team’s' : 'Linked datasets are available to plugins via ctx.datasets.query()'}</span>
           <span>{sources.enabled ? 'CSV, TSV, JSON, a URL or a TAP query' : 'Accepts CSV, TSV, JSON'}</span>
         </div>
       </div>

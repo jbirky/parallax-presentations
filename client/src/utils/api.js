@@ -68,6 +68,7 @@ async function checked(r, fallback) {
   return b
 }
 
+const teamQuery = teamId => (teamId ? `?teamId=${encodeURIComponent(teamId)}` : '')
 function json(method, data) {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
 }
@@ -228,7 +229,8 @@ export const api = {
   }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Publish failed'); return b }),
 
   // Custom fonts
-  getFonts: () => authFetch(`${BASE}/fonts`).then(safeJson),
+  // With a teamId (a team's presentation), the team's fonts too, each with teamId
+  getFonts: (teamId) => authFetch(`${BASE}/fonts${teamQuery(teamId)}`).then(safeJson),
   uploadFont: (file, familyName) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -244,13 +246,17 @@ export const api = {
 
   // The theme library (utils/customTheme.js): each call throws the server's
   // message when it fails
-  listThemes: () => authFetch(`${BASE}/themes`).then(themeReply),
+  // With a teamId (a team's presentation), the team's themes too, each with teamId
+  listThemes: (teamId) => authFetch(`${BASE}/themes${teamQuery(teamId)}`).then(themeReply),
   createTheme: (doc) => authFetch(`${BASE}/themes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
   updateTheme: (id, doc) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
   deleteTheme: (id) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(themeReply),
 
   // Datasets
-  getDatasets: () => authFetch(`${BASE}/datasets`).then(safeJson),
+  // With a teamId (a team's presentation), the team's datasets too, each with teamId
+  getDatasets: (teamId) => authFetch(`${BASE}/datasets${teamQuery(teamId)}`).then(safeJson),
+  // Gives one of your datasets to a team; it counts against the team after
+  shareDatasetWithTeam: (id, teamId) => authFetch(`${BASE}/datasets/${id}/team`, json('POST', { teamId })).then(r => checked(r, 'Could not give it to the team')),
   getDataset: (id) => authFetch(`${BASE}/datasets/${id}`).then(safeJson),
   uploadDataset: (file, name) => {
     const fd = new FormData()
@@ -275,6 +281,47 @@ export const api = {
   removeCollaborator: (id, userId) => authFetch(`${BASE}/presentations/${id}/collaborators/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
+  // Teams (cloud only). An invite's days is 7, 30 or 90, or null for never;
+  // createTeamInvite resolves to { token, invite }, the only time the token is shown.
+  listTeams: () => authFetch(`${BASE}/teams`).then(r => checked(r, 'Could not load your teams')),
+  getTeam: (id) => authFetch(`${BASE}/teams/${id}`).then(r => checked(r, 'Could not load the team')),
+  renameTeam: (id, name) => authFetch(`${BASE}/teams/${id}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the team')),
+  createTeamInvite: (id, { role, email, days }) => authFetch(`${BASE}/teams/${id}/invites`, json('POST', { role, email, days })).then(r => checked(r, 'Could not make the link')),
+  revokeTeamInvite: (id, inviteId) => authFetch(`${BASE}/teams/${id}/invites/${inviteId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not revoke the link')),
+  setTeamRole: (id, userId, role) => authFetch(`${BASE}/teams/${id}/members/${userId}`, json('PATCH', { role })).then(r => checked(r, 'Could not change the role')),
+  removeTeamMember: (id, userId) => authFetch(`${BASE}/teams/${id}/members/${userId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not remove them')),
+  transferTeam: (id, userId) => authFetch(`${BASE}/teams/${id}/transfer`, json('POST', { userId })).then(r => checked(r, 'Could not hand the team over')),
+  // A team's folders and presentations, and its storage: { team, folders, presentations, storage }
+  getTeamSpace: (id) => authFetch(`${BASE}/teams/${id}/space`).then(r => checked(r, 'Could not load the team')),
+  createTeamFolder: (id, name, parentId = null) => authFetch(`${BASE}/teams/${id}/folders`, json('POST', { name, parentId })).then(r => checked(r, 'Could not make the folder')),
+  // change: { name?, parentId? }, parentId null for the top level
+  updateTeamFolder: (id, folderId, change) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, json('PATCH', change)).then(r => checked(r, 'Could not change the folder')),
+  deleteTeamFolder: (id, folderId) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
+  // The person's own folders (self-hosted too): { folders }
+  listFolders: () => authFetch(`${BASE}/folders`).then(r => checked(r, 'Could not load your folders')),
+  createFolder: (name, parentId = null) => authFetch(`${BASE}/folders`, json('POST', { name, parentId })).then(r => checked(r, 'Could not make the folder')),
+  updateFolder: (id, change) => authFetch(`${BASE}/folders/${id}`, json('PATCH', change)).then(r => checked(r, 'Could not change the folder')),
+  deleteFolder: (id) => authFetch(`${BASE}/folders/${id}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
+  // A team's library: { themes, fonts, datasets, templates }
+  getTeamLibrary: (id) => authFetch(`${BASE}/teams/${id}/library`).then(r => checked(r, 'Could not load the team’s library')),
+  createTeamTheme: (id, doc) => authFetch(`${BASE}/teams/${id}/themes`, json('POST', doc)).then(r => checked(r, 'Could not save the theme')),
+  updateTeamTheme: (id, themeId, doc) => authFetch(`${BASE}/teams/${id}/themes/${themeId}`, json('PUT', doc)).then(r => checked(r, 'Could not save the theme')),
+  deleteTeamTheme: (id, themeId) => authFetch(`${BASE}/teams/${id}/themes/${themeId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the theme')),
+  // font: { familyName } for a Google font, or { fontId } to share one of yours
+  addTeamFont: (id, font) => authFetch(`${BASE}/teams/${id}/fonts`, json('POST', font)).then(r => checked(r, 'Could not add the font')),
+  deleteTeamFont: (id, fontId) => authFetch(`${BASE}/teams/${id}/fonts/${fontId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not remove the font')),
+  getTeamTemplates: (id) => authFetch(`${BASE}/teams/${id}/templates`).then(r => checked(r, 'Could not load the team’s templates')),
+  saveTeamTemplate: (id, presentationId, title) => authFetch(`${BASE}/teams/${id}/templates`, json('POST', { presentationId, title })).then(r => checked(r, 'Could not save the template')),
+  deleteTeamTemplate: (id, templateId) => authFetch(`${BASE}/teams/${id}/templates/${templateId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the template')),
+  // Moves a presentation: teamId null for the caller's own presentations
+  moveDeck: (id, { teamId, folderId }) => authFetch(`${BASE}/presentations/${id}/location`, json('PUT', { teamId, folderId })).then(r => checked(r, 'Could not move the presentation')),
+  // Paying for teams (when billing is on): each resolves to { url } on Stripe, but setTeamSeats
+  createTeamCheckout: ({ name, seats, priceId }) => authFetch(`${BASE}/teams/checkout`, json('POST', { name, seats, priceId })).then(r => checked(r, 'Could not start checkout')),
+  teamBillingCheckout: (id, { priceId, seats }) => authFetch(`${BASE}/teams/${id}/billing/checkout`, json('POST', { priceId, seats })).then(r => checked(r, 'Could not start checkout')),
+  teamBillingPortal: (id) => authFetch(`${BASE}/teams/${id}/billing/portal`, { method: 'POST' }).then(r => checked(r, 'Could not open billing')),
+  setTeamSeats: (id, seats) => authFetch(`${BASE}/teams/${id}/seats`, json('PUT', { seats })).then(r => checked(r, 'Could not change the seats')),
+  getTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}`).then(r => checked(r, 'Could not open the invitation')),
+  acceptTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Could not join the team')),
   // AI collaborator links (cloud only): days is 7, 30 or 90, or null for never
   getAiLinks: (id) => authFetch(`${BASE}/presentations/${id}/ai-links`).then(r => checked(r, 'Failed')),
   createAiLink: (id, { name, days }) => authFetch(`${BASE}/presentations/${id}/ai-links`, json('POST', { name, days })).then(r => checked(r, 'Failed')),
@@ -301,7 +348,7 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ datasetId, alias }),
-  }).then(safeJson),
+  }).then(r => checked(r, 'Could not link the dataset')),
   unlinkDataset: (pid, datasetId) => authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}`, { method: 'DELETE' }).then(safeJson),
 
   // File management
@@ -320,10 +367,11 @@ export const api = {
   // Billing
   // The listed plans: { billing, plans }. Public, so it works signed out.
   getPlans: () => _fetch(`${BASE}/plans`).then(safeJson),
-  createCheckout: (plan) => authFetch(`${BASE}/billing/checkout`, {
+  // At one of the plan's prices (priceId), or its monthly one
+  createCheckout: (plan, priceId) => authFetch(`${BASE}/billing/checkout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify({ plan, priceId }),
   }).then(async r => {
     const b = await safeJson(r)
     if (!r.ok) throw new Error(b.error || 'Could not start checkout')
@@ -355,6 +403,9 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not save the plan')
     return b
   }),
+  // A plan's Stripe prices: { priceId } (and interval, amountCents where Stripe can't describe it)
+  addPlanPrice: (planId, data) => authFetch(`${BASE}/admin/plans/${planId}/prices`, jsonBody('POST', data)).then(adminJson('Could not add the price')),
+  removePlanPrice: (planId, priceId) => authFetch(`${BASE}/admin/plans/${planId}/prices/${encodeURIComponent(priceId)}`, { method: 'DELETE' }).then(adminJson('Could not remove the price')),
   deletePlan: (id) => authFetch(`${BASE}/admin/plans/${id}`, { method: 'DELETE' }).then(async r => {
     const b = await safeJson(r)
     if (!r.ok) throw new Error(b.error || 'Could not delete the plan')
@@ -362,6 +413,11 @@ export const api = {
   }),
   // The landing page's statistics for the last `days` days
   getLandingStats: (days) => authFetch(`${BASE}/admin/stats?days=${days}`).then(adminJson('Could not load the statistics')),
+  // Teams, as /admin makes and changes them
+  getAdminTeams: () => authFetch(`${BASE}/admin/teams`).then(adminJson('Could not load the teams')),
+  createAdminTeam: (data) => authFetch(`${BASE}/admin/teams`, jsonBody('POST', data)).then(adminJson('Could not make the team')),
+  updateAdminTeam: (id, data) => authFetch(`${BASE}/admin/teams/${id}`, jsonBody('PUT', data)).then(adminJson('Could not save the team')),
+  deleteAdminTeam: (id) => authFetch(`${BASE}/admin/teams/${id}`, { method: 'DELETE' }).then(adminJson('Could not delete the team')),
   // The landing page's examples, as /admin edits them
   getAdminExamples: () => authFetch(`${BASE}/admin/examples`).then(adminJson('Could not load the examples')),
   addExample: (data) => authFetch(`${BASE}/admin/examples`, jsonBody('POST', data)).then(adminJson('Could not add the example')),

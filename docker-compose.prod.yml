@@ -1,0 +1,72 @@
+# parallax-presentations.com on its cloud server: prod (parallax-stable, from
+# main) and Umami. Dev stays on epyc in docker-compose.server.yml.
+#
+# Needs the prod .env beside it (epyc's, minus the DEV_* and backup lines),
+# with COMPOSE_FILE=docker-compose.prod.yml so plain `docker compose` uses
+# this file. The Cloudflare tunnel on this server publishes :3002; Umami's
+# dashboard stays on 127.0.0.1:3004 (reach it over Tailscale SSH).
+name: parallax-presentations
+
+services:
+  parallax-stable:
+    build:
+      context: https://github.com/jbirky/parallax-presentations.git#main
+      args:
+        - VITE_PARALLAX_MODE=cloud
+        - VITE_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+    ports:
+      - "127.0.0.1:3002:3002"
+    volumes:
+      - parallax-data:/app/server/data
+      - parallax-uploads:/app/server/uploads
+    env_file:
+      - .env
+    # These win over the .env's local-development values
+    environment:
+      - PARALLAX_MODE=cloud
+      - PARALLAX_DB=postgres
+      - PARALLAX_STORAGE=r2
+      - PARALLAX_LIVE_DATASETS=on
+      - NODE_ENV=production
+      - PARALLAX_PUBLIC_URL=https://parallax-presentations.com
+      # Umami as this container reaches it, and the site's own website in it
+      - UMAMI_URL=http://umami:3000
+      - UMAMI_WEBSITE_ID=ca976091-851a-4e54-b53e-6fa9a8bd8b79
+    # The server has 8 GB: a runaway video conversion or PowerPoint import
+    # gets this container restarted before it starves Umami and the OS
+    mem_limit: 6g
+    memswap_limit: 6g
+    restart: unless-stopped
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    ports:
+      - "127.0.0.1:3004:3000"
+    environment:
+      DATABASE_URL: postgresql://umami:umami@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:?set UMAMI_APP_SECRET in .env}
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  umami-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# Only a cache of example datasets lives here; decks are in Neon, uploads in R2
+volumes:
+  parallax-data:
+  parallax-uploads:
+  umami-db-data:

@@ -17,8 +17,6 @@
 #                     (<key>.age), without guest/ (guest files are deleted
 #                     within hours, as promised to guests)
 #   uploads-deleted/  files since deleted from R2, by run, kept 30 days
-#   volumes/          the Docker volumes (volumes.tar.gz.age), empty while
-#                     files are in R2
 #   last-success      when the last run finished
 #
 # Restoring needs age and a private key (here in key.txt):
@@ -30,17 +28,18 @@
 #             r2:<bucket> with the same rclone container:
 #               cd $BACKUP_DIR/uploads && find . -name '*.age' | while read -r f; do
 #                 mkdir -p "$OUT/${f%/*}" && age -d -i key.txt -o "$OUT/${f%.age}" "$f"; done
-#   volumes   age -d -i key.txt $BACKUP_DIR/volumes/volumes.tar.gz.age | tar xz
 #
 # Reads DATABASE_URL, R2_* and BACKUP_AGE_RECIPIENTS (public keys, separated
-# by spaces) from the repo's .env. Needs Docker and age.
+# by spaces) from ~/.config/parallax/backup.env, or the file BACKUP_ENV
+# names. Prod runs on its own server; that file keeps its credentials out of
+# the repo's .env, which the dev container reads. Needs Docker and age.
 
 set -euo pipefail
 # Only this user can read what it writes (the containers' own files are closed
 # off at the end)
 umask 077
 
-REPO=$(cd "$(dirname "$0")/.." && pwd)
+ENV_FILE=${BACKUP_ENV:-$HOME/.config/parallax/backup.env}
 BACKUP_DIR=${BACKUP_DIR:-/home/jbirky/backups/parallax-presentations}
 KEEP_DAYS=30
 KEEP_MONTHS=12
@@ -52,10 +51,11 @@ AS_ME="$(id -u):$(id -g)"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*"; }
 
-# One variable from .env, without running .env as a script; empty if it
-# isn't there
+[ -r "$ENV_FILE" ] || { log "FAILED: can't read $ENV_FILE"; exit 1; }
+# One variable from the env file, without running it as a script; empty if
+# it isn't there
 env_value() {
-  { grep -E "^$1=" "$REPO/.env" || true; } | tail -1 | cut -d= -f2- | sed -E "s/^[\"']//; s/[\"']$//"
+  { grep -E "^$1=" "$ENV_FILE" || true; } | tail -1 | cut -d= -f2- | sed -E "s/^[\"']//; s/[\"']$//"
 }
 DATABASE_URL=$(env_value DATABASE_URL)
 R2_ENDPOINT=$(env_value R2_ENDPOINT)
@@ -65,7 +65,7 @@ R2_BUCKET=$(env_value R2_BUCKET)
 R2_BUCKET=${R2_BUCKET:-parallax-uploads}
 BACKUP_AGE_RECIPIENTS=$(env_value BACKUP_AGE_RECIPIENTS)
 for name in DATABASE_URL R2_ENDPOINT R2_ACCESS_KEY R2_SECRET_KEY BACKUP_AGE_RECIPIENTS; do
-  [ -n "${!name}" ] || { log "FAILED: $name isn't set in $REPO/.env"; exit 1; }
+  [ -n "${!name}" ] || { log "FAILED: $name isn't set in $ENV_FILE"; exit 1; }
 done
 command -v age > /dev/null || { log "FAILED: age isn't installed (sudo apt install age)"; exit 1; }
 # Any one of the recipients' private keys decrypts
@@ -84,7 +84,7 @@ export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY" RCLONE_CONFIG_R2_SECRET_A
 rclone_env=(-e HOME=/tmp -e RCLONE_CONFIG_R2_TYPE -e RCLONE_CONFIG_R2_PROVIDER -e RCLONE_CONFIG_R2_NO_CHECK_BUCKET
   -e RCLONE_CONFIG_R2_ENDPOINT -e RCLONE_CONFIG_R2_ACCESS_KEY_ID -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY)
 
-mkdir -p "$BACKUP_DIR"/{database,uploads,uploads-deleted,volumes}
+mkdir -p "$BACKUP_DIR"/{database,uploads,uploads-deleted}
 chmod 700 "$BACKUP_DIR"
 # Files on their way to being encrypted, in memory (/dev/shm is RAM)
 stage=$(mktemp -d /dev/shm/parallax-backup.XXXXXX)
@@ -152,12 +152,6 @@ done
 log "uploads: $(wc -l < "$stage/new") new, $(wc -l < "$stage/gone") deleted, $(wc -l < "$stage/remote") files ($(du -sh "$BACKUP_DIR/uploads" | cut -f1))"
 find "$BACKUP_DIR/uploads-deleted" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -exec rm -rf -- {} +
 find "$BACKUP_DIR/uploads-deleted" -mindepth 1 -maxdepth 1 -type d -empty -delete
-
-# ── Docker volumes ───────────────────────────────────────────────────────────
-docker run --rm --user "$AS_ME" \
-  -v parallax-data:/src/data:ro -v parallax-uploads:/src/uploads:ro \
-  alpine tar czf - -C /src data uploads | encrypt > "$BACKUP_DIR/volumes/volumes.tar.gz.age.partial"
-mv "$BACKUP_DIR/volumes/volumes.tar.gz.age.partial" "$BACKUP_DIR/volumes/volumes.tar.gz.age"
 
 chmod -R go-rwx "$BACKUP_DIR"
 date '+%Y-%m-%d %H:%M:%S' > "$BACKUP_DIR/last-success"

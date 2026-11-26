@@ -37,7 +37,7 @@ describe('what link previews and search engines see', () => {
   it('lets search engines into the landing page and examples only, on an indexed site', () => {
     const robots = robotsTxt({ origin, index: true })
     assert.match(robots, /^User-agent: \*\nAllow: \//)
-    for (const p of ['/api/', '/dashboard', '/admin', '/try', '/share/']) assert.match(robots, new RegExp(`Disallow: ${p}\\n`))
+    for (const p of ['/api/', '/dashboard', '/admin', '/try', '/share/', '/teams/']) assert.match(robots, new RegExp(`Disallow: ${p}\\n`))
     assert.match(robots, /Sitemap: https:\/\/parallax-presentations\.com\/sitemap\.xml/)
     assert.equal(robotsTxt({ origin, index: false }), 'User-agent: *\nDisallow: /\n')
     const sitemap = sitemapXml({ origin, examples: [example], templates: [{ slug: 'lecture' }] })

@@ -5,13 +5,18 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X } from 'lucide-react'
 import { api } from '../utils/api'
-import { formatSize, planSummary } from '../utils/plans'
+import { formatSize, planSummary, priceText } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
 import BeamerImportModal from '../components/BeamerImportModal'
+import TeamsModal from '../components/TeamsModal'
+import TeamSpaceView from '../components/TeamSpaceView'
+import DeckBrowser from '../components/DeckBrowser'
+import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
+import DeckTile, { tileSlide } from '../components/DeckTile'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -39,18 +44,6 @@ function fileIcon(contentType) {
   return File
 }
 
-function getCardBg(thumbnail) {
-  if (!thumbnail) return '#1e1e2e'
-  if (thumbnail.type === 'color' && thumbnail.color) return thumbnail.color
-  if (thumbnail.type === 'gradient' && thumbnail.gradient) return thumbnail.gradient
-  if (thumbnail.type === 'image' && thumbnail.image) return `url(${thumbnail.image})`
-  return '#1e1e2e'
-}
-
-function isGradientOrImage(thumbnail) {
-  return thumbnail && (thumbnail.type === 'gradient' || thumbnail.type === 'image')
-}
-
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
 }
@@ -71,6 +64,70 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [uploadsOpen, setUploadsOpen] = useState(false)
   const [uploadFilter, setUploadFilter] = useState('')
   const [deletingUploadId, setDeletingUploadId] = useState(null)
+  // The teams the person is in (cloud only); /dashboard?team=<id>, where
+  // joining a team lands, opens that team
+  const [teams, setTeams] = useState([])
+  const [teamsLoaded, setTeamsLoaded] = useState(false)
+  const [teamsOpen, setTeamsOpen] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('team')) || false)
+  const loadTeams = () => api.listTeams().then(r => { setTeams(r.teams); return r.teams }).catch(() => null).finally(() => setTeamsLoaded(true))
+  // Back from buying a team (?teamCheckout=done): Stripe tells the server a
+  // moment later, so the new team is looked for until it's there
+  const [teamSetup, setTeamSetup] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('teamCheckout') === 'done' ? 'waiting' : null))
+  useEffect(() => {
+    if (!isCloud) return
+    const params = new URLSearchParams(window.location.search)
+    loadTeams().then(before => {
+      if (!params.has('teamCheckout')) return
+      const known = new Set((before || []).map(t => t.id))
+      let tries = 0
+      const look = setInterval(async () => {
+        tries++
+        const now = await loadTeams()
+        const made = (now || []).find(t => !known.has(t.id))
+        if (made || tries >= 15) {
+          clearInterval(look)
+          setTeamSetup(made ? null : 'slow')
+          if (made) setTeamsOpen(made.id)
+        }
+      }, 2000)
+    })
+    if (params.has('team') || params.has('teamCheckout')) window.history.replaceState(null, '', window.location.pathname)
+  }, [])
+  // Whose presentations are shown: 'personal', or a team's id (remembered on
+  // this device), and the folder open in each (null: the top level)
+  const [space, setSpaceState] = useState(() => { try { return window.localStorage.getItem('parallax.space') || 'personal' } catch { return 'personal' } })
+  const setSpace = next => {
+    setSpaceState(next)
+    try { window.localStorage.setItem('parallax.space', next) } catch {}
+  }
+  const [teamFolder, setTeamFolder] = useState(null)
+  const [teamReload, setTeamReload] = useState(0)
+  const [movingDeck, setMovingDeck] = useState(null)
+  // Where a new presentation goes: { teamId, folderId } in a team, { folderId } in a folder of theirs
+  const [createTarget, setCreateTarget] = useState(null)
+  // The team's templates, while making a presentation in a team (null till loaded)
+  const [teamTemplates, setTeamTemplates] = useState(null)
+  const team = space !== 'personal' ? teams.find(t => t.id === space) || null : null
+  // A team they've left, or one from another account on this device
+  useEffect(() => {
+    if (teamsLoaded && space !== 'personal' && !team) setSpace('personal')
+  }, [teamsLoaded, space, team])
+  const canAddToTeam = !!team && teamsToAddTo(teams).some(t => t.id === team.id)
+  // Their own folders, and the one open
+  const [folders, setFolders] = useState([])
+  const [folder, setFolder] = useState(null)
+  const loadFolders = () => api.listFolders().then(r => setFolders(r?.folders || [])).catch(() => setFolders([]))
+  // A folder that's gone shows the top level
+  useEffect(() => { if (folder && !folders.some(f => f.id === folder)) setFolder(null) }, [folders, folder])
+  const currentTarget = () => (team
+    ? { teamId: team.id, folderId: teamFolder }
+    : folder ? { folderId: folder } : null)
+  // Tiles or a list, remembered on this device
+  const [deckView, setDeckViewState] = useState(() => { try { return window.localStorage.getItem('parallax.deckView') === 'list' ? 'list' : 'tiles' } catch { return 'tiles' } })
+  const setDeckView = next => {
+    setDeckViewState(next)
+    try { window.localStorage.setItem('parallax.deckView', next) } catch {}
+  }
 
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
@@ -166,9 +223,9 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     setBillingLoading(false)
   }
 
-  async function handleUpgrade(planId) {
+  async function handleUpgrade(planId, priceId) {
     try {
-      const data = await api.createCheckout(planId)
+      const data = await api.createCheckout(planId, priceId)
       if (data.url) window.location.href = data.url
     } catch (err) {
       alert(err.message || 'Could not start checkout')
@@ -224,6 +281,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       // For the getting-started checklist: shown on someone's first decks
       rememberDeckCount((Array.isArray(presData) ? presData : []).filter(p => p.role !== 'editor').length)
       setTemplates(Array.isArray(tmplData) ? tmplData : [])
+      loadFolders()
       if (isCloud) {
         api.getMe().then(setPlanInfo).catch(() => {})
         loadUploads()
@@ -241,7 +299,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     e.preventDefault()
     setCreating(true)
     try {
-      const pres = await api.createPresentation(form)
+      const pres = await api.createPresentation({ ...form, ...(createTarget || {}) })
       setShowModal(false)
       setForm({ title: '', theme: 'black', transition: 'slide', templateId: null })
       onOpen(pres.id, false, pres.title)
@@ -256,7 +314,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // A new deck of slides made from LaTeX Beamer (BeamerImportModal)
   async function handleCreateFromBeamer({ title, slides, bibliography, slideWidth, slideHeight, theme }) {
     const deck = applyCitationNumbering({ title, theme, transition: 'slide', slideWidth, slideHeight, slides, bibliography })
-    const pres = await api.createPresentation(deck)
+    const pres = await api.createPresentation({ ...deck, ...(currentTarget() || {}) })
     setShowBeamerModal(false)
     onOpen(pres.id, false, pres.title)
   }
@@ -273,22 +331,25 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  async function handleDuplicate(e, id) {
+  // reload: for a team's presentation, loads the team's space again
+  async function handleDuplicate(e, id, reload) {
     e.stopPropagation()
     try {
       await api.duplicatePresentation(id)
-      loadData()
+      if (reload) reload()
+      else loadData()
     } catch (err) {
-      console.error('Failed to duplicate', err)
+      alert(err.message)
     }
   }
 
-  async function handleDelete(e, id) {
+  async function handleDelete(e, id, reload) {
     e.stopPropagation()
     if (!confirm('Delete this presentation? This cannot be undone.')) return
     try {
       await api.deletePresentation(id)
-      setPresentations(prev => prev.filter(p => p.id !== id))
+      if (reload) reload()
+      else setPresentations(prev => prev.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to delete presentation', err)
     }
@@ -344,16 +405,104 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  // A presentation's card; one shared with this user names its owner and can be left
-  function presentationCard(pres) {
-    // Its first slide's background, or its theme's page
-    const bg = getCardBg(pres.thumbnail)
-    const bgProp = !ownBackground(pres.thumbnail)
-      ? themeBackgroundStyle(pres.theme)
-      : isGradientOrImage(pres.thumbnail)
-        ? { background: bg }
-        : { backgroundColor: bg }
-    const shared = pres.role === 'editor'
+  // A presentation's first slide's background, or its theme's page, as a style
+  // A presentation's card background: its first slide's own (an image
+  // covering the card), or its theme's in the deck's own colors
+  function cardBackground(pres) {
+    return ownBackground(pres.thumbnail)?.style || themeBackgroundStyle(pres.theme, pres.themeColors || null)
+  }
+
+  // Whether the person can move a presentation: their own into a folder or a
+  // team; a team's when they own it there
+  const canMoveDeck = pres => (pres.teamId ? pres.role === 'owner' : pres.role !== 'editor')
+
+  // A presentation's buttons, on its card and its row in the list. One
+  // shared with this user can be left; a team's (with teamId) offers what the
+  // person's role on it allows. reload loads the team's space again.
+  function deckActions(pres, { reload } = {}) {
+    const inTeam = !!pres.teamId
+    const shared = !inTeam && pres.role === 'editor'
+    const viewOnly = pres.role === 'viewer'
+    const canDelete = inTeam ? pres.role === 'owner' : !shared
+    const move = e => {
+      e.stopPropagation()
+      setMovingDeck({ id: pres.id, title: pres.title, teamId: pres.teamId || null, folderId: pres.folderId || null, creatorId: pres.creatorId || null })
+    }
+    return (
+      <>
+        <button
+          className="btn-icon"
+          title={viewOnly ? 'View' : 'Edit'}
+          onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
+        >
+          {viewOnly ? <Eye size={14} /> : <Pencil size={14} />}
+        </button>
+        {canMoveDeck(pres) && (
+          <button className="btn-icon" title="Move" onClick={move}>
+            <FolderInput size={14} />
+          </button>
+        )}
+        {shared ? (
+          <button
+            className="btn-icon"
+            title="Leave"
+            onClick={(e) => handleLeave(e, pres)}
+            style={{ color: 'var(--danger)' }}
+          >
+            <LogOut size={14} />
+          </button>
+        ) : (
+          <>
+            {!viewOnly && (
+              <button
+                className="btn-icon"
+                title="Duplicate"
+                onClick={(e) => handleDuplicate(e, pres.id, reload)}
+              >
+                <Copy size={14} />
+              </button>
+            )}
+            {inTeam && !viewOnly && (
+              <button
+                className="btn-icon"
+                title="Save as team template"
+                onClick={(e) => handleSaveTeamTemplate(e, pres)}
+              >
+                <LayoutTemplate size={14} />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className="btn-icon"
+                title="Delete"
+                onClick={(e) => handleDelete(e, pres.id, reload)}
+                style={{ color: 'var(--danger)' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </>
+        )}
+      </>
+    )
+  }
+
+  // Whether the person can delete one of a team's templates: the team's owner
+  // and admins, and whoever saved it
+  const canDeleteTeamTemplate = tmpl => {
+    const role = teams.find(t => t.id === tmpl.teamId)?.role
+    return role === 'owner' || role === 'admin' || (role === 'member' && tmpl.createdBy === planInfo?.id)
+  }
+
+  // A presentation's small preview, for its row in the list
+  const deckThumb = pres => <span className="deck-row-thumb" style={cardBackground(pres)} aria-hidden />
+
+  // A presentation's card; one shared with this user names its owner, and a
+  // team's who made it
+  function presentationCard(pres, { reload } = {}) {
+    const bgProp = cardBackground(pres)
+    const inTeam = !!pres.teamId
+    const shared = !inTeam && pres.role === 'editor'
 
     return (
       <div
@@ -362,15 +511,22 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         onClick={() => onOpen(pres.id, false, pres.title)}
       >
         <div className="card-preview" style={bgProp}>
-          {!ownBackground(pres.thumbnail) && (
-            <Presentation size={40} style={{ color: themeOf(pres.theme).heading, opacity: 0.5 }} />
-          )}
+          {tileSlide(pres)
+            ? <DeckTile pres={pres} />
+            : !ownBackground(pres.thumbnail) && (
+              <Presentation size={40} style={{ color: themeOf(pres.theme).heading, opacity: 0.5 }} />
+            )}
         </div>
         <div className="card-info">
           <h3>{pres.title || 'Untitled'}</h3>
           <p>{pres.slideCount} slide{pres.slideCount !== 1 ? 's' : ''} &middot; {formatDate(pres.updatedAt)}</p>
           {shared && pres.ownerName && (
             <p style={{ fontSize: 11, margin: '2px 0 0' }}>Owned by {pres.ownerName}</p>
+          )}
+          {inTeam && (pres.creatorName || pres.folderName) && (
+            <p style={{ fontSize: 11, margin: '2px 0 0' }}>
+              {pres.creatorName && `By ${pres.creatorName}`}{pres.creatorName && pres.folderName && ' · '}{pres.folderName && `in ${pres.folderName}`}
+            </p>
           )}
           {isCloud && pres.expiresAt && (() => {
             const days = Math.ceil((new Date(pres.expiresAt) - Date.now()) / 86400000)
@@ -381,50 +537,45 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )
           })()}
         </div>
-        <div className="card-actions">
-          <button
-            className="btn-icon"
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
-          >
-            <Pencil size={14} />
-          </button>
-          {shared ? (
-            <button
-              className="btn-icon"
-              title="Leave"
-              onClick={(e) => handleLeave(e, pres)}
-              style={{ color: 'var(--danger)' }}
-            >
-              <LogOut size={14} />
-            </button>
-          ) : (
-            <>
-              <button
-                className="btn-icon"
-                title="Duplicate"
-                onClick={(e) => handleDuplicate(e, pres.id)}
-              >
-                <Copy size={14} />
-              </button>
-              <button
-                className="btn-icon"
-                title="Delete"
-                onClick={(e) => handleDelete(e, pres.id)}
-                style={{ color: 'var(--danger)' }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </>
-          )}
-        </div>
+        <div className="card-actions">{deckActions(pres, { reload })}</div>
       </div>
     )
   }
 
-  function handleOpenModal() {
+  // target: { teamId, folderId } for a team's presentation; otherwise where
+  // the dashboard is showing
+  function handleOpenModal(target) {
+    const where = target === undefined ? currentTarget() : target
+    setCreateTarget(where)
     setForm({ title: '', theme: 'black', transition: 'slide', templateId: null })
+    setTeamTemplates(null)
+    if (where?.teamId) api.getTeamTemplates(where.teamId).then(setTeamTemplates, () => setTeamTemplates([]))
     setShowModal(true)
+  }
+
+  // A team presentation saved as one of the team's templates, for anyone in
+  // the team to start from
+  async function handleSaveTeamTemplate(e, pres) {
+    e.stopPropagation()
+    const title = window.prompt('Name the team template', `${pres.title || 'Untitled'} (template)`)
+    if (!title || !title.trim()) return
+    try {
+      await api.saveTeamTemplate(pres.teamId, pres.id, title.trim())
+      alert(`Saved “${title.trim()}” to the team’s templates. Start a presentation in the team to use it.`)
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  async function handleDeleteTeamTemplate(tmpl) {
+    if (!window.confirm(`Delete the team template “${tmpl.title}”? Presentations made from it are kept.`)) return
+    try {
+      await api.deleteTeamTemplate(tmpl.teamId, tmpl.id)
+      setTeamTemplates(list => (list || []).filter(t => t.id !== tmpl.id))
+      setForm(f => (f.templateId === tmpl.id ? { ...f, templateId: null } : f))
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
   if (initialSlug && !slugConsumed.current) {
@@ -463,23 +614,35 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
-            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <GitFork size={15} />
-            Fork from Git
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
-            disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <FileCode size={15} />
-            From Beamer
-          </button>
-          <button className="btn btn-primary" onClick={handleOpenModal} disabled={atLimit}
-            title={atLimit ? 'Presentation limit reached' : ''}>
-            <Plus size={16} />
-            New Presentation
-          </button>
+          {(teams.length > 0 || planInfo?.billing) && (
+            <button className="btn btn-secondary" onClick={() => setTeamsOpen(true)}
+              title={teams.length ? 'Your teams, their members and invite links' : 'Create a team to share presentations and folders'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Users size={15} />
+              {teams.length === 1 ? teams[0].name : 'Teams'}
+            </button>
+          )}
+          {!team && (
+            <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
+              disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <GitFork size={15} />
+              Fork from Git
+            </button>
+          )}
+          {(!team || canAddToTeam) && (<>
+            <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
+              disabled={!team && atLimit} title={team ? `Make a presentation in ${team.name} from LaTeX Beamer source` : atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FileCode size={15} />
+              From Beamer
+            </button>
+            <button className="btn btn-primary" onClick={() => handleOpenModal()} disabled={!team && atLimit}
+              title={team ? `A new presentation in ${team.name}` : atLimit ? 'Presentation limit reached' : ''}>
+              <Plus size={16} />
+              New Presentation
+            </button>
+          </>)}
           {isCloud && (
             <UserButton appearance={{ elements: { avatarBox: { width: 32, height: 32 } } }}>
               {planInfo?.billing && (
@@ -493,6 +656,37 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       </div>
 
       <div className="home-content">
+       {teamSetup && (
+         <div role="status" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+           {teamSetup === 'waiting'
+             ? 'Thanks! Your team is being set up, and opens here in a few seconds.'
+             : 'Your payment went through, but the team isn’t here yet. Reload in a minute; if it still isn’t here, email support@parallax-presentations.com.'}
+         </div>
+       )}
+       <div className={teams.length ? 'home-spaces' : undefined}>
+        {teams.length > 0 && (
+          <nav className="spaces-nav" aria-label="Presentations">
+            <button type="button" className={`spaces-item${!team ? ' active' : ''}`} aria-current={!team ? 'true' : undefined} onClick={() => setSpace('personal')}>
+              <User size={14} /> <span>My presentations</span>
+            </button>
+            <div className="spaces-heading">Teams</div>
+            {teams.map(t => (
+              <button key={t.id} type="button" className={`spaces-item${team?.id === t.id ? ' active' : ''}`} aria-current={team?.id === t.id ? 'true' : undefined}
+                onClick={() => { setSpace(t.id); setTeamFolder(null) }}>
+                <Users size={14} /> <span>{t.name}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+        <div style={{ minWidth: 0 }}>
+        {team ? (
+          <TeamSpaceView team={team} folder={teamFolder} onFolder={setTeamFolder} reloadKey={teamReload}
+            view={deckView} onView={setDeckView}
+            renderCard={presentationCard} renderActions={deckActions} renderThumb={deckThumb}
+            onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+            onNew={folderId => handleOpenModal({ teamId: team.id, folderId })}
+            onManage={() => setTeamsOpen(team.id)} />
+        ) : (<>
         {atLimit && (
           <div style={{
             background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
@@ -507,35 +701,34 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )}
           </div>
         )}
-        <h2>My Presentations</h2>
         {loading ? (
-          <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          <>
+            <h2>My Presentations</h2>
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          </>
         ) : (
-          <div className="presentations-grid">
-            <div className="new-card" onClick={handleOpenModal}>
-              <Plus size={32} />
-              <span>New Presentation</span>
-            </div>
-
-            {own.length === 0 ? (
-              <div className="empty-state">
-                <Presentation size={48} />
-                <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No presentations yet</p>
-                <p style={{ fontSize: 14 }}>Create your first presentation to get started</p>
-              </div>
-            ) : (
-              own.map(presentationCard)
-            )}
-          </div>
+          <DeckBrowser
+            rootName="My presentations" folders={folders} decks={own}
+            folderId={folder} onOpenFolder={setFolder}
+            view={deckView} onView={setDeckView}
+            canEditFolders canDeleteFolders canMoveDeck={canMoveDeck}
+            onCreateFolder={async (name, parentId) => { const made = await api.createFolder(name, parentId); await loadFolders(); return made }}
+            onUpdateFolder={async (id, change) => { await api.updateFolder(id, change); await loadFolders() }}
+            onDeleteFolder={async id => { await api.deleteFolder(id); await Promise.all([loadFolders(), loadData()]) }}
+            onMoveDeck={async (id, folderId) => { await api.moveDeck(id, { teamId: null, folderId }); await loadData() }}
+            renderTile={presentationCard} renderActions={pres => deckActions(pres)} renderThumb={deckThumb}
+            onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+            onNew={folderId => handleOpenModal(folderId ? { folderId } : null)}
+            emptyText="Create your first presentation to get started" />
         )}
 
         {shared.length > 0 && (
-          <>
-            <h2 style={{ marginTop: 40 }}>Shared with you</h2>
-            <div className="presentations-grid">
-              {shared.map(presentationCard)}
-            </div>
-          </>
+          <div style={{ marginTop: 40 }}>
+            <DeckBrowser flat rootName="Shared with you" decks={shared} view={deckView}
+              renderTile={presentationCard} renderActions={pres => deckActions(pres)} renderThumb={deckThumb}
+              onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+              ownerColumn={{ label: 'Owner', value: pres => pres.ownerName || '' }} />
+          </div>
         )}
 
         {/* My Templates Section */}
@@ -547,10 +740,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           </div>
 
           {templates.map(tmpl => {
-            const bg = getCardBg(tmpl.thumbnail)
-            const bgProp = isGradientOrImage(tmpl.thumbnail)
-              ? { background: bg }
-              : { backgroundColor: bg }
+            const bgProp = cardBackground(tmpl)
 
             return (
               <div
@@ -559,6 +749,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 onClick={() => onOpen(tmpl.id, true)}
               >
                 <div className="card-preview" style={bgProp}>
+                  {tileSlide(tmpl) && <DeckTile pres={tmpl} />}
                   <Layout size={24} style={{ position: 'absolute', top: 6, right: 6, opacity: 0.5 }} />
                 </div>
                 <div className="card-info">
@@ -759,12 +950,25 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )}
           </>
         )}
+        </>)}
+        </div>
+       </div>
       </div>
+
+      {movingDeck && (
+        <MoveDeckModal deck={movingDeck} teams={teams} you={planInfo?.id}
+          onClose={() => setMovingDeck(null)}
+          onMoved={() => { setMovingDeck(null); loadData(); setTeamReload(k => k + 1) }} />
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h2>New Presentation</h2>
+            <h2>{createTarget?.teamId
+              ? `New presentation in ${teams.find(t => t.id === createTarget.teamId)?.name || 'the team'}`
+              : createTarget?.folderId
+                ? `New presentation in ${folders.find(f => f.id === createTarget.folderId)?.name || 'the folder'}`
+                : 'New Presentation'}</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Title</label>
@@ -794,10 +998,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   >
                     Blank
                   </button>
-                  {templates.map(tmpl => (
+                  {[...templates, ...(createTarget?.teamId ? teamTemplates || [] : [])].map(tmpl => (
+                    <div key={tmpl.id} style={{ position: 'relative' }}>
                     <button
-                      key={tmpl.id}
                       type="button"
+                      title={tmpl.teamId ? `The team’s template${tmpl.creatorName ? `, from ${tmpl.creatorName}` : ''}` : undefined}
                       onClick={() => setForm(f => ({
                         ...f,
                         templateId: tmpl.id,
@@ -805,6 +1010,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                         transition: tmpl.transition || f.transition,
                       }))}
                       style={{
+                        width: '100%', height: '100%',
                         padding: '6px 8px', textAlign: 'center', cursor: 'pointer',
                         background: form.templateId === tmpl.id ? 'var(--accent)' : 'var(--bg-card)',
                         border: '2px solid ' + (form.templateId === tmpl.id ? 'var(--accent)' : 'var(--border)'),
@@ -814,10 +1020,18 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     >
                       <div style={{
                         height: 28, borderRadius: 3, marginBottom: 4,
-                        ...(isGradientOrImage(tmpl.thumbnail) ? { background: getCardBg(tmpl.thumbnail) } : { backgroundColor: getCardBg(tmpl.thumbnail) }),
+                        ...cardBackground(tmpl),
                       }} />
+                      {tmpl.teamId && <Users size={10} style={{ marginRight: 4, verticalAlign: '-1px' }} aria-label="Team template" />}
                       {tmpl.title}
                     </button>
+                    {tmpl.teamId && canDeleteTeamTemplate(tmpl) && (
+                      <button type="button" className="btn-icon template-remove" title={`Delete the team template “${tmpl.title}”`}
+                        aria-label={`Delete the team template ${tmpl.title}`} onClick={() => handleDeleteTeamTemplate(tmpl)}>
+                        <X size={11} />
+                      </button>
+                    )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -856,6 +1070,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
           </div>
         </div>
+      )}
+
+      {teamsOpen && teamsLoaded && (teams.length > 0 || planInfo?.billing) && (
+        <TeamsModal teams={teams} initialTeamId={typeof teamsOpen === 'string' ? teamsOpen : null} billing={!!planInfo?.billing}
+          onChange={loadTeams} onClose={() => setTeamsOpen(false)} />
       )}
 
       {showBeamerModal && (
@@ -995,12 +1214,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 {/* Actions */}
                 {!billingStatus?.active && plansForSale.some(p => p.id !== planInfo?.plan) && (
                   <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
-                    {plansForSale.filter(p => p.id !== planInfo?.plan).map(p => (
-                      <button key={p.id} onClick={() => handleUpgrade(p.id)} title={planSummary(p).join(' · ')}
-                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                        Upgrade to {p.name}{p.priceLabel ? ` — ${p.priceLabel}` : ''}
+                    {plansForSale.filter(p => p.id !== planInfo?.plan).flatMap(p => (p.prices?.length ? p.prices : [null]).map(price => (
+                      <button key={`${p.id}-${price?.priceId || ''}`} onClick={() => handleUpgrade(p.id, price?.priceId)} title={planSummary(p).join(' · ')}
+                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                        Upgrade to {p.name} — {price && price.amountCents != null ? priceText(price) : price?.interval === 'year' ? 'yearly' : p.priceLabel || 'monthly'}
                       </button>
-                    ))}
+                    )))}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>

@@ -37,7 +37,7 @@ describe('the dashboard', () => {
     expect(grids[0].contains(card('Group talk'))).toBe(false)
 
     const titles = c => [...c.querySelectorAll('button')].map(b => b.title)
-    expect(titles(card('My talk'))).toEqual(['Edit', 'Duplicate', 'Delete'])
+    expect(titles(card('My talk'))).toEqual(['Edit', 'Move', 'Duplicate', 'Delete'])
     expect(titles(card('Group talk'))).toEqual(['Edit', 'Leave'])
     expect(card('Group talk').textContent).toContain('Owned by Ada')
 

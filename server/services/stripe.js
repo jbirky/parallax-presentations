@@ -1,21 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET
-// Each plan's Stripe price is set from /admin
+// Billing through Stripe: a person's own plan (Pro), and a team's seats.
+// Off unless PARALLAX_BILLING=on and STRIPE_SECRET_KEY are set.
+//
+// A person pays for their plan as their own Stripe customer (users.
+// stripe_customer_id). A team is its own Stripe customer, named after it, so
+// its invoices carry the team's name: its owner buys it at checkout, for a
+// number of seats at one of a per-seat plan's prices, and the webhook makes
+// the team when the subscription starts. Changes to the subscription (seats,
+// a failed payment, canceling) come back through the webhook too.
+
+// Each plan's Stripe prices are set from /admin
 const { PLAN_LIMITS, planForPrice } = require('./plans')
+const teams = require('./teams')
 
 let stripe = null
 function getStripe() {
-  if (!stripe && STRIPE_SECRET_KEY) {
-    stripe = require('stripe')(STRIPE_SECRET_KEY)
+  if (!stripe && process.env.STRIPE_SECRET_KEY) {
+    stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
   }
   return stripe
 }
 
+// Switched off until payment plans are set up (764e1a6c); PARALLAX_BILLING=on
+// turns it on where Stripe is configured
 function isEnabled() {
-  return false
+  return process.env.PARALLAX_BILLING === 'on' && !!process.env.STRIPE_SECRET_KEY
 }
 
 async function getOrCreateCustomer(storage, userId, email, name) {
@@ -32,15 +43,15 @@ async function getOrCreateCustomer(storage, userId, email, name) {
   return customer.id
 }
 
-// Checkout for `plan`, one with a Stripe price
-async function createCheckoutSession(storage, userId, email, name, plan, successUrl, cancelUrl) {
+// Checkout for `plan`, at `price` (one of plan.prices; its first by default)
+async function createCheckoutSession(storage, userId, email, name, plan, successUrl, cancelUrl, price = plan.prices[0]) {
   const s = getStripe()
   const customerId = await getOrCreateCustomer(storage, userId, email, name)
   const session = await s.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
     allow_promotion_codes: true,
-    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+    line_items: [{ price: price.priceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: { parallax_user_id: userId, parallax_plan: plan.id },
@@ -61,6 +72,83 @@ async function createPortalSession(storage, userId) {
   })
   return session
 }
+
+// What Stripe says a price is, for an admin adding it to a plan: { recurring,
+// interval, amountCents, currency }, or null when there's no such price
+async function describePrice(priceId) {
+  try {
+    const p = await getStripe().prices.retrieve(priceId)
+    return { recurring: !!p.recurring, interval: p.recurring?.interval, amountCents: p.unit_amount, currency: p.currency }
+  } catch (err) {
+    if (err.statusCode === 404 || err.code === 'resource_missing') return null
+    throw err
+  }
+}
+
+// --- Teams ---
+
+// Checkout for a team's seats, by its owner. `team` is { name } for a new
+// team (made when the subscription starts) or { id, name, customerId } for
+// one already there (made by an admin of the site). `minSeats` is the fewest
+// the owner may pick on Stripe's page.
+async function createTeamCheckoutSession(storage, { owner, team, seats, minSeats, plan, price, successUrl, cancelUrl }) {
+  const s = getStripe()
+  let customer = team.customerId
+  if (!customer) {
+    customer = (await s.customers.create({
+      name: team.name,
+      email: owner.email,
+      metadata: { parallax_team_owner: owner.id, ...(team.id && { parallax_team_id: team.id }) },
+    })).id
+    if (team.id) await storage.query('UPDATE teams SET stripe_customer_id = $2 WHERE id = $1', [team.id, customer])
+  }
+  const metadata = {
+    parallax_kind: 'team',
+    parallax_team_owner: owner.id,
+    parallax_team_name: team.name,
+    parallax_plan: plan.id,
+    ...(team.id && { parallax_team_id: team.id }),
+  }
+  return s.checkout.sessions.create({
+    customer,
+    mode: 'subscription',
+    allow_promotion_codes: true,
+    line_items: [{
+      price: price.priceId,
+      quantity: seats,
+      adjustable_quantity: { enabled: true, minimum: minSeats, maximum: teams.MAX_SEATS },
+    }],
+    subscription_data: { metadata },
+    metadata,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  })
+}
+
+async function createTeamPortalSession(customerId, returnUrl) {
+  return getStripe().billingPortal.sessions.create({ customer: customerId, return_url: returnUrl })
+}
+
+// Changes the seats a team pays for; Stripe prorates the difference
+async function setTeamSeats(storage, team, seats) {
+  const s = getStripe()
+  const sub = await s.subscriptions.retrieve(team.subscriptionId)
+  const item = sub.items.data[0]
+  await s.subscriptions.update(sub.id, { items: [{ id: item.id, quantity: seats }], proration_behavior: 'create_prorations' })
+  await teams.setSeats(storage, team.id, seats)
+}
+
+// A team's status, from its subscription's: everything works while a
+// payment is retried, and its decks turn read-only once the subscription ends
+function teamStatus(subStatus) {
+  if (subStatus === 'active' || subStatus === 'trialing') return 'active'
+  if (subStatus === 'past_due' || subStatus === 'unpaid' || subStatus === 'incomplete') return 'past_due'
+  return 'lapsed'
+}
+
+const seatsOf = sub => sub?.items?.data?.[0]?.quantity || 1
+
+// --- Webhook ---
 
 // Puts the customer's account on the paid plan `planId`, recording
 // `subscriptionId` when given. On a plan whose presentations don't expire,
@@ -86,40 +174,95 @@ function planForSubscription(sub) {
   return planForPrice(sub?.items?.data?.[0]?.price?.id)
 }
 
-// Returns the event and the Clerk IDs of accounts whose plan it changed, so
-// the caller can drop their cached plan
+// A team's checkout finished: the team it was for gets the subscription, or
+// a new team is made for its owner. Returns the team's id.
+async function teamFromCheckout(storage, s, session) {
+  const meta = session.metadata || {}
+  const sub = await s.subscriptions.retrieve(session.subscription)
+  const plan = planForSubscription(sub) || PLAN_LIMITS[meta.parallax_plan] || null
+  const fields = { subscriptionId: sub.id, customerId: session.customer, seats: seatsOf(sub), plan: plan?.id, status: teamStatus(sub.status) }
+  if (meta.parallax_team_id) {
+    const team = await teams.setTeamSubscription(storage, { teamId: meta.parallax_team_id, ...fields })
+    return team?.id || null
+  }
+  const { rows } = await storage.query('SELECT id FROM users WHERE id = $1', [meta.parallax_team_owner])
+  if (!rows.length) {
+    console.error(`Stripe checkout ${session.id} is for a team whose owner doesn't exist; no team made`)
+    return null
+  }
+  const team = await teams.createPaidTeam(storage, { name: meta.parallax_team_name, ownerId: rows[0].id, ...fields, plan: fields.plan || 'team' })
+  // So the subscription in Stripe's dashboard says which team it is
+  if (team.created) {
+    await s.subscriptions.update(sub.id, { metadata: { ...(sub.metadata || {}), parallax_team_id: team.id } })
+      .catch(err => console.error(`Couldn't label subscription ${sub.id} with its team: ${err.message}`))
+  }
+  return team.id
+}
+
+// The team a subscription pays for, if it's a team's: by the id in its
+// metadata, or by the subscription
+async function teamSubscriptionChanged(storage, sub, { ended = false } = {}) {
+  return teams.setTeamSubscription(storage, {
+    teamId: sub.metadata?.parallax_team_id || null,
+    subscriptionId: sub.id,
+    ...(ended
+      ? { status: 'lapsed' }
+      : { seats: seatsOf(sub), plan: planForSubscription(sub)?.id, status: teamStatus(sub.status) }),
+  }).then(async team => {
+    // Ended: the team keeps no subscription
+    if (team && ended) await storage.query('UPDATE teams SET stripe_subscription_id = NULL WHERE id = $1', [team.id])
+    return team
+  })
+}
+
+// Returns the event, the Clerk IDs of accounts whose plan it changed (so the
+// caller can drop their cached plan), and the teams whose status changed (so
+// their decks' live editing can reopen with the rights they have now)
 async function handleWebhook(storage, rawBody, signature) {
   const s = getStripe()
-  const event = s.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET)
+  const event = s.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET)
   let planChangedFor = []
+  const teamsChanged = []
 
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object
-      if (session.mode === 'subscription') {
-        // The plan checkout was opened for, or else the one the price sells
-        const fromMetadata = PLAN_LIMITS[session.metadata?.parallax_plan]
-        const plan = fromMetadata?.stripePriceId ? fromMetadata : planForSubscription(await s.subscriptions.retrieve(session.subscription))
-        if (plan) planChangedFor = await moveCustomerToPlan(storage, session.customer, plan.id, session.subscription)
-        else console.error(`Stripe checkout ${session.id} is for a price no plan uses; plan left as it is`)
+      if (session.mode !== 'subscription') break
+      if (session.metadata?.parallax_kind === 'team') {
+        const teamId = await teamFromCheckout(storage, s, session)
+        if (teamId) teamsChanged.push(teamId)
+        break
       }
+      // The plan checkout was opened for, or else the one the price sells
+      const fromMetadata = PLAN_LIMITS[session.metadata?.parallax_plan]
+      const plan = fromMetadata?.prices?.length ? fromMetadata : planForSubscription(await s.subscriptions.retrieve(session.subscription))
+      if (plan) planChangedFor = await moveCustomerToPlan(storage, session.customer, plan.id, session.subscription)
+      else console.error(`Stripe checkout ${session.id} is for a price no plan uses; plan left as it is`)
       break
     }
     case 'customer.subscription.updated': {
       const sub = event.data.object
-      const status = sub.status
-      if (status === 'active') {
+      const team = await teamSubscriptionChanged(storage, sub)
+      if (team) {
+        if (team.statusBefore !== teamStatus(sub.status)) teamsChanged.push(team.id)
+        break
+      }
+      if (sub.status === 'active') {
         // Switching plans in the billing portal changes the price
         const plan = planForSubscription(sub)
         if (plan) planChangedFor = await moveCustomerToPlan(storage, sub.customer, plan.id)
         else console.error(`Stripe subscription ${sub.id} is for a price no plan uses; plan left as it is`)
-      } else if (status === 'past_due' || status === 'unpaid') {
-        // keep pro for now, but could downgrade after grace period
       }
+      // past_due or unpaid: the account keeps its plan while Stripe retries
       break
     }
     case 'customer.subscription.deleted': {
       const sub = event.data.object
+      const team = await teamSubscriptionChanged(storage, sub, { ended: true })
+      if (team) {
+        teamsChanged.push(team.id)
+        break
+      }
       const { rows } = await storage.query(
         `UPDATE users SET plan = 'free', stripe_subscription_id = NULL, plan_expires_at = NULL WHERE stripe_customer_id = $1 RETURNING auth_id`,
         [sub.customer]
@@ -129,7 +272,7 @@ async function handleWebhook(storage, rawBody, signature) {
     }
   }
 
-  return { event, planChangedFor }
+  return { event, planChangedFor, teamsChanged }
 }
 
 async function cancelSubscription(storage, userId) {
@@ -162,4 +305,8 @@ async function getSubscriptionStatus(storage, userId) {
   }
 }
 
-module.exports = { isEnabled, createCheckoutSession, createPortalSession, handleWebhook, cancelSubscription, resumeSubscription, getSubscriptionStatus, getStripe }
+module.exports = {
+  isEnabled, createCheckoutSession, createPortalSession, describePrice, handleWebhook,
+  createTeamCheckoutSession, createTeamPortalSession, setTeamSeats, teamStatus,
+  cancelSubscription, resumeSubscription, getSubscriptionStatus, getStripe,
+}
