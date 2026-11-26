@@ -17,6 +17,7 @@ import TeamSpaceView from '../components/TeamSpaceView'
 import DeckBrowser from '../components/DeckBrowser'
 import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
 import DeckTile, { tileSlide } from '../components/DeckTile'
+import SignupSurvey from '../components/SignupSurvey'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -60,6 +61,9 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [form, setForm] = useState({ title: '', theme: 'black', transition: 'slide', templateId: null })
   const [creating, setCreating] = useState(false)
   const [planInfo, setPlanInfo] = useState(null)
+  // The optional sign-up questions: 'first' when they come up by themselves
+  // (not yet answered or skipped), 'edit' from "About you" in the account menu
+  const [survey, setSurvey] = useState(null)
   const [uploads, setUploads] = useState([])
   const [uploadsOpen, setUploadsOpen] = useState(false)
   const [uploadFilter, setUploadFilter] = useState('')
@@ -249,6 +253,16 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     setPlansForSale((listed?.plans || []).filter(p => p.purchasable))
     setDiscounts(offs)
     setBillingLoading(false)
+  }
+
+  // The sign-up questions come up once by themselves, when nothing else is
+  // open (not for guests, who have no account, or self-hosted)
+  useEffect(() => {
+    if (isCloud && planInfo?.survey?.pending && !showBillingModal && !teamsOpen && !teamSetup) setSurvey(s => s || 'first')
+  }, [planInfo?.survey?.pending])
+  function closeSurvey() {
+    setSurvey(null)
+    setPlanInfo(p => (p ? { ...p, survey: { pending: false } } : p))
   }
 
   async function handleUpgrade(planId, priceId) {
@@ -679,11 +693,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           </>)}
           {isCloud && (
             <UserButton appearance={{ elements: { avatarBox: { width: 32, height: 32 } } }}>
-              {planInfo?.billing && (
-                <UserButton.MenuItems>
+              <UserButton.MenuItems>
+                {planInfo?.billing && (
                   <UserButton.Action label="Manage subscription" labelIcon={<span style={{ fontSize: 14 }}>&#x2699;</span>} onClick={openBillingModal} />
-                </UserButton.MenuItems>
-              )}
+                )}
+                <UserButton.Action label="About you" labelIcon={<User size={14} />} onClick={() => setSurvey('edit')} />
+              </UserButton.MenuItems>
             </UserButton>
           )}
         </div>
@@ -1200,6 +1215,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       )}
 
       {/* Billing modal */}
+      {survey && <SignupSurvey firstTime={survey === 'first'} onClose={closeSurvey} />}
+
       {showBillingModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowBillingModal(false)}>
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>

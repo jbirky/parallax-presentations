@@ -378,6 +378,14 @@ export const api = {
     return b
   }),
   createPortal: () => authFetch(`${BASE}/billing/portal`, { method: 'POST' }).then(safeJson),
+  // The optional sign-up questions (server/services/signup-survey.js):
+  // { questions, answers }, saved answers, or skipped
+  getSurvey: () => authFetch(`${BASE}/me/survey`).then(r => checked(r, 'Could not load the questions')),
+  saveSurvey: (answers) => authFetch(`${BASE}/me/survey`, json('PUT', answers)).then(r => checked(r, 'Could not save your answers')),
+  skipSurvey: () => authFetch(`${BASE}/me/survey/skip`, { method: 'POST' }).then(r => checked(r, 'Failed')),
+  // Admins: the answers totaled, and every answer as a CSV file (a Blob)
+  getSurveySummary: () => authFetch(`${BASE}/admin/survey`).then(r => checked(r, 'Could not load the answers')),
+  getSurveyCsv: () => authFetch(`${BASE}/admin/survey.csv`).then(async r => { if (!r.ok) throw new Error('Could not download the answers'); return r.blob() }),
   // The education price's school domains (admins): { domains, coupon }
   getEducationDomains: () => authFetch(`${BASE}/admin/education-domains`).then(r => checked(r, 'Could not load the school domains')),
   addEducationDomain: (domain, note) => authFetch(`${BASE}/admin/education-domains`, json('POST', { domain, note })).then(r => checked(r, 'Could not add the domain')),

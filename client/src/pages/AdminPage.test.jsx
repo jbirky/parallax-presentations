@@ -123,7 +123,7 @@ describe('the admin tabs', () => {
   it('lists the cloud version’s tabs only when the server has plans', () => {
     expect(adminTabs(overview()).map(t => t.id)).toEqual(['overview', 'accounts', 'plugins', 'server'])
     expect(adminTabs(overview({ plans: PLANS })).map(t => t.label))
-      .toEqual(['Overview', 'Accounts', 'Teams', 'Plans', 'Analytics', 'Examples', 'Templates', 'Plugins', 'Server'])
+      .toEqual(['Overview', 'Accounts', 'Teams', 'Plans', 'Analytics', 'Sign-up answers', 'Examples', 'Templates', 'Plugins', 'Server'])
   })
 
   it('marks the open tab for screen readers and the keyboard', () => {

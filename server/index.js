@@ -44,6 +44,7 @@ const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly, canEdit, canCopy } = collaboration
 const deckLocks = require('./services/deck-locks')
 const education = require('./services/education')
+const signupSurvey = require('./services/signup-survey')
 const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
 const { normalizeTransforms } = require('./services/dataset-transforms')
@@ -801,9 +802,39 @@ app.get('/api/me', async (req, res) => {
       },
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
+      // The sign-up questions, not yet answered or skipped (services/signup-survey.js)
+      survey: { pending: !req.isGuest && !!req.userId && await signupSurvey.isPending(storage, req.userId) },
     })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
+
+// --- The sign-up questions (cloud only, signed-in accounts; services/signup-survey.js) ---
+// GET /api/me/survey: { questions, answers }; PUT saves answers (every one
+// optional); POST /api/me/survey/skip records passing without answering.
+function surveyRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof signupSurvey.SurveyError) return res.status(err.status).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+
+app.get('/api/me/survey', surveyRoute(async (req, res) => {
+  res.json({ questions: signupSurvey.QUESTIONS, answers: await signupSurvey.getAnswers(storage, req.userId) })
+}))
+
+app.put('/api/me/survey', surveyRoute(async (req, res) => {
+  res.json({ answers: await signupSurvey.saveAnswers(storage, req.userId, req.body || {}) })
+}))
+
+app.post('/api/me/survey/skip', surveyRoute(async (req, res) => {
+  await signupSurvey.skip(storage, req.userId)
+  res.json({ success: true })
+}))
 
 // GET /api/admin/overview — sign-ups, per-user storage and processing, and
 // container CPU/memory. Not found for anyone who isn't an admin.
@@ -921,6 +952,18 @@ app.delete('/api/admin/education-domains/:domain', planRoute(async (req, res) =>
   await education.removeDomain(storage, req.params.domain)
   console.log(`Admin removed education domain ${req.params.domain}`)
   res.json({ success: true })
+}))
+
+// The sign-up answers, for admins: GET /api/admin/survey totals them;
+// /api/admin/survey.csv is every answer, one account a line
+app.get('/api/admin/survey', planRoute(async (req, res) => {
+  res.json({ questions: signupSurvey.QUESTIONS, ...await signupSurvey.summary(storage) })
+}))
+
+app.get('/api/admin/survey.csv', planRoute(async (req, res) => {
+  res.set('Content-Type', 'text/csv; charset=utf-8')
+  res.set('Content-Disposition', `attachment; filename="parallax-signup-answers-${new Date().toISOString().slice(0, 10)}.csv"`)
+  res.send(await signupSurvey.csv(storage))
 }))
 
 // ---- Billing API ----

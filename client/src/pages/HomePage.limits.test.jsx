@@ -28,6 +28,7 @@ vi.mock('../utils/api', () => ({
       prices: [{ priceId: 'price_m', interval: 'month', amountCents: 1000, currency: 'usd' }, { priceId: 'price_y', interval: 'year', amountCents: 9600, currency: 'usd' }] }] })),
     getBillingDiscounts: vi.fn(async () => ({ promotionCodes: true, education: { percentOff: 50, duration: 'forever', eligible: true, domain: 'uw.edu' } })),
     createPresentation: vi.fn(async data => ({ id: 'new', title: data.title || 'Untitled' })),
+    getSurvey: vi.fn(async () => ({ questions: [{ id: 'field', label: 'What’s your field?', kind: 'one', choices: [['physics', 'Physics']] }], answers: null })),
   }, { get: (api, name) => api[name] ?? (api[name] = vi.fn(async () => null)) }),
 }))
 vi.mock('@clerk/clerk-react', () => {
@@ -103,6 +104,24 @@ describe('the dashboard at a plan\'s limit', () => {
     expect(page.el.textContent).toContain('Students and educators get 50% off: add your school email')
     expect(page.el.textContent).toContain('Have a promotion code? You can enter it at checkout.')
     expect([...page.el.querySelectorAll('button')].map(b => b.textContent)).toContain('Upgrade to Pro — $10 a month')
+    act(() => page.root.unmount())
+  })
+})
+
+describe('the sign-up questions on the dashboard', () => {
+  it('come up once by themselves for an account that hasn\'t answered or skipped them', async () => {
+    api.getMe.mockResolvedValueOnce({ id: 'u-me', plan: 'free', planName: 'Free', limits: { maxPresentations: 3 }, presentationCount: 1, billing: false, survey: { pending: true } })
+    const page = await render()
+    expect(page.el.querySelector('.signup-survey h2').textContent).toBe('Welcome to Parallax')
+    await act(async () => [...page.el.querySelectorAll('.signup-survey button')].find(b => b.textContent.trim() === 'Skip').click())
+    expect(api.skipSurvey).toHaveBeenCalled()
+    expect(page.el.querySelector('.signup-survey')).toBeNull()
+    act(() => page.root.unmount())
+  })
+
+  it('stay away once answered', async () => {
+    const page = await render()
+    expect(page.el.querySelector('.signup-survey')).toBeNull()
     act(() => page.root.unmount())
   })
 })

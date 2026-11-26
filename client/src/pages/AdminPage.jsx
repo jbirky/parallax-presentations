@@ -977,11 +977,82 @@ export function adminTabs(data) {
     cloud && { id: 'teams', label: 'Teams' },
     cloud && { id: 'plans', label: 'Plans' },
     cloud && { id: 'analytics', label: 'Analytics' },
+    cloud && { id: 'answers', label: 'Sign-up answers' },
     cloud && { id: 'examples', label: 'Examples' },
     cloud && { id: 'templates', label: 'Templates' },
     { id: 'plugins', label: 'Plugins' },
     { id: 'server', label: 'Server' },
   ].filter(Boolean)
+}
+
+// The answers to the optional sign-up questions (server/services/signup-survey.js):
+// each question's choices counted, the "something else" answers, and every
+// answer as a CSV file
+export function SurveyAnswersPanel() {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => { api.getSurveySummary().then(setData, err => setError(err.message)) }, [])
+  const download = async () => {
+    try {
+      const url = URL.createObjectURL(await api.getSurveyCsv())
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `parallax-signup-answers-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) { setError(err.message) }
+  }
+  return (
+    <section style={styles.panel} className="survey-answers">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={styles.h2}>Sign-up answers</h2>
+          <p style={styles.sub}>
+            {data
+              ? `${data.answered} account${data.answered === 1 ? '' : 's'} answered · ${data.skipped} skipped. Everyone is asked once on the dashboard; every question is optional.`
+              : 'The optional questions accounts are asked once on the dashboard.'}
+          </p>
+        </div>
+        {data?.answered > 0 && <button className="btn btn-secondary" onClick={download} style={{ padding: '5px 12px', fontSize: 12 }}>Download CSV</button>}
+      </div>
+      {error && <p role="alert" style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
+      {data && data.answered === 0 && <p style={styles.sub}>No answers yet.</p>}
+      {data && data.answered > 0 && (
+        <div className="survey-answers-grid">
+          {data.questions.map(q => {
+            const most = Math.max(1, ...q.counts.map(c => c.n))
+            return (
+              <div key={q.id} className="survey-answers-question">
+                <h3>{q.label}</h3>
+                <p className="survey-answers-sub">{q.answered} answered{q.kind === 'many' ? ' · they could pick several' : ''}</p>
+                <table>
+                  <tbody>
+                    {[...q.counts].sort((a, b) => b.n - a.n).map(c => (
+                      <tr key={c.id}>
+                        <td>{c.label}</td>
+                        <td className="survey-answers-bar"><span style={{ width: `${(c.n / most) * 100}%` }} /></td>
+                        <td className="survey-answers-n">{c.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {data?.others?.length > 0 && (
+        <>
+          <h3 style={{ fontSize: 14, margin: '18px 0 6px' }}>In their own words</h3>
+          <ul className="survey-answers-others">
+            {data.others.map((o, i) => <li key={i}><span>{o.question}</span> {o.text}</li>)}
+          </ul>
+        </>
+      )}
+    </section>
+  )
 }
 
 // The tab row; arrow keys, Home and End move between tabs
@@ -1098,6 +1169,7 @@ export function AdminDashboard({ data, tab = 'overview', refreshing = false, onG
     </>,
     teams: <AdminTeamsPanel />,
     plans: <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />,
+    answers: <SurveyAnswersPanel />,
     analytics: <LandingStatsPanel />,
     examples: <ExamplesPanel kind="example" />,
     templates: <ExamplesPanel kind="template" />,

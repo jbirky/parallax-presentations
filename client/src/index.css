@@ -1301,3 +1301,31 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 .edu-domain-list { list-style: none; padding: 0; margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .edu-domain-list li { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 10px; border: 1px solid var(--border); border-radius: 12px; }
 .edu-domain-note { color: var(--text-muted); }
+
+/* The optional sign-up questions (components/SignupSurvey.jsx) */
+.modal.signup-survey { max-width: 620px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.signup-survey-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.signup-survey-head h2 { margin: 0; }
+.signup-survey-intro { font-size: 13px; color: var(--text-secondary); margin: 6px 0 14px; }
+.signup-survey-error { font-size: 12px; color: #ef4444; }
+.signup-survey-question { border: none; padding: 0; margin: 0 0 16px; }
+.signup-survey-question legend { font-size: 13px; font-weight: 600; margin-bottom: 8px; padding: 0; }
+.signup-survey-hint { font-weight: 400; color: var(--text-muted); }
+.signup-survey-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.signup-survey-choices label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 16px; cursor: pointer; }
+.signup-survey-choices label.picked { border-color: var(--accent); background: rgba(99,102,241,0.12); }
+.signup-survey-choices input { margin: 0; accent-color: var(--accent); }
+.signup-survey-other { margin-top: 8px; font-size: 13px; }
+.signup-survey-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* The sign-up answers in /admin (SurveyAnswersPanel) */
+.survey-answers-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); margin-top: 8px; }
+.survey-answers-question h3 { font-size: 13px; margin: 0; }
+.survey-answers-sub { font-size: 11px; color: var(--text-muted); margin: 2px 0 6px; }
+.survey-answers-question table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.survey-answers-question td { padding: 3px 4px; }
+.survey-answers-bar { width: 40%; }
+.survey-answers-bar span { display: block; height: 8px; border-radius: 4px; background: var(--accent); min-width: 2px; }
+.survey-answers-n { text-align: right; font-variant-numeric: tabular-nums; width: 2.5em; }
+.survey-answers-others { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 12px; }
+.survey-answers-others span { color: var(--text-muted); }
