@@ -110,11 +110,19 @@ const THEME_TOGGLE = `(function () {
     })()`
 
 // The site's own pages around `main`: the head (`meta` from pageMeta, the
-// analytics script when it's on), a header with `nav` (links: [href, text,
-// hide on a phone]) and a link home, and the footer. `styles` and `script`
-// are the page's own, after the shared ones.
-function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' }) {
-  const links = nav.map(([href, text, hide]) => `<a${hide ? ' class="hide"' : ''} href="${esc(href)}">${esc(text)}</a>`)
+// analytics script when it's on), a header with `nav` and `end`, and the
+// footer. `nav` is links, each [href, text, hide on a phone] or { href,
+// text, hide, current, external }, where hide is 'wide' or 'mid' to leave
+// it out where the landing page's nav does (client/src/index.css), and
+// current is the aria-current it gets; `end` is the header's last link,
+// [href, text], a button. `styles` and `script` are the page's own, after
+// the shared ones.
+function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], main, styles = '', script = '' }) {
+  const links = nav.map(n => {
+    const { href, text, hide, current, external } = Array.isArray(n) ? { href: n[0], text: n[1], hide: n[2] } : n
+    const cls = hide === 'wide' || hide === 'mid' ? hide : hide ? 'hide' : ''
+    return `<a${cls ? ` class="${cls}"` : ''} href="${esc(href)}"${current ? ` aria-current="${esc(current)}"` : ''}${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(text)}</a>`
+  })
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -153,6 +161,7 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
       nav { display: flex; align-items: center; gap: 2px; }
       nav a { padding: 12px 10px; color: var(--text); font-size: 14.5px; font-weight: 500; text-decoration: none; text-underline-offset: 7px; text-decoration-thickness: 2px; white-space: nowrap; }
       nav a:hover { text-decoration: underline; text-decoration-color: var(--edge); }
+      nav a[aria-current] { text-decoration: underline; text-decoration-color: var(--red); }
       /* Hovered, the two eyes' copies of a button move apart */
       .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; border: 1.5px solid var(--edge); transition: box-shadow 0.15s, background-color 0.15s; }
       .btn:hover { border-color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
@@ -184,8 +193,14 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
       footer { border-top: 1px solid var(--line); padding-block: 32px; color: var(--faint); font-size: 13.5px; }
       footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; }
       footer a { color: var(--soft); }
-      @media (max-width: 560px) { nav .hide { display: none; } }
-      @media (max-width: 420px) { .logo .word { font-size: 19px; } .beta { display: none; } nav a { padding-inline: 6px; } nav .btn { margin-left: 4px; padding-inline: 10px; } }${styles ? `\n      ${styles.trim().split('\n').map(l => l.trim()).join('\n      ')}` : ''}
+      @media (max-width: 680px) { nav .hide { display: none; } }
+      @media (max-width: 960px) { nav .wide { display: none; } }
+      @media (max-width: 600px) { nav .mid { display: none; } }
+      @media (max-width: 520px) { .beta { display: none; } .logo svg { width: 28px; height: 28px; } .logo .word { font-size: 20px; } nav a { padding-inline: 7px; } nav .btn { margin-left: 4px; padding-inline: 12px; } }
+      @media (max-width: 420px) { header .wrap, .logo { gap: 8px; } .logo svg { width: 26px; height: 26px; } .logo .word { font-size: 19px; } .beta { display: none; } nav a { padding-inline: 6px; font-size: 14px; } .theme { width: 30px; } nav .btn { margin-left: 2px; padding-inline: 10px; } }
+      @media (max-width: 370px) { nav a { padding-inline: 5px; } nav .btn { padding-inline: 8px; } }
+      /* The smallest phones: the mark alone (its link still says Parallax) */
+      @media (max-width: 359px) { .logo .word { display: none; } }${styles ? `\n      ${styles.trim().split('\n').map(l => l.trim()).join('\n      ')}` : ''}
     </style>
   </head>
   <body>
@@ -193,7 +208,7 @@ function sitePage({ meta, analytics, nav = [], main, styles = '', script = '' })
       <div class="wrap">
         <a class="logo" href="/" aria-label="Parallax">${MARK}<span class="word">Parallax</span><span class="beta">Beta</span></a>
         <nav aria-label="Main">
-          ${[...links, THEME_BUTTON, '<a class="btn" href="/">Parallax home</a>'].join('\n          ')}
+          ${[...links, THEME_BUTTON, `<a class="btn" href="${esc(end[0])}">${esc(end[1])}</a>`].join('\n          ')}
         </nav>
       </div>
     </header>

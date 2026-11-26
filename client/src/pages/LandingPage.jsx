@@ -57,6 +57,9 @@ const COMPARISON = [
 ]
 const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
+// The home tab's sections an address can name, as in /#examples
+const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'start']
+
 // The built-in examples, as the server lists them
 const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
 // The filters: the usual fields first, then any others the examples have
@@ -170,6 +173,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         setTab('templates')
       } else {
         setTab('home')
+        // A section named in the address (the site's own pages link to them,
+        // services/site-pages.js), once the examples above it are in
+        if (HOME_SECTIONS.includes(h.slice(1))) setScrollTo({ id: h.slice(1), afterCatalog: true })
       }
     }
     read()
@@ -187,9 +193,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     setScrollTo({ id })
   }
   useEffect(() => {
-    if (!scrollTo || tab !== 'home') return
+    if (!scrollTo || tab !== 'home' || (scrollTo.afterCatalog && !catalog)) return
     document.getElementById(scrollTo.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-  }, [scrollTo, tab])
+  }, [scrollTo, tab, catalog])
 
   const examples = catalog?.examples || []
   const shown = field === 'All' ? examples : examples.filter(e => e.field === field)

@@ -56,6 +56,18 @@ describe('a plugin’s README', () => {
 })
 
 describe('the gallery', () => {
+  it('has the landing page’s tabs in its header, with a way to sign in', () => {
+    const html = galleryPage({ origin, plugins: [lorenz], analytics: null, index: true })
+    const nav = html.match(/<nav aria-label="Main">([\s\S]*?)<\/nav>/)[1]
+    const tabs = [...nav.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map(m => m[1])
+    assert.deepEqual(tabs, ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'Docs', 'GitHub', 'Sign in'])
+    assert.match(nav, /<a class="wide" href="\/#features">Features<\/a>/)
+    assert.match(nav, /<a class="wide" href="\/plugins" aria-current="page">Plugins<\/a>/)
+    assert.match(nav, /href="https:\/\/github\.com\/jbirky\/parallax-presentations" target="_blank" rel="noopener noreferrer">GitHub</)
+    assert.match(nav, /<a class="btn" href="\/sign-in">Sign in<\/a>/)
+    assert.ok(nav.indexOf('id="theme-toggle"') < nav.indexOf('>Sign in</a>'))
+  })
+
   it('lists each plugin with what search, the categories and sorting read', () => {
     const html = galleryPage({ origin, plugins: [lorenz, ising], analytics: null, index: true })
     assert.match(html, /<title>Plugins · Parallax<\/title>/)

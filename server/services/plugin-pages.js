@@ -15,7 +15,20 @@ const CATEGORY_LABELS = {
   math: 'Math', physics: 'Physics', chemistry: 'Chemistry', biology: 'Biology', astronomy: 'Astronomy',
   data: 'Data', 'computer science': 'Computer science', teaching: 'Teaching', other: 'Other',
 }
-const NAV = [['/#examples', 'Examples', true], ['/plugins', 'Plugins', true], ['/#docs', 'Docs', true]]
+// The landing page's tabs, in its order (client/src/pages/LandingPage.jsx),
+// to its sections by their ids there; Plugins is these pages'. The pages are
+// the hosted site's alone, where there are templates and a sign-in
+const NAV = [
+  { href: '/#features', text: 'Features', hide: 'wide' },
+  { href: '/#examples', text: 'Examples', hide: 'mid' },
+  { href: '/#templates', text: 'Templates' },
+  { href: '/plugins', text: 'Plugins', hide: 'wide' },
+  { href: '/#workflow', text: 'How it works', hide: 'wide' },
+  { href: '/#docs', text: 'Docs' },
+  { href: 'https://github.com/jbirky/parallax-presentations', text: 'GitHub', hide: 'wide', external: true },
+]
+const navAt = current => NAV.map(n => (n.href === '/plugins' ? { ...n, current } : n))
+const SIGN_IN = ['/sign-in', 'Sign in']
 // The repo to copy to start a plugin
 const TEMPLATE_URL = 'https://github.com/jbirky/parallax-plugin-template'
 // Where a README's images may come from
@@ -192,7 +205,7 @@ function galleryPage({ origin, plugins, analytics, index }) {
       <p class="empty" id="none" hidden>No plugins match.</p>` : `
       <p class="empty">No plugins are listed yet.</p>`
   return sitePage({
-    meta, analytics, nav: NAV.filter(([href]) => href !== '/plugins'),
+    meta, analytics, nav: navAt('page'), end: SIGN_IN,
     styles: GALLERY_STYLES,
     main: `
       <div class="label">Plugins</div>
@@ -286,7 +299,7 @@ async function pluginPage({ origin, plugin: p, analytics, index }) {
     ...(m.homepage && m.homepage.replace(/\/+$/, '').toLowerCase() !== repoUrl(p).toLowerCase() ? [['Homepage', `<a href="${esc(m.homepage)}" rel="nofollow noopener" target="_blank">${esc(m.homepage.replace(/^https:\/\//, ''))}</a>`]] : []),
   ]
   return sitePage({
-    meta, analytics, nav: NAV,
+    meta, analytics, nav: navAt('true'), end: SIGN_IN,
     styles: PLUGIN_STYLES,
     main: `
       <a class="back" href="/plugins">← All plugins</a>

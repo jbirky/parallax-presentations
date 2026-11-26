@@ -48,6 +48,18 @@ describe('the landing page', () => {
     expect(cards()).toHaveLength(EXAMPLES.length)
   })
 
+  // The site's own pages link to the home tab's sections (services/site-pages.js)
+  it('scrolls to a section an address names', async () => {
+    const seen = []
+    const was = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function () { seen.push(this.id) }
+    try {
+      window.location.hash = '#workflow'
+      await mount()
+      expect(seen).toEqual(['workflow'])
+    } finally { Element.prototype.scrollIntoView = was }
+  })
+
   it('opens an example live, steps to the next, and into the editor with it', async () => {
     await mount()
     await act(async () => el.querySelectorAll('.lp-card')[1].click())
