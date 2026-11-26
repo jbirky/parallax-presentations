@@ -22,6 +22,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
+import Mark from '../components/ParallaxMark'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import PracticeDemo from '../components/landing/PracticeDemo'
@@ -68,22 +69,6 @@ const fieldsOf = examples => {
   return [...EXAMPLE_FIELDS.filter(f => have.has(f)), ...[...have].filter(f => !EXAMPLE_FIELDS.includes(f))]
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
-
-// The mark: the P as each eye sees it, red and blue, and where the two
-// overlap. Each use names its own clip path.
-const P_PATH = 'M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z'
-function Mark({ id, size, className = 'lp-mark' }) {
-  return (
-    <svg className={className} width={size} height={size} viewBox="14 14 72 72" aria-hidden="true" focusable="false">
-      <defs><clipPath id={`lp-mark-${id}`}><path d={P_PATH} transform="translate(-6 0)" clipRule="evenodd" /></clipPath></defs>
-      <g transform="translate(-2 0)" fillRule="evenodd">
-        <path d={P_PATH} transform="translate(-6 0)" fill="#ee2b2b" />
-        <path d={P_PATH} transform="translate(6 0)" fill="#1e60ff" />
-        <g clipPath={`url(#lp-mark-${id})`}><path d={P_PATH} transform="translate(6 0)" style={{ fill: 'var(--lp-strong)' }} /></g>
-      </g>
-    </svg>
-  )
-}
 
 const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']

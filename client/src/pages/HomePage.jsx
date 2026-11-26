@@ -11,6 +11,7 @@ import { formatSize, planSummary, priceText, discountedPrice, discountText } fro
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
+import ParallaxMark from '../components/ParallaxMark'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
 import TeamSpaceView from '../components/TeamSpaceView'
@@ -636,17 +637,17 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     <div className="home-page">
       <div className="home-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h1><span>P</span>arallax<BetaBadge /></h1>
-          <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+          <h1 className="home-logo"><ParallaxMark id="home" size={28} ink="var(--text-primary)" /><span>Parallax</span><BetaBadge /></h1>
+          <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" className="home-link">
             <ExternalLink size={12} /> Site
           </a>
           {isCloud && (
-            <a href="mailto:support@parallax-presentations.com" title="Email support@parallax-presentations.com" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <a href="mailto:support@parallax-presentations.com" title="Email support@parallax-presentations.com" className="home-link">
               <Mail size={12} /> Support
             </a>
           )}
           {planInfo?.isAdmin && (
-            <a href="/admin" title="Sign-ups, storage and server usage" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <a href="/admin" title="Sign-ups, storage and server usage" className="home-link">
               <Gauge size={12} /> Admin
             </a>
           )}
@@ -711,7 +712,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
          </div>
        )}
        {teamSetup && (
-         <div role="status" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+         <div role="status" className="home-note">
            {teamSetup === 'waiting'
              ? 'Thanks! Your team is being set up, and opens here in a few seconds.'
              : 'Your payment went through, but the team isn’t here yet. Reload in a minute; if it still isn’t here, email support@parallax-presentations.com.'}
@@ -742,16 +743,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             onManage={() => setTeamsOpen(team.id)} />
         ) : (<>
         {atLimit && (
-          <div style={{
-            background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
-            borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)',
-          }}>
+          <div className="home-note">
             The {planInfo.planName} plan keeps your {planInfo.limits.maxPresentations} newest presentation{planInfo.limits.maxPresentations === 1 ? '' : 's'} editable.
             {lockedCount > 0
               ? ` ${lockedCount} older one${lockedCount === 1 ? ' is' : 's are'} read-only: you can still open, present, share and copy ${lockedCount === 1 ? 'it' : 'them'}.`
               : ' A new one makes your oldest read-only.'}
             {planInfo.billing && (
-              <button onClick={openBillingModal} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <button className="btn btn-primary home-note-btn" onClick={openBillingModal}>
                 See plans
               </button>
             )}
@@ -845,7 +843,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         {isCloud && planInfo && planInfo.limits?.storageBytes && (
           <div style={{
             marginTop: 40, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: '12px 16px',
+            padding: '12px 16px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
@@ -857,11 +855,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
               </div>
             </div>
             <div style={{
-              height: 6, borderRadius: 3, background: 'var(--bg-primary)',
+              height: 6, background: 'var(--bg-primary)',
               overflow: 'hidden',
             }}>
               <div style={{
-                height: '100%', borderRadius: 3, transition: 'width 0.3s ease',
+                height: '100%', transition: 'width 0.3s ease',
                 width: `${Math.min(100, (planInfo.storageUsed / planInfo.limits.storageBytes) * 100)}%`,
                 background: (planInfo.storageUsed / planInfo.limits.storageBytes) > 0.9
                   ? '#ef4444'
@@ -893,7 +891,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             {uploadsOpen && (
               <div style={{
                 marginTop: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: 10, overflow: 'hidden',
+                overflow: 'hidden',
               }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -944,12 +942,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                   {isImage ? (
                                     <img src={u.url} alt="" style={{
-                                      width: 36, height: 36, borderRadius: 4, objectFit: 'cover',
+                                      width: 36, height: 36, objectFit: 'cover',
                                       flexShrink: 0, background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                     }} />
                                   ) : isVideo ? (
                                     <div style={{
-                                      width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                                      width: 36, height: 36, flexShrink: 0,
                                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     }}>
@@ -957,7 +955,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                     </div>
                                   ) : (
                                     <div style={{
-                                      width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                                      width: 36, height: 36, flexShrink: 0,
                                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     }}>
@@ -986,7 +984,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                   style={{
                                     background: 'none', border: 'none', cursor: 'pointer',
                                     color: deletingUploadId === u.id ? 'var(--text-muted)' : 'var(--danger, #ef4444)',
-                                    padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   }}
                                 >
                                   {deletingUploadId === u.id
@@ -1048,7 +1046,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     style={{
                       padding: '10px 8px', background: !form.templateId ? 'var(--accent)' : 'var(--bg-card)',
                       border: '2px solid ' + (!form.templateId ? 'var(--accent)' : 'var(--border)'),
-                      borderRadius: 6, cursor: 'pointer', color: !form.templateId ? 'white' : 'var(--text-primary)',
+                      cursor: 'pointer', color: !form.templateId ? 'white' : 'var(--text-primary)',
                       fontSize: 12, fontWeight: 500, textAlign: 'center',
                     }}
                   >
@@ -1070,12 +1068,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                         padding: '6px 8px', textAlign: 'center', cursor: 'pointer',
                         background: form.templateId === tmpl.id ? 'var(--accent)' : 'var(--bg-card)',
                         border: '2px solid ' + (form.templateId === tmpl.id ? 'var(--accent)' : 'var(--border)'),
-                        borderRadius: 6, color: form.templateId === tmpl.id ? 'white' : 'var(--text-primary)',
+                        color: form.templateId === tmpl.id ? 'white' : 'var(--text-primary)',
                         fontSize: 11, fontWeight: 500, overflow: 'hidden',
                       }}
                     >
                       <div style={{
-                        height: 28, borderRadius: 3, marginBottom: 4,
+                        height: 28, marginBottom: 4,
                         ...cardBackground(tmpl),
                       }} />
                       {tmpl.teamId && <Users size={10} style={{ marginRight: 4, verticalAlign: '-1px' }} aria-label="Team template" />}
@@ -1169,7 +1167,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
 
             {forkError && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', fontSize: 13, color: '#f87171', marginTop: 8 }}>
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '8px 12px', fontSize: 13, color: '#f87171', marginTop: 8 }}>
                 {forkError}
               </div>
             )}
@@ -1185,7 +1183,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     <div key={p.folder} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                      borderRadius: 8, padding: '10px 14px',
+                      padding: '10px 14px',
                     }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>{p.title}</div>
@@ -1224,7 +1222,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
       {showBillingModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowBillingModal(false)}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Subscription</h3>
 
             {billingLoading ? (
@@ -1232,13 +1230,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             ) : (
               <>
                 {/* Current plan */}
-                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
+                <div style={{ background: 'var(--bg-primary)', padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontSize: 14, fontWeight: 600 }}>Current plan</span>
                     <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase',
-                      background: planInfo?.plan !== 'free' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.08)',
-                      color: planInfo?.plan !== 'free' ? '#818cf8' : 'var(--text-muted)',
+                      fontSize: 11, fontWeight: 700, padding: '3px 10px', textTransform: 'uppercase',
+                      background: planInfo?.plan !== 'free' ? 'var(--accent-wash)' : 'var(--bg-hover)',
+                      color: planInfo?.plan !== 'free' ? 'var(--accent-light)' : 'var(--text-muted)',
                     }}>{planInfo?.planName || planInfo?.plan || 'Free'}</span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1255,7 +1253,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 </div>
 
                 {/* Usage */}
-                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, marginBottom: 20, border: '1px solid var(--border)' }}>
+                <div style={{ background: 'var(--bg-primary)', padding: 16, marginBottom: 20, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Usage</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -1283,7 +1281,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                       <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
                         {plansForSale.filter(p => p.id !== planInfo?.plan).flatMap(p => (p.prices?.length ? p.prices : [null]).map(price => (
                           <button key={`${p.id}-${price?.priceId || ''}`} onClick={() => handleUpgrade(p.id, price?.priceId)} title={planSummary(p).join(' · ')}
-                            style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                            style={{ padding: '10px 16px', border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                             Upgrade to {p.name} — {price && price.amountCents != null ? priceText(edu ? discountedPrice(price, edu) : price) : price?.interval === 'year' ? 'yearly' : p.priceLabel || 'monthly'}
                           </button>
                         )))}
@@ -1299,15 +1297,15 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 })()}
                 <div style={{ display: 'flex', gap: 8 }}>
                   {!billingStatus?.active ? null : billingStatus.cancelAtPeriodEnd ? (
-                    <button onClick={handleResumeSubscription} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    <button onClick={handleResumeSubscription} style={{ flex: 1, padding: '10px 16px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                       Resume subscription
                     </button>
                   ) : (
-                    <button onClick={handleCancelSubscription} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+                    <button onClick={handleCancelSubscription} style={{ flex: 1, padding: '10px 16px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
                       Cancel renewal
                     </button>
                   )}
-                  <button onClick={() => setShowBillingModal(false)} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+                  <button onClick={() => setShowBillingModal(false)} style={{ padding: '10px 16px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
                     Close
                   </button>
                 </div>

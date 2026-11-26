@@ -153,6 +153,90 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .empty-state { grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--text-muted); }
 .empty-state svg { opacity: 0.3; margin-bottom: 16px; }
 
+/* The dashboard in the landing page's style (Landing Page, below): ink, or
+   paper when light is chosen; the red and blue of 3D glasses as offset
+   shadows; Archivo headings over Inter; square corners. Its own values for
+   the app's tokens, so the editor keeps the app's, and the dialogs it opens
+   (inside .home-page) take them too. */
+.home-page {
+  --bg-primary: #0c0c0d; --bg-secondary: #111113; --bg-panel: #141416; --bg-card: #18181a;
+  --bg-hover: #232326; --bg-active: #2c2c30; --border: rgba(250, 250, 247, 0.14); --border-light: rgba(250, 250, 247, 0.3);
+  --text-primary: #fafaf7; --text-secondary: #c4c4c2; --text-muted: #9c9c9a;
+  --accent: #1e60ff; --accent-hover: #3b74ff; --accent-light: #8db0ff; --accent-wash: rgba(30, 96, 255, 0.16);
+  --hp-red: #ee2b2b; --hp-blue: #1e60ff; --hp-tag: #ff8a80; --hp-edge: rgba(250, 250, 247, 0.45);
+  --hp-stereo: 8px;
+  --hp-shadow: calc(-1 * var(--hp-stereo)) 0 0 var(--hp-red), var(--hp-stereo) 0 0 var(--hp-blue);
+  --hp-small-shadow: calc(-0.5 * var(--hp-stereo)) 0 0 var(--hp-red), calc(0.5 * var(--hp-stereo)) 0 0 var(--hp-blue);
+  --hp-display: 'Archivo', 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: dark;
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+[data-theme="light"] .home-page {
+  --bg-primary: #efefea; --bg-secondary: #fafaf7; --bg-panel: #fafaf7; --bg-card: #fafaf7;
+  --bg-hover: #e3e3dc; --bg-active: #d9d9d3; --border: #d9d9d3; --border-light: #bdbdb6;
+  --text-primary: #0c0c0d; --text-secondary: #3d3d40; --text-muted: #66666a;
+  --accent-hover: #1a56e8; --accent-light: #1a56e8; --accent-wash: rgba(30, 96, 255, 0.12);
+  --hp-tag: #c81e1e; --hp-edge: #0c0c0d;
+  color-scheme: light;
+}
+.home-page :focus-visible { outline: 3px solid var(--hp-blue); outline-offset: 2px; }
+.home-page .home-header { padding: 10px 24px; background: var(--bg-primary); }
+[data-theme="light"] .home-page .home-header { background: var(--bg-secondary); }
+/* On a narrow screen its two groups wrap, and their buttons onto more rows */
+.home-page .home-header { flex-wrap: wrap; gap: 10px 16px; }
+.home-page .home-header > div { flex-wrap: wrap; }
+.home-page .home-header .btn { white-space: nowrap; }
+@media (max-width: 640px) { .home-page .home-header { padding: 10px 16px; } }
+.home-page .home-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); }
+.home-page .home-logo svg { display: block; flex: none; }
+.home-page .home-logo span { color: inherit; }
+.home-page .home-logo .beta-badge { margin: 0; padding: 3px 6px; vertical-align: baseline; font: 700 10.5px/1.2 'Inter', sans-serif; letter-spacing: 0.1em; color: var(--bg-primary); background: var(--text-primary); border: 0; border-radius: 0; }
+.home-link { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); transition: color 0.15s, border-color 0.15s; }
+.home-link:hover { color: var(--text-primary); border-color: var(--text-primary); }
+/* Buttons: hovered, the two eyes' copies of the main one move apart */
+.home-page .btn { border-radius: 0; font-weight: 600; }
+.home-page .btn-primary { color: var(--bg-primary); background: var(--text-primary); box-shadow: var(--hp-small-shadow); transition: box-shadow 0.15s, background-color 0.15s; }
+.home-page .btn-primary:hover:not(:disabled) { background: var(--text-primary); box-shadow: var(--hp-shadow); }
+.home-page .btn-primary:disabled { opacity: 0.5; box-shadow: none; }
+.home-page .btn-secondary { background: transparent; color: var(--text-primary); border: 1.5px solid var(--hp-edge); }
+.home-page .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-primary); }
+.home-page .btn-ghost, .home-page .btn-icon { border-radius: 0; }
+.home-page .btn-icon.active { background: var(--text-primary); color: var(--bg-primary); }
+.home-page .home-content { padding: 36px clamp(16px, 3vw, 40px); }
+.home-page .home-content h2 { font: 800 24px/1.15 var(--hp-display); letter-spacing: -0.02em; text-transform: none; color: var(--text-primary); }
+.home-page .deck-crumb { border-radius: 0; font: 800 24px/1.15 var(--hp-display); letter-spacing: -0.02em; text-transform: none; color: var(--text-muted); }
+.home-page .deck-crumb.current { color: var(--text-primary); }
+/* Notes: the sign-up questions, a team being set up, the plan's limit */
+.home-page .survey-banner, .home-note { margin-bottom: 16px; padding: 12px 16px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); background: var(--bg-card); border: 1.5px solid var(--text-primary); border-radius: 0; }
+.home-page .survey-banner .btn, .home-note-btn { padding: 5px 14px; font-size: 12px; }
+.home-note-btn { margin-left: 8px; }
+/* Spaces: yours and your teams' */
+.home-page .spaces-heading { letter-spacing: 0.12em; }
+.home-page .spaces-item { min-height: 36px; border-radius: 0; }
+.home-page .spaces-item.active { background: var(--text-primary); color: var(--bg-primary); }
+/* Presentations, templates and folders: square, under a rule in the ink */
+.home-page .presentation-card { border: 0; border-top: 4px solid var(--text-primary); border-radius: 0; background: var(--bg-card); transition: transform 0.15s, box-shadow 0.15s; }
+.home-page .presentation-card:hover { border-color: var(--text-primary); transform: translateY(-3px); box-shadow: var(--hp-small-shadow); }
+.home-page .card-info h3 { font: 700 15px/1.3 var(--hp-display); letter-spacing: -0.01em; }
+.home-page .card-locked { color: var(--hp-tag); }
+.home-page .new-card { border: 1.5px dashed var(--border-light); border-radius: 0; }
+.home-page .new-card:hover { border-color: var(--text-primary); color: var(--text-primary); background: var(--bg-hover); }
+.home-page .folder-tile { border-radius: 0; border-top: 3px solid var(--text-primary); }
+.home-page .folder-tile:hover, .home-page .folder-tile:focus-visible { border-color: var(--text-primary); }
+.home-page .view-switch { border-radius: 0; border-color: var(--hp-edge); }
+.home-page .view-switch button[aria-pressed="true"] { background: var(--text-primary); color: var(--bg-primary); }
+.home-page .deck-list-wrap { border-radius: 0; border-top: 4px solid var(--text-primary); }
+.home-page .deck-row-thumb { border-radius: 0; }
+.home-page .drop-target, .home-page .deck-crumb.drop-target, .home-page .deck-row.drop-target td { background: var(--accent-wash) !important; outline-color: var(--hp-blue); }
+/* Its dialogs */
+.home-page .modal-overlay { background: rgba(6, 6, 7, 0.8); }
+.home-page .modal { background: var(--bg-secondary); border: 1px solid var(--border); border-top: 4px solid var(--text-primary); border-radius: 0; }
+.home-page .modal h2 { font: 800 22px/1.2 var(--hp-display); letter-spacing: -0.02em; }
+.home-page .form-input, .home-page .form-select, .home-page .theme-choice, .home-page .theme-swatch { border-radius: 0; }
+.home-page .form-input:focus, .home-page .form-select:focus { border-color: var(--text-primary); }
+
 /* EDITOR PAGE */
 .editor-page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
