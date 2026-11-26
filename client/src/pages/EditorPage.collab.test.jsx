@@ -230,4 +230,24 @@ describe('the editor, shared', () => {
     expect(api.updatePresentation).toHaveBeenLastCalledWith('p1', expect.objectContaining({ title: 'Mine' }))
     expect(el.querySelector('[role="alert"]')).toBeNull()
   })
+
+  it('opens a presentation past its plan\'s limit read-only, saying why, with the plans for its owner', async () => {
+    const message = 'This presentation is read-only: the Free plan keeps your 3 newest presentations editable. Upgrade, or delete a newer presentation, to edit it.'
+    api.getCollaborators.mockResolvedValue({ role: 'owner', you: 'u-me', inviteToken: null, people: [], locked: true, lockedMessage: message })
+    api.getPresentation.mockImplementation(async () => structuredClone(saved))
+    el = document.createElement('div')
+    document.body.appendChild(el)
+    root = createRoot(el)
+    await act(async () => root.render(<EditorPage presentationId="p1" onGoHome={() => {}} />))
+    await act(async () => { await vi.runOnlyPendingTimersAsync() })
+    const notice = el.querySelector('.editor-locked')
+    expect(notice.textContent).toContain(message)
+    expect(notice.querySelector('a').getAttribute('href')).toBe('/dashboard?plans=1')
+    expect([...el.querySelectorAll('.save-indicator')].map(s => s.textContent)).toContain('Read-only')
+    // Edits go nowhere
+    await rename('Renamed')
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(api.updatePresentation).not.toHaveBeenCalled()
+    expect(el.querySelector('.editor-header .title-input').value).toBe('Group talk')
+  })
 })

@@ -44,13 +44,15 @@ async function getOrCreateCustomer(storage, userId, email, name) {
 }
 
 // Checkout for `plan`, at `price` (one of plan.prices; its first by default)
-async function createCheckoutSession(storage, userId, email, name, plan, successUrl, cancelUrl, price = plan.prices[0]) {
+// opts.coupon: a coupon to take off (the education price); without one, the
+// checkout takes promotion codes (Stripe allows one or the other)
+async function createCheckoutSession(storage, userId, email, name, plan, successUrl, cancelUrl, price = plan.prices[0], opts = {}) {
   const s = getStripe()
   const customerId = await getOrCreateCustomer(storage, userId, email, name)
   const session = await s.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
-    allow_promotion_codes: true,
+    ...(opts.coupon ? { discounts: [{ coupon: opts.coupon }] } : { allow_promotion_codes: true }),
     line_items: [{ price: price.priceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -71,6 +73,29 @@ async function createPortalSession(storage, userId) {
     return_url: process.env.APP_URL || 'https://parallax-presentations.com/dashboard',
   })
   return session
+}
+
+// What a coupon takes off: { percentOff, amountOffCents, currency, duration,
+// durationMonths }, or null when there's no such coupon or it's no longer
+// valid. Asked of Stripe at most every 10 minutes.
+const coupons = new Map()
+async function describeCoupon(couponId) {
+  const hit = coupons.get(couponId)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value
+  let value = null
+  try {
+    const c = await getStripe().coupons.retrieve(couponId)
+    if (c.valid !== false) {
+      value = {
+        percentOff: c.percent_off ?? null, amountOffCents: c.amount_off ?? null, currency: c.currency || null,
+        duration: c.duration, durationMonths: c.duration_in_months ?? null,
+      }
+    }
+  } catch (err) {
+    if (!(err.statusCode === 404 || err.code === 'resource_missing')) throw err
+  }
+  coupons.set(couponId, { at: Date.now(), value })
+  return value
 }
 
 // What Stripe says a price is, for an admin adding it to a plan: { recurring,
@@ -306,7 +331,7 @@ async function getSubscriptionStatus(storage, userId) {
 }
 
 module.exports = {
-  isEnabled, createCheckoutSession, createPortalSession, describePrice, handleWebhook,
+  isEnabled, createCheckoutSession, createPortalSession, describePrice, describeCoupon, handleWebhook,
   createTeamCheckoutSession, createTeamPortalSession, setTeamSeats, teamStatus,
   cancelSubscription, resumeSubscription, getSubscriptionStatus, getStripe,
 }

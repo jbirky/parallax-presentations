@@ -378,6 +378,12 @@ export const api = {
     return b
   }),
   createPortal: () => authFetch(`${BASE}/billing/portal`, { method: 'POST' }).then(safeJson),
+  // The education price's school domains (admins): { domains, coupon }
+  getEducationDomains: () => authFetch(`${BASE}/admin/education-domains`).then(r => checked(r, 'Could not load the school domains')),
+  addEducationDomain: (domain, note) => authFetch(`${BASE}/admin/education-domains`, json('POST', { domain, note })).then(r => checked(r, 'Could not add the domain')),
+  dropEducationDomain: (domain) => authFetch(`${BASE}/admin/education-domains/${encodeURIComponent(domain)}`, { method: 'DELETE' }).then(r => checked(r, 'Could not take the domain off')),
+  // What checkout takes off: { promotionCodes, education: { percentOff, …, eligible, domain } | null }
+  getBillingDiscounts: () => authFetch(`${BASE}/billing/discounts`).then(r => checked(r, 'Could not load discounts')),
   getBillingStatus: () => authFetch(`${BASE}/billing/status`).then(safeJson),
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
   resumeSubscription: () => authFetch(`${BASE}/billing/resume`, { method: 'POST' }).then(safeJson),

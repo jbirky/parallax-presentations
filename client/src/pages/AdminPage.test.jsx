@@ -135,11 +135,11 @@ describe('the admin tabs', () => {
 })
 
 const plan = (id, name, fields) => ({
-  id, name, maxPresentations: null, expirationDays: null, maxFileBytes: null, stripePriceId: null,
+  id, name, maxPresentations: null, maxFileBytes: null, stripePriceId: null,
   priceLabel: null, public: false, sortOrder: 0, assignable: id !== 'guest', ...fields,
 })
 const PLANS = [
-  plan('free', 'Free', { storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, priceLabel: 'Free', public: true }),
+  plan('free', 'Free', { storageBytes: 100 * MB, maxPresentations: 3, priceLabel: 'Free', public: true }),
   plan('pro', 'Pro', { storageBytes: 5 * 1024 * MB, stripePriceId: 'price_pro123', priceLabel: '$5/mo', public: true, sortOrder: 1,
     prices: [{ priceId: 'price_pro123', interval: 'month', amountCents: 1000, currency: 'usd' }, { priceId: 'price_proYear1', interval: 'year', amountCents: 9600, currency: 'usd' }] }),
   plan('team', 'Team', { storageBytes: 25 * 1024 * MB, sortOrder: 2, perSeat: true, minSeats: 3,
@@ -151,23 +151,22 @@ describe('planChangeSummary', () => {
   const [free, pro, team] = PLANS
   const user = { name: 'Near', email: 'near@example.com', plan: 'free', hasSubscription: false }
 
-  it('says presentations stop expiring when moving off free', () => {
+  it('says what moving to a plan without a limit does', () => {
     const text = planChangeSummary(user, free, pro)
     expect(text).toContain('Move Near from Free to Pro?')
     expect(text).toContain('Storage limit: 5 GB.')
-    expect(text).toContain('Their presentations will stop expiring.')
+    expect(text).not.toContain('read-only')
   })
 
-  it('says only new presentations expire when moving to free', () => {
+  it('says older presentations become read-only when moving to a plan with a limit', () => {
     const text = planChangeSummary({ ...user, plan: 'pro' }, pro, free)
     expect(text).toContain('Storage limit: 100 MB.')
-    expect(text).toContain('new ones will expire after 30 days')
-    expect(text).not.toContain('stop expiring')
+    expect(text).toContain('They can edit their 3 newest presentations; older ones become read-only.')
   })
 
-  it('leaves expiry out between plans that don’t expire, and warns about Stripe', () => {
+  it('warns about Stripe', () => {
     const text = planChangeSummary({ ...user, plan: 'pro', hasSubscription: true }, pro, team)
-    expect(text).not.toContain('expir')
+    expect(text).not.toContain('read-only')
     expect(text).toContain('They pay through Stripe')
   })
 })
@@ -177,10 +176,12 @@ describe('plan editor', () => {
 
   it('round-trips a plan through the form', () => {
     const form = toPlanForm(free)
-    expect(form).toMatchObject({ storage: '100', storageUnit: 'MB', maxPresentations: '3', expirationDays: '30', maxFileMB: '', stripePriceId: '' })
-    expect(toPlanForm(pro)).toMatchObject({ storage: '5', storageUnit: 'GB', maxPresentations: '', expirationDays: '' })
+    expect(form).toMatchObject({ storage: '100', storageUnit: 'MB', maxPresentations: '3', maxFileMB: '', stripePriceId: '' })
+    expect(form.expirationDays).toBeUndefined()
+    expect(toPlanForm(pro)).toMatchObject({ storage: '5', storageUnit: 'GB', maxPresentations: '' })
     const back = fromPlanForm(form)
-    expect(back).toMatchObject({ id: 'free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null })
+    expect(back).toMatchObject({ id: 'free', storageBytes: 100 * MB, maxPresentations: 3, maxFileBytes: null, stripePriceId: null })
+    expect(back.expirationDays).toBeUndefined()
     expect(fromPlanForm({ ...form, storage: '1.5', storageUnit: 'GB', maxFileMB: '50' })).toMatchObject({ storageBytes: 1536 * MB, maxFileBytes: 50 * MB })
     // Live datasets: how many, and how often they may refresh
     expect(toPlanForm({ ...free, liveDatasets: 1, minRefresh: 'daily' })).toMatchObject({ liveDatasets: '1', minRefresh: 'daily' })
@@ -189,11 +190,9 @@ describe('plan editor', () => {
   })
 
   it('warns about what a save does to accounts on the plan', () => {
-    expect(planEditEffects(free, { ...free, expirationDays: null }, 5)).toEqual(['Presentations of the 5 accounts on it will stop expiring.'])
-    expect(planEditEffects(pro, { ...pro, expirationDays: 14 }, 1)[0]).toContain('Only presentations made from now on will expire')
     expect(planEditEffects(free, { ...free, storageBytes: 50 * MB, maxPresentations: 2 }, 1)).toEqual([
       'Accounts on it storing more than 50 MB can’t upload until they free space.',
-      'Accounts on it with more than 2 presentations keep them but can’t make more.',
+      'Accounts on it with more than 2 presentations can edit only their 2 newest; older ones become read-only.',
     ])
     expect(planEditEffects(pro, { ...pro, stripePriceId: 'price_new123' }, 0)[0]).toContain('Existing subscribers stay on the old price')
     expect(planEditEffects(free, { ...free, name: 'Starter' }, 9)).toEqual([])

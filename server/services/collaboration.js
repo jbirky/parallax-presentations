@@ -16,6 +16,7 @@ const { v4: uuidv4 } = require('uuid')
 const { tileColumns, tileRow } = require('../storage/deck-tile')
 const { IS_CLOUD } = require('../middleware/auth')
 const { refuseUpload } = require('../middleware/upload-quota')
+const deckLocks = require('./deck-locks')
 
 // Deck roles, weakest first: a viewer opens and presents; an editor also
 // changes it; an owner also deletes it, shares it, presents it live and
@@ -34,14 +35,16 @@ function teamDeckRole(teamRole, isCreator) {
 }
 
 // userId's access to presentation id, or null when they have none:
-//   { ownerId, ownerPlan, role, teamId, teamRole, seats, lapsed }
+//   { ownerId, ownerPlan, role, teamId, teamRole, seats, lapsed, locked }
 // role is 'owner', 'editor' or 'viewer' (DECK_ROLES). ownerId is who made
 // it: storage calls are made as them. For a team deck, ownerPlan is the
 // team's plan, whose storage is shared by the team (seats × the plan's), and
-// once the team's subscription has lapsed everyone only views.
+// once the team's subscription has lapsed everyone only views. A personal
+// presentation past its owner's plan's limit is locked: read-only for
+// everyone, its owner still managing it (services/deck-locks.js).
 async function presentationAccess(storage, id, userId) {
   const { rows } = await storage.query(
-    `SELECT p.user_id AS "ownerId", u.plan AS "userPlan", p.team_id AS "teamId",
+    `SELECT p.user_id AS "ownerId", u.plan AS "userPlan", p.team_id AS "teamId", p.created_at AS "createdAt",
             t.plan AS "teamPlan", t.seats, t.status AS "teamStatus",
             m.role AS "teamRole", c.role AS "collabRole"
        FROM presentations p
@@ -65,6 +68,9 @@ async function presentationAccess(storage, id, userId) {
     if (role && r.teamStatus === 'lapsed') role = 'viewer'
   }
   if (!role) return null
+  const locked = !r.teamId && IS_CLOUD
+    ? await deckLocks.isPastLimit(storage, { id, ownerId: r.ownerId, createdAt: r.createdAt }, deckLocks.editableLimit(r.userPlan))
+    : false
   return {
     ownerId: r.ownerId,
     ownerPlan: r.teamId ? r.teamPlan : r.userPlan,
@@ -73,6 +79,7 @@ async function presentationAccess(storage, id, userId) {
     teamRole: r.teamRole || null,
     seats: r.teamId ? r.seats : null,
     lapsed: r.teamStatus === 'lapsed',
+    locked,
   }
 }
 
@@ -85,7 +92,7 @@ function deckAccess(storage, param = 'id') {
   return async (req, res, next) => {
     const id = req.params[param]
     if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) {
-      req.deck = { id, ownerId: req.userId, ownerPlan: req.userPlan, role: 'owner', teamId: null, teamRole: null, seats: null, lapsed: false }
+      req.deck = { id, ownerId: req.userId, ownerPlan: req.userPlan, role: 'owner', teamId: null, teamRole: null, seats: null, lapsed: false, locked: false }
       return next()
     }
     try {
@@ -104,13 +111,24 @@ function deckAccess(storage, param = 'id') {
 }
 
 // For routes that change a presentation, after deckAccess: not for viewers
+// or for a presentation past its owner's plan's limit (locked)
 function canEdit(req, res, next) {
+  if (req.deck?.role !== 'viewer' && !req.deck?.locked) return next()
+  const error = req.deck.locked
+    ? deckLocks.lockedMessage(req.deck.ownerPlan, { own: req.deck.ownerId === req.userId })
+    : req.deck.lapsed
+      ? 'This team’s subscription has ended, so its presentations can be viewed but not changed.'
+      : 'You can view this presentation but not change it.'
+  const code = req.deck.locked ? 'deck_locked' : 'view_only'
+  if (req.is('multipart/form-data') && !req.readableEnded) return refuseUpload(req, res, { status: 403, error, code })
+  res.status(403).json({ error, code })
+}
+
+// For copying a presentation, after deckAccess: anyone who can edit it, and
+// a locked one too (a copy is a new presentation, which they can edit)
+function canCopy(req, res, next) {
   if (req.deck?.role !== 'viewer') return next()
-  const error = req.deck.lapsed
-    ? 'This team’s subscription has ended, so its presentations can be viewed but not changed.'
-    : 'You can view this presentation but not change it.'
-  if (req.is('multipart/form-data') && !req.readableEnded) return refuseUpload(req, res, { status: 403, error })
-  res.status(403).json({ error })
+  res.status(403).json({ error: 'You can view this presentation but not change it.', code: 'view_only' })
 }
 
 // For routes only the owner may use, after deckAccess. On a team deck, that's
@@ -210,7 +228,7 @@ async function listSharedPresentations(storage, userId) {
             p.expires_at AS "expiresAt",
             p.data->'slides'->0->'background' AS thumbnail,
             ${tileColumns('p')},
-            c.role,
+            c.role, p.user_id AS "ownerId", u.plan AS "ownerPlan",
             COALESCE(NULLIF(u.name, ''), u.email) AS "ownerName"
        FROM presentation_collaborators c
        JOIN presentations p ON p.id = c.presentation_id
@@ -224,7 +242,7 @@ async function listSharedPresentations(storage, userId) {
 }
 
 module.exports = {
-  DECK_ROLES, teamDeckRole, presentationAccess, deckAccess, canEdit, ownerOnly,
+  DECK_ROLES, teamDeckRole, presentationAccess, deckAccess, canEdit, canCopy, ownerOnly,
   listCollaborators, emailHint, getInviteToken, setInviteToken, describeInvite, acceptInvite, removeCollaborator,
   listSharedPresentations,
 }

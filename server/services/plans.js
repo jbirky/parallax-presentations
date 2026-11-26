@@ -17,10 +17,10 @@ const UPLOAD_CAP_BYTES = 500 * MB // multer's limit in index.js
 const INTERVALS = ['month', 'year']
 
 const BUILT_IN = [
-  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0, liveDatasets: 1, minRefresh: 'daily', perSeat: false, minSeats: null },
-  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1, liveDatasets: 25, minRefresh: 'hourly', perSeat: false, minSeats: null },
-  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2, liveDatasets: 100, minRefresh: 'hourly', perSeat: true, minSeats: 3 },
-  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, expirationDays: null, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3, liveDatasets: 0, minRefresh: 'weekly', perSeat: false, minSeats: null },
+  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0, liveDatasets: 1, minRefresh: 'daily', perSeat: false, minSeats: null },
+  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1, liveDatasets: 25, minRefresh: 'hourly', perSeat: false, minSeats: null },
+  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2, liveDatasets: 100, minRefresh: 'hourly', perSeat: true, minSeats: 3 },
+  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3, liveDatasets: 0, minRefresh: 'weekly', perSeat: false, minSeats: null },
 ].map(p => withPrices(p, []))
 
 // The plan with its prices: [{ priceId, interval, amountCents, currency }],
@@ -51,7 +51,6 @@ function fromRow(r) {
     name: r.name,
     storageBytes: Number(r.storage_bytes),
     maxPresentations: r.max_presentations === null ? Infinity : r.max_presentations,
-    expirationDays: r.expiration_days,
     maxFileBytes: r.max_file_bytes === null ? null : Number(r.max_file_bytes),
     stripePriceId: r.stripe_price_id,
     priceLabel: r.price_label,
@@ -169,7 +168,6 @@ function validatePlan(id, input) {
     name,
     storageBytes,
     maxPresentations: optionalInt(input.maxPresentations, 'Presentations', 1, 100000),
-    expirationDays: optionalInt(input.expirationDays, 'Expiry', 1, 3650),
     maxFileBytes: optionalInt(input.maxFileBytes, 'Largest file', MB, UPLOAD_CAP_BYTES),
     stripePriceId,
     priceLabel,
@@ -201,7 +199,7 @@ async function createPlan(storage, input) {
       `INSERT INTO plans (id, name, storage_bytes, max_presentations, expiration_days, max_file_bytes, stripe_price_id, price_label, public, sort_order,
                           live_datasets, min_refresh, per_seat, min_seats)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
+      [id, p.name, p.storageBytes, p.maxPresentations, null, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
         p.liveDatasets, p.minRefresh, p.perSeat, p.minSeats]
     )
   } catch (err) { throw friendlyWriteError(err) }
@@ -209,34 +207,25 @@ async function createPlan(storage, input) {
   return planFor(id)
 }
 
-// Saves a plan's fields. With expiry off, presentations of accounts on it
-// stop expiring, or the sweeper would still delete them; turning expiry on
-// or changing its length only applies to new presentations. Returns the plan
-// and how many presentations stopped expiring.
+// Saves a plan's fields. (Presentations don't expire any more: past a plan's
+// limit they're read-only, services/deck-locks.js; expiration_days stays
+// empty.) Returns the plan.
 async function updatePlan(storage, id, input) {
   const p = validatePlan(id, input)
-  let rows
+  let rowCount
   try {
-    ({ rows } = await storage.query(`
-      WITH changed AS (
-        UPDATE plans SET name = $2, storage_bytes = $3, max_presentations = $4, expiration_days = $5,
-               max_file_bytes = $6, stripe_price_id = $7, price_label = $8, public = $9, sort_order = $10,
-               live_datasets = $11, min_refresh = $12, per_seat = $13, min_seats = $14, updated_at = NOW()
-         WHERE id = $1 RETURNING id
-      ), unexpired AS (
-        UPDATE presentations SET expires_at = NULL
-         WHERE $5::int IS NULL AND expires_at IS NOT NULL AND EXISTS (SELECT 1 FROM changed)
-           AND user_id IN (SELECT u.id FROM users u WHERE COALESCE(u.plan, 'free') = $1)
-        RETURNING id
-      )
-      SELECT (SELECT COUNT(*) FROM changed)::int AS found, (SELECT COUNT(*) FROM unexpired)::int AS unexpired`,
-      [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
+    ({ rowCount } = await storage.query(`
+      UPDATE plans SET name = $2, storage_bytes = $3, max_presentations = $4, expiration_days = NULL,
+             max_file_bytes = $5, stripe_price_id = $6, price_label = $7, public = $8, sort_order = $9,
+             live_datasets = $10, min_refresh = $11, per_seat = $12, min_seats = $13, updated_at = NOW()
+       WHERE id = $1`,
+      [id, p.name, p.storageBytes, p.maxPresentations, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
         p.liveDatasets, p.minRefresh, p.perSeat, p.minSeats]
     ))
   } catch (err) { throw friendlyWriteError(err) }
-  if (!rows[0].found) throw new PlanError('No such plan.', 404)
+  if (!rowCount) throw new PlanError('No such plan.', 404)
   await loadPlans(storage)
-  return { plan: planFor(id), unexpired: rows[0].unexpired }
+  return { plan: planFor(id) }
 }
 
 // Deletes a plan no account is on

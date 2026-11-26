@@ -73,8 +73,8 @@ async function checkUpload(storage, req, { maxFileBytes, storageBytes }, message
 // Browsers often report a network error instead of the response if the server
 // answers and closes the connection while an upload is still being sent, so
 // read the rest of the body first.
-function refuseUpload(req, res, { status, error }) {
-  const send = () => { if (!res.headersSent) res.status(status).json({ error }) }
+function refuseUpload(req, res, { status, error, code }) {
+  const send = () => { if (!res.headersSent) res.status(status).json(code ? { error, code } : { error }) }
   const length = Number(req.get('content-length'))
   if (!length || length > DRAIN_LIMIT) {
     res.set('Connection', 'close')

@@ -554,4 +554,22 @@ describe('AI collaborator links', { skip }, () => {
     const res = await fetch(`${t.base}/mcp/${secret}`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'hello' })
     assert.equal(res.status, 415)
   })
+
+  it('reads but doesn\'t change a deck past its owner\'s plan\'s limit', async () => {
+    const owner = t.user('owner10')
+    await call(owner, 'GET', '/api/me')
+    const oldest = await createDeck(owner, 'Oldest', { slides: SLIDES })
+    const secret = secretOf((await makeLink(owner, oldest)).body.url)
+    // The Free plan keeps three editable: three newer ones make it read-only
+    for (const title of ['Newer', 'Newer still', 'Newest']) {
+      await new Promise(resolve => setTimeout(resolve, 15))
+      await createDeck(owner, title)
+    }
+    const read = await callTool(secret, 'get_deck')
+    assert.equal(read.body.result.isError, undefined, toolText(read))
+    const refused = await callTool(secret, 'update_deck', { title: 'Renamed' })
+    assert.equal(refused.body.result.isError, true)
+    assert.match(toolText(refused), /read-only: the Free plan keeps its owner’s 3 newest presentations editable/)
+    assert.equal((await call(owner, 'GET', `/api/presentations/${oldest}`)).body.title, 'Oldest')
+  })
 })

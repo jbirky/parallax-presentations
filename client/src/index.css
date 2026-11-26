@@ -1285,3 +1285,19 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 /* While something on the canvas is dragged, embeds' frames let the mouse
    through, so letting go is heard (holdFrames in SlideCanvas.jsx) */
 .px-frames-held iframe { pointer-events: none !important; }
+
+/* A presentation past its plan's limit (read-only), on its card and row */
+.card-locked { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #f59e0b; margin: 2px 0 0; }
+.deck-row-thumb { position: relative; }
+.deck-row-lock { position: absolute; right: 2px; bottom: 2px; color: #fff; background: rgba(0,0,0,0.55); border-radius: 3px; padding: 1px; }
+/* Notes in the billing dialog: the education price, promotion codes */
+.billing-note { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.5; }
+
+/* A read-only presentation's notice, above the editor (EditorPage) */
+.editor-locked { display: flex; align-items: center; gap: 12px; padding: 7px 16px; font-size: 12px; background: rgba(245,158,11,0.12); color: var(--text-primary); border-bottom: 1px solid rgba(245,158,11,0.3); }
+.editor-locked a { color: #f59e0b; font-weight: 600; white-space: nowrap; }
+
+/* The admin's school domains for the education price (AdminPage) */
+.edu-domain-list { list-style: none; padding: 0; margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.edu-domain-list li { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 10px; border: 1px solid var(--border); border-radius: 12px; }
+.edu-domain-note { color: var(--text-muted); }

@@ -176,15 +176,9 @@ async function moveDeck(storage, deckId, userId, userPlan, { teamId = null, fold
 
   // Out of a team, into userId's own presentations: it becomes theirs, under their plan
   if (folderId) await folders.getFolder(storage, own, folderId)
+  // (Past their plan's limit, their oldest presentations become read-only:
+  // services/deck-locks.js.)
   const plan = planFor(userPlan)
-  if (plan.maxPresentations !== Infinity) {
-    const { rows: [{ n }] } = await storage.query(
-      `SELECT COUNT(*)::int AS n FROM presentations
-        WHERE user_id = $1 AND team_id IS NULL AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())`,
-      [userId]
-    )
-    if (n >= plan.maxPresentations) throw new TeamError(403, `The ${plan.name} plan is limited to ${plan.maxPresentations} presentations.`)
-  }
   if (plan.storageBytes) {
     const bytes = await deckBytes(storage, deckId)
     const used = await storageUsedBytes(storage, userId)
@@ -193,10 +187,8 @@ async function moveDeck(storage, deckId, userId, userPlan, { teamId = null, fold
     }
   }
   await storage.query(
-    `UPDATE presentations SET team_id = NULL, folder_id = $4, user_id = $2,
-            expires_at = CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() + make_interval(days => $3::int) END
-      WHERE id = $1`,
-    [deckId, userId, plan.expirationDays || null, folderId || null]
+    'UPDATE presentations SET team_id = NULL, folder_id = $3, user_id = $2 WHERE id = $1',
+    [deckId, userId, folderId || null]
   )
   // Its files now count against them
   await storage.query('UPDATE uploads SET user_id = $2 WHERE presentation_id = $1', [deckId, userId])

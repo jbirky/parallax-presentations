@@ -143,7 +143,8 @@ function createCollab({ storage, userIdForToken, ipOf = req => req.socket.remote
       const access = await presentationAccess(storage, documentName, userId)
       if (!access) throw Forbidden
       // A viewer (of a team deck) follows along; the server drops their changes
-      if (access.role === 'viewer') connectionConfig.readOnly = true
+      // Viewers, and everyone on a presentation past its owner's plan's limit
+      if (access.role === 'viewer' || access.locked) connectionConfig.readOnly = true
       return { userId, role: access.role }
     },
     async onLoadDocument({ documentName, document }) {

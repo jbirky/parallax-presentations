@@ -138,9 +138,8 @@ const planName = (plans, id) => plans.find(p => p.id === id)?.name || id
 export function planChangeSummary(user, from, to) {
   const lines = [`Move ${user.name || user.email} from ${from?.name || user.plan} to ${to.name}?`,
     `Storage limit: ${formatSize(to.storageBytes)}.`]
-  if (from?.expirationDays && !to.expirationDays) lines.push('Their presentations will stop expiring.')
-  if (!from?.expirationDays && to.expirationDays) {
-    lines.push(`Their existing presentations are kept; new ones will expire after ${to.expirationDays} days.`)
+  if (to.maxPresentations != null && (from?.maxPresentations == null || to.maxPresentations < from.maxPresentations)) {
+    lines.push(`They can edit their ${to.maxPresentations} newest presentation${to.maxPresentations === 1 ? '' : 's'}; older ones become read-only.`)
   }
   if (user.hasSubscription) lines.push('They pay through Stripe, so a billing change can switch this back.')
   return lines.join('\n\n')
@@ -159,9 +158,8 @@ function PlanPicker({ user, plans, onChanged }) {
     setMoving(plan)
     setMessage(null)
     try {
-      const { unexpired } = await api.setUserPlan(user.id, plan)
-      setMessage(`Moved to ${to.name}.` +
-        (unexpired ? ` ${unexpired} presentation${unexpired === 1 ? '' : 's'} no longer expire${unexpired === 1 ? 's' : ''}.` : ''))
+      await api.setUserPlan(user.id, plan)
+      setMessage(`Moved to ${to.name}.`)
       await onChanged?.()
     } catch (err) {
       setMessage(`Couldn’t change the plan: ${err.message}`)
@@ -185,7 +183,7 @@ function PlanPicker({ user, plans, onChanged }) {
 // ── Plan editor ──
 
 const EMPTY_PLAN = {
-  id: '', name: '', storageBytes: GB, maxPresentations: null, expirationDays: null, maxFileBytes: null,
+  id: '', name: '', storageBytes: GB, maxPresentations: null, maxFileBytes: null,
   stripePriceId: null, priceLabel: null, public: false, sortOrder: 10, liveDatasets: 0, minRefresh: 'daily',
 }
 
@@ -198,7 +196,6 @@ export function toPlanForm(plan) {
     storage: String(inGB ? plan.storageBytes / GB : Math.round(plan.storageBytes / MB * 10) / 10),
     storageUnit: inGB ? 'GB' : 'MB',
     maxPresentations: plan.maxPresentations == null ? '' : String(plan.maxPresentations),
-    expirationDays: plan.expirationDays == null ? '' : String(plan.expirationDays),
     maxFileMB: plan.maxFileBytes == null ? '' : String(Math.round(plan.maxFileBytes / MB * 10) / 10),
     stripePriceId: plan.stripePriceId || '',
     priceLabel: plan.priceLabel || '',
@@ -219,7 +216,6 @@ export function fromPlanForm(form) {
     name: form.name,
     storageBytes: bytes(form.storage, form.storageUnit === 'GB' ? GB : MB),
     maxPresentations: form.maxPresentations.trim() === '' ? null : Number(form.maxPresentations),
-    expirationDays: form.expirationDays.trim() === '' ? null : Number(form.expirationDays),
     maxFileBytes: bytes(form.maxFileMB, MB),
     stripePriceId: form.stripePriceId.trim() || null,
     priceLabel: form.priceLabel.trim() || null,
@@ -235,19 +231,11 @@ export function fromPlanForm(form) {
 // What saving `next` over `old` does to the `accounts` already on it, for the confirm
 export function planEditEffects(old, next, accounts) {
   const effects = []
-  if (old.expirationDays && !next.expirationDays) {
-    effects.push(!accounts ? 'Presentations will stop expiring.'
-      : `Presentations of ${accounts === 1 ? 'the account' : `the ${accounts} accounts`} on it will stop expiring.`)
-  } else if (!old.expirationDays && next.expirationDays) {
-    effects.push(`Only presentations made from now on will expire, after ${next.expirationDays} days; existing ones won’t.`)
-  } else if (old.expirationDays !== next.expirationDays) {
-    effects.push(`The new expiry applies to presentations made from now on; existing ones keep their dates.`)
-  }
   if (accounts && next.storageBytes < old.storageBytes) {
     effects.push(`Accounts on it storing more than ${formatSize(next.storageBytes)} can’t upload until they free space.`)
   }
   if (accounts && next.maxPresentations != null && (old.maxPresentations == null || next.maxPresentations < old.maxPresentations)) {
-    effects.push(`Accounts on it with more than ${next.maxPresentations} presentations keep them but can’t make more.`)
+    effects.push(`Accounts on it with more than ${next.maxPresentations} presentations can edit only their ${next.maxPresentations} newest; older ones become read-only.`)
   }
   if (old.stripePriceId && old.stripePriceId !== next.stripePriceId) {
     effects.push('Existing subscribers stay on the old price in Stripe; renewals on it will no longer match a plan until you move them.')
@@ -286,8 +274,8 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
     setSaving(true)
     setError(null)
     try {
-      const { unexpired } = await api.savePlan(next, isNew)
-      await onDone?.(unexpired ? `Saved. ${unexpired} presentation${unexpired === 1 ? '' : 's'} stopped expiring.` : 'Saved.')
+      await api.savePlan(next, isNew)
+      await onDone?.('Saved.')
     } catch (err) {
       setError(err.message)
       setSaving(false)
@@ -311,11 +299,8 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
             </select>
           </div>
         </Field>
-        <Field label="Presentations" hint="blank: unlimited">
+        <Field label="Editable presentations" hint="their newest; older ones read-only. Blank: unlimited">
           <input style={fieldInput} type="number" min="1" step="1" value={form.maxPresentations} onChange={set('maxPresentations')} />
-        </Field>
-        <Field label="Expires after (days)" hint="blank: never">
-          <input style={fieldInput} type="number" min="1" step="1" value={form.expirationDays} onChange={set('expirationDays')} />
         </Field>
         <Field label="Largest file (MB)" hint="blank: 500">
           <input style={fieldInput} type="number" min="1" max="500" step="any" value={form.maxFileMB} onChange={set('maxFileMB')} />
@@ -503,7 +488,62 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
         )}
         {plans.map(p => <PlanCard key={p.id} plan={p} accounts={byPlan?.[p.id] || 0} onChanged={onChanged} />)}
       </div>
+      <EducationDomains />
     </section>
+  )
+}
+
+// The education price's schools: domains beyond those known by their ending
+// (.edu, .edu.au, .ac.uk, .k12.wa.us), and whether the coupon is set up
+// (STRIPE_EDUCATION_COUPON, server/services/education.js)
+export function EducationDomains() {
+  const [data, setData] = useState(null)
+  const [domain, setDomain] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const load = () => api.getEducationDomains().then(setData, err => setError(err.message))
+  useEffect(() => { load() }, [])
+  const add = async e => {
+    e.preventDefault()
+    setError('')
+    try {
+      await api.addEducationDomain(domain, note)
+      setDomain('')
+      setNote('')
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+  const drop = async d => {
+    if (!confirm(`Stop counting ${d} as a school?`)) return
+    try { await api.dropEducationDomain(d); await load() } catch (err) { setError(err.message) }
+  }
+  const coupon = data?.coupon
+  return (
+    <div className="edu-domains">
+      <h3 style={{ margin: '18px 0 4px', fontSize: 14 }}>Education price</h3>
+      <p style={styles.sub}>
+        {!coupon
+          ? 'No coupon is set (STRIPE_EDUCATION_COUPON), so checkout takes only promotion codes.'
+          : coupon.percentOff != null || coupon.amountOffCents != null
+            ? `Coupon ${coupon.id}: ${coupon.percentOff != null ? `${coupon.percentOff}%` : `$${(coupon.amountOffCents / 100).toFixed(2)}`} off, for accounts with a verified school email.`
+            : `Coupon ${coupon.id} is set, but Stripe doesn’t know it (or billing is off).`}
+        {' '}Emails ending in .edu, .edu.xx, .ac.xx or .k12.xx.us count already; add other schools’ domains here.
+      </p>
+      {error && <p role="alert" style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
+      <ul className="edu-domain-list">
+        {(data?.domains || []).map(d => (
+          <li key={d.domain}>
+            <span>{d.domain}</span>{d.note && <span className="edu-domain-note"> · {d.note}</span>}
+            <button type="button" className="btn-icon" onClick={() => drop(d.domain)} aria-label={`Stop counting ${d.domain}`} title="Stop counting it">×</button>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={add} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <input style={fieldInput} value={domain} onChange={e => setDomain(e.target.value)} placeholder="ethz.ch" aria-label="School domain" required />
+        <input style={fieldInput} value={note} onChange={e => setNote(e.target.value)} placeholder="ETH Zürich (optional)" aria-label="Note" />
+        <button className="btn btn-secondary" type="submit" style={{ padding: '5px 12px', fontSize: 12 }}>Add</button>
+      </form>
+    </div>
   )
 }
 

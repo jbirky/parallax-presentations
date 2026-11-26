@@ -232,14 +232,11 @@ describe('the landing page’s examples', { skip }, () => {
     assert.equal((await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)).status, 404)
     await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { card: true })
 
-    // Within their plan's presentations
-    let last
-    for (let i = 0; i < 6; i++) {
-      last = await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)
-      if (last.status !== 201) break
+    // As many as they like: past their plan's limit the oldest become read-only
+    for (let i = 0; i < 4; i++) {
+      assert.equal((await t.call(someone, 'POST', `/api/landing-templates/${template.slug}/use`)).status, 201)
     }
-    assert.equal(last.status, 403)
-    assert.match(last.body.message, /limited to \d+ presentations/)
+    assert.ok((await t.call(someone, 'GET', '/api/presentations')).body.some(p => p.locked))
 
     // Back to an example, without the notes; a template again, with them
     await t.call(admin, 'PUT', `/api/admin/examples/${template.slug}`, { kind: 'example' })

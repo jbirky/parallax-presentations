@@ -647,7 +647,8 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
     }).catch(() => {})
   }, [access?.teamId])
 
-  useEffect(() => { viewOnlyRef.current = access?.role === 'viewer' }, [access])
+  // Viewers, and a presentation past its owner's plan's limit (locked: read-only)
+  useEffect(() => { viewOnlyRef.current = access?.role === 'viewer' || !!access?.locked }, [access])
   // A team's deck: the team's library (themes, fonts, datasets, templates) is
   // offered beside the person's own. { id, role, you }, role their team role
   const deckTeam = useMemo(
@@ -945,6 +946,9 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
 
     setSaveStatus('saving')
     saveTimerRef.current = setTimeout(async () => {
+      // A viewer's, or a read-only presentation's, changes aren't saved (the
+      // server would refuse them)
+      if (viewOnlyRef.current) { setSaveStatus(''); return }
       try {
         const saveFn = isTemplate ? api.updateTemplate : api.updatePresentation
         await saveFn(presentation.id, presentation)
@@ -3561,19 +3565,6 @@ function draw() {
         {isTemplate && (
           <span style={{ fontSize: 11, background: '#f59e0b', color: '#000', padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4 }}>TEMPLATE</span>
         )}
-        {presentation.expiresAt && (() => {
-          const days = Math.ceil((new Date(presentation.expiresAt) - Date.now()) / 86400000)
-          if (days > 14) return null
-          return (
-            <span style={{
-              fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0, marginRight: 4,
-              background: days <= 7 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
-              color: days <= 7 ? '#ef4444' : '#f59e0b',
-            }}>
-              {days <= 0 ? 'EXPIRED' : `Expires in ${days}d`}
-            </span>
-          )
-        })()}
         <input
           className="title-input"
           value={presentation.title || ''}
@@ -3586,7 +3577,10 @@ function draw() {
           {access?.role === 'viewer' && (
             <span className="save-indicator" style={{ color: '#f59e0b' }} title="You’re a viewer of this team presentation: you can look through it and present it, but not change it">View only</span>
           )}
-          {access?.role !== 'viewer' && live?.synced && (live.status !== 'connected'
+          {access?.role !== 'viewer' && access?.locked && (
+            <span className="save-indicator" style={{ color: '#f59e0b' }} title={access.lockedMessage || 'This presentation is read-only'}>Read-only</span>
+          )}
+          {access?.role !== 'viewer' && !access?.locked && live?.synced && (live.status !== 'connected'
             ? <span className="save-indicator" style={{ color: '#f59e0b' }} title="Your changes are kept in this tab and sent when the connection is back. Keep the tab open until then.">Reconnecting…</span>
             : <span className="save-indicator" style={live.unsent ? undefined : { color: 'var(--success)' }} title="Saved as you go; everyone editing sees your changes">{live.unsent ? 'Saving…' : 'Saved'}</span>)}
           {saveStatus === 'saving' && <span className="save-indicator">Saving...</span>}
@@ -4785,6 +4779,14 @@ function draw() {
           })
           datasetManager.reload()
         }} />
+      )}
+
+      {/* Past its owner's plan's limit: read-only (services/deck-locks.js on the server) */}
+      {access?.locked && (
+        <div className="editor-locked" role="status">
+          <span>{access.lockedMessage || 'This presentation is read-only.'}</span>
+          {access.role === 'owner' && <a href="/dashboard?plans=1">See plans</a>}
+        </div>
       )}
 
       {/* Editor Body */}

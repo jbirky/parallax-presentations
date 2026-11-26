@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// Wording for a plan's limits, as the server gives them: maxPresentations and
-// expirationDays are null for unlimited and never, maxFileBytes for no limit
+// Wording for a plan's limits, as the server gives them: maxPresentations is
+// how many of their own presentations someone can edit (their newest; older
+// ones are read-only), null for no limit; maxFileBytes null for no limit
 // beyond the server's own.
 
 export function formatSize(bytes) {
@@ -11,17 +12,38 @@ export function formatSize(bytes) {
   return `${Math.round(bytes / (1024 * 1024))} MB`
 }
 
-// One line per limit, e.g. ['3 presentations', '100 MB storage', 'Presentations expire after 30 days']
+// One line per limit, e.g. ['3 editable presentations, older ones read-only', '100 MB storage']
 export function planSummary(limits) {
   if (!limits) return []
-  const { maxPresentations, storageBytes, expirationDays, maxFileBytes } = limits
+  const { maxPresentations, storageBytes, maxFileBytes } = limits
   const lines = [
-    maxPresentations == null ? 'Unlimited presentations' : `${maxPresentations} presentation${maxPresentations === 1 ? '' : 's'}`,
+    maxPresentations == null
+      ? 'Unlimited presentations'
+      : `${maxPresentations} editable presentation${maxPresentations === 1 ? '' : 's'}, older ones read-only`,
     `${formatSize(storageBytes)} storage`,
   ]
   if (maxFileBytes) lines.push(`Files up to ${formatSize(maxFileBytes)} each`)
-  lines.push(expirationDays ? `Presentations expire after ${expirationDays} day${expirationDays === 1 ? '' : 's'}` : 'No expiration')
   return lines
+}
+
+// A price with a coupon taken off: { percentOff } or { amountOffCents }
+export function discountedPrice(price, discount) {
+  if (!price || price.amountCents == null || !discount) return price
+  const off = discount.percentOff != null
+    ? Math.round(price.amountCents * discount.percentOff / 100)
+    : Math.min(price.amountCents, discount.amountOffCents || 0)
+  return { ...price, amountCents: price.amountCents - off }
+}
+
+// What a coupon takes off, in words: "50% off", "50% off for 12 months"
+export function discountText(discount) {
+  if (!discount) return ''
+  const amount = discount.percentOff != null
+    ? `${discount.percentOff}% off`
+    : `${((discount.amountOffCents || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: String(discount.currency || 'usd').toUpperCase() })} off`
+  if (discount.duration === 'repeating' && discount.durationMonths) return `${amount} for ${discount.durationMonths} months`
+  if (discount.duration === 'once') return `${amount} the first time`
+  return amount
 }
 
 // A price as people read it: "$10 a month", "$12 a seat a month" for a plan

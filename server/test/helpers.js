@@ -32,6 +32,9 @@ async function startCloudServer() {
   stub('dotenv', { config: () => ({ parsed: {} }) })
   // What the server asks Clerk to check, by call
   const clerkOptions = {}
+  // The email addresses Clerk has for an account, by auth id; a verified
+  // <id>@test.local otherwise
+  const clerkEmails = {}
   stub('@clerk/express', {
     clerkMiddleware: options => {
       clerkOptions.middleware = options
@@ -41,7 +44,10 @@ async function startCloudServer() {
     getAuth: req => ({ userId: req.testUser }),
     requireAuth: () => (req, res, next) => next(),
     verifyToken: async (token, options) => { clerkOptions.verifyToken = options; return { sub: token } },
-    clerkClient: { users: { getUser: async id => ({ emailAddresses: [{ emailAddress: `${id}@test.local` }], firstName: id, lastName: '', imageUrl: '' }) } },
+    clerkClient: { users: { getUser: async id => ({
+      emailAddresses: clerkEmails[id] || [{ emailAddress: `${id}@test.local`, verification: { status: 'verified' } }],
+      firstName: id, lastName: '', imageUrl: '',
+    }) } },
   })
   // The server's cleanup timers mustn't keep the tests running
   const setIntervalBefore = global.setInterval
@@ -97,7 +103,7 @@ async function startCloudServer() {
     await pool.end()
   }
 
-  return { base, server, pool, run, user: name => `${name}-${run}`, call, userId, createDeck, invite, stop, clerkOptions }
+  return { base, server, pool, run, user: name => `${name}-${run}`, call, userId, createDeck, invite, stop, clerkOptions, clerkEmails }
 }
 
 // Waits until check() is truthy, or fails after `ms`

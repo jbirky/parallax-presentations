@@ -80,10 +80,15 @@ describe('a team\'s decks and folders', { skip }, () => {
     const mine = (await call(member, 'GET', '/api/presentations')).body
     assert.ok(!mine.some(p => p.id === deck))
     assert.equal((await call(member, 'GET', '/api/me')).body.presentationCount, 0)
-    // A free plan's three decks don't stop more team decks
-    for (const n of [1, 2, 3]) await createDeck(member, `Own ${n}`)
-    assert.equal((await call(member, 'POST', '/api/presentations', { title: 'Fourth own' })).status, 403)
+    // A free plan keeps three of their own editable; team decks are never held to it
+    for (const n of [1, 2, 3]) {
+      await createDeck(member, `Own ${n}`)
+      await new Promise(resolve => setTimeout(resolve, 15))
+    }
+    assert.equal((await call(member, 'POST', '/api/presentations', { title: 'Fourth own' })).status, 201)
+    assert.deepEqual((await call(member, 'GET', '/api/presentations')).body.filter(p => p.locked).map(p => p.title), ['Own 1'])
     assert.equal((await call(member, 'POST', '/api/presentations', { title: 'Another team deck', teamId: team })).status, 201)
+    assert.ok(!(await space(member)).presentations.some(p => p.locked))
 
     const roles = async who => Object.fromEntries((await space(who)).presentations.map(p => [p.title, p.role]))
     assert.equal((await roles(member))['Group meeting'], 'owner')
