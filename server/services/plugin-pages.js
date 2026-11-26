@@ -88,36 +88,37 @@ async function renderReadme(markdown, { owner, repo, commit }) {
 
 const GALLERY_STYLES = `
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-  .toolbar input, .toolbar select { font: inherit; font-size: 15px; color: var(--text); background: var(--raise); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  .toolbar input, .toolbar select { min-height: 48px; padding: 0 14px; font: inherit; font-size: 15px; color: var(--text); background: transparent; border: 1.5px solid var(--edge); border-radius: 0; }
+  .toolbar select { cursor: pointer; }
+  .toolbar select option { color: initial; }
   .toolbar input { flex: 1 1 260px; min-width: 0; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .chips button { font: 500 13px Inter, sans-serif; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
-  .chips button[aria-pressed="true"] { color: var(--text); background: rgba(99, 102, 241, 0.18); border-color: rgba(99, 102, 241, 0.6); }
-  .plugins { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; margin-top: 24px; }
-  .pcard { display: flex; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--raise); text-decoration: none; min-width: 0; }
-  .pcard:hover { border-color: rgba(143, 146, 250, 0.6); }
-  .picon { display: grid; place-items: center; flex: none; border-radius: 12px; overflow: hidden; background: var(--card); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chips button { min-height: 40px; padding: 0 14px; font: 600 14px Inter, sans-serif; color: var(--text); background: transparent; border: 1.5px solid var(--text); cursor: pointer; }
+  .chips button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .chips button[aria-pressed="true"] { color: var(--bg); background: var(--text); }
+  .plugins { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 20px; margin-top: 28px; }
+  .pcard { display: flex; gap: 14px; padding: 18px; background: var(--card); border-top: 4px solid var(--text); text-decoration: none; min-width: 0; transition: box-shadow 0.15s, transform 0.15s; }
+  .pcard:hover { transform: translateY(-3px); box-shadow: var(--small-shadow); }
+  .picon { display: grid; place-items: center; flex: none; overflow: hidden; background: var(--bg); }
   .picon img { width: 100%; height: 100%; display: block; }
-  .picon.blank { font-weight: 800; font-size: 22px; color: var(--soft); }
+  .picon.blank { font: 800 22px var(--display); color: var(--text); }
   .pbody { display: grid; gap: 4px; min-width: 0; }
-  .pname { font-weight: 700; font-size: 16.5px; }
-  .pname .ver { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; color: var(--faint); margin-left: 6px; }
+  .pname { font: 700 17px/1.25 var(--display); letter-spacing: -0.01em; }
+  .pname .ver { font: 500 12px var(--mono); letter-spacing: 0; color: var(--faint); margin-left: 6px; }
   .pdesc { color: var(--muted); font-size: 14.5px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .pmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--faint); margin-top: 2px; }
   .pmeta img { width: 18px; height: 18px; border-radius: 50%; vertical-align: -4px; margin-right: 5px; }
   .empty { margin-top: 24px; color: var(--muted); }
-  .publish { margin-top: 64px; padding-top: 28px; border-top: 1px solid var(--line); max-width: 72ch; }
-  .publish h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+  .publish { margin-top: 80px; padding-top: 40px; border-top: 1px solid var(--line); max-width: 72ch; }
+  .publish h2 { margin: 0 0 12px; font: 800 clamp(26px, 3vw, 34px)/1.1 var(--display); letter-spacing: -0.02em; }
   .publish > p { margin: 0; color: var(--muted); }
-  .publish .actions { margin-top: 18px; }
+  .publish .actions { margin-top: 22px; }
   .publish ol { margin: 24px 0 0; padding-left: 22px; color: var(--muted); }
   .publish li { margin-top: 14px; padding-left: 4px; }
   .publish li strong { color: var(--text); }
   .publish a { color: var(--soft); }
-  .publish .btn { padding: 9px 16px; font-size: 14.5px; color: var(--text); }
-  .publish .btn.primary { color: #fff; }
-  .publish code { font: 500 13.5px 'JetBrains Mono', ui-monospace, monospace; color: var(--text); }
-  .publish pre { margin: 10px 0 0; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  .publish code { font: 500 13.5px var(--mono); color: var(--text); }
+  .publish pre { margin: 10px 0 0; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line); overflow-x: auto; }
   .publish pre code { font-size: 13px; line-height: 1.7; color: var(--muted); }`
 
 // Filters by search words and category, and sorts, without a reload
@@ -231,18 +232,19 @@ const PLUGIN_STYLES = `
   .back:hover { color: var(--text); }
   .phead { display: flex; gap: 20px; align-items: flex-start; }
   .phead > div { min-width: 0; }
-  .picon { display: grid; place-items: center; flex: none; border-radius: 16px; overflow: hidden; background: var(--card); }
+  .picon { display: grid; place-items: center; flex: none; overflow: hidden; background: var(--card); }
   .picon img { width: 100%; height: 100%; display: block; }
-  .picon.blank { font-weight: 800; font-size: 34px; color: var(--soft); }
+  .picon.blank { font: 800 34px var(--display); color: var(--text); }
   .byline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 14px 0 0; color: var(--faint); font-size: 14.5px; }
   .byline img { width: 20px; height: 20px; border-radius: 50%; vertical-align: -5px; margin-right: 6px; }
   .byline a { color: var(--muted); }
-  .stage.plugin { background: #14141f; }
+  .stage.plugin { background: var(--card); }
   /* The page inside has the default color scheme; a frame whose scheme differs gets an opaque backdrop */
   .stage.plugin iframe { color-scheme: normal; }
   .cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 40px; margin-top: 48px; align-items: start; }
   @media (max-width: 820px) { .cols { grid-template-columns: minmax(0, 1fr); } .phead .picon { width: 56px !important; height: 56px !important; } }
-  .facts h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; }
+  .facts h2 { margin: 0 0 12px; font: 600 13px Inter, sans-serif; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text); }
+  .facts dl, .facts ul { padding-top: 12px; border-top: 4px solid var(--text); }
   .facts dl { margin: 0 0 28px; display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 14.5px; }
   .facts dt { color: var(--faint); }
   .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -254,9 +256,9 @@ const PLUGIN_STYLES = `
   .readme > :first-child { margin-top: 0; }
   .readme p, .readme ul, .readme ol, .readme table, .readme pre, .readme blockquote { margin: 0 0 1em; }
   .readme a { color: var(--soft); }
-  .readme img { max-width: 100%; height: auto; border-radius: 8px; }
-  .readme code { font: 500 0.88em 'JetBrains Mono', ui-monospace, monospace; background: var(--raise); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
-  .readme pre { background: var(--raise); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+  .readme img { max-width: 100%; height: auto; }
+  .readme code { font: 500 0.88em var(--mono); background: var(--raise); border: 1px solid var(--line); padding: 1px 5px; }
+  .readme pre { background: var(--raise); border: 1px solid var(--line); padding: 14px 16px; overflow-x: auto; }
   .readme pre code { background: none; border: 0; padding: 0; }
   .readme table { border-collapse: collapse; display: block; overflow-x: auto; }
   .readme th, .readme td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
