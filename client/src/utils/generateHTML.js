@@ -62,6 +62,28 @@ const EMBED_SCALE_SCRIPT = `
     })();
 `
 
+// Clicked into, an HTML embed has the keyboard, and the deck page can't
+// reach into it (nor it out: the page is sandboxed). An embed that wants the
+// keys that move through the slides to keep working posts them, as a graph
+// does: parent.postMessage({ source: 'parallax-embed', type: 'key', key,
+// shift }, '*'). Only HTML embeds' frames are heard
+const EMBED_KEYS_SCRIPT = `
+    (function() {
+      window.addEventListener('message', function(e) {
+        var d = e.data;
+        if (!d || d.source !== 'parallax-embed' || d.type !== 'key') return;
+        var fromEmbed = Array.prototype.some.call(document.querySelectorAll('iframe[data-html-embed]'), function(f) { return f.contentWindow === e.source; });
+        if (!fromEmbed) return;
+        var k = d.key;
+        if (k === 'ArrowRight' || k === 'PageDown' || (k === ' ' && !d.shift)) Reveal.next();
+        else if (k === 'ArrowLeft' || k === 'PageUp' || (k === ' ' && d.shift)) Reveal.prev();
+        else if (k === 'ArrowDown') Reveal.down();
+        else if (k === 'ArrowUp') Reveal.up();
+      });
+    })();
+`
+const hasHtmlEmbeds = presentation => (presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'html'))
+
 // withDatasets: the page gets parallax.datasets, which the deck answers
 function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
@@ -453,7 +475,7 @@ export function generateRevealHTML(presentation, opts = {}) {
         if (el.type === 'html') {
           const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed></iframe></div>`
         }
         if (el.type === 'graph') {
           const srcdoc = graphPageHtml(el, { ...(deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}), stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -1138,7 +1160,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'

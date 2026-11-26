@@ -37244,6 +37244,22 @@ var EMBED_SCALE_SCRIPT = `
       Reveal.on('resize', sendAll);
     })();
 `;
+var EMBED_KEYS_SCRIPT = `
+    (function() {
+      window.addEventListener('message', function(e) {
+        var d = e.data;
+        if (!d || d.source !== 'parallax-embed' || d.type !== 'key') return;
+        var fromEmbed = Array.prototype.some.call(document.querySelectorAll('iframe[data-html-embed]'), function(f) { return f.contentWindow === e.source; });
+        if (!fromEmbed) return;
+        var k = d.key;
+        if (k === 'ArrowRight' || k === 'PageDown' || (k === ' ' && !d.shift)) Reveal.next();
+        else if (k === 'ArrowLeft' || k === 'PageUp' || (k === ' ' && d.shift)) Reveal.prev();
+        else if (k === 'ArrowDown') Reveal.down();
+        else if (k === 'ArrowUp') Reveal.up();
+      });
+    })();
+`;
+var hasHtmlEmbeds = (presentation) => (presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "html"));
 function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
@@ -37524,7 +37540,7 @@ function generateRevealHTML(presentation, opts = {}) {
       if (el.type === "html") {
         const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no"></iframe></div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed></iframe></div>`;
       }
       if (el.type === "graph") {
         const srcdoc = graphPageHtml(el, { ...deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}, stability: palette }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -38220,7 +38236,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";
@@ -38767,6 +38783,72 @@ function rotationCurve(view) {
     yLabel: "v (100 km/s)"
   };
 }
+var GALAXY_TITLE = '<p style="margin: 0; display: flex; align-items: center; gap: 10px; text-align: left; font: 600 10.5px/1.3 Inter, Arial, sans-serif; letter-spacing: 1.7px; text-transform: uppercase; color: #0c0c0d"><span style="display: inline-flex"><span style="display: block; width: 6px; height: 8px; background: #ee2b2b"></span><span style="display: block; width: 14px; height: 8px; background: #0c0c0d"></span><span style="display: block; width: 6px; height: 8px; background: #1e60ff"></span></span>Astronomy</p><h2 style="margin: 17px 0 0; text-align: left; font: 800 34.5px/1.02 Archivo, Arial, sans-serif; letter-spacing: -1.15px; text-transform: none; text-shadow: none; color: #0c0c0d">Why galaxies spin too fast</h2><p style="margin: 17px 0 0; text-align: left; font: 400 13px/1.45 Inter, Arial, sans-serif; color: #3d3d40">The visible disk alone says outer stars should slow down. They don’t: a dark halo keeps the curve flat.</p>';
+var GALAXY_FIGURE = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+<style>
+  body { background: #fafaf7; color: #0c0c0d; font-family: Inter, Arial, sans-serif; }
+  #controls { position: absolute; left: 48px; bottom: 48px; width: 317px; display: flex; flex-direction: column; gap: 17px; }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; font-weight: 600; }
+  input { width: 100%; margin: 0; accent-color: #1e60ff; cursor: pointer; }
+  #chart { position: absolute; left: 384px; top: 38px; width: 538px; height: 469px; }
+  #chart text { font-family: Inter, Arial, sans-serif; }
+</style>
+<div id="controls">
+  <label>Dark halo mass<input id="halo" type="range" min="0" max="100" value="62"></label>
+  <label>Disk scale length<input id="scale" type="range" min="0" max="100" value="38"></label>
+</div>
+<svg id="chart" viewBox="0 0 600 420" role="img" aria-label="A rotation curve: measured orbital speeds stay flat far from the center, as the disk with a dark halo does, not the visible disk alone">
+  <defs><clipPath id="plot"><rect x="60" y="20" width="524" height="350"/></clipPath></defs>
+  <path d="M60 110.5H580M60 197H580M60 283.5H580" stroke="#d9d9d3" stroke-width="1"/>
+  <path d="M60 24V370H584" fill="none" stroke="#0c0c0d" stroke-width="2"/>
+  <text x="322" y="408" text-anchor="middle" font-size="16" fill="#3d3d40">Distance from the center</text>
+  <text x="24" y="200" text-anchor="middle" font-size="16" fill="#3d3d40" transform="rotate(-90 24 200)">Orbital speed</text>
+  <g clip-path="url(#plot)">
+    <path id="disk" fill="none" stroke="#9c9c9a" stroke-width="3" stroke-dasharray="8 8"/>
+    <path id="total" fill="none" stroke="#1e60ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text id="disk-label" x="574" y="260" text-anchor="end" font-size="15" fill="#66666a">Visible disk alone</text>
+  <text id="total-label" x="574" y="88" text-anchor="end" font-size="15" font-weight="600" fill="#1a56e8">Disk + dark halo</text>
+  <path d="M111.6 185.1V219.7M151.3 110.5V138.6M200.9 105.1V131M250.5 88.9V117M300.2 106.2V136.4M359.7 95.4V127.8M419.2 109.4V144M478.8 97.5V134.3M548.2 111.6V150.5" stroke="#ee2b2b" stroke-width="2"/>
+  <g fill="#ee2b2b"><circle cx="111.6" cy="202.4" r="6"/><circle cx="151.3" cy="124.6" r="6"/><circle cx="200.9" cy="118.1" r="6"/><circle cx="250.5" cy="102.9" r="6"/><circle cx="300.2" cy="121.3" r="6"/><circle cx="359.7" cy="111.6" r="6"/><circle cx="419.2" cy="126.7" r="6"/><circle cx="478.8" cy="115.9" r="6"/><circle cx="548.2" cy="131" r="6"/></g>
+  <g font-size="15" fill="#3d3d40"><circle cx="86" cy="44" r="6" fill="#ee2b2b"/><text x="100" y="49">Measured speeds</text></g>
+</svg>
+<script>
+var GM = 421948, CORE = 3
+var halo = document.getElementById('halo'), scale = document.getElementById('scale')
+var px = function (r) { return 62 + r / 26 * 516 }
+var py = function (v) { return 370 - v / 320 * 346 }
+// The disk's speed, and the disk's and the halo's together
+function speeds(r) {
+  var a = 1.556 * (1.2 + 4.5 * scale.value / 100), flat = 330 * halo.value / 100
+  var disk2 = GM * r * r / Math.pow(r * r + a * a, 1.5)
+  var halo2 = r > 0 ? flat * flat * (1 - CORE / r * Math.atan(r / CORE)) : 0
+  return [Math.sqrt(disk2), Math.sqrt(disk2 + halo2)]
+}
+function draw() {
+  var d = ['', ''], end
+  for (var i = 0; i <= 130; i++) {
+    var r = i / 5
+    end = speeds(r)
+    for (var k = 0; k < 2; k++) d[k] += (i ? 'L' : 'M') + px(r).toFixed(1) + ' ' + py(end[k]).toFixed(1)
+  }
+  document.getElementById('disk').setAttribute('d', d[0])
+  document.getElementById('total').setAttribute('d', d[1])
+  var top = Math.min(352, Math.max(18, py(end[1]) - 40))
+  document.getElementById('total-label').setAttribute('y', top)
+  document.getElementById('disk-label').setAttribute('y', Math.min(362, Math.max(top + 20, py(end[0]) + 28)))
+}
+halo.addEventListener('input', draw)
+scale.addEventListener('input', draw)
+draw()
+// The keys that move through the slides go back to the deck; a slider keeps its arrow keys
+var NAV = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' ']
+addEventListener('keydown', function (e) {
+  if (e.altKey || e.ctrlKey || e.metaKey || NAV.indexOf(e.key) < 0 || e.target.tagName === 'INPUT') return
+  e.preventDefault()
+  parent.postMessage({ source: 'parallax-embed', type: 'key', key: e.key, shift: e.shiftKey }, '*')
+})
+</script>`;
 var SOLAR_SYSTEM = [
   ["mercury", 87.97, 0.0553, "Mercury"],
   ["venus", 224.7, 0.815],
@@ -38922,7 +39004,10 @@ var BUILDERS = {
   hero() {
     const b = builder("hero");
     return b.deck("Parallax", true, [
-      b.slide(true, [b.heading("Why galaxies spin too fast"), { id: b.id(), x: 60, y: 100, width: 840, height: 370, zIndex: 2, ...rotationCurve({ xMin: 0, xMax: 24, yMin: 0, yMax: 3.6 }) }, b.caption("Dashed: the stars alone. Solid: with a dark halo. Drag a slider.")]),
+      { id: b.id(), notes: "", background: { type: "color", color: "#fafaf7" }, elements: [
+        { id: b.id(), type: "html", x: 0, y: 0, width: W, height: H, zIndex: 1, content: GALAXY_FIGURE },
+        { id: b.id(), type: "text", x: 36, y: 40, width: 341, height: 240, zIndex: 3, content: GALAXY_TITLE }
+      ] },
       b.slide(true, [b.heading("Gluon fusion to a Higgs"), b.placed(...feynman("ggf", true)), b.caption("Press → to draw each propagator in turn")]),
       b.slide(true, [b.heading("Euclid I.1: an equilateral triangle"), b.placed(...geometry("euclid", true)), b.caption("The construction draws itself; drag A or B")])
     ]);

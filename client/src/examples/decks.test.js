@@ -33,7 +33,7 @@ describe('the example decks', () => {
   })
 
   it('builds each from the elements it names', () => {
-    expect(types(exampleDeck('hero'))).toEqual([['graph'], ['feynman'], ['geometry']])
+    expect(types(exampleDeck('hero'))).toEqual([['html'], ['feynman'], ['geometry']])
     expect(types(exampleDeck('chemistry'))).toEqual([['periodic'], ['molecule']])
     expect(types(exampleDeck('logic'))).toEqual([['logic'], ['timing']])
     expect(types(exampleDeck('rotation'))).toEqual([['graph'], ['equation']])

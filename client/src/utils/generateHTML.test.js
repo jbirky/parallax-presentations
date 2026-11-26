@@ -570,6 +570,17 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
     const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
     expect(srcdoc).toContain('if(!(w>0&amp;&amp;h>0))return;')
   })
+
+  // Clicked into, an embed has the keyboard: it can post the keys that move
+  // through the slides back, and the deck hears them from embeds alone
+  it('moves through the slides with the keys an embed posts back', () => {
+    const html = generateRevealHTML(embedPresentation(JSX_EMBED))
+    expect(html).toMatch(/<iframe srcdoc="[^"]*"[^>]* data-html-embed>/)
+    expect(html).toContain("d.source !== 'parallax-embed' || d.type !== 'key'")
+    expect(html).toContain("querySelectorAll('iframe[data-html-embed]')")
+    const none = generateRevealHTML({ ...embedPresentation(JSX_EMBED), slides: [{ id: 's', elements: [] }] })
+    expect(none).not.toContain('parallax-embed')
+  })
 })
 
 describe('generateRevealHTML — Markdown, TikZ and LaTeX tables', () => {
