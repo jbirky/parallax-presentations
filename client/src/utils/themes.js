@@ -5,7 +5,8 @@
 // link color show when presenting, and Parallax's own (Bauhaus, Pixel, Mission, Turin,
 // Gutter, Lemma, Beamline, Kourou, Ledger, Preprint, Transit, Trace, Prompt,
 // Zenith, Quincunx, Partition, Holdout, Separatrix, Runlevel, Fanout, Cell,
-// Graticule, Eigenstate, Mise, Valence, Quadrille, Inspiral, Parti, Downforce), which
+// Graticule, Eigenstate, Mise, Valence, Quadrille, Inspiral, Parti, Downforce,
+// Parallax), which
 // name the reveal.js theme they're drawn on (`reveal`). A theme is its colors;
 // Parallax's own can also have a font (`font`), which a deck's text is set in
 // until Settings › Font picks one (deckTextFont), text styles (`textStyles`,
@@ -63,6 +64,7 @@ export const THEME_LIST = [
   { id: 'inspiral', label: 'Inspiral', background: '#f8f9fb', text: '#1d2433', heading: '#101828', link: '#0072b2', accent: '#b14d00', dark: false, reveal: 'white', font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Questrial, sans-serif', headingWeight: 400 }, note: 'Gravitational waves: black holes spiraling in a spacetime funnel on the title slide, moving when presented; a strain trace under titles, spectrogram section slides, a chirp footer' },
   { id: 'parti', label: 'Parti', background: '#f5f5f2', text: '#1f1f1e', heading: '#111110', link: '#c92a2a', accent: '#c92a2a', dark: false, reveal: 'white', font: 'Archivo, sans-serif', textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: 'Archivo, sans-serif', headingWeight: 700 }, note: 'Architecture as drawing sheets: drawing titles, a title block and massing sketch, structural-grid sections, revision clouds, keynotes, schedules' },
   { id: 'downforce', label: 'Downforce', background: '#0f1115', backgroundCss: 'radial-gradient(118% 115% at 88% -12%, #1c2232 0%, rgba(15, 17, 21, 0) 62%), #0f1115', text: '#e8ebf0', heading: '#ffffff', link: '#ff5a4f', accent: '#b98cff', dark: true, reveal: 'black', font: 'Saira, sans-serif', textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: 'Saira, sans-serif', headingWeight: 700 }, note: 'Race-car engineering as a timing screen: kerbs under titles, a circuit in sectors, start lights for sections, radio-message quotes, a sector footer' },
+  { id: 'parallax', label: 'Parallax', background: '#fafaf7', text: '#2e2e31', heading: '#0c0c0d', link: '#1a56e8', accent: '#ee2b2b', dark: false, reveal: 'white', font: 'Inter, sans-serif', textStyles: { bodySize: 26, h1Size: 72, h2Size: 44, h3Size: 30, headingFont: 'Archivo, sans-serif', headingWeight: 800 }, note: 'Parallax’s own look: ink on paper, the red and blue of 3D glasses as stereo fringes, title and section slides in ink with red and blue edges, the mark, Archivo headings' },
 ]
 
 export const THEMES = Object.fromEntries(THEME_LIST.map(t => [t.id, t]))
