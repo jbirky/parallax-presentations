@@ -38783,7 +38783,9 @@ function rotationCurve(view) {
     yLabel: "v (100 km/s)"
   };
 }
-var GALAXY_TITLE = '<p style="margin: 0; display: flex; align-items: center; gap: 10px; text-align: left; font: 600 10.5px/1.3 Inter, Arial, sans-serif; letter-spacing: 1.7px; text-transform: uppercase; color: #0c0c0d"><span style="display: inline-flex"><span style="display: block; width: 6px; height: 8px; background: #ee2b2b"></span><span style="display: block; width: 14px; height: 8px; background: #0c0c0d"></span><span style="display: block; width: 6px; height: 8px; background: #1e60ff"></span></span>Astronomy</p><h2 style="margin: 17px 0 0; text-align: left; font: 800 34.5px/1.02 Archivo, Arial, sans-serif; letter-spacing: -1.15px; text-transform: none; text-shadow: none; color: #0c0c0d">Why galaxies spin too fast</h2><p style="margin: 17px 0 0; text-align: left; font: 400 13px/1.45 Inter, Arial, sans-serif; color: #3d3d40">The visible disk alone says outer stars should slow down. They don’t: a dark halo keeps the curve flat.</p>';
+var heroTitle = (field, title, text) => '<p style="margin: 0; display: flex; align-items: center; gap: 10px; text-align: left; font: 600 10.5px/1.3 Inter, Arial, sans-serif; letter-spacing: 1.7px; text-transform: uppercase; color: #0c0c0d"><span style="display: inline-flex"><span style="display: block; width: 6px; height: 8px; background: #ee2b2b"></span><span style="display: block; width: 14px; height: 8px; background: #0c0c0d"></span><span style="display: block; width: 6px; height: 8px; background: #1e60ff"></span></span>' + field + '</p><h2 style="margin: 17px 0 0; text-align: left; font: 800 34.5px/1.02 Archivo, Arial, sans-serif; letter-spacing: -1.15px; text-transform: none; text-shadow: none; color: #0c0c0d">' + title + '</h2><p style="margin: 17px 0 0; text-align: left; font: 400 13px/1.45 Inter, Arial, sans-serif; color: #3d3d40">' + text + "</p>";
+var KEY = '<span style="display: inline-block; min-width: 16px; padding: 0 3px; border: 1px solid #0c0c0d; text-align: center; line-height: 15px">→</span>';
+var heroHint = (html) => '<p style="margin: 0; text-align: left; font: 600 11px/1.5 Inter, Arial, sans-serif; color: #0c0c0d">' + html + "</p>";
 var GALAXY_FIGURE = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
 <style>
   body { background: #fafaf7; color: #0c0c0d; font-family: Inter, Arial, sans-serif; }
@@ -39003,13 +39005,34 @@ var BUILDERS = {
   },
   hero() {
     const b = builder("hero");
-    return b.deck("Parallax", true, [
-      { id: b.id(), notes: "", background: { type: "color", color: "#fafaf7" }, elements: [
+    const paper = (elements) => ({ id: b.id(), notes: "", background: { type: "color", color: "#fafaf7" }, elements });
+    const title = (...args) => ({ id: b.id(), type: "text", x: 36, y: 40, width: 341, height: 240, zIndex: 3, content: heroTitle(...args) });
+    const hint = (html) => ({ id: b.id(), type: "text", x: 36, y: 462, width: 341, height: 38, zIndex: 3, content: heroHint(html) });
+    const right = { x: 384, y: 38, w: 538, h: 469 };
+    const [ggf, ggfBox] = feynman("ggf", false);
+    const higgs = {
+      ...ggf,
+      color: "#0c0c0d",
+      vertices: ggf.vertices.map((v) => ["a", "b", "c"].includes(v.id) ? { ...v, color: "#1e60ff" } : v.id === "h" ? { ...v, color: "#c81e1e" } : v),
+      edges: ggf.edges.map((e) => e.particle === "scalar" ? { ...e, color: "#ee2b2b" } : e)
+    };
+    const [euclid, euclidBox] = geometry("euclid", false);
+    const triangle = { ...euclid, script: euclid.script.replace(/^t = Polygon\(A, B, C\)$/m, "$& {color=blue}") };
+    return b.deck("Parallax", false, [
+      paper([
         { id: b.id(), type: "html", x: 0, y: 0, width: W, height: H, zIndex: 1, content: GALAXY_FIGURE },
-        { id: b.id(), type: "text", x: 36, y: 40, width: 341, height: 240, zIndex: 3, content: GALAXY_TITLE }
-      ] },
-      b.slide(true, [b.heading("Gluon fusion to a Higgs"), b.placed(...feynman("ggf", true)), b.caption("Press → to draw each propagator in turn")]),
-      b.slide(true, [b.heading("Euclid I.1: an equilateral triangle"), b.placed(...geometry("euclid", true)), b.caption("The construction draws itself; drag A or B")])
+        title("Astronomy", "Why galaxies spin too fast", "The visible disk alone says outer stars should slow down. They don’t: a dark halo keeps the curve flat.")
+      ]),
+      paper([
+        title("Physics", "Gluon fusion to a Higgs", "How the LHC makes most of its Higgs bosons: two gluons, one from each proton, meet through a loop of top quarks."),
+        b.placed(higgs, ggfBox, right),
+        hint("Press " + KEY + " to draw each propagator in turn")
+      ]),
+      paper([
+        title("Mathematics", "Euclid I.1: an equilateral triangle", "The first proposition of the Elements: two circles, each through the other’s center, cross at the triangle’s third corner."),
+        b.placed(triangle, euclidBox, right),
+        hint("Press " + KEY + " to draw each step, then drag A or B")
+      ])
     ]);
   },
   chemistry() {
