@@ -1281,3 +1281,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 
 /* A team template's delete button, in the New presentation picker */
 .template-remove { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0; background: var(--bg-primary); border-radius: 50%; }
+
+/* While something on the canvas is dragged, embeds' frames let the mouse
+   through, so letting go is heard (holdFrames in SlideCanvas.jsx) */
+.px-frames-held iframe { pointer-events: none !important; }
