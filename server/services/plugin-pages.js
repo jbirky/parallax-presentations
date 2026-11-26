@@ -116,7 +116,7 @@ const GALLERY_STYLES = `
   .publish ol { margin: 24px 0 0; padding-left: 22px; color: var(--muted); }
   .publish li { margin-top: 14px; padding-left: 4px; }
   .publish li strong { color: var(--text); }
-  .publish a { color: var(--soft); }
+  .publish a:not(.btn) { color: var(--soft); }
   .publish code { font: 500 13.5px var(--mono); color: var(--text); }
   .publish pre { margin: 10px 0 0; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line); overflow-x: auto; }
   .publish pre code { font-size: 13px; line-height: 1.7; color: var(--muted); }`
