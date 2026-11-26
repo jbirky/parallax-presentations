@@ -17,6 +17,10 @@ describe('checking sign-up answers', () => {
       reasons: ['talks', 'other'], reasonOther: 'Group meetings', heardFrom: null, heardFromOther: null,
     })
     assert.deepEqual(cleanAnswers({}).reasons, [])
+    // Work in and out of academia, and the catch-all earlier answers have
+    for (const work of ['engineer', 'software', 'data', 'healthcare', 'business', 'design', 'communications', 'industry']) {
+      assert.equal(cleanAnswers({ careerStage: work }).careerStage, work)
+    }
     assert.throws(() => cleanAnswers({ field: 'alchemy' }), /isn’t one of the choices/)
     assert.throws(() => cleanAnswers({ reasons: ['talks', 'fame'] }), /isn’t one of the choices/)
     assert.equal(cleanAnswers({ field: 'other', fieldOther: 'x'.repeat(500) }).fieldOther.length, 200)

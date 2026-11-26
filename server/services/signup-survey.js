@@ -21,11 +21,16 @@ const QUESTIONS = [
     ],
   },
   {
-    id: 'careerStage', label: 'Where are you in your career?', kind: 'one',
+    // In and out of academia. ('industry' was "Working outside academia"
+    // before the kinds of work outside it were listed; answers keep it.)
+    id: 'careerStage', label: 'What do you do?', kind: 'one',
     choices: [
       ['undergrad', 'Undergraduate student'], ['grad', 'Graduate student'], ['postdoc', 'Postdoc'],
       ['faculty', 'Faculty or lecturer'], ['teacher', 'School teacher'], ['research_staff', 'Research staff or scientist'],
-      ['industry', 'Working outside academia'], ['other', 'Something else'],
+      ['engineer', 'Engineer'], ['software', 'Software developer'], ['data', 'Data scientist or analyst'],
+      ['healthcare', 'Healthcare'], ['business', 'Business or administration'], ['design', 'Art or design'],
+      ['communications', 'Writing, media or communications'], ['industry', 'Other work outside academia'],
+      ['other', 'Something else'],
     ],
   },
   {
@@ -163,7 +168,7 @@ async function csv(storage) {
       WHERE NOT a.skipped ORDER BY a.updated_at DESC`
   )
   const q = Object.fromEntries(QUESTIONS.map(x => [x.id, x]))
-  const header = ['email', 'plan', 'joined', 'answered', 'field', 'field (other)', 'career stage', 'career stage (other)', 'reasons', 'reasons (other)', 'heard from', 'heard from (other)']
+  const header = ['email', 'plan', 'joined', 'answered', 'field', 'field (other)', 'work', 'work (other)', 'reasons', 'reasons (other)', 'heard from', 'heard from (other)']
   const lines = rows.map(r => [
     r.email, r.plan, r.joined?.toISOString?.() || r.joined, r.updated_at?.toISOString?.() || r.updated_at,
     r.field && labelOf(q.field, r.field), r.field_other,
