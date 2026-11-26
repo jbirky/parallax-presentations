@@ -62,13 +62,15 @@ function fetchLimit(plan) {
   return Math.min(MAX_FETCH_BYTES, (plan && plan.maxFileBytes) || MAX_FETCH_BYTES)
 }
 
-// Refuses a new version that wouldn't fit in the owner's storage (cloud only)
-async function checkRoom(storage, userId, plan, bytes) {
-  if (!storage.query || !plan || !plan.storageBytes || !userId) return
-  const { storageUsedBytes } = require('../middleware/upload-quota')
-  const used = await storageUsedBytes(storage, userId)
-  if (used + bytes > plan.storageBytes) {
-    throw new SourceError(`Storage full: this version needs ${Math.ceil(bytes / 1024)} KB more than the ${Math.round(plan.storageBytes / (1024 * 1024))} MB on the ${plan.name} plan`)
+// Refuses a new version that wouldn't fit in the owner's storage (cloud
+// only); a team's dataset's goes on the team's ({ teamId, seats })
+async function checkRoom(storage, userId, plan, bytes, team = null) {
+  if (!storage.query || !plan || !plan.storageBytes || (!userId && !team?.teamId)) return
+  const { storageUsedBytes, teamStorageUsedBytes, teamStorageBytes } = require('../middleware/upload-quota')
+  const limit = team?.teamId ? teamStorageBytes(plan, team.seats) : plan.storageBytes
+  const used = team?.teamId ? await teamStorageUsedBytes(storage, team.teamId) : await storageUsedBytes(storage, userId)
+  if (used + bytes > limit) {
+    throw new SourceError(`Storage full: this version needs ${Math.ceil(bytes / 1024)} KB more than the ${Math.round(limit / (1024 * 1024))} MB ${team?.teamId ? 'the team has' : `on the ${plan.name} plan`}`)
   }
 }
 
@@ -184,7 +186,7 @@ async function refreshDataset(storage, id, { localDir, fetchOptions } = {}) {
     })
     let outcome = 'unchanged'
     if (!packed.unchanged && packed.hash !== current?.contentHash) {
-      await checkRoom(storage, ds.userId, plan, packed.gz.length)
+      await checkRoom(storage, ds.userId, plan, packed.gz.length, ds.teamId ? { teamId: ds.teamId, seats: ds.seats } : null)
       await saveVersion(storage, ds, packed, { userId: ds.userId, localDir })
       await pruneVersions(storage, ds, localDir)
       outcome = 'changed'

@@ -20,6 +20,7 @@ const { presentationAccess, teamDeckRole } = require('./collaboration')
 const { storageUsedBytes, teamStorageUsedBytes, teamStorageBytes } = require('../middleware/upload-quota')
 const { planFor } = require('./plans')
 const folders = require('./folders')
+const teamLibrary = require('./team-library')
 
 const FOLDER_MAKERS = ['owner', 'admin', 'member']
 const FOLDER_REMOVERS = ['owner', 'admin']
@@ -147,22 +148,28 @@ async function moveDeck(storage, deckId, userId, userPlan, { teamId = null, fold
     return { teamId: null, folderId: folderId || null, ownerChanged: false, sameSpace: true }
   }
 
-  // Into a team, or within one
+  // Into a team, or within one. The datasets its maker made for it go into
+  // the team with it (they're counted against the team from then on).
   if (teamId) {
     await deckTarget(storage, userId, teamId, folderId)
+    let carried = { ids: [] }
     if (access.teamId !== teamId) {
       const team = await teamRow(storage, teamId)
       const { used, limit } = await teamStorage(storage, team)
-      const bytes = await deckBytes(storage, deckId)
+      carried = await teamLibrary.ownDatasetsOfDeck(storage, deckId, access.ownerId)
+      const bytes = await deckBytes(storage, deckId) + carried.bytes
       if (limit !== null && used + bytes > limit) {
-        throw new TeamError(413, `${team.name} doesn't have room for its files (${formatSize(bytes)}; ${formatSize(Math.max(0, limit - used))} free).`)
+        throw new TeamError(413, `${team.name} doesn't have room for its files and data (${formatSize(bytes)}; ${formatSize(Math.max(0, limit - used))} free).`)
       }
+      if (carried.live) await teamLibrary.checkTeamRoom(storage, team, { live: carried.live })
     }
     await storage.query(
       'UPDATE presentations SET team_id = $2, folder_id = $3, expires_at = NULL WHERE id = $1',
       [deckId, teamId, folderId || null]
     )
-    return { teamId, folderId: folderId || null, ownerChanged: false, sameSpace: access.teamId === teamId }
+    for (const id of carried.ids) await storage.setDatasetTeam(id, teamId)
+    const datasetsLeft = access.teamId && access.teamId !== teamId ? await leaveTeamDatasets(storage, deckId, access.teamId) : 0
+    return { teamId, folderId: folderId || null, ownerChanged: false, sameSpace: access.teamId === teamId, datasetsMoved: carried.ids.length, datasetsLeft }
   }
 
   // Out of a team, into userId's own presentations: it becomes theirs, under their plan
@@ -191,7 +198,19 @@ async function moveDeck(storage, deckId, userId, userPlan, { teamId = null, fold
   )
   // Its files now count against them
   await storage.query('UPDATE uploads SET user_id = $2 WHERE presentation_id = $1', [deckId, userId])
-  return { teamId: null, folderId: folderId || null, ownerChanged: access.ownerId !== userId, sameSpace: false }
+  const datasetsLeft = await leaveTeamDatasets(storage, deckId, access.teamId)
+  return { teamId: null, folderId: folderId || null, ownerChanged: access.ownerId !== userId, sameSpace: false, datasetsLeft }
+}
+
+// A deck leaving a team leaves the team's datasets behind: they're the
+// team's, and its other presentations may read them. Returns how many.
+async function leaveTeamDatasets(storage, deckId, teamId) {
+  const { rowCount } = await storage.query(
+    `DELETE FROM presentation_datasets
+      WHERE presentation_id = $1 AND dataset_id IN (SELECT id FROM datasets WHERE team_id = $2)`,
+    [deckId, teamId]
+  )
+  return rowCount
 }
 
 // The team's deck ids, for closing live-editing connections

@@ -28,19 +28,21 @@ async function storageUsedBytes(storage, userId) {
                  LEFT JOIN presentations p ON p.id = u.presentation_id
                 WHERE u.user_id = $1 AND p.team_id IS NULL) files)
           + (SELECT COALESCE(SUM(v.byte_size), 0) FROM dataset_versions v
-               JOIN datasets d ON d.id = v.dataset_id WHERE d.user_id = $1) AS used`,
+               JOIN datasets d ON d.id = v.dataset_id WHERE d.user_id = $1 AND d.team_id IS NULL) AS used`,
     [userId]
   )
   return Number(rows[0].used)
 }
 
-// Bytes a team's decks store, each file once
+// Bytes a team stores: its decks' files, each once, and its datasets' versions
 async function teamStorageUsedBytes(storage, teamId) {
   const { rows } = await storage.query(
-    `SELECT COALESCE(SUM(size_bytes), 0) AS used FROM (
-       SELECT DISTINCT ON (u.storage_key) u.size_bytes FROM uploads u
-         JOIN presentations p ON p.id = u.presentation_id
-        WHERE p.team_id = $1) files`,
+    `SELECT (SELECT COALESCE(SUM(size_bytes), 0) FROM (
+               SELECT DISTINCT ON (u.storage_key) u.size_bytes FROM uploads u
+                 JOIN presentations p ON p.id = u.presentation_id
+                WHERE p.team_id = $1) files)
+          + (SELECT COALESCE(SUM(v.byte_size), 0) FROM dataset_versions v
+               JOIN datasets d ON d.id = v.dataset_id WHERE d.team_id = $1) AS used`,
     [teamId]
   )
   return Number(rows[0].used)

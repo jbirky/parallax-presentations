@@ -46,6 +46,7 @@ import { ThemePanel } from '../components/ThemeGallery'
 import { setDocumentThemeCss } from '../utils/scopeCss'
 import { applyThemeDoc } from '../utils/customTheme'
 import DeckFontOptions from '../components/DeckFontOptions'
+import FontLists from '../components/FontLists'
 import { deckFontName } from '../utils/deckFont'
 import { slidePalette, ownBackground, themeOf, deckTheme, isLegacyBackground, newSlideBackground, deckTextFont } from '../utils/themes'
 import { changeLayout, editingHint, placeholderHint } from '../utils/placeholders'
@@ -620,10 +621,17 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
       api.getGithubConfig().then(setGithubConfig).catch(() => {})
       if (ZENODO_ENABLED) api.getZenodoConfig().then(setZenodoConfig).catch(() => {})
     }
-    api.getFonts().then(fonts => {
+  }, [])
+  // The person's fonts, and in a team's deck the team's (each with teamId),
+  // each loaded into the page once
+  const loadedFontsRef = useRef(new Set())
+  useEffect(() => {
+    api.getFonts(access?.teamId || undefined).then(fonts => {
       if (Array.isArray(fonts)) {
         setCustomFonts(fonts)
         fonts.forEach(f => {
+          if (loadedFontsRef.current.has(f.url)) return
+          loadedFontsRef.current.add(f.url)
           if (f.source === 'google') {
             const link = document.createElement('link')
             link.rel = 'stylesheet'
@@ -637,9 +645,14 @@ export default function EditorPage({ presentationId, isTemplate = false, onGoHom
         })
       }
     }).catch(() => {})
-  }, [])
+  }, [access?.teamId])
 
   useEffect(() => { viewOnlyRef.current = access?.role === 'viewer' }, [access])
+  // A team's deck: the team's library (themes, fonts, datasets, templates) is
+  // offered beside the person's own. { id, role, you }, role their team role
+  const deckTeam = useMemo(
+    () => (access?.teamId ? { id: access.teamId, role: access.teamRole, you: access.you } : null),
+    [access?.teamId, access?.teamRole, access?.you])
 
   // Load who edits it
   useEffect(() => {
@@ -4691,34 +4704,8 @@ function draw() {
               </div>
             </div>
 
-            {/* Font list */}
-            <div style={{ fontSize: 12, color: '#a0a0b0', fontWeight: 600, marginBottom: 8 }}>My Fonts ({customFonts.length})</div>
-            <div style={{ flex: 1, overflow: 'auto' }}>
-              {customFonts.length === 0 ? (
-                <div style={{ color: '#666', fontSize: 13, textAlign: 'center', padding: 20 }}>No custom fonts added yet.</div>
-              ) : (
-                customFonts.map(f => (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid #2a2a3e' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, color: '#e0e0e0', fontFamily: `'${f.familyName}', sans-serif` }}>{f.familyName}</div>
-                      <div style={{ fontSize: 11, color: '#888' }}>{f.source === 'google' ? 'Google Fonts' : 'Uploaded file'}</div>
-                    </div>
-                    <span style={{ fontSize: 16, color: '#c0c0d0', fontFamily: `'${f.familyName}', sans-serif` }}>Aa</span>
-                    <button
-                      className="btn-icon"
-                      style={{ color: 'var(--danger)' }}
-                      title="Remove font"
-                      onClick={async () => {
-                        await api.deleteFont(f.id)
-                        setCustomFonts(prev => prev.filter(x => x.id !== f.id))
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+            {/* Font lists: their own, and a team deck's team's */}
+            <FontLists fonts={customFonts} team={deckTeam} onChange={setCustomFonts} />
           </div>
         </div>
       )}
@@ -4787,7 +4774,7 @@ function draw() {
       )}
 
       {showDatasetPanel && (
-        <DatasetPanel presentationId={presentationId} onClose={() => {
+        <DatasetPanel presentationId={presentationId} team={deckTeam} onClose={() => {
           setShowDatasetPanel(false)
           // Its datasets may have new rows, steps or links: graphs and
           // elements fetch again
@@ -5093,7 +5080,7 @@ function draw() {
             onFont={font => setPresentation(prev => ({ ...prev, globalFont: font || null }))}
             themeColors={presentation.themeColors || null} onThemeColors={applyThemeColors}
             themeCss={presentation.themeCss || ''} onThemeCss={applyThemeCss}
-            deck={presentation} onApplyThemeDoc={applySavedTheme} onThemeSource={setThemeSource} />
+            deck={presentation} onApplyThemeDoc={applySavedTheme} onThemeSource={setThemeSource} team={deckTeam} />
         ) : <PropertiesPanel
           slide={currentSlide}
           selectedElement={selectedElement}

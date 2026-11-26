@@ -1220,6 +1220,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 /* Its Colors tab's My themes (ThemeLibrary.jsx) */
 .theme-lib { margin-bottom: 12px; }
 .theme-lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.theme-lib-head.theme-lib-team-head { margin-top: 14px; }
 .theme-lib-actions { display: flex; gap: 2px; }
 .theme-lib-actions .btn-icon, .theme-lib-list .btn-icon { padding: 4px; }
 .theme-lib-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -1267,3 +1268,14 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; }
 .getting-started-check { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-light); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .ticked .getting-started-check { background: var(--accent); border-color: var(--accent); color: #fff; }
 .getting-started-done { font-size: 12px; color: var(--text-secondary); margin: 4px 0 2px; }
+
+/* The Fonts dialog's lists (components/FontLists.jsx) */
+.font-list-heading { font-size: 12px; color: #a0a0b0; font-weight: 600; margin-bottom: 8px; }
+.font-list-empty { color: #666; font-size: 13px; text-align: center; padding: 20px; }
+.font-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #2a2a3e; }
+.font-row-name { font-size: 14px; color: #e0e0e0; }
+.font-row-meta { font-size: 11px; color: #888; }
+.font-row-sample { font-size: 16px; color: #c0c0d0; }
+
+/* A team template's delete button, in the New presentation picker */
+.template-remove { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0; background: var(--bg-primary); border-radius: 50%; }

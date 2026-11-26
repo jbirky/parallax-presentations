@@ -216,12 +216,13 @@ class PgStorage extends StorageInterface {
   }
 
   async listThemes(userId) {
-    const { rows } = await this.query('SELECT * FROM themes WHERE user_id = $1 ORDER BY lower(name), created_at', [userId])
+    // A person's own: a team's are listed with the team (services/team-library.js)
+    const { rows } = await this.query('SELECT * FROM themes WHERE user_id = $1 AND team_id IS NULL ORDER BY lower(name), created_at', [userId])
     return rows.map(r => this._theme(r))
   }
 
   async getTheme(id, userId) {
-    const { rows } = await this.query('SELECT * FROM themes WHERE id = $1 AND user_id = $2', [id, userId])
+    const { rows } = await this.query('SELECT * FROM themes WHERE id = $1 AND user_id = $2 AND team_id IS NULL', [id, userId])
     return this._theme(rows[0])
   }
 
@@ -233,18 +234,19 @@ class PgStorage extends StorageInterface {
   // Replaces a theme's document; its version counts the saves
   async updateTheme(id, doc, userId) {
     const { rows } = await this.query(
-      'UPDATE themes SET name = $3, doc = $4, version = version + 1, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING *',
+      'UPDATE themes SET name = $3, doc = $4, version = version + 1, updated_at = NOW() WHERE id = $1 AND user_id = $2 AND team_id IS NULL RETURNING *',
       [id, userId, doc.name, doc])
     return this._theme(rows[0])
   }
 
   async deleteTheme(id, userId) {
-    const { rowCount } = await this.query('DELETE FROM themes WHERE id = $1 AND user_id = $2', [id, userId])
+    const { rowCount } = await this.query('DELETE FROM themes WHERE id = $1 AND user_id = $2 AND team_id IS NULL', [id, userId])
     return rowCount > 0
   }
 
+  // A person's own: a team's are listed with the team (services/team-library.js)
   async listTemplates(userId) {
-    const conditions = ['is_template = true']
+    const conditions = ['is_template = true', 'team_id IS NULL']
     const params = []
     if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`) }
     const { rows } = await this.query(`
@@ -264,7 +266,7 @@ class PgStorage extends StorageInterface {
 
   async getTemplate(id, userId) {
     const sql = userId
-      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true'
+      ? 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true AND team_id IS NULL'
       : 'SELECT id, data, created_at as "createdAt", updated_at as "updatedAt" FROM presentations WHERE id = $1 AND is_template = true'
     const params = userId ? [id, userId] : [id]
     const { rows } = await this.query(sql, params)
@@ -302,7 +304,7 @@ class PgStorage extends StorageInterface {
 
   async deleteTemplate(id, userId) {
     const sql = userId
-      ? 'DELETE FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true'
+      ? 'DELETE FROM presentations WHERE id = $1 AND user_id = $2 AND is_template = true AND team_id IS NULL'
       : 'DELETE FROM presentations WHERE id = $1 AND is_template = true'
     const params = userId ? [id, userId] : [id]
     const { rowCount } = await this.query(sql, params)
@@ -651,8 +653,10 @@ class PgStorage extends StorageInterface {
     }
   }
 
+  // Their own: the ones they gave a team are listed with the team's
+  // (listTeamDatasets)
   async listDatasets(userId) {
-    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE user_id = $1 ORDER BY updated_at DESC`, [userId])
+    const { rows } = await this.query(`SELECT ${DATASET_FIELDS} FROM datasets d WHERE user_id = $1 AND team_id IS NULL ORDER BY updated_at DESC`, [userId])
     return rows.map(r => datasetFrom(r))
   }
 
@@ -668,15 +672,44 @@ class PgStorage extends StorageInterface {
 
   // A dataset as the refresh loop needs it: its owner and plan, and its
   // header secret decrypted
+  // A team's dataset refreshes on the team's plan (as free once the team's
+  // subscription has lapsed), with its seats for the team's storage
   async getDatasetForFetch(id) {
     const { rows } = await this.query(
-      `SELECT ${DATASET_FIELDS}, d.user_id, d.source_secret, u.plan
-         FROM datasets d JOIN users u ON u.id = d.user_id WHERE d.id = $1`,
+      `SELECT ${DATASET_FIELDS}, d.user_id, d.source_secret,
+              CASE WHEN t.id IS NULL THEN u.plan WHEN t.status = 'lapsed' THEN 'free' ELSE t.plan END AS plan, t.seats
+         FROM datasets d JOIN users u ON u.id = d.user_id LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
       [id]
     )
     if (!rows.length) return null
     const r = rows[0]
-    return { ...datasetFrom(r, { withKey: true }), userId: r.user_id, plan: r.plan, secret: r.source_secret ? decrypt(r.source_secret) : '' }
+    return { ...datasetFrom(r, { withKey: true }), userId: r.user_id, plan: r.plan, seats: r.seats ?? null, secret: r.source_secret ? decrypt(r.source_secret) : '' }
+  }
+
+  // A team's datasets, each with who added it
+  async listTeamDatasets(teamId) {
+    const { rows } = await this.query(
+      `SELECT ${DATASET_FIELDS}, d.user_id, COALESCE(NULLIF(u.name, ''), u.email) AS creator_name
+         FROM datasets d LEFT JOIN users u ON u.id = d.user_id WHERE d.team_id = $1 ORDER BY d.updated_at DESC`,
+      [teamId]
+    )
+    return rows.map(r => ({ ...datasetFrom(r), creatorId: r.user_id, creatorName: r.creator_name }))
+  }
+
+  async countTeamLiveDatasets(teamId) {
+    const { rows } = await this.query(`SELECT COUNT(*)::int AS n FROM datasets WHERE team_id = $1 AND source_kind <> 'upload'`, [teamId])
+    return rows[0].n
+  }
+
+  // Gives a dataset to a team (or back to its maker, with null)
+  async setDatasetTeam(id, teamId) {
+    await this.query('UPDATE datasets SET team_id = $2, updated_at = NOW() WHERE id = $1', [id, teamId || null])
+  }
+
+  // Bytes a dataset's kept versions take
+  async datasetBytes(id) {
+    const { rows } = await this.query('SELECT COALESCE(SUM(byte_size), 0) AS bytes FROM dataset_versions WHERE dataset_id = $1', [id])
+    return Number(rows[0].bytes)
   }
 
   async updateDataset(id, data, userId) {
@@ -719,8 +752,9 @@ class PgStorage extends StorageInterface {
     await this.query('UPDATE datasets SET output_columns = $1 WHERE id = $2', [outputColumns ? JSON.stringify(outputColumns) : null, id])
   }
 
+  // Their own: a team's count against the team (countTeamLiveDatasets)
   async countLiveDatasets(userId) {
-    const { rows } = await this.query(`SELECT COUNT(*)::int AS n FROM datasets WHERE user_id = $1 AND source_kind <> 'upload'`, [userId])
+    const { rows } = await this.query(`SELECT COUNT(*)::int AS n FROM datasets WHERE user_id = $1 AND team_id IS NULL AND source_kind <> 'upload'`, [userId])
     return rows[0].n
   }
 
@@ -882,7 +916,7 @@ class PgStorage extends StorageInterface {
 // but through getDatasetForFetch
 const DATASET_FIELDS = `d.id, d.name, d.filename, d.format, d.storage_key, d.columns, d.row_count, d.byte_size,
   d.created_at, d.updated_at, d.source_kind, d.source, d.source_secret IS NOT NULL AS has_secret, d.schedule,
-  d.next_fetch_at, d.last_fetched_at, d.last_error, d.failures, d.current_version_id, d.transforms, d.output_columns`
+  d.next_fetch_at, d.last_fetched_at, d.last_error, d.failures, d.current_version_id, d.transforms, d.output_columns, d.team_id`
 
 // columns are what a read gives: the transforms' output when it has
 // transforms, else the source's (sourceColumns, either way)
@@ -895,6 +929,8 @@ function datasetFrom(r, { withKey = false } = {}) {
     sourceKind: r.source_kind, source: r.source, hasSecret: !!r.has_secret, schedule: r.schedule,
     nextFetchAt: r.next_fetch_at, lastFetchedAt: r.last_fetched_at, lastError: r.last_error, failures: r.failures,
     currentVersionId: r.current_version_id, transforms: r.transforms || [],
+    // A team's (migration 031), or null for its maker's own
+    teamId: r.team_id || null,
   }
   if (withKey) ds.storageKey = r.storage_key
   return ds

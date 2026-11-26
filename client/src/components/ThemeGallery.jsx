@@ -51,7 +51,7 @@ export default function ThemeGallery({ value, onChange, font, columns = 2, width
 // Customize sets the deck's own colors over it (ThemeColorsEditor). The Text
 // tab sets the size and font of the deck's text (TextStylesEditor), and the
 // CSS tab the deck's own stylesheet (ThemeCssEditor).
-export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onTab, textStyles, onTextStyles, onFont, themeColors = null, onThemeColors, themeCss = '', onThemeCss, deck = null, onApplyThemeDoc, onThemeSource }) {
+export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onTab, textStyles, onTextStyles, onFont, themeColors = null, onThemeColors, themeCss = '', onThemeCss, deck = null, onApplyThemeDoc, onThemeSource, team = null }) {
   const tabs = [['colors', 'Colors'], onTextStyles && ['text', 'Text'], onThemeCss && ['css', 'CSS']].filter(Boolean)
   const shown = tabs.some(([id]) => id === tab) ? tab : 'colors'
   // Customize starts open on a deck with colors of its own
@@ -88,7 +88,7 @@ export function ThemePanel({ value, font, onChange, onClose, tab = 'colors', onT
             </p>
             {onApplyThemeDoc && deck && (
               <div style={{ padding: '0 12px' }}>
-                <ThemeLibrary deck={deck} onApply={onApplyThemeDoc} onSource={onThemeSource} />
+                <ThemeLibrary deck={deck} onApply={onApplyThemeDoc} onSource={onThemeSource} team={team} />
               </div>
             )}
             {onThemeColors && (

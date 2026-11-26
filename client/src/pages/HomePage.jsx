@@ -5,7 +5,7 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary, priceText } from '../utils/plans'
 
@@ -116,6 +116,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [movingDeck, setMovingDeck] = useState(null)
   // Where a new presentation goes: { teamId, folderId } in a team, { folderId } in a folder of theirs
   const [createTarget, setCreateTarget] = useState(null)
+  // The team's templates, while making a presentation in a team (null till loaded)
+  const [teamTemplates, setTeamTemplates] = useState(null)
   const team = space !== 'personal' ? teams.find(t => t.id === space) || null : null
   // A team they've left, or one from another account on this device
   useEffect(() => {
@@ -474,6 +476,15 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 <Copy size={14} />
               </button>
             )}
+            {inTeam && !viewOnly && (
+              <button
+                className="btn-icon"
+                title="Save as team template"
+                onClick={(e) => handleSaveTeamTemplate(e, pres)}
+              >
+                <LayoutTemplate size={14} />
+              </button>
+            )}
             {canDelete && (
               <button
                 className="btn-icon"
@@ -488,6 +499,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         )}
       </>
     )
+  }
+
+  // Whether the person can delete one of a team's templates: the team's owner
+  // and admins, and whoever saved it
+  const canDeleteTeamTemplate = tmpl => {
+    const role = teams.find(t => t.id === tmpl.teamId)?.role
+    return role === 'owner' || role === 'admin' || (role === 'member' && tmpl.createdBy === planInfo?.id)
   }
 
   // A presentation's small preview, for its row in the list
@@ -539,9 +557,37 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // target: { teamId, folderId } for a team's presentation; otherwise where
   // the dashboard is showing
   function handleOpenModal(target) {
-    setCreateTarget(target === undefined ? currentTarget() : target)
+    const where = target === undefined ? currentTarget() : target
+    setCreateTarget(where)
     setForm({ title: '', theme: 'black', transition: 'slide', templateId: null })
+    setTeamTemplates(null)
+    if (where?.teamId) api.getTeamTemplates(where.teamId).then(setTeamTemplates, () => setTeamTemplates([]))
     setShowModal(true)
+  }
+
+  // A team presentation saved as one of the team's templates, for anyone in
+  // the team to start from
+  async function handleSaveTeamTemplate(e, pres) {
+    e.stopPropagation()
+    const title = window.prompt('Name the team template', `${pres.title || 'Untitled'} (template)`)
+    if (!title || !title.trim()) return
+    try {
+      await api.saveTeamTemplate(pres.teamId, pres.id, title.trim())
+      alert(`Saved “${title.trim()}” to the team’s templates. Start a presentation in the team to use it.`)
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  async function handleDeleteTeamTemplate(tmpl) {
+    if (!window.confirm(`Delete the team template “${tmpl.title}”? Presentations made from it are kept.`)) return
+    try {
+      await api.deleteTeamTemplate(tmpl.teamId, tmpl.id)
+      setTeamTemplates(list => (list || []).filter(t => t.id !== tmpl.id))
+      setForm(f => (f.templateId === tmpl.id ? { ...f, templateId: null } : f))
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
   if (initialSlug && !slugConsumed.current) {
@@ -966,10 +1012,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   >
                     Blank
                   </button>
-                  {templates.map(tmpl => (
+                  {[...templates, ...(createTarget?.teamId ? teamTemplates || [] : [])].map(tmpl => (
+                    <div key={tmpl.id} style={{ position: 'relative' }}>
                     <button
-                      key={tmpl.id}
                       type="button"
+                      title={tmpl.teamId ? `The team’s template${tmpl.creatorName ? `, from ${tmpl.creatorName}` : ''}` : undefined}
                       onClick={() => setForm(f => ({
                         ...f,
                         templateId: tmpl.id,
@@ -977,6 +1024,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                         transition: tmpl.transition || f.transition,
                       }))}
                       style={{
+                        width: '100%', height: '100%',
                         padding: '6px 8px', textAlign: 'center', cursor: 'pointer',
                         background: form.templateId === tmpl.id ? 'var(--accent)' : 'var(--bg-card)',
                         border: '2px solid ' + (form.templateId === tmpl.id ? 'var(--accent)' : 'var(--border)'),
@@ -988,8 +1036,16 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                         height: 28, borderRadius: 3, marginBottom: 4,
                         ...(isGradientOrImage(tmpl.thumbnail) ? { background: getCardBg(tmpl.thumbnail) } : { backgroundColor: getCardBg(tmpl.thumbnail) }),
                       }} />
+                      {tmpl.teamId && <Users size={10} style={{ marginRight: 4, verticalAlign: '-1px' }} aria-label="Team template" />}
                       {tmpl.title}
                     </button>
+                    {tmpl.teamId && canDeleteTeamTemplate(tmpl) && (
+                      <button type="button" className="btn-icon template-remove" title={`Delete the team template “${tmpl.title}”`}
+                        aria-label={`Delete the team template ${tmpl.title}`} onClick={() => handleDeleteTeamTemplate(tmpl)}>
+                        <X size={11} />
+                      </button>
+                    )}
+                    </div>
                   ))}
                 </div>
               </div>

@@ -38,6 +38,7 @@ const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
 const teamSpace = require('./services/team-space')
 const folders = require('./services/folders')
+const teamLibrary = require('./services/team-library')
 const aiLinks = require('./services/ai-links')
 const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly, canEdit } = collaboration
@@ -1137,8 +1138,10 @@ app.post('/api/presentations', async (req, res) => {
       delete presentation.description
       delete presentation.thumbnail
     } else if (templateId) {
-      // Create from template
-      const template = await storage.getTemplate(templateId, req.userId)
+      // Create from template: their own, or for a team's deck one of the team's
+      if (!isValidUUID(templateId)) return res.status(400).json({ error: 'Invalid id' })
+      let template = await storage.getTemplate(templateId, req.userId)
+      if (!template && team) template = await teamLibrary.templateForTeam(storage, team.teamId, templateId)
       if (template) {
         const cloned = JSON.parse(JSON.stringify(template))
         presentation = {
@@ -1587,16 +1590,33 @@ app.post('/api/datasets/live', liveOn, sourceFetchLimiter, async (req, res) => {
 
 // PATCH /api/datasets/:id/source — change a live dataset's source, schedule
 // or header secret ('' removes it). A new source or secret is fetched at once
+// The dataset a route's :id names, as the caller may use it: { ds, ownerId },
+// ownerId being whose it is (storage calls are made as them). Their own, or
+// a team's they're in (services/team-library.js); `change` asks to change it.
+// Answers 404 (or 403) and resolves to null when they can't.
+async function datasetOr404(req, res, { change = false } = {}) {
+  try {
+    const found = await teamLibrary.datasetFor(storage, req.params.id, req.userId, { change })
+    if (!found) res.status(404).json({ error: 'Dataset not found' })
+    return found
+  } catch (err) {
+    if (err instanceof teams.TeamError) { res.status(err.status).json({ error: err.message }); return null }
+    throw err
+  }
+}
+
 app.patch('/api/datasets/:id/source', requireValidId(), liveOn, async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await datasetOr404(req, res, { change: true })
+    if (!found) return
+    const { ds, ownerId } = found
     if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to change' })
     const body = req.body || {}
     const changes = {}
     if (body.source !== undefined) changes.source = normalizeSource(ds.sourceKind, body.source)
     if (body.schedule !== undefined) {
-      const plan = planOf(req)
+      // A team's dataset refreshes on the team's plan
+      const plan = ds.teamId ? planFor((await storage.getDatasetForFetch(ds.id)).plan) : planOf(req)
       if (!live.allowedSchedule(body.schedule, plan)) {
         throw new SourceError(plan ? `The ${plan.name} plan refreshes at most ${plan.minRefresh}` : 'Refresh hourly, daily, weekly or by hand')
       }
@@ -1607,17 +1627,18 @@ app.patch('/api/datasets/:id/source', requireValidId(), liveOn, async (req, res)
       if (body.secret) live.parseSecret(body.secret)
       changes.sourceSecret = body.secret || ''
     }
-    await storage.updateDatasetSource(ds.id, req.userId, changes)
+    await storage.updateDatasetSource(ds.id, ownerId, changes)
     const refresh = changes.source || changes.sourceSecret !== undefined ? await refreshNow(ds.id) : null
-    res.json({ dataset: await storage.getDataset(ds.id, req.userId), refresh })
+    res.json({ dataset: await storage.getDataset(ds.id, ownerId), refresh })
   } catch (err) { sendLiveError(res, err) }
 })
 
 // POST /api/datasets/:id/refresh — fetch a live dataset now; a minute apart
 app.post('/api/datasets/:id/refresh', requireValidId(), liveOn, async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await datasetOr404(req, res, { change: true })
+    if (!found) return
+    const { ds, ownerId } = found
     if (ds.sourceKind === 'upload') return res.status(400).json({ error: 'An uploaded dataset has no source to fetch' })
     const [last] = await storage.listDatasetFetches(ds.id, 1)
     if (last && Date.now() - new Date(last.startedAt).getTime() < 60 * 1000) {
@@ -1625,15 +1646,16 @@ app.post('/api/datasets/:id/refresh', requireValidId(), liveOn, async (req, res)
     }
     const result = await refreshNow(ds.id)
     if (result.outcome === 'busy') return res.status(409).json({ error: 'This dataset is being fetched right now' })
-    res.json({ ...result, dataset: await storage.getDataset(ds.id, req.userId) })
+    res.json({ ...result, dataset: await storage.getDataset(ds.id, ownerId) })
   } catch (err) { sendLiveError(res, err) }
 })
 
 // GET /api/datasets/:id/versions — its saved versions, newest first
 app.get('/api/datasets/:id/versions', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await datasetOr404(req, res)
+    if (!found) return
+    const { ds } = found
     const versions = await storage.listDatasetVersions(ds.id)
     res.json(versions.map(({ storageKey, etag, lastModified, ...v }) => ({ ...v, current: v.id === ds.currentVersionId })))
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -1642,25 +1664,46 @@ app.get('/api/datasets/:id/versions', requireValidId(), async (req, res) => {
 // GET /api/datasets/:id/fetches — its last 50 fetches
 app.get('/api/datasets/:id/fetches', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await datasetOr404(req, res)
+    if (!found) return
+    const { ds } = found
     res.json(await storage.listDatasetFetches(ds.id, 50))
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
-// GET /api/datasets — list user's datasets
+// GET /api/datasets — list user's datasets; ?teamId= adds that team's
+// (each with teamId), for a team's presentation
 app.get('/api/datasets', async (req, res) => {
   try {
-    res.json(await storage.listDatasets(req.userId))
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+    const own = await storage.listDatasets(req.userId)
+    const teamId = req.query.teamId
+    if (!teamId || !IS_CLOUD || !storage.query || req.isGuest) return res.json(own)
+    if (!isValidUUID(teamId)) return res.status(400).json({ error: 'Invalid id' })
+    res.json([...own, ...await teamLibrary.listDatasets(storage, teamId, req.userId)])
+  } catch (err) {
+    if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
+})
+
+// POST /api/datasets/:id/team — give one of the caller's datasets to a team
+// they add to: { teamId }. They keep using it; it counts against the team.
+app.post('/api/datasets/:id/team', requireValidId(), async (req, res) => {
+  try {
+    if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
+    if (!isValidUUID(req.body?.teamId)) return res.status(400).json({ error: 'Invalid id' })
+    res.json(await teamLibrary.shareDataset(storage, req.params.id, req.userId, req.body.teamId))
+  } catch (err) {
+    if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // GET /api/datasets/:id — get dataset metadata
 app.get('/api/datasets/:id', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    res.json(ds)
+    const found = await datasetOr404(req, res)
+    if (found) res.json(found.ds)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
@@ -1689,13 +1732,14 @@ function sendDataError(res, err) {
 // POST /api/datasets/:id/transforms/preview — run steps without saving them
 async function runTransformsFor(req, res, save) {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await datasetOr404(req, res, { change: save })
+    if (!found) return
+    const { ds, ownerId } = found
     const steps = normalizeTransforms((req.body || {}).transforms)
-    const { table } = await readView(storage, ds, { steps, ownerId: req.userId, localDir: DATA_DIR })
+    const { table } = await readView(storage, ds, { steps, ownerId, localDir: DATA_DIR })
     const shown = preview(table)
     if (!save) return res.json({ preview: shown })
-    const saved = await storage.setDatasetTransforms(ds.id, req.userId, steps, steps.length ? shown.columns : null)
+    const saved = await storage.setDatasetTransforms(ds.id, ownerId, steps, steps.length ? shown.columns : null)
     res.json({ dataset: saved, preview: shown })
   } catch (err) {
     if (err.transformError || err.exprError) return res.status(422).json({ error: err.message })
@@ -1708,9 +1752,10 @@ app.post('/api/datasets/:id/transforms/preview', requireValidId(), (req, res) =>
 // GET /api/datasets/:id/data — fetch dataset rows (column-oriented)
 app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.getDataset(req.params.id, req.userId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
-    const data = await readView(storage, ds, { versionId: req.query.version, ownerId: req.userId, raw: req.query.raw === '1', localDir: DATA_DIR })
+    const found = await datasetOr404(req, res)
+    if (!found) return
+    const { ds, ownerId } = found
+    const data = await readView(storage, ds, { versionId: req.query.version, ownerId, raw: req.query.raw === '1', localDir: DATA_DIR })
     if (!data) return res.status(404).json({ error: 'Version not found' })
     res.json(applyQuery(data.table, data.columns, queryOptions(req)))
   } catch (err) { sendDataError(res, err) }
@@ -1719,7 +1764,9 @@ app.get('/api/datasets/:id/data', requireValidId(), async (req, res) => {
 // PATCH /api/datasets/:id — rename a dataset
 app.patch('/api/datasets/:id', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.updateDataset(req.params.id, { name: req.body.name }, req.userId)
+    const found = await datasetOr404(req, res, { change: true })
+    if (!found) return
+    const ds = await storage.updateDataset(req.params.id, { name: req.body.name }, found.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     res.json(ds)
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -1728,7 +1775,9 @@ app.patch('/api/datasets/:id', requireValidId(), async (req, res) => {
 // DELETE /api/datasets/:id — delete a dataset and its stored file
 app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
   try {
-    const ds = await storage.deleteDataset(req.params.id, req.userId)
+    const found = await datasetOr404(req, res, { change: true })
+    if (!found) return
+    const ds = await storage.deleteDataset(req.params.id, found.ownerId)
     if (!ds) return res.status(404).json({ error: 'Dataset not found' })
     for (const key of ds.storageKeys) {
       try { await deleteDatasetFile(key, DATA_DIR) } catch (e) {
@@ -1740,19 +1789,32 @@ app.delete('/api/datasets/:id', requireValidId(), async (req, res) => {
 })
 
 // POST /api/presentations/:pid/datasets — link a dataset to a presentation
-// A presentation's datasets are its owner's.
+// A presentation's datasets are its owner's, and a team's presentation's
+// the team's: one of the caller's own linked to a team's presentation goes
+// to the team (movedToTeam), so all its members can read it.
 app.post('/api/presentations/:pid/datasets', requireValidId('pid'), deckAccess('pid'), canEdit, async (req, res) => {
   const { pid } = req.params
   const { datasetId, alias } = req.body
   if (!datasetId) return res.status(400).json({ error: 'datasetId is required' })
+  if (!isValidUUID(datasetId)) return res.status(400).json({ error: 'Invalid id' })
   try {
     const pres = await storage.getPresentation(pid, req.deck.ownerId)
     if (!pres) return res.status(404).json({ error: 'Presentation not found' })
-    const ds = await storage.getDataset(datasetId, req.deck.ownerId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    let movedToTeam = false
+    if (req.deck.teamId && req.userId) {
+      const mine = await storage.getDataset(datasetId, req.userId)
+      if (mine && !mine.teamId) {
+        await teamLibrary.shareDataset(storage, datasetId, req.userId, req.deck.teamId)
+        movedToTeam = true
+      }
+    }
+    if (!movedToTeam && !await teamLibrary.deckDataset(storage, datasetId, req.deck)) return res.status(404).json({ error: 'Dataset not found' })
     await storage.linkDatasetToPresentation(pid, datasetId, alias)
-    res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+    res.json({ success: true, movedToTeam })
+  } catch (err) {
+    if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // Whether the caller may use presentation `pid`'s datasets: deckAccess checks
@@ -1784,11 +1846,11 @@ app.get('/api/presentations/:pid/datasets/:did/data', requireValidId('pid'), dec
     if (!await ownsDeck(req, req.params.pid)) return res.status(404).json({ error: 'Presentation not found' })
     const link = (await storage.getPresentationDatasets(req.params.pid)).find(d => d.id === req.params.did)
     if (!link) return res.status(404).json({ error: 'Dataset not found' })
-    const ds = await storage.getDataset(req.params.did, req.deck.ownerId)
-    if (!ds) return res.status(404).json({ error: 'Dataset not found' })
+    const found = await teamLibrary.deckDataset(storage, req.params.did, req.deck)
+    if (!found) return res.status(404).json({ error: 'Dataset not found' })
     // The deck's pinned version unless the request names one (or "current")
-    const data = await readView(storage, ds, {
-      versionId: req.query.version || link.pinnedVersionId, ownerId: req.deck.ownerId, raw: req.query.raw === '1', localDir: DATA_DIR,
+    const data = await readView(storage, found.ds, {
+      versionId: req.query.version || link.pinnedVersionId, ownerId: found.ownerId, raw: req.query.raw === '1', localDir: DATA_DIR,
     })
     if (!data) return res.status(404).json({ error: 'Version not found' })
     res.json(applyQuery(data.table, data.columns, queryOptions(req)))
@@ -1863,15 +1925,23 @@ app.post('/api/landing-templates/:slug/use', uploadLimiter, async (req, res) => 
 
 // --- Custom Fonts ---
 
-// GET /api/fonts - list user's custom fonts
+// GET /api/fonts - list user's custom fonts; ?teamId= adds that team's (each
+// with teamId), for a team's presentation
 app.get('/api/fonts', async (req, res) => {
   try {
     const { rows } = await storage.query(
-      'SELECT id, family_name, source, url, created_at FROM user_fonts WHERE user_id = $1 ORDER BY family_name',
+      'SELECT id, family_name, source, url, created_at FROM user_fonts WHERE user_id = $1 AND team_id IS NULL ORDER BY family_name',
       [req.userId]
     )
-    res.json(rows.map(r => ({ id: r.id, familyName: r.family_name, source: r.source, url: r.url, createdAt: r.created_at })))
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+    const own = rows.map(r => ({ id: r.id, familyName: r.family_name, source: r.source, url: r.url, createdAt: r.created_at }))
+    const teamId = req.query.teamId
+    if (!teamId || !IS_CLOUD || req.isGuest || !req.userId) return res.json(own)
+    if (!isValidUUID(teamId)) return res.status(400).json({ error: 'Invalid id' })
+    res.json([...own, ...await teamLibrary.listFonts(storage, teamId, req.userId)])
+  } catch (err) {
+    if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // POST /api/fonts/upload - upload a TTF/OTF/WOFF font file
@@ -1957,6 +2027,21 @@ app.post('/api/fonts/google', async (req, res) => {
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
+// The fonts a deck's exported page loads: the person's own, and its team's
+// for a team's deck, each family once
+async function deckFonts(userId, deckId) {
+  if (!storage.query) return []
+  const { rows } = await storage.query(
+    `SELECT family_name, source, url FROM user_fonts
+      WHERE user_id = $1 OR team_id = (SELECT team_id FROM presentations WHERE id = $2)
+      ORDER BY team_id NULLS FIRST`,
+    [userId, deckId]
+  ).catch(() => ({ rows: [] }))
+  const seen = new Set()
+  return rows.filter(r => !seen.has(r.family_name) && seen.add(r.family_name))
+    .map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
+}
+
 // Deletes an uploaded font's file, found from its URL: /api/fonts/file/<name>
 // is in R2 with an uploads row (which is what counts it toward storage), and
 // /uploads/fonts/<name> is on disk
@@ -1976,13 +2061,14 @@ async function deleteFontFile(url, userId) {
 }
 
 // DELETE /api/fonts/:id - remove a custom font, and an uploaded one's file
+// (A file a team's copy of the font still uses is kept for the team.)
 app.delete('/api/fonts/:id', requireValidId(), async (req, res) => {
   try {
     const { rows } = await storage.query(
-      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2 RETURNING source, url', [req.params.id, req.userId]
+      'DELETE FROM user_fonts WHERE id = $1 AND user_id = $2 AND team_id IS NULL RETURNING source, url', [req.params.id, req.userId]
     )
     if (!rows.length) return res.status(404).json({ error: 'Font not found' })
-    if (rows[0].source === 'upload') await deleteFontFile(rows[0].url, req.userId)
+    if (rows[0].source === 'upload' && !(await teamLibrary.fontFileShared(storage, rows[0].url))) await deleteFontFile(rows[0].url, req.userId)
     res.json({ success: true })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
@@ -2005,11 +2091,19 @@ function themeDocFrom(req, res) {
   }
 }
 
-// GET /api/themes - the person's saved themes, by name
+// GET /api/themes - the person's saved themes, by name; ?teamId= adds that
+// team's (each with teamId), for a team's presentation
 app.get('/api/themes', async (req, res) => {
   try {
-    res.json(await storage.listThemes(req.userId))
-  } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+    const own = await storage.listThemes(req.userId)
+    const teamId = req.query.teamId
+    if (!teamId || !IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.json(own)
+    if (!isValidUUID(teamId)) return res.status(400).json({ error: 'Invalid id' })
+    res.json([...own, ...await teamLibrary.listThemes(storage, teamId, req.userId)])
+  } catch (err) {
+    if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+    res.status(500).json({ error: safeErrorMessage(err) })
+  }
 })
 
 // POST /api/themes - save a theme (Save as theme, Import)
@@ -2453,6 +2547,66 @@ function teamRoute(handler) {
     }
   }
 }
+
+// --- A team's library (cloud only; services/team-library.js) ---
+// Its themes, fonts, datasets and templates. Members of the team use them;
+// the owner, admins and members add to them.
+
+app.get('/api/teams/:id/library', requireValidId(), teamRoute(async (req, res) => {
+  const [themes, fonts, datasets, templates] = await Promise.all([
+    teamLibrary.listThemes(storage, req.params.id, req.userId),
+    teamLibrary.listFonts(storage, req.params.id, req.userId),
+    teamLibrary.listDatasets(storage, req.params.id, req.userId),
+    teamLibrary.listTemplates(storage, req.params.id, req.userId),
+  ])
+  res.json({ themes, fonts, datasets, templates })
+}))
+
+app.post('/api/teams/:id/themes', requireValidId(), teamRoute(async (req, res) => {
+  const doc = themeDocFrom(req, res)
+  if (!doc) return
+  res.status(201).json(await teamLibrary.createTheme(storage, req.params.id, req.userId, doc))
+}))
+
+app.put('/api/teams/:id/themes/:themeId', requireValidId(), requireValidId('themeId'), teamRoute(async (req, res) => {
+  const doc = themeDocFrom(req, res)
+  if (!doc) return
+  res.json(await teamLibrary.updateTheme(storage, req.params.id, req.userId, req.params.themeId, doc))
+}))
+
+app.delete('/api/teams/:id/themes/:themeId', requireValidId(), requireValidId('themeId'), teamRoute(async (req, res) => {
+  await teamLibrary.deleteTheme(storage, req.params.id, req.userId, req.params.themeId)
+  res.json({ success: true })
+}))
+
+// { familyName } adds a Google font; { fontId } shares one of the caller's
+app.post('/api/teams/:id/fonts', requireValidId(), teamRoute(async (req, res) => {
+  const { familyName, fontId } = req.body || {}
+  if (fontId && !isValidUUID(fontId)) return res.status(400).json({ error: 'Invalid id' })
+  res.status(201).json(await teamLibrary.addFont(storage, req.params.id, req.userId, { familyName, fontId }))
+}))
+
+app.delete('/api/teams/:id/fonts/:fontId', requireValidId(), requireValidId('fontId'), teamRoute(async (req, res) => {
+  await teamLibrary.deleteFont(storage, req.params.id, req.userId, req.params.fontId)
+  res.json({ success: true })
+}))
+
+app.get('/api/teams/:id/templates', requireValidId(), teamRoute(async (req, res) => {
+  res.json(await teamLibrary.listTemplates(storage, req.params.id, req.userId))
+}))
+
+// { presentationId, title? }: a template of one of the team's presentations
+app.post('/api/teams/:id/templates', requireValidId(), teamRoute(async (req, res) => {
+  const { presentationId, title } = req.body || {}
+  if (!isValidUUID(presentationId)) return res.status(400).json({ error: 'Invalid id' })
+  res.status(201).json(await teamLibrary.saveTemplate(storage, req.params.id, req.userId, presentationId, title))
+}))
+
+app.delete('/api/teams/:id/templates/:templateId', requireValidId(), requireValidId('templateId'), teamRoute(async (req, res) => {
+  await teamLibrary.deleteTemplate(storage, req.params.id, req.userId, req.params.templateId)
+  res.json({ success: true })
+}))
+
 
 const accountEmail = async userId => (await storage.query('SELECT email FROM users WHERE id = $1', [userId])).rows[0]?.email || ''
 const validInviteToken = (req, res, next) => (teams.TOKEN_PATTERN.test(req.params.token)
@@ -3257,10 +3411,7 @@ app.post('/api/presentations/:id/zenodo/publish', requireValidId(), async (req, 
       if (slide.background?.image?.startsWith('/uploads/')) slide.background.image = `./assets/${assetName(slide.background.image)}`
     }
 
-    const { rows: userFontRows } = await storage.query(
-      'SELECT family_name, source, url FROM user_fonts WHERE user_id = $1', [req.userId]
-    ).catch(() => ({ rows: [] }))
-    const userFonts = userFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
+    const userFonts = await deckFonts(req.userId, req.params.id)
 
     let htmlContent = await generateRevealHTML(exportPres, { customFonts: userFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)
@@ -3443,10 +3594,7 @@ app.post('/api/presentations/:id/github/push', async (req, res) => {
       }
       if (slide.background?.image?.startsWith('/uploads/')) slide.background.image = `./assets/${assetName(slide.background.image)}`
     }
-    const { rows: ghFontRows } = await storage.query(
-      'SELECT family_name, source, url FROM user_fonts WHERE user_id = $1', [req.userId]
-    ).catch(() => ({ rows: [] }))
-    const ghUserFonts = ghFontRows.map(r => ({ familyName: r.family_name, source: r.source, url: r.url }))
+    const ghUserFonts = await deckFonts(req.userId, req.params.id)
 
     const htmlContent = await generateRevealHTML(exportPres, { customFonts: ghUserFonts, deckData: await deckData(presentation, req.userId) })
     const jsonContent = JSON.stringify(presentation, null, 2)

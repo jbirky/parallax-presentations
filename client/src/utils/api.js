@@ -68,6 +68,7 @@ async function checked(r, fallback) {
   return b
 }
 
+const teamQuery = teamId => (teamId ? `?teamId=${encodeURIComponent(teamId)}` : '')
 function json(method, data) {
   return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }
 }
@@ -228,7 +229,8 @@ export const api = {
   }).then(async r => { const b = await safeJson(r); if (!r.ok) throw new Error(b.error || 'Publish failed'); return b }),
 
   // Custom fonts
-  getFonts: () => authFetch(`${BASE}/fonts`).then(safeJson),
+  // With a teamId (a team's presentation), the team's fonts too, each with teamId
+  getFonts: (teamId) => authFetch(`${BASE}/fonts${teamQuery(teamId)}`).then(safeJson),
   uploadFont: (file, familyName) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -244,13 +246,17 @@ export const api = {
 
   // The theme library (utils/customTheme.js): each call throws the server's
   // message when it fails
-  listThemes: () => authFetch(`${BASE}/themes`).then(themeReply),
+  // With a teamId (a team's presentation), the team's themes too, each with teamId
+  listThemes: (teamId) => authFetch(`${BASE}/themes${teamQuery(teamId)}`).then(themeReply),
   createTheme: (doc) => authFetch(`${BASE}/themes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
   updateTheme: (id, doc) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) }).then(themeReply),
   deleteTheme: (id) => authFetch(`${BASE}/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(themeReply),
 
   // Datasets
-  getDatasets: () => authFetch(`${BASE}/datasets`).then(safeJson),
+  // With a teamId (a team's presentation), the team's datasets too, each with teamId
+  getDatasets: (teamId) => authFetch(`${BASE}/datasets${teamQuery(teamId)}`).then(safeJson),
+  // Gives one of your datasets to a team; it counts against the team after
+  shareDatasetWithTeam: (id, teamId) => authFetch(`${BASE}/datasets/${id}/team`, json('POST', { teamId })).then(r => checked(r, 'Could not give it to the team')),
   getDataset: (id) => authFetch(`${BASE}/datasets/${id}`).then(safeJson),
   uploadDataset: (file, name) => {
     const fd = new FormData()
@@ -296,6 +302,17 @@ export const api = {
   createFolder: (name, parentId = null) => authFetch(`${BASE}/folders`, json('POST', { name, parentId })).then(r => checked(r, 'Could not make the folder')),
   updateFolder: (id, change) => authFetch(`${BASE}/folders/${id}`, json('PATCH', change)).then(r => checked(r, 'Could not change the folder')),
   deleteFolder: (id) => authFetch(`${BASE}/folders/${id}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
+  // A team's library: { themes, fonts, datasets, templates }
+  getTeamLibrary: (id) => authFetch(`${BASE}/teams/${id}/library`).then(r => checked(r, 'Could not load the team’s library')),
+  createTeamTheme: (id, doc) => authFetch(`${BASE}/teams/${id}/themes`, json('POST', doc)).then(r => checked(r, 'Could not save the theme')),
+  updateTeamTheme: (id, themeId, doc) => authFetch(`${BASE}/teams/${id}/themes/${themeId}`, json('PUT', doc)).then(r => checked(r, 'Could not save the theme')),
+  deleteTeamTheme: (id, themeId) => authFetch(`${BASE}/teams/${id}/themes/${themeId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the theme')),
+  // font: { familyName } for a Google font, or { fontId } to share one of yours
+  addTeamFont: (id, font) => authFetch(`${BASE}/teams/${id}/fonts`, json('POST', font)).then(r => checked(r, 'Could not add the font')),
+  deleteTeamFont: (id, fontId) => authFetch(`${BASE}/teams/${id}/fonts/${fontId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not remove the font')),
+  getTeamTemplates: (id) => authFetch(`${BASE}/teams/${id}/templates`).then(r => checked(r, 'Could not load the team’s templates')),
+  saveTeamTemplate: (id, presentationId, title) => authFetch(`${BASE}/teams/${id}/templates`, json('POST', { presentationId, title })).then(r => checked(r, 'Could not save the template')),
+  deleteTeamTemplate: (id, templateId) => authFetch(`${BASE}/teams/${id}/templates/${templateId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the template')),
   // Moves a presentation: teamId null for the caller's own presentations
   moveDeck: (id, { teamId, folderId }) => authFetch(`${BASE}/presentations/${id}/location`, json('PUT', { teamId, folderId })).then(r => checked(r, 'Could not move the presentation')),
   // Paying for teams (when billing is on): each resolves to { url } on Stripe, but setTeamSeats
@@ -331,7 +348,7 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ datasetId, alias }),
-  }).then(safeJson),
+  }).then(r => checked(r, 'Could not link the dataset')),
   unlinkDataset: (pid, datasetId) => authFetch(`${BASE}/presentations/${pid}/datasets/${datasetId}`, { method: 'DELETE' }).then(safeJson),
 
   // File management

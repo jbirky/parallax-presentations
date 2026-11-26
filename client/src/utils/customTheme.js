@@ -95,9 +95,12 @@ export function themeDiffers(deck, doc) {
   return JSON.stringify(sorted(mine)) !== JSON.stringify(sorted({ ...doc, name: doc.name }))
 }
 
+// What the library adds to a theme document: a team's also says whose it is
+const LIBRARY_FIELDS = ['id', 'version', 'createdAt', 'updatedAt', 'teamId', 'createdBy', 'creatorName']
+
 function sorted(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
-  return Object.fromEntries(Object.keys(value).sort().filter(k => !['id', 'version', 'createdAt', 'updatedAt'].includes(k)).map(k => [k, sorted(value[k])]))
+  return Object.fromEntries(Object.keys(value).sort().filter(k => !LIBRARY_FIELDS.includes(k)).map(k => [k, sorted(value[k])]))
 }
 
 // A document as a .json file's text

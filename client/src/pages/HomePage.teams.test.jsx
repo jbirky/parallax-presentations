@@ -69,11 +69,11 @@ describe('the dashboard with teams', () => {
     expect(page.el.querySelector('.folder-tile').textContent).toContain('Talks')
     expect(page.card('Colloquium')).toBeUndefined()
     // Their own: move and delete too
-    expect(page.titles(page.card('My lab talk'))).toEqual(['Edit', 'Move', 'Duplicate', 'Delete'])
+    expect(page.titles(page.card('My lab talk'))).toEqual(['Edit', 'Move', 'Duplicate', 'Save as team template', 'Delete'])
     await act(async () => page.el.querySelector('.folder-tile').click())
     // Someone else's: edit and copy
     expect(page.card('Colloquium').textContent).toContain('By Ada')
-    expect(page.titles(page.card('Colloquium'))).toEqual(['Edit', 'Duplicate'])
+    expect(page.titles(page.card('Colloquium'))).toEqual(['Edit', 'Duplicate', 'Save as team template'])
 
     await act(async () => page.el.querySelector('.deck-crumb').click())
     await act(async () => page.el.querySelector('.new-card').click())
@@ -81,6 +81,41 @@ describe('the dashboard with teams', () => {
     await act(async () => page.el.querySelector('.modal form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(api.createPresentation).toHaveBeenCalledWith(expect.objectContaining({ teamId: 't1', folderId: null }))
     expect(page.onOpen).toHaveBeenCalledWith('new', false, 'Untitled')
+    act(() => page.root.unmount())
+  })
+
+  it('saves a team presentation as a team template, and starts new team presentations from it', async () => {
+    api.getTeamTemplates.mockResolvedValue([
+      { id: 'tt1', title: 'Group meeting', teamId: 't1', createdBy: 'u-me', creatorName: 'Me', thumbnail: null },
+      { id: 'tt2', title: 'Journal club', teamId: 't1', createdBy: 'u-ada', creatorName: 'Ada', thumbnail: null },
+    ])
+    api.saveTeamTemplate.mockResolvedValue({ id: 'tt3', title: 'Lab talk (template)' })
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Lab talk (template)')
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const page = await render()
+    await act(async () => page.nav('Exoplanet lab').click())
+    await act(async () => page.card('My lab talk').querySelector('button[title="Save as team template"]').click())
+    expect(api.saveTeamTemplate).toHaveBeenCalledWith('t1', 'd2', 'Lab talk (template)')
+    expect(alert.mock.calls[0][0]).toContain('team’s templates')
+
+    await act(async () => page.el.querySelector('.new-card').click())
+    expect(api.getTeamTemplates).toHaveBeenCalledWith('t1')
+    const picks = () => [...page.el.querySelectorAll('.modal .form-group button[type="button"]:not(.template-remove)')].map(b => b.textContent.trim())
+    expect(picks()).toEqual(expect.arrayContaining(['Blank', 'Group meeting', 'Journal club']))
+    // A member deletes the team templates they saved, not others'
+    const removers = [...page.el.querySelectorAll('.template-remove')].map(b => b.getAttribute('aria-label'))
+    expect(removers).toEqual(['Delete the team template Group meeting'])
+    const pick = [...page.el.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Journal club')
+    await act(async () => pick.click())
+    await act(async () => page.el.querySelector('.modal form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(api.createPresentation).toHaveBeenCalledWith(expect.objectContaining({ teamId: 't1', templateId: 'tt2' }))
+
+    await act(async () => page.el.querySelector('.new-card').click())
+    await act(async () => page.el.querySelector('.template-remove').click())
+    expect(api.deleteTeamTemplate).toHaveBeenCalledWith('t1', 'tt1')
+    expect(picks()).not.toContain('Group meeting')
+    prompt.mockRestore(); alert.mockRestore(); confirm.mockRestore()
     act(() => page.root.unmount())
   })
 
