@@ -116,6 +116,81 @@ describe('teams', { skip }, () => {
     assert.equal((await join(outsider, locked)).body.role, 'viewer')
   })
 
+  it('emails a link for an address there, where the server sends email, a few an hour', async () => {
+    // Resend, stubbed; the test's own calls to the server go through
+    const realFetch = globalThis.fetch
+    let mails = [], refuse = false
+    globalThis.fetch = async (url, init) => {
+      if (!String(url).startsWith('https://api.resend.com/')) return realFetch(url, init)
+      if (refuse) return new Response(JSON.stringify({ message: 'The test.local domain is not verified.' }), { status: 403 })
+      mails.push({ ...JSON.parse(init.body), key: init.headers['Idempotency-Key'] })
+      return new Response(JSON.stringify({ id: `em_${mails.length}` }), { status: 200 })
+    }
+    const made = []
+    const post = async (who, body) => {
+      const res = await call(who, 'POST', `/api/teams/${team}/invites`, body)
+      assert.equal(res.status, 201, JSON.stringify(res.body))
+      made.push([who, res.body.invite.id])
+      return res.body
+    }
+    try {
+      // Off: the link is made, to send yourself
+      assert.equal((await call(owner, 'GET', `/api/teams/${team}`)).body.inviteEmails, false)
+      let got = await post(owner, { role: 'member', email: email(late) })
+      assert.deepEqual([got.emailed, got.emailError], [false, 'This server doesn’t send email.'])
+
+      process.env.RESEND_API_KEY = 're_test'
+      process.env.PARALLAX_EMAIL_FROM = 'Parallax <invites@test.local>'
+      assert.equal((await call(owner, 'GET', `/api/teams/${team}`)).body.inviteEmails, true)
+      got = await post(owner, { role: 'viewer', email: email(late) })
+      assert.equal(got.emailed, true)
+      assert.equal(mails.length, 1)
+      assert.deepEqual(mails[0].to, [email(late)])
+      assert.equal(mails[0].from, 'Parallax <invites@test.local>')
+      const { rows: [{ who }] } = await pool.query("SELECT COALESCE(NULLIF(name, ''), email) AS who FROM users WHERE email = $1", [email(owner)])
+      assert.equal(mails[0].subject, `${who} invited you to Lab ${t.run} on Parallax`)
+      assert.ok(mails[0].text.includes(`/teams/join/${got.token}`))
+      assert.ok(mails[0].text.includes(`works only for ${email(late)}`))
+      assert.equal(mails[0].key, `team-invite-${got.invite.id}`)
+      // The emailed link joins that address, and only that one
+      const someoneElse = t.user('someone-else')
+      await call(someoneElse, 'GET', '/api/me')
+      assert.equal((await join(someoneElse, got.token)).status, 403)
+
+      // A link for anyone isn't emailed anywhere
+      got = await post(owner, { role: 'member' })
+      assert.equal(got.emailed, undefined)
+      assert.equal(mails.length, 1)
+
+      // Refused by the email service: the link is still made, to send yourself
+      refuse = true
+      got = await post(owner, { role: 'member', email: 'someone@test.local' })
+      assert.deepEqual([got.emailed, got.emailError], [false, 'The email couldn’t be sent.'])
+      assert.ok(got.token)
+      refuse = false
+
+      // At most 20 emailed an hour by one person
+      for (const [, id] of made.splice(0)) await call(owner, 'DELETE', `/api/teams/${team}/invites/${id}`)
+      const { rows: [{ n: before }] } = await pool.query(
+        `SELECT count(*)::int AS n FROM team_invites i JOIN users u ON u.id = i.created_by
+          WHERE u.email = $1 AND i.email IS NOT NULL AND i.created_at > NOW() - interval '1 hour'`, [email(admin)])
+      mails = []
+      let last
+      for (let k = 0; k < 25; k++) {
+        last = await post(admin, { role: 'viewer', email: `cap${k}@test.local` })
+        await call(admin, 'DELETE', `/api/teams/${team}/invites/${made.pop()[1]}`)
+        if (!last.emailed) break
+      }
+      assert.equal(mails.length, 20 - before)
+      assert.match(last.emailError, /20 invitations emailed in the last hour/)
+    } finally {
+      globalThis.fetch = realFetch
+      delete process.env.RESEND_API_KEY
+      delete process.env.PARALLAX_EMAIL_FROM
+      for (const [who, id] of made) await call(who, 'DELETE', `/api/teams/${team}/invites/${id}`)
+    }
+  })
+
   it('stops a link working once it is revoked or has expired', async () => {
     const token = await invite(owner, { role: 'viewer' })
     const { invites } = (await call(owner, 'GET', `/api/teams/${team}`)).body

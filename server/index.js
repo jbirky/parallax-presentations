@@ -36,6 +36,8 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
+const emailService = require('./services/email')
+const { teamInviteEmail } = require('./services/team-invite-email')
 const teamSpace = require('./services/team-space')
 const folders = require('./services/folders')
 const teamLibrary = require('./services/team-library')
@@ -2709,7 +2711,8 @@ app.get('/api/teams', teamRoute(async (req, res) => {
 app.get('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
   const team = await teams.getTeam(storage, req.params.id, req.userId)
   // For its owner's billing: the fewest seats its plan sells, and whether it can be paid for here
-  res.json({ ...team, minSeats: planFor(team.plan).minSeats || 1, billing: stripeService.isEnabled() })
+  // and whether invite links for an email address are emailed there
+  res.json({ ...team, minSeats: planFor(team.plan).minSeats || 1, billing: stripeService.isEnabled(), inviteEmails: emailService.isEnabled() })
 }))
 
 // PATCH /api/teams/:id - rename it: { name }
@@ -2718,11 +2721,39 @@ app.patch('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
 }))
 
 // POST /api/teams/:id/invites - a new invite link: { role, email?, days? }.
-// The answer's token is the only time the link's secret is shown.
+// The answer's token is the only time the link's secret is shown. A link for
+// an email address is emailed there too, where this server sends email
+// (services/email.js): `emailed` says whether it went, and `emailError` why
+// not, so the person inviting can send the link themselves.
 app.post('/api/teams/:id/invites', requireValidId(), teamRoute(async (req, res) => {
   const { role, email, days } = req.body || {}
-  res.status(201).json(await teams.createInvite(storage, req.params.id, req.userId, { role, email, days }))
+  const made = await teams.createInvite(storage, req.params.id, req.userId, { role, email, days })
+  res.status(201).json(made.invite.email ? { ...made, ...await emailTeamInvite(req, made) } : made)
 }))
+
+// The invitation for an invite link made for one address, emailed there:
+// { emailed, emailError? }. Someone inviting can have at most
+// INVITE_EMAILS_PER_HOUR sent in an hour; past that, the link is still made.
+const INVITE_EMAILS_PER_HOUR = 20
+async function emailTeamInvite(req, { token, invite }) {
+  if (!emailService.isEnabled()) return { emailed: false, emailError: 'This server doesn’t send email.' }
+  if (await teams.recentEmailInvites(storage, req.userId) > INVITE_EMAILS_PER_HOUR) {
+    return { emailed: false, emailError: `You’ve had ${INVITE_EMAILS_PER_HOUR} invitations emailed in the last hour, the most there can be.` }
+  }
+  try {
+    const found = await teams.findInvite(storage, token)
+    const origin = siteOrigin(req)
+    const message = teamInviteEmail({
+      teamName: found.teamName, invitedBy: found.invitedBy, role: invite.role, email: invite.email,
+      expiresAt: invite.expiresAt, url: `${origin}/teams/join/${token}`, origin,
+    })
+    await emailService.send({ to: invite.email, ...message, replyTo: 'support@parallax-presentations.com', idempotencyKey: `team-invite-${invite.id}` })
+    return { emailed: true }
+  } catch (err) {
+    console.error('Couldn’t email a team invitation:', err.message)
+    return { emailed: false, emailError: 'The email couldn’t be sent.' }
+  }
+}
 
 // DELETE /api/teams/:id/invites/:inviteId - revoke an invite link
 app.delete('/api/teams/:id/invites/:inviteId', requireValidId(), requireValidId('inviteId'), teamRoute(async (req, res) => {

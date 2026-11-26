@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useCallback, useEffect, useState } from 'react'
-import { X, ArrowLeft, Copy, Link, LogOut, UserMinus, Crown, CreditCard, Plus } from 'lucide-react'
+import { X, ArrowLeft, Copy, Link, LogOut, UserMinus, Crown, CreditCard, Plus, Send } from 'lucide-react'
 import { api } from '../utils/api'
 import { priceText } from '../utils/plans'
 
@@ -192,8 +192,10 @@ function Avatar({ person }) {
     : <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{name[0].toUpperCase()}</span>
 }
 
-// Makes an invite link; shows its address once, since only its hash is kept
-function NewInvite({ teamId, onMade }) {
+// Makes an invite link; shows its address once, since only its hash is kept.
+// Where the server sends email (`emails`), a link for an email address is
+// emailed there, and this says whether it went.
+function NewInvite({ teamId, onMade, emails = false }) {
   const [role, setRole] = useState('member')
   const [email, setEmail] = useState('')
   const [days, setDays] = useState('30')
@@ -207,8 +209,9 @@ function NewInvite({ teamId, onMade }) {
     setBusy(true)
     setError('')
     try {
-      const { token } = await api.createTeamInvite(teamId, { role, email: email.trim() || null, days: days === 'never' ? null : Number(days) })
-      setMade(teamJoinUrl(token))
+      const to = email.trim()
+      const { token, emailed, emailError } = await api.createTeamInvite(teamId, { role, email: to || null, days: days === 'never' ? null : Number(days) })
+      setMade({ url: teamJoinUrl(token), to, emailed: !!emailed, emailError: emailError || '' })
       setEmail('')
       onMade()
     } catch (err) {
@@ -218,7 +221,7 @@ function NewInvite({ teamId, onMade }) {
   }
 
   const copy = () => {
-    navigator.clipboard.writeText(made).catch(() => {})
+    navigator.clipboard.writeText(made.url).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -235,17 +238,24 @@ function NewInvite({ teamId, onMade }) {
           <option value="90">90 days</option>
           <option value="never">No expiry</option>
         </select>
-        <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Only for this email (optional)"
-          aria-label="Only for this email address" style={{ flex: '1 1 180px', fontSize: 13, padding: '6px 10px' }} />
-        <button className="btn btn-primary" type="submit" disabled={busy} style={small}><Link size={13} /> Make link</button>
+        <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+          placeholder={emails ? 'Their email, to send them the link' : 'Only for this email (optional)'}
+          aria-label={emails ? 'Email address to send the invitation to' : 'Only for this email address'} style={{ flex: '1 1 180px', fontSize: 13, padding: '6px 10px' }} />
+        <button className="btn btn-primary" type="submit" disabled={busy} style={small}>
+          {emails && email.trim() ? <><Send size={13} /> Send invite</> : <><Link size={13} /> Make link</>}
+        </button>
       </form>
       {made && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input readOnly className="form-input" value={made} onFocus={e => e.target.select()} aria-label="New invite link" style={{ fontSize: 13, padding: '6px 10px' }} />
+            <input readOnly className="form-input" value={made.url} onFocus={e => e.target.select()} aria-label="New invite link" style={{ fontSize: 13, padding: '6px 10px' }} />
             <button className="btn btn-secondary" onClick={copy} style={{ ...small, flexShrink: 0 }}><Copy size={13} /> {copied ? 'Copied' : 'Copy'}</button>
           </div>
-          <p style={muted}>Copy it now: the link isn’t shown again. Send it to the people you’re inviting.</p>
+          <p role="status" style={muted}>
+            {made.emailed ? `Invitation emailed to ${made.to}, with this link, which works only for that address. You can also copy it now; it isn’t shown again.`
+              : made.to ? `${made.emailError ? `The invitation wasn’t emailed: ${made.emailError} ` : ''}Copy the link now and send it to ${made.to}: it works only for that address, and it isn’t shown again.`
+                : 'Copy it now: the link isn’t shown again. Send it to the people you’re inviting.'}
+          </p>
         </div>
       )}
       {error && <p role="alert" style={{ ...muted, color: 'var(--danger)' }}>{error}</p>}
@@ -360,8 +370,10 @@ function TeamDetail({ teamId, onBack, onLeft, onRenamed }) {
       {manager && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <h4 style={sectionTitle}>Invite links</h4>
-          <p style={muted}>Anyone signed in who opens a link joins in its role, until it expires or you revoke it. Limit a link to one email address to keep it for one person.</p>
-          <NewInvite teamId={teamId} onMade={load} />
+          <p style={muted}>{team.inviteEmails
+            ? 'Add someone’s email to send them an invitation: its link works only for that address. Without an email, anyone signed in who opens the link joins in its role, until it expires or you revoke it.'
+            : 'Anyone signed in who opens a link joins in its role, until it expires or you revoke it. Limit a link to one email address to keep it for one person.'}</p>
+          <NewInvite teamId={teamId} onMade={load} emails={!!team.inviteEmails} />
           {team.invites.length > 0 && (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {team.invites.map(i => (

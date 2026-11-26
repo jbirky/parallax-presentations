@@ -282,7 +282,8 @@ export const api = {
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   // Teams (cloud only). An invite's days is 7, 30 or 90, or null for never;
-  // createTeamInvite resolves to { token, invite }, the only time the token is shown.
+  // createTeamInvite resolves to { token, invite, emailed?, emailError? }, the only time the token is shown;
+  // for an email address, emailed says whether the invitation went there
   listTeams: () => authFetch(`${BASE}/teams`).then(r => checked(r, 'Could not load your teams')),
   getTeam: (id) => authFetch(`${BASE}/teams/${id}`).then(r => checked(r, 'Could not load the team')),
   renameTeam: (id, name) => authFetch(`${BASE}/teams/${id}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the team')),
