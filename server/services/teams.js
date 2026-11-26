@@ -124,7 +124,9 @@ async function getTeam(storage, teamId, userId) {
   const role = await roleIn(storage, teamId, userId)
   if (!role) throw new TeamError(404, 'Team not found')
   const { rows: [team] } = await storage.query(
-    'SELECT id, name, plan, seats, status, created_at AS "createdAt" FROM teams WHERE id = $1',
+    `SELECT id, name, plan, seats, status, created_at AS "createdAt",
+            stripe_subscription_id IS NOT NULL AS subscribed
+       FROM teams WHERE id = $1`,
     [teamId]
   )
   const { rows: members } = await storage.query(
@@ -385,6 +387,65 @@ async function adminUpdateTeam(storage, teamId, { seats, plan, status }, plans) 
   })
 }
 
+// --- Paid through Stripe (services/stripe.js) ---
+
+// A team bought at checkout, with its owner as its first member. Stripe may
+// send the same event twice: a subscription that already has a team gets
+// that team back. Returns { id, created }.
+async function createPaidTeam(storage, { name, ownerId, plan, seats, status, customerId, subscriptionId }) {
+  return inTransaction(storage, async client => {
+    const { rows: existing } = await client.query('SELECT id FROM teams WHERE stripe_subscription_id = $1', [subscriptionId])
+    if (existing.length) return { id: existing[0].id, created: false }
+    const { rows: [team] } = await client.query(
+      `INSERT INTO teams (name, owner_id, plan, seats, status, stripe_customer_id, stripe_subscription_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [cleanName(name || 'My team'), ownerId, plan, cleanSeats(seats), status, customerId, subscriptionId]
+    )
+    await client.query(`INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')`, [team.id, ownerId])
+    return { id: team.id, created: true }
+  })
+}
+
+// Records what a team's subscription says: { subscriptionId (null once it's
+// gone), customerId?, seats?, plan?, status }. Finds the team by its id or
+// by the subscription. Returns { id, statusBefore }, or null for no team.
+async function setTeamSubscription(storage, { teamId = null, subscriptionId, customerId, seats, plan, status }) {
+  // The team the subscription names is the one, whatever else has had it
+  const { rows } = teamId
+    ? await storage.query('SELECT id, status FROM teams WHERE id = $1', [teamId])
+    : subscriptionId
+      ? await storage.query('SELECT id, status FROM teams WHERE stripe_subscription_id = $1', [subscriptionId])
+      : { rows: [] }
+  if (!rows.length) return null
+  await storage.query(
+    `UPDATE teams SET stripe_subscription_id = $2, stripe_customer_id = COALESCE($3, stripe_customer_id),
+            seats = COALESCE($4, seats), plan = COALESCE($5, plan), status = $6, updated_at = NOW()
+      WHERE id = $1`,
+    [rows[0].id, subscriptionId, customerId ?? null, seats ? cleanSeats(seats) : null, plan ?? null, status]
+  )
+  return { id: rows[0].id, statusBefore: rows[0].status }
+}
+
+// The team as its owner pays for it: { id, name, seats, seatsUsed, plan,
+// status, customerId, subscriptionId }, after checking userId owns it
+async function billingOf(storage, teamId, userId) {
+  const role = await roleIn(storage, teamId, userId)
+  if (!role) throw new TeamError(404, 'Team not found')
+  if (role !== 'owner') throw new TeamError(403, 'Only the team\'s owner can change its billing')
+  const { rows: [t] } = await storage.query(
+    'SELECT id, name, seats, plan, status, stripe_customer_id, stripe_subscription_id FROM teams WHERE id = $1', [teamId]
+  )
+  return {
+    id: t.id, name: t.name, seats: t.seats, plan: t.plan, status: t.status,
+    seatsUsed: await seatsUsed(storage, teamId),
+    customerId: t.stripe_customer_id, subscriptionId: t.stripe_subscription_id,
+  }
+}
+
+async function setSeats(storage, teamId, seats) {
+  await storage.query('UPDATE teams SET seats = $2, updated_at = NOW() WHERE id = $1', [teamId, cleanSeats(seats)])
+}
+
 async function adminDeleteTeam(storage, teamId) {
   const { rows } = await storage.query('SELECT COUNT(*)::int AS n FROM presentations WHERE team_id = $1', [teamId])
   if (rows[0].n) throw new TeamError(409, 'This team still has presentations')
@@ -393,8 +454,9 @@ async function adminDeleteTeam(storage, teamId) {
 }
 
 module.exports = {
-  ROLES, INVITE_ROLES, SEAT_ROLES, TOKEN_PATTERN, TeamError,
-  isManager, takesSeat, roleIn,
+  ROLES, INVITE_ROLES, SEAT_ROLES, TOKEN_PATTERN, MAX_SEATS, TeamError,
+  isManager, takesSeat, roleIn, cleanName, cleanSeats,
+  createPaidTeam, setTeamSubscription, billingOf, setSeats,
   listTeams, getTeam, renameTeam,
   createInvite, revokeInvite, describeInvite, acceptInvite,
   changeRole, removeMember, transferOwnership,

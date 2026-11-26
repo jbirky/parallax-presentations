@@ -10,7 +10,7 @@ import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
 import PluginReviewPanel from '../components/PluginReviewPanel'
 import AdminTeamsPanel from '../components/AdminTeamsPanel'
-import { formatSize, planSummary } from '../utils/plans'
+import { formatSize, planSummary, priceText } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
 
@@ -206,6 +206,8 @@ export function toPlanForm(plan) {
     sortOrder: String(plan.sortOrder ?? 0),
     liveDatasets: String(plan.liveDatasets ?? 0),
     minRefresh: plan.minRefresh || 'daily',
+    perSeat: !!plan.perSeat,
+    minSeats: plan.minSeats == null ? '' : String(plan.minSeats),
   }
 }
 
@@ -225,6 +227,8 @@ export function fromPlanForm(form) {
     sortOrder: form.sortOrder.trim() === '' ? 0 : Number(form.sortOrder),
     liveDatasets: form.liveDatasets.trim() === '' ? 0 : Number(form.liveDatasets),
     minRefresh: form.minRefresh,
+    perSeat: !!form.perSeat,
+    minSeats: form.perSeat && String(form.minSeats ?? '').trim() !== '' ? Number(form.minSeats) : null,
   }
 }
 
@@ -325,9 +329,9 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
           </select>
         </Field>
         <Field label="Order"><input style={fieldInput} type="number" min="0" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></Field>
-        {!builtIn && (
-          <Field label="Stripe price ID" hint="blank: not for sale">
-            <input style={{ ...fieldInput, fontFamily: 'monospace' }} value={form.stripePriceId} onChange={set('stripePriceId')} placeholder="price_…" spellCheck={false} />
+        {!builtIn && form.perSeat && (
+          <Field label="Fewest seats" hint="blank: 1">
+            <input style={fieldInput} type="number" min="1" max="1000" step="1" value={form.minSeats} onChange={set('minSeats')} />
           </Field>
         )}
         {plan.id !== 'guest' && (
@@ -341,6 +345,11 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
           <input type="checkbox" checked={form.public} onChange={set('public')} /> Listed for people choosing a plan
         </label>
       )}
+      {!builtIn && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <input type="checkbox" checked={form.perSeat} onChange={set('perSeat')} /> Sold to teams, by the seat
+        </label>
+      )}
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '5px 12px', fontSize: 13 }}>
@@ -349,6 +358,61 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
         <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => onDone?.(null)} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
       </div>
     </form>
+  )
+}
+
+// A plan's Stripe prices: each to stop selling at, and one more to add by its
+// ID. Where Stripe is set up, the server asks it for the interval and amount.
+function PlanPrices({ plan, onChanged }) {
+  const [form, setForm] = useState(null) // { priceId, interval, amount }
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const act = async fn => {
+    setBusy(true)
+    setError(null)
+    try { await fn(); await onChanged?.() } catch (err) { setError(err.message) }
+    setBusy(false)
+  }
+  const add = e => {
+    e.preventDefault()
+    const amount = form.amount.trim()
+    act(async () => {
+      await api.addPlanPrice(plan.id, { priceId: form.priceId.trim(), interval: form.interval, amountCents: amount === '' ? null : Math.round(Number(amount) * 100) })
+      setForm(null)
+    })
+  }
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {plan.prices?.length ? plan.prices.map(p => (
+        <div key={p.priceId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', minWidth: 0 }}>
+          <span style={{ flexShrink: 0 }}>{p.interval === 'year' ? 'Yearly' : 'Monthly'}: {priceText(p, { perSeat: plan.perSeat })}</span>
+          <code style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.priceId}</code>
+          <button type="button" className="btn btn-ghost" disabled={busy} aria-label={`Stop selling at ${p.priceId}`} title="Stop selling at this price; subscriptions on it carry on"
+            style={{ marginLeft: 'auto', padding: '1px 6px', fontSize: 12, color: 'var(--danger)' }}
+            onClick={() => confirm(`Stop selling ${plan.name} at ${p.priceId}? Subscriptions already on it carry on.`) && act(() => api.removePlanPrice(plan.id, p.priceId))}>
+            Remove
+          </button>
+        </div>
+      )) : <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{plan.priceLabel || 'Not for sale'}</div>}
+      {form ? (
+        <form onSubmit={add} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <input style={{ ...fieldInput, flex: '1 1 160px', width: 'auto', fontFamily: 'monospace' }} required placeholder="price_…" spellCheck={false}
+            aria-label="Stripe price ID" value={form.priceId} onChange={e => setForm(f => ({ ...f, priceId: e.target.value }))} />
+          <select className="select-sm" aria-label="Billed" value={form.interval} onChange={e => setForm(f => ({ ...f, interval: e.target.value }))}>
+            <option value="month">Monthly</option><option value="year">Yearly</option>
+          </select>
+          <input style={{ ...fieldInput, width: 90 }} type="number" min="0" step="0.01" placeholder={plan.perSeat ? '$ a seat' : '$'} aria-label="Amount in dollars"
+            value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ padding: '3px 10px', fontSize: 12 }}>Add</button>
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setForm(null)} style={{ padding: '3px 10px', fontSize: 12 }}>Cancel</button>
+          <div style={{ flexBasis: '100%', fontSize: 11, color: 'var(--text-muted)' }}>Where Stripe is set up, how often and how much come from the price itself.</div>
+        </form>
+      ) : (
+        <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setForm({ priceId: '', interval: 'month', amount: '' })}
+          style={{ justifySelf: 'start', padding: '2px 8px', fontSize: 12 }}>Add a price</button>
+      )}
+      {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+    </div>
   )
 }
 
@@ -392,11 +456,10 @@ function PlanCard({ plan, accounts, onChanged }) {
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             {planSummary(plan).map(line => <div key={line}>{line}</div>)}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
-            {plan.stripePriceId
-              ? <>{plan.priceLabel || 'Priced'} · <code>{plan.stripePriceId}</code></>
-              : plan.priceLabel || (builtIn ? '—' : 'Not for sale')}
-          </div>
+          {plan.perSeat && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Sold to teams by the seat{plan.minSeats > 1 ? `, at least ${plan.minSeats}` : ''}</div>}
+          {builtIn
+            ? <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{plan.priceLabel || '—'}</div>
+            : <PlanPrices plan={plan} onChanged={onChanged} />}
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="btn btn-secondary" onClick={() => { setMessage(null); setEditing(true) }} style={{ padding: '3px 10px', fontSize: 12 }}>Edit</button>
             {!builtIn && (
@@ -423,8 +486,8 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
           <p style={styles.sub}>
             Limits apply as soon as you save.{' '}
             {billingEnabled
-              ? 'Listed plans with a Stripe price can be bought from the dashboard.'
-              : 'Billing is switched off, so Stripe prices take effect once it’s on.'}
+              ? 'Listed plans with a price can be bought from the dashboard, and plans sold by the seat by people creating a team.'
+              : 'Billing is switched off (PARALLAX_BILLING), so prices take effect once it’s on.'}
           </p>
         </div>
         {!adding && <button className="btn btn-secondary" onClick={() => setAdding(true)} style={{ padding: '5px 12px', fontSize: 12 }}>Add a plan</button>}

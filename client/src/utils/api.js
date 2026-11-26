@@ -298,6 +298,11 @@ export const api = {
   deleteFolder: (id) => authFetch(`${BASE}/folders/${id}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
   // Moves a presentation: teamId null for the caller's own presentations
   moveDeck: (id, { teamId, folderId }) => authFetch(`${BASE}/presentations/${id}/location`, json('PUT', { teamId, folderId })).then(r => checked(r, 'Could not move the presentation')),
+  // Paying for teams (when billing is on): each resolves to { url } on Stripe, but setTeamSeats
+  createTeamCheckout: ({ name, seats, priceId }) => authFetch(`${BASE}/teams/checkout`, json('POST', { name, seats, priceId })).then(r => checked(r, 'Could not start checkout')),
+  teamBillingCheckout: (id, { priceId, seats }) => authFetch(`${BASE}/teams/${id}/billing/checkout`, json('POST', { priceId, seats })).then(r => checked(r, 'Could not start checkout')),
+  teamBillingPortal: (id) => authFetch(`${BASE}/teams/${id}/billing/portal`, { method: 'POST' }).then(r => checked(r, 'Could not open billing')),
+  setTeamSeats: (id, seats) => authFetch(`${BASE}/teams/${id}/seats`, json('PUT', { seats })).then(r => checked(r, 'Could not change the seats')),
   getTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}`).then(r => checked(r, 'Could not open the invitation')),
   acceptTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Could not join the team')),
   // AI collaborator links (cloud only): days is 7, 30 or 90, or null for never
@@ -345,10 +350,11 @@ export const api = {
   // Billing
   // The listed plans: { billing, plans }. Public, so it works signed out.
   getPlans: () => _fetch(`${BASE}/plans`).then(safeJson),
-  createCheckout: (plan) => authFetch(`${BASE}/billing/checkout`, {
+  // At one of the plan's prices (priceId), or its monthly one
+  createCheckout: (plan, priceId) => authFetch(`${BASE}/billing/checkout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify({ plan, priceId }),
   }).then(async r => {
     const b = await safeJson(r)
     if (!r.ok) throw new Error(b.error || 'Could not start checkout')
@@ -380,6 +386,9 @@ export const api = {
     if (!r.ok) throw new Error(b.error || 'Could not save the plan')
     return b
   }),
+  // A plan's Stripe prices: { priceId } (and interval, amountCents where Stripe can't describe it)
+  addPlanPrice: (planId, data) => authFetch(`${BASE}/admin/plans/${planId}/prices`, jsonBody('POST', data)).then(adminJson('Could not add the price')),
+  removePlanPrice: (planId, priceId) => authFetch(`${BASE}/admin/plans/${planId}/prices/${encodeURIComponent(priceId)}`, { method: 'DELETE' }).then(adminJson('Could not remove the price')),
   deletePlan: (id) => authFetch(`${BASE}/admin/plans/${id}`, { method: 'DELETE' }).then(async r => {
     const b = await safeJson(r)
     if (!r.ok) throw new Error(b.error || 'Could not delete the plan')

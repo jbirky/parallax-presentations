@@ -7,7 +7,7 @@ import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput } from 'lucide-react'
 import { api } from '../utils/api'
-import { formatSize, planSummary } from '../utils/plans'
+import { formatSize, planSummary, priceText } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
@@ -80,11 +80,29 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [teams, setTeams] = useState([])
   const [teamsLoaded, setTeamsLoaded] = useState(false)
   const [teamsOpen, setTeamsOpen] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('team')) || false)
-  const loadTeams = () => api.listTeams().then(r => setTeams(r.teams)).catch(() => {}).finally(() => setTeamsLoaded(true))
+  const loadTeams = () => api.listTeams().then(r => { setTeams(r.teams); return r.teams }).catch(() => null).finally(() => setTeamsLoaded(true))
+  // Back from buying a team (?teamCheckout=done): Stripe tells the server a
+  // moment later, so the new team is looked for until it's there
+  const [teamSetup, setTeamSetup] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('teamCheckout') === 'done' ? 'waiting' : null))
   useEffect(() => {
     if (!isCloud) return
-    loadTeams()
-    if (new URLSearchParams(window.location.search).has('team')) window.history.replaceState(null, '', window.location.pathname)
+    const params = new URLSearchParams(window.location.search)
+    loadTeams().then(before => {
+      if (!params.has('teamCheckout')) return
+      const known = new Set((before || []).map(t => t.id))
+      let tries = 0
+      const look = setInterval(async () => {
+        tries++
+        const now = await loadTeams()
+        const made = (now || []).find(t => !known.has(t.id))
+        if (made || tries >= 15) {
+          clearInterval(look)
+          setTeamSetup(made ? null : 'slow')
+          if (made) setTeamsOpen(made.id)
+        }
+      }, 2000)
+    })
+    if (params.has('team') || params.has('teamCheckout')) window.history.replaceState(null, '', window.location.pathname)
   }, [])
   // Whose presentations are shown: 'personal', or a team's id (remembered on
   // this device), and the folder open in each (null: the top level)
@@ -214,9 +232,9 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     setBillingLoading(false)
   }
 
-  async function handleUpgrade(planId) {
+  async function handleUpgrade(planId, priceId) {
     try {
-      const data = await api.createCheckout(planId)
+      const data = await api.createCheckout(planId, priceId)
       if (data.url) window.location.href = data.url
     } catch (err) {
       alert(err.message || 'Could not start checkout')
@@ -562,8 +580,9 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          {teams.length > 0 && (
-            <button className="btn btn-secondary" onClick={() => setTeamsOpen(true)} title="Your teams, their members and invite links"
+          {(teams.length > 0 || planInfo?.billing) && (
+            <button className="btn btn-secondary" onClick={() => setTeamsOpen(true)}
+              title={teams.length ? 'Your teams, their members and invite links' : 'Create a team to share presentations and folders'}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Users size={15} />
               {teams.length === 1 ? teams[0].name : 'Teams'}
@@ -603,6 +622,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       </div>
 
       <div className="home-content">
+       {teamSetup && (
+         <div role="status" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+           {teamSetup === 'waiting'
+             ? 'Thanks! Your team is being set up, and opens here in a few seconds.'
+             : 'Your payment went through, but the team isn’t here yet. Reload in a minute; if it still isn’t here, email support@parallax-presentations.com.'}
+         </div>
+       )}
        <div className={teams.length ? 'home-spaces' : undefined}>
         {teams.length > 0 && (
           <nav className="spaces-nav" aria-label="Presentations">
@@ -1004,8 +1030,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         </div>
       )}
 
-      {teamsOpen && teams.length > 0 && (
-        <TeamsModal teams={teams} initialTeamId={typeof teamsOpen === 'string' ? teamsOpen : null}
+      {teamsOpen && teamsLoaded && (teams.length > 0 || planInfo?.billing) && (
+        <TeamsModal teams={teams} initialTeamId={typeof teamsOpen === 'string' ? teamsOpen : null} billing={!!planInfo?.billing}
           onChange={loadTeams} onClose={() => setTeamsOpen(false)} />
       )}
 
@@ -1146,12 +1172,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 {/* Actions */}
                 {!billingStatus?.active && plansForSale.some(p => p.id !== planInfo?.plan) && (
                   <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
-                    {plansForSale.filter(p => p.id !== planInfo?.plan).map(p => (
-                      <button key={p.id} onClick={() => handleUpgrade(p.id)} title={planSummary(p).join(' · ')}
-                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                        Upgrade to {p.name}{p.priceLabel ? ` — ${p.priceLabel}` : ''}
+                    {plansForSale.filter(p => p.id !== planInfo?.plan).flatMap(p => (p.prices?.length ? p.prices : [null]).map(price => (
+                      <button key={`${p.id}-${price?.priceId || ''}`} onClick={() => handleUpgrade(p.id, price?.priceId)} title={planSummary(p).join(' · ')}
+                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                        Upgrade to {p.name} — {price && price.amountCents != null ? priceText(price) : price?.interval === 'year' ? 'yearly' : p.priceLabel || 'monthly'}
                       </button>
-                    ))}
+                    )))}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>

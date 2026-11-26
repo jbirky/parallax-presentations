@@ -12,6 +12,14 @@ vi.mock('../utils/api', () => ({
     setTeamRole: vi.fn(async (id, userId, role) => ({ role })),
     removeTeamMember: vi.fn(async () => ({ success: true })),
     transferTeam: vi.fn(async () => ({ success: true })),
+    getPlans: vi.fn(async () => ({ billing: true, teamPlans: [{ id: 'team', name: 'Team', minSeats: 3, prices: [
+      { priceId: 'price_m', interval: 'month', amountCents: 1200, currency: 'usd' },
+      { priceId: 'price_y', interval: 'year', amountCents: 11520, currency: 'usd' },
+    ] }] })),
+    createTeamCheckout: vi.fn(async () => ({ url: 'https://checkout.stripe.test/new' })),
+    teamBillingCheckout: vi.fn(async () => ({ url: 'https://checkout.stripe.test/existing' })),
+    teamBillingPortal: vi.fn(async () => ({ url: 'https://billing.stripe.test/team' })),
+    setTeamSeats: vi.fn(async (id, seats) => ({ seats })),
   },
 }))
 import { api } from '../utils/api'
@@ -131,5 +139,90 @@ describe('the Teams dialog', () => {
     // Back on the list
     expect(el.textContent).toContain('Teaching')
     act(() => root.unmount())
+  })
+})
+
+describe('paying for teams', () => {
+  const setValue = async (input, value) => {
+    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set
+    await act(async () => { set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) })
+  }
+  const submit = form => act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  let assign
+  beforeEach(() => {
+    assign = vi.fn()
+    delete window.location
+    window.location = { origin: 'http://localhost', assign }
+  })
+
+  it('offers someone in no team to create one, and sends them to Stripe to pay', async () => {
+    const { el, root } = await render({ teams: [], billing: true })
+    expect(el.querySelector('h3').textContent).toBe('Create a team')
+    expect(el.querySelector('#team-seats').value).toBe('3')
+    expect(el.textContent).toContain('Monthly: $12 a seat a month')
+    expect(el.textContent).toContain('($36 a month for 3)')
+    await setValue(el.querySelector('#team-name'), 'Exoplanet lab')
+    await setValue(el.querySelector('#team-seats'), '5')
+    const yearly = [...el.querySelectorAll('input[type="radio"]')][1]
+    await act(async () => yearly.click())
+    await submit(el.querySelector('form'))
+    expect(api.createTeamCheckout).toHaveBeenCalledWith({ name: 'Exoplanet lab', seats: 5, priceId: 'price_y' })
+    expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/new')
+    act(() => root.unmount())
+  })
+
+  it('offers to create another team from the list', async () => {
+    const { el, button, root } = await render({ teams: [lab, { ...lab, id: 't2', name: 'Teaching' }], billing: true })
+    await act(async () => button('Create a team').click())
+    expect(el.querySelector('h3').textContent).toBe('Create a team')
+    await act(async () => button('Cancel').click())
+    expect(el.textContent).toContain('Teaching')
+    act(() => root.unmount())
+  })
+
+  it('shows the owner the seats paid for, to change, and Stripe\'s billing page', async () => {
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner', { billing: true, subscribed: true, minSeats: 3 }))
+    const { el, button, root } = await render()
+    const seats = el.querySelector('#team-paid-seats')
+    expect(seats.value).toBe('4')
+    expect(button('Change seats')).toBeUndefined()
+    await setValue(seats, '6')
+    expect(el.textContent).toContain('Stripe charges or credits the difference')
+    await submit(seats.closest('form'))
+    expect(api.setTeamSeats).toHaveBeenCalledWith('t1', 6)
+    await act(async () => button('Manage billing').click())
+    expect(api.teamBillingPortal).toHaveBeenCalledWith('t1')
+    expect(assign).toHaveBeenCalledWith('https://billing.stripe.test/team')
+    act(() => root.unmount())
+  })
+
+  it('asks the owner to fix a failed payment', async () => {
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner', { billing: true, subscribed: true, status: 'past_due' }))
+    const { el, button, root } = await render()
+    expect(el.querySelector('[role="status"]').textContent).toContain('last payment for this team failed')
+    await act(async () => button('Update the payment method').click())
+    expect(api.teamBillingPortal).toHaveBeenCalledWith('t1')
+    act(() => root.unmount())
+  })
+
+  it('lets the owner pay for a team an admin of the site made', async () => {
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner', { billing: true, subscribed: false }))
+    const { el, button, root } = await render()
+    await act(async () => button('Pay for this team').click())
+    await submit(el.querySelector('#team-buy-seats').closest('form'))
+    expect(api.teamBillingCheckout).toHaveBeenCalledWith('t1', { priceId: 'price_m', seats: 4 })
+    expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/existing')
+    act(() => root.unmount())
+  })
+
+  it('keeps billing to the owner, and away when billing is off', async () => {
+    api.getTeam.mockResolvedValue(team('admin', 'u-admin', { billing: true, subscribed: true }))
+    let page = await render()
+    expect(page.el.textContent).not.toContain('Billing')
+    act(() => page.root.unmount())
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner', { billing: false, subscribed: false }))
+    page = await render()
+    expect(page.button('Pay for this team')).toBeUndefined()
+    act(() => page.root.unmount())
   })
 })

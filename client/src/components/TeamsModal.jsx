@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Jessica Birky
 
 import { useCallback, useEffect, useState } from 'react'
-import { X, ArrowLeft, Copy, Link, LogOut, UserMinus, Crown } from 'lucide-react'
+import { X, ArrowLeft, Copy, Link, LogOut, UserMinus, Crown, CreditCard, Plus } from 'lucide-react'
 import { api } from '../utils/api'
+import { priceText } from '../utils/plans'
 
 export const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', member: 'Member', viewer: 'Viewer' }
 const ROLE_HINTS = {
@@ -25,6 +26,163 @@ const small = { padding: '5px 10px', fontSize: 12 }
 function expiryLabel(iso) {
   if (!iso) return 'never expires'
   return `expires ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+}
+
+// Sends the browser to Stripe's page at `url`
+export function goTo(url) {
+  window.location.assign(url)
+}
+
+// The plan teams are bought on and its prices, from api.getPlans; null
+// while loading, false when there's none for sale
+function useTeamPlan() {
+  const [plan, setPlan] = useState(null)
+  useEffect(() => {
+    api.getPlans().then(r => setPlan(r?.teamPlans?.[0] || false)).catch(() => setPlan(false))
+  }, [])
+  return plan
+}
+
+// The plan's prices to choose from, each per seat and for `seats`
+function PriceChoice({ plan, priceId, onChange, seats }) {
+  return (
+    <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <legend style={{ ...muted, marginBottom: 6 }}>Billed</legend>
+      {plan.prices.map(p => (
+        <label key={p.priceId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="radio" name="team-price" checked={priceId === p.priceId} onChange={() => onChange(p.priceId)} />
+          <span>{p.interval === 'year' ? 'Yearly' : 'Monthly'}: {priceText(p, { perSeat: true })}</span>
+          {seats > 0 && p.amountCents != null && <span style={{ color: 'var(--text-muted)' }}>({priceText(p, { seats })} for {seats})</span>}
+        </label>
+      ))}
+    </fieldset>
+  )
+}
+
+// Buying a team: its name, its seats and how it's billed, then Stripe's checkout
+function CreateTeam({ onCancel }) {
+  const plan = useTeamPlan()
+  const [name, setName] = useState('')
+  const [seats, setSeats] = useState(null)
+  const [priceId, setPriceId] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fewest = plan ? plan.minSeats || 1 : 1
+  const shownSeats = seats ?? fewest
+  const chosen = priceId || plan?.prices?.[0]?.priceId
+
+  if (plan === null) return <p style={muted}>Loading…</p>
+  if (!plan) return <p style={muted}>Teams aren’t for sale yet.</p>
+
+  async function buy(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      goTo((await api.createTeamCheckout({ name: name.trim(), seats: Number(shownSeats), priceId: chosen })).url)
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={buy} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <h3 style={{ margin: 0, fontSize: 16 }}>Create a team</h3>
+      <p style={muted}>
+        A team shares presentations, folders and {plan.name} storage. Its owner, admins and members each take a seat; viewers don’t.
+        You’ll pay on Stripe’s page, and can change the seats later.
+      </p>
+      <div className="form-group" style={{ margin: 0 }}>
+        <label htmlFor="team-name">Team name</label>
+        <input id="team-name" className="form-input" required maxLength={60} value={name} onChange={e => setName(e.target.value)} placeholder="Exoplanet lab" />
+      </div>
+      <div className="form-group" style={{ margin: 0 }}>
+        <label htmlFor="team-seats">Seats (at least {fewest})</label>
+        <input id="team-seats" className="form-input" type="number" min={fewest} max={1000} required value={shownSeats}
+          onChange={e => setSeats(e.target.value)} style={{ width: 120 }} />
+      </div>
+      <PriceChoice plan={plan} priceId={chosen} onChange={setPriceId} seats={Number(shownSeats)} />
+      {error && <p role="alert" style={{ ...muted, color: 'var(--danger)' }}>{error}</p>}
+      <div className="modal-footer" style={{ marginTop: 0 }}>
+        {onCancel && <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>}
+        <button type="submit" className="btn btn-primary" disabled={busy || !name.trim() || Number(shownSeats) < fewest}>
+          <CreditCard size={14} /> {busy ? 'Opening checkout…' : 'Continue to payment'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// A team's billing, for its owner: its seats and Stripe's billing page, or
+// paying for a team an admin of the site made
+function TeamBilling({ team, onChanged }) {
+  const [seats, setSeats] = useState(team.seats)
+  const [paying, setPaying] = useState(false)
+  const [priceId, setPriceId] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const plan = useTeamPlan()
+
+  const act = async fn => {
+    setBusy(true)
+    setError('')
+    try { await fn() } catch (err) { setError(err.message) }
+    setBusy(false)
+  }
+  const portal = () => act(async () => goTo((await api.teamBillingPortal(team.id)).url))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <h4 style={sectionTitle}>Billing</h4>
+      {team.subscribed ? (
+        <>
+          <form style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} onSubmit={e => {
+            e.preventDefault()
+            act(async () => { await api.setTeamSeats(team.id, Number(seats)); await onChanged() })
+          }}>
+            <label htmlFor="team-paid-seats" style={{ fontSize: 13 }}>Seats paid for</label>
+            <input id="team-paid-seats" className="form-input" type="number" min={Math.max(team.minSeats || 1, team.seatsUsed)} max={1000}
+              value={seats} onChange={e => setSeats(e.target.value)} style={{ width: 90, fontSize: 13, padding: '5px 8px' }} />
+            {Number(seats) !== team.seats && <button className="btn btn-primary" type="submit" disabled={busy} style={small}>Change seats</button>}
+            <button className="btn btn-secondary" type="button" disabled={busy} onClick={portal} style={small}><CreditCard size={13} /> Manage billing</button>
+          </form>
+          <p style={muted}>
+            {Number(seats) !== team.seats
+              ? 'Stripe charges or credits the difference for the rest of this billing period.'
+              : 'Invoices, the payment method and canceling are on Stripe’s billing page.'}
+          </p>
+          {team.status === 'past_due' && (
+            <button className="btn btn-primary" type="button" disabled={busy} onClick={portal} style={{ alignSelf: 'flex-start', ...small }}>Update the payment method</button>
+          )}
+        </>
+      ) : paying ? (
+        plan === null ? <p style={muted}>Loading…</p> : !plan ? <p style={muted}>Teams aren’t for sale yet.</p> : (
+          <form style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onSubmit={e => {
+            e.preventDefault()
+            act(async () => goTo((await api.teamBillingCheckout(team.id, { priceId: priceId || plan.prices[0].priceId, seats: Number(seats) })).url))
+          }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label htmlFor="team-buy-seats" style={{ fontSize: 13 }}>Seats</label>
+              <input id="team-buy-seats" className="form-input" type="number" min={Math.max(plan.minSeats || 1, team.seatsUsed)} max={1000}
+                value={seats} onChange={e => setSeats(e.target.value)} style={{ width: 90, fontSize: 13, padding: '5px 8px' }} />
+            </div>
+            <PriceChoice plan={plan} priceId={priceId || plan.prices[0].priceId} onChange={setPriceId} seats={Number(seats)} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary" type="submit" disabled={busy} style={small}><CreditCard size={13} /> Continue to payment</button>
+              <button className="btn btn-ghost" type="button" onClick={() => setPaying(false)} style={small}>Cancel</button>
+            </div>
+          </form>
+        )
+      ) : (
+        <>
+          <p style={muted}>{team.status === 'lapsed' ? 'Pay for the team again to edit its presentations.' : 'This team isn’t paid for through Stripe.'}</p>
+          <button className="btn btn-secondary" type="button" onClick={() => setPaying(true)} style={{ alignSelf: 'flex-start', ...small }}><CreditCard size={13} /> Pay for this team</button>
+        </>
+      )}
+      {error && <p role="alert" style={{ ...muted, color: 'var(--danger)' }}>{error}</p>}
+    </div>
+  )
 }
 
 function Avatar({ person }) {
@@ -149,6 +307,9 @@ function TeamDetail({ teamId, onBack, onLeft, onRenamed }) {
         {' '}Owners, admins and members take a seat each; viewers don’t.
       </p>
       {STATUS_NOTES[team.status] && <p role="status" style={{ ...muted, color: 'var(--text-primary)' }}>{STATUS_NOTES[team.status]}</p>}
+      {team.role === 'owner' && team.billing && (
+        <TeamBilling key={`${team.seats}-${team.subscribed}-${team.status}`} team={team} onChanged={load} />
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <h4 style={sectionTitle}>Members</h4>
@@ -236,8 +397,10 @@ function TeamDetail({ teamId, onBack, onLeft, onRenamed }) {
 // The teams the signed-in person is in, from the dashboard. `teams` is what
 // api.listTeams returned; onChange is called after anything that changes
 // that list. Opens straight onto `initialTeamId`, or the only team.
-export default function TeamsModal({ teams, initialTeamId = null, onChange, onClose }) {
+// billing: teams can be bought here, so the list offers to create one
+export default function TeamsModal({ teams, initialTeamId = null, billing = false, onChange, onClose }) {
   const [open, setOpen] = useState(initialTeamId || (teams.length === 1 ? teams[0].id : null))
+  const [creating, setCreating] = useState(billing && !teams.length)
   const shown = open && teams.some(t => t.id === open) ? open : null
 
   return (
@@ -247,24 +410,35 @@ export default function TeamsModal({ teams, initialTeamId = null, onChange, onCl
           <h2 id="teams-title" style={{ margin: 0 }}>Teams</h2>
           <button className="btn btn-ghost" onClick={onClose} style={{ padding: 4 }} aria-label="Close"><X size={16} /></button>
         </div>
-        {shown ? (
+        {creating ? (
+          <CreateTeam onCancel={teams.length ? () => setCreating(false) : null} />
+        ) : shown ? (
           <TeamDetail key={shown} teamId={shown}
-            onBack={teams.length > 1 ? () => setOpen(null) : null}
+            onBack={teams.length > 1 || billing ? () => setOpen(null) : null}
             onRenamed={onChange}
             onLeft={() => { setOpen(null); onChange() }} />
-        ) : teams.length ? (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {teams.map(t => (
-              <li key={t.id}>
-                <button className="btn btn-secondary" onClick={() => setOpen(t.id)} style={{ width: '100%', justifyContent: 'space-between', padding: '10px 12px' }}>
-                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>{ROLE_LABELS[t.role]} · {t.memberCount} {t.memberCount === 1 ? 'person' : 'people'}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
         ) : (
-          <p style={muted}>You’re not in a team. To join one, open an invite link from its owner or an admin.</p>
+          <>
+            {teams.length ? (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {teams.map(t => (
+                  <li key={t.id}>
+                    <button className="btn btn-secondary" onClick={() => setOpen(t.id)} style={{ width: '100%', justifyContent: 'space-between', padding: '10px 12px' }}>
+                      <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>{ROLE_LABELS[t.role]} · {t.memberCount} {t.memberCount === 1 ? 'person' : 'people'}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={muted}>You’re not in a team. To join one, open an invite link from its owner or an admin.</p>
+            )}
+            {billing && (
+              <button className="btn btn-primary" onClick={() => setCreating(true)} style={{ alignSelf: 'flex-start' }}>
+                <Plus size={14} /> Create a team
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

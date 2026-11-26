@@ -140,8 +140,10 @@ const plan = (id, name, fields) => ({
 })
 const PLANS = [
   plan('free', 'Free', { storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, priceLabel: 'Free', public: true }),
-  plan('pro', 'Pro', { storageBytes: 5 * 1024 * MB, stripePriceId: 'price_pro123', priceLabel: '$5/mo', public: true, sortOrder: 1 }),
-  plan('team', 'Team', { storageBytes: 25 * 1024 * MB, sortOrder: 2 }),
+  plan('pro', 'Pro', { storageBytes: 5 * 1024 * MB, stripePriceId: 'price_pro123', priceLabel: '$5/mo', public: true, sortOrder: 1,
+    prices: [{ priceId: 'price_pro123', interval: 'month', amountCents: 1000, currency: 'usd' }, { priceId: 'price_proYear1', interval: 'year', amountCents: 9600, currency: 'usd' }] }),
+  plan('team', 'Team', { storageBytes: 25 * 1024 * MB, sortOrder: 2, perSeat: true, minSeats: 3,
+    prices: [{ priceId: 'price_team123', interval: 'month', amountCents: 1200, currency: 'usd' }] }),
   plan('guest', 'Guest', { storageBytes: 25 * MB, maxPresentations: 1, maxFileBytes: 10 * MB, sortOrder: 3 }),
 ]
 
@@ -202,7 +204,11 @@ describe('plan editor', () => {
     expect(html).toContain('<h2 style="margin:0 0 2px;font-size:14px;font-weight:600">Plans</h2>')
     expect(html).toContain('Billing is switched off')
     expect(html).toContain('5 accounts')
-    expect(html).toContain('$5/mo · <code>price_pro123</code>')
+    expect(html).toContain('Monthly: $10 a month')
+    expect(html).toContain('Yearly: $96 a year')
+    expect(html).toContain('price_proYear1')
+    expect(html).toContain('Sold to teams by the seat, at least 3')
+    expect(html).toContain('Monthly: $12 a seat a month')
     expect(html).toContain('Guest mode')
     expect(html).toContain('Files up to 10 MB each')
     // Free and guest can't be deleted; pro has an account, so its Delete is disabled

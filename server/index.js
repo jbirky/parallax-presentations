@@ -29,8 +29,8 @@ const {
 } = require('./services/guest-service')
 const { startSystemSampling, recordUsage, getAdminOverview, setUserPlan } = require('./services/admin-service')
 const {
-  loadPlans, listPlans, planFor, assignablePlans, purchasablePlans, toJSON: planJSON,
-  PlanError, createPlan, updatePlan, deletePlan,
+  loadPlans, listPlans, planFor, priceFor, assignablePlans, purchasablePlans, teamPlans, toJSON: planJSON,
+  PlanError, createPlan, updatePlan, deletePlan, addPlanPrice, removePlanPrice,
 } = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
@@ -143,9 +143,11 @@ const stripeService = require('./services/stripe')
 if (stripeService.isEnabled()) {
   app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-      const { planChangedFor } = await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
+      const { planChangedFor, teamsChanged } = await stripeService.handleWebhook(storage, req.body, req.headers['stripe-signature'])
       // Their next request reads the new plan instead of the cached one
       for (const authId of planChangedFor) provisionCache.delete(authId)
+      // A team that lapsed or came back: its decks reopen with the rights it has now
+      for (const teamId of teamsChanged) await reconnectTeamDecks(teamId)
       res.json({ received: true })
     } catch (err) {
       console.error('Stripe webhook error:', err.message)
@@ -681,17 +683,20 @@ if (IS_CLOUD) {
 }
 
 // GET /api/plans — the listed plans, for pricing and upgrade options, each
-// marked purchasable when billing is on and it has a Stripe price. Public, so
-// it can be shown before anyone signs in.
+// with its prices and marked purchasable when billing is on and it has one;
+// and the plans teams are bought on, by the seat. Public, so it can be shown
+// before anyone signs in.
 if (IS_CLOUD) {
+  const shownPlan = p => {
+    const { stripePriceId, public: _public, sortOrder, ...shown } = planJSON(p)
+    return shown
+  }
   app.get('/api/plans', (req, res) => {
     const billing = stripeService.isEnabled()
     res.json({
       billing,
-      plans: listPlans().filter(p => p.public).map(p => {
-        const { stripePriceId, public: _public, sortOrder, ...shown } = planJSON(p)
-        return { ...shown, purchasable: billing && !!stripePriceId }
-      }),
+      plans: listPlans().filter(p => p.public && !p.perSeat).map(p => ({ ...shownPlan(p), purchasable: billing && p.prices.length > 0 })),
+      teamPlans: billing ? teamPlans().map(shownPlan) : [],
     })
   })
 }
@@ -876,21 +881,41 @@ app.delete('/api/admin/plans/:id', planRoute(async (req, res) => {
   res.json({ success: true })
 }))
 
+// A plan's prices: POST /api/admin/plans/:id/prices adds one ({ priceId,
+// and, when Stripe isn't set up here to describe it, interval and
+// amountCents }), DELETE …/prices/:priceId stops selling at one.
+app.post('/api/admin/plans/:id/prices', planRoute(async (req, res) => {
+  const describe = process.env.STRIPE_SECRET_KEY ? stripeService.describePrice : null
+  const plan = await addPlanPrice(storage, req.params.id, req.body || {}, describe)
+  console.log(`Admin added price ${req.body?.priceId} to plan ${req.params.id}`)
+  res.status(201).json({ plan: planJSON(plan) })
+}))
+
+app.delete('/api/admin/plans/:id/prices/:priceId', planRoute(async (req, res) => {
+  const plan = await removePlanPrice(storage, req.params.id, req.params.priceId)
+  console.log(`Admin removed price ${req.params.priceId} from plan ${req.params.id}`)
+  res.json({ plan: planJSON(plan) })
+}))
+
 // ---- Billing API ----
 if (IS_CLOUD && stripeService.isEnabled()) {
-  // Body: { plan }, one of the plans for sale
+  // Body: { plan, priceId? }, one of the plans for sale, at one of its prices
+  // (its monthly one by default)
   app.post('/api/billing/checkout', authLimiter, requireUser, async (req, res) => {
     try {
       const plan = purchasablePlans().find(p => p.id === req.body?.plan)
       if (!plan) return res.status(400).json({ error: 'That plan isn’t for sale' })
       if (plan.id === req.userPlan) return res.status(400).json({ error: 'You’re already on that plan' })
+      const price = req.body?.priceId ? plan.prices.find(p => p.priceId === req.body.priceId) : plan.prices[0]
+      if (!price) return res.status(400).json({ error: 'The plan isn’t sold at that price' })
       const { rows } = await storage.query('SELECT email, name FROM users WHERE id = $1', [req.userId])
       if (!rows[0]) return res.status(404).json({ error: 'User not found' })
       const baseUrl = req.headers.origin || 'https://parallax-presentations.com'
       const session = await stripeService.createCheckoutSession(
         storage, req.userId, rows[0].email, rows[0].name, plan,
         `${baseUrl}/dashboard?billing=success`,
-        `${baseUrl}/dashboard?billing=cancel`
+        `${baseUrl}/dashboard?billing=cancel`,
+        price
       )
       res.json({ url: session.url })
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
@@ -2441,7 +2466,9 @@ app.get('/api/teams', teamRoute(async (req, res) => {
 // GET /api/teams/:id - a team, its members and, for owners and admins, its
 // invite links
 app.get('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
-  res.json(await teams.getTeam(storage, req.params.id, req.userId))
+  const team = await teams.getTeam(storage, req.params.id, req.userId)
+  // For its owner's billing: the fewest seats its plan sells, and whether it can be paid for here
+  res.json({ ...team, minSeats: planFor(team.plan).minSeats || 1, billing: stripeService.isEnabled() })
 }))
 
 // PATCH /api/teams/:id - rename it: { name }
@@ -2522,6 +2549,75 @@ app.post('/api/teams/:id/transfer', requireValidId(), teamRoute(async (req, res)
   await teams.transferOwnership(storage, req.params.id, req.userId, req.body.userId)
   res.json({ success: true })
 }))
+
+// --- Paying for teams (services/stripe.js), when billing is on ---
+// A team is bought by its owner at checkout, for a number of seats at one
+// of a per-seat plan's prices. The webhook makes it when the subscription
+// starts, and keeps its seats and status in step after.
+if (stripeService.isEnabled()) {
+  const siteOf = req => req.headers.origin || 'https://parallax-presentations.com'
+  const teamPrice = priceId => {
+    const found = priceFor(priceId)
+    return found?.plan.perSeat ? found : null
+  }
+  // The fewest seats a team can pay for: its plan's, and those in use
+  const fewestSeats = (plan, used = 0) => Math.max(1, plan.minSeats || 1, used)
+
+  // POST /api/teams/checkout - buy a new team: { name, seats, priceId }
+  app.post('/api/teams/checkout', authLimiter, teamRoute(async (req, res) => {
+    const found = teamPrice(req.body?.priceId)
+    if (!found) return res.status(400).json({ error: 'Teams aren’t sold at that price' })
+    const name = teams.cleanName(req.body?.name)
+    const seats = teams.cleanSeats(req.body?.seats)
+    const min = fewestSeats(found.plan)
+    if (seats < min) return res.status(400).json({ error: `A team has at least ${min} seats` })
+    const session = await stripeService.createTeamCheckoutSession(storage, {
+      owner: { id: req.userId, email: await accountEmail(req.userId) },
+      team: { name }, seats, minSeats: min, plan: found.plan, price: found.price,
+      successUrl: `${siteOf(req)}/dashboard?teamCheckout=done`, cancelUrl: `${siteOf(req)}/dashboard`,
+    })
+    res.json({ url: session.url })
+  }))
+
+  // POST /api/teams/:id/billing/checkout - its owner starts paying for a team
+  // an admin of the site made: { priceId, seats? }
+  app.post('/api/teams/:id/billing/checkout', requireValidId(), authLimiter, teamRoute(async (req, res) => {
+    const team = await teams.billingOf(storage, req.params.id, req.userId)
+    if (team.subscriptionId) return res.status(409).json({ error: 'This team is paid for already' })
+    const found = teamPrice(req.body?.priceId)
+    if (!found) return res.status(400).json({ error: 'Teams aren’t sold at that price' })
+    const min = fewestSeats(found.plan, team.seatsUsed)
+    const seats = Math.max(min, req.body?.seats !== undefined ? teams.cleanSeats(req.body.seats) : team.seats)
+    const session = await stripeService.createTeamCheckoutSession(storage, {
+      owner: { id: req.userId, email: await accountEmail(req.userId) },
+      team: { id: team.id, name: team.name, customerId: team.customerId }, seats, minSeats: min, plan: found.plan, price: found.price,
+      successUrl: `${siteOf(req)}/dashboard?team=${team.id}`, cancelUrl: `${siteOf(req)}/dashboard?team=${team.id}`,
+    })
+    res.json({ url: session.url })
+  }))
+
+  // POST /api/teams/:id/billing/portal - Stripe's billing page for the team
+  // (payment method, invoices, canceling), for its owner
+  app.post('/api/teams/:id/billing/portal', requireValidId(), teamRoute(async (req, res) => {
+    const team = await teams.billingOf(storage, req.params.id, req.userId)
+    if (!team.customerId) return res.status(409).json({ error: 'This team isn’t paid for through Stripe' })
+    const session = await stripeService.createTeamPortalSession(team.customerId, `${siteOf(req)}/dashboard?team=${team.id}`)
+    res.json({ url: session.url })
+  }))
+
+  // PUT /api/teams/:id/seats - its owner changes how many seats it pays for:
+  // { seats }. Stripe prorates the difference.
+  app.put('/api/teams/:id/seats', requireValidId(), teamRoute(async (req, res) => {
+    const team = await teams.billingOf(storage, req.params.id, req.userId)
+    if (!team.subscriptionId) return res.status(409).json({ error: 'This team isn’t paid for through Stripe' })
+    const seats = teams.cleanSeats(req.body?.seats)
+    if (seats < team.seatsUsed) return res.status(400).json({ error: `${team.seatsUsed} seats are in use; remove people or make them viewers first` })
+    const min = fewestSeats(planFor(team.plan))
+    if (seats < min) return res.status(400).json({ error: `A team has at least ${min} seats` })
+    await stripeService.setTeamSeats(storage, team, seats)
+    res.json({ seats })
+  }))
+}
 
 // GET /api/team-invites/:token - what a team invite link offers the caller
 app.get('/api/team-invites/:token', validInviteToken, teamRoute(async (req, res) => {

@@ -13,13 +13,27 @@
 const MB = 1024 * 1024
 const GB = 1024 * MB
 const UPLOAD_CAP_BYTES = 500 * MB // multer's limit in index.js
+// How often a price charges, in the order they're offered
+const INTERVALS = ['month', 'year']
 
 const BUILT_IN = [
-  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0, liveDatasets: 1, minRefresh: 'daily' },
-  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1, liveDatasets: 25, minRefresh: 'hourly' },
-  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2, liveDatasets: 100, minRefresh: 'hourly' },
-  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, expirationDays: null, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3, liveDatasets: 0, minRefresh: 'weekly' },
-]
+  { id: 'free', name: 'Free', storageBytes: 100 * MB, maxPresentations: 3, expirationDays: 30, maxFileBytes: null, stripePriceId: null, priceLabel: 'Free', public: true, sortOrder: 0, liveDatasets: 1, minRefresh: 'daily', perSeat: false, minSeats: null },
+  { id: 'pro', name: 'Pro', storageBytes: 5 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: 'price_1TVnpZF9LOeD1Xd0coGVd0fI', priceLabel: '$5/mo', public: true, sortOrder: 1, liveDatasets: 25, minRefresh: 'hourly', perSeat: false, minSeats: null },
+  { id: 'team', name: 'Team', storageBytes: 25 * GB, maxPresentations: Infinity, expirationDays: null, maxFileBytes: null, stripePriceId: null, priceLabel: null, public: false, sortOrder: 2, liveDatasets: 100, minRefresh: 'hourly', perSeat: true, minSeats: 3 },
+  { id: 'guest', name: 'Guest', storageBytes: 25 * MB, maxPresentations: 1, expirationDays: null, maxFileBytes: 10 * MB, stripePriceId: null, priceLabel: null, public: false, sortOrder: 3, liveDatasets: 0, minRefresh: 'weekly', perSeat: false, minSeats: null },
+].map(p => withPrices(p, []))
+
+// The plan with its prices: [{ priceId, interval, amountCents, currency }],
+// monthly first. A plan's stripe_price_id, from before plan_prices
+// (migration 030), counts as a monthly price.
+function withPrices(plan, prices) {
+  const list = prices.map(r => ({ priceId: r.stripe_price_id, interval: r.interval, amountCents: r.amount_cents ?? null, currency: r.currency || 'usd' }))
+  if (plan.stripePriceId && !list.some(p => p.priceId === plan.stripePriceId)) {
+    list.push({ priceId: plan.stripePriceId, interval: 'month', amountCents: null, currency: 'usd' })
+  }
+  list.sort((a, b) => INTERVALS.indexOf(a.interval) - INTERVALS.indexOf(b.interval))
+  return { ...plan, prices: list }
+}
 // How often a live dataset may refresh, fastest first
 const REFRESH_RATES = ['hourly', 'daily', 'weekly']
 
@@ -47,6 +61,9 @@ function fromRow(r) {
     // plan's, or none
     liveDatasets: r.live_datasets ?? BUILT_IN.find(p => p.id === r.id)?.liveDatasets ?? 0,
     minRefresh: REFRESH_RATES.includes(r.min_refresh) ? r.min_refresh : BUILT_IN.find(p => p.id === r.id)?.minRefresh ?? 'daily',
+    // Sold by the seat, to teams (migration 030): before it, the built-in plan's
+    perSeat: r.per_seat ?? BUILT_IN.find(p => p.id === r.id)?.perSeat ?? false,
+    minSeats: r.min_seats ?? (r.per_seat === undefined ? BUILT_IN.find(p => p.id === r.id)?.minSeats ?? null : null),
   }
 }
 
@@ -64,7 +81,9 @@ async function loadPlans(storage) {
   const { rows } = await storage.query('SELECT * FROM plans ORDER BY sort_order, id')
   // A table without free would leave new accounts with no plan
   if (!rows.some(r => r.id === 'free')) throw new Error('The plans table has no free plan')
-  replaceAll(rows.map(fromRow))
+  const { rows: [{ priced }] } = await storage.query("SELECT to_regclass('plan_prices') IS NOT NULL AS priced")
+  const { rows: prices } = priced ? await storage.query('SELECT * FROM plan_prices ORDER BY created_at') : { rows: [] }
+  replaceAll(rows.map(r => withPrices(fromRow(r), prices.filter(p => p.plan_id === r.id))))
 }
 
 function listPlans() {
@@ -76,8 +95,18 @@ function planFor(id) {
   return PLAN_LIMITS[id] || PLAN_LIMITS.free
 }
 
+// The plan a Stripe price sells and the price itself, { plan, price }, or null
+function priceFor(priceId) {
+  if (!priceId) return null
+  for (const plan of listPlans()) {
+    const price = plan.prices.find(p => p.priceId === priceId)
+    if (price) return { plan, price }
+  }
+  return null
+}
+
 function planForPrice(priceId) {
-  return priceId ? listPlans().find(p => p.stripePriceId === priceId) || null : null
+  return priceFor(priceId)?.plan || null
 }
 
 // Plans an admin can put an account on
@@ -85,9 +114,14 @@ function assignablePlans() {
   return listPlans().filter(p => p.id !== 'guest').map(p => p.id)
 }
 
-// Plans a signed-in account can buy
+// Plans a signed-in account can buy for themselves
 function purchasablePlans() {
-  return listPlans().filter(p => p.public && p.stripePriceId)
+  return listPlans().filter(p => p.public && !p.perSeat && p.prices.length)
+}
+
+// Plans a team can be bought on, by the seat
+function teamPlans() {
+  return listPlans().filter(p => p.perSeat && p.prices.length)
 }
 
 // For JSON, where Infinity would turn into null anyway
@@ -143,12 +177,14 @@ function validatePlan(id, input) {
     sortOrder: optionalInt(input.sortOrder, 'Order', 0, 1000) ?? 0,
     liveDatasets: input.liveDatasets === undefined ? current?.liveDatasets ?? 0 : optionalInt(input.liveDatasets, 'Live datasets', 0, 100000) ?? 0,
     minRefresh,
+    perSeat: input.perSeat === undefined ? current?.perSeat ?? false : !!input.perSeat,
+    minSeats: input.minSeats === undefined ? current?.minSeats ?? null : optionalInt(input.minSeats, 'Fewest seats', 1, 1000),
   }
 }
 
 function friendlyWriteError(err) {
-  if (err.code === '42P01') return new PlanError('Plans can’t be edited until migration 014 has run on this database.', 409)
-  if (err.code === '42703') return new PlanError('Plans can’t be edited until migration 018 has run on this database.', 409)
+  if (err.code === '42P01') return new PlanError('Plans can’t be edited until the latest migrations have run on this database.', 409)
+  if (err.code === '42703') return new PlanError('Plans can’t be edited until the latest migrations have run on this database.', 409)
   if (err.code === '23505' && /stripe_price_id/.test(err.constraint || err.detail || '')) {
     return new PlanError('Another plan already uses that Stripe price.')
   }
@@ -163,10 +199,10 @@ async function createPlan(storage, input) {
   try {
     await storage.query(
       `INSERT INTO plans (id, name, storage_bytes, max_presentations, expiration_days, max_file_bytes, stripe_price_id, price_label, public, sort_order,
-                          live_datasets, min_refresh)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                          live_datasets, min_refresh, per_seat, min_seats)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
-        p.liveDatasets, p.minRefresh]
+        p.liveDatasets, p.minRefresh, p.perSeat, p.minSeats]
     )
   } catch (err) { throw friendlyWriteError(err) }
   await loadPlans(storage)
@@ -185,7 +221,7 @@ async function updatePlan(storage, id, input) {
       WITH changed AS (
         UPDATE plans SET name = $2, storage_bytes = $3, max_presentations = $4, expiration_days = $5,
                max_file_bytes = $6, stripe_price_id = $7, price_label = $8, public = $9, sort_order = $10,
-               live_datasets = $11, min_refresh = $12, updated_at = NOW()
+               live_datasets = $11, min_refresh = $12, per_seat = $13, min_seats = $14, updated_at = NOW()
          WHERE id = $1 RETURNING id
       ), unexpired AS (
         UPDATE presentations SET expires_at = NULL
@@ -195,7 +231,7 @@ async function updatePlan(storage, id, input) {
       )
       SELECT (SELECT COUNT(*) FROM changed)::int AS found, (SELECT COUNT(*) FROM unexpired)::int AS unexpired`,
       [id, p.name, p.storageBytes, p.maxPresentations, p.expirationDays, p.maxFileBytes, p.stripePriceId, p.priceLabel, p.public, p.sortOrder,
-        p.liveDatasets, p.minRefresh]
+        p.liveDatasets, p.minRefresh, p.perSeat, p.minSeats]
     ))
   } catch (err) { throw friendlyWriteError(err) }
   if (!rows[0].found) throw new PlanError('No such plan.', 404)
@@ -220,7 +256,48 @@ async function deletePlan(storage, id) {
   await loadPlans(storage)
 }
 
+// Another price a plan is sold at: { priceId, interval, amountCents?,
+// currency? }. `describe(priceId)`, when given, asks Stripe for the price
+// and fills in what it says, so the interval and amount can't be mistyped.
+async function addPlanPrice(storage, planId, input, describe = null) {
+  if (!PLAN_LIMITS[planId]) throw new PlanError('No such plan.', 404)
+  if (planId === 'free' || planId === 'guest') throw new PlanError(`The ${planId} plan can’t be sold.`)
+  const priceId = typeof input.priceId === 'string' ? input.priceId.trim() : ''
+  if (!PRICE_RE.test(priceId)) throw new PlanError('A Stripe price ID looks like price_1AbC… (from the Stripe dashboard).')
+  let { interval, amountCents = null, currency = 'usd' } = input
+  if (describe) {
+    const found = await describe(priceId)
+    if (!found) throw new PlanError('Stripe has no price with that ID.')
+    if (!found.recurring) throw new PlanError('That price isn’t a subscription: give it a monthly or yearly interval in Stripe.')
+    ;({ interval, amountCents, currency } = found)
+  }
+  if (!INTERVALS.includes(interval)) throw new PlanError('A price is by the month or by the year.')
+  if (amountCents !== null && amountCents !== undefined && (!Number.isInteger(Number(amountCents)) || Number(amountCents) < 0)) {
+    throw new PlanError('The amount is a whole number of cents.')
+  }
+  const owner = priceFor(priceId)
+  if (owner) throw new PlanError(owner.plan.id === planId ? 'The plan already has that price.' : `The ${owner.plan.name} plan already uses that price.`)
+  try {
+    await storage.query(
+      'INSERT INTO plan_prices (stripe_price_id, plan_id, interval, amount_cents, currency) VALUES ($1, $2, $3, $4, $5)',
+      [priceId, planId, interval, amountCents === null || amountCents === undefined ? null : Number(amountCents), String(currency || 'usd').toLowerCase()]
+    )
+  } catch (err) { throw friendlyWriteError(err) }
+  await loadPlans(storage)
+  return planFor(planId)
+}
+
+// Stops selling a plan at a price. Subscriptions already on it carry on.
+async function removePlanPrice(storage, planId, priceId) {
+  const { rowCount } = await storage.query('DELETE FROM plan_prices WHERE plan_id = $1 AND stripe_price_id = $2', [planId, priceId])
+  // A price from before plan_prices is the plan's own stripe_price_id
+  const { rowCount: legacy } = await storage.query('UPDATE plans SET stripe_price_id = NULL WHERE id = $1 AND stripe_price_id = $2', [planId, priceId])
+  if (!rowCount && !legacy) throw new PlanError('The plan isn’t sold at that price.', 404)
+  await loadPlans(storage)
+  return planFor(planId)
+}
+
 module.exports = {
-  PLAN_LIMITS, loadPlans, listPlans, planFor, planForPrice, assignablePlans, purchasablePlans, toJSON,
-  PlanError, createPlan, updatePlan, deletePlan, UPLOAD_CAP_BYTES,
+  PLAN_LIMITS, loadPlans, listPlans, planFor, planForPrice, priceFor, assignablePlans, purchasablePlans, teamPlans, toJSON,
+  PlanError, createPlan, updatePlan, deletePlan, addPlanPrice, removePlanPrice, UPLOAD_CAP_BYTES,
 }
