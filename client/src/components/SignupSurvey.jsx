@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// The optional questions an account is asked once on the dashboard, and from
-// "About you" in the account menu after (server/services/signup-survey.js,
-// which also holds the questions and their choices). Every question can be
-// left out; Skip passes without answering, and isn't asked again.
+// The optional questions an account is asked from a note at the top of the
+// dashboard, until they've answered one, and from "About you" in the account
+// menu (server/services/signup-survey.js, which also holds the questions and
+// their choices). Every question can be left out, but saving needs at least
+// one answer; closing without saving changes nothing.
 
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
@@ -42,8 +43,8 @@ function fromAnswers(questions, answers) {
   return { picked, other }
 }
 
-// firstTime: shown by itself on the dashboard (Skip), rather than opened
-// from the account menu (Cancel)
+// firstTime: opened from the dashboard's note, before they've answered,
+// rather than from the account menu to change their answers
 export default function SignupSurvey({ firstTime = false, onClose }) {
   const [questions, setQuestions] = useState(null)
   const [picked, setPicked] = useState({})
@@ -66,12 +67,7 @@ export default function SignupSurvey({ firstTime = false, onClose }) {
 
   useEffect(() => { if (questions) dialog.current?.querySelector('input')?.focus() }, [questions])
 
-  const pass = async () => {
-    if (firstTime) {
-      try { await api.skipSurvey() } catch {}
-    }
-    onClose(false)
-  }
+  const pass = () => onClose(false)
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') pass() }
     window.addEventListener('keydown', onKey)
@@ -86,6 +82,7 @@ export default function SignupSurvey({ firstTime = false, onClose }) {
     return { ...p, [q.id]: [...list] }
   })
   const isPicked = (q, id) => (q.kind === 'many' ? (picked[q.id] || []).includes(id) : picked[q.id] === id)
+  const answeredAny = (questions || []).some(q => (q.kind === 'many' ? (picked[q.id] || []).length > 0 : !!picked[q.id]))
 
   const save = async e => {
     e.preventDefault()
@@ -104,8 +101,8 @@ export default function SignupSurvey({ firstTime = false, onClose }) {
     <div className="modal-overlay" onClick={pass}>
       <div className="modal signup-survey" role="dialog" aria-modal="true" aria-labelledby="signup-survey-title" ref={dialog} onClick={e => e.stopPropagation()}>
         <div className="signup-survey-head">
-          <h2 id="signup-survey-title">{firstTime ? 'Welcome to Parallax' : 'About you'}</h2>
-          <button type="button" className="btn-icon" onClick={pass} aria-label={firstTime ? 'Skip' : 'Close'}><X size={16} /></button>
+          <h2 id="signup-survey-title">{firstTime ? 'Tell us about you' : 'About you'}</h2>
+          <button type="button" className="btn-icon" onClick={pass} aria-label="Close"><X size={16} /></button>
         </div>
         <p className="signup-survey-intro">
           {firstTime
@@ -137,8 +134,8 @@ export default function SignupSurvey({ firstTime = false, onClose }) {
               </fieldset>
             ))}
             <div className="signup-survey-actions">
-              <button type="button" className="btn btn-secondary" onClick={pass} disabled={busy}>{firstTime ? 'Skip' : 'Cancel'}</button>
-              <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+              <button type="button" className="btn btn-secondary" onClick={pass} disabled={busy}>{firstTime ? 'Not now' : 'Cancel'}</button>
+              <button type="submit" className="btn btn-primary" disabled={busy || !answeredAny} title={answeredAny ? undefined : 'Pick at least one answer'}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
           </form>
         )}

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // The optional sign-up questions (SignupSurvey): drawn from the server's
-// questions, every one optional, saved or skipped.
+// questions, every one optional, saved with at least one answer.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -16,7 +16,6 @@ vi.mock('../utils/api', () => ({
   api: {
     getSurvey: vi.fn(async () => ({ questions: QUESTIONS, answers: null })),
     saveSurvey: vi.fn(async () => ({ answers: {} })),
-    skipSurvey: vi.fn(async () => ({ success: true })),
   },
 }))
 import { api } from '../utils/api'
@@ -45,11 +44,14 @@ beforeEach(() => vi.clearAllMocks())
 describe('the sign-up questions', () => {
   it('asks the server\'s questions, and saves what\'s picked, with "something else" in words', async () => {
     const page = await mount({ firstTime: true })
-    expect(page.el.querySelector('h2').textContent).toBe('Welcome to Parallax')
+    expect(page.el.querySelector('h2').textContent).toBe('Tell us about you')
+    // Nothing to save until something's picked
+    expect(page.button('Save').disabled).toBe(true)
     expect([...page.el.querySelectorAll('legend')].map(l => l.textContent)).toEqual([
       'What’s your field?', 'Where are you in your career?', 'What brings you to Parallax? Pick any.', 'How did you hear about Parallax?',
     ])
     await page.pick('Astronomy and astrophysics')
+    expect(page.button('Save').disabled).toBe(false)
     await page.pick('Conference and seminar talks', 2)
     await page.pick('Something else', 2)
     // A "something else" choice asks for words
@@ -66,10 +68,10 @@ describe('the sign-up questions', () => {
     act(() => page.root.unmount())
   })
 
-  it('records a skip the first time, so it isn\'t asked again', async () => {
+  it('closes without saving on Not now, so it\'s asked again', async () => {
     const page = await mount({ firstTime: true })
-    await act(async () => page.button('Skip').click())
-    expect(api.skipSurvey).toHaveBeenCalled()
+    await page.pick('Physics')
+    await act(async () => page.button('Not now').click())
     expect(api.saveSurvey).not.toHaveBeenCalled()
     expect(page.onClose).toHaveBeenCalledWith(false)
     act(() => page.root.unmount())
@@ -83,7 +85,7 @@ describe('the sign-up questions', () => {
     expect(checked).toEqual(['Physics', 'Something else', 'Teaching and lectures'])
     expect(page.el.querySelector('.signup-survey-other').value).toBe('Retired')
     await act(async () => page.button('Cancel').click())
-    expect(api.skipSurvey).not.toHaveBeenCalled()
+    expect(api.saveSurvey).not.toHaveBeenCalled()
     expect(page.onClose).toHaveBeenCalledWith(false)
     act(() => page.root.unmount())
   })

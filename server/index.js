@@ -802,15 +802,15 @@ app.get('/api/me', async (req, res) => {
       },
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
-      // The sign-up questions, not yet answered or skipped (services/signup-survey.js)
+      // The sign-up questions, not answered yet (services/signup-survey.js)
       survey: { pending: !req.isGuest && !!req.userId && await signupSurvey.isPending(storage, req.userId) },
     })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
 
 // --- The sign-up questions (cloud only, signed-in accounts; services/signup-survey.js) ---
-// GET /api/me/survey: { questions, answers }; PUT saves answers (every one
-// optional); POST /api/me/survey/skip records passing without answering.
+// GET /api/me/survey: { questions, answers }; PUT saves answers (every
+// question optional, at least one answered).
 function surveyRoute(handler) {
   return async (req, res) => {
     if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
@@ -831,10 +831,6 @@ app.put('/api/me/survey', surveyRoute(async (req, res) => {
   res.json({ answers: await signupSurvey.saveAnswers(storage, req.userId, req.body || {}) })
 }))
 
-app.post('/api/me/survey/skip', surveyRoute(async (req, res) => {
-  await signupSurvey.skip(storage, req.userId)
-  res.json({ success: true })
-}))
 
 // GET /api/admin/overview — sign-ups, per-user storage and processing, and
 // container CPU/memory. Not found for anyone who isn't an admin.

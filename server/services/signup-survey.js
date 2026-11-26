@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// The optional questions an account is asked once, on the dashboard: field,
-// career stage, why Parallax and how they heard of it (migration 033). Every
-// question can be left out, and Skip records that they passed, so they
-// aren't asked again; "About you" in the account menu changes the answers.
-// Admins see the totals and the answers in /admin (summary, csv).
+// The optional questions an account is asked on the dashboard: field, career
+// stage, why Parallax and how they heard of it (migration 033). A note at the
+// top of the dashboard asks until they've answered at least one; every
+// question can be left out, and "About you" in the account menu changes the
+// answers. Admins see the totals and the answers in /admin (summary, csv).
+// (skipped is from when the questions could be passed for good.)
 //
 // The questions and their choices live here, and the dashboard draws them
 // from GET /api/me/survey, so a choice added here shows up there.
@@ -89,10 +90,14 @@ const rowToAnswers = r => (r ? {
   skipped: r.skipped, updatedAt: r.updated_at,
 } : null)
 
-// Whether userId hasn't been asked yet (no answers, and didn't skip)
+// Whether userId still has the questions to answer: none answered yet
 async function isPending(storage, userId) {
   try {
-    const { rows } = await storage.query('SELECT 1 FROM signup_answers WHERE user_id = $1', [userId])
+    const { rows } = await storage.query(
+      `SELECT 1 FROM signup_answers WHERE user_id = $1 AND NOT skipped
+          AND (field IS NOT NULL OR career_stage IS NOT NULL OR cardinality(reasons) > 0 OR heard_from IS NOT NULL)`,
+      [userId]
+    )
     return rows.length === 0
   } catch (err) {
     if (err.code === '42P01') return false // before migration 033
@@ -105,8 +110,10 @@ async function getAnswers(storage, userId) {
   return rowToAnswers(rows[0])
 }
 
+// Needs at least one answer: an empty form isn't answering
 async function saveAnswers(storage, userId, body) {
   const a = cleanAnswers(body)
+  if (!a.field && !a.careerStage && !a.reasons.length && !a.heardFrom) throw new SurveyError('Pick at least one answer')
   const { rows } = await storage.query(
     `INSERT INTO signup_answers (user_id, field, field_other, career_stage, career_other, reasons, reason_other, heard_from, heard_other, skipped)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
@@ -116,14 +123,6 @@ async function saveAnswers(storage, userId, body) {
     [userId, a.field, a.fieldOther, a.careerStage, a.careerStageOther, a.reasons, a.reasonOther, a.heardFrom, a.heardFromOther]
   )
   return rowToAnswers(rows[0])
-}
-
-// Records that they passed; answers they gave before are kept
-async function skip(storage, userId) {
-  await storage.query(
-    `INSERT INTO signup_answers (user_id, skipped) VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING`,
-    [userId]
-  )
 }
 
 // --- For admins ---
@@ -175,4 +174,4 @@ async function csv(storage) {
   return [header.join(','), ...lines].join('\n') + '\n'
 }
 
-module.exports = { QUESTIONS, SurveyError, cleanAnswers, isPending, getAnswers, saveAnswers, skip, summary, csv }
+module.exports = { QUESTIONS, SurveyError, cleanAnswers, isPending, getAnswers, saveAnswers, summary, csv }

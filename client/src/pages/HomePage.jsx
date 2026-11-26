@@ -61,8 +61,9 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [form, setForm] = useState({ title: '', theme: 'black', transition: 'slide', templateId: null })
   const [creating, setCreating] = useState(false)
   const [planInfo, setPlanInfo] = useState(null)
-  // The optional sign-up questions: 'first' when they come up by themselves
-  // (not yet answered or skipped), 'edit' from "About you" in the account menu
+  // The optional sign-up questions, open: 'first' from the note at the top
+  // of the dashboard (shown until they've answered one), 'edit' from "About
+  // you" in the account menu
   const [survey, setSurvey] = useState(null)
   const [uploads, setUploads] = useState([])
   const [uploadsOpen, setUploadsOpen] = useState(false)
@@ -255,14 +256,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     setBillingLoading(false)
   }
 
-  // The sign-up questions come up once by themselves, when nothing else is
-  // open (not for guests, who have no account, or self-hosted)
-  useEffect(() => {
-    if (isCloud && planInfo?.survey?.pending && !showBillingModal && !teamsOpen && !teamSetup) setSurvey(s => s || 'first')
-  }, [planInfo?.survey?.pending])
-  function closeSurvey() {
+  // Saved answers take the dashboard's note away; closing without saving
+  // leaves it
+  function closeSurvey(saved) {
     setSurvey(null)
-    setPlanInfo(p => (p ? { ...p, survey: { pending: false } } : p))
+    if (saved) setPlanInfo(p => (p ? { ...p, survey: { pending: false } } : p))
   }
 
   async function handleUpgrade(planId, priceId) {
@@ -705,6 +703,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       </div>
 
       <div className="home-content">
+       {/* The sign-up questions, until they've answered one (not for guests or self-hosted) */}
+       {isCloud && planInfo?.survey?.pending && (
+         <div className="survey-banner" role="region" aria-label="About you">
+           <span><strong>Help shape Parallax.</strong> Tell us a little about you: four optional questions, under a minute.</span>
+           <button type="button" className="btn btn-primary" onClick={() => setSurvey('first')}>Answer</button>
+         </div>
+       )}
        {teamSetup && (
          <div role="status" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
            {teamSetup === 'waiting'

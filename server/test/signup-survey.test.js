@@ -1,5 +1,5 @@
 // The optional sign-up questions (services/signup-survey.js), through the
-// HTTP API, against a real Postgres: asked once, answered or skipped, and
+// HTTP API, against a real Postgres: asked until answered, and the answers
 // seen only by admins. Needs TEST_DATABASE_URL, as collaboration.test.js
 // describes; skipped without it.
 
@@ -35,13 +35,15 @@ describe('the sign-up questions', { skip }, () => {
   })
   after(() => t?.stop())
 
-  it('asks a new account once, and keeps what they answer', async () => {
+  it('asks a new account until they answer, and keeps what they answer', async () => {
     assert.equal((await call(newcomer, 'GET', '/api/me')).body.survey.pending, true)
     const asked = (await call(newcomer, 'GET', '/api/me/survey')).body
     assert.deepEqual(asked.questions.map(q => q.id), ['field', 'careerStage', 'reasons', 'heardFrom'])
     assert.equal(asked.answers, null)
 
     assert.equal((await call(newcomer, 'PUT', '/api/me/survey', { field: 'alchemy' })).status, 400)
+    // An empty form isn't answering
+    assert.match((await call(newcomer, 'PUT', '/api/me/survey', { reasons: [] })).body.error, /at least one answer/)
     assert.equal((await call(newcomer, 'GET', '/api/me')).body.survey.pending, true)
 
     const saved = await call(newcomer, 'PUT', '/api/me/survey', {
@@ -52,19 +54,17 @@ describe('the sign-up questions', { skip }, () => {
     const again = (await call(newcomer, 'GET', '/api/me/survey')).body.answers
     assert.deepEqual([again.field, again.careerStage, again.reasons, again.reasonOther, again.skipped],
       ['astronomy', 'grad', ['talks', 'other'], `Thesis defense ${t.run}`, false])
-    // Skipping later keeps them
-    await call(newcomer, 'POST', '/api/me/survey/skip')
-    assert.equal((await call(newcomer, 'GET', '/api/me/survey')).body.answers.field, 'astronomy')
   })
 
-  it('doesn\'t ask again once they skip, and lets them answer later', async () => {
+  it('keeps asking someone who passed when they could still skip, until they answer one', async () => {
     await call(passer, 'GET', '/api/me')
-    assert.equal((await call(passer, 'POST', '/api/me/survey/skip')).status, 200)
-    assert.equal((await call(passer, 'GET', '/api/me')).body.survey.pending, false)
-    assert.equal((await call(passer, 'GET', '/api/me/survey')).body.answers.skipped, true)
+    await t.pool.query('INSERT INTO signup_answers (user_id, skipped) VALUES ($1, true)', [await t.userId(passer)])
+    assert.equal((await call(passer, 'GET', '/api/me')).body.survey.pending, true)
+    assert.equal((await call(passer, 'POST', '/api/me/survey/skip')).status, 404)
     await call(passer, 'PUT', '/api/me/survey', { careerStage: 'faculty' })
     const later = (await call(passer, 'GET', '/api/me/survey')).body.answers
     assert.deepEqual([later.careerStage, later.skipped], ['faculty', false])
+    assert.equal((await call(passer, 'GET', '/api/me')).body.survey.pending, false)
   })
 
   it('shows admins the totals and every answer, and no one else', async () => {

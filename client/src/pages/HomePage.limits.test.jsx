@@ -29,6 +29,7 @@ vi.mock('../utils/api', () => ({
     getBillingDiscounts: vi.fn(async () => ({ promotionCodes: true, education: { percentOff: 50, duration: 'forever', eligible: true, domain: 'uw.edu' } })),
     createPresentation: vi.fn(async data => ({ id: 'new', title: data.title || 'Untitled' })),
     getSurvey: vi.fn(async () => ({ questions: [{ id: 'field', label: 'What’s your field?', kind: 'one', choices: [['physics', 'Physics']] }], answers: null })),
+    saveSurvey: vi.fn(async () => ({ answers: { field: 'physics' } })),
   }, { get: (api, name) => api[name] ?? (api[name] = vi.fn(async () => null)) }),
 }))
 vi.mock('@clerk/clerk-react', () => {
@@ -109,19 +110,37 @@ describe('the dashboard at a plan\'s limit', () => {
 })
 
 describe('the sign-up questions on the dashboard', () => {
-  it('come up once by themselves for an account that hasn\'t answered or skipped them', async () => {
-    api.getMe.mockResolvedValueOnce({ id: 'u-me', plan: 'free', planName: 'Free', limits: { maxPresentations: 3 }, presentationCount: 1, billing: false, survey: { pending: true } })
+  const pending = { id: 'u-me', plan: 'free', planName: 'Free', limits: { maxPresentations: 3 }, presentationCount: 1, billing: false, survey: { pending: true } }
+
+  it('ask from a note at the top, which opens them and stays until they\'re answered', async () => {
+    api.getMe.mockResolvedValueOnce(pending)
     const page = await render()
-    expect(page.el.querySelector('.signup-survey h2').textContent).toBe('Welcome to Parallax')
-    await act(async () => [...page.el.querySelectorAll('.signup-survey button')].find(b => b.textContent.trim() === 'Skip').click())
-    expect(api.skipSurvey).toHaveBeenCalled()
+    // Nothing in the way: just the note
     expect(page.el.querySelector('.signup-survey')).toBeNull()
+    const note = () => page.el.querySelector('.survey-banner')
+    expect(note().textContent).toContain('Tell us a little about you')
+    const answer = () => [...note().querySelectorAll('button')].find(b => b.textContent === 'Answer')
+    await act(async () => answer().click())
+    expect(page.el.querySelector('.signup-survey h2').textContent).toBe('Tell us about you')
+
+    // Not now: the note stays
+    await act(async () => [...page.el.querySelectorAll('.signup-survey button')].find(b => b.textContent.trim() === 'Not now').click())
+    expect(page.el.querySelector('.signup-survey')).toBeNull()
+    expect(note()).toBeTruthy()
+
+    // Answered: it goes
+    await act(async () => answer().click())
+    await act(async () => page.el.querySelector('.signup-survey input[value="physics"]').click())
+    await act(async () => page.el.querySelector('.signup-survey form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(api.saveSurvey).toHaveBeenCalledWith(expect.objectContaining({ field: 'physics' }))
+    expect(page.el.querySelector('.signup-survey')).toBeNull()
+    expect(note()).toBeNull()
     act(() => page.root.unmount())
   })
 
-  it('stay away once answered', async () => {
+  it('aren\'t asked once answered', async () => {
     const page = await render()
-    expect(page.el.querySelector('.signup-survey')).toBeNull()
+    expect(page.el.querySelector('.survey-banner')).toBeNull()
     act(() => page.root.unmount())
   })
 })
