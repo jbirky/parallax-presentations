@@ -37,6 +37,7 @@ const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
 const teamSpace = require('./services/team-space')
+const folders = require('./services/folders')
 const aiLinks = require('./services/ai-links')
 const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly, canEdit } = collaboration
@@ -1067,20 +1068,26 @@ app.get('/api/presentations', async (req, res) => {
 // POST /api/presentations - create new (optionally from template)
 // With { teamId, folderId? }, it's made in that team (cloud only), for its
 // owner, admins and members; team decks don't count toward a personal plan.
+// With { folderId } alone, it goes in one of the person's own folders.
 app.post('/api/presentations', async (req, res) => {
   try {
     const { teamId, folderId, ...body } = req.body || {}
+    if (folderId && !isValidUUID(folderId)) return res.status(400).json({ error: 'Invalid id' })
     let team = null
-    if (teamId !== undefined && teamId !== null) {
-      if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
-      if (!isValidUUID(teamId) || (folderId && !isValidUUID(folderId))) return res.status(400).json({ error: 'Invalid id' })
-      try {
+    let ownFolder = null
+    try {
+      if (teamId !== undefined && teamId !== null) {
+        if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
+        if (!isValidUUID(teamId)) return res.status(400).json({ error: 'Invalid id' })
         team = await teamSpace.deckTarget(storage, req.userId, teamId, folderId || null)
-      } catch (err) {
-        if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
-        throw err
+      } else {
+        if (!(await checkPresentationQuota(req, res))) return
+        if (folderId && !req.isGuest) ownFolder = (await folders.getFolder(storage, ownPlace(req), folderId)).id
       }
-    } else if (!(await checkPresentationQuota(req, res))) return
+    } catch (err) {
+      if (err instanceof teams.TeamError || err instanceof folders.FolderError) return res.status(err.status).json({ error: err.message })
+      throw err
+    }
     const { title, theme, transition, templateId, slides: providedSlides, ...extraFields } = body
     const now = new Date().toISOString()
     let presentation
@@ -1164,6 +1171,9 @@ app.post('/api/presentations', async (req, res) => {
     if (team) {
       await storage.query('UPDATE presentations SET team_id = $2, folder_id = $3 WHERE id = $1', [created.id, team.teamId, team.folderId])
       Object.assign(created, team)
+    } else if (ownFolder) {
+      await storage.setPresentationFolder(created.id, ownFolder)
+      created.folderId = ownFolder
     }
     res.status(201).json(created)
   } catch (err) {
@@ -2037,6 +2047,11 @@ app.post('/api/presentations/:id/duplicate', requireValidId(), deckAccess(), can
       await storage.query('UPDATE presentations SET team_id = $2, folder_id = $3, expires_at = NULL WHERE id = $1', [copy.id, teamId, rows[0]?.folder_id || null])
       Object.assign(copy, { teamId, folderId: rows[0]?.folder_id || null })
       delete copy.expiresAt
+    } else if (!req.isGuest) {
+      // Next to the original, in the same folder of theirs
+      const folderId = await storage.getPresentationFolder(req.params.id)
+      if (folderId) await storage.setPresentationFolder(copy.id, folderId)
+      copy.folderId = folderId
     }
     res.status(201).json(copy)
   } catch (err) {
@@ -2211,7 +2226,7 @@ if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
     '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates',
-    '/api/teams', '/api/team-invites', '/api/admin/teams', '/api/presentations/:id/location'],
+    '/api/teams', '/api/team-invites', '/api/admin/teams'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
 
@@ -2327,6 +2342,77 @@ app.post('/api/invites/:token/accept', requireValidId('token'), async (req, res)
   }
 })
 
+// --- Folders for a person's own presentations (services/folders.js) ---
+// Self-hosted too, where the one person's folders have no owner. Guests have
+// one presentation and no folders.
+
+const ownPlace = req => ({ userId: req.userId || null })
+const placeError = err => err instanceof teams.TeamError || err instanceof folders.FolderError
+
+function folderRoute(handler) {
+  return async (req, res) => {
+    if (req.isGuest || (IS_CLOUD && !req.userId)) return res.status(403).json({ error: 'Sign in to use folders' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (placeError(err)) return res.status(err.status).json({ error: err.message })
+      console.error('Folder error:', err.message)
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+
+const parentIdOf = req => {
+  const parentId = req.body?.parentId
+  if (parentId === undefined || parentId === null) return parentId
+  return isValidUUID(parentId) ? parentId : false
+}
+
+// GET /api/folders - the person's folders
+app.get('/api/folders', folderRoute(async (req, res) => {
+  res.json({ folders: await folders.listFolders(storage, ownPlace(req)) })
+}))
+
+// POST /api/folders - a new folder: { name, parentId? }
+app.post('/api/folders', folderRoute(async (req, res) => {
+  const parentId = parentIdOf(req)
+  if (parentId === false) return res.status(400).json({ error: 'Invalid id' })
+  res.status(201).json(await folders.createFolder(storage, ownPlace(req), { name: req.body?.name, parentId: parentId || null, createdBy: req.userId || null }))
+}))
+
+// PATCH /api/folders/:id - rename it ({ name }) or move it ({ parentId }, null
+// for the top level)
+app.patch('/api/folders/:id', requireValidId(), folderRoute(async (req, res) => {
+  const parentId = parentIdOf(req)
+  if (parentId === false) return res.status(400).json({ error: 'Invalid id' })
+  res.json(await folders.updateFolder(storage, ownPlace(req), req.params.id, { name: req.body?.name, parentId }))
+}))
+
+// DELETE /api/folders/:id - delete it; what's in it moves up into its parent
+app.delete('/api/folders/:id', requireValidId(), folderRoute(async (req, res) => {
+  await folders.deleteFolder(storage, ownPlace(req), req.params.id)
+  res.json({ success: true })
+}))
+
+// PUT /api/presentations/:id/location - move a presentation: { teamId,
+// folderId }, teamId null for one of the caller's own folders (folderId
+// null for none). Self-hosted, there are only the person's own folders.
+app.put('/api/presentations/:id/location', requireValidId(), folderRoute(async (req, res) => {
+  const teamId = req.body?.teamId || null
+  const folderId = req.body?.folderId || null
+  if ((teamId && !isValidUUID(teamId)) || (folderId && !isValidUUID(folderId))) return res.status(400).json({ error: 'Invalid id' })
+  if (!storage.query) {
+    if (teamId) return res.status(404).json({ error: 'Not found' })
+    if (!(await storage.getPresentation(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    await folders.placeDeck(storage, ownPlace(req), req.params.id, folderId)
+    return res.json({ teamId: null, folderId, ownerChanged: false, sameSpace: true })
+  }
+  const moved = await teamSpace.moveDeck(storage, req.params.id, req.userId || null, req.userPlan, { teamId, folderId })
+  // Who can open it changed: everyone reconnects
+  if (!moved.sameSpace) collab?.closeDocument(req.params.id)
+  res.json(moved)
+}))
+
 // --- Teams (cloud only; services/teams.js) ---
 // Members with roles, seats and invite links. Guests can't be in a team.
 
@@ -2336,7 +2422,7 @@ function teamRoute(handler) {
     try {
       await handler(req, res)
     } catch (err) {
-      if (err instanceof teams.TeamError) return res.status(err.status).json({ error: err.message })
+      if (placeError(err)) return res.status(err.status).json({ error: err.message })
       console.error('Team error:', err.message)
       res.status(500).json({ error: safeErrorMessage(err) })
     }
@@ -2415,28 +2501,19 @@ app.post('/api/teams/:id/folders', requireValidId(), teamRoute(async (req, res) 
   res.status(201).json(await teamSpace.createFolder(storage, req.params.id, req.userId, { name: req.body?.name, parentId }))
 }))
 
-// PATCH /api/teams/:id/folders/:folderId - rename it: { name }
+// PATCH /api/teams/:id/folders/:folderId - rename it ({ name }) or move it
+// ({ parentId }, null for the top level)
 app.patch('/api/teams/:id/folders/:folderId', requireValidId(), requireValidId('folderId'), teamRoute(async (req, res) => {
-  res.json(await teamSpace.renameFolder(storage, req.params.id, req.userId, req.params.folderId, req.body?.name))
+  const parentId = parentIdOf(req)
+  if (parentId === false) return res.status(400).json({ error: 'Invalid id' })
+  res.json(await teamSpace.updateFolder(storage, req.params.id, req.userId, req.params.folderId, { name: req.body?.name, parentId }))
 }))
 
-// DELETE /api/teams/:id/folders/:folderId - delete it; its presentations
-// move to the team's top level
+// DELETE /api/teams/:id/folders/:folderId - delete it; what's in it moves
+// up into its parent
 app.delete('/api/teams/:id/folders/:folderId', requireValidId(), requireValidId('folderId'), teamRoute(async (req, res) => {
   await teamSpace.deleteFolder(storage, req.params.id, req.userId, req.params.folderId)
   res.json({ success: true })
-}))
-
-// PUT /api/presentations/:id/location - move a presentation: { teamId,
-// folderId }, teamId null for the caller's own space
-app.put('/api/presentations/:id/location', requireValidId(), teamRoute(async (req, res) => {
-  const teamId = req.body?.teamId || null
-  const folderId = req.body?.folderId || null
-  if ((teamId && !isValidUUID(teamId)) || (folderId && !isValidUUID(folderId))) return res.status(400).json({ error: 'Invalid id' })
-  const moved = await teamSpace.moveDeck(storage, req.params.id, req.userId, req.userPlan, { teamId, folderId })
-  // Who can open it changed: everyone reconnects
-  collab?.closeDocument(req.params.id)
-  res.json(moved)
 }))
 
 // POST /api/teams/:id/transfer - the owner hands the team to an admin: { userId }

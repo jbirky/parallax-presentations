@@ -6,9 +6,10 @@ import { createRoot } from 'react-dom/client'
 vi.mock('../utils/api', () => ({
   api: {
     getTeamSpace: vi.fn(),
-    createTeamFolder: vi.fn(async (id, name) => ({ id: 'f-new', name })),
-    renameTeamFolder: vi.fn(async (id, folderId, name) => ({ id: folderId, name })),
+    createTeamFolder: vi.fn(async (id, name, parentId) => ({ id: 'f-new', name, parentId })),
+    updateTeamFolder: vi.fn(async (id, folderId, change) => ({ id: folderId, ...change })),
     deleteTeamFolder: vi.fn(async () => ({ success: true })),
+    moveDeck: vi.fn(async () => ({})),
   },
 }))
 import { api } from '../utils/api'
@@ -17,11 +18,11 @@ import TeamSpaceView from './TeamSpaceView'
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const GB = 1024 * 1024 * 1024
-const deck = (id, title, extra = {}) => ({ id, title, teamId: 't1', folderId: null, role: 'editor', creatorName: 'Ada', ...extra })
+const deck = (id, title, extra = {}) => ({ id, title, teamId: 't1', folderId: null, role: 'editor', creatorName: 'Ada', slideCount: 3, updatedAt: '2026-11-20T00:00:00Z', ...extra })
 const spaceOf = (role, extra = {}) => ({
   team: { id: 't1', name: 'Exoplanet lab', status: 'active', role, canCreate: role !== 'viewer' },
-  folders: [{ id: 'f1', name: 'Talks' }, { id: 'f2', name: 'Grants' }],
-  presentations: [deck('d1', 'Colloquium', { folderId: 'f1' }), deck('d2', 'Lab meeting')],
+  folders: [{ id: 'f1', name: 'Talks', parentId: null }, { id: 'f2', name: '2026', parentId: 'f1' }],
+  presentations: [deck('d1', 'Colloquium', { folderId: 'f1' }), deck('d2', 'Lab meeting', { role: 'owner' })],
   storage: { used: 2 * GB, limit: 100 * GB },
   ...extra,
 })
@@ -31,16 +32,14 @@ async function render(role, props = {}, space = spaceOf(role)) {
   const el = document.createElement('div')
   document.body.appendChild(el)
   const root = createRoot(el)
-  const state = { folder: props.folder || 'all' }
-  const onFolder = vi.fn(f => { state.folder = f })
-  const renderCard = vi.fn((p, { reload }) => <div key={p.id} className="card" data-folder={p.folderName || ''}>{p.title}</div>)
+  const onFolder = vi.fn()
+  const renderCard = vi.fn((p, { reload }) => <div className="card">{p.title}</div>)
   const onNew = vi.fn()
-  const draw = async () => act(async () => root.render(
-    <TeamSpaceView team={{ id: 't1', name: 'Exoplanet lab' }} folder={state.folder} onFolder={onFolder} renderCard={renderCard} onNew={onNew} {...props} />))
-  await draw()
-  const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.trim() === text)
+  await act(async () => root.render(
+    <TeamSpaceView team={{ id: 't1', name: 'Exoplanet lab' }} folder={null} onFolder={onFolder} renderCard={renderCard} onNew={onNew} {...props} />))
+  const button = text => [...el.querySelectorAll('button')].find(b => b.textContent.trim() === text || b.getAttribute('aria-label') === text)
   const cards = () => [...el.querySelectorAll('.card')].map(c => c.textContent)
-  return { el, root, state, draw, onFolder, renderCard, onNew, button, cards }
+  return { el, root, onFolder, renderCard, onNew, button, cards }
 }
 
 beforeEach(() => {
@@ -49,56 +48,53 @@ beforeEach(() => {
 })
 
 describe('a team on the dashboard', () => {
-  it('shows its presentations, its folders and its storage', async () => {
+  it('shows its top level, its folders and its storage', async () => {
     const { el, cards, renderCard, root } = await render('member')
     expect(api.getTeamSpace).toHaveBeenCalledWith('t1')
-    expect(el.querySelector('h2').textContent).toBe('Exoplanet lab')
+    expect(el.querySelector('.deck-crumb').textContent).toBe('Exoplanet lab')
     expect(el.textContent).toContain('2 GB of 100 GB used')
-    expect([...el.querySelectorAll('[role="toolbar"] button[aria-pressed]')].map(b => b.textContent)).toEqual(['All', 'Talks', 'Grants'])
-    expect(cards()).toEqual(['Colloquium', 'Lab meeting'])
-    // Seen together, each says which folder it's in
-    expect(el.querySelector('.card').dataset.folder).toBe('Talks')
+    expect([...el.querySelectorAll('.folder-tile-name')].map(n => n.textContent)).toEqual(['Talks'])
+    expect(cards()).toEqual(['Lab meeting'])
     expect(typeof renderCard.mock.calls[0][1].reload).toBe('function')
     act(() => root.unmount())
   })
 
-  it('shows one folder at a time, and makes new presentations in it', async () => {
-    const page = await render('member')
-    await act(async () => page.button('Talks').click())
-    expect(page.onFolder).toHaveBeenCalledWith('f1')
-    await page.draw()
+  it('opens a folder, and makes new presentations there', async () => {
+    const page = await render('member', { folder: 'f1' })
     expect(page.cards()).toEqual(['Colloquium'])
+    expect([...page.el.querySelectorAll('.deck-crumb')].map(c => c.textContent)).toEqual(['Exoplanet lab', 'Talks'])
+    expect([...page.el.querySelectorAll('.folder-tile-name')].map(n => n.textContent)).toEqual(['2026'])
     await act(async () => page.el.querySelector('.new-card').click())
     expect(page.onNew).toHaveBeenCalledWith('f1')
     act(() => page.root.unmount())
   })
 
-  it('lets members make and rename folders, and only owners and admins delete them', async () => {
-    const page = await render('member', { folder: 'f1' })
-    expect(page.button('Rename folder')).toBeTruthy()
-    expect(page.button('Delete folder')).toBeUndefined()
-
+  it('makes, renames and (for owners and admins) deletes folders in the team', async () => {
+    const page = await render('member')
+    expect(page.button('Rename Talks')).toBeTruthy()
+    expect(page.button('Delete Talks')).toBeUndefined()
     await act(async () => page.button('New folder').click())
     const input = page.el.querySelector('input[aria-label="New folder\'s name"]')
     const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set
     await act(async () => { set.call(input, 'Journal club'); input.dispatchEvent(new Event('input', { bubbles: true })) })
     await act(async () => input.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-    expect(api.createTeamFolder).toHaveBeenCalledWith('t1', 'Journal club')
-    expect(page.onFolder).toHaveBeenLastCalledWith('f-new')
+    expect(api.createTeamFolder).toHaveBeenCalledWith('t1', 'Journal club', null)
     act(() => page.root.unmount())
 
-    const admin = await render('admin', { folder: 'f2' })
-    await act(async () => admin.button('Delete folder').click())
-    expect(api.deleteTeamFolder).toHaveBeenCalledWith('t1', 'f2')
-    expect(admin.onFolder).toHaveBeenCalledWith('all')
+    const admin = await render('admin')
+    await act(async () => admin.button('Delete Talks').click())
+    expect(api.deleteTeamFolder).toHaveBeenCalledWith('t1', 'f1')
     act(() => admin.root.unmount())
   })
 
   it('gives viewers nothing to change', async () => {
-    const { el, button, root } = await render('viewer', { folder: 'f1' })
+    const asViewer = spaceOf('viewer')
+    asViewer.presentations = asViewer.presentations.map(p => ({ ...p, role: 'viewer' }))
+    const { el, button, root } = await render('viewer', {}, asViewer)
     expect(el.querySelector('.new-card')).toBeNull()
     expect(button('New folder')).toBeUndefined()
-    expect(button('Rename folder')).toBeUndefined()
+    expect(button('Rename Talks')).toBeUndefined()
+    expect(el.querySelector('[draggable="true"]')).toBeNull()
     expect(el.textContent).toContain('You’re a viewer')
     act(() => root.unmount())
   })
@@ -109,6 +105,7 @@ describe('a team on the dashboard', () => {
     const { el, button, root } = await render('owner', {}, lapsed)
     expect(el.querySelector('[role="status"]').textContent).toContain('subscription has ended')
     expect(button('New folder')).toBeUndefined()
+    expect(button('Delete Talks')).toBeUndefined()
     act(() => root.unmount())
   })
 

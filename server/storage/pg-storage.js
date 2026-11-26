@@ -46,7 +46,8 @@ class PgStorage extends StorageInterface {
         updated_at as "updatedAt",
         created_at as "createdAt",
         expires_at as "expiresAt",
-        data->'slides'->0->'background' as thumbnail
+        data->'slides'->0->'background' as thumbnail,
+        folder_id as "folderId"
       FROM presentations
       ${where}
       ORDER BY updated_at DESC
@@ -142,6 +143,68 @@ class PgStorage extends StorageInterface {
       [created.id, id]
     )
     return created
+  }
+
+  // --- Folders (migrations 028, 029) ---
+  // A place is { teamId } for a team's folders, or { userId } for a person's;
+  // userId null on a self-hosted server. services/folders.js checks names,
+  // nesting and who may change what.
+
+  _folderPlace(place, at = 1) {
+    if (place.teamId) return { where: `team_id = $${at}`, params: [place.teamId] }
+    if (place.userId) return { where: `user_id = $${at} AND team_id IS NULL`, params: [place.userId] }
+    return { where: 'user_id IS NULL AND team_id IS NULL', params: [] }
+  }
+
+  async listFolders(place) {
+    const { where, params } = this._folderPlace(place)
+    const { rows } = await this.query(
+      `SELECT id, name, parent_id AS "parentId", created_at AS "createdAt" FROM folders WHERE ${where} ORDER BY lower(name)`,
+      params
+    )
+    return rows
+  }
+
+  // Throws a pg error with code 23505 when the place has a folder of that name
+  async createFolder(place, { name, parentId = null, createdBy = null }) {
+    const { rows } = await this.query(
+      `INSERT INTO folders (team_id, user_id, parent_id, name, created_by) VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, parent_id AS "parentId", created_at AS "createdAt"`,
+      [place.teamId || null, place.teamId ? null : place.userId || null, parentId, name, createdBy]
+    )
+    return rows[0]
+  }
+
+  // { name?, parentId? }: parentId null moves it to the top level
+  async updateFolder(place, id, { name, parentId }) {
+    const { where, params } = this._folderPlace(place, 5)
+    const { rows } = await this.query(
+      `UPDATE folders SET name = COALESCE($2, name), parent_id = CASE WHEN $3 THEN $4::uuid ELSE parent_id END, updated_at = NOW()
+        WHERE id = $1 AND ${where} RETURNING id, name, parent_id AS "parentId", created_at AS "createdAt"`,
+      [id, name ?? null, parentId !== undefined, parentId ?? null, ...params]
+    )
+    return rows[0] || null
+  }
+
+  // Its presentations and folders move up into its parent
+  async deleteFolder(place, id) {
+    const { where, params } = this._folderPlace(place, 2)
+    const { rows } = await this.query(`SELECT parent_id FROM folders WHERE id = $1 AND ${where}`, [id, ...params])
+    if (!rows.length) return false
+    const parent = rows[0].parent_id
+    await this.query('UPDATE presentations SET folder_id = $2 WHERE folder_id = $1', [id, parent])
+    await this.query('UPDATE folders SET parent_id = $2 WHERE parent_id = $1', [id, parent])
+    await this.query('DELETE FROM folders WHERE id = $1', [id])
+    return true
+  }
+
+  async getPresentationFolder(id) {
+    const { rows } = await this.query('SELECT folder_id FROM presentations WHERE id = $1', [id])
+    return rows[0]?.folder_id || null
+  }
+
+  async setPresentationFolder(id, folderId) {
+    await this.query('UPDATE presentations SET folder_id = $2 WHERE id = $1', [id, folderId || null])
   }
 
   // --- Templates ---

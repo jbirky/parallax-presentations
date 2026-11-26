@@ -287,9 +287,15 @@ export const api = {
   transferTeam: (id, userId) => authFetch(`${BASE}/teams/${id}/transfer`, json('POST', { userId })).then(r => checked(r, 'Could not hand the team over')),
   // A team's folders and presentations, and its storage: { team, folders, presentations, storage }
   getTeamSpace: (id) => authFetch(`${BASE}/teams/${id}/space`).then(r => checked(r, 'Could not load the team')),
-  createTeamFolder: (id, name) => authFetch(`${BASE}/teams/${id}/folders`, json('POST', { name })).then(r => checked(r, 'Could not make the folder')),
-  renameTeamFolder: (id, folderId, name) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the folder')),
+  createTeamFolder: (id, name, parentId = null) => authFetch(`${BASE}/teams/${id}/folders`, json('POST', { name, parentId })).then(r => checked(r, 'Could not make the folder')),
+  // change: { name?, parentId? }, parentId null for the top level
+  updateTeamFolder: (id, folderId, change) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, json('PATCH', change)).then(r => checked(r, 'Could not change the folder')),
   deleteTeamFolder: (id, folderId) => authFetch(`${BASE}/teams/${id}/folders/${folderId}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
+  // The person's own folders (self-hosted too): { folders }
+  listFolders: () => authFetch(`${BASE}/folders`).then(r => checked(r, 'Could not load your folders')),
+  createFolder: (name, parentId = null) => authFetch(`${BASE}/folders`, json('POST', { name, parentId })).then(r => checked(r, 'Could not make the folder')),
+  updateFolder: (id, change) => authFetch(`${BASE}/folders/${id}`, json('PATCH', change)).then(r => checked(r, 'Could not change the folder')),
+  deleteFolder: (id) => authFetch(`${BASE}/folders/${id}`, { method: 'DELETE' }).then(r => checked(r, 'Could not delete the folder')),
   // Moves a presentation: teamId null for the caller's own presentations
   moveDeck: (id, { teamId, folderId }) => authFetch(`${BASE}/presentations/${id}/location`, json('PUT', { teamId, folderId })).then(r => checked(r, 'Could not move the presentation')),
   getTeamInvite: (token) => authFetch(`${BASE}/team-invites/${token}`).then(r => checked(r, 'Could not open the invitation')),

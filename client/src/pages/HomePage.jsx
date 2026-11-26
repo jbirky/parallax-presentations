@@ -14,6 +14,7 @@ import BetaBadge from '../components/BetaBadge'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
 import TeamSpaceView from '../components/TeamSpaceView'
+import DeckBrowser from '../components/DeckBrowser'
 import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -86,23 +87,38 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     if (new URLSearchParams(window.location.search).has('team')) window.history.replaceState(null, '', window.location.pathname)
   }, [])
   // Whose presentations are shown: 'personal', or a team's id (remembered on
-  // this device), and the team's folder ('all' or a folder's id)
+  // this device), and the folder open in each (null: the top level)
   const [space, setSpaceState] = useState(() => { try { return window.localStorage.getItem('parallax.space') || 'personal' } catch { return 'personal' } })
   const setSpace = next => {
     setSpaceState(next)
     try { window.localStorage.setItem('parallax.space', next) } catch {}
   }
-  const [teamFolder, setTeamFolder] = useState('all')
+  const [teamFolder, setTeamFolder] = useState(null)
   const [teamReload, setTeamReload] = useState(0)
   const [movingDeck, setMovingDeck] = useState(null)
-  const [createTarget, setCreateTarget] = useState(null) // { teamId, folderId } for a new team presentation
+  // Where a new presentation goes: { teamId, folderId } in a team, { folderId } in a folder of theirs
+  const [createTarget, setCreateTarget] = useState(null)
   const team = space !== 'personal' ? teams.find(t => t.id === space) || null : null
   // A team they've left, or one from another account on this device
   useEffect(() => {
     if (teamsLoaded && space !== 'personal' && !team) setSpace('personal')
   }, [teamsLoaded, space, team])
   const canAddToTeam = !!team && teamsToAddTo(teams).some(t => t.id === team.id)
-  const currentTarget = () => (team ? { teamId: team.id, folderId: teamFolder !== 'all' ? teamFolder : null } : null)
+  // Their own folders, and the one open
+  const [folders, setFolders] = useState([])
+  const [folder, setFolder] = useState(null)
+  const loadFolders = () => api.listFolders().then(r => setFolders(r?.folders || [])).catch(() => setFolders([]))
+  // A folder that's gone shows the top level
+  useEffect(() => { if (folder && !folders.some(f => f.id === folder)) setFolder(null) }, [folders, folder])
+  const currentTarget = () => (team
+    ? { teamId: team.id, folderId: teamFolder }
+    : folder ? { folderId: folder } : null)
+  // Tiles or a list, remembered on this device
+  const [deckView, setDeckViewState] = useState(() => { try { return window.localStorage.getItem('parallax.deckView') === 'list' ? 'list' : 'tiles' } catch { return 'tiles' } })
+  const setDeckView = next => {
+    setDeckViewState(next)
+    try { window.localStorage.setItem('parallax.deckView', next) } catch {}
+  }
 
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
@@ -256,6 +272,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       // For the getting-started checklist: shown on someone's first decks
       rememberDeckCount((Array.isArray(presData) ? presData : []).filter(p => p.role !== 'editor').length)
       setTemplates(Array.isArray(tmplData) ? tmplData : [])
+      loadFolders()
       if (isCloud) {
         api.getMe().then(setPlanInfo).catch(() => {})
         loadUploads()
@@ -379,26 +396,91 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     }
   }
 
-  // A presentation's card; one shared with this user names its owner and can
-  // be left. A team's (with teamId) names who made it, and offers what the
-  // person's role on it allows; reload loads the team's space again.
-  function presentationCard(pres, { reload } = {}) {
-    // Its first slide's background, or its theme's page
+  // A presentation's first slide's background, or its theme's page, as a style
+  function cardBackground(pres) {
     const bg = getCardBg(pres.thumbnail)
-    const bgProp = !ownBackground(pres.thumbnail)
+    return !ownBackground(pres.thumbnail)
       ? themeBackgroundStyle(pres.theme)
       : isGradientOrImage(pres.thumbnail)
         ? { background: bg }
         : { backgroundColor: bg }
+  }
+
+  // Whether the person can move a presentation: their own into a folder or a
+  // team; a team's when they own it there
+  const canMoveDeck = pres => (pres.teamId ? pres.role === 'owner' : pres.role !== 'editor')
+
+  // A presentation's buttons, on its card and its row in the list. One
+  // shared with this user can be left; a team's (with teamId) offers what the
+  // person's role on it allows. reload loads the team's space again.
+  function deckActions(pres, { reload } = {}) {
     const inTeam = !!pres.teamId
     const shared = !inTeam && pres.role === 'editor'
     const viewOnly = pres.role === 'viewer'
-    const canMove = inTeam ? pres.role === 'owner' : !shared && teamsToAddTo(teams).length > 0
     const canDelete = inTeam ? pres.role === 'owner' : !shared
     const move = e => {
       e.stopPropagation()
       setMovingDeck({ id: pres.id, title: pres.title, teamId: pres.teamId || null, folderId: pres.folderId || null, creatorId: pres.creatorId || null })
     }
+    return (
+      <>
+        <button
+          className="btn-icon"
+          title={viewOnly ? 'View' : 'Edit'}
+          onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
+        >
+          {viewOnly ? <Eye size={14} /> : <Pencil size={14} />}
+        </button>
+        {canMoveDeck(pres) && (
+          <button className="btn-icon" title="Move" onClick={move}>
+            <FolderInput size={14} />
+          </button>
+        )}
+        {shared ? (
+          <button
+            className="btn-icon"
+            title="Leave"
+            onClick={(e) => handleLeave(e, pres)}
+            style={{ color: 'var(--danger)' }}
+          >
+            <LogOut size={14} />
+          </button>
+        ) : (
+          <>
+            {!viewOnly && (
+              <button
+                className="btn-icon"
+                title="Duplicate"
+                onClick={(e) => handleDuplicate(e, pres.id, reload)}
+              >
+                <Copy size={14} />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className="btn-icon"
+                title="Delete"
+                onClick={(e) => handleDelete(e, pres.id, reload)}
+                style={{ color: 'var(--danger)' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </>
+        )}
+      </>
+    )
+  }
+
+  // A presentation's small preview, for its row in the list
+  const deckThumb = pres => <span className="deck-row-thumb" style={cardBackground(pres)} aria-hidden />
+
+  // A presentation's card; one shared with this user names its owner, and a
+  // team's who made it
+  function presentationCard(pres, { reload } = {}) {
+    const bgProp = cardBackground(pres)
+    const inTeam = !!pres.teamId
+    const shared = !inTeam && pres.role === 'editor'
 
     return (
       <div
@@ -431,52 +513,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )
           })()}
         </div>
-        <div className="card-actions">
-          <button
-            className="btn-icon"
-            title={viewOnly ? 'View' : 'Edit'}
-            onClick={(e) => { e.stopPropagation(); onOpen(pres.id, false, pres.title) }}
-          >
-            {viewOnly ? <Eye size={14} /> : <Pencil size={14} />}
-          </button>
-          {canMove && (
-            <button className="btn-icon" title={inTeam ? 'Move' : 'Move to a team'} onClick={move}>
-              <FolderInput size={14} />
-            </button>
-          )}
-          {shared ? (
-            <button
-              className="btn-icon"
-              title="Leave"
-              onClick={(e) => handleLeave(e, pres)}
-              style={{ color: 'var(--danger)' }}
-            >
-              <LogOut size={14} />
-            </button>
-          ) : (
-            <>
-              {!viewOnly && (
-                <button
-                  className="btn-icon"
-                  title="Duplicate"
-                  onClick={(e) => handleDuplicate(e, pres.id, reload)}
-                >
-                  <Copy size={14} />
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  className="btn-icon"
-                  title="Delete"
-                  onClick={(e) => handleDelete(e, pres.id, reload)}
-                  style={{ color: 'var(--danger)' }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
+        <div className="card-actions">{deckActions(pres, { reload })}</div>
       </div>
     )
   }
@@ -575,7 +612,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             <div className="spaces-heading">Teams</div>
             {teams.map(t => (
               <button key={t.id} type="button" className={`spaces-item${team?.id === t.id ? ' active' : ''}`} aria-current={team?.id === t.id ? 'true' : undefined}
-                onClick={() => { setSpace(t.id); setTeamFolder('all') }}>
+                onClick={() => { setSpace(t.id); setTeamFolder(null) }}>
                 <Users size={14} /> <span>{t.name}</span>
               </button>
             ))}
@@ -584,7 +621,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         <div style={{ minWidth: 0 }}>
         {team ? (
           <TeamSpaceView team={team} folder={teamFolder} onFolder={setTeamFolder} reloadKey={teamReload}
-            renderCard={presentationCard} onNew={folderId => handleOpenModal({ teamId: team.id, folderId })}
+            view={deckView} onView={setDeckView}
+            renderCard={presentationCard} renderActions={deckActions} renderThumb={deckThumb}
+            onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+            onNew={folderId => handleOpenModal({ teamId: team.id, folderId })}
             onManage={() => setTeamsOpen(team.id)} />
         ) : (<>
         {atLimit && (
@@ -601,35 +641,34 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             )}
           </div>
         )}
-        <h2>My Presentations</h2>
         {loading ? (
-          <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          <>
+            <h2>My Presentations</h2>
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading...</div>
+          </>
         ) : (
-          <div className="presentations-grid">
-            <div className="new-card" onClick={() => handleOpenModal(null)}>
-              <Plus size={32} />
-              <span>New Presentation</span>
-            </div>
-
-            {own.length === 0 ? (
-              <div className="empty-state">
-                <Presentation size={48} />
-                <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No presentations yet</p>
-                <p style={{ fontSize: 14 }}>Create your first presentation to get started</p>
-              </div>
-            ) : (
-              own.map(presentationCard)
-            )}
-          </div>
+          <DeckBrowser
+            rootName="My presentations" folders={folders} decks={own}
+            folderId={folder} onOpenFolder={setFolder}
+            view={deckView} onView={setDeckView}
+            canEditFolders canDeleteFolders canMoveDeck={canMoveDeck}
+            onCreateFolder={async (name, parentId) => { const made = await api.createFolder(name, parentId); await loadFolders(); return made }}
+            onUpdateFolder={async (id, change) => { await api.updateFolder(id, change); await loadFolders() }}
+            onDeleteFolder={async id => { await api.deleteFolder(id); await Promise.all([loadFolders(), loadData()]) }}
+            onMoveDeck={async (id, folderId) => { await api.moveDeck(id, { teamId: null, folderId }); await loadData() }}
+            renderTile={presentationCard} renderActions={pres => deckActions(pres)} renderThumb={deckThumb}
+            onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+            onNew={folderId => handleOpenModal(folderId ? { folderId } : null)}
+            emptyText="Create your first presentation to get started" />
         )}
 
         {shared.length > 0 && (
-          <>
-            <h2 style={{ marginTop: 40 }}>Shared with you</h2>
-            <div className="presentations-grid">
-              {shared.map(presentationCard)}
-            </div>
-          </>
+          <div style={{ marginTop: 40 }}>
+            <DeckBrowser flat rootName="Shared with you" decks={shared} view={deckView}
+              renderTile={presentationCard} renderActions={pres => deckActions(pres)} renderThumb={deckThumb}
+              onOpenDeck={pres => onOpen(pres.id, false, pres.title)}
+              ownerColumn={{ label: 'Owner', value: pres => pres.ownerName || '' }} />
+          </div>
         )}
 
         {/* My Templates Section */}
@@ -867,7 +906,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h2>{createTarget ? `New presentation in ${teams.find(t => t.id === createTarget.teamId)?.name || 'the team'}` : 'New Presentation'}</h2>
+            <h2>{createTarget?.teamId
+              ? `New presentation in ${teams.find(t => t.id === createTarget.teamId)?.name || 'the team'}`
+              : createTarget?.folderId
+                ? `New presentation in ${folders.find(f => f.id === createTarget.folderId)?.name || 'the folder'}`
+                : 'New Presentation'}</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Title</label>

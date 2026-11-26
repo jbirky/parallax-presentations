@@ -57,20 +57,25 @@ describe('the dashboard with teams', () => {
     const page = await render()
     expect([...page.el.querySelectorAll('.spaces-item')].map(b => b.textContent.trim())).toEqual(['My presentations', 'Exoplanet lab'])
     expect(page.nav('My presentations').getAttribute('aria-current')).toBe('true')
-    // One of theirs can go to a team they're a member of
-    expect(page.titles(page.card('My talk'))).toEqual(['Edit', 'Move to a team', 'Duplicate', 'Delete'])
+    expect(page.titles(page.card('My talk'))).toEqual(['Edit', 'Move', 'Duplicate', 'Delete'])
     act(() => page.root.unmount())
   })
 
-  it('shows a team\'s presentations with what the person can do with each, and makes new ones there', async () => {
+  it('shows a team\'s presentations, in its folders, with what the person can do with each, and makes new ones there', async () => {
     const page = await render()
     await act(async () => page.nav('Exoplanet lab').click())
     expect(api.getTeamSpace).toHaveBeenCalledWith('t1')
-    expect(page.card('Colloquium').textContent).toContain('By Ada · in Talks')
-    // Someone else's: edit and copy; their own: move and delete too
-    expect(page.titles(page.card('Colloquium'))).toEqual(['Edit', 'Duplicate'])
+    // At the top level: the folder, and the presentation outside it
+    expect(page.el.querySelector('.folder-tile').textContent).toContain('Talks')
+    expect(page.card('Colloquium')).toBeUndefined()
+    // Their own: move and delete too
     expect(page.titles(page.card('My lab talk'))).toEqual(['Edit', 'Move', 'Duplicate', 'Delete'])
+    await act(async () => page.el.querySelector('.folder-tile').click())
+    // Someone else's: edit and copy
+    expect(page.card('Colloquium').textContent).toContain('By Ada')
+    expect(page.titles(page.card('Colloquium'))).toEqual(['Edit', 'Duplicate'])
 
+    await act(async () => page.el.querySelector('.deck-crumb').click())
     await act(async () => page.el.querySelector('.new-card').click())
     expect(page.el.querySelector('.modal h2').textContent).toBe('New presentation in Exoplanet lab')
     await act(async () => page.el.querySelector('.modal form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
@@ -84,8 +89,6 @@ describe('the dashboard with teams', () => {
     const page = await render()
     const header = () => [...page.el.querySelectorAll('.home-header button')].map(b => b.textContent.trim()).filter(Boolean)
     expect(header()).toEqual(expect.arrayContaining(['Fork from Git', 'From Beamer', 'New Presentation']))
-    // One of their own can't go to a team they only view
-    expect(page.titles(page.card('My talk'))).toEqual(['Edit', 'Duplicate', 'Delete'])
     await act(async () => page.nav('Exoplanet lab').click())
     expect(header()).not.toContain('Fork from Git')
     expect(header()).not.toContain('New Presentation')
@@ -97,7 +100,26 @@ describe('the dashboard with teams', () => {
     window.localStorage.setItem('parallax.space', 't1')
     const page = await render()
     expect(page.nav('Exoplanet lab').getAttribute('aria-current')).toBe('true')
-    expect(page.card('Colloquium')).toBeTruthy()
+    expect(page.card('My lab talk')).toBeTruthy()
+    act(() => page.root.unmount())
+  })
+
+  it('files their own presentations in folders, and shows them as a list', async () => {
+    api.listFolders.mockResolvedValue({ folders: [{ id: 'pf1', name: 'Thesis', parentId: null }] })
+    api.getPresentations.mockResolvedValueOnce([deck('mine', 'My talk'), deck('filed', 'Chapter 2', { folderId: 'pf1' })])
+    const page = await render()
+    expect(page.card('Chapter 2')).toBeUndefined()
+    await act(async () => page.el.querySelector('.folder-tile').click())
+    expect(page.card('Chapter 2')).toBeTruthy()
+    await act(async () => page.el.querySelector('.new-card').click())
+    expect(page.el.querySelector('.modal h2').textContent).toBe('New presentation in Thesis')
+    await act(async () => page.el.querySelector('.modal form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(api.createPresentation).toHaveBeenCalledWith(expect.objectContaining({ folderId: 'pf1' }))
+    expect(api.createPresentation.mock.calls.at(-1)[0].teamId).toBeUndefined()
+
+    await act(async () => page.el.querySelector('button[aria-label="List"]').click())
+    expect(window.localStorage.getItem('parallax.deckView')).toBe('list')
+    expect([...page.el.querySelectorAll('.deck-row .deck-row-name')].map(n => n.textContent)).toEqual(['New presentation', 'Chapter 2'])
     act(() => page.root.unmount())
   })
 })

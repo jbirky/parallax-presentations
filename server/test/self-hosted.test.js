@@ -285,6 +285,27 @@ describe('the self-hosted version', () => {
     }
   })
 
+  it('keeps folders for its one person, in its data folder', async () => {
+    const talks = await call('POST', '/api/folders', { name: 'Talks' })
+    assert.equal(talks.status, 201)
+    const year = (await call('POST', '/api/folders', { name: '2026', parentId: talks.body.id })).body
+    assert.equal((await call('POST', '/api/folders', { name: 'TALKS' })).status, 409)
+    const made = await call('POST', '/api/presentations', { title: 'Filed talk', folderId: talks.body.id })
+    assert.equal(made.body.folderId, talks.body.id)
+    const folderOf = async title => (await call('GET', '/api/presentations')).body.find(p => p.title === title).folderId
+
+    assert.equal((await call('PUT', `/api/presentations/${made.body.id}/location`, { folderId: year.id })).status, 200)
+    assert.equal(await folderOf('Filed talk'), year.id)
+    assert.equal((await call('PUT', `/api/presentations/${made.body.id}/location`, { teamId: '5f0c6b9e-4a1d-4c8e-9b7a-2d3e4f5a6b7c' })).status, 404)
+    assert.equal((await call('POST', `/api/presentations/${made.body.id}/duplicate`)).body.folderId, year.id)
+    assert.equal((await call('PATCH', `/api/folders/${talks.body.id}`, { parentId: year.id })).status, 400)
+
+    // Deleting 2026 moves its talks up into Talks
+    assert.equal((await call('DELETE', `/api/folders/${year.id}`)).status, 200)
+    assert.equal(await folderOf('Filed talk'), talks.body.id)
+    assert.deepEqual((await call('GET', '/api/folders')).body.folders.map(f => f.name), ['Talks'])
+  })
+
   it('has no teams', async () => {
     const token = 'A'.repeat(43)
     for (const [method, url, body] of [
