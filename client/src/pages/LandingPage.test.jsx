@@ -270,7 +270,7 @@ describe('Practice Talk to try', () => {
     expect(rows[3][3]).toBe('skipped')
     expect(rows[1][4]).toMatch(/^\+0:\d\d$/)
     expect(el.querySelector('.lp-pr-sum .over, .lp-pr-sum .under')).not.toBeNull()
-    // The outline shows each slide's time, amber where it ran over
+    // The outline shows each slide's time, red where it ran over
     const outline = () => [...el.querySelectorAll('.lp-pr-outline li')].map(li => [li.querySelector('.m').textContent, li.querySelector('.pt').textContent, li.querySelector('.pt').className])
     expect(outline()[1][2]).toContain('over')
     expect(outline()[4][1]).toBe('')

@@ -7,8 +7,10 @@
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
 // together with Practice Talk to try (PracticeDemo.jsx), the elements by
-// subject, and the plans. It's dark unless light is chosen, with the nav's
-// toggle or the dashboard's (theme, onToggleTheme; utils/theme.js). The docs
+// subject, the plans, and a last way in. Ink and paper bands, the mark's red
+// and blue as offset shadows (index.css, Landing Page). It's dark unless
+// light is chosen, with the nav's toggle or the dashboard's (theme,
+// onToggleTheme; utils/theme.js). The docs
 // open in place of it, at #docs, and the
 // templates at #templates: each opens its own page (/templates/<slug>, which
 // the server builds, server/services/site-pages.js), where people copy it
@@ -63,6 +65,22 @@ const fieldsOf = examples => {
   return [...EXAMPLE_FIELDS.filter(f => have.has(f)), ...[...have].filter(f => !EXAMPLE_FIELDS.includes(f))]
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
+
+// The mark: the P as each eye sees it, red and blue, and where the two
+// overlap. Each use names its own clip path.
+const P_PATH = 'M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z'
+function Mark({ id, size, className = 'lp-mark' }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="14 14 72 72" aria-hidden="true" focusable="false">
+      <defs><clipPath id={`lp-mark-${id}`}><path d={P_PATH} transform="translate(-6 0)" clipRule="evenodd" /></clipPath></defs>
+      <g transform="translate(-2 0)" fillRule="evenodd">
+        <path d={P_PATH} transform="translate(-6 0)" fill="#ee2b2b" />
+        <path d={P_PATH} transform="translate(6 0)" fill="#1e60ff" />
+        <g clipPath={`url(#lp-mark-${id})`}><path d={P_PATH} transform="translate(6 0)" style={{ fill: 'var(--lp-strong)' }} /></g>
+      </g>
+    </svg>
+  )
+}
 
 const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
 const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
@@ -177,9 +195,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
   const shown = field === 'All' ? examples : examples.filter(e => e.field === field)
   const templates = catalog?.templates || []
   const templatesShown = templateField === 'All' ? templates : templates.filter(e => e.field === templateField)
-  const tryIt = guestEnabled
-    ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from: 'hero' })}>Try it, no account needed <ArrowRight size={16} /></a>
-    : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'hero' }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
+  const tryIt = from => guestEnabled
+    ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from })}>Try it, no account needed <ArrowRight size={16} /></a>
+    : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
 
   const copySupport = async () => {
     track('support', { how: 'copy' })
@@ -190,7 +208,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     <div className="landing-page">
       <nav className="lp-nav" aria-label="Main">
         <div className="lp-wrap lp-nav-row">
-          <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
+          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="nav" size={32} /><span className="lp-word">Parallax</span><BetaBadge /></button>
           <div className="lp-links">
             <button type="button" className="lp-wide" onClick={() => goTo('features')}>Features</button>
             {/* On a phone, Templates takes its place; the hero's See the examples leads there */}
@@ -218,7 +236,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
         ) : tab === 'templates' ? (
-          <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
+          <section className="lp-band lp-light alt lp-templates" id="templates" aria-labelledby="lp-templates">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-templates">Templates</h2>
@@ -261,13 +279,13 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
             <h1>Create interactive and intuitive slides <em>for complex concepts.</em></h1>
             <div className="lp-ctas">
-              {tryIt}
+              {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
             </div>
-            <div className="lp-chips" aria-label="What sets Parallax apart">
+            <div className="lp-chips" role="group" aria-label="What sets Parallax apart">
               {FEATURES.map(f => (
                 <button key={f.key} type="button" onClick={() => { track('feature', { feature: f.key, from: 'hero' }); setFeature(f.key); goTo('features') }}>
-                  <i aria-hidden="true" />{f.name}
+                  {f.name}{f.isNew && <span className="lp-new">New</span>}
                 </button>
               ))}
             </div>
@@ -276,11 +294,11 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
               <div className="lp-frame">
                 {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}/deck`} title="A live Parallax deck" /> : <div className="lp-slide" />}
               </div>
-              <div className="lp-hint"><i aria-hidden="true">●</i> Live deck: drag a slider, then click and press →</div>
+              <div className="lp-hint"><i aria-hidden="true" />Live deck: drag a slider, then click and press →</div>
             </div>
           </header>
 
-          <section className="lp-band alt" id="features" aria-labelledby="lp-features">
+          <section className="lp-band lp-light" id="features" aria-labelledby="lp-features">
             <div className="lp-wrap">
               <div className="lp-head">
                 <div className="lp-label">What sets it apart</div>
@@ -291,7 +309,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band" id="examples" aria-labelledby="lp-examples">
+          <section className="lp-band lp-light alt" id="examples" aria-labelledby="lp-examples">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-examples">Examples</h2>
@@ -329,7 +347,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band alt" id="compare" aria-labelledby="lp-compare">
+          <section className="lp-band" id="compare" aria-labelledby="lp-compare">
             <div className="lp-wrap">
               <div className="lp-head lp-head-wide">
                 <div className="lp-label">Where it fits</div>
@@ -348,7 +366,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band" id="workflow" aria-labelledby="lp-workflow">
+          <section className="lp-band lp-light" id="workflow" aria-labelledby="lp-workflow">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-workflow">From outline to talk</h2>
@@ -361,7 +379,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band alt" id="start" aria-labelledby="lp-start">
+          <section className="lp-band lp-light alt" id="start" aria-labelledby="lp-start">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-start">Start free, or run it yourself</h2>
@@ -387,11 +405,26 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
+          <section className="lp-band lp-cta" aria-labelledby="lp-cta">
+            <div className="lp-wrap lp-cta-row">
+              <div className="lp-cta-text">
+                <div className="lp-eyebrow">Try it</div>
+                <h2 id="lp-cta">Make your next talk in Parallax</h2>
+                <p>Free to start, no card needed.</p>
+                <div className="lp-ctas">
+                  {tryIt('cta')}
+                  {guestEnabled && <button type="button" className="lp-btn ghost" onClick={() => { track('sign-in', { from: 'cta' }); onSignIn() }}>Sign in</button>}
+                </div>
+              </div>
+              <Mark id="cta" className="lp-cta-mark" />
+            </div>
+          </section>
+
           <footer className="lp-footer">
             <div className="lp-wrap">
               <div className="lp-footer-cols">
                 <div>
-                  <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
+                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="footer" size={30} /><span className="lp-word">Parallax</span><BetaBadge /></button>
                   <p>Parallax is in beta, so features may change. Tell us what breaks and what you’d like next.</p>
                 </div>
                 <div><h4>Product</h4><ul>
