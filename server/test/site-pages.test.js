@@ -93,6 +93,26 @@ describe('what link previews and search engines see', () => {
     assert.doesNotMatch(noGuest, /\/try\?example|More templates|What’s in it/)
   })
 
+  it('heads the hosted site’s example and template pages with the landing page’s tabs', () => {
+    const tabsOf = html => {
+      const nav = html.match(/<nav aria-label="Main">([\s\S]*?)<\/nav>/)[1]
+      return { nav, tabs: [...nav.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map(m => m[1]) }
+    }
+    const landing = ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'Docs', 'GitHub', 'Sign in']
+    const ex = tabsOf(examplePage({ origin, example, others: [], guestEnabled: true, analytics: null, index: false, cloud: true }))
+    assert.deepEqual(ex.tabs, landing)
+    assert.match(ex.nav, /<a class="mid" href="\/#examples" aria-current="true">Examples<\/a>/)
+    assert.match(ex.nav, /<a class="btn" href="\/sign-in">Sign in<\/a>/)
+    const template = { slug: 'lecture', field: 'Teaching', title: 'Physics lecture', desc: '', tags: [], thumbnail: null, background: null }
+    const facts = { theme: { label: 'Bauhaus' }, colors: [], fonts: { text: 'Jost', heading: 'Jost' }, sizes: [], slides: [{ title: 'Forces', layout: '', kinds: [] }], contents: [] }
+    const tp = tabsOf(templatePage({ origin, template, facts, others: [], guestEnabled: true, analytics: null, index: false }))
+    assert.deepEqual(tp.tabs, landing)
+    assert.match(tp.nav, /<a href="\/#templates" aria-current="true">Templates<\/a>/)
+    // A self-hosted server has no landing page or sign-in: a few links and one home
+    const own = tabsOf(examplePage({ origin, example, others: [], guestEnabled: true, analytics: null, index: false }))
+    assert.deepEqual(own.tabs, ['All examples', 'Plugins', 'Docs', 'Parallax home'])
+  })
+
   it('is dark unless light was chosen, with a toggle that remembers', () => {
     const html = examplePage({ origin, example, others: [], guestEnabled: false, analytics: null, index: false })
     // The choice is read before the page draws, in the head

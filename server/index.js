@@ -339,7 +339,7 @@ app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
     res.type('html').send(sitePages.examplePage({
       origin: siteOrigin(req), example, others: cards.filter(e => e.slug !== slug),
       guestEnabled: isGuestModeEnabled(), analytics: analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null,
-      index: SEARCH_INDEXING && example.slug !== hero,
+      index: SEARCH_INDEXING && example.slug !== hero, cloud: IS_CLOUD,
     }))
   } catch (err) {
     next(err)

@@ -230,6 +230,23 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
 `
 }
 
+// The landing page's tabs, in its order (client/src/pages/LandingPage.jsx),
+// to its sections by their ids there, which it scrolls to; `href` is the
+// tab of the page they head, marked with `current` (its aria-current). For
+// the hosted site's pages, where there are a landing page, templates and a
+// sign-in: SIGN_IN ends their header
+const LANDING_TABS = [
+  { href: '/#features', text: 'Features', hide: 'wide' },
+  { href: '/#examples', text: 'Examples', hide: 'mid' },
+  { href: '/#templates', text: 'Templates' },
+  { href: '/plugins', text: 'Plugins', hide: 'wide' },
+  { href: '/#workflow', text: 'How it works', hide: 'wide' },
+  { href: '/#docs', text: 'Docs' },
+  { href: 'https://github.com/jbirky/parallax-presentations', text: 'GitHub', hide: 'wide', external: true },
+]
+const landingTabs = (href, current = 'true') => LANDING_TABS.map(n => (n.href === href ? { ...n, current } : n))
+const SIGN_IN = ['/sign-in', 'Sign in']
+
 // Scales a page's 960 × 540 deck, or a w × h element, in #slide to the page's width
 const fitScript = (w = 960) => `// Drawn at ${w} pixels wide and scaled to the page's width
       (function () {
@@ -256,8 +273,10 @@ const MORE_STYLES = `
 
 // An example's own page: what it is, the live deck, a way into the editor,
 // and the other examples. `example` and `others` are as the landing page has
-// them ({ slug, field, title, desc, tags, thumbnail, background }).
-function examplePage({ origin, example: e, others, guestEnabled, analytics, index }) {
+// them ({ slug, field, title, desc, tags, thumbnail, background }). On the
+// hosted site (`cloud`) its header has the landing page's tabs; a
+// self-hosted server has no landing page, so a few links and one home.
+function examplePage({ origin, example: e, others, guestEnabled, analytics, index, cloud = false }) {
   const thumbnail = e.thumbnail ? { path: e.thumbnail, width: 960, height: 540, alt: `The first slide of ${e.title}` } : SOCIAL_IMAGE
   const description = e.desc ? `${sentence(e.desc)} A live Parallax deck.` : `${e.title}, a live Parallax deck.`
   const meta = pageMeta({ origin, path: `/examples/${e.slug}`, title: `${e.title} · Parallax examples`, description, image: thumbnail, index })
@@ -273,7 +292,7 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
     : `<a class="btn primary" href="/" data-umami-event="sign-in" data-umami-event-from="example-page">Make your own with Parallax</a>`
   return sitePage({
     meta, analytics,
-    nav: [['/#examples', 'All examples', true], ['/plugins', 'Plugins', true], ['/#docs', 'Docs', true]],
+    ...(cloud ? { nav: landingTabs('/#examples'), end: SIGN_IN } : { nav: [['/#examples', 'All examples', true], ['/plugins', 'Plugins', true], ['/#docs', 'Docs', true]] }),
     styles: MORE_STYLES,
     main: `
       ${e.field ? `<div class="label">${esc(e.field)}</div>` : ''}
@@ -330,7 +349,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
   const theme = facts.theme
   return sitePage({
     meta, analytics,
-    nav: [['/#templates', 'All templates', true], ['/#examples', 'Examples', true], ['/plugins', 'Plugins', true]],
+    nav: landingTabs('/#templates'), end: SIGN_IN,
     styles: `
       .wrap { max-width: 1280px; }
       .tp-layout { display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); margin-top: 28px; }
@@ -491,4 +510,4 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
   })
 }
 
-module.exports = { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage, templatePage, sitePage, fitScript, esc, DESCRIPTION, TAGLINE, SOCIAL_IMAGE }
+module.exports = { pageMeta, appHtml, robotsTxt, sitemapXml, examplePage, templatePage, sitePage, fitScript, esc, landingTabs, SIGN_IN, DESCRIPTION, TAGLINE, SOCIAL_IMAGE }
