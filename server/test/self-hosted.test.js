@@ -58,6 +58,19 @@ describe('the self-hosted version', () => {
     assert.ok((await call('GET', '/api/presentations')).body.some(p => p.id === id))
   })
 
+  it('lists each presentation with its first slide for its card, without notes', async () => {
+    const { id } = (await call('POST', '/api/presentations', { title: 'Card' })).body
+    await call('PUT', `/api/presentations/${id}`, {
+      themeColors: { background: '#102030' }, globalFont: 'Jost',
+      slides: [{ id: 's1', notes: 'secret', background: { type: 'color', color: '#abcdef' }, elements: [{ id: 'e1', type: 'text', content: 'Hi' }] }],
+    })
+    const card = (await call('GET', '/api/presentations')).body.find(p => p.id === id)
+    assert.deepEqual(card.thumbnail, { type: 'color', color: '#abcdef' })
+    assert.deepEqual(card.firstSlide, { id: 's1', elements: [{ id: 'e1', type: 'text', content: 'Hi' }] })
+    assert.deepEqual(card.themeColors, { background: '#102030' })
+    assert.equal(card.globalFont, 'Jost')
+  })
+
   it('makes a presentation from a template under new ids, with its links and show/hide following them', async () => {
     const template = (await call('POST', '/api/templates', { title: 'Menu', slides: [
       { id: 'menu', elements: [

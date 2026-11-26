@@ -20,6 +20,7 @@ const { presentationAccess, teamDeckRole } = require('./collaboration')
 const { storageUsedBytes, teamStorageUsedBytes, teamStorageBytes } = require('../middleware/upload-quota')
 const { planFor } = require('./plans')
 const folders = require('./folders')
+const { tileColumns, tileRow } = require('../storage/deck-tile')
 const teamLibrary = require('./team-library')
 
 const FOLDER_MAKERS = ['owner', 'admin', 'member']
@@ -68,6 +69,7 @@ async function listTeamSpace(storage, teamId, userId) {
             jsonb_array_length(COALESCE(p.data->'slides', '[]'::jsonb)) AS "slideCount",
             p.updated_at AS "updatedAt", p.created_at AS "createdAt",
             p.data->'slides'->0->'background' AS thumbnail,
+            ${tileColumns('p')},
             p.folder_id AS "folderId", p.user_id AS "creatorId",
             COALESCE(NULLIF(u.name, ''), u.email) AS "creatorName"
        FROM presentations p LEFT JOIN users u ON u.id = p.user_id
@@ -76,7 +78,7 @@ async function listTeamSpace(storage, teamId, userId) {
     [teamId]
   )
   const lapsed = team.status === 'lapsed'
-  const presentations = rows.map(r => ({
+  const presentations = rows.map(r => tileRow({
     ...r,
     slideCount: parseInt(r.slideCount) || 0,
     thumbnail: r.thumbnail || null,

@@ -16,6 +16,7 @@ import TeamsModal from '../components/TeamsModal'
 import TeamSpaceView from '../components/TeamSpaceView'
 import DeckBrowser from '../components/DeckBrowser'
 import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
+import DeckTile, { tileSlide } from '../components/DeckTile'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -41,18 +42,6 @@ function fileIcon(contentType) {
   if (contentType.startsWith('audio/')) return Music
   if (contentType === 'application/pdf') return FileText
   return File
-}
-
-function getCardBg(thumbnail) {
-  if (!thumbnail) return '#1e1e2e'
-  if (thumbnail.type === 'color' && thumbnail.color) return thumbnail.color
-  if (thumbnail.type === 'gradient' && thumbnail.gradient) return thumbnail.gradient
-  if (thumbnail.type === 'image' && thumbnail.image) return `url(${thumbnail.image})`
-  return '#1e1e2e'
-}
-
-function isGradientOrImage(thumbnail) {
-  return thumbnail && (thumbnail.type === 'gradient' || thumbnail.type === 'image')
 }
 
 function slugify(str) {
@@ -417,13 +406,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   }
 
   // A presentation's first slide's background, or its theme's page, as a style
+  // A presentation's card background: its first slide's own (an image
+  // covering the card), or its theme's in the deck's own colors
   function cardBackground(pres) {
-    const bg = getCardBg(pres.thumbnail)
-    return !ownBackground(pres.thumbnail)
-      ? themeBackgroundStyle(pres.theme)
-      : isGradientOrImage(pres.thumbnail)
-        ? { background: bg }
-        : { backgroundColor: bg }
+    return ownBackground(pres.thumbnail)?.style || themeBackgroundStyle(pres.theme, pres.themeColors || null)
   }
 
   // Whether the person can move a presentation: their own into a folder or a
@@ -525,9 +511,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         onClick={() => onOpen(pres.id, false, pres.title)}
       >
         <div className="card-preview" style={bgProp}>
-          {!ownBackground(pres.thumbnail) && (
-            <Presentation size={40} style={{ color: themeOf(pres.theme).heading, opacity: 0.5 }} />
-          )}
+          {tileSlide(pres)
+            ? <DeckTile pres={pres} />
+            : !ownBackground(pres.thumbnail) && (
+              <Presentation size={40} style={{ color: themeOf(pres.theme).heading, opacity: 0.5 }} />
+            )}
         </div>
         <div className="card-info">
           <h3>{pres.title || 'Untitled'}</h3>
@@ -752,10 +740,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           </div>
 
           {templates.map(tmpl => {
-            const bg = getCardBg(tmpl.thumbnail)
-            const bgProp = isGradientOrImage(tmpl.thumbnail)
-              ? { background: bg }
-              : { backgroundColor: bg }
+            const bgProp = cardBackground(tmpl)
 
             return (
               <div
@@ -764,6 +749,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 onClick={() => onOpen(tmpl.id, true)}
               >
                 <div className="card-preview" style={bgProp}>
+                  {tileSlide(tmpl) && <DeckTile pres={tmpl} />}
                   <Layout size={24} style={{ position: 'absolute', top: 6, right: 6, opacity: 0.5 }} />
                 </div>
                 <div className="card-info">
@@ -1034,7 +1020,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     >
                       <div style={{
                         height: 28, borderRadius: 3, marginBottom: 4,
-                        ...(isGradientOrImage(tmpl.thumbnail) ? { background: getCardBg(tmpl.thumbnail) } : { backgroundColor: getCardBg(tmpl.thumbnail) }),
+                        ...cardBackground(tmpl),
                       }} />
                       {tmpl.teamId && <Users size={10} style={{ marginRight: 4, verticalAlign: '-1px' }} aria-label="Team template" />}
                       {tmpl.title}

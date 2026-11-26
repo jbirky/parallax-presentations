@@ -13,6 +13,7 @@
 // count against the team's shared storage.
 
 const { v4: uuidv4 } = require('uuid')
+const { tileColumns, tileRow } = require('../storage/deck-tile')
 const { IS_CLOUD } = require('../middleware/auth')
 const { refuseUpload } = require('../middleware/upload-quota')
 
@@ -208,6 +209,7 @@ async function listSharedPresentations(storage, userId) {
             p.created_at AS "createdAt",
             p.expires_at AS "expiresAt",
             p.data->'slides'->0->'background' AS thumbnail,
+            ${tileColumns('p')},
             c.role,
             COALESCE(NULLIF(u.name, ''), u.email) AS "ownerName"
        FROM presentation_collaborators c
@@ -218,7 +220,7 @@ async function listSharedPresentations(storage, userId) {
       ORDER BY p.updated_at DESC`,
     [userId]
   )
-  return rows.map(r => ({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
+  return rows.map(r => tileRow({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
 }
 
 module.exports = {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 const { Pool } = require('pg')
+const { tileColumns, tileRow } = require('./deck-tile')
 const { v4: uuidv4 } = require('uuid')
 const StorageInterface = require('./interface')
 const { encrypt, decrypt } = require('../utils/crypto')
@@ -47,12 +48,13 @@ class PgStorage extends StorageInterface {
         created_at as "createdAt",
         expires_at as "expiresAt",
         data->'slides'->0->'background' as thumbnail,
+        ${tileColumns()},
         folder_id as "folderId"
       FROM presentations
       ${where}
       ORDER BY updated_at DESC
     `, params)
-    return rows.map(r => ({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
+    return rows.map(r => tileRow({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
   }
 
   async getPresentation(id, userId) {
@@ -256,12 +258,13 @@ class PgStorage extends StorageInterface {
         jsonb_array_length(COALESCE(data->'slides', '[]'::jsonb)) as "slideCount",
         updated_at as "updatedAt",
         created_at as "createdAt",
-        data->'slides'->0->'background' as thumbnail
+        data->'slides'->0->'background' as thumbnail,
+        ${tileColumns()}
       FROM presentations
       WHERE ${conditions.join(' AND ')}
       ORDER BY updated_at DESC
     `, params)
-    return rows.map(r => ({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
+    return rows.map(r => tileRow({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null }))
   }
 
   async getTemplate(id, userId) {

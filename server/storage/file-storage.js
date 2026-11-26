@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Jessica Birky
 
 const path = require('path')
+const { tileFields } = require('./deck-tile')
 const fs = require('fs-extra')
 const { v4: uuidv4 } = require('uuid')
 const StorageInterface = require('./interface')
@@ -36,8 +37,9 @@ class FileStorage extends StorageInterface {
   async _readTokens() { return fs.readJson(this.shareFile) }
   async _writeTokens(data) { return fs.writeJson(this.shareFile, data, { spaces: 2 }) }
 
+  // What a list shows of a presentation, with what its card draws (deck-tile.js)
   _summary(p) {
-    return { id: p.id, title: p.title, theme: p.theme, transition: p.transition, slideCount: (p.slides || []).length, updatedAt: p.updatedAt, createdAt: p.createdAt, thumbnail: (p.slides && p.slides[0]) ? p.slides[0].background : null }
+    return { id: p.id, title: p.title, theme: p.theme, transition: p.transition, slideCount: (p.slides || []).length, updatedAt: p.updatedAt, createdAt: p.createdAt, thumbnail: (p.slides && p.slides[0]) ? p.slides[0].background : null, ...tileFields(p) }
   }
 
   async listPresentations() {

@@ -13,6 +13,7 @@
 
 const { TeamError, roleIn } = require('./teams')
 const { planFor } = require('./plans')
+const { tileColumns, tileRow } = require('../storage/deck-tile')
 const { teamStorageUsedBytes, teamStorageBytes } = require('../middleware/upload-quota')
 
 const ADDERS = ['owner', 'admin', 'member']
@@ -257,13 +258,14 @@ async function listTemplates(storage, teamId, userId) {
             jsonb_array_length(COALESCE(p.data->'slides', '[]'::jsonb)) AS "slideCount",
             p.updated_at AS "updatedAt", p.created_at AS "createdAt",
             p.data->'slides'->0->'background' AS thumbnail,
+            ${tileColumns('p')},
             p.user_id AS "createdBy", COALESCE(NULLIF(u.name, ''), u.email) AS "creatorName"
        FROM presentations p LEFT JOIN users u ON u.id = p.user_id
       WHERE p.is_template = true AND p.team_id = $1
       ORDER BY p.updated_at DESC`,
     [teamId]
   )
-  return rows.map(r => ({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null, teamId }))
+  return rows.map(r => tileRow({ ...r, slideCount: parseInt(r.slideCount) || 0, thumbnail: r.thumbnail || null, teamId }))
 }
 
 // A template of one of the team's decks, for the team: { id, title }

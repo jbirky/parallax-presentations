@@ -97,6 +97,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .presentation-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: all 0.15s; }
 .presentation-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
 .card-preview { aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: #1e1e2e; position: relative; overflow: hidden; font-size: 32px; color: var(--text-muted); }
+/* A card's first slide (components/DeckTile.jsx), centered on its background */
+.deck-tile-slide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .card-info { padding: 12px 16px; }
 .card-info h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-info p { font-size: 12px; color: var(--text-muted); }
