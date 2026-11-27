@@ -101,7 +101,7 @@ describe('what link previews and search engines see', () => {
       const nav = html.match(/<nav aria-label="Main">([\s\S]*?)<\/nav>/)[1]
       return { nav, tabs: [...nav.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map(m => m[1]) }
     }
-    const landing = ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'Docs', 'GitHub', 'Sign in']
+    const landing = ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'AI agents', 'Docs', 'GitHub', 'Sign in']
     const ex = tabsOf(examplePage({ origin, example, others: [], guestEnabled: true, analytics: null, index: false, cloud: true }))
     assert.deepEqual(ex.tabs, landing)
     assert.match(ex.nav, /<a class="mid" href="\/#examples" aria-current="true">Examples<\/a>/)

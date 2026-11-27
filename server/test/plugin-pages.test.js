@@ -60,7 +60,7 @@ describe('the gallery', () => {
     const html = galleryPage({ origin, plugins: [lorenz], analytics: null, index: true })
     const nav = html.match(/<nav aria-label="Main">([\s\S]*?)<\/nav>/)[1]
     const tabs = [...nav.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map(m => m[1])
-    assert.deepEqual(tabs, ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'Docs', 'GitHub', 'Sign in'])
+    assert.deepEqual(tabs, ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'AI agents', 'Docs', 'GitHub', 'Sign in'])
     assert.match(nav, /<a class="wide" href="\/#features">Features<\/a>/)
     assert.match(nav, /<a class="wide" href="\/plugins" aria-current="page">Plugins<\/a>/)
     assert.match(nav, /href="https:\/\/github\.com\/jbirky\/parallax-presentations" target="_blank" rel="noopener noreferrer">GitHub</)

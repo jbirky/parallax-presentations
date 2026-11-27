@@ -95,6 +95,7 @@ export default defineConfig({
             { text: 'Editing with Others', link: '/tutorials/editing-with-others' },
             { text: 'AI Collaborators', link: '/tutorials/ai-collaborators' },
             { text: 'AI Access', link: '/tutorials/ai-access' },
+            { text: 'AI Agents: Claude Code & MCP', link: '/tutorials/ai-agents' },
             { text: 'Using LaTeX & Math', link: '/tutorials/using-latex' },
           ]
         }

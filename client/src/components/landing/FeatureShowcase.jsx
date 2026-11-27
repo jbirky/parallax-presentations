@@ -227,7 +227,7 @@ function Panel({ feature, guestEnabled }) {
           <figcaption>Live: drag the sliders for a and b</figcaption>
         </figure>
       </div>
-      <Links links={[['AI collaborator links', '#docs/tutorials/ai-collaborators'], ['Works with Claude, ChatGPT and other apps that connect to MCP servers', null, true]]} />
+      <Links links={[['AI collaborator links', '#docs/tutorials/ai-collaborators'], ['AI agents in Claude Code', '#docs/tutorials/ai-agents'], ['Works with Claude, ChatGPT and other apps that connect to MCP servers', null, true]]} />
     </>)
     default: return null
   }

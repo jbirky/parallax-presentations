@@ -252,6 +252,7 @@ const LANDING_TABS = [
   { href: '/#templates', text: 'Templates' },
   { href: '/plugins', text: 'Plugins', hide: 'wide' },
   { href: '/#workflow', text: 'How it works', hide: 'wide' },
+  { href: '/#ai', text: 'AI agents', hide: 'wide' },
   { href: '/#docs', text: 'Docs' },
   { href: 'https://github.com/jbirky/parallax-presentations', text: 'GitHub', hide: 'wide', external: true },
 ]

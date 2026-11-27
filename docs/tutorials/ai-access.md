@@ -1,6 +1,6 @@
 # AI Access
 
-An AI access token lets an AI agent work in your whole account, as you can: list your presentations, make new ones from a template or a theme, and change the ones you can edit while you watch. It's made for Claude Code with the Parallax plugin, which also teaches Claude how to build a good talk. AI access is part of the cloud version of Parallax.
+An AI access token lets an AI agent work in your whole account, as you can: list your presentations, make new ones from a template or a theme, and change the ones you can edit while you watch. It's made for Claude Code with the Parallax plugin, which also teaches Claude how to build a good talk: the [AI Agents](./ai-agents.md) tutorial walks through it. AI access is part of the cloud version of Parallax.
 
 To share one presentation with an AI chat app such as claude.ai or ChatGPT, use an [AI collaborator link](./ai-collaborators.md) instead.
 
