@@ -237,7 +237,10 @@ const PLUGIN_STYLES = `
   .byline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 14px 0 0; color: var(--faint); font-size: 14.5px; }
   .byline img { width: 20px; height: 20px; border-radius: 50%; vertical-align: -5px; margin-right: 6px; }
   .byline a { color: var(--muted); }
-  .stage.plugin { background: var(--card); }
+  /* A new deck's slides (the Black theme, utils/themes.js), in light and dark
+     alike: plugins draw for the slide they start on, so on the light page's
+     card their light text and lines vanished */
+  .stage.plugin { background: #191919; }
   /* The page inside has the default color scheme; a frame whose scheme differs gets an opaque backdrop */
   .stage.plugin iframe { color-scheme: normal; }
   .cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 40px; margin-top: 48px; align-items: start; }
@@ -303,7 +306,7 @@ async function pluginPage({ origin, plugin: p, analytics, index }) {
         <span class="small">Its element is then in the editor’s Plugins menu.</span>
       </div>
       <div class="stage plugin"><div class="slide" id="slide" style="aspect-ratio: ${Number(size.width)} / ${Number(size.height)}"><iframe src="/plugins/${esc(p.slug)}/preview" sandbox="allow-scripts" title="${esc(p.name)}, live" style="width: ${Number(size.width)}px; height: ${Number(size.height)}px"></iframe></div></div>
-      <p class="hint">Live, with the settings a new element starts with.</p>
+      <p class="hint">Live on a new slide, with the settings a new element starts with.</p>
       <div class="cols">
         <article class="readme">${readme || '<p class="hint">This plugin has no README.</p>'}</article>
         <aside class="facts">
