@@ -48,6 +48,10 @@ describe('the landing page', () => {
     })
     expect(Number(words.style.getPropertyValue('--px'))).toBeGreaterThan(0)
     expect(Number(words.style.getPropertyValue('--py'))).toBeGreaterThan(0)
+    // The section and closing titles' fringed words move too
+    const moving = [...el.querySelectorAll('.lp-parallax')]
+    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'Make your next talk in Parallax'])
+    for (const w of moving) expect(w.style.getPropertyValue('--px')).not.toBe('')
   })
 
   it('shows the examples by field', async () => {

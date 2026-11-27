@@ -97,9 +97,11 @@ const PLANS = [
 
 // Words whose red and blue copies sit at two depths behind the ink, so they
 // shift against the pointer the way far things do as you move your head:
-// the red, farthest back, most, the blue less, the ink not at all. They ease
-// toward the pointer and back to rest when it leaves the window. Still for
-// anyone who asks for less motion, and on touch screens.
+// the red, farthest back, most, the blue less, the ink not at all. Each set
+// moves by where the pointer is from its own center, so it follows as the
+// page scrolls too. They ease toward the pointer and back to rest when it
+// leaves the window. Still for anyone who asks for less motion, and on touch
+// screens.
 export function ParallaxWords({ children }) {
   const ref = useRef(null)
   useEffect(() => {
@@ -107,6 +109,7 @@ export function ParallaxWords({ children }) {
     if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     const clamp = v => Math.max(-1, Math.min(1, v))
     let target = { x: 0, y: 0 }
+    let pointer = null
     const at = { x: 0, y: 0 }
     let frame = 0
     const step = () => {
@@ -117,22 +120,30 @@ export function ParallaxWords({ children }) {
       frame = Math.abs(target.x - at.x) + Math.abs(target.y - at.y) > 0.002 ? requestAnimationFrame(step) : 0
     }
     const go = () => { if (!frame) frame = requestAnimationFrame(step) }
-    const move = e => {
-      if (e.pointerType === 'touch') return
+    const aim = () => {
+      if (!pointer) return
       const r = el.getBoundingClientRect()
       target = {
-        x: clamp((e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2)),
-        y: clamp((e.clientY - (r.top + r.height / 2)) / (window.innerHeight / 2)),
+        x: clamp((pointer.x - (r.left + r.width / 2)) / (window.innerWidth / 2)),
+        y: clamp((pointer.y - (r.top + r.height / 2)) / (window.innerHeight / 2)),
       }
       go()
     }
-    const rest = () => { target = { x: 0, y: 0 }; go() }
+    const move = e => {
+      if (e.pointerType === 'touch') return
+      pointer = { x: e.clientX, y: e.clientY }
+      aim()
+    }
+    const rest = () => { pointer = null; target = { x: 0, y: 0 }; go() }
     const page = document.documentElement
     window.addEventListener('pointermove', move, { passive: true })
+    // Capturing, so a scroll of the page's own scroller counts too
+    document.addEventListener('scroll', aim, { capture: true, passive: true })
     page.addEventListener('mouseleave', rest)
     window.addEventListener('blur', rest)
     return () => {
       window.removeEventListener('pointermove', move)
+      document.removeEventListener('scroll', aim, { capture: true })
       page.removeEventListener('mouseleave', rest)
       window.removeEventListener('blur', rest)
       cancelAnimationFrame(frame)
@@ -361,7 +372,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-head lp-head-line">
                 <div className="lp-label">What sets it apart</div>
-                <h2 id="lp-features">Slides that work like <em>your research</em></h2>
+                <h2 id="lp-features">Slides that work like <ParallaxWords>your research</ParallaxWords></h2>
                 <p>Your data, your references and your code are part of the talk, not pasted into it. Each of these is in Parallax today.</p>
               </div>
               <FeatureShowcase feature={feature} onFeature={setFeature} guestEnabled={guestEnabled} />
@@ -410,7 +421,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-head lp-head-wide">
                 <div className="lp-label">Where it fits</div>
-                <h2 id="lp-compare">A visual editor that knows <em>LaTeX, BibTeX and git</em></h2>
+                <h2 id="lp-compare">A visual editor that knows <ParallaxWords>LaTeX, BibTeX and git</ParallaxWords></h2>
                 <p>Parallax keeps what researchers like about the tools they already use, in one place.</p>
               </div>
               <div className="lp-compare">
@@ -474,7 +485,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap lp-cta-row">
               <div className="lp-cta-text">
                 <div className="lp-eyebrow">Try it</div>
-                <h2 id="lp-cta">Make your next talk in Parallax</h2>
+                <h2 id="lp-cta"><ParallaxWords>Make your next talk in Parallax</ParallaxWords></h2>
                 <p>Free to start, no card needed.</p>
                 <div className="lp-ctas">
                   {tryIt('cta')}
