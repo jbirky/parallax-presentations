@@ -61,9 +61,11 @@ describe('the themes’ stylesheets', () => {
     expect(themeCss('parallax')).toContain('content: counter(list-item, decimal-leading-zero)')
     expect(themeCss('fabrica')).toContain('.deck-theme-fabrica .px-slide[data-layout=title]:not([data-own-background])::after')
     expect(themeCss('fabrica')).toContain('.deck-theme-fabrica .px-text li > p > strong:first-child:has(+ br)')
+    expect(themeCss('manifest')).toContain('.deck-theme-manifest.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::after')
+    expect(themeCss('manifest')).toContain('@keyframes manifest-flap')
     // every rule is inside the theme's class, so the editor can load them all for every deck
     // (at-rules and keyframe steps aside)
-    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax', 'fabrica']) {
+    for (const id of ['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax', 'fabrica', 'manifest']) {
       const selectors = themeCss(id).replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+(?=\{)/g).map(s => s.trim()).filter(s => !/^(@|from$|to$|[\d.]+%)/.test(s))
       expect(selectors.length).toBeGreaterThan(4)
       for (const sel of selectors) for (const part of sel.split(/,(?![^(]*\))/)) expect(part.trim()).toMatch(new RegExp(`^\\.deck-theme-${id}\\b`))
@@ -73,6 +75,6 @@ describe('the themes’ stylesheets', () => {
   it('is empty for themes without one', () => {
     expect(themeCss('black')).toBe('')
     expect(themeCss('constructor')).toBe('')
-    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax', 'fabrica'])
+    expect(THEME_LIST.filter(t => themeCss(t.id)).map(t => t.id)).toEqual(['bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax', 'fabrica', 'manifest'])
   })
 })
