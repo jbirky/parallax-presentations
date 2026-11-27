@@ -157,8 +157,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
    paper when light is chosen; the red and blue of 3D glasses as offset
    shadows; Archivo headings over Inter; square corners. Its own values for
    the app's tokens, so the editor keeps the app's, and the dialogs it opens
-   (inside .home-page) take them too. */
-.home-page {
+   (inside .home-page) take them too. The admin page (.admin-page) shares them. */
+.home-page, .admin-page {
   --bg-primary: #0c0c0d; --bg-secondary: #111113; --bg-panel: #141416; --bg-card: #18181a;
   --bg-hover: #232326; --bg-active: #2c2c30; --border: rgba(250, 250, 247, 0.14); --border-light: rgba(250, 250, 247, 0.3);
   --text-primary: #fafaf7; --text-secondary: #c4c4c2; --text-muted: #9c9c9a;
@@ -173,7 +173,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-[data-theme="light"] .home-page {
+[data-theme="light"] .home-page, [data-theme="light"] .admin-page {
   --bg-primary: #efefea; --bg-secondary: #fafaf7; --bg-panel: #fafaf7; --bg-card: #fafaf7;
   --bg-hover: #e3e3dc; --bg-active: #d9d9d3; --border: #d9d9d3; --border-light: #bdbdb6;
   --text-primary: #0c0c0d; --text-secondary: #3d3d40; --text-muted: #66666a;
@@ -181,7 +181,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   --hp-tag: #c81e1e; --hp-edge: #0c0c0d;
   color-scheme: light;
 }
-.home-page :focus-visible { outline: 3px solid var(--hp-blue); outline-offset: 2px; }
+.home-page :focus-visible, .admin-page :focus-visible { outline: 3px solid var(--hp-blue); outline-offset: 2px; }
 .home-page .home-header { padding: 10px 24px; background: var(--bg-primary); }
 [data-theme="light"] .home-page .home-header { background: var(--bg-secondary); }
 /* On a narrow screen its two groups wrap, and their buttons onto more rows */
@@ -196,13 +196,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .home-link { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); transition: color 0.15s, border-color 0.15s; }
 .home-link:hover { color: var(--text-primary); border-color: var(--text-primary); }
 /* Buttons: hovered, the two eyes' copies of the main one move apart */
-.home-page .btn { border-radius: 0; font-weight: 600; }
-.home-page .btn-primary { color: var(--bg-primary); background: var(--text-primary); box-shadow: var(--hp-small-shadow); transition: box-shadow 0.15s, background-color 0.15s; }
-.home-page .btn-primary:hover:not(:disabled) { background: var(--text-primary); box-shadow: var(--hp-shadow); }
-.home-page .btn-primary:disabled { opacity: 0.5; box-shadow: none; }
-.home-page .btn-secondary { background: transparent; color: var(--text-primary); border: 1.5px solid var(--hp-edge); }
-.home-page .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-primary); }
-.home-page .btn-ghost, .home-page .btn-icon { border-radius: 0; }
+.home-page .btn, .admin-page .btn { border-radius: 0; font-weight: 600; }
+.home-page .btn-primary, .admin-page .btn-primary { color: var(--bg-primary); background: var(--text-primary); box-shadow: var(--hp-small-shadow); transition: box-shadow 0.15s, background-color 0.15s; }
+.home-page .btn-primary:hover:not(:disabled), .admin-page .btn-primary:hover:not(:disabled) { background: var(--text-primary); box-shadow: var(--hp-shadow); }
+.home-page .btn-primary:disabled, .admin-page .btn-primary:disabled { opacity: 0.5; box-shadow: none; }
+.home-page .btn-secondary, .admin-page .btn-secondary { background: transparent; color: var(--text-primary); border: 1.5px solid var(--hp-edge); }
+.home-page .btn-secondary:hover, .admin-page .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-primary); }
+.home-page .btn-ghost, .home-page .btn-icon, .admin-page .btn-ghost, .admin-page .btn-icon { border-radius: 0; }
 .home-page .btn-icon.active { background: var(--text-primary); color: var(--bg-primary); }
 .home-page .home-content { padding: 36px clamp(16px, 3vw, 40px); }
 .home-page .home-content h2 { font: 800 24px/1.15 var(--hp-display); letter-spacing: -0.02em; text-transform: none; color: var(--text-primary); }
@@ -236,6 +236,34 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .home-page .modal h2 { font: 800 22px/1.2 var(--hp-display); letter-spacing: -0.02em; }
 .home-page .form-input, .home-page .form-select, .home-page .theme-choice, .home-page .theme-swatch { border-radius: 0; }
 .home-page .form-input:focus, .home-page .form-select:focus { border-color: var(--text-primary); }
+
+/* The admin page (/admin) in the same style: the tokens and buttons above,
+   a header with the mark, a big Archivo title under the three-bar eyebrow,
+   and tabs whose current one is underlined in ink with the red and blue
+   offsets. Its panels' inline styles are in components/adminStyles.js. */
+.admin-page { background: var(--bg-primary); }
+.admin-page a:not(.btn):not(.admin-logo) { color: var(--accent-light); }
+.admin-header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px clamp(16px, 3vw, 40px); background: var(--bg-primary); border-bottom: 1px solid var(--border); }
+[data-theme="light"] .admin-header { background: var(--bg-secondary); }
+.admin-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); text-decoration: none; }
+.admin-logo svg { display: block; flex: none; }
+.admin-header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 12px; color: var(--text-muted); }
+.admin-header-tools .btn { padding: 7px 12px; white-space: nowrap; text-decoration: none; }
+.admin-intro { display: grid; gap: 10px; padding-top: clamp(28px, 4vw, 48px); }
+.admin-eyebrow { display: flex; align-items: center; gap: 14px; font: 600 12px/1.4 'Inter', sans-serif; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-secondary); }
+.admin-eyebrow::before { content: ''; flex: none; width: 32px; height: 10px; background: linear-gradient(90deg, var(--hp-red) 0 7px, var(--text-primary) 7px 25px, var(--hp-blue) 25px); }
+.admin-intro h1 { margin: 0; font: 600 clamp(38px, 5vw, 64px)/1 var(--hp-display); letter-spacing: -0.025em; color: var(--text-primary); }
+.admin-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
+.admin-tab { position: relative; flex: none; padding: 10px 14px 12px; font: 600 14px/1.2 'Inter', sans-serif; color: var(--text-muted); white-space: nowrap; background: none; border: 0; cursor: pointer; transition: color 0.15s; }
+.admin-tab:hover { color: var(--text-primary); }
+.admin-tab[aria-selected="true"] { color: var(--text-primary); }
+.admin-tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 0; height: 3px; background: var(--text-primary); box-shadow: var(--hp-small-shadow); }
+.admin-page .select-sm { border-radius: 0; background: var(--bg-primary); }
+.admin-page .select-sm:focus { border-color: var(--text-primary); }
+.admin-page .edu-domain-list li { border-radius: 0; }
+.admin-page .survey-answers-question h3 { font: 600 15px/1.3 var(--hp-display); }
+.admin-page .survey-answers-bar span { border-radius: 0; }
+@media (max-width: 640px) { .admin-header-tools > span { display: none; } }
 
 /* EDITOR PAGE */
 .editor-page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }

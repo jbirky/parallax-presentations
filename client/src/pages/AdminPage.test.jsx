@@ -200,7 +200,7 @@ describe('plan editor', () => {
 
   it('shows a card per plan, with delete only for plans that can go', () => {
     const html = render('plans', overview({ plans: PLANS }))
-    expect(html).toContain('<h2 style="margin:0 0 2px;font-size:14px;font-weight:600">Plans</h2>')
+    expect(html).toMatch(/<h2 style="[^"]*">Plans<\/h2>/)
     expect(html).toContain('Billing is switched off')
     expect(html).toContain('5 accounts')
     expect(html).toContain('Monthly: $10 a month')

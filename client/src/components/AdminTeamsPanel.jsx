@@ -3,10 +3,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../utils/api'
+import * as ui from './adminStyles'
 
-const panel = { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, minWidth: 0 }
-const th = { textAlign: 'left', fontWeight: 500, fontSize: 12, color: 'var(--text-muted)', padding: '8px 10px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
-const td = { padding: '9px 10px', borderBottom: '1px solid var(--border)', fontSize: 13, verticalAlign: 'middle' }
+const panel = ui.panel
+const th = ui.th
+const td = { ...ui.td, verticalAlign: 'middle' }
 const control = { fontSize: 13, padding: '5px 8px', width: 'auto' }
 const STATUS_LABELS = { active: 'Active', past_due: 'Payment failed', lapsed: 'Lapsed' }
 
@@ -122,8 +123,8 @@ export default function AdminTeamsPanel() {
     <section style={panel} aria-labelledby="admin-teams">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h2 id="admin-teams" style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600 }}>Teams</h2>
-          <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+          <h2 id="admin-teams" style={ui.h2}>Teams</h2>
+          <p style={ui.sub}>
             Make a team for an account by its email address; its owner then invites people from Teams on their dashboard.
             Owners, admins and members take a seat each; viewers don’t.
           </p>

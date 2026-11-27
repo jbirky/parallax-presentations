@@ -13,11 +13,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../utils/api'
 import PluginSandbox from '../plugins/PluginSandbox'
 import { STATUS_LABELS } from './PluginBrowser'
+import * as ui from './adminStyles'
 
-const panel = { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, minWidth: 0 }
-const card = { border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 8, minWidth: 0 }
+const panel = ui.panel
+const card = ui.card
 const muted = { margin: 0, fontSize: 12, color: 'var(--text-muted)' }
-const chip = { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+const chip = ui.chip
 const link = { color: 'var(--accent)' }
 const FILTERS = ['pending', 'approved', 'rejected', 'revoked', 'all']
 const ACTIONS = { pending: ['approve', 'reject'], rejected: ['approve'], approved: ['revoke'], revoked: [] }
@@ -82,12 +83,12 @@ export default function PluginReviewPanel() {
   return (
     <section style={panel}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h2 style={{ ...ui.h2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
           Community plugins
-          {summary?.pending > 0 && <span style={{ ...chip, background: 'rgba(99, 102, 241, 0.18)', color: 'var(--text-primary)' }}>{plural(summary.pending, 'version', 'versions')} waiting for review</span>}
+          {summary?.pending > 0 && <span style={{ ...chip, background: 'var(--accent-wash)', color: 'var(--text-primary)' }}>{plural(summary.pending, 'version', 'versions')} waiting for review</span>}
         </h2>
         <select value={status} onChange={e => setStatus(e.target.value)} aria-label="Show versions"
-          style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '4px 8px', borderRadius: 6, fontSize: 12 }}>
+          style={{ ...ui.input, padding: '4px 8px', fontSize: 12 }}>
           {FILTERS.map(f => <option key={f} value={f}>{f === 'all' ? 'All versions' : STATUS_LABELS[f]}</option>)}
         </select>
       </div>
@@ -172,7 +173,7 @@ function VersionCard({ version: v, onChanged }) {
       {preview === null && <p style={muted}>The preview couldn’t be loaded.</p>}
       {preview && (
         <div style={{ overflow: 'auto', maxWidth: '100%' }}>
-          <div style={{ width: size.width, height: size.height, border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ width: size.width, height: size.height, border: '1px solid var(--border)', overflow: 'hidden' }}>
             <PluginSandbox html={preview} pluginData={types[0]?.defaultData || {}} width={size.width} height={size.height} isSelected />
           </div>
         </div>
@@ -180,7 +181,7 @@ function VersionCard({ version: v, onChanged }) {
       {ACTIONS[v.status]?.length > 0 && (
         <>
           <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="A note for whoever imported it (optional)" aria-label="Review note" maxLength={2000}
-            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 6, fontSize: 13, minHeight: 48, resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+            style={{ ...ui.input, minHeight: 48, resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
           <div style={{ display: 'flex', gap: 8 }}>
             {ACTIONS[v.status].map(action => (
               <button key={action} className={`btn ${action === 'approve' ? 'btn-primary' : 'btn-secondary'}`} disabled={busy} onClick={() => act(action)} style={{ padding: '4px 12px', fontSize: 12 }}>

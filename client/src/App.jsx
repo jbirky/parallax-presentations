@@ -244,7 +244,7 @@ export default function App() {
   if (isCloud && window.location.pathname === '/admin') {
     return (
       <AuthGate>
-        <AdminPage />
+        <AdminPage theme={theme} onToggleTheme={() => pickTheme(theme === 'dark' ? 'light' : 'dark')} />
       </AuthGate>
     )
   }

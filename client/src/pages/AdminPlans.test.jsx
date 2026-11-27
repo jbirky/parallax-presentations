@@ -41,7 +41,7 @@ async function render() {
   const root = createRoot(el)
   const onPlanChanged = vi.fn()
   await act(async () => root.render(<AdminDashboard data={data} tab="plans" onPlanChanged={onPlanChanged} />))
-  const card = name => [...el.querySelectorAll('strong')].find(s => s.textContent === name).closest('div[style*="border-radius: 8px"]')
+  const card = name => [...el.querySelectorAll('strong')].find(s => s.textContent === name).closest('.admin-plan-card')
   const button = (scope, text) => [...scope.querySelectorAll('button')].find(b => b.textContent.trim() === text || b.getAttribute('aria-label') === text)
   return { el, root, card, button, onPlanChanged }
 }
