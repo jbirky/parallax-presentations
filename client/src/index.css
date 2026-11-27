@@ -916,6 +916,8 @@ sup[data-cite] { font-weight: 700; }
 /* Hero */
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
 .lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(42px, 6.4vw, 92px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
+/* "for complex concepts." takes the third line; only its last two words get the fringe */
+.lp-hero-tail { display: block; }
 .lp-hero h1 em, .lp-head h2 em { font-style: normal; text-shadow: var(--lp-fringe); }
 .lp-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 36px; }
 .lp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 24px; font-size: 16px; font-weight: 600; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: box-shadow 0.15s, background-color 0.15s; }
