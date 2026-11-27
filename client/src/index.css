@@ -945,6 +945,16 @@ sup[data-cite] { font-weight: 700; }
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
 .lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(42px, 6.4vw, 92px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
 .lp-hero h1 em, .lp-head h2 em { font-style: normal; text-shadow: var(--lp-fringe); }
+/* The hero's last words (ParallaxWords): the fringe's red copy a depth behind
+   the blue, both behind the ink, moving against the pointer (--px, --py from
+   -1 to 1) by up to a tenth and a twentieth of the type's size. At rest, the
+   plain fringe. */
+.lp-hero h1 em.lp-parallax {
+  --px: 0; --py: 0;
+  text-shadow:
+    calc(-0.3 * var(--lp-stereo) - var(--px) * 0.1em) calc(var(--py) * -0.06em) 0 var(--lp-red),
+    calc(0.3 * var(--lp-stereo) - var(--px) * 0.05em) calc(var(--py) * -0.03em) 0 var(--lp-blue);
+}
 .lp-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 36px; }
 .lp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 24px; font-size: 16px; font-weight: 600; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: box-shadow 0.15s, background-color 0.15s; }
 /* Hovered, the two eyes' copies move apart */

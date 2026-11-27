@@ -95,6 +95,52 @@ const PLANS = [
   },
 ]
 
+// Words whose red and blue copies sit at two depths behind the ink, so they
+// shift against the pointer the way far things do as you move your head:
+// the red, farthest back, most, the blue less, the ink not at all. They ease
+// toward the pointer and back to rest when it leaves the window. Still for
+// anyone who asks for less motion, and on touch screens.
+export function ParallaxWords({ children }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const clamp = v => Math.max(-1, Math.min(1, v))
+    let target = { x: 0, y: 0 }
+    const at = { x: 0, y: 0 }
+    let frame = 0
+    const step = () => {
+      at.x += (target.x - at.x) * 0.12
+      at.y += (target.y - at.y) * 0.12
+      el.style.setProperty('--px', at.x.toFixed(3))
+      el.style.setProperty('--py', at.y.toFixed(3))
+      frame = Math.abs(target.x - at.x) + Math.abs(target.y - at.y) > 0.002 ? requestAnimationFrame(step) : 0
+    }
+    const go = () => { if (!frame) frame = requestAnimationFrame(step) }
+    const move = e => {
+      if (e.pointerType === 'touch') return
+      const r = el.getBoundingClientRect()
+      target = {
+        x: clamp((e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2)),
+        y: clamp((e.clientY - (r.top + r.height / 2)) / (window.innerHeight / 2)),
+      }
+      go()
+    }
+    const rest = () => { target = { x: 0, y: 0 }; go() }
+    const page = document.documentElement
+    window.addEventListener('pointermove', move, { passive: true })
+    page.addEventListener('mouseleave', rest)
+    window.addEventListener('blur', rest)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      page.removeEventListener('mouseleave', rest)
+      window.removeEventListener('blur', rest)
+      cancelAnimationFrame(frame)
+    }
+  }, [])
+  return <em ref={ref} className="lp-parallax">{children}</em>
+}
+
 // An example, live, with what it shows and a way into the editor
 function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }) {
   const ref = useRef(null)
@@ -290,7 +336,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         ) : (<>
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
-            <h1>Create interactive<br />and intuitive slides&nbsp;for<br /><em>complex concepts.</em></h1>
+            <h1>Create interactive<br />and intuitive slides&nbsp;for<br /><ParallaxWords>complex concepts.</ParallaxWords></h1>
             <div className="lp-ctas">
               {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
