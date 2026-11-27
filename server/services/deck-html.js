@@ -37752,8 +37752,9 @@ var manifest_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
   border-left: 0.06em dashed var(--mf-pale);
 }
 
-/* Links: container blue */
+/* Links and citation numbers: container blue */
 .deck-theme-manifest .px-text a { color: var(--mf-blue) !important; text-decoration-thickness: 0.05em; text-underline-offset: 0.16em; }
+.deck-theme-manifest .px-text sup[data-cite] { color: var(--mf-blue) !important; }
 
 /* Inline code: a tracking number on a gray label */
 .deck-theme-manifest .px-text :not(pre) > code {
