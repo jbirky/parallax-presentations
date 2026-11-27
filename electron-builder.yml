@@ -37,6 +37,7 @@ linux:
   target:
     - AppImage
     - deb
+    - rpm
   category: Office
   executableName: parallax
   icon: build/icons
@@ -46,8 +47,8 @@ linux:
     equations and 3D molecules on a slide, and move them while you present.
 
 # Chromium's sandbox is on everywhere: a deck runs its author's code. The .deb
-# installs what the sandbox needs (an AppArmor profile on Ubuntu 24.04 and
-# later), so it's the package to use there; the AppImage can't install one.
+# and .rpm install what the sandbox needs (an AppArmor profile on Ubuntu 24.04
+# and later), so they're the packages to use there; the AppImage can't.
 deb:
   # The package is "parallax" on every channel, whatever package.json names it
   packageName: parallax
@@ -73,6 +74,45 @@ deb:
   fpm:
     - --replaces=revealjs-editor
     - --conflicts=revealjs-editor
+
+rpm:
+  packageName: parallax
+  artifactName: parallax-${version}.${arch}.${ext}
+  afterInstall: build/linux/after-install.sh
+  afterRemove: build/linux/after-remove.sh
+  # The libraries the app links to (readelf -d), as rpm names them whatever
+  # package has them, so Fedora, RHEL and openSUSE all resolve them; glibc's
+  # and the bundled libffmpeg are left out. xdg-utils opens links.
+  depends:
+    - libasound.so.2()(64bit)
+    - libatk-1.0.so.0()(64bit)
+    - libatk-bridge-2.0.so.0()(64bit)
+    - libatspi.so.0()(64bit)
+    - libcairo.so.2()(64bit)
+    - libcups.so.2()(64bit)
+    - libdbus-1.so.3()(64bit)
+    - libdrm.so.2()(64bit)
+    - libexpat.so.1()(64bit)
+    - libgbm.so.1()(64bit)
+    - libgio-2.0.so.0()(64bit)
+    - libglib-2.0.so.0()(64bit)
+    - libgobject-2.0.so.0()(64bit)
+    - libgtk-3.so.0()(64bit)
+    - libnspr4.so()(64bit)
+    - libnss3.so()(64bit)
+    - libnssutil3.so()(64bit)
+    - libpango-1.0.so.0()(64bit)
+    - libsmime3.so()(64bit)
+    - libudev.so.1()(64bit)
+    - libX11.so.6()(64bit)
+    - libxcb.so.1()(64bit)
+    - libXcomposite.so.1()(64bit)
+    - libXdamage.so.1()(64bit)
+    - libXext.so.6()(64bit)
+    - libXfixes.so.3()(64bit)
+    - libxkbcommon.so.0()(64bit)
+    - libXrandr.so.2()(64bit)
+    - xdg-utils
 
 appImage:
   artifactName: Parallax-${version}-${arch}.${ext}

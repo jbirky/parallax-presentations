@@ -1,5 +1,5 @@
 #!/bin/bash
-# The .deb's postinst: electron-builder's own (app-builder-lib's
+# The .deb's postinst and the .rpm's %post: electron-builder's own (app-builder-lib's
 # templates/linux/after-install.tpl), plus an AppArmor profile so that
 # Chromium's sandbox works on Ubuntu 24.04 and later. electron-builder fills
 # in ${executable} and ${sanitizedProductName}, and fails the build on any

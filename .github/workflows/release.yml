@@ -1,10 +1,19 @@
 name: Release
 
-# On a version tag, build the desktop app for Linux, macOS and Windows and
-# attach it to the tag's GitHub release. Run by hand (Actions → Release → Run
-# workflow) to build an existing tag again for some platforms, e.g. to add
-# ones whose build failed:
-#   gh workflow run release.yml --ref dev -f tag=v1.1.0 -f platforms="mac win"
+# On a version tag, build the desktop app for Linux, macOS and Windows,
+# attach it to the tag's GitHub release, and publish the Linux packages: the
+# .deb and .rpm to the APT and RPM repositories at pkg.parallax-presentations.com
+# (an R2 bucket), and the .deb as parallax-bin on the AUR.
+#
+# Run by hand (Actions → Release → Run workflow) to do some of that again for
+# an existing tag, e.g. to add platforms whose build failed:
+#   gh workflow run release.yml --ref dev -f tag=v1.1.0 -f targets="mac win"
+#
+# Publishing needs, in the repository's settings: for the repositories, the
+# variable PACKAGES_BUCKET and the secrets R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY and PACKAGE_SIGNING_KEY (an armored private key); for
+# the AUR, the variable AUR_PACKAGE and the secret AUR_SSH_KEY. Without its
+# variable, a publishing job is skipped.
 on:
   push:
     tags:
@@ -14,9 +23,9 @@ on:
       tag:
         description: Tag to build, e.g. v1.1.0
         required: true
-      platforms:
-        description: Platforms to build and attach (linux, mac, win)
-        default: linux mac win
+      targets:
+        description: What to build or publish (linux, mac, win, repos, aur)
+        default: linux mac win repos aur
 
 permissions:
   contents: write
@@ -29,6 +38,9 @@ jobs:
   # lockfile, made on Linux, lists only Linux's builds of rollup and esbuild
   # (npm/cli#4828), so Vite can't run on the macOS and Windows runners.
   build-client:
+    if: >-
+      github.event_name == 'push' || contains(inputs.targets, 'linux') ||
+      contains(inputs.targets, 'mac') || contains(inputs.targets, 'win')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +59,7 @@ jobs:
 
   build-linux:
     needs: build-client
-    if: github.event_name == 'push' || contains(inputs.platforms, 'linux')
+    if: github.event_name == 'push' || contains(inputs.targets, 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +74,8 @@ jobs:
           name: client-dist
           path: client/dist
       - run: node scripts/prepare-electron.js
+      # rpmbuild, for the .rpm
+      - run: sudo apt-get install -y -qq rpm
       - name: Build Linux packages
         run: npx electron-builder --linux --publish never
       - uses: softprops/action-gh-release@v2
@@ -70,11 +84,12 @@ jobs:
           files: |
             dist-electron/*.AppImage
             dist-electron/*.deb
+            dist-electron/*.rpm
           generate_release_notes: ${{ github.event_name == 'push' }}
 
   build-mac:
     needs: build-client
-    if: github.event_name == 'push' || contains(inputs.platforms, 'mac')
+    if: github.event_name == 'push' || contains(inputs.targets, 'mac')
     runs-on: macos-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -109,7 +124,7 @@ jobs:
 
   build-windows:
     needs: build-client
-    if: github.event_name == 'push' || contains(inputs.platforms, 'win')
+    if: github.event_name == 'push' || contains(inputs.targets, 'win')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,3 +146,93 @@ jobs:
           tag_name: ${{ env.TAG }}
           files: |
             dist-electron/*.exe
+
+  # The APT and RPM repositories, from the release's .deb and .rpm (so a run
+  # for an older tag publishes what that release has). The script comes from
+  # what the workflow runs on: the tag, or the branch a manual run names.
+  publish-repos:
+    needs: build-linux
+    if: >-
+      ${{ !cancelled() && needs.build-linux.result != 'failure' && vars.PACKAGES_BUCKET != '' &&
+      (github.event_name == 'push' || contains(inputs.targets, 'repos')) }}
+    runs-on: ubuntu-latest
+    # One at a time: each run rewrites the indexes
+    concurrency: package-repos
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      AWS_DEFAULT_REGION: auto
+      # R2 doesn't take every checksum header newer AWS CLIs send
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      BUCKET: s3://${{ vars.PACKAGES_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils rpm createrepo-c
+      - name: Import the signing key
+        run: printf '%s\n' "$KEY" | gpg --batch --quiet --import
+        env:
+          KEY: ${{ secrets.PACKAGE_SIGNING_KEY }}
+      - name: Get the release's packages
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --pattern '*.rpm' --dir pkgs
+      - name: Copy down the repositories
+        run: aws s3 sync "$BUCKET" site --only-show-errors
+      - name: Add the packages and sign the indexes
+        run: scripts/package-repos.sh site pkgs/*
+      # Packages first, then the indexes that point at them. Indexes and setup
+      # files are no-cache, so Cloudflare never serves an old one.
+      - name: Upload
+        run: |
+          aws s3 sync site "$BUCKET" --only-show-errors --exclude '*' --include '*.deb' --include '*.rpm'
+          aws s3 sync site "$BUCKET" --only-show-errors --exclude '*.deb' --exclude '*.rpm' --cache-control no-cache
+
+  # parallax-bin on the AUR: build/linux/aur/PKGBUILD with this release's
+  # version and the checksum of its .deb, and the .SRCINFO made from it
+  publish-aur:
+    needs: build-linux
+    if: >-
+      ${{ !cancelled() && needs.build-linux.result != 'failure' && vars.AUR_PACKAGE != '' &&
+      (github.event_name == 'push' || contains(inputs.targets, 'aur')) }}
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      AUR_PACKAGE: ${{ vars.AUR_PACKAGE }}
+      AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+    steps:
+      - run: pacman -Syu --noconfirm --needed git openssh
+      - uses: actions/checkout@v4
+      - name: Push the release to the AUR
+        run: |
+          version=${TAG#v}
+          deb="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/parallax_${version}_amd64.deb"
+          sum=$(curl -fsSL "$deb" | sha256sum | cut -d' ' -f1)
+
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          # The AUR's Ed25519 host key, as its home page lists it
+          echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          git clone -q "ssh://aur@aur.archlinux.org/$AUR_PACKAGE.git" aur
+
+          # A new version is pkgrel 1; the same version with a new .deb is the
+          # next pkgrel; the same .deb is nothing to do
+          pkgrel=1
+          if grep -qx "pkgver=$version" aur/PKGBUILD 2>/dev/null; then
+            if grep -q "$sum" aur/PKGBUILD; then echo "The AUR has $version already"; exit 0; fi
+            pkgrel=$(( $(sed -n 's/^pkgrel=//p' aur/PKGBUILD) + 1 ))
+          fi
+          sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^pkgrel=.*/pkgrel=$pkgrel/" \
+              -e "s/^sha256sums=.*/sha256sums=('$sum')/" build/linux/aur/PKGBUILD > aur/PKGBUILD
+
+          # makepkg won't run as root
+          useradd -m builder && install -d -o builder /tmp/srcinfo && cp aur/PKGBUILD /tmp/srcinfo/
+          su builder -c 'cd /tmp/srcinfo && makepkg --printsrcinfo' > aur/.SRCINFO
+
+          cd aur
+          git config user.name 'Jess Birky'
+          git config user.email 'support@parallax-presentations.com'
+          git add PKGBUILD .SRCINFO
+          git commit -qm "Update to $version-$pkgrel"
+          git push -q origin HEAD:master

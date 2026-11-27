@@ -57,6 +57,40 @@ The volumes are kept when you stop or rebuild the container, including with `doc
 
 The desktop app bundles the editor and server into a standalone application — no Docker or Node.js required.
 
+### Linux: install with your package manager
+
+Installed this way, Parallax updates along with the rest of your system.
+
+**Ubuntu, Debian, Linux Mint** (Ubuntu 22.04 or Debian 12 and later):
+
+```bash
+sudo curl -fsSLo /etc/apt/sources.list.d/parallax.sources https://pkg.parallax-presentations.com/apt/parallax.sources
+sudo apt update
+sudo apt install parallax
+```
+
+**Fedora, RHEL:**
+
+```bash
+sudo curl -fsSLo /etc/yum.repos.d/parallax.repo https://pkg.parallax-presentations.com/rpm/parallax.repo
+sudo dnf install parallax
+```
+
+**openSUSE:**
+
+```bash
+sudo zypper addrepo https://pkg.parallax-presentations.com/rpm/parallax.repo
+sudo zypper install parallax
+```
+
+**Arch Linux**, from the AUR, with an AUR helper such as yay:
+
+```bash
+yay -S parallax-bin
+```
+
+The APT and RPM repositories are signed with the key `DB2A DD58 7A04 3936 5354 2FDE 33AC 80B1 6F45 03EE` (Parallax Packages). The APT source file carries it; dnf and zypper show it on the first install and ask you to trust it.
+
 ### Download
 
 Go to the [Releases page](https://github.com/jbirky/parallax-presentations/releases) and download the installer for your platform:
@@ -64,6 +98,7 @@ Go to the [Releases page](https://github.com/jbirky/parallax-presentations/relea
 | Platform | File |
 |---|---|
 | Linux (Debian/Ubuntu) | `parallax_x.x.x_amd64.deb` |
+| Linux (Fedora/openSUSE) | `parallax-x.x.x.x86_64.rpm` |
 | Linux (AppImage) | `Parallax-x.x.x-x86_64.AppImage` |
 | macOS (Apple silicon) | `Parallax-x.x.x-arm64.dmg` |
 | Windows | `Parallax.Setup.x.x.x.exe` |
