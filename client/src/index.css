@@ -872,7 +872,7 @@ sup[data-cite] { font-weight: 700; }
 .landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead,
 .landing-page .lp-steps > button.on, .landing-page .lp-show-tabs [aria-selected="true"] {
   --lp-bg: var(--lp-ink); --lp-raise: #28282c; --lp-card: #2e2e32;
-  --lp-line: rgba(236, 235, 230, 0.16); --lp-chip-line: rgba(236, 235, 230, 0.25); --lp-edge: rgba(236, 235, 230, 0.45);
+  --lp-line: rgba(236, 235, 230, 0.16); --lp-edge: rgba(236, 235, 230, 0.45);
   --lp-text: #b6b6b1; --lp-strong: var(--lp-paper); --lp-faint: #9a9a96;
   /* Labels; links; "partly" in the comparison; ahead of plan; over it */
   --lp-tag: #ff8a80; --lp-link: #8db0ff; --lp-partly: #8db0ff; --lp-ok: #8db0ff; --lp-warn: #ff8a80;
@@ -882,7 +882,7 @@ sup[data-cite] { font-weight: 700; }
 /* Paper: the light bands, and the whole page when light is chosen */
 [data-theme="light"] .landing-page, .landing-page .lp-light {
   --lp-bg: var(--lp-paper); --lp-raise: #e2e1db; --lp-card: #e2e1db;
-  --lp-line: #cfcec7; --lp-chip-line: rgba(31, 31, 34, 0.25); --lp-edge: var(--lp-ink);
+  --lp-line: #cfcec7; --lp-edge: var(--lp-ink);
   --lp-text: #434347; --lp-strong: var(--lp-ink); --lp-faint: #5e5e62;
   --lp-tag: #b81b1b; --lp-link: #1650d8; --lp-partly: #1e60ff; --lp-ok: #1650d8; --lp-warn: #b81b1b;
   --lp-nav-bg: rgba(236, 235, 230, 0.92);
@@ -965,9 +965,6 @@ sup[data-cite] { font-weight: 700; }
 .lp-btn.primary:hover { box-shadow: var(--lp-frame-shadow); }
 .lp-btn.ghost { color: var(--lp-strong); border-color: var(--lp-edge); }
 .lp-btn.ghost:hover { border-color: var(--lp-strong); background: color-mix(in srgb, var(--lp-strong) 8%, transparent); }
-.lp-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 40px; }
-.lp-chips button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; font-size: 14px; color: var(--lp-strong); border: 1px solid var(--lp-chip-line); }
-.lp-chips button:hover { border-color: var(--lp-strong); }
 .lp-stage { margin-top: 64px; }
 .lp-frame { overflow: hidden; background: #000; box-shadow: var(--lp-frame-shadow); }
 .lp-hint { display: flex; align-items: center; gap: 10px; margin-top: 28px; font-size: 14px; color: var(--lp-faint); }

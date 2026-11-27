@@ -227,14 +227,15 @@ describe('what sets Parallax apart', () => {
   const selected = () => tabs().find(t => t.getAttribute('aria-selected') === 'true')?.textContent
   const showcaseDecks = () => [...el.querySelectorAll('.lp-feature iframe')].map(f => f.getAttribute('src'))
 
-  it('opens a feature from the hero, with only its own deck', async () => {
+  it('opens a feature, with only its own deck', async () => {
     track.mockClear()
     await mount()
+    // The hero has no feature chips; the showcase's tabs open each one
+    expect(el.querySelector('.lp-hero .lp-chips')).toBeNull()
     expect(selected()).toMatch(/^Live data/)
     expect(showcaseDecks()).toEqual(['/examples/exoplanets/deck'])
-    const chip = [...el.querySelectorAll('.lp-chips button')].find(b => b.textContent === 'BibTeX citations')
-    await act(async () => chip.click())
-    expect(track).toHaveBeenLastCalledWith('feature', { feature: 'cite', from: 'hero' })
+    await act(async () => tabs().find(t => t.textContent.startsWith('BibTeX citations')).click())
+    expect(track).toHaveBeenLastCalledWith('feature', { feature: 'cite' })
     expect(selected()).toMatch(/^BibTeX citations/)
     expect(showcaseDecks()).toEqual(['/examples/showcase-cite/deck'])
     expect(el.querySelector('.lp-feature').textContent).toContain('@article{rubin1970')

@@ -304,13 +304,6 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
               {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
             </div>
-            <div className="lp-chips" role="group" aria-label="What sets Parallax apart">
-              {FEATURES.map(f => (
-                <button key={f.key} type="button" onClick={() => { track('feature', { feature: f.key, from: 'hero' }); setFeature(f.key); goTo('features') }}>
-                  {f.name}{f.isNew && <span className="lp-new">New</span>}
-                </button>
-              ))}
-            </div>
             <div className="lp-stage">
               <div className="lp-frame">
                 {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}/deck`} title="A live Parallax deck" /> : <div className="lp-slide" />}
