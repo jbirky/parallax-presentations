@@ -1401,6 +1401,8 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
   background: color-mix(in srgb, var(--lp-strong) 7%, transparent); border-left: 3px solid var(--lp-blue); }
 .lp-agent .lp-quiet { margin-top: auto; padding-top: 4px; }
 .lp-plan-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: auto; padding-top: 8px; }
+/* A plan that can't be bought yet: its button says Coming soon and does nothing */
+.lp-plan-row .lp-btn:disabled, .lp-plan-row .lp-btn:disabled:hover { opacity: 0.6; cursor: default; background: none; border-color: var(--lp-edge); box-shadow: none; }
 .lp-quiet { font-size: 14px; color: var(--lp-text); text-decoration: underline; text-underline-offset: 3px; }
 .lp-quiet:hover { color: var(--lp-strong); }
 

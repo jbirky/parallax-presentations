@@ -64,20 +64,21 @@ const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 
 
 // The plans and what they cost (the pricing plan; their limits are the
 // plans table's, server/services/plans.js, which /admin edits, so change
-// both together). An item marked `soon` isn't built yet and says so. Pro is
-// the lead card, in ink.
+// both together). An item marked `soon` isn't built yet and says so; a plan
+// marked `soon` can't be bought yet, so its button says so and does nothing.
+// Pro is the lead card, in ink.
 const PLANS = [
   {
     id: 'free', name: 'Free', price: '$0', note: 'For trying it, and for good', cta: 'Start free',
     items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['1 collaborator per deck']],
   },
   {
-    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Go Pro',
+    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Coming soon', soon: true,
     note: 'a month, or $8 billed yearly. Students and educators: $5, or $4 yearly',
     items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['Unlimited collaborators']],
   },
   {
-    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Set up a team',
+    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Coming soon', soon: true,
     items: [['Unlimited presentations'], ['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Unlimited collaborators'], ['Team themes, fonts, data and templates']],
   },
   {
@@ -461,6 +462,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                     <div className="lp-plan-row">
                       {plan.href
                         ? <a className="lp-btn ghost" href={plan.href} onClick={() => track('contact', { from: `plan-${plan.id}` })}>{plan.cta}</a>
+                        : plan.soon
+                        ? <button type="button" className="lp-btn ghost" disabled>{plan.cta}</button>
                         : <button type="button" className={plan.lead ? 'lp-btn primary' : 'lp-btn ghost'} onClick={() => { track('sign-in', { from: `plan-${plan.id}` }); onSignIn() }}>{plan.cta}</button>}
                       {plan.id === 'free' && guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
                     </div>
