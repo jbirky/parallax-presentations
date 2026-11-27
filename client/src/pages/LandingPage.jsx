@@ -258,7 +258,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
         ) : tab === 'templates' ? (
-          <section className="lp-band lp-light alt lp-templates" id="templates" aria-labelledby="lp-templates">
+          <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-templates">Templates</h2>

@@ -853,7 +853,8 @@ sup[data-cite] { font-weight: 700; }
    shadows, Archivo headings over Inter, and square corners. The page is ink
    unless light is chosen (the nav's toggle, or the dashboard's:
    utils/theme.js); the light bands (.lp-light) and the dark panels (the
-   showcase, Practice Talk, the lead plan) stay as they are in either. */
+   showcase, Practice Talk, the lead plan) stay as they are in either. The
+   Templates tab, a page of its own, follows the theme. */
 .landing-page {
   /* The app's tokens, for the docs that open in place of the page */
   --bg-primary: #1f1f22; --bg-secondary: #252528; --bg-panel: #29292c; --bg-card: #2e2e32;
@@ -896,6 +897,9 @@ sup[data-cite] { font-weight: 700; }
   color-scheme: light;
 }
 .landing-page .lp-light.alt { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
+/* The Templates tab is a page of its own, so it follows the theme: ink, or
+   in light the alternate paper, its cards on paper */
+[data-theme="light"] .landing-page .lp-templates { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
 [data-theme="light"] .landing-page {
   --bg-primary: #ecebe6; --bg-secondary: #f5f4f0; --bg-panel: #e6e5df; --bg-card: #f5f4f0;
   --bg-hover: #e2e1db; --bg-active: #d7d6cf; --border: #cfcec7; --border-light: #bcbbb4;
