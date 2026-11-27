@@ -69,16 +69,16 @@ const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 
 const PLANS = [
   {
     id: 'free', name: 'Free', price: '$0', note: 'For trying it, and for good', cta: 'Start free',
-    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['Public links with a small badge', 'soon']],
+    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['1 collaborator per deck']],
   },
   {
     id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Go Pro',
     note: 'a month, or $8 billed yearly. Students and educators: $5, or $4 yearly',
-    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['No badge, password links, view counts', 'soon']],
+    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['Unlimited collaborators']],
   },
   {
     id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Set up a team',
-    items: [['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Team themes, fonts, data and templates']],
+    items: [['Unlimited presentations'], ['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Unlimited collaborators'], ['Team themes, fonts, data and templates']],
   },
   {
     id: 'institution', name: 'Institution', price: 'Custom', note: 'An annual department or campus license', cta: 'Talk to us',
