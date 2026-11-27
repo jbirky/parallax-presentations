@@ -869,7 +869,7 @@ sup[data-cite] { font-weight: 700; }
 .landing-scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { .landing-scroll { scroll-behavior: auto; } .landing-page * { transition: none !important; } }
 .landing-page :focus-visible { outline: 3px solid var(--lp-blue); outline-offset: 3px; }
-.landing-page h1, .landing-page h2, .landing-page h3 { text-wrap: balance; font-family: var(--lp-display); font-weight: 800; }
+.landing-page h1, .landing-page h2, .landing-page h3 { text-wrap: balance; font-family: var(--lp-display); font-weight: 600; }
 /* The docs, which open in place of the page, keep the app's look */
 .landing-page .docs-layout, .landing-page .docs-layout :is(h1, h2, h3, h4) { font-family: var(--lp-sans); }
 /* Wide enough that the showcase's slides show large; every section uses it */
@@ -915,7 +915,7 @@ sup[data-cite] { font-weight: 700; }
 
 /* Hero */
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
-.lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(42px, 6.4vw, 92px); line-height: 0.98; letter-spacing: -0.035em; color: var(--lp-strong); }
+.lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(42px, 6.4vw, 92px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
 .lp-hero h1 em, .lp-head h2 em { font-style: normal; text-shadow: var(--lp-fringe); }
 .lp-ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 36px; }
 .lp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 24px; font-size: 16px; font-weight: 600; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: box-shadow 0.15s, background-color 0.15s; }
@@ -942,7 +942,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-band { padding-block: clamp(72px, 9vw, 112px); scroll-margin-top: 60px; background: var(--lp-bg); color: var(--lp-text); }
 [data-theme="light"] .landing-page .lp-band { border-top: 1px solid var(--lp-line); }
 .lp-head { display: grid; gap: 18px; max-width: 760px; }
-.lp-head h2 { font-size: clamp(36px, 4.4vw, 60px); line-height: 1.02; letter-spacing: -0.03em; color: var(--lp-strong); }
+.lp-head h2 { font-size: clamp(36px, 4.4vw, 60px); line-height: 1.02; letter-spacing: -0.02em; color: var(--lp-strong); }
 /* A heading that reads best on fewer lines, where there's room: its paragraph keeps the usual measure */
 .lp-head.lp-head-wide { max-width: 940px; }
 .lp-head p { max-width: 660px; font-size: 18px; line-height: 1.5; color: var(--lp-text); }
@@ -1166,16 +1166,21 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-pr-outline-foot .lp-btn { justify-self: start; min-height: 40px; padding: 0 12px; font-size: 13.5px; }
 
 /* Plans */
-.lp-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 24px; margin-top: 48px; }
-.lp-plan { display: flex; flex-direction: column; gap: 14px; padding: 28px; background: var(--lp-card); color: var(--lp-text); border-top: 4px solid var(--lp-strong); }
+.lp-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 24px; margin-top: 48px; }
+.lp-plan { display: flex; flex-direction: column; gap: 12px; padding: 28px; background: var(--lp-card); color: var(--lp-text); border-top: 4px solid var(--lp-strong); }
 .lp-plan.lead { background: var(--lp-bg); border-top-color: var(--lp-bg); box-shadow: var(--lp-frame-shadow); }
-.lp-plan > .lp-label { font: 700 22px/1.2 var(--lp-display); letter-spacing: -0.01em; text-transform: none; color: var(--lp-strong); }
-.lp-price { font: 800 48px/1 var(--lp-display); letter-spacing: -0.03em; color: var(--lp-strong); }
+.lp-plan > h3 { font-size: 22px; line-height: 1.2; letter-spacing: -0.01em; color: var(--lp-strong); }
+.lp-price { font: 700 48px/1 var(--lp-display); letter-spacing: -0.025em; color: var(--lp-strong); }
 .lp-plan.lead .lp-price { text-shadow: var(--lp-fringe); }
-.lp-price small { font: 500 15px var(--lp-sans); letter-spacing: 0; color: var(--lp-text); text-shadow: none; }
-.lp-plan ul { list-style: none; display: grid; gap: 8px; font-size: 15px; }
+.lp-price-note { font-size: 14px; line-height: 1.45; color: var(--lp-text); }
+.lp-plan ul { list-style: none; display: grid; gap: 8px; margin-top: 6px; font-size: 15px; line-height: 1.45; }
 .lp-plan li { display: flex; align-items: baseline; gap: 10px; }
-.lp-plan li::before { content: ''; flex: none; width: 8px; height: 8px; background: var(--lp-blue); }
+.lp-plan li::before { content: ''; flex: none; width: 8px; height: 8px; background: var(--lp-blue); transform: translateY(-1px); }
+.lp-soon { display: inline-block; margin-left: 2px; padding: 0 6px; font: 600 10.5px/1.6 var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-tag); border: 1px solid currentColor; vertical-align: 1px; white-space: nowrap; }
+.lp-selfhost { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; margin-top: 32px; padding: 28px 32px; border: 2px solid var(--lp-strong); }
+.lp-selfhost > div { flex: 1 1 520px; display: flex; flex-direction: column; gap: 8px; }
+.lp-selfhost p { font-size: 16px; line-height: 1.5; color: var(--lp-strong); }
+@media (max-width: 600px) { .lp-selfhost { padding: 24px 20px; } .lp-selfhost .lp-btn { width: 100%; } }
 .lp-plan-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: auto; padding-top: 8px; }
 .lp-quiet { font-size: 14px; color: var(--lp-text); text-decoration: underline; text-underline-offset: 3px; }
 .lp-quiet:hover { color: var(--lp-strong); }
@@ -1183,7 +1188,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 /* The last word: try it */
 .lp-cta-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 48px; }
 .lp-cta-text { flex: 1 1 440px; display: flex; flex-direction: column; gap: 22px; }
-.lp-cta h2 { font-size: clamp(42px, 5.6vw, 80px); line-height: 0.98; letter-spacing: -0.035em; color: var(--lp-strong); text-shadow: var(--lp-fringe); }
+.lp-cta h2 { font-size: clamp(42px, 5.6vw, 80px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); text-shadow: var(--lp-fringe); }
 .lp-cta p { font-size: 20px; color: var(--lp-strong); }
 .lp-cta .lp-ctas { margin-top: 8px; }
 .lp-cta-mark { flex: 0 1 300px; width: 100%; max-width: 300px; height: auto; }

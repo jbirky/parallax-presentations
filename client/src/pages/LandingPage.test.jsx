@@ -243,6 +243,22 @@ describe('what sets Parallax apart', () => {
     expect(el.querySelector('#workflow').textContent).not.toMatch(/DOI|Zenodo/)
   })
 
+  it('shows the plans and what they cost, marking what isn’t built yet', async () => {
+    const onSignIn = vi.fn()
+    await mount({ onSignIn })
+    const plans = [...el.querySelectorAll('.lp-plan')]
+    expect(plans.map(p => p.querySelector('h3').textContent)).toEqual(['Free', 'Pro', 'Team', 'Institution'])
+    expect(plans.map(p => p.querySelector('.lp-price').textContent)).toEqual(['$0', '$10', '$12', 'Custom'])
+    expect(plans[1].classList.contains('lead')).toBe(true)
+    const soon = plans.map(p => [...p.querySelectorAll('li')].filter(li => li.querySelector('.lp-soon')).map(li => li.textContent.replace('Coming soon', '').trim()))
+    expect(soon).toEqual([['Public links with a small badge'], ['No badge, password links, view counts'], [], ['Single sign-on, domain capture', 'Audit log']])
+    await act(async () => plans[1].querySelector('button').click())
+    expect(onSignIn).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('sign-in', { from: 'plan-pro' })
+    expect(plans[3].querySelector('a.lp-btn').getAttribute('href')).toMatch(/^mailto:support@parallax-presentations\.com\?subject=/)
+    expect(el.querySelector('.lp-selfhost a').getAttribute('href')).toBe('#docs/guide/installation')
+  })
+
   it('compares Parallax with the tools people use', async () => {
     await mount()
     const heads = [...el.querySelectorAll('.lp-compare thead th')].map(th => th.textContent)

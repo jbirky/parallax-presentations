@@ -70,8 +70,30 @@ const fieldsOf = examples => {
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
 
-const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
-const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
+// The plans and what they cost (the pricing plan; their limits are the
+// plans table's, server/services/plans.js, which /admin edits, so change
+// both together). An item marked `soon` isn't built yet and says so. Pro is
+// the lead card, in ink.
+const PLANS = [
+  {
+    id: 'free', name: 'Free', price: '$0', note: 'For trying it, and for good', cta: 'Start free',
+    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['Public links with a small badge', 'soon']],
+  },
+  {
+    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Go Pro',
+    note: 'a month, or $8 billed yearly. Students and educators: $5, or $4 yearly',
+    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['No badge, password links, view counts', 'soon']],
+  },
+  {
+    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Set up a team',
+    items: [['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Team themes, fonts, data and templates']],
+  },
+  {
+    id: 'institution', name: 'Institution', price: 'Custom', note: 'An annual department or campus license', cta: 'Talk to us',
+    href: `mailto:${SUPPORT}?subject=${encodeURIComponent('Parallax for an institution')}`,
+    items: [['Single sign-on, domain capture', 'soon'], ['Audit log', 'soon'], ['Invoices and purchase orders'], ['Custom storage and data'], ['Support agreement']],
+  },
+]
 
 // An example, live, with what it shows and a way into the editor
 function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }) {
@@ -377,21 +399,27 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                 <p>Use Parallax here, or install it on your own server. It’s the same open-source editor either way.</p>
               </div>
               <div className="lp-plans">
-                <div className="lp-plan lead">
-                  <div className="lp-label">Hosted</div>
-                  <div className="lp-price">Free <small>to start</small></div>
-                  <ul>{HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
-                  <div className="lp-plan-row">
-                    <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'plans' }); onSignIn() }}>Start free</button>
-                    {guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
+                {PLANS.map(plan => (
+                  <div key={plan.id} className={plan.lead ? 'lp-plan lead' : 'lp-plan'}>
+                    <h3>{plan.name}</h3>
+                    <div className="lp-price">{plan.price}</div>
+                    <p className="lp-price-note">{plan.note}</p>
+                    <ul>{plan.items.map(([text, soon]) => <li key={text}><span>{text}{soon && <> <span className="lp-soon">Coming soon</span></>}</span></li>)}</ul>
+                    <div className="lp-plan-row">
+                      {plan.href
+                        ? <a className="lp-btn ghost" href={plan.href} onClick={() => track('contact', { from: `plan-${plan.id}` })}>{plan.cta}</a>
+                        : <button type="button" className={plan.lead ? 'lp-btn primary' : 'lp-btn ghost'} onClick={() => { track('sign-in', { from: `plan-${plan.id}` }); onSignIn() }}>{plan.cta}</button>}
+                      {plan.id === 'free' && guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
+                    </div>
                   </div>
+                ))}
+              </div>
+              <div className="lp-selfhost">
+                <div>
+                  <div className="lp-label">Self-hosted · free and unlimited</div>
+                  <p>Runs on your server with Docker, with no account needed and your decks on your own machine. Desktop apps for macOS, Windows and Linux.</p>
                 </div>
-                <div className="lp-plan">
-                  <div className="lp-label">Self-hosted</div>
-                  <div className="lp-price">Free <small>and unlimited</small></div>
-                  <ul>{SELF_HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
-                  <div className="lp-plan-row"><a className="lp-btn ghost" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a></div>
-                </div>
+                <a className="lp-btn primary" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a>
               </div>
             </div>
           </section>
