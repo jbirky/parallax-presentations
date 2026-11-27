@@ -1,73 +1,133 @@
 name: Release
 
+# On a version tag, build the desktop app for Linux, macOS and Windows and
+# attach it to the tag's GitHub release. Run by hand (Actions → Release → Run
+# workflow) to build an existing tag again for some platforms, e.g. to add
+# ones whose build failed:
+#   gh workflow run release.yml --ref dev -f tag=v1.1.0 -f platforms="mac win"
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, e.g. v1.1.0
+        required: true
+      platforms:
+        description: Platforms to build and attach (linux, mac, win)
+        default: linux mac win
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
-  build-linux:
+  # The editor is the same on every platform, so it's built once, here. The
+  # lockfile, made on Linux, lists only Linux's builds of rollup and esbuild
+  # (npm/cli#4828), so Vite can't run on the macOS and Windows runners.
+  build-client:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --force
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          if-no-files-found: error
+
+  build-linux:
+    needs: build-client
+    if: github.event_name == 'push' || contains(inputs.platforms, 'linux')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --force
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
       - run: node scripts/prepare-electron.js
       - name: Build Linux packages
-        run: npx electron-builder --linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --publish never
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
             dist-electron/*.AppImage
             dist-electron/*.deb
-          generate_release_notes: true
+          generate_release_notes: ${{ github.event_name == 'push' }}
 
   build-mac:
+    needs: build-client
+    if: github.event_name == 'push' || contains(inputs.platforms, 'mac')
     runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --force
-      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
       - run: node scripts/prepare-electron.js
-      - name: Build macOS packages
-        run: npx electron-builder --mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+      # Apple silicon runs only signed code, and without a Developer ID
+      # electron-builder signs nothing, so the app is signed ad hoc ("-")
+      # between building it and packing it: it opens once the user allows it
+      - name: Build the app
+        run: npx electron-builder --mac --dir --publish never
+      - name: Sign it ad hoc
+        run: codesign --force --deep --sign - dist-electron/mac*/Parallax.app
+      - name: Pack it
+        run: npx electron-builder --mac --prepackaged "$(echo dist-electron/mac*/Parallax.app)" --publish never
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
             dist-electron/*.dmg
             dist-electron/*.zip
-          generate_release_notes: false
 
   build-windows:
+    needs: build-client
+    if: github.event_name == 'push' || contains(inputs.platforms, 'win')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --force
-      - run: npm run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
       - run: node scripts/prepare-electron.js
       - name: Build Windows packages
-        run: npx electron-builder --win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish never
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
             dist-electron/*.exe
-          generate_release_notes: false
