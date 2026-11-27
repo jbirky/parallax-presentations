@@ -5,8 +5,7 @@
 // features beside one panel at a time, each a claim and something that shows
 // it. Live data, citations, figures, code and the AI's slide play live decks (the
 // exoplanet example and the showcase decks, client/src/examples/decks.js);
-// only the panel showing has its deck. The hero's chips open a panel here
-// (LandingPage).
+// only the panel showing has its deck.
 
 import { track } from '../../utils/analytics'
 import SlideFrame from './SlideFrame'

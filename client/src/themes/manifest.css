@@ -1,0 +1,553 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Manifest theme's stylesheet: international supply chains and
+   logistics, as freight paperwork and a port at night. Content slides are
+   a shipping manifest: navy ink (#0e2233, text #26343f) on a pale
+   document stock (#f3f2ee), signal orange (#e8590c; #c2410c for text) for
+   what's marked, container blue (#1d5fae) for links and hazard amber
+   (#f2b01e) on warnings. The title and section slides are the port at
+   night (#0b1b2b). Headings in Big Shoulders Display, a condensed
+   grotesque drawn after Chicago's freight-yard lettering, with its stencil
+   cut, as on a container's doors, on the title and section slides; text in
+   IBM Plex Sans; codes and numbers in JetBrains Mono (utils/themes.js: the
+   fonts and the text sizes, which the Themes panel's Text tab can change).
+
+   It's scoped to .deck-theme-manifest, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide is a world map in dots with the main shipping lanes:
+   Asia to Europe by Malacca and Suez, the Atlantic, the Cape, Panama and
+   a Gulf feeder, ports marked by their UN/LOCODEs, and an air-freight arc
+   over the top. Section slides are a container terminal at night, with a
+   loaded ship in front of its cranes. In a presented deck they move (SVG
+   with SMIL and CSS animation, in the slide's ::after): ships sail the
+   lanes from Asia, freight flows along them, ports pulse, a plane flies
+   its arc; the container ship sails in to its berth as the slide opens,
+   under the cranes' blinking lights. Everywhere else (the editor,
+   thumbnails, the PDF, print, reduced motion, reveal's overview) each is
+   one still frame of the same drawing.
+
+   Under content titles is a train of containers, the last one orange, the
+   one being tracked; presented, they load one at a time as the slide
+   opens. Bullets are containers; numbered lists are a shipment's
+   milestones, joined by the route. A Heading 4 is a cargo tag, a Heading 6
+   a document's field label. Inline code is a tracking number; a quote is
+   an advisory, hazard stripes down its side, its bold first words its
+   label; tables are the manifest, a navy header row over an orange rule
+   and codes in the first column. The Big Number is a departure board's
+   split-flap tile, flipping into place as its slide opens. The footer is
+   the shipment's tracking line: with its sections in sequence, legs done
+   in ink, the current one orange, pinging as its slide opens, those to
+   come dashed;
+   the page number reads "Leg". The pictures are SVG, written into this
+   file as data URIs, and stay off slides with a background of their own. */
+
+/* reveal.js: links blue, the arrows and the progress bar blue */
+.deck-theme-manifest {
+  --r-background-color: #f3f2ee;
+  --r-main-color: #26343f;
+  --r-heading-color: #0e2233;
+  --r-link-color: #1d5fae;
+  --r-link-color-dark: #154a8a;
+  --r-link-color-hover: #c2410c;
+  --r-selection-background-color: #ffd9b8;
+  --r-selection-color: #0e2233;
+  --mf-map: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='520 115 440 304' width='440' height='304'%3E%3Cstyle%3E@keyframes f%7Bto%7Bstroke-dashoffset:-48%7D%7D.l%7Banimation:f 3.2s linear infinite%7D@keyframes p%7B0%25%7Btransform:scale(.4);stroke-opacity:.9%7D100%25%7Btransform:scale(3.6);stroke-opacity:0%7D%7D.r%7Btransform-box:fill-box;transform-origin:center;animation:p 2.7s ease-out infinite%7D%3C/style%3E%3Cpath id='mair' d='M793.1 209.7L780.9 196.8L770.8 187.3L759.9 178.3L747.3 169.3L734.5 161.5L721.6 154.8L706.8 148.4L692.7 143.4L676.6 138.9L660.3 135.2L641.9 132.3L623.7 130.3L604.9 129.3L585.9 129.2L567 130.1L547.7 132' fill='none'/%3E%3Cpath id='mgf' d='M600.3 227.7L603.7 223.8L604.8 223.6L605.8 224.3L611 233.1L620.4 252.4L623.4 257.2L629.4 262.9L643.8 272.6' fill='none'/%3E%3Cpath id='msa' d='M741.8 296.6L725.8 317.7L719.7 322.7L709.9 328.4L687.6 339.1L612.1 373.1L569.6 390.9L547.7 399.3' fill='none'/%3E%3Cpath id='mae' d='M794 210.3L796.3 219.4L796 221.9L794.8 224.7L773.6 249.9L748.2 289.9L744.1 295L740.8 296.9L739.1 296.6L737.6 295.6L730 287.3L722.4 284.3L716.2 283.1L709.7 282.7L688.8 284.1L680.3 285.3L674.5 284.8L667.7 282.7L648.6 274.5L634.3 269.3L620.5 264.7L610.5 262.2L601.7 261.5L575.8 264.7L568.8 264.3L565.5 262.5L562.8 259.6L547.9 235.3' fill='none'/%3E%3Cpath d='M794 210.3L796.3 219.4L796 221.9L794.7 224.9L772.9 250.9L747 291.7L743.3 295.6L740.4 296.9L737.3 295.3L730.4 287.5L722.4 284.3L716.2 283.1L709.7 282.7L688.8 284.1L680.3 285.3L674.5 284.8L667.7 282.7L648.6 274.5L634.3 269.3L620.5 264.7L610.5 262.2L600.4 261.6L574.4 264.8L568 264L564.9 261.9L561.7 258L544.3 229.3L536.1 214.1L532.3 208.7L527.8 205.1L519.6 202.7' fill='none' stroke='%23ff7a2f' stroke-width='1.3' stroke-dasharray='5 3' class='l' stroke-opacity='.95'/%3E%3Cpath d='M741.8 296.6L728.4 314.7L724.8 318.7L717.2 324.3L703.7 331.6L619.8 369.7L566.9 392.1L540.5 401.6L530.2 404.2L519.9 406' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' class='l' stroke-opacity='.95'/%3E%3Cpath d='M600.3 227.7L603.7 223.8L604.8 223.6L605.8 224.3L611 233.1L620.4 252.4L623.4 257.2L629.4 262.9L643.8 272.6' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' class='l' stroke-opacity='.95'/%3E%3Ccircle class='r' cx='794' cy='210.3' r='3.2' fill='none' stroke='%23ffc145' stroke-width='1' style='animation-delay:-0.0s'/%3E%3Ccircle class='r' cx='741.8' cy='296.6' r='3.2' fill='none' stroke='%23ffc145' stroke-width='1' style='animation-delay:-0.9s'/%3E%3Ccircle class='r' cx='600.3' cy='227.7' r='3.2' fill='none' stroke='%23ffc145' stroke-width='1' style='animation-delay:-1.8s'/%3E%3Cg opacity='0'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3CanimateMotion dur='17.8s' repeatCount='indefinite' rotate='auto'%3E%3Cmpath href='%23mae'/%3E%3C/animateMotion%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;0.791;1' dur='17.8s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg opacity='0'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3CanimateMotion dur='17.8s' begin='-8.9s' repeatCount='indefinite' rotate='auto'%3E%3Cmpath href='%23mae'/%3E%3C/animateMotion%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;0.791;1' dur='17.8s' begin='-8.9s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg opacity='0'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3CanimateMotion dur='11.4s' begin='-6.3s' repeatCount='indefinite' rotate='auto'%3E%3Cmpath href='%23msa'/%3E%3C/animateMotion%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;0.751;1' dur='11.4s' begin='-6.3s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg opacity='0'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3CanimateMotion dur='9.0s' begin='-3.6s' repeatCount='indefinite' rotate='auto'%3E%3Cmpath href='%23mgf'/%3E%3C/animateMotion%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;1.000;1' dur='9.0s' begin='-3.6s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg opacity='0'%3E%3Cpath d='M6 0 2.5-1-1-6h-1.6l1.6 5h-4l-1.6-1.8h-1.1l.9 2.8-.9 2.8h1.1l1.6-1.8h4l-1.6 5h1.6l3.5-5z' fill='%23f4f1ea'/%3E%3CanimateMotion dur='5.0s' repeatCount='indefinite' rotate='auto'%3E%3Cmpath href='%23mair'/%3E%3C/animateMotion%3E%3Canimate attributeName='opacity' values='0;1;1;0' keyTimes='0;.05;0.808;1' dur='5.0s' repeatCount='indefinite'/%3E%3C/g%3E%3C/svg%3E");
+  --mf-map-base: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cpath d='M93 77h6M165 77h.1M183 77h30M237 77h144M489 77h.1M735 77h12M117 83h6M165 83h.1M177 83h30M273 83h108M603 83h12M693 83h72M843 83h12M873 83h.1M81 89h12M105 89h.1M123 89h12M153 89h.1M165 89h6M183 89h18M285 89h90M597 89h6M645 89h.1M675 89h138M849 89h.1M99 95h36M165 95h6M183 95h54M285 95h78M375 95h.1M513 95h12M597 95h6M639 95h258M3 101h102M117 101h.1M171 101h12M195 101h6M225 101h12M297 101h60M495 101h54M597 101h.1M621 101h12M645 101h6M663 101h294M3 107h192M231 107h30M291 107h48M483 107h72M573 107h72M657 107h300M3 113h180M195 113h6M219 113h30M291 113h30M381 113h12M477 113h24M513 113h24M549 113h402M3 119h168M201 119h.1M243 119h.1M297 119h18M459 119h30M507 119h402M921 119h36M3 125h6M21 125h144M219 125h18M309 125h6M459 125h30M507 125h6M525 125h360M915 125h18M45 131h126M219 131h36M429 131h.1M465 131h.1M477 131h12M513 131h336M903 131h6M63 137h120M219 137h42M429 137h.1M465 137h6M483 137h.1M507 137h330M897 137h12M63 143h138M213 143h60M417 143h6M435 143h.1M471 143h6M489 143h348M897 143h6M75 149h126M213 149h66M417 149h.1M429 149h12M453 149h402M897 149h.1M75 155h168M447 155h396M855 155h.1M81 161h168M273 161h12M429 161h414M87 167h168M267 167h.1M441 167h84M555 167h282M81 173h156M441 173h18M471 173h6M489 173h30M555 173h276M855 173h6M81 179h150M417 179h30M477 179h6M501 179h18M537 179h6M567 179h246M849 179h.1M87 185h138M417 185h18M501 185h.1M519 185h264M795 185h.1M807 185h.1M849 185h.1M87 191h132M417 191h18M477 191h6M507 191h.1M525 191h258M807 191h6M843 191h6M93 197h126M441 197h30M549 197h234M813 197h.1M831 197h12M105 203h102M423 203h48M549 203h240M819 203h6M105 209h.1M117 209h84M417 209h66M501 209h18M531 209h.1M543 209h246M819 209h.1M117 215h48M177 215h.1M201 215h.1M417 215h162M591 215h198M111 221h.1M123 221h30M207 221h.1M405 221h132M549 221h30M597 221h192M117 227h.1M129 227h24M207 227h.1M399 227h138M549 227h36M603 227h.1M621 227h6M639 227h144M123 233h.1M135 233h18M399 233h144M555 233h54M645 233h132M141 239h12M183 239h.1M219 239h.1M393 239h150M555 239h54M645 239h.1M657 239h36M711 239h36M759 239h.1M141 245h18M177 245h6M231 245h6M399 245h150M561 245h42M657 245h24M717 245h30M759 245h.1M153 251h30M399 251h150M567 251h30M657 251h18M717 251h30M795 251h.1M177 257h18M393 257h162M567 257h18M657 257h12M729 257h24M189 263h6M393 263h174M663 263h6M729 263h24M195 269h.1M225 269h12M399 269h168M579 269h6M663 269h6M729 269h.1M741 269h12M795 269h.1M201 275h60M405 275h180M675 275h.1M729 275h.1M807 275h.1M219 281h48M411 281h168M675 281h.1M735 281h.1M801 281h6M219 287h66M417 287h.1M459 287h.1M471 287h108M723 287h.1M735 287h.1M777 287h6M219 293h72M471 293h102M729 293h.1M741 293h.1M765 293h12M213 299h78M471 299h90M729 299h6M759 299h18M789 299h12M813 299h.1M207 305h102M471 305h90M735 305h6M765 305h12M789 305h.1M825 305h.1M207 311h120M477 311h78M741 311h6M789 311h6M831 311h24M207 317h126M477 317h72M747 317h.1M831 317h.1M843 317h18M873 317h6M213 323h126M483 323h66M765 323h6M843 323h12M867 323h.1M219 329h114M483 329h72M789 329h.1M801 329h.1M873 329h.1M219 335h108M483 335h72M831 335h6M855 335h.1M225 341h102M477 341h78M585 341h.1M807 341h.1M819 341h12M855 341h.1M231 347h96M477 347h78M573 347h12M807 347h30M855 347h6M237 353h84M477 353h66M573 353h6M801 353h60M957 353h.1M243 359h78M483 359h54M573 359h6M789 359h78M243 365h72M483 365h60M567 365h12M771 365h102M237 371h66M483 371h54M573 371h.1M771 371h108M237 377h60M489 377h42M771 377h108M237 383h60M489 383h42M777 383h108M237 389h54M495 389h30M777 389h102M237 395h48M495 395h24M777 395h24M831 395h48M237 401h30M279 401h.1M783 401h.1M843 401h30M231 407h42M849 407h24M231 413h24M951 413h6M231 419h24M861 419h.1M951 419h.1M231 425h18M867 425h.1M939 425h.1M225 431h18M927 431h6M225 437h24M225 443h18M645 443h.1M225 449h12M267 449h.1M231 455h12M243 461h.1' stroke='%234d6f8f' stroke-width='2.4' stroke-linecap='round' stroke-dasharray='0 6' opacity='.66'/%3E%3Cpath d='M794 210.3C794.4 212.2 797.1 218 796 221.9C795 225.8 791.5 228.7 787.6 233.5C783.8 238.3 777.7 244.1 772.9 250.9C768 257.7 763.5 266.5 758.4 274.1C753.2 281.7 746.7 294.4 741.8 296.6C737 298.7 734.1 289.2 729.4 286.9C724.6 284.6 719.9 283.3 713.4 282.8C706.9 282.3 696.9 283.7 690.2 284C683.5 284.3 681.1 286.4 673.4 284.5C665.6 282.7 654.5 276.4 643.8 272.6C633.1 268.9 618.7 263.4 609 261.9C599.3 260.4 592.8 263.4 585.8 263.7C578.8 263.9 572.2 266.2 567.2 263.7C562.3 261.1 559.8 253.9 556.2 248.6C552.6 243.3 548.7 236.6 545.8 231.8C542.9 226.9 540.6 222.8 538.8 219.6C537 216.4 536.9 215 535 212.6C533.2 210.2 531.9 207 527.8 205.1C523.7 203.1 517.2 202.4 510.4 201C503.6 199.7 494.7 198.6 487.2 197C479.7 195.3 472.9 191.7 465.4 191.2C458 190.6 449.2 192.7 442.2 193.5C435.3 194.3 428.9 196.4 424 196.1C419.1 195.8 414.9 195 413 191.4C411 187.9 410.4 180.1 412.4 174.9C414.4 169.7 420.8 163.7 424.8 160.4C428.9 157.1 432.7 156.6 436.4 155.2C440.2 153.8 444.5 152.7 447.2 151.7C449.9 150.8 451.8 149.9 452.7 149.5' fill='none' stroke='%23ff7a2f' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M521.4 203.1L487.8 197.1L472 192.4L466 191.2L455.4 191.6L425.9 196.1L419.2 195.5L414.8 193.6L413.1 191.7L412 188.9L411.3 184.7L411.3 180.1L412.7 174.1L416.8 168.1L423.2 161.8L428.1 158.3L452.7 149.5' fill='none' stroke='%23ff7a2f' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M452.7 149.5C451.7 150 449.8 151.1 446.6 152C443.4 153 438.4 154.3 433.6 155.2C428.7 156.1 426.1 156.4 417.6 157.5C409.1 158.7 395.9 160.1 382.8 162.2C369.8 164.2 354.8 167.1 339.3 169.7C323.8 172.3 304 175.7 290 177.8C276 179.9 265.8 181.6 255.2 182.5C244.6 183.3 231 182.7 226.2 182.8' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M452.7 149.5L445.3 152.4L431.5 155.6L381.8 162.3L314.1 173.9L274.8 180.1L252.8 182.6L226.2 182.8' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M741.8 296.6C740.5 298.4 738 302.7 733.7 307.4C729.4 312.2 728.9 317.4 716.3 324.9C703.7 332.3 680 342.5 658.3 352.4C636.5 362.3 606.6 375.8 585.8 384.3C565 392.8 548.8 399.9 533.6 403.4C518.4 407 507.5 407.5 494.4 405.8C481.4 404 471.5 397.1 455.3 393C439.1 388.9 415.2 384.5 397.3 381.4C379.4 378.3 363.1 376.4 348 374.4C332.9 372.5 313.4 370.6 306.5 369.8' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M521.9 405.7L507.6 406.7L492.5 405.5L483.3 403L457.7 393.6L422.3 385.9L375.3 378L306.5 369.8' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M226.2 182.8C226.7 185.4 228.9 192.2 229.1 198.7C229.3 205.2 227.9 214.9 227.7 221.9C227.4 228.9 229.1 235.2 227.7 240.8C226.2 246.3 221.9 250 218.9 255.2C216 260.5 212.6 268.2 210 272.4C207.3 276.6 208 280.9 203 280.5C198 280 189.5 274.4 179.8 269.8C170.1 265.1 154.9 258.4 145 252.3C135.1 246.3 126.6 239.8 120.3 233.5C114.1 227.2 111.1 219.8 107.3 214.7C103.5 209.5 99.3 204.5 97.7 202.5' fill='none' stroke='%23ff7a2f' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M226.2 182.8L228.4 192.4L229.1 199.2L227.7 221.9L228.2 235.1L227.8 240.3L225.7 245.3L218.3 256.5L207.1 278.6L206 279.9L204.6 280.4L201.4 280.2L197.1 278.6L156.9 258.8L145.8 252.8L133.9 244.9L124.9 237.8L118.1 231.1L114.5 226.1L107.6 215L97.7 202.5' fill='none' stroke='%23ff7a2f' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M600.3 227.7C601.1 227 603.2 222.9 604.9 223.6C606.6 224.4 608.6 228.7 610.4 232C612.3 235.4 613.8 239.2 616.2 243.7C618.7 248.1 620.4 254.2 624.9 259C629.5 263.9 640.7 270.4 643.8 272.6' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M793.1 209.7C790.7 207.2 783.7 199.4 778.5 194.3C773.2 189.3 767.7 184.4 761.7 179.7C755.6 175 749.2 170.3 742.2 166C735.1 161.7 727.5 157.5 719.1 153.7C710.8 149.9 701.8 146.3 692 143.2C682.1 140.1 671.5 137.4 660.3 135.2C649 133.1 636.9 131.4 624.6 130.4C612.4 129.4 599.3 129 586.8 129.2C574.3 129.4 561.5 130.4 549.5 131.8C537.6 133.3 526 135.4 515.3 137.9C504.5 140.5 493.5 144.1 485.3 146.9C477 149.8 469 153.8 465.7 155.2' fill='none' stroke='%23f4f1ea' stroke-width='1' stroke-dasharray='1.5 4' stroke-linecap='round' stroke-opacity='.55'/%3E%3Ccircle cx='452.7' cy='149.5' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='452.7' cy='149.5' r='2.6' fill='%23ffc145'/%3E%3Ctext x='458.7' y='144.5' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ENLRTM%3C/text%3E%3Ccircle cx='226.2' cy='182.8' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='226.2' cy='182.8' r='2.6' fill='%23ffc145'/%3E%3Ctext x='220.2' y='191.8' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EUSNYC%3C/text%3E%3Ccircle cx='97.7' cy='202.5' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='97.7' cy='202.5' r='2.6' fill='%23ffc145'/%3E%3Ctext x='91.7' y='211.5' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EUSLAX%3C/text%3E%3Ccircle cx='306.5' cy='369.8' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='306.5' cy='369.8' r='2.6' fill='%23ffc145'/%3E%3Ctext x='300.5' y='378.8' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EBRSSZ%3C/text%3E%3Ccircle cx='794' cy='210.3' r='2.6' fill='%23ffc145'/%3E%3Ctext x='800' y='207.3' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ECNSHA%3C/text%3E%3Ccircle cx='741.8' cy='296.6' r='2.6' fill='%23ffc145'/%3E%3Ctext x='747.8' y='305.6' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ESGSIN%3C/text%3E%3Ccircle cx='600.3' cy='227.7' r='2.6' fill='%23ffc145'/%3E%3Ctext x='606.3' y='223.7' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EAEJEA%3C/text%3E%3Cg transform='translate(312.8 174.2) rotate(171)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3C/g%3E%3Cg transform='translate(196.7 278.5) rotate(-156)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3C/g%3E%3C/svg%3E");
+  --mf-map-still: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cpath d='M93 77h6M165 77h.1M183 77h30M237 77h144M489 77h.1M735 77h12M117 83h6M165 83h.1M177 83h30M273 83h108M603 83h12M693 83h72M843 83h12M873 83h.1M81 89h12M105 89h.1M123 89h12M153 89h.1M165 89h6M183 89h18M285 89h90M597 89h6M645 89h.1M675 89h138M849 89h.1M99 95h36M165 95h6M183 95h54M285 95h78M375 95h.1M513 95h12M597 95h6M639 95h258M3 101h102M117 101h.1M171 101h12M195 101h6M225 101h12M297 101h60M495 101h54M597 101h.1M621 101h12M645 101h6M663 101h294M3 107h192M231 107h30M291 107h48M483 107h72M573 107h72M657 107h300M3 113h180M195 113h6M219 113h30M291 113h30M381 113h12M477 113h24M513 113h24M549 113h402M3 119h168M201 119h.1M243 119h.1M297 119h18M459 119h30M507 119h402M921 119h36M3 125h6M21 125h144M219 125h18M309 125h6M459 125h30M507 125h6M525 125h360M915 125h18M45 131h126M219 131h36M429 131h.1M465 131h.1M477 131h12M513 131h336M903 131h6M63 137h120M219 137h42M429 137h.1M465 137h6M483 137h.1M507 137h330M897 137h12M63 143h138M213 143h60M417 143h6M435 143h.1M471 143h6M489 143h348M897 143h6M75 149h126M213 149h66M417 149h.1M429 149h12M453 149h402M897 149h.1M75 155h168M447 155h396M855 155h.1M81 161h168M273 161h12M429 161h414M87 167h168M267 167h.1M441 167h84M555 167h282M81 173h156M441 173h18M471 173h6M489 173h30M555 173h276M855 173h6M81 179h150M417 179h30M477 179h6M501 179h18M537 179h6M567 179h246M849 179h.1M87 185h138M417 185h18M501 185h.1M519 185h264M795 185h.1M807 185h.1M849 185h.1M87 191h132M417 191h18M477 191h6M507 191h.1M525 191h258M807 191h6M843 191h6M93 197h126M441 197h30M549 197h234M813 197h.1M831 197h12M105 203h102M423 203h48M549 203h240M819 203h6M105 209h.1M117 209h84M417 209h66M501 209h18M531 209h.1M543 209h246M819 209h.1M117 215h48M177 215h.1M201 215h.1M417 215h162M591 215h198M111 221h.1M123 221h30M207 221h.1M405 221h132M549 221h30M597 221h192M117 227h.1M129 227h24M207 227h.1M399 227h138M549 227h36M603 227h.1M621 227h6M639 227h144M123 233h.1M135 233h18M399 233h144M555 233h54M645 233h132M141 239h12M183 239h.1M219 239h.1M393 239h150M555 239h54M645 239h.1M657 239h36M711 239h36M759 239h.1M141 245h18M177 245h6M231 245h6M399 245h150M561 245h42M657 245h24M717 245h30M759 245h.1M153 251h30M399 251h150M567 251h30M657 251h18M717 251h30M795 251h.1M177 257h18M393 257h162M567 257h18M657 257h12M729 257h24M189 263h6M393 263h174M663 263h6M729 263h24M195 269h.1M225 269h12M399 269h168M579 269h6M663 269h6M729 269h.1M741 269h12M795 269h.1M201 275h60M405 275h180M675 275h.1M729 275h.1M807 275h.1M219 281h48M411 281h168M675 281h.1M735 281h.1M801 281h6M219 287h66M417 287h.1M459 287h.1M471 287h108M723 287h.1M735 287h.1M777 287h6M219 293h72M471 293h102M729 293h.1M741 293h.1M765 293h12M213 299h78M471 299h90M729 299h6M759 299h18M789 299h12M813 299h.1M207 305h102M471 305h90M735 305h6M765 305h12M789 305h.1M825 305h.1M207 311h120M477 311h78M741 311h6M789 311h6M831 311h24M207 317h126M477 317h72M747 317h.1M831 317h.1M843 317h18M873 317h6M213 323h126M483 323h66M765 323h6M843 323h12M867 323h.1M219 329h114M483 329h72M789 329h.1M801 329h.1M873 329h.1M219 335h108M483 335h72M831 335h6M855 335h.1M225 341h102M477 341h78M585 341h.1M807 341h.1M819 341h12M855 341h.1M231 347h96M477 347h78M573 347h12M807 347h30M855 347h6M237 353h84M477 353h66M573 353h6M801 353h60M957 353h.1M243 359h78M483 359h54M573 359h6M789 359h78M243 365h72M483 365h60M567 365h12M771 365h102M237 371h66M483 371h54M573 371h.1M771 371h108M237 377h60M489 377h42M771 377h108M237 383h60M489 383h42M777 383h108M237 389h54M495 389h30M777 389h102M237 395h48M495 395h24M777 395h24M831 395h48M237 401h30M279 401h.1M783 401h.1M843 401h30M231 407h42M849 407h24M231 413h24M951 413h6M231 419h24M861 419h.1M951 419h.1M231 425h18M867 425h.1M939 425h.1M225 431h18M927 431h6M225 437h24M225 443h18M645 443h.1M225 449h12M267 449h.1M231 455h12M243 461h.1' stroke='%234d6f8f' stroke-width='2.4' stroke-linecap='round' stroke-dasharray='0 6' opacity='.66'/%3E%3Cpath d='M794 210.3C794.4 212.2 797.1 218 796 221.9C795 225.8 791.5 228.7 787.6 233.5C783.8 238.3 777.7 244.1 772.9 250.9C768 257.7 763.5 266.5 758.4 274.1C753.2 281.7 746.7 294.4 741.8 296.6C737 298.7 734.1 289.2 729.4 286.9C724.6 284.6 719.9 283.3 713.4 282.8C706.9 282.3 696.9 283.7 690.2 284C683.5 284.3 681.1 286.4 673.4 284.5C665.6 282.7 654.5 276.4 643.8 272.6C633.1 268.9 618.7 263.4 609 261.9C599.3 260.4 592.8 263.4 585.8 263.7C578.8 263.9 572.2 266.2 567.2 263.7C562.3 261.1 559.8 253.9 556.2 248.6C552.6 243.3 548.7 236.6 545.8 231.8C542.9 226.9 540.6 222.8 538.8 219.6C537 216.4 536.9 215 535 212.6C533.2 210.2 531.9 207 527.8 205.1C523.7 203.1 517.2 202.4 510.4 201C503.6 199.7 494.7 198.6 487.2 197C479.7 195.3 472.9 191.7 465.4 191.2C458 190.6 449.2 192.7 442.2 193.5C435.3 194.3 428.9 196.4 424 196.1C419.1 195.8 414.9 195 413 191.4C411 187.9 410.4 180.1 412.4 174.9C414.4 169.7 420.8 163.7 424.8 160.4C428.9 157.1 432.7 156.6 436.4 155.2C440.2 153.8 444.5 152.7 447.2 151.7C449.9 150.8 451.8 149.9 452.7 149.5' fill='none' stroke='%23ff7a2f' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M794 210.3C794.4 212.2 797.1 218 796 221.9C795 225.8 791.5 228.7 787.6 233.5C783.8 238.3 777.7 244.1 772.9 250.9C768 257.7 763.5 266.5 758.4 274.1C753.2 281.7 746.7 294.4 741.8 296.6C737 298.7 734.1 289.2 729.4 286.9C724.6 284.6 719.9 283.3 713.4 282.8C706.9 282.3 696.9 283.7 690.2 284C683.5 284.3 681.1 286.4 673.4 284.5C665.6 282.7 654.5 276.4 643.8 272.6C633.1 268.9 618.7 263.4 609 261.9C599.3 260.4 592.8 263.4 585.8 263.7C578.8 263.9 572.2 266.2 567.2 263.7C562.3 261.1 559.8 253.9 556.2 248.6C552.6 243.3 548.7 236.6 545.8 231.8C542.9 226.9 540.6 222.8 538.8 219.6C537 216.4 536.9 215 535 212.6C533.2 210.2 531.9 207 527.8 205.1C523.7 203.1 517.2 202.4 510.4 201C503.6 199.7 494.7 198.6 487.2 197C479.7 195.3 472.9 191.7 465.4 191.2C458 190.6 449.2 192.7 442.2 193.5C435.3 194.3 428.9 196.4 424 196.1C419.1 195.8 414.9 195 413 191.4C411 187.9 410.4 180.1 412.4 174.9C414.4 169.7 420.8 163.7 424.8 160.4C428.9 157.1 432.7 156.6 436.4 155.2C440.2 153.8 444.5 152.7 447.2 151.7C449.9 150.8 451.8 149.9 452.7 149.5' fill='none' stroke='%23ff7a2f' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M452.7 149.5C451.7 150 449.8 151.1 446.6 152C443.4 153 438.4 154.3 433.6 155.2C428.7 156.1 426.1 156.4 417.6 157.5C409.1 158.7 395.9 160.1 382.8 162.2C369.8 164.2 354.8 167.1 339.3 169.7C323.8 172.3 304 175.7 290 177.8C276 179.9 265.8 181.6 255.2 182.5C244.6 183.3 231 182.7 226.2 182.8' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M452.7 149.5C451.7 150 449.8 151.1 446.6 152C443.4 153 438.4 154.3 433.6 155.2C428.7 156.1 426.1 156.4 417.6 157.5C409.1 158.7 395.9 160.1 382.8 162.2C369.8 164.2 354.8 167.1 339.3 169.7C323.8 172.3 304 175.7 290 177.8C276 179.9 265.8 181.6 255.2 182.5C244.6 183.3 231 182.7 226.2 182.8' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M741.8 296.6C740.5 298.4 738 302.7 733.7 307.4C729.4 312.2 728.9 317.4 716.3 324.9C703.7 332.3 680 342.5 658.3 352.4C636.5 362.3 606.6 375.8 585.8 384.3C565 392.8 548.8 399.9 533.6 403.4C518.4 407 507.5 407.5 494.4 405.8C481.4 404 471.5 397.1 455.3 393C439.1 388.9 415.2 384.5 397.3 381.4C379.4 378.3 363.1 376.4 348 374.4C332.9 372.5 313.4 370.6 306.5 369.8' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M741.8 296.6C740.5 298.4 738 302.7 733.7 307.4C729.4 312.2 728.9 317.4 716.3 324.9C703.7 332.3 680 342.5 658.3 352.4C636.5 362.3 606.6 375.8 585.8 384.3C565 392.8 548.8 399.9 533.6 403.4C518.4 407 507.5 407.5 494.4 405.8C481.4 404 471.5 397.1 455.3 393C439.1 388.9 415.2 384.5 397.3 381.4C379.4 378.3 363.1 376.4 348 374.4C332.9 372.5 313.4 370.6 306.5 369.8' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M226.2 182.8C226.7 185.4 228.9 192.2 229.1 198.7C229.3 205.2 227.9 214.9 227.7 221.9C227.4 228.9 229.1 235.2 227.7 240.8C226.2 246.3 221.9 250 218.9 255.2C216 260.5 212.6 268.2 210 272.4C207.3 276.6 208 280.9 203 280.5C198 280 189.5 274.4 179.8 269.8C170.1 265.1 154.9 258.4 145 252.3C135.1 246.3 126.6 239.8 120.3 233.5C114.1 227.2 111.1 219.8 107.3 214.7C103.5 209.5 99.3 204.5 97.7 202.5' fill='none' stroke='%23ff7a2f' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M226.2 182.8C226.7 185.4 228.9 192.2 229.1 198.7C229.3 205.2 227.9 214.9 227.7 221.9C227.4 228.9 229.1 235.2 227.7 240.8C226.2 246.3 221.9 250 218.9 255.2C216 260.5 212.6 268.2 210 272.4C207.3 276.6 208 280.9 203 280.5C198 280 189.5 274.4 179.8 269.8C170.1 265.1 154.9 258.4 145 252.3C135.1 246.3 126.6 239.8 120.3 233.5C114.1 227.2 111.1 219.8 107.3 214.7C103.5 209.5 99.3 204.5 97.7 202.5' fill='none' stroke='%23ff7a2f' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M600.3 227.7C601.1 227 603.2 222.9 604.9 223.6C606.6 224.4 608.6 228.7 610.4 232C612.3 235.4 613.8 239.2 616.2 243.7C618.7 248.1 620.4 254.2 624.9 259C629.5 263.9 640.7 270.4 643.8 272.6' fill='none' stroke='%2335c4b5' stroke-width='3.2' stroke-opacity='.16' stroke-linecap='round'/%3E%3Cpath d='M600.3 227.7C601.1 227 603.2 222.9 604.9 223.6C606.6 224.4 608.6 228.7 610.4 232C612.3 235.4 613.8 239.2 616.2 243.7C618.7 248.1 620.4 254.2 624.9 259C629.5 263.9 640.7 270.4 643.8 272.6' fill='none' stroke='%2335c4b5' stroke-width='1.3' stroke-dasharray='5 3' stroke-opacity='.95'/%3E%3Cpath d='M793.1 209.7C790.7 207.2 783.7 199.4 778.5 194.3C773.2 189.3 767.7 184.4 761.7 179.7C755.6 175 749.2 170.3 742.2 166C735.1 161.7 727.5 157.5 719.1 153.7C710.8 149.9 701.8 146.3 692 143.2C682.1 140.1 671.5 137.4 660.3 135.2C649 133.1 636.9 131.4 624.6 130.4C612.4 129.4 599.3 129 586.8 129.2C574.3 129.4 561.5 130.4 549.5 131.8C537.6 133.3 526 135.4 515.3 137.9C504.5 140.5 493.5 144.1 485.3 146.9C477 149.8 469 153.8 465.7 155.2' fill='none' stroke='%23f4f1ea' stroke-width='1' stroke-dasharray='1.5 4' stroke-linecap='round' stroke-opacity='.55'/%3E%3Ccircle cx='794' cy='210.3' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='794' cy='210.3' r='2.6' fill='%23ffc145'/%3E%3Ctext x='800' y='207.3' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ECNSHA%3C/text%3E%3Ccircle cx='741.8' cy='296.6' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='741.8' cy='296.6' r='2.6' fill='%23ffc145'/%3E%3Ctext x='747.8' y='305.6' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ESGSIN%3C/text%3E%3Ccircle cx='452.7' cy='149.5' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='452.7' cy='149.5' r='2.6' fill='%23ffc145'/%3E%3Ctext x='458.7' y='144.5' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3ENLRTM%3C/text%3E%3Ccircle cx='226.2' cy='182.8' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='226.2' cy='182.8' r='2.6' fill='%23ffc145'/%3E%3Ctext x='220.2' y='191.8' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EUSNYC%3C/text%3E%3Ccircle cx='97.7' cy='202.5' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='97.7' cy='202.5' r='2.6' fill='%23ffc145'/%3E%3Ctext x='91.7' y='211.5' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EUSLAX%3C/text%3E%3Ccircle cx='306.5' cy='369.8' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='306.5' cy='369.8' r='2.6' fill='%23ffc145'/%3E%3Ctext x='300.5' y='378.8' text-anchor='end' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EBRSSZ%3C/text%3E%3Ccircle cx='600.3' cy='227.7' r='6' fill='none' stroke='%23ffc145' stroke-width='1' stroke-opacity='.45'/%3E%3Ccircle cx='600.3' cy='227.7' r='2.6' fill='%23ffc145'/%3E%3Ctext x='606.3' y='223.7' text-anchor='start' font-family='ui-monospace,Menlo,Consolas,monospace' font-size='8' letter-spacing='.6' fill='%23f4f1ea' fill-opacity='.62'%3EAEJEA%3C/text%3E%3Cg transform='translate(677.2 285.2) rotate(-175)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3C/g%3E%3Cg transform='translate(443 193.4) rotate(173)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3C/g%3E%3Cg transform='translate(312.8 174.2) rotate(171)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3C/g%3E%3Cg transform='translate(367.1 376.9) rotate(-172)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3C/g%3E%3Cg transform='translate(196.7 278.5) rotate(-156)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%23ff7a2f'/%3E%3C/g%3E%3Cg transform='translate(627.5 261.4) rotate(40)'%3E%3Cpath d='M-7.5-2.4h11.2l3.8 2.4-3.8 2.4h-11.2z' fill='%23f4f1ea'/%3E%3Cpath d='M-5.6-1.5h2.4v3h-2.4zM-2.6-1.5h2.4v3h-2.4zM.4-1.5h2.4v3h-2.4z' fill='%2335c4b5'/%3E%3C/g%3E%3Cg transform='translate(652.9 133.9) rotate(-170)'%3E%3Cpath d='M6 0 2.5-1-1-6h-1.6l1.6 5h-4l-1.6-1.8h-1.1l.9 2.8-.9 2.8h1.1l1.6-1.8h4l-1.6 5h1.6l3.5-5z' fill='%23f4f1ea'/%3E%3C/g%3E%3C/svg%3E");
+  --mf-port: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cstyle%3E@keyframes b%7B0%25,100%25%7Bopacity:1%7D50%25%7Bopacity:.15%7D%7D.b%7Banimation:b 2s steps(1) infinite%7D%3C/style%3E%3Cpath d='M520 470v-7h14v7zM536 470v-7h14v7zM552 470v-28h14v28zM568 470v-14h14v14zM584 470v-21h14v21zM600 470v-21h14v21zM616 470v-21h14v21zM632 470v-7h14v7zM648 470v-14h14v14zM664 470v-7h14v7zM680 470v-14h14v14zM696 470v-28h14v28zM712 470v-21h14v21zM728 470v-7h14v7zM744 470v-21h14v21zM760 470v-7h14v7zM776 470v-28h14v28zM792 470v-28h14v28zM808 470v-28h14v28zM824 470v-21h14v21zM840 470v-28h14v28zM856 470v-14h14v14zM872 470v-7h14v7zM888 470v-21h14v21zM904 470v-14h14v14zM920 470v-21h14v21zM936 470v-28h14v28zM952 470v-14h14v14zM0 470h960v2h-960z' fill='%2314304a'/%3E%3Cg transform='translate(0 470)'%3E%3Cpath d='M600 0V-150M634 0V-150M600 -67.5H634M600 0L634 -67.5M530 -150H664M617 -150L617 -184L530 -150M617 -184L664 -150' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M596 -156h42v8h-42z' fill='%2314304a'/%3E%3Cpath d='M720 0V-168M754 0V-168M720 -75.60000000000001H754M720 0L754 -75.60000000000001M650 -168H784M737 -168L737 -202L650 -168M737 -202L784 -168' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M716 -174h42v8h-42z' fill='%2314304a'/%3E%3Cpath d='M840 0V-150M874 0V-150M840 -67.5H874M840 0L874 -67.5M770 -150H904M857 -150L857 -184L770 -150M857 -184L904 -150' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M836 -156h42v8h-42z' fill='%2314304a'/%3E%3C/g%3E%3Ccircle cx='617' cy='280' r='2' fill='%23ff4d3d' class='b'/%3E%3Ccircle cx='737' cy='262' r='2' fill='%23ff4d3d' class='b'/%3E%3Ccircle cx='857' cy='280' r='2' fill='%23ff4d3d' class='b'/%3E%3Cpath d='M0 472H960V540H0Z' fill='%2308141f'/%3E%3Cpath d='M-40 486h10M0 486h10M40 486h10M80 486h10M120 486h10M160 486h10M200 486h10M240 486h10M280 486h10M320 486h10M360 486h10M400 486h10M440 486h10M480 486h10M520 486h10M560 486h10M600 486h10M640 486h10M680 486h10M720 486h10M760 486h10M800 486h10M840 486h10M880 486h10M920 486h10M960 486h10M-40 500h16M16 500h16M72 500h16M128 500h16M184 500h16M240 500h16M296 500h16M352 500h16M408 500h16M464 500h16M520 500h16M576 500h16M632 500h16M688 500h16M744 500h16M800 500h16M856 500h16M912 500h16M968 500h16M-40 516h22M32 516h22M104 516h22M176 516h22M248 516h22M320 516h22M392 516h22M464 516h22M536 516h22M608 516h22M680 516h22M752 516h22M824 516h22M896 516h22M968 516h22M-40 534h30M56 534h30M152 534h30M248 534h30M344 534h30M440 534h30M536 534h30M632 534h30M728 534h30M824 534h30M920 534h30' stroke='%231d3c58' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --mf-port-still: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cpath d='M520 470v-7h14v7zM536 470v-7h14v7zM552 470v-28h14v28zM568 470v-14h14v14zM584 470v-21h14v21zM600 470v-21h14v21zM616 470v-21h14v21zM632 470v-7h14v7zM648 470v-14h14v14zM664 470v-7h14v7zM680 470v-14h14v14zM696 470v-28h14v28zM712 470v-21h14v21zM728 470v-7h14v7zM744 470v-21h14v21zM760 470v-7h14v7zM776 470v-28h14v28zM792 470v-28h14v28zM808 470v-28h14v28zM824 470v-21h14v21zM840 470v-28h14v28zM856 470v-14h14v14zM872 470v-7h14v7zM888 470v-21h14v21zM904 470v-14h14v14zM920 470v-21h14v21zM936 470v-28h14v28zM952 470v-14h14v14zM0 470h960v2h-960z' fill='%2314304a'/%3E%3Cg transform='translate(0 470)'%3E%3Cpath d='M600 0V-150M634 0V-150M600 -67.5H634M600 0L634 -67.5M530 -150H664M617 -150L617 -184L530 -150M617 -184L664 -150' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M596 -156h42v8h-42z' fill='%2314304a'/%3E%3Cpath d='M720 0V-168M754 0V-168M720 -75.60000000000001H754M720 0L754 -75.60000000000001M650 -168H784M737 -168L737 -202L650 -168M737 -202L784 -168' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M716 -174h42v8h-42z' fill='%2314304a'/%3E%3Cpath d='M840 0V-150M874 0V-150M840 -67.5H874M840 0L874 -67.5M770 -150H904M857 -150L857 -184L770 -150M857 -184L904 -150' fill='none' stroke='%2314304a' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M836 -156h42v8h-42z' fill='%2314304a'/%3E%3C/g%3E%3Ccircle cx='617' cy='280' r='2' fill='%23ff4d3d'/%3E%3Ccircle cx='737' cy='262' r='2' fill='%23ff4d3d'/%3E%3Ccircle cx='857' cy='280' r='2' fill='%23ff4d3d'/%3E%3Cpath d='M0 472H960V540H0Z' fill='%2308141f'/%3E%3Cpath d='M-40 486h10M0 486h10M40 486h10M80 486h10M120 486h10M160 486h10M200 486h10M240 486h10M280 486h10M320 486h10M360 486h10M400 486h10M440 486h10M480 486h10M520 486h10M560 486h10M600 486h10M640 486h10M680 486h10M720 486h10M760 486h10M800 486h10M840 486h10M880 486h10M920 486h10M960 486h10M-40 500h16M16 500h16M72 500h16M128 500h16M184 500h16M240 500h16M296 500h16M352 500h16M408 500h16M464 500h16M520 500h16M576 500h16M632 500h16M688 500h16M744 500h16M800 500h16M856 500h16M912 500h16M968 500h16M-40 516h22M32 516h22M104 516h22M176 516h22M248 516h22M320 516h22M392 516h22M464 516h22M536 516h22M608 516h22M680 516h22M752 516h22M824 516h22M896 516h22M968 516h22M-40 534h30M56 534h30M152 534h30M248 534h30M344 534h30M440 534h30M536 534h30M632 534h30M728 534h30M824 534h30M920 534h30' stroke='%231d3c58' stroke-width='1.4' stroke-linecap='round'/%3E%3Cg transform='translate(600 500)'%3E%3Cpath d='M-160 -30H150Q164 -28 172 -18L162 4H-150L-158 -8Z' fill='%2315283b'/%3E%3Cpath d='M-152 -3H163L162 4H-150Z' fill='%237a2a22'/%3E%3Cpath d='M-160 -30H150Q164 -28 172 -18' fill='none' stroke='%233d5c7a' stroke-width='1.6'/%3E%3Cpath d='M-118 -30v-50h26v50z' fill='%23f4f1ea'/%3E%3Cpath d='M-124 -80h38v-6h-38z' fill='%23f4f1ea'/%3E%3Cpath d='M-121 -77h32v4h-32z' fill='%230b1b2b'/%3E%3Cpath d='M-112 -86v-10h3v10zM-103 -86v-7h2v7z' fill='%23f4f1ea'/%3E%3Cpath d='M-140 -30v-34h12v34z' fill='%23c9cdd0'/%3E%3Cpath d='M-141 -64h14v-5h-14z' fill='%23e8590c'/%3E%3Crect x='-84.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-48' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-57' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-84.0' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-75' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-60.5' y='-39' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='-60.5' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='-60.5' y='-57' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-60.5' y='-66' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='-60.5' y='-75' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='-37.0' y='-39' width='22' height='8.4' fill='%238a3b2a'/%3E%3Crect x='-37.0' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-37.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='-37.0' y='-66' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='-13.5' y='-39' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='-13.5' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-13.5' y='-57' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='-13.5' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-13.5' y='-75' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='10.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='10.0' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='10.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='10.0' y='-66' width='22' height='8.4' fill='%238a3b2a'/%3E%3Crect x='33.5' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='33.5' y='-48' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='33.5' y='-57' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='33.5' y='-66' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='33.5' y='-75' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='57.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='57.0' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='57.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='57.0' y='-66' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='80.5' y='-39' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='80.5' y='-48' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='80.5' y='-57' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='80.5' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='104.0' y='-39' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='104.0' y='-48' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='104.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='127.5' y='-39' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='127.5' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='127.5' y='-57' width='22' height='8.4' fill='%232a64b0'/%3E%3Cpath d='M-80.4 -75V-30M-76.8 -75V-30M-73.2 -75V-30M-69.6 -75V-30M-66.0 -75V-30M-62.4 -75V-30M-56.9 -75V-30M-53.3 -75V-30M-49.7 -75V-30M-46.1 -75V-30M-42.5 -75V-30M-38.9 -75V-30M-33.4 -66V-30M-29.8 -66V-30M-26.2 -66V-30M-22.6 -66V-30M-19.0 -66V-30M-15.4 -66V-30M-9.9 -75V-30M-6.3 -75V-30M-2.7 -75V-30M0.9 -75V-30M4.5 -75V-30M8.1 -75V-30M13.6 -66V-30M17.2 -66V-30M20.8 -66V-30M24.4 -66V-30M28.0 -66V-30M31.6 -66V-30M37.1 -75V-30M40.7 -75V-30M44.3 -75V-30M47.9 -75V-30M51.5 -75V-30M55.1 -75V-30M60.6 -66V-30M64.2 -66V-30M67.8 -66V-30M71.4 -66V-30M75.0 -66V-30M78.6 -66V-30M84.1 -66V-30M87.7 -66V-30M91.3 -66V-30M94.9 -66V-30M98.5 -66V-30M102.1 -66V-30M107.6 -57V-30M111.2 -57V-30M114.8 -57V-30M118.4 -57V-30M122.0 -57V-30M125.6 -57V-30M131.1 -57V-30M134.7 -57V-30M138.3 -57V-30M141.9 -57V-30M145.5 -57V-30M149.1 -57V-30' stroke='%23000' stroke-opacity='.18' stroke-width='.7'/%3E%3Cpath d='M-148 8h306M-120 13h240' stroke='%232a4a66' stroke-width='1.2' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E");
+  --mf-ship: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-232 -104 416 120' width='416' height='120'%3E%3Cpath d='M-160 -30H150Q164 -28 172 -18L162 4H-150L-158 -8Z' fill='%2315283b'/%3E%3Cpath d='M-152 -3H163L162 4H-150Z' fill='%237a2a22'/%3E%3Cpath d='M-160 -30H150Q164 -28 172 -18' fill='none' stroke='%233d5c7a' stroke-width='1.6'/%3E%3Cpath d='M-118 -30v-50h26v50z' fill='%23f4f1ea'/%3E%3Cpath d='M-124 -80h38v-6h-38z' fill='%23f4f1ea'/%3E%3Cpath d='M-121 -77h32v4h-32z' fill='%230b1b2b'/%3E%3Cpath d='M-112 -86v-10h3v10zM-103 -86v-7h2v7z' fill='%23f4f1ea'/%3E%3Cpath d='M-140 -30v-34h12v34z' fill='%23c9cdd0'/%3E%3Cpath d='M-141 -64h14v-5h-14z' fill='%23e8590c'/%3E%3Crect x='-84.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-48' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-57' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-84.0' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-84.0' y='-75' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-60.5' y='-39' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='-60.5' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='-60.5' y='-57' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-60.5' y='-66' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='-60.5' y='-75' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='-37.0' y='-39' width='22' height='8.4' fill='%238a3b2a'/%3E%3Crect x='-37.0' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-37.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='-37.0' y='-66' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='-13.5' y='-39' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='-13.5' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='-13.5' y='-57' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='-13.5' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='-13.5' y='-75' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='10.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='10.0' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='10.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='10.0' y='-66' width='22' height='8.4' fill='%238a3b2a'/%3E%3Crect x='33.5' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='33.5' y='-48' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='33.5' y='-57' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='33.5' y='-66' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='33.5' y='-75' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='57.0' y='-39' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='57.0' y='-48' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='57.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='57.0' y='-66' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='80.5' y='-39' width='22' height='8.4' fill='%2313807a'/%3E%3Crect x='80.5' y='-48' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='80.5' y='-57' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='80.5' y='-66' width='22' height='8.4' fill='%233f7d3a'/%3E%3Crect x='104.0' y='-39' width='22' height='8.4' fill='%236f7d89'/%3E%3Crect x='104.0' y='-48' width='22' height='8.4' fill='%23c4452f'/%3E%3Crect x='104.0' y='-57' width='22' height='8.4' fill='%23e0a526'/%3E%3Crect x='127.5' y='-39' width='22' height='8.4' fill='%23e8590c'/%3E%3Crect x='127.5' y='-48' width='22' height='8.4' fill='%232a64b0'/%3E%3Crect x='127.5' y='-57' width='22' height='8.4' fill='%232a64b0'/%3E%3Cpath d='M-80.4 -75V-30M-76.8 -75V-30M-73.2 -75V-30M-69.6 -75V-30M-66.0 -75V-30M-62.4 -75V-30M-56.9 -75V-30M-53.3 -75V-30M-49.7 -75V-30M-46.1 -75V-30M-42.5 -75V-30M-38.9 -75V-30M-33.4 -66V-30M-29.8 -66V-30M-26.2 -66V-30M-22.6 -66V-30M-19.0 -66V-30M-15.4 -66V-30M-9.9 -75V-30M-6.3 -75V-30M-2.7 -75V-30M0.9 -75V-30M4.5 -75V-30M8.1 -75V-30M13.6 -66V-30M17.2 -66V-30M20.8 -66V-30M24.4 -66V-30M28.0 -66V-30M31.6 -66V-30M37.1 -75V-30M40.7 -75V-30M44.3 -75V-30M47.9 -75V-30M51.5 -75V-30M55.1 -75V-30M60.6 -66V-30M64.2 -66V-30M67.8 -66V-30M71.4 -66V-30M75.0 -66V-30M78.6 -66V-30M84.1 -66V-30M87.7 -66V-30M91.3 -66V-30M94.9 -66V-30M98.5 -66V-30M102.1 -66V-30M107.6 -57V-30M111.2 -57V-30M114.8 -57V-30M118.4 -57V-30M122.0 -57V-30M125.6 -57V-30M131.1 -57V-30M134.7 -57V-30M138.3 -57V-30M141.9 -57V-30M145.5 -57V-30M149.1 -57V-30' stroke='%23000' stroke-opacity='.18' stroke-width='.7'/%3E%3Cpath d='M-148 8h306M-120 13h240' stroke='%232a4a66' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --mf-train: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 196 14' width='196' height='14'%3E%3Crect x='1.00' y='1.75' width='28.5' height='10.5' fill='none' stroke='%230e2233' stroke-width='1.5'/%3E%3Cpath d='M5.75 3.6V10.4M10.50 3.6V10.4M15.25 3.6V10.4M20.00 3.6V10.4M24.75 3.6V10.4' stroke='%230e2233' stroke-width='.8' stroke-opacity='.55'/%3E%3Crect x='33.67' y='1.75' width='28.5' height='10.5' fill='none' stroke='%230e2233' stroke-width='1.5'/%3E%3Cpath d='M38.42 3.6V10.4M43.17 3.6V10.4M47.92 3.6V10.4M52.67 3.6V10.4M57.42 3.6V10.4' stroke='%230e2233' stroke-width='.8' stroke-opacity='.55'/%3E%3Crect x='66.33' y='1.75' width='28.5' height='10.5' fill='none' stroke='%230e2233' stroke-width='1.5'/%3E%3Cpath d='M71.08 3.6V10.4M75.83 3.6V10.4M80.58 3.6V10.4M85.33 3.6V10.4M90.08 3.6V10.4' stroke='%230e2233' stroke-width='.8' stroke-opacity='.55'/%3E%3Crect x='99.00' y='1.75' width='28.5' height='10.5' fill='none' stroke='%230e2233' stroke-width='1.5'/%3E%3Cpath d='M103.75 3.6V10.4M108.50 3.6V10.4M113.25 3.6V10.4M118.00 3.6V10.4M122.75 3.6V10.4' stroke='%230e2233' stroke-width='.8' stroke-opacity='.55'/%3E%3Crect x='130.92' y='1' width='30' height='12' fill='%23e8590c'/%3E%3Cpath d='M136.42 2.8V11.2M141.17 2.8V11.2M145.92 2.8V11.2M150.67 2.8V11.2M155.42 2.8V11.2' stroke='%23000' stroke-width='.8' stroke-opacity='.22'/%3E%3Cpath d='M165.3 7H196' stroke='%230e2233' stroke-width='1.5' stroke-dasharray='3 3'/%3E%3C/svg%3E");
+  --mf-scrim: linear-gradient(90deg, rgba(11, 27, 43, 0.95) 0%, rgba(11, 27, 43, 0.86) 34%, rgba(11, 27, 43, 0) 54%);
+  --mf-hazard: repeating-linear-gradient(-45deg, #f2b01e 0 5px, #0e2233 5px 10px);
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-manifest.px-slide,
+.deck-theme-manifest .px-slide { --mf-ink: #0e2233; --mf-on-ink: #f3f2ee; --mf-bg: #f3f2ee; --mf-text: #26343f; --mf-muted: #5f6e7b; --mf-pale: #a3afb9; --mf-rule: #d3d8dc; --mf-card: #ffffff; --mf-wash: #e3e7ea; --mf-orange: #e8590c; --mf-orange-text: #c2410c; --mf-blue: #1d5fae; --mf-amber: #f2b01e; }
+.deck-theme-manifest.px-slide[data-own-background],
+.deck-theme-manifest .px-slide[data-own-background] { --mf-ink: var(--px-text); --mf-on-ink: var(--px-bg, #ffffff); --mf-bg: var(--px-bg, #ffffff); --mf-text: var(--px-text); --mf-muted: var(--px-text); --mf-pale: var(--px-text); --mf-rule: var(--px-text); --mf-card: transparent; --mf-wash: transparent; --mf-orange: var(--px-text); --mf-orange-text: var(--px-text); --mf-blue: var(--px-text); --mf-amber: var(--px-text); }
+/* The title and section slides are the port at night */
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]),
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) { --mf-ink: #f4f1ea; --mf-on-ink: #0b1b2b; --mf-bg: #0b1b2b; --mf-text: #dfe6ec; --mf-muted: #a9b8c6; --mf-pale: #52677b; --mf-rule: rgba(169, 184, 198, 0.3); --mf-card: #10263b; --mf-wash: #17324a; --mf-orange: #ff7a2f; --mf-orange-text: #ff8a45; --mf-blue: #8dbaff; --mf-amber: #ffc145; }
+
+/* Headings: Big Shoulders, a touch open */
+.deck-theme-manifest .px-text :is(h1, h2, h3) { letter-spacing: 0.004em !important; line-height: 1.02; }
+.deck-theme-manifest .px-text :is(h1, h2, h3) em { color: var(--mf-orange-text); font-style: normal; }
+
+/* Slide titles: a train of containers under them, the last one orange.
+   Not on the title slide, section slides, Big Numbers or blank ones. */
+.deck-theme-manifest.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after,
+.deck-theme-manifest .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  content: "";
+  display: block;
+  width: 196px;
+  height: 14px;
+  margin-top: 0.2em;
+  background: var(--mf-train) 0 0 / 196px 14px no-repeat;
+}
+.deck-theme-manifest .px-text :is(h1, h2)[style*=center]:last-child::after { margin-inline: auto; }
+.deck-theme-manifest .px-text :is(h1, h2)[style*=right]:last-child::after { margin-left: auto; }
+.deck-theme-manifest.px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after,
+.deck-theme-manifest .px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  background: currentColor;
+  -webkit-mask: var(--mf-train) 0 0 / 196px 14px no-repeat;
+  mask: var(--mf-train) 0 0 / 196px 14px no-repeat;
+}
+/* Presented, the containers load one at a time as the slide opens (six
+   steps, one per box and the route after them) */
+.deck-theme-manifest.reveal:not(.overview) .slides section.px-slide.present:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  animation: manifest-load 1.1s steps(6, end) 0.2s both;
+}
+@keyframes manifest-load {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* The title slide: the map at night, darker behind the words at the left;
+   the title in the stencil cut, in capitals, a band of hazard stripes
+   under it. (Widths in percent, so text that shrinks to fit still gets its
+   room.) */
+.deck-theme-manifest.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-manifest .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--mf-scrim), var(--mf-map-still) 0 0 / 960px 540px no-repeat, #0b1b2b;
+}
+/* Presented, the map moves where the words aren't: the ::before is the
+   map at rest, the darker band and the lanes at the left, and the ::after,
+   right of the band, in its own small compositing layer (will-change), is
+   the freight flowing along the lanes, the ports' pulses, and the ships
+   and the plane coming from Asia, fading as they reach the words. A frame
+   repaints only that box. */
+.deck-theme-manifest.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--mf-scrim), var(--mf-map-base) 0 0 / 960px 540px no-repeat, #0b1b2b; }
+.deck-theme-manifest.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  left: 520px;
+  top: 115px;
+  width: 440px;
+  height: 304px;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--mf-map) 0 0 / 440px 304px no-repeat;
+  will-change: transform;
+}
+.deck-theme-manifest.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-manifest .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 56%;
+  text-align: left !important;
+  font-family: 'Big Shoulders Stencil Display', 'Big Shoulders Display', 'Arial Narrow', sans-serif !important;
+  font-size: 2.6em;
+  letter-spacing: 0.012em !important;
+  line-height: 0.94;
+  text-transform: uppercase !important;
+}
+.deck-theme-manifest.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-manifest .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 84px;
+  height: 7px;
+  margin: 0.2em 0 0;
+  background: var(--mf-hazard);
+}
+.deck-theme-manifest.px-slide[data-layout=title][data-own-background] [data-placeholder=title] :is(h1, h2)[style*=center]::after,
+.deck-theme-manifest .px-slide[data-layout=title][data-own-background] [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; }
+.deck-theme-manifest.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-manifest .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 56%; text-align: left !important; }
+/* The lines after the subtitle's first: a manifest line, in amber capitals */
+.deck-theme-manifest.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-manifest .px-slide[data-layout=title] [data-placeholder=subtitle] p + p {
+  margin-top: 0.7em !important;
+  color: var(--mf-amber) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.56em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Section slides: the terminal at night, the ship in front of the cranes;
+   the title in stencil capitals under a band of hazard stripes */
+.deck-theme-manifest.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-manifest .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--mf-port-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 620px 300px at 50% 36%, #132c44, rgba(11, 27, 43, 0) 72%), #0b1b2b;
+}
+/* Presented, the terminal is the ::before, its cranes' lights blinking,
+   and the ship is the ::after, in its own small layer: as the slide opens
+   it sails in from the left to its berth (a transform, which the
+   compositor draws without repainting), and stays there */
+.deck-theme-manifest.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--mf-port) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 620px 300px at 50% 36%, #132c44, rgba(11, 27, 43, 0) 72%), #0b1b2b; }
+.deck-theme-manifest.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  left: 368px;
+  top: 396px;
+  width: 416px;
+  height: 120px;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--mf-ship) 0 0 / 416px 120px no-repeat;
+  will-change: transform;
+}
+.deck-theme-manifest.reveal:not(.overview) .slides section.px-slide.present[data-layout=section-header]:not([data-own-background])::after { animation: manifest-sail 7s cubic-bezier(0.1, 0.55, 0.25, 1) both; }
+@keyframes manifest-sail {
+  from { transform: translateX(-820px); }
+  to { transform: none; }
+}
+.deck-theme-manifest.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-manifest .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  font-family: 'Big Shoulders Stencil Display', 'Big Shoulders Display', 'Arial Narrow', sans-serif !important;
+  letter-spacing: 0.02em !important;
+  line-height: 0.96;
+  text-transform: uppercase !important;
+}
+.deck-theme-manifest.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-manifest .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: block;
+  width: 72px;
+  height: 7px;
+  margin: 0 auto 0.32em;
+  background: var(--mf-hazard);
+}
+.deck-theme-manifest .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before,
+.deck-theme-manifest.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before { margin-left: 0; }
+
+/* Still for those who'd rather, on paper, and in reveal's overview: the
+   one drawing, at rest, in the ::before */
+.deck-theme-manifest.reveal.overview .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--mf-scrim), var(--mf-map-still) 0 0 / 960px 540px no-repeat, #0b1b2b; }
+.deck-theme-manifest.reveal.overview .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--mf-port-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 620px 300px at 50% 36%, #132c44, rgba(11, 27, 43, 0) 72%), #0b1b2b; }
+.deck-theme-manifest.reveal.overview .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::after { content: none; }
+/* (reveal.js hides slides' ::before in its overview, with !important) */
+.deck-theme-manifest.reveal.overview .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before { display: block !important; }
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-manifest.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--mf-scrim), var(--mf-map-still) 0 0 / 960px 540px no-repeat, #0b1b2b; }
+  .deck-theme-manifest.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--mf-port-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 620px 300px at 50% 36%, #132c44, rgba(11, 27, 43, 0) 72%), #0b1b2b; }
+  .deck-theme-manifest.reveal .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::after { content: none; }
+  .deck-theme-manifest.reveal .slides section.px-slide [data-placeholder=title] :is(h1, h2),
+  .deck-theme-manifest.reveal .slides section.px-slide [data-placeholder=title] :is(h1, h2)::after,
+  .deck-theme-manifest.reveal .slides section.px-slide .px-footer-section::before { animation: none !important; }
+}
+
+/* Text on the night slides (the editor's text boxes set their own color,
+   so the rule reaches their divs too) */
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #dfe6ec !important; }
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #f4f1ea !important; }
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #b4c2cf !important; }
+.deck-theme-manifest.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a,
+.deck-theme-manifest .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a { color: #8dbaff !important; }
+
+/* Subtitles: muted */
+.deck-theme-manifest [data-placeholder=subtitle] :is(p, li) { color: var(--mf-muted) !important; }
+
+/* Body text: room between lines and items, bold words in ink */
+.deck-theme-manifest .px-text :is(p, li) { line-height: 1.34; }
+.deck-theme-manifest .px-text strong { color: var(--mf-ink); font-weight: 700; }
+
+/* A Heading 4: a cargo tag, a navy tag with its string hole */
+.deck-theme-manifest .px-text h4 {
+  width: fit-content;
+  box-sizing: border-box;
+  margin: 0 0 0.6em !important;
+  padding: 0.3em 0.8em 0.28em 1.6em;
+  background: radial-gradient(circle at 0.8em 50%, var(--mf-bg) 0 0.2em, transparent 0.23em), var(--mf-ink);
+  clip-path: polygon(0.55em 0, 100% 0, 100% 100%, 0.55em 100%, 0 50%);
+  color: var(--mf-on-ink) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 0.5em;
+  font-weight: 700 !important;
+  letter-spacing: 0.14em !important;
+  line-height: 1.35;
+  text-transform: uppercase !important;
+}
+.deck-theme-manifest .px-text h4[style*=center] { margin-inline: auto !important; }
+.deck-theme-manifest .px-text h4[style*=right] { margin-left: auto !important; }
+
+/* A Heading 6: a document's field label, after a short orange rule */
+.deck-theme-manifest .px-text h6 {
+  margin: 0.1em 0 0.4em !important;
+  color: var(--mf-muted) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 0.5em;
+  font-weight: 500 !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-manifest .px-text h6::before {
+  content: "";
+  display: inline-block;
+  width: 1.4em;
+  margin-right: 0.7em;
+  border-top: 0.18em solid var(--mf-orange);
+  vertical-align: 0.3em;
+}
+
+/* Bullets: containers, orange with their ribs; then open ones; then a dash */
+.deck-theme-manifest .px-text :is(ul, ol) { display: block; }
+.deck-theme-manifest .px-text ul { list-style: none; padding-left: 1.1em; }
+.deck-theme-manifest .px-text :is(ul, ol) > li { position: relative; }
+.deck-theme-manifest .px-text :is(ul, ol) > li + li { margin-top: 0.4em; }
+.deck-theme-manifest .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.04em;
+  top: 0.49em;
+  width: 0.62em;
+  height: 0.36em;
+  box-sizing: border-box;
+  border-radius: 0.03em;
+  background: repeating-linear-gradient(90deg, transparent 0 0.1em, rgba(0, 0, 0, 0.2) 0.1em 0.13em) 0.03em 0 / calc(100% - 0.06em) 100% no-repeat, var(--mf-orange);
+}
+.deck-theme-manifest .px-text ul ul > li::before {
+  background: repeating-linear-gradient(90deg, transparent 0 0.1em, var(--mf-pale) 0.1em 0.125em) 0.03em 0 / calc(100% - 0.06em) 100% no-repeat;
+  border: 0.055em solid var(--mf-ink);
+}
+.deck-theme-manifest .px-text ul ul ul > li::before { top: 0.64em; height: 0; border: 0; border-top: 0.07em solid var(--mf-muted); background: none; width: 0.5em; }
+
+/* Numbered lists: a shipment's milestones, numbered in navy circles and
+   joined by the route */
+.deck-theme-manifest .px-text ol { list-style: none; padding-left: 1.6em; }
+.deck-theme-manifest .px-text ol > li { list-style: none; }
+.deck-theme-manifest .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -2.7em;
+  top: 0.16em;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 50%;
+  background: var(--mf-ink);
+  color: var(--mf-on-ink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6em;
+  font-weight: 700;
+  line-height: 1.9em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-manifest .px-text ol > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: -1.06em;
+  top: 1.34em;
+  bottom: -0.46em;
+  border-left: 0.06em dashed var(--mf-pale);
+}
+
+/* Links: container blue */
+.deck-theme-manifest .px-text a { color: var(--mf-blue) !important; text-decoration-thickness: 0.05em; text-underline-offset: 0.16em; }
+
+/* Inline code: a tracking number on a gray label */
+.deck-theme-manifest .px-text :not(pre) > code {
+  padding: 0.05em 0.36em 0.08em;
+  border-radius: 2px;
+  background: var(--mf-wash) !important;
+  color: var(--mf-ink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.8em;
+  letter-spacing: 0.02em;
+}
+.deck-theme-manifest.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-manifest .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; color: var(--px-text); outline: 0.06em solid var(--px-text); }
+
+/* Quotes: an advisory, a card with hazard stripes down its left; bold
+   first words are its label */
+.deck-theme-manifest .px-text blockquote {
+  margin: 0.5em 0 0.6em !important;
+  padding: 0.6em 0.9em 0.65em 1.35em !important;
+  border: 1px solid var(--mf-rule) !important;
+  border-radius: 0 !important;
+  background: var(--mf-hazard) 0 0 / 0.42em 100% no-repeat, var(--mf-card) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  color: var(--mf-ink);
+  font-style: normal;
+}
+.deck-theme-manifest .px-text blockquote :is(p, li) { color: var(--mf-ink) !important; line-height: 1.38; }
+.deck-theme-manifest .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.3em;
+  color: var(--mf-orange-text);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.56em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-manifest .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-manifest.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-manifest .px-slide[data-own-background] .px-text blockquote { background: transparent !important; border-left: 0.3em solid var(--px-text) !important; }
+
+/* Code: a navy terminal under an orange rule, in the theme's inks
+   whichever code theme the deck uses */
+.deck-theme-manifest :is(pre, pre.hljs) {
+  background: #0e2233 !important;
+  color: #e3e9ee;
+  border: 0;
+  border-top: 3px solid #e8590c;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-manifest :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-manifest pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-manifest .px-text pre { padding: 0.6em 0.8em !important; font-size: 0.6em; line-height: 1.55; }
+.deck-theme-manifest pre [class*=hljs-] { color: #e3e9ee; font-style: normal; font-weight: 400; }
+.deck-theme-manifest pre :is(.hljs-comment, .hljs-quote) { color: #8395a6; font-style: italic; }
+.deck-theme-manifest pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #ff8a45; }
+.deck-theme-manifest pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #5fd0c2; }
+.deck-theme-manifest pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #ffc145; }
+.deck-theme-manifest pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-title.function_) { color: #ffffff; font-weight: 600; }
+.deck-theme-manifest pre :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-property) { color: #9cc3ff; }
+.deck-theme-manifest pre :is(.hljs-meta, .hljs-deletion) { color: #8395a6; }
+
+/* Tables: the manifest. A navy header row in mono capitals over an orange
+   rule, rows ruled, codes in the first column. */
+.deck-theme-manifest table { border: 0 !important; border-collapse: collapse; background: transparent; }
+.deck-theme-manifest table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--mf-rule) !important;
+  background: transparent !important;
+  color: var(--mf-text) !important;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-manifest table tr:first-child :is(td, th) {
+  border-bottom: 3px solid var(--mf-orange) !important;
+  background: var(--mf-ink) !important;
+  color: var(--mf-on-ink) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.deck-theme-manifest table tr:not(:first-child) :is(td, th):first-child { color: var(--mf-ink) !important; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.82em; font-weight: 600; letter-spacing: -0.01em; }
+.deck-theme-manifest table tr:nth-child(odd):not(:first-child) :is(td, th) { background: rgba(14, 34, 51, 0.035) !important; }
+.deck-theme-manifest.px-slide[data-own-background] table :is(td, th),
+.deck-theme-manifest .px-slide[data-own-background] table :is(td, th) { background: transparent !important; color: var(--px-text) !important; border-color: var(--px-text) !important; }
+.deck-theme-manifest.px-slide[data-own-background] table tr:first-child :is(td, th),
+.deck-theme-manifest .px-slide[data-own-background] table tr:first-child :is(td, th) { color: var(--px-text) !important; }
+
+/* The Big Number: a departure board's split-flap tile, amber on navy, the
+   flap's split across its middle; its unit (inline code or italic words
+   in it) a white label. Presented, it flips into place as the slide
+   opens. */
+.deck-theme-manifest.px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-manifest .px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1 {
+  width: fit-content;
+  box-sizing: border-box;
+  margin-inline: auto !important;
+  padding: 0.04em 0.2em 0.02em;
+  border-radius: 0.06em;
+  background:
+    linear-gradient(transparent calc(50% - 0.012em), rgba(0, 0, 0, 0.6) calc(50% - 0.012em) calc(50% + 0.012em), transparent calc(50% + 0.012em)),
+    linear-gradient(#17293b, #0f1f2f 50%, #132638 50%, #0c1a28);
+  box-shadow: 0 0.05em 0.1em rgba(14, 34, 51, 0.22);
+  color: #ffc145 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.04;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-manifest.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=left],
+.deck-theme-manifest .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=left] { margin-left: 0 !important; }
+.deck-theme-manifest.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right],
+.deck-theme-manifest .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] { margin-right: 0 !important; }
+.deck-theme-manifest.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-manifest .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  margin-left: 0.12em;
+  padding: 0 !important;
+  background: none !important;
+  color: #f4f1ea;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 0.3em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.deck-theme-manifest.px-slide[data-layout=big-number][data-own-background] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-manifest .px-slide[data-layout=big-number][data-own-background] [data-placeholder=title] h1 :is(code, em) { color: inherit; outline: none; }
+.deck-theme-manifest.reveal:not(.overview) .slides section.px-slide.present[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1 {
+  transform-origin: 50% 50%;
+  animation: manifest-flap 0.95s cubic-bezier(0.25, 0.8, 0.3, 1) 0.2s both;
+}
+@keyframes manifest-flap {
+  0% { transform: perspective(900px) rotateX(-90deg); filter: brightness(0.55); }
+  55% { transform: perspective(900px) rotateX(12deg); filter: brightness(1); }
+  78% { transform: perspective(900px) rotateX(-5deg); }
+  100% { transform: perspective(900px) rotateX(0deg); }
+}
+
+/* The footer: mono capitals, the page number a leg of the route. With its
+   sections in sequence it is the tracking line: legs done in ink, the
+   current one orange (presented, pinging three times as the slide opens),
+   those to come dashed and pale. (The class and the slide both named, to outweigh the
+   presented deck's footer rules.) */
+.deck-theme-manifest.px-slide .px-footer,
+.deck-theme-manifest .px-slide .px-footer { padding-inline: 22px !important; color: var(--mf-muted) !important; }
+.deck-theme-manifest.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-manifest .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--mf-muted) !important;
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-manifest.px-slide .px-footer .px-footer-page:not(:empty)::before,
+.deck-theme-manifest .px-slide .px-footer .px-footer-page:not(:empty)::before { content: "Leg "; color: var(--mf-muted); }
+.deck-theme-manifest.px-slide .px-footer .px-footer-page,
+.deck-theme-manifest .px-slide .px-footer .px-footer-page { color: var(--mf-ink) !important; font-weight: 700 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-sections,
+.deck-theme-manifest .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 0; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section,
+.deck-theme-manifest .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; color: var(--mf-pale) !important; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section::before,
+.deck-theme-manifest .px-slide .px-footer .px-footer-section::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid currentColor; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section + .px-footer-section,
+.deck-theme-manifest .px-slide .px-footer .px-footer-section + .px-footer-section { padding-left: 30px; background: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px) 6px 50% / 18px 1px no-repeat; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-manifest .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--mf-ink) !important; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-manifest .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--mf-orange-text) !important; font-weight: 700 !important; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current])::before,
+.deck-theme-manifest .px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current])::before { background: currentColor; }
+.deck-theme-manifest.px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current]) + .px-footer-section:is([data-state=past], [data-state=current]),
+.deck-theme-manifest .px-slide .px-footer .px-footer-section:is([data-state=past], [data-state=current]) + .px-footer-section:is([data-state=past], [data-state=current]) { background: linear-gradient(currentColor, currentColor) 6px 50% / 18px 1.5px no-repeat; }
+.deck-theme-manifest.reveal .slides section.px-slide.present .px-footer .px-footer-section[data-state=current]::before { animation: manifest-ping 1.6s ease-out 0.3s 3; }
+@keyframes manifest-ping {
+  0% { box-shadow: 0 0 0 0 rgba(232, 89, 12, 0.6); }
+  75%, 100% { box-shadow: 0 0 0 7px rgba(232, 89, 12, 0); }
+}
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   a train of containers under the title, the last one orange */
+.deck-theme-manifest .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 41px;
+  height: 7px;
+  margin: 5px auto 0;
+  background: linear-gradient(90deg, #0e2233 0 9px, transparent 9px 11px, #0e2233 11px 20px, transparent 20px 22px, #0e2233 22px 31px, transparent 31px 33px, #e8590c 33px);
+}

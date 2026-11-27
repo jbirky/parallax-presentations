@@ -227,14 +227,15 @@ describe('what sets Parallax apart', () => {
   const selected = () => tabs().find(t => t.getAttribute('aria-selected') === 'true')?.textContent
   const showcaseDecks = () => [...el.querySelectorAll('.lp-feature iframe')].map(f => f.getAttribute('src'))
 
-  it('opens a feature from the hero, with only its own deck', async () => {
+  it('opens a feature, with only its own deck', async () => {
     track.mockClear()
     await mount()
+    // The hero has no feature chips; the showcase's tabs open each one
+    expect(el.querySelector('.lp-hero .lp-chips')).toBeNull()
     expect(selected()).toMatch(/^Live data/)
     expect(showcaseDecks()).toEqual(['/examples/exoplanets/deck'])
-    const chip = [...el.querySelectorAll('.lp-chips button')].find(b => b.textContent === 'BibTeX citations')
-    await act(async () => chip.click())
-    expect(track).toHaveBeenLastCalledWith('feature', { feature: 'cite', from: 'hero' })
+    await act(async () => tabs().find(t => t.textContent.startsWith('BibTeX citations')).click())
+    expect(track).toHaveBeenLastCalledWith('feature', { feature: 'cite' })
     expect(selected()).toMatch(/^BibTeX citations/)
     expect(showcaseDecks()).toEqual(['/examples/showcase-cite/deck'])
     expect(el.querySelector('.lp-feature').textContent).toContain('@article{rubin1970')
@@ -298,6 +299,8 @@ describe('what sets Parallax apart', () => {
 })
 
 describe('Practice Talk to try', () => {
+  // It's the Rehearse step's demo, under the steps of a talk
+  const mountRehearse = async () => { await mount(); await act(async () => el.querySelector('#lp-step-rehearse').click()) }
   const hud = () => el.querySelector('.lp-pr-hud')?.textContent
   const click = text => act(async () => [...el.querySelectorAll('.lp-practice button')].find(b => b.textContent.includes(text)).click())
   const advance = ms => act(async () => { vi.advanceTimersByTime(ms) })
@@ -305,7 +308,7 @@ describe('Practice Talk to try', () => {
 
   it('times each slide against its plan, and plans the next run from this one', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance'] })
-    await mount()
+    await mountRehearse()
     await click('Start practicing')
     expect(hud()).toContain('Slide 1')
     expect(hud()).toContain('of 0:30')
@@ -338,12 +341,40 @@ describe('Practice Talk to try', () => {
 
   it('pauses', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance'] })
-    await mount()
+    await mountRehearse()
     await click('Start practicing')
     await advance(500)
     await click('Pause')
     const at = hud()
     await advance(3000)
     expect(hud()).toBe(at.replace('Pause', 'Resume'))
+  })
+})
+
+describe('the steps of a talk', () => {
+  const tabs = () => [...el.querySelectorAll('.lp-steps [role="tab"]')]
+
+  it('shows a demo for the step picked, and #practice opens Rehearse', async () => {
+    await mount()
+    expect(el.querySelector('#workflow').textContent).not.toContain('Parallax follows a talk the whole way')
+    expect(tabs().map(t => t.querySelector('b').textContent)).toEqual(['Plan', 'Build', 'Rehearse', 'Present', 'Share'])
+    expect(tabs()[0].getAttribute('aria-selected')).toBe('true')
+    expect(el.querySelector('#lp-step-panel h3').textContent).toBe('Plan the talk before you build it')
+    for (const [i, title] of [[1, 'A visual editor that speaks LaTeX'], [3, 'Present with your notes, a pen, and a link for the room'], [4, 'Share it as a link, a file, or a site'], [2, 'Time every slide against your plan']]) {
+      await act(async () => tabs()[i].click())
+      expect(el.querySelector('#lp-step-panel h3').textContent).toBe(title)
+      expect(tabs()[i].getAttribute('aria-selected')).toBe('true')
+    }
+    expect(track).toHaveBeenCalledWith('workflow-step', { step: 'share' })
+    // Arrow keys move between the steps
+    await act(async () => tabs()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(tabs()[3].getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('opens on Practice Talk when the address names it', async () => {
+    window.location.hash = '#practice'
+    await mount()
+    expect(el.querySelector('#lp-step-rehearse').getAttribute('aria-selected')).toBe('true')
+    expect(el.querySelector('#practice')).not.toBeNull()
   })
 })
