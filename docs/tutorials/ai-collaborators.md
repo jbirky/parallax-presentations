@@ -37,6 +37,8 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 | `get_slide` | Reads one slide in full: every element with its position and size, its text, what clicking on it does, and warnings for anything past the slide's edges or overlapping |
 | `get_theme` | Reads the theme: its colors, fonts and text styles, the deck's stylesheet with any rules left out, and what a stylesheet can target |
 | `render_slide` | Sees a slide as a picture, as it looks when presenting with all its steps shown, to check how its changes came out |
+| `render_deck` | Sees every slide at once, small and numbered, to review a whole deck in one look |
+| `check_deck` | Lists problems on every slide without drawing them: text past the edges or overlapping, slides with no title or too many words, small text, images without alt text, missing citations, speaker notes and minutes |
 | `show_deck` | Shows you the presentation in the chat, live, in apps that can (below); elsewhere, gives you a link to open it in the editor |
 | `list_datasets` | Reads the datasets linked to the presentation (**Tools › Datasets…**): their columns, sizes and first rows |
 | `add_slide`, `update_slide` | Adds a slide in a layout, or changes one: its layout, title, subtitle and body text, speaker notes, minutes and background |

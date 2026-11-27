@@ -6,6 +6,7 @@
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const { DB, startCloudServer, until } = require('./helpers')
+const thumbnails = require('../services/slide-thumbnail')
 
 const skip = DB ? false : 'TEST_DATABASE_URL is not set'
 let t, call, createDeck, pool
@@ -140,7 +141,7 @@ describe('AI access tokens', { skip }, () => {
     const tools = (await rpc(secret, 'tools/list')).body.result.tools
     const names = tools.map(x => x.name)
     assert.deepEqual(names.slice(0, 4), ['list_decks', 'create_deck', 'list_templates', 'list_themes'])
-    for (const name of ['get_deck', 'get_slide', 'render_slide', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets']) assert.ok(names.includes(name), name)
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'render_deck', 'check_deck', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets']) assert.ok(names.includes(name), name)
     assert.ok(!names.includes('deck_preview'))
     const byName = Object.fromEntries(tools.map(x => [x.name, x]))
     assert.deepEqual(byName.get_slide.inputSchema.required, ['deck', 'slide'])
@@ -250,6 +251,36 @@ describe('AI access tokens', { skip }, () => {
     assert.match(themes, /- black: Black, dark \(a reveal.js theme/)
     const templates = await callTool(secret, 'list_templates')
     assert.equal(templates.body.result.isError, undefined, toolText(templates))
+  })
+
+  it('checks a whole deck, and draws it in one picture', async () => {
+    const me = t.user('reviewer')
+    const id = await createDeck(me, 'Filters talk', { slides: [...SLIDES, { id: 'slide-two', layout: 'title-content', elements: [] }], talkMinutes: 10 })
+    const { secret } = (await makeToken(me)).body
+    const checked = toolText(await callTool(secret, 'check_deck', { deck: id }))
+    assert.match(checked, /problems? found on 2 slides/)
+    assert.match(checked, /The slides' minutes add up to 1, against a 10-minute talk/)
+
+    const real = { renderSheet: thumbnails.renderSheet, chromiumPath: thumbnails.chromiumPath }
+    const drawn = []
+    thumbnails.chromiumPath = () => '/usr/bin/chromium'
+    thumbnails.renderSheet = async opts => { drawn.push(opts); return Buffer.from('a sheet') }
+    try {
+      const res = await callTool(secret, 'render_deck', { deck: id })
+      const [words, picture] = res.body.result.content
+      assert.equal(words.text, 'Slides 1–2 of 2, as presented, with all their steps shown, numbered as get_deck numbers them.')
+      assert.equal(Buffer.from(picture.data, 'base64').toString(), 'a sheet')
+      assert.deepEqual(drawn[0].slides, [{ id: 'slide-title', label: '1 · RC filters' }, { id: 'slide-two', label: '2 · (no title)' }])
+      assert.match(drawn[0].html, /<section data-slide-id="slide-two"/)
+      await callTool(secret, 'render_deck', { deck: id })
+      assert.equal(drawn.length, 1, 'an unchanged deck is not drawn again')
+      assert.deepEqual((await callTool(secret, 'render_deck', { deck: id, from: 2 })).body.result.content[0].text.slice(0, 15), 'Slides 2–2 of 2')
+      assert.match(toolText(await callTool(secret, 'render_deck', { deck: id, from: 3 })), /from is at most 2/)
+      thumbnails.chromiumPath = () => null
+      assert.match(toolText(await callTool(secret, 'render_deck', { deck: id, to: 1 })), /can't draw slides\. Use check_deck and get_slide instead/)
+    } finally {
+      Object.assign(thumbnails, real)
+    }
   })
 
   it('reads the element guides without a deck', async () => {

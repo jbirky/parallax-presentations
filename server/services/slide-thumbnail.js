@@ -85,6 +85,15 @@ function renderSlide({ html, origin, slideId, width = WIDTH, height = HEIGHT, fe
   return queued(() => drawSlide({ html, origin, slideId, width, height, fetchOutside }))
 }
 
+// One picture of several slides of a deck page, small and numbered, for
+// checking a whole deck at a glance (server/mcp's render_deck): html and
+// origin as renderSlide takes them; slides, [{ id, label }] in order. Each
+// slide is drawn with all its steps shown, then the pictures are laid out in
+// a grid. Throws a ThumbnailError.
+function renderSheet({ html, origin, slides, width = WIDTH, height = HEIGHT, fetchOutside = safeFetch }) {
+  return queued(() => drawSheet({ html, origin, slides, width, height, fetchOutside }))
+}
+
 async function launch(extraArgs = []) {
   const executablePath = chromiumPath()
   if (!executablePath) throw new ThumbnailError('This server has no Chromium to draw slides with')
@@ -226,4 +235,61 @@ async function drawSlide({ html, origin, slideId, width, height, fetchOutside })
   }
 }
 
-module.exports = { renderFirstSlide, renderAllSlides, renderSlide, chromiumPath, queueLength, ThumbnailError, LOCAL_FILES, NO_NETWORK }
+// How wide a sheet of slides is, in pixels: about as wide as an AI model
+// looks at a picture without shrinking it
+const SHEET_WIDTH = 1560
+const SHEET_GAP = 12
+const sheetColumns = n => (n <= 4 ? 2 : n <= 9 ? 3 : n <= 16 ? 4 : 5)
+
+async function drawSheet({ html, origin, slides, width, height, fetchOutside }) {
+  const pageUrl = `${origin}/__slide/${crypto.randomUUID()}`
+  const columns = sheetColumns(slides.length)
+  const tileWidth = Math.floor((SHEET_WIDTH - SHEET_GAP * (columns + 1)) / columns)
+  const tileHeight = Math.round(tileWidth * height / width)
+  let browser = null
+  try {
+    browser = await launch(NO_NETWORK)
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: tileWidth / width, serviceWorkers: 'block' })
+    await context.route('**/*', route => answer(route, { pageUrl, html, origin, fetchOutside }))
+    const page = await context.newPage()
+    await page.goto(pageUrl, { waitUntil: 'load', timeout: 30000 })
+    await page.waitForFunction(() => window.Reveal && window.Reveal.isReady(), null, { timeout: 20000 })
+    await page.addStyleTag({ content: HIDE_CONTROLS })
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
+    await page.evaluate(() => document.fonts && document.fonts.ready).catch(() => {})
+    const tiles = []
+    for (const { id, label } of slides) {
+      const found = await page.evaluate(slideId => {
+        const section = [...document.querySelectorAll('.reveal .slides section[data-slide-id]')].find(s => s.getAttribute('data-slide-id') === slideId)
+        if (!section) return false
+        const { h, v } = window.Reveal.getIndices(section)
+        window.Reveal.slide(h, v)
+        return true
+      }, String(id))
+      if (!found) { tiles.push({ label, picture: null }); continue }
+      await page.waitForTimeout(500)
+      await stepToEnd(page)
+      await page.waitForTimeout(700)
+      tiles.push({ label, picture: (await page.screenshot({ type: 'jpeg', quality: 78 })).toString('base64') })
+    }
+    const escape = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    const sheet = await browser.newPage({ viewport: { width: SHEET_WIDTH, height: 200 }, deviceScaleFactor: 1 })
+    await sheet.setContent(`<!doctype html><html><head><style>
+      body { margin: 0; padding: ${SHEET_GAP}px; background: #e7e7ea; font: 600 14px/1.2 Arial, sans-serif; color: #1f1f22; }
+      .grid { display: grid; grid-template-columns: repeat(${columns}, ${tileWidth}px); gap: ${SHEET_GAP}px; }
+      figure { margin: 0; }
+      img, .missing { display: block; width: ${tileWidth}px; height: ${tileHeight}px; box-shadow: 0 0 0 1px #b9b9c0; background: #fff; }
+      .missing { display: flex; align-items: center; justify-content: center; color: #8a8a92; font-weight: 400; }
+      figcaption { padding: 5px 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    </style></head><body><div class="grid">${tiles.map(t => `<figure>${t.picture
+      ? `<img src="data:image/jpeg;base64,${t.picture}">`
+      : '<div class="missing">Not in the presented deck</div>'}<figcaption>${escape(t.label)}</figcaption></figure>`).join('')}</div></body></html>`)
+    return await sheet.screenshot({ type: 'jpeg', quality: 82, fullPage: true })
+  } catch (err) {
+    throw err instanceof ThumbnailError ? err : new ThumbnailError(`The slides couldn’t be drawn: ${err.message.split('\n')[0]}`)
+  } finally {
+    await browser?.close()
+  }
+}
+
+module.exports = { renderFirstSlide, renderAllSlides, renderSlide, renderSheet, chromiumPath, queueLength, ThumbnailError, LOCAL_FILES, NO_NETWORK }

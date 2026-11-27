@@ -36,6 +36,7 @@ const { linkPageHtml, linkPageMarkdown, PAGE_HEADERS } = require('./link-page')
 const thumbnails = require('../services/slide-thumbnail')
 const { datasetList } = require('./datasets')
 const guides = require('./guides')
+const review = require('./review')
 const viewer = require('./viewer')
 const { READ_ONLY, WRITE, DELETE, text, failure, guarded, serve, wantsStream } = require('./common')
 const { createAccountRoute } = require('./account')
@@ -69,6 +70,15 @@ const SLIDE_INPUT = ({
     },
   },
   required: ['slide'],
+  additionalProperties: false,
+})
+
+const RANGE_INPUT = ({
+  type: 'object',
+  properties: {
+    from: { type: 'integer', minimum: 1, description: 'The first slide to show, by number (1 when left out)' },
+    to: { type: 'integer', minimum: 1, description: 'The last slide to show, by number; at most 30 slides a picture' },
+  },
   additionalProperties: false,
 })
 
@@ -158,6 +168,9 @@ const EDITS_INPUT = ({
 // How many slides a link may have drawn in an hour (a slide drawn already,
 // and unchanged since, doesn't count), and how many renders may wait
 const RENDERS_PER_HOUR = 30
+// render_deck: slides a picture, and pictures a link may have in an hour
+const SHEET_SLIDES = 30
+const SHEETS_PER_HOUR = 6
 const MAX_RENDER_QUEUE = 4
 const KEEP_RENDERS = 40
 
@@ -176,7 +189,7 @@ const noSlide = (deck, slide) => {
 // (createMcpRoute); local is this server's address for its own renderer, and
 // site the site's public origin. With viewer: false (the account server,
 // which no MCP App host reaches yet), show_deck gives the editor's link.
-function deckTools({ loadDeck, write, touch, render, datasets, preview }, { local, site, viewer: live = true } = {}) {
+function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview }, { local, site, viewer: live = true } = {}) {
   const read = (name, title, description, input, run, more = {}) => ({ name, title, description, input, annotations: READ_ONLY, run, ...more })
   return [
     read('get_deck', 'Read the presentation outline',
@@ -208,6 +221,17 @@ function deckTools({ loadDeck, write, touch, render, datasets, preview }, { loca
     read('render_slide', 'See a slide',
       'A picture of one slide as it looks when presented, with all its steps shown, for checking layout after changing it: text that overflows or wraps badly, overlaps, and how diagrams and graphs came out. It takes several seconds, so check the slides you changed rather than every slide.',
       SLIDE_INPUT, (link, { slide }) => render(link, slide, local)),
+    read('render_deck', 'See the whole presentation',
+      `A picture of every slide at once, small and numbered, as presented with all their steps shown: for reviewing a deck's flow, consistency and density in one look, before checking single slides closely with render_slide. Up to ${SHEET_SLIDES} slides a picture; give from and to for a longer deck. It takes a few seconds a slide.`,
+      RANGE_INPUT, (link, { from, to } = {}) => renderSheet(link, { from, to }, local)),
+    read('check_deck', 'Check the presentation',
+      "Problems on every slide, found without drawing it: elements past the slide's edges, text boxes that overlap, slides with no title, too many words, text set too small, images without alt text, citations the bibliography doesn't have, content slides without speaker notes, and the slides' minutes against the talk's length. Quick: use it first when reviewing, then look with render_deck.",
+      NO_INPUT, async link => {
+        const deck = await loadDeck(link)
+        if (!deck) return failure(goneOf(link))
+        touch(link, {})
+        return text(review.checkDeck(deck))
+      }),
     live
       ? read('show_deck', 'Show the presentation',
         "Show the presentation to the person, live: in apps that show MCP Apps (claude.ai and ChatGPT among them), a viewer in the chat that follows your changes as you make them and tells you which slide they're looking at. Elsewhere, the person gets a link to open it in the Parallax editor. Returns the outline, as get_deck does. Call it once when you start changing the presentation, or with a slide to show them one.",
@@ -488,6 +512,53 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     return picture(image)
   }
 
+  // render_deck's pictures lately, by the deck as it was and the slides, and
+  // when each link last had one drawn
+  const sheets = new Map()
+  const sheeted = new Map()
+
+  async function renderSheet(link, { from, to } = {}, local) {
+    const deck = await loadDeck(link)
+    if (!deck) return failure(goneOf(link))
+    const shown = format.shownSlides(deck)
+    if (!shown.length) return failure('The presentation has no slides yet.')
+    const first = Math.max(1, from || 1)
+    if (first > shown.length) return failure(`The presentation has ${shown.length} slide${shown.length === 1 ? '' : 's'}: from is at most ${shown.length}.`)
+    const last = Math.min(shown.length, to || shown.length, first + SHEET_SLIDES - 1)
+    if (last < first) return failure('to comes before from.')
+    touch(link, {})
+    const chosen = shown.slice(first - 1, last)
+    const sw = Number(deck.slideWidth) || 960, sh = Number(deck.slideHeight) || 540
+    const width = 960, height = Math.min(1440, Math.max(270, Math.round(960 * sh / sw)))
+    const more = last < shown.length ? ` Slides ${last + 1}–${shown.length} aren't in it: call again with from ${last + 1}.` : ''
+    const says = `Slides ${first}–${last} of ${shown.length}, as presented, with all their steps shown, numbered as get_deck numbers them.${more}`
+    const picture = image => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' }] })
+    const key = `${viewer.deckVersion(deck)}|${first}-${last}`
+    if (sheets.has(key)) return picture(sheets.get(key))
+    if (!deckPage || !renderer.chromiumPath()) return failure('This Parallax server can\'t draw slides. Use check_deck and get_slide instead.')
+    const hour = Date.now() - 60 * 60 * 1000
+    const times = (sheeted.get(link.id) || []).filter(t => t > hour)
+    if (times.length >= SHEETS_PER_HOUR) {
+      const wait = Math.ceil((times[0] - hour) / 60000)
+      return failure(`That's ${SHEETS_PER_HOUR} pictures of the whole deck in the last hour, the most a link can have. Try again in ${wait} minute${wait === 1 ? '' : 's'}, or draw single slides with render_slide.`)
+    }
+    if (renderer.queueLength() >= MAX_RENDER_QUEUE) return failure('The server is busy drawing other slides. Try again in a minute.')
+    sheeted.set(link.id, [...times, Date.now()])
+    let image
+    try {
+      image = await renderer.renderSheet({
+        html: await deckPage(deck, link.ownerId), origin: local, width, height,
+        slides: chosen.map(({ slide, number }) => ({ id: slide.id, label: `${number} · ${format.titleOf(slide) || '(no title)'}` })),
+      })
+    } catch (err) {
+      if (err instanceof renderer.ThumbnailError) return failure(`${err.message.replace(/\.$/, '')}. Use check_deck and get_slide instead.`)
+      throw err
+    }
+    sheets.set(key, image)
+    if (sheets.size > 8) sheets.delete(sheets.keys().next().value)
+    return picture(image)
+  }
+
   async function datasets(link) {
     if (!(await loadDeck(link))) return failure(goneOf(link))
     return text(await datasetList(storage, link.deckId, { ownerId: link.ownerId, localDir }))
@@ -542,7 +613,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     }
   }
 
-  const tools = { loadDeck, write, touch, render, datasets, preview }
+  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview }
   const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })
