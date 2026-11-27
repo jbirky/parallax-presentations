@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client'
 
 vi.mock('../../utils/analytics', () => ({ track: vi.fn() }))
 import { PlanDemo, BuildDemo, PresentDemo, ShareDemo } from './StepDemos'
+import { MiniSlide } from './TalkSlide'
+import { TALK } from './PracticeDemo'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -96,11 +98,11 @@ describe('Present', () => {
     await act(async () => { vi.advanceTimersByTime(800) })
     expect(ink().querySelectorAll('polyline.laser')).toHaveLength(0)
 
-    expect(el.querySelector('.lp-sd-notes').textContent).toContain('what holds a galaxy together')
+    expect(el.querySelector('.lp-sd-notes').textContent).toContain('outer stars should slow down')
     await click(button('Next slide →'))
     await click(button('Next slide →'))
     expect(ink().querySelectorAll('polyline')).toHaveLength(0)
-    expect(el.querySelector('.lp-sd-notes').textContent).toContain('halo slider')
+    expect(el.querySelector('.lp-sd-notes').textContent).toContain('Planck’s number')
     // The phone joined on slide 1; it can go on to slide 3, which has been shown, and no further
     const phone = () => el.querySelector('.lp-sd-phone-nav span').textContent
     expect(phone()).toBe('1 / 3 shown')
@@ -135,5 +137,24 @@ describe('Share', () => {
     await click(button('Push to GitHub'))
     expect(el.querySelector('.lp-sd-commits').textContent).toContain('Tighten the ending')
     expect(el.querySelector('.lp-sd-commits .lp-sd-url').textContent).toBe('you.github.io/talks/dark_matter_in_ten_minutes/presentation.html')
+  })
+})
+
+describe('the sample talk’s slides', () => {
+  it('opens on the hero deck’s first slide, and draws the rest in the Parallax theme', async () => {
+    await mount(<>{TALK.map(s => <MiniSlide key={s.title} slide={s} />)}</>)
+    const [hero, list, number] = el.querySelectorAll('.lp-mini')
+    expect(hero.className).toContain('hero')
+    expect(hero.querySelector('.lp-hs-field').textContent).toBe('Astronomy')
+    expect(hero.querySelector('h4').textContent).toBe('Why galaxies spin too fast')
+    expect(hero.textContent).toContain('Dark halo mass')
+    // The two curves, from the figure's formulas at the sliders' starting values
+    const curves = [...hero.querySelectorAll('svg svg path')].map(p => p.getAttribute('d'))
+    expect(curves).toHaveLength(2)
+    expect(curves.every(d => d.startsWith('M62.0 370.0') && d.split('L').length === 131)).toBe(true)
+    expect(hero.querySelectorAll('circle[r="6"]')).toHaveLength(10)
+    expect(list.querySelectorAll('li')).toHaveLength(3)
+    expect(number.className).toContain('number')
+    expect(number.querySelector('h4').textContent).toBe('84%')
   })
 })

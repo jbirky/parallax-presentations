@@ -1147,14 +1147,38 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-pr-stage { position: relative; aspect-ratio: 16 / 9; container-type: inline-size; background: #000; overflow: hidden; }
 .lp-pr-stage.done { aspect-ratio: auto; background: #111113; }
 .lp-pr-slide { position: absolute; inset: 0; }
-.lp-pr-slide img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.lp-mini { position: absolute; inset: 0; padding: 7cqw; display: grid; align-content: start; gap: 2.4cqw; background: #191919; color: #fff; font-family: Arial, Helvetica, sans-serif; }
-.lp-mini h4 { font-size: 5.4cqw; line-height: 1.1; }
-.lp-mini.title { align-content: center; background: radial-gradient(120% 90% at 20% 10%, #23234a, #0c0c18); }
-.lp-mini.title h4 { font-size: 7cqw; }
-.lp-mini.light { background: #fbfaf7; color: #1a1a1a; }
-.lp-mini p { font-size: 2.8cqw; color: #b9bcd8; }
-.lp-mini ul { padding-left: 4cqw; display: grid; gap: 1.6cqw; font-size: 3.4cqw; }
+/* The sample talk's slides (components/landing/TalkSlide.jsx), in the
+   Parallax theme (themes/parallax.css): paper, Archivo titles under the
+   mark's three bars, blue square bullets */
+.lp-mini { position: absolute; inset: 0; padding: 6.5cqw 7cqw; display: grid; align-content: start; gap: 2.6cqw; background: #fafaf7; color: #2e2e31; font-family: Inter, Arial, sans-serif; }
+.lp-mini h4 { font: 800 4.6cqw/1.04 Archivo, Arial, sans-serif; letter-spacing: -0.03em; color: #0c0c0d; }
+.lp-mini h4::before { content: ""; display: block; width: 3.33cqw; height: 1.04cqw; margin-bottom: 1.46cqw; background: linear-gradient(90deg, #ee2b2b 0 22%, #0c0c0d 22% 78%, #1e60ff 78%); }
+.lp-mini ul { list-style: none; padding-left: 3.2cqw; display: grid; gap: 1.6cqw; font-size: 2.9cqw; line-height: 1.35; }
+.lp-mini li { position: relative; }
+.lp-mini li::before { content: ""; position: absolute; left: -0.9em; top: 0.48em; width: 0.32em; height: 0.32em; background: #1e60ff; }
+.lp-mini.refs ul { padding-left: 0; font-size: 2.2cqw; }
+.lp-mini.refs li::before { content: none; }
+/* The Big Number: Archivo at its heaviest, in stereo, its unit in gray */
+.lp-mini.number { align-content: center; justify-items: center; gap: 1.8cqw; text-align: center; }
+.lp-mini.number h4 { font-size: 17cqw; line-height: 1; letter-spacing: -0.045em; text-shadow: -0.035em 0 #ee2b2b, 0.035em 0 #1e60ff; font-variant-numeric: lining-nums tabular-nums; }
+.lp-mini.number h4::before { content: none; }
+.lp-mini.number h4 em { margin-left: 0.1em; font-size: 0.4em; font-style: normal; font-weight: 700; letter-spacing: -0.01em; color: #66666a; text-shadow: none; }
+.lp-mini.number p { max-width: 70%; font-size: 3.2cqw; line-height: 1.3; }
+.lp-mini.number small { font-size: 1.6cqw; color: #66666a; }
+/* The hero deck's first slide (examples/decks.js hero()), at its sizes on
+   a 960-wide slide */
+.lp-mini.hero { display: block; padding: 0; }
+.lp-hs-text { position: absolute; left: 5cqw; top: 5.4cqw; width: 33cqw; }
+.lp-hs-field { display: flex; align-items: center; gap: 1.04cqw; font: 600 1.09cqw/1.3 Inter, Arial, sans-serif; letter-spacing: 0.177cqw; text-transform: uppercase; color: #0c0c0d; }
+.lp-hs-field::before { content: ""; flex: none; width: 2.71cqw; height: 0.83cqw; background: linear-gradient(90deg, #ee2b2b 0 23%, #0c0c0d 23% 77%, #1e60ff 77%); }
+.lp-mini.hero h4 { margin-top: 1.77cqw; font-size: 3.6cqw; line-height: 1.02; letter-spacing: -0.12cqw; }
+.lp-mini.hero h4::before { content: none; }
+.lp-hs-lede { margin-top: 1.77cqw; font-size: 1.35cqw; line-height: 1.45; color: #3d3d40; }
+.lp-hs-controls { position: absolute; left: 5cqw; bottom: 5cqw; width: 33cqw; display: grid; gap: 1.77cqw; }
+.lp-hs-controls span { display: grid; gap: 0.7cqw; font: 600 1.15cqw/1.2 Inter, Arial, sans-serif; color: #0c0c0d; }
+.lp-hs-controls b { position: relative; height: 0.42cqw; border-radius: 1cqw; background: linear-gradient(90deg, #1e60ff var(--v), #d9d9d3 var(--v)); }
+.lp-hs-controls b::after { content: ""; position: absolute; top: 50%; left: var(--v); width: 1.5cqw; height: 1.5cqw; border-radius: 50%; background: #1e60ff; transform: translate(-50%, -50%); }
+.lp-hs-chart { position: absolute; left: 40cqw; top: 3.96cqw; width: 56cqw; height: 48.85cqw; overflow: visible; font-family: Inter, Arial, sans-serif; }
 .lp-pr-hud { position: absolute; top: 2.2cqw; right: 2.2cqw; display: flex; align-items: center; gap: 12px; padding: 8px 10px; background: rgba(12, 12, 13, 0.9); border: 1px solid rgba(250, 250, 247, 0.16); color: #fafaf7; font-size: 12px; line-height: 1.3; backdrop-filter: blur(6px); }
 .lp-pr-col { display: grid; gap: 4px; min-width: 92px; }
 .lp-pr-line { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
@@ -1217,8 +1241,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-sd-grid.build, .lp-sd-grid.present { grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr); }
 .lp-sd-grid.share { grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1.6fr); }
 @media (max-width: 860px) { .lp-sd-grid.plan, .lp-sd-grid.build, .lp-sd-grid.present, .lp-sd-grid.share { grid-template-columns: minmax(0, 1fr); } }
-.lp-sd-thumb { position: relative; aspect-ratio: 16 / 9; container-type: inline-size; overflow: hidden; background: #191919; }
-.lp-sd-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lp-sd-thumb { position: relative; aspect-ratio: 16 / 9; container-type: inline-size; overflow: hidden; background: #fafaf7; }
 .lp-sd-small { font-size: 12.5px; line-height: 1.5; color: var(--lp-faint); }
 .lp-sd-url { display: block; font: 12px/1.4 var(--lp-mono); color: var(--lp-link); overflow-wrap: anywhere; }
 .lp-sd-pen > button, .lp-sd-formats button { padding: 6px 10px; font: 600 12.5px var(--lp-sans); color: var(--lp-text); background: transparent; border: 1px solid var(--lp-line); cursor: pointer; }
@@ -1256,13 +1279,13 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 /* Build: a slide to arrange, its LaTeX and the bibliography */
 .lp-sd-slide { padding: 6cqw 6cqw 0; }
 .lp-sd-box { position: absolute; padding: 0.8cqw 1.2cqw; cursor: grab; touch-action: none; user-select: none; outline: 1px dashed transparent; }
-.lp-sd-box:hover { outline-color: rgba(255, 255, 255, 0.4); }
+.lp-sd-box:hover { outline-color: rgba(12, 12, 13, 0.35); }
 .lp-sd-box.on { outline: 1.5px solid var(--lp-blue); }
 .lp-sd-box:active { cursor: grabbing; }
-.lp-sd-box.text { width: 52%; font-size: 3.4cqw; line-height: 1.35; }
+.lp-sd-box.text { width: 52%; font-size: 2.9cqw; line-height: 1.35; }
 .lp-sd-box.eq { font-size: 3.4cqw; }
 .lp-sd-box.eq .katex-display { margin: 0; }
-.lp-sd-cite { margin-left: 0.25em; color: #8db0ff; }
+.lp-sd-cite { margin-left: 0.25em; color: #1a56e8; }
 .lp-sd-refs { display: grid; grid-template-columns: minmax(110px, 190px) minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--lp-line); background: var(--lp-raise); font-size: 12.5px; line-height: 1.5; color: var(--lp-text); }
 .lp-sd-refs b { display: block; color: var(--lp-strong); }
 .lp-sd-refs .lp-mini ul { list-style: none; padding-left: 0; }

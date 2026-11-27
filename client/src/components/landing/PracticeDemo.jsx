@@ -11,13 +11,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { clock } from '../../utils/practice'
 import { track } from '../../utils/analytics'
+import { MiniSlide } from './TalkSlide'
+
+export { MiniSlide }
 
 export const SPEED = 20
 export const TARGET = 600
 export const TALK = [
-  { title: 'Dark matter in ten minutes', minutes: 0.5, run: 28, kind: 'title' },
-  { title: 'Missing mass, twice', minutes: 2, run: 150, kind: 'list', items: ['Coma’s galaxies move too fast for their light', 'Andromeda’s rotation curve stays flat far past its light', 'Both point to the same unseen matter'], light: true },
-  { title: 'Why galaxies spin too fast', minutes: 3, run: 222, kind: 'image', src: '/examples/thumbs/rotation.jpg' },
+  { title: 'Why galaxies spin too fast', minutes: 0.5, run: 28, kind: 'hero', field: 'Astronomy', text: 'The visible disk alone says outer stars should slow down. They don’t: a dark halo keeps the curve flat.' },
+  { title: 'Missing mass, twice', minutes: 2, run: 150, kind: 'list', items: ['Coma’s galaxies move too fast for their light', 'Andromeda’s rotation curve stays flat far past its light', 'Both point to the same unseen matter'] },
+  { title: 'How much is missing', minutes: 3, run: 222, kind: 'number', number: '84', unit: '%', caption: 'of the matter in the universe is dark', source: 'Planck Collaboration 2020, A&A, 641, A6' },
   { title: 'What a halo predicts', minutes: 2.5, run: 128, kind: 'list', items: ['Rotation curves that stay flat far out', 'More lensing than the light can explain', 'About five times as much dark matter as ordinary matter'] },
   { title: 'What’s next', minutes: 1, run: 52, kind: 'list', items: ['Direct detection underground', 'Searches at colliders', 'Questions'] },
 ]
@@ -27,12 +30,6 @@ export const TALK = [
 export const planFrom = (minutes, seconds) => (seconds > 0 ? Math.max(0.5, Math.round(seconds / 30) / 2) : minutes)
 
 const minutesText = m => `${m % 1 ? m.toFixed(1) : m} min`
-
-export function MiniSlide({ slide }) {
-  if (slide.kind === 'image') return <img src={slide.src} alt={slide.title} />
-  if (slide.kind === 'title') return <div className="lp-mini title"><h4>{slide.title}</h4><p>Department seminar</p></div>
-  return <div className={`lp-mini${slide.light ? ' light' : ''}`}><h4>{slide.title}</h4><ul>{slide.items.map(t => <li key={t}>{t}</li>)}</ul></div>
-}
 
 export default function PracticeDemo() {
   const [plan, setPlan] = useState(() => TALK.map(s => s.minutes))

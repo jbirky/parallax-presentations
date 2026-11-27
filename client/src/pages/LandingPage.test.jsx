@@ -326,7 +326,7 @@ describe('Practice Talk to try', () => {
     expect(el.querySelector('.lp-pr-pace').textContent).toMatch(/^0:\d\d behind plan$/)
     await click('Finish')
     const rows = [...el.querySelectorAll('.lp-pr-table tbody tr')].map(tr => [...tr.querySelectorAll('td')].slice(0, 5).map(td => td.textContent))
-    expect(rows.map(r => r[1])).toEqual(['Dark matter in ten minutes', 'Missing mass, twice', 'Why galaxies spin too fast', 'What a halo predicts', 'What’s next'])
+    expect(rows.map(r => r[1])).toEqual(['Why galaxies spin too fast', 'Missing mass, twice', 'How much is missing', 'What a halo predicts', 'What’s next'])
     expect(rows[3][3]).toBe('skipped')
     expect(rows[1][4]).toMatch(/^\+0:\d\d$/)
     expect(el.querySelector('.lp-pr-sum .over, .lp-pr-sum .under')).not.toBeNull()
