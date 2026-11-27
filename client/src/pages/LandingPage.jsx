@@ -316,7 +316,6 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                 </button>
               ))}
             </div>
-            <div className="lp-facts"><span>Free to start</span><span>Open source, AGPL-3.0</span><span>Export to HTML, PDF and PowerPoint</span></div>
             <div className="lp-stage">
               <div className="lp-frame">
                 {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}/deck`} title="A live Parallax deck" /> : <div className="lp-slide" />}

@@ -968,9 +968,6 @@ sup[data-cite] { font-weight: 700; }
 .lp-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 40px; }
 .lp-chips button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; font-size: 14px; color: var(--lp-strong); border: 1px solid var(--lp-chip-line); }
 .lp-chips button:hover { border-color: var(--lp-strong); }
-.lp-facts { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 22px; font-size: 14px; color: var(--lp-faint); }
-.lp-facts span + span::before { content: '·'; margin-right: 14px; }
-@media (max-width: 600px) { .lp-facts { flex-direction: column; gap: 2px; } .lp-facts span + span::before { display: none; } }
 .lp-stage { margin-top: 64px; }
 .lp-frame { overflow: hidden; background: #000; box-shadow: var(--lp-frame-shadow); }
 .lp-hint { display: flex; align-items: center; gap: 10px; margin-top: 28px; font-size: 14px; color: var(--lp-faint); }
