@@ -28,7 +28,7 @@ export const planFrom = (minutes, seconds) => (seconds > 0 ? Math.max(0.5, Math.
 
 const minutesText = m => `${m % 1 ? m.toFixed(1) : m} min`
 
-function MiniSlide({ slide }) {
+export function MiniSlide({ slide }) {
   if (slide.kind === 'image') return <img src={slide.src} alt={slide.title} />
   if (slide.kind === 'title') return <div className="lp-mini title"><h4>{slide.title}</h4><p>Department seminar</p></div>
   return <div className={`lp-mini${slide.light ? ' light' : ''}`}><h4>{slide.title}</h4><ul>{slide.items.map(t => <li key={t}>{t}</li>)}</ul></div>

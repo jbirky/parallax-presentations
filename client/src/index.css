@@ -869,8 +869,8 @@ sup[data-cite] { font-weight: 700; }
   -webkit-font-smoothing: antialiased;
 }
 /* Ink: the page, and the panels that stay dark */
-.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-plan.lead,
-.landing-page .lp-steps li.on, .landing-page .lp-show-tabs [aria-selected="true"] {
+.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead,
+.landing-page .lp-steps > button.on, .landing-page .lp-show-tabs [aria-selected="true"] {
   --lp-bg: var(--lp-ink); --lp-raise: #28282c; --lp-card: #2e2e32;
   --lp-line: rgba(236, 235, 230, 0.16); --lp-chip-line: rgba(236, 235, 230, 0.25); --lp-edge: rgba(236, 235, 230, 0.45);
   --lp-text: #b6b6b1; --lp-strong: var(--lp-paper); --lp-faint: #9a9a96;
@@ -1030,14 +1030,20 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-small { font-size: 13px; color: var(--lp-faint); }
 @media (max-width: 860px) { .lp-viewer-body { grid-template-columns: 1fr; } .lp-viewer-side { border-left: 0; border-top: 1px solid var(--lp-line); } }
 
-/* Outline to talk: a real sequence, numbered */
-.lp-steps { list-style: none; margin-top: 48px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 16px; counter-reset: step; }
-.lp-steps li { counter-increment: step; display: flex; flex-direction: column; gap: 10px; padding: 24px; background: var(--lp-card); color: var(--lp-text); border-top: 4px solid var(--lp-strong); }
-.lp-steps li::before { content: counter(step, decimal-leading-zero); font: 700 12px/1 var(--lp-sans); letter-spacing: 0.08em; color: var(--lp-tag); }
-.lp-steps h3 { font-size: 24px; line-height: 1.1; color: var(--lp-strong); }
-.lp-steps p { font-size: 15px; line-height: 1.5; }
-.lp-steps span { margin-top: auto; padding-top: 6px; font-size: 13px; font-weight: 600; color: var(--lp-link); }
-.lp-steps li.on { background: var(--lp-bg); border-top-color: var(--lp-bg); box-shadow: var(--lp-small-shadow); }
+/* Outline to talk: the steps, numbered, as tabs; the one picked is ink and
+   its demo shows under them (components/landing/StepDemos.jsx) */
+.lp-steps { margin-top: 48px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.lp-steps > button { display: flex; flex-direction: column; gap: 10px; padding: 24px; text-align: left; font: inherit; background: var(--lp-card); color: var(--lp-text); border: 0; border-top: 4px solid var(--lp-strong); cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
+.lp-steps > button:hover { border-top-color: var(--lp-blue); }
+.lp-steps .n { font: 700 12px/1 var(--lp-sans); letter-spacing: 0.08em; color: var(--lp-tag); }
+.lp-steps b { font: 600 24px/1.1 var(--lp-display); letter-spacing: -0.02em; color: var(--lp-strong); }
+.lp-steps .d { font-size: 15px; line-height: 1.5; }
+.lp-steps .tool { margin-top: auto; padding-top: 6px; font-size: 13px; font-weight: 600; color: var(--lp-link); }
+.lp-steps > button.on { background: var(--lp-bg); border-top-color: var(--lp-bg); box-shadow: var(--lp-small-shadow); cursor: default; }
+.lp-steps > button.on .tool::after { content: ' · shown below'; color: var(--lp-faint); font-weight: 500; }
+/* Narrower, the tiles keep their number, name and tool; the demo explains */
+@media (max-width: 1100px) { .lp-steps { gap: 10px; } .lp-steps > button { padding: 16px; gap: 6px; } .lp-steps .d { display: none; } .lp-steps b { font-size: 20px; } .lp-steps > button.on .tool::after { content: none; } }
+@media (max-width: 700px) { .lp-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } .lp-steps > button { padding: 12px; } .lp-steps b { font-size: 18px; } .lp-steps .tool { font-size: 12px; } }
 
 /* Feature showcase (components/landing/FeatureShowcase.jsx) */
 .lp-show { display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: clamp(24px, 3vw, 40px); align-items: start; margin-top: 48px; }
@@ -1128,10 +1134,10 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 
 /* Practice Talk to try (components/landing/PracticeDemo.jsx), drawn as the
    practice window's timer and summary (utils/practice.js) */
-.lp-practice { margin-top: 40px; padding: clamp(18px, 3vw, 36px); display: grid; gap: 22px; background: var(--lp-bg); color: var(--lp-text); scroll-margin-top: 70px; }
-.lp-practice > header { display: grid; gap: 12px; max-width: 70ch; }
-.lp-practice > header h3 { font-size: clamp(24px, 2.6vw, 30px); line-height: 1.1; letter-spacing: -0.02em; color: var(--lp-strong); }
-.lp-practice > header p { font-size: 15px; line-height: 1.55; }
+.lp-practice, .lp-stepdemo { margin-top: 40px; padding: clamp(18px, 3vw, 36px); display: grid; gap: 22px; background: var(--lp-bg); color: var(--lp-text); scroll-margin-top: 70px; }
+.lp-practice > header, .lp-stepdemo > header { display: grid; gap: 12px; max-width: 76ch; }
+.lp-practice > header h3, .lp-stepdemo > header h3 { font-size: clamp(24px, 2.6vw, 30px); line-height: 1.1; letter-spacing: -0.02em; color: var(--lp-strong); }
+.lp-practice > header p, .lp-stepdemo > header p { font-size: 15px; line-height: 1.55; }
 .lp-pr-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 860px) { .lp-pr-grid { grid-template-columns: 1fr; } }
 .lp-pr-window { min-width: 0; overflow: hidden; background: #000; border: 1px solid var(--lp-line); }
@@ -1204,6 +1210,133 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-pr-outline-foot { display: grid; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--lp-line); font-size: 13px; color: var(--lp-text); }
 .lp-pr-outline-foot b { color: var(--lp-strong); }
 .lp-pr-outline-foot .lp-btn { justify-self: start; min-height: 40px; padding: 0 12px; font-size: 13.5px; }
+
+/* The other steps' demos (components/landing/StepDemos.jsx), in the same ink
+   panel and window as Practice Talk's */
+.lp-stepdemo kbd { font: 500 11.5px var(--lp-mono); padding: 1px 5px; color: var(--lp-strong); background: var(--lp-raise); border: 1px solid var(--lp-line); }
+.lp-stepdemo code { font: 0.92em var(--lp-mono); color: var(--lp-strong); }
+.lp-sd-grid { display: grid; gap: 16px; align-items: start; }
+.lp-sd-grid.plan { grid-template-columns: minmax(270px, 1fr) minmax(0, 1.5fr); }
+.lp-sd-grid.build, .lp-sd-grid.present { grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr); }
+.lp-sd-grid.share { grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1.6fr); }
+@media (max-width: 860px) { .lp-sd-grid.plan, .lp-sd-grid.build, .lp-sd-grid.present, .lp-sd-grid.share { grid-template-columns: minmax(0, 1fr); } }
+.lp-sd-thumb { position: relative; aspect-ratio: 16 / 9; container-type: inline-size; overflow: hidden; background: #191919; }
+.lp-sd-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lp-sd-small { font-size: 12.5px; line-height: 1.5; color: var(--lp-faint); }
+.lp-sd-url { display: block; font: 12px/1.4 var(--lp-mono); color: var(--lp-link); overflow-wrap: anywhere; }
+.lp-sd-pen > button, .lp-sd-formats button { padding: 6px 10px; font: 600 12.5px var(--lp-sans); color: var(--lp-text); background: transparent; border: 1px solid var(--lp-line); cursor: pointer; }
+.lp-sd-pen > button[aria-pressed="true"], .lp-sd-formats button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); border-color: var(--lp-strong); }
+.lp-sd-pen > button:disabled { opacity: 0.45; cursor: default; }
+
+/* Plan: the outline beside the slide it's on */
+.lp-sd-outline { min-width: 0; overflow: hidden; background: var(--lp-raise); border: 1px solid var(--lp-line); }
+.lp-sd-ol-head { display: grid; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--lp-line); }
+.lp-sd-ol-head > b { font-size: 14px; color: var(--lp-strong); }
+.lp-sd-ol-plan { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.lp-sd-ol-plan strong { font: 600 13px var(--lp-mono); color: var(--lp-strong); }
+.lp-sd-ol-plan em { font-style: normal; font-weight: 600; color: var(--lp-ok); }
+.lp-sd-ol-plan em.over { color: var(--lp-warn); }
+.lp-sd-ol-plan input, .lp-sd-ol-list .m { width: 56px; padding: 3px 5px; font: 500 12px var(--lp-mono); color: var(--lp-strong); background: var(--lp-bg); border: 1px solid var(--lp-line); }
+.lp-sd-bar { position: relative; display: flex; height: 8px; margin: 12px 12px 6px; background: rgba(236, 235, 230, 0.08); }
+.lp-sd-bar i { height: 100%; }
+.lp-sd-bar .s0 { background: #8db0ff; }
+.lp-sd-bar .s1 { background: var(--lp-blue); }
+.lp-sd-bar .s2 { background: #c9d7ff; }
+.lp-sd-bar .over { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(135deg, var(--lp-red) 0 3px, transparent 3px 6px); }
+.lp-sd-bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--lp-strong); }
+.lp-sd-ol-list { padding: 2px 0 8px; }
+.lp-sd-ol-list .sec { display: flex; justify-content: space-between; gap: 8px; padding: 12px 12px 4px; font: 600 11px var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-tag); }
+.lp-sd-ol-list .slide { display: grid; grid-template-columns: 18px minmax(0, 1fr) 56px; gap: 8px; align-items: center; padding: 3px 12px; }
+.lp-sd-ol-list .slide.cur { background: rgba(30, 96, 255, 0.2); }
+.lp-sd-ol-list .slide .n { font: 500 11.5px var(--lp-mono); color: var(--lp-faint); }
+.lp-sd-ol-list .slide .t { min-width: 0; padding: 4px 0; text-align: left; font: 600 13.5px var(--lp-sans); color: var(--lp-strong); background: none; border: 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-sd-ol-list .note { display: block; width: calc(100% - 50px); margin: 1px 0 1px 38px; padding: 3px 6px 3px 16px; font: 13px/1.4 var(--lp-sans); color: var(--lp-text); background: radial-gradient(circle at 6px 50%, var(--lp-faint) 2px, transparent 2.5px) no-repeat; border: 1px solid transparent; }
+.lp-sd-ol-list .note.l1 { width: calc(100% - 66px); margin-left: 54px; }
+.lp-sd-ol-list .note:focus { outline: none; border-color: var(--lp-blue); background-color: var(--lp-bg); }
+.lp-sd-ol-list .note::placeholder { color: var(--lp-faint); }
+.lp-sd-foot { padding: 8px 12px; border-top: 1px solid var(--lp-line); font-size: 12px; color: var(--lp-faint); }
+
+/* Build: a slide to arrange, its LaTeX and the bibliography */
+.lp-sd-slide { padding: 6cqw 6cqw 0; }
+.lp-sd-box { position: absolute; padding: 0.8cqw 1.2cqw; cursor: grab; touch-action: none; user-select: none; outline: 1px dashed transparent; }
+.lp-sd-box:hover { outline-color: rgba(255, 255, 255, 0.4); }
+.lp-sd-box.on { outline: 1.5px solid var(--lp-blue); }
+.lp-sd-box:active { cursor: grabbing; }
+.lp-sd-box.text { width: 52%; font-size: 3.4cqw; line-height: 1.35; }
+.lp-sd-box.eq { font-size: 3.4cqw; }
+.lp-sd-box.eq .katex-display { margin: 0; }
+.lp-sd-cite { margin-left: 0.25em; color: #8db0ff; }
+.lp-sd-refs { display: grid; grid-template-columns: minmax(110px, 190px) minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--lp-line); background: var(--lp-raise); font-size: 12.5px; line-height: 1.5; color: var(--lp-text); }
+.lp-sd-refs b { display: block; color: var(--lp-strong); }
+.lp-sd-side { display: grid; gap: 12px; min-width: 0; }
+.lp-sd-side section, .lp-sd-card { display: grid; gap: 8px; padding: 12px; background: var(--lp-raise); border: 1px solid var(--lp-line); min-width: 0; }
+.lp-sd-side h4, .lp-sd-card-head b { font: 600 11px var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-faint); }
+.lp-sd-side textarea { width: 100%; resize: vertical; padding: 8px; font: 13px/1.45 var(--lp-mono); color: var(--lp-strong); background: var(--lp-bg); border: 1px solid var(--lp-line); }
+.lp-sd-side p { font-size: 12.5px; line-height: 1.5; color: var(--lp-faint); }
+.lp-sd-lib { list-style: none; display: grid; gap: 6px; }
+.lp-sd-lib li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--lp-strong); }
+.lp-sd-lib li > span { display: grid; min-width: 0; }
+.lp-sd-lib code { font-size: 11.5px; color: var(--lp-faint); }
+.lp-sd-lib .lp-btn { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.lp-sd-link { justify-self: start; padding: 0; font-size: 12.5px; color: var(--lp-link); background: none; border: 0; text-decoration: underline; cursor: pointer; }
+
+/* Present: the pen, the speaker view and Live Present on a phone */
+.lp-sd-ink { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.lp-sd-ink polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.lp-sd-ink .pen { stroke-width: 0.9; }
+.lp-sd-ink .highlighter { stroke-width: 4.5; opacity: 0.4; }
+.lp-sd-ink .laser { stroke-width: 1.1; filter: drop-shadow(0 0 1.5px #ff3b30); }
+.lp-sd-ink .fade { animation: lp-sd-fade 0.7s linear forwards; }
+@keyframes lp-sd-fade { to { opacity: 0; } }
+.lp-sd-pen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--lp-line); background: var(--lp-raise); }
+.lp-sd-pen .sw { display: inline-flex; gap: 6px; margin: 0 6px; }
+.lp-sd-pen .sw button { width: 22px; height: 22px; padding: 0; border: 2px solid var(--lp-raise); outline: 1px solid var(--lp-line); cursor: pointer; }
+.lp-sd-pen .sw button[aria-pressed="true"] { outline: 2px solid var(--lp-strong); }
+.lp-sd-pen > button:last-child { margin-left: auto; }
+.lp-sd-stack { display: grid; gap: 12px; min-width: 0; }
+.lp-sd-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lp-sd-clock { font: 600 15px var(--lp-mono); font-variant-numeric: tabular-nums; color: var(--lp-strong); }
+.lp-sd-notes { min-height: 3em; font-size: 14px; line-height: 1.5; color: var(--lp-strong); }
+.lp-sd-next { display: grid; grid-template-columns: auto minmax(0, 150px); gap: 10px; align-items: start; font-size: 12px; color: var(--lp-faint); }
+.lp-sd-end { display: grid; place-items: center; aspect-ratio: 16 / 9; border: 1px dashed var(--lp-line); }
+.lp-sd-live { padding: 3px 7px; font: 700 10.5px var(--lp-sans); letter-spacing: 0.1em; text-transform: uppercase; color: #fff; background: var(--lp-red); }
+.lp-sd-phone { justify-self: center; display: grid; gap: 8px; width: min(100%, 240px); padding: 10px 8px 8px; background: #000; border: 2px solid var(--lp-edge); }
+.lp-sd-phone-nav { display: flex; justify-content: space-between; align-items: center; font: 12px var(--lp-mono); color: #b6b6b1; }
+.lp-sd-phone-nav button { width: 34px; height: 28px; font-size: 18px; line-height: 1; color: #fff; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.22); cursor: pointer; }
+.lp-sd-phone-nav button:disabled { opacity: 0.3; cursor: default; }
+
+/* Share: a link, a file, or a site */
+.lp-sd-ways { display: grid; gap: 8px; align-content: start; }
+.lp-sd-ways button { display: grid; gap: 3px; padding: 12px 14px; text-align: left; font: inherit; color: var(--lp-text); background: var(--lp-raise); border: 1px solid var(--lp-line); cursor: pointer; }
+.lp-sd-ways b { font: 600 16px var(--lp-display); color: var(--lp-strong); }
+.lp-sd-ways small { font: 12px var(--lp-mono); color: var(--lp-faint); }
+.lp-sd-ways button[aria-pressed="true"] { background: var(--lp-strong); border-color: var(--lp-strong); }
+.lp-sd-ways button[aria-pressed="true"] b, .lp-sd-ways button[aria-pressed="true"] small { color: var(--lp-bg); }
+@media (max-width: 860px) { .lp-sd-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); } .lp-sd-ways button { padding: 10px; } .lp-sd-ways b { font-size: 14px; } }
+.lp-sd-share { background: var(--lp-card); }
+.lp-sd-pane { display: grid; gap: 12px; justify-items: start; padding: clamp(14px, 3vw, 22px); font-size: 14px; line-height: 1.5; color: var(--lp-text); }
+.lp-sd-pane .lp-btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.lp-sd-browser { width: min(100%, 420px); border: 1px solid var(--lp-line); }
+.lp-sd-browser-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font: 11.5px var(--lp-mono); color: var(--lp-faint); background: var(--lp-raise); white-space: nowrap; overflow: hidden; }
+.lp-sd-browser-bar i { flex: none; width: 8px; height: 8px; background: var(--lp-faint); }
+.lp-sd-browser-bar span { overflow: hidden; text-overflow: ellipsis; }
+.lp-sd-export { justify-items: stretch; }
+.lp-sd-formats { display: flex; flex-wrap: wrap; gap: 6px; }
+.lp-sd-file { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 14px; align-items: start; padding: 14px; background: var(--lp-raise); border: 1px solid var(--lp-line); }
+.lp-sd-file b { color: var(--lp-strong); }
+.lp-sd-file p { margin-top: 4px; font-size: 13.5px; }
+.lp-sd-doc { position: relative; height: 76px; background: var(--lp-strong); clip-path: polygon(0 0, 70% 0, 100% 22%, 100% 100%, 0 100%); }
+.lp-sd-doc span { position: absolute; left: 0; bottom: 10px; padding: 2px 6px; font: 700 11px var(--lp-mono); color: #fff; background: var(--lp-red); }
+.lp-sd-push { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.lp-sd-push input { flex: 1 1 200px; min-width: 0; padding: 8px 10px; font: 13.5px var(--lp-sans); color: var(--lp-strong); background: var(--lp-bg); border: 1px solid var(--lp-line); }
+.lp-sd-repo { list-style: none; width: 100%; font: 12.5px var(--lp-mono); border: 1px solid var(--lp-line); }
+.lp-sd-repo li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; color: var(--lp-strong); border-bottom: 1px solid var(--lp-line); }
+.lp-sd-repo li:last-child { border-bottom: 0; }
+.lp-sd-repo li.in { padding-left: 26px; }
+.lp-sd-repo span { min-width: 0; font-family: var(--lp-sans); color: var(--lp-faint); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-sd-commits { display: grid; gap: 6px; width: 100%; font-size: 13px; color: var(--lp-strong); }
+.lp-sd-commits > div { display: flex; gap: 10px; }
+.lp-sd-commits > div b { min-width: 64px; font: 600 11.5px var(--lp-mono); color: var(--lp-ok); }
 
 /* Plans */
 .lp-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 24px; margin-top: 48px; }

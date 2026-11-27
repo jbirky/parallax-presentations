@@ -6,7 +6,7 @@
 // example decks by field (as /admin arranges them, served at
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
-// together with Practice Talk to try (PracticeDemo.jsx), the elements by
+// together, a demo for each step (StepDemos.jsx), the elements by
 // subject, the plans, and a last way in. Ink and paper bands, the mark's red
 // and blue as offset shadows (index.css, Landing Page). It's dark unless
 // light is chosen, with the nav's toggle or the dashboard's (theme,
@@ -26,22 +26,13 @@ import Mark from '../components/ParallaxMark'
 import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
-import PracticeDemo from '../components/landing/PracticeDemo'
+import WorkflowSteps from '../components/landing/StepDemos'
 import { api } from '../utils/api'
 import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
 
 const GITHUB = 'https://github.com/jbirky/parallax-presentations'
 const SUPPORT = 'support@parallax-presentations.com'
-
-// From the first plan to the DOI, in order
-const STEPS = [
-  { title: 'Plan', text: 'Outline each slide with notes and the minutes it gets. The notes stay in the outline and never change a slide.', tool: 'Outline' },
-  { title: 'Build', text: 'Lay out text, figures and live elements in a visual editor. Math is LaTeX; references come from your citations.', tool: 'Editor' },
-  { title: 'Rehearse', text: 'Practice Talk times every slide against your plan and shows where you run long.', tool: 'Practice Talk' },
-  { title: 'Present', text: 'Speaker notes, drawing on slides, and a live link your audience can follow on their own screens.', tool: 'Presenter view' },
-  { title: 'Share', text: 'Send a link, export PDF or PowerPoint, or push to GitHub and host it on GitHub Pages.', tool: 'Share and publish' },
-]
 
 // Parallax beside the tools researchers already use: [feature, PowerPoint
 // and Google Slides, Beamer, reveal.js, Parallax], each cell [mark, words]
@@ -176,6 +167,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
   const [copied, setCopied] = useState(false)
   const [catalog, setCatalog] = useState(null)
   const [feature, setFeature] = useState(FEATURES[0].key)
+  // The step of a talk whose demo shows (StepDemos)
+  const [step, setStep] = useState('plan')
 
   useEffect(() => {
     startAnalytics()
@@ -196,6 +189,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         setTab('home')
         // A section named in the address (the site's own pages link to them,
         // services/site-pages.js), once the examples above it are in
+        // #practice is Practice Talk's demo, the Rehearse step's
+        if (h === '#practice') setStep('rehearse')
         if (HOME_SECTIONS.includes(h.slice(1))) setScrollTo({ id: h.slice(1), afterCatalog: true })
       }
     }
@@ -396,12 +391,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-workflow">From outline to talk</h2>
-                <p>Parallax follows a talk the whole way, from the first plan to the version you share.</p>
               </div>
-              <ol className="lp-steps">
-                {STEPS.map(s => <li key={s.title} className={s.title === 'Rehearse' ? 'on' : undefined}><h3>{s.title}</h3><p>{s.text}</p><span>{s.title === 'Rehearse' ? `${s.tool} · try it below` : s.tool}</span></li>)}
-              </ol>
-              <PracticeDemo />
+              <WorkflowSteps step={step} onStep={setStep} />
             </div>
           </section>
 
