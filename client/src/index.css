@@ -945,7 +945,10 @@ sup[data-cite] { font-weight: 700; }
 
 /* Hero */
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
-.lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(36px, 5.2vw, 76px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
+/* The first line, "Create interactive and intuitive slides for", is about
+   17.3em wide: at 4.9vw it fits the column from about 690px up; narrower,
+   it wraps */
+.lp-hero h1 { margin-top: 24px; max-width: none; font-size: clamp(36px, 4.9vw, 70px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
 .lp-hero h1 em, .lp-head h2 em { font-style: normal; text-shadow: var(--lp-fringe); }
 /* The fringed words in the hero, section and closing titles (ParallaxWords):
    the fringe's red copy a depth behind the blue, both behind the ink, moving

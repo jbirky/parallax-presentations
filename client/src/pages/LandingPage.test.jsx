@@ -41,7 +41,7 @@ describe('the landing page', () => {
     await mount()
     const words = el.querySelector('.lp-hero h1 .lp-parallax')
     expect(words.textContent).toBe('complex concepts.')
-    expect(el.querySelector('.lp-hero h1').textContent).toBe('Create interactiveand intuitive slides\u00a0forcomplex concepts.')
+    expect(el.querySelector('.lp-hero h1').textContent).toBe('Create interactive and intuitive slides\u00a0forcomplex concepts.')
     await act(async () => {
       window.dispatchEvent(new PointerEvent('pointermove', { clientX: 400, clientY: 300, pointerType: 'mouse' }))
       await new Promise(r => setTimeout(r, 100))
