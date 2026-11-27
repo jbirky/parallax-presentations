@@ -848,12 +848,13 @@ sup[data-cite] { font-weight: 700; }
    showcase, Practice Talk, the lead plan) stay as they are in either. */
 .landing-page {
   /* The app's tokens, for the docs that open in place of the page */
-  --bg-primary: #0c0c0d; --bg-secondary: #141415; --bg-panel: #18181a; --bg-card: #1c1c1e;
-  --bg-hover: #242427; --bg-active: #2e2e33; --border: #2a2a2d; --border-light: #3a3a3e;
-  --text-primary: #fafaf7; --text-secondary: #c4c4c2; --text-muted: #9c9c9a;
+  --bg-primary: #1f1f22; --bg-secondary: #252528; --bg-panel: #29292c; --bg-card: #2e2e32;
+  --bg-hover: #353539; --bg-active: #3e3e43; --border: #38383c; --border-light: #48484d;
+  --text-primary: #ecebe6; --text-secondary: #b6b6b1; --text-muted: #9a9a96;
   --accent: #1e60ff; --accent-light: #8db0ff;
-  /* The palette, and how far apart the two eyes see */
-  --lp-ink: #0c0c0d; --lp-paper: #fafaf7; --lp-red: #ee2b2b; --lp-blue: #1e60ff;
+  /* The palette, and how far apart the two eyes see. Ink and paper are a
+     soft charcoal and a warm gray-white (13.8:1), not black and white. */
+  --lp-ink: #1f1f22; --lp-paper: #ecebe6; --lp-red: #ee2b2b; --lp-blue: #1e60ff;
   --lp-stereo: 10px;
   --lp-frame-shadow: calc(-1 * var(--lp-stereo)) 0 0 var(--lp-red), var(--lp-stereo) 0 0 var(--lp-blue);
   --lp-small-shadow: calc(-0.5 * var(--lp-stereo)) 0 0 var(--lp-red), calc(0.5 * var(--lp-stereo)) 0 0 var(--lp-blue);
@@ -869,29 +870,29 @@ sup[data-cite] { font-weight: 700; }
 /* Ink: the page, and the panels that stay dark */
 .landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-plan.lead,
 .landing-page .lp-steps li.on, .landing-page .lp-show-tabs [aria-selected="true"] {
-  --lp-bg: #0c0c0d; --lp-raise: #161618; --lp-card: #1c1c1e;
-  --lp-line: rgba(250, 250, 247, 0.16); --lp-chip-line: rgba(250, 250, 247, 0.25); --lp-edge: rgba(250, 250, 247, 0.45);
-  --lp-text: #c4c4c2; --lp-strong: #fafaf7; --lp-faint: #9c9c9a;
+  --lp-bg: var(--lp-ink); --lp-raise: #28282c; --lp-card: #2e2e32;
+  --lp-line: rgba(236, 235, 230, 0.16); --lp-chip-line: rgba(236, 235, 230, 0.25); --lp-edge: rgba(236, 235, 230, 0.45);
+  --lp-text: #b6b6b1; --lp-strong: var(--lp-paper); --lp-faint: #9a9a96;
   /* Labels; links; "partly" in the comparison; ahead of plan; over it */
   --lp-tag: #ff8a80; --lp-link: #8db0ff; --lp-partly: #8db0ff; --lp-ok: #8db0ff; --lp-warn: #ff8a80;
-  --lp-nav-bg: rgba(12, 12, 13, 0.92);
+  --lp-nav-bg: rgba(31, 31, 34, 0.92);
   color-scheme: dark;
 }
 /* Paper: the light bands, and the whole page when light is chosen */
 [data-theme="light"] .landing-page, .landing-page .lp-light {
-  --lp-bg: #fafaf7; --lp-raise: #efefea; --lp-card: #efefea;
-  --lp-line: #d9d9d3; --lp-chip-line: rgba(12, 12, 13, 0.25); --lp-edge: #0c0c0d;
-  --lp-text: #3d3d40; --lp-strong: #0c0c0d; --lp-faint: #66666a;
-  --lp-tag: #c81e1e; --lp-link: #1a56e8; --lp-partly: #1e60ff; --lp-ok: #1a56e8; --lp-warn: #c81e1e;
-  --lp-nav-bg: rgba(250, 250, 247, 0.92);
+  --lp-bg: var(--lp-paper); --lp-raise: #e2e1db; --lp-card: #e2e1db;
+  --lp-line: #cfcec7; --lp-chip-line: rgba(31, 31, 34, 0.25); --lp-edge: var(--lp-ink);
+  --lp-text: #434347; --lp-strong: var(--lp-ink); --lp-faint: #5e5e62;
+  --lp-tag: #b81b1b; --lp-link: #1650d8; --lp-partly: #1e60ff; --lp-ok: #1650d8; --lp-warn: #b81b1b;
+  --lp-nav-bg: rgba(236, 235, 230, 0.92);
   color-scheme: light;
 }
-.landing-page .lp-light.alt { --lp-bg: #efefea; --lp-raise: #fafaf7; --lp-card: #fafaf7; }
+.landing-page .lp-light.alt { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
 [data-theme="light"] .landing-page {
-  --bg-primary: #fafaf7; --bg-secondary: #ffffff; --bg-panel: #f4f4ef; --bg-card: #ffffff;
-  --bg-hover: #efefea; --bg-active: #e3e3dc; --border: #d9d9d3; --border-light: #c4c4bd;
-  --text-primary: #0c0c0d; --text-secondary: #3d3d40; --text-muted: #66666a;
-  --accent: #1a56e8; --accent-light: #1a56e8;
+  --bg-primary: #ecebe6; --bg-secondary: #f5f4f0; --bg-panel: #e6e5df; --bg-card: #f5f4f0;
+  --bg-hover: #e2e1db; --bg-active: #d7d6cf; --border: #cfcec7; --border-light: #bcbbb4;
+  --text-primary: #1f1f22; --text-secondary: #434347; --text-muted: #5e5e62;
+  --accent: #1650d8; --accent-light: #1650d8;
 }
 @media (max-width: 600px) { .landing-page { --lp-stereo: 6px; } }
 .landing-scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
